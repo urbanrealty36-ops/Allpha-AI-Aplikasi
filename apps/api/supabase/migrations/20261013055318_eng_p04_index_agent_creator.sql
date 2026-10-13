@@ -1,0 +1,1 @@
+create index if not exists ai_agents_created_by_idx on public.ai_agents(created_by);
