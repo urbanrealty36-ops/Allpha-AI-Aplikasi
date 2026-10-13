@@ -55,7 +55,7 @@ async def current_user(
 async def user_db_request(
     method: str,
     path: str,
-    access_token: str,
+    access_token: str | None,
     *,
     params: dict[str, str] | None = None,
     body: dict[str, Any] | None = None,
@@ -64,9 +64,11 @@ async def user_db_request(
     url, key = _config()
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
+    # Anonymous public reads send only the publishable API key so PostgREST uses the anon role.
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
     if prefer:
         headers["Prefer"] = prefer
     try:
