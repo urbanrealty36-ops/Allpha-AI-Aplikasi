@@ -46,6 +46,30 @@ def test_agent_payload_validates_visibility_persona_and_status():
         AgentCreate.model_validate({"handle": "research_bot", "display_name": "Research Bot", "boundaries": ["not", "an", "object"]})
 
 
+def test_agent_configuration_rejects_oversized_json():
+    with pytest.raises(ValidationError):
+        AgentCreate.model_validate({
+            "handle": "research_bot",
+            "display_name": "Research Bot",
+            "persona": {"prompt": "x" * (16 * 1024)},
+        })
+
+
+def test_agent_configuration_rejects_excessive_nesting():
+    deeply_nested = {"level": {"level": {"level": {"level": {"level": {"level": {"level": {"level": {"too_deep": True}}}}}}}}
+    with pytest.raises(ValidationError):
+        AgentCreate.model_validate({
+            "handle": "research_bot",
+            "display_name": "Research Bot",
+            "boundaries": deeply_nested,
+        })
+
+
+def test_agent_update_configuration_has_same_size_limits():
+    with pytest.raises(ValidationError):
+        AgentUpdate.model_validate({"boundaries": {"prompt": "x" * (16 * 1024)}})
+
+
 def test_agent_update_rejects_ownership_and_authority_fields():
     with pytest.raises(ValidationError):
         AgentUpdate.model_validate({"owner_user_id": "another-human"})
