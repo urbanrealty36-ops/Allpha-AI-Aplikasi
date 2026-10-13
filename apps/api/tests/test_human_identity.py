@@ -76,3 +76,62 @@ def test_deactivation_uses_scoped_rpc_instead_of_direct_profile_update(monkeypat
     assert calls[0][3]["body"] == {}
     assert response.json()["profile"]["id"] == "human-123"
 
+
+
+def test_consent_payload_rejects_client_owned_identity_and_invalid_types():
+    from allpha_api.main import ConsentCreate
+
+    with pytest.raises(ValidationError):
+        ConsentCreate.model_validate({
+            "user_id": "another-user",
+            "consent_type": "privacy_policy",
+            "policy_version": "v1",
+            "granted": True,
+        })
+    with pytest.raises(ValidationError):
+        ConsentCreate.model_validate({
+            "consent_type": "admin_override",
+            "policy_version": "v1",
+            "granted": True,
+        })
+
+
+def test_consent_record_is_bound_to_authenticated_user_and_immutable_insert(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "consent_type": "privacy_policy",
+            "policy_version": "v1.2",
+            "granted": True,
+            "recorded_at": "2026-10-14T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer test"},
+            json={"consent_type": "privacy_policy", "policy_version": "v1.2", "granted": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert calls[0][0:3] == ("POST", "user_consents", "consent-session-token")
+    assert calls[0][3]["body"] == {
+        "user_id": "human-123",
+        "consent_type": "privacy_policy",
+        "policy_version": "v1.2",
+        "granted": True,
+    }
+    assert calls[0][3]["prefer"] == "return=representation"
