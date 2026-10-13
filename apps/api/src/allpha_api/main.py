@@ -1,6 +1,7 @@
 """Allpha API foundation and authenticated identity/tenant endpoints."""
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
@@ -8,7 +9,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
 
@@ -258,8 +259,55 @@ async def list_organization_memberships(organization_id: uuid.UUID, user: dict[s
 
 
 # ENG-P04 — AI Agent identity is separate from the signed-in Human identity.
+_AGENT_CONFIG_MAX_BYTES = 16 * 1024
+_AGENT_CONFIG_MAX_DEPTH = 8
+_AGENT_CONFIG_MAX_NODES = 256
+
+
+def _validate_agent_config(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Bound user-authored JSON configuration before storing it in Postgres."""
+    if value is None:
+        return None
+
+    nodes = 0
+
+    def walk(item: Any, depth: int) -> None:
+        nonlocal nodes
+        nodes += 1
+        if nodes > _AGENT_CONFIG_MAX_NODES:
+            raise ValueError("Konfigurasi Agent terlalu kompleks (maksimum 256 nilai).")
+        if depth > _AGENT_CONFIG_MAX_DEPTH:
+            raise ValueError("Konfigurasi Agent terlalu dalam (maksimum 8 tingkat).")
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if not isinstance(key, str):
+                    raise ValueError("Kunci konfigurasi Agent harus berupa teks.")
+                walk(child, depth + 1)
+        elif isinstance(item, list):
+            for child in item:
+                walk(child, depth + 1)
+        elif item is None or isinstance(item, (str, bool, int, float)):
+            return
+        else:
+            raise ValueError("Konfigurasi Agent harus berisi nilai JSON yang valid.")
+
+    walk(value, 1)
+    try:
+        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ValueError("Konfigurasi Agent harus berupa JSON yang valid.") from exc
+    if len(encoded) > _AGENT_CONFIG_MAX_BYTES:
+        raise ValueError("Konfigurasi Agent maksimal 16 KiB.")
+    return value
+
+
 class AgentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("persona", "boundaries")
+    @classmethod
+    def validate_config_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_agent_config(value)
     handle: str = Field(min_length=3, max_length=30, pattern=r"^[a-z0-9_]+$")
     display_name: str = Field(min_length=2, max_length=80)
     description: str = Field(default="", max_length=1000)
@@ -272,6 +320,12 @@ class AgentCreate(BaseModel):
 
 class AgentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("persona", "boundaries")
+    @classmethod
+    def validate_config_size(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _validate_agent_config(value)
+
     handle: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[a-z0-9_]+$")
     display_name: str | None = Field(default=None, min_length=2, max_length=80)
     description: str | None = Field(default=None, max_length=1000)
