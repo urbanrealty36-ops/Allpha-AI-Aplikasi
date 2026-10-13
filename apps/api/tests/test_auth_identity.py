@@ -4,13 +4,13 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api.auth import current_user
-from allpha_api.main import ProfileUpdate, app
+from allpha_api.main import OrganizationCreate, ProfileUpdate, app
 
 client = TestClient(app)
 
 
 def test_authenticated_routes_reject_missing_bearer_token():
-    for path in ("/v1/me", "/v1/organizations"):
+    for path in ("/v1/me", "/v1/organizations", "/v1/organizations/00000000-0000-4000-8000-000000000001/memberships"):
         response = client.get(path)
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "AUTH_REQUIRED"
@@ -63,3 +63,19 @@ def test_create_organization_uses_authenticated_identity(monkeypatch):
 def test_profile_update_schema_rejects_invalid_visibility():
     with pytest.raises(ValidationError):
         ProfileUpdate.model_validate({"visibility": "world"})
+
+
+
+def test_organization_create_rejects_client_authority_fields():
+    with pytest.raises(ValidationError):
+        OrganizationCreate.model_validate({
+            "name": "Tenant Test",
+            "slug": "tenant-test",
+            "owner_id": "00000000-0000-4000-8000-000000000001",
+        })
+    with pytest.raises(ValidationError):
+        OrganizationCreate.model_validate({
+            "name": "Tenant Test",
+            "slug": "tenant-test",
+            "tenant_id": "00000000-0000-4000-8000-000000000001",
+        })
