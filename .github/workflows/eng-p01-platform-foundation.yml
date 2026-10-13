@@ -58,6 +58,8 @@ jobs:
         run: npm install
       - name: Lint web
         run: npm run lint
+      - name: Type-check web
+        run: npm run typecheck
       - name: Build web
         run: npm run build
 
