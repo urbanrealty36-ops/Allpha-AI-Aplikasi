@@ -2,11 +2,16 @@
 
 **Versi:** 1.1.0\
 **Status:** Reconciled baseline v1.1.0 — Master PRD v3.0.0 + GLB publishing and native spatial UI/UX gates\
-**Tujuan:** Menjadi urutan kerja kanonis bagi AI coding agents,
-engineering, product, design, QA, security, dan release team untuk
-membangun Allpha dari nol.
+**Tujuan:** Menjadi rencana eksekusi engineering terperinci (`ENG-P00`–`ENG-P37`) bagi AI coding agents, engineering, product, design, QA, security, dan release team untuk membangun Allpha dari nol. Master PRD v3.0.0 tetap mendefinisikan roadmap produk (`PRD-P00`–`PRD-P24`); rencana ini tidak menggantikannya.
 
 ------------------------------------------------------------------------
+
+### Phase namespace governance
+
+- Product roadmap references use `PRD-Pnn` and follow Master PRD v3.0.0 Part XVIII §82.
+- Engineering execution references use `ENG-Pnn` and follow this plan's 00–37 sequencing.
+- The initial crosswalk is [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md). It is a proposal pending Engineering Lead review; it is not evidence of implementation or acceptance.
+- ADR-0001 status: Product Owner approved Option 3 on 2026-10-13; Engineering Lead approval pending. Do not mark accepted or advance Phase 00 based on this approval alone.
 
 ## 1. Mandat Dokumen
 
@@ -237,7 +242,7 @@ yang dibutuhkan benar-benar siap.
 
 ## PHASE 00 --- Product Contract, Requirement Traceability & Delivery Governance
 
-**Execution status (2026-10-13):** `in_progress` — initial governance artifacts committed; Phase 00 exit gate is not yet passed. The PRD-vs-plan phase numbering conflict is recorded in ADR-0001 and awaits explicit product-owner/engineering approval. Repository baseline has only GLB acquisition/readiness workflows confirmed in the workflow directory; no application source tree was present in the root listing at this inspection. This is a limited tree inspection, not proof that every possible application implementation is absent.
+**Execution status (2026-10-13):** `in_progress` — initial governance artifacts committed; Phase 00 exit gate is not yet passed. Under ADR-0001, the Product Owner approved the two-namespace approach (PRD-P00–PRD-P24 and ENG-P00–ENG-P37); Engineering Lead approval and detailed crosswalk review remain pending. Repository baseline has only GLB acquisition/readiness workflows confirmed in the workflow directory; no application source tree was present in the root listing at this inspection. This is a limited tree inspection, not proof that every possible application implementation is absent.
 
 **Phase 00 artifacts:**
 - [Product Contract, Traceability & Delivery Governance](./PHASE_00_PRODUCT_CONTRACT_TRACEABILITY_GOVERNANCE.md)
