@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
         working-directory: apps/web
       - run: npm run typecheck && npm run build
         working-directory: apps/web
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
         working-directory: apps/super-admin
       - run: npm run typecheck && npm test && npm run build
         working-directory: apps/super-admin
@@ -84,7 +84,7 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
         run: "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-      - run: npm install --no-audit --no-fund && npm run typecheck && npm test
+      - run: npm ci --no-audit --no-fund && npm run typecheck && npm test
         working-directory: apps/client
       - run: npx expo prebuild --platform android --no-install && npx expo export --platform android
         working-directory: apps/client
@@ -116,7 +116,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install --no-audit --no-fund && npm run typecheck && npm test
+      - run: npm ci --no-audit --no-fund && npm run typecheck && npm test
         working-directory: apps/client
       - run: npx expo prebuild --platform ios --no-install && npx expo export --platform ios
         working-directory: apps/client
