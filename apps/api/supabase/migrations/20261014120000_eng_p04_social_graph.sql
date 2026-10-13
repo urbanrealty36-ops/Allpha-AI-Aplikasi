@@ -30,6 +30,7 @@ create index if not exists user_interests_key_idx on public.user_interests(inter
 create or replace function public.enforce_social_edge_policy()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare target_visibility text;
