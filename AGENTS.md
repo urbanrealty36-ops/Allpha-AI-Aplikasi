@@ -165,3 +165,16 @@ Before any planning, code generation, editing, migration, deployment, or executi
 9. The 25 Themes × 14 categories are 350 template slots, not proof of 350 unique approved assets. District city scenes use validated Scene Schema/World DSL and canonical backend entity IDs; GLBs provide presentation only and cannot grant permission, ownership, billing, entitlement or moderation state.
 10. Final Phase 37 is a validation/release gate, not a place to hide missing feature implementation. Return any missing capability to its owning phase and preserve traceability.
 
+
+
+## 11. Product Owner execution mode — direct main and lightweight delivery (2026-10-13)
+
+The Product Owner has explicitly directed that implementation work be committed directly to `main`. Do not create new working branches or require a pull request for routine changes. Use direct commits on `main` through the connected GitHub integration. Do not create approval gates, manual sign-offs, multi-stage asset publication workflows, or excessive CI checks that delay normal product implementation. Keep the default CI to a small build/test smoke check and fix failures directly on `main`.
+
+Build the full product as one monorepo with three independently deployable/extractable application areas: `apps/client`, `apps/super-admin`, and `apps/backend` (the existing `apps/web` and `apps/api` may be reused/migrated rather than duplicated). Each area must expose clear API/configuration boundaries so it can later be split into its own repository with minimal refactoring. Add native Android/iOS support in the client architecture; do not substitute PWA for native mobile.
+
+GLB developer workflow: assets available to the owner/developer should be able to flow from Storage/catalog to the UI renderer through a straightforward catalog/manifest/API path, without a mandatory manual approval chain. Keep only automatic basic file readability/format checks and a clear failure state. Do not claim legal rights, public authorization, or production readiness merely because an asset renders; where asset rights or user safety are uncertain, make that limitation visible without blocking local developer preview. Do not create a parallel asset registry or bypass the canonical backend for privileged writes.
+
+The owner has asked to defer elaborate security/validation governance in favor of building working applications and integrations. Implement pragmatic, lightweight controls as part of each feature; do not turn optional audits or future hardening into blockers for ordinary development. Never expose secrets in clients, never fabricate live business data, and never claim unperformed tests/integrations succeeded. These basic correctness requirements are not a workflow approval gate.
+
+Preferred execution loop: read relevant source/docs → implement directly on main → run the smallest relevant smoke test → report commit, what works, known gaps, and next phase. Do not stop implementation just because a later phase will add deeper hardening.
