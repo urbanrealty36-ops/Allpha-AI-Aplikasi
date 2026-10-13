@@ -213,5 +213,7 @@ The Master PRD Part XVIII describes a Phase 00–24 roadmap with phase names tha
 - `docs/PHASES/PHASE_00_PRODUCT_CONTRACT_TRACEABILITY_GOVERNANCE.md` — this contract.
 - `docs/PHASES/REQUIREMENT_TRACEABILITY_MATRIX.md` — requirements, 82 domains, proposed phase mapping and evidence slots.
 - `docs/PHASES/ADR_AND_RISK_REGISTER.md` — open decisions and delivery risks.
+- `docs/PHASES/MASTER_PRD_SECTION_TRACEABILITY.md` — section-level routing for all 91 numbered PRD sections.
+- `docs/PHASES/PHASE_EXECUTION_TEMPLATES.md` — reusable phase, test, evidence, release and change-request templates.
 - Update to Phase Master Plan status/links after read-back verification.
 - Phase 00 evidence report after acceptance review; no evidence is fabricated in advance.
