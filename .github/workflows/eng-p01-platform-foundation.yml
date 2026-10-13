@@ -46,7 +46,7 @@ jobs:
         working-directory: apps/api
         run: python -m pip install -e ".[dev]" && python -m compileall -q src tests scripts && pytest -q
       - name: Build Railway deployment image
-        run: docker build --tag allpha-api:ci .
+        run: docker build --file apps/api/Dockerfile --tag allpha-api:ci apps/api
 
   web-build:
     name: Existing Web typecheck and build
