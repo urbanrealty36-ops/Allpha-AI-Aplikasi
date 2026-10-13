@@ -217,3 +217,14 @@ The Master PRD Part XVIII describes a Phase 00–24 roadmap with phase names tha
 - `docs/PHASES/PHASE_EXECUTION_TEMPLATES.md` — reusable phase, test, evidence, release and change-request templates.
 - Update to Phase Master Plan status/links after read-back verification.
 - Phase 00 evidence report after acceptance review; no evidence is fabricated in advance.
+
+
+## ADR-0001 review status (2026-10-13)
+
+The Product Owner has explicitly approved Option 3: separate the Master PRD product-roadmap namespace (`PRD-P00`–`PRD-P24`) from the detailed engineering execution namespace (`ENG-P00`–`ENG-P37`) and maintain an explicit crosswalk. Engineering Lead approval is still pending; ADR-0001 must not be marked accepted yet.
+
+- Crosswalk: [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md).
+- Decision register: [ADR and Risk Register](./ADR_AND_RISK_REGISTER.md).
+- Phase Master Plan and section traceability have been annotated with the interim approval state.
+- Master PRD and `AGENTS.md` are intentionally unchanged until required Engineering Lead review and any separately approved source changes.
+- Phase 00 remains `in_progress`; no Phase 01 start/acceptance claim is made by this update.
