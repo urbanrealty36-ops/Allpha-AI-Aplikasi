@@ -1909,3 +1909,12 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - No schema/migration changes. Public Passport query remains limited to public projection columns and active/public filters; live RLS/column grants remain the enforcement boundary.
 - Automated CI workflow remains enabled for every push to `main` (API pytest + web production build). Current run result: `NOT_VERIFIED` until a concrete hosted workflow result is available; no local test/build execution is claimed.
 - ENG-P04 remains `in_progress`. Deferred acceptance remains: hosted create/configure/publish/anonymous-read/revoke journey, real two-owner isolation/IDOR, and deployed browser/mobile responsive evidence. No production fixture users or Agent records were created.
+
+
+### ENG-P04 hosted CI evidence — API error contract repair (2026-10-13)
+
+- Hosted run [Allpha Smoke #56](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38359171771) on commit `4aba7140f860fc5b7d797a4ab2003f257e323b87` completed successfully: API suite `30 passed, 1 warning`; frontend production build succeeded.
+- The CI failure path was fixed rather than hidden: first, a malformed deeply nested test fixture was rewritten as an explicit loop; then two pre-existing authentication tests were updated to assert the new stable `error.code` envelope instead of the old `detail.code` envelope.
+- Security Advisor returned `lints=[]`; Supabase migration history includes the ENG-P04 migrations through `20261013062523_eng_p04_public_passport_anonymous_projection`. No schema change was made for error contract work.
+- The evidence applies to the exact commit above; this plan update triggers another CI run and must not be considered verified until that run is observed.
+- ENG-P04 remains `in_progress`: live authenticated create/configure/publish/anonymous-read/revoke, real two-owner isolation/IDOR, and deployed browser/mobile E2E remain pending hosted test environment and approved test identities or isolated test project.
