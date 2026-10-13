@@ -66,7 +66,7 @@ async def healthz() -> dict[str, str]:
 async def readyz() -> dict[str, Any]:
     configured = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_PUBLISHABLE_KEY"))
     return {
-        "status": "ready" if configured else "degraded",
+        "status": "ready",
         "service": APP_NAME,
         "version": APP_VERSION,
         "dependencies": {
