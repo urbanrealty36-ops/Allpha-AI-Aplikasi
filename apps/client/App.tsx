@@ -119,7 +119,7 @@ function Profile({ session }: { session: Session }) {
     try {
       const [identity, prefs] = await Promise.all([
         apiRequest("/v1/me/profile", { method: "PATCH", body: JSON.stringify({ locale: profile.locale }) }),
-        apiRequest("/v1/me/settings", { method: "PATCH", body: JSON.stringify(settings) }),
+        apiRequest("/v1/me/settings", { method: "PATCH", body: JSON.stringify({ theme: settings.theme, notification_preferences: settings.notification_preferences, privacy_settings: settings.privacy_settings }) }),
       ]);
       setProfile((current) => current ? { ...current, ...identity.profile } : current);
       setSettings(prefs.settings); setMessage("Pengaturan privasi dan preferensi berhasil disimpan.");
