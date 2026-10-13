@@ -21,6 +21,7 @@
 - `20261013054513_eng_p04_agent_owner_insert_policy.sql` and `20261013054613_eng_p04_agent_creator_rls_fix.sql`: creator validation for atomic owner-link creation without recursive policy lookup.
 - `20261013054639_eng_p04_agent_disclosure_boundaries.sql`: first-class disclosure and behavior-boundary fields; expanded atomic create RPC.
 - `20261013055121_eng_p04_restrict_agent_table_writes.sql` and `20261013055143_eng_p04_enforce_agent_owner_and_invoker_rpc.sql`: restrict direct ownership mutation, keep the exposed RPC as `SECURITY INVOKER`, and add a deferred constraint trigger that rejects an Agent without an active owner at transaction commit.
+- `20261013055318_eng_p04_index_agent_creator.sql`: adds the index for the Agent creator foreign key; the remaining performance-advisor finding is an existing ENG-P02 organization-membership FK.
 - Migrations were applied to canonical Supabase project `dvdziauyvuhcnqhrrvww` (AllphaAiAplikasi-db). No human profile row is repurposed as an Agent identity.
 
 ### API
