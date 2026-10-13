@@ -13,7 +13,7 @@ Canonical product specification:
 Before making any change, an agent MUST:
 1. Read the entire Master PRD, not only the section matching the immediate task.
 2. Identify the affected product journey, domain(s) among the 82 capability domains, canonical engine owner, Phase and dependencies.
-3. Read this `AGENTS.md`, the current Phase/implementation plan, relevant architecture/API/schema/design-system documents, and existing code/tests/migrations.
+3. Read this `AGENTS.md`, the single fixed phase plan at `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md`, relevant architecture/API/schema/design-system documents, and existing code/tests/migrations.
 4. Inspect the actual repository state, branch, latest commit, working tree/change context when available, existing patterns, and CI status. Never assume a file, feature, schema, endpoint, or runtime exists.
 5. Reconcile the intended work against the Master PRD and existing implementation. Record contradictions, missing prerequisites, and unresolved decisions before implementation.
 6. Produce a traceable execution plan mapping each applicable requirement to domain/module, API/event contract, data/schema/migration, UI states, authorization/privacy/security, observability, tests, acceptance criteria, and evidence.
@@ -27,7 +27,7 @@ If the Master PRD cannot be read, is missing, or conflicts with another instruct
 - The Master PRD defines product behavior, domain ownership, security/privacy boundaries, lifecycle, acceptance, and delivery rules.
 - This file defines the mandatory agent operating procedure.
 - Approved ADRs may resolve explicitly open decisions or amend a narrow area of the PRD; cite the ADR and scope of the change.
-- Phase plans sequence work but must not silently override the PRD.
+- `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md` is the single operational engineering phase plan and must not silently override the Master PRD.
 - If sources conflict, do not silently merge or overwrite them. Document the exact conflict, affected requirements, impact, and proposed resolution; block dependent implementation until resolved.
 - Never treat a successful build, green CI, UI shell, table, endpoint, workflow graph, or mock-only test as proof that a feature is complete.
 
