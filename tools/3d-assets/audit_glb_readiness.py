@@ -125,8 +125,8 @@ def main():
         repo=(r.get("repo") or "").strip()
         lic=(r.get("license") or "UNKNOWN").strip()
         if repo=="rostock/3DModels" and lic=="CC0-1.0":
-            disposition="CC0_SOURCE_CANDIDATE_REQUIRES_PER_FILE_CONFIRMATION"
-            reason="Repository license hint is CC0-1.0; confirm exact asset provenance, embedded textures/dependencies and source license evidence."
+            disposition="ALLOW_STAGING_CC0_REPOSITORY_LICENSE"
+            reason="The source repository publishes a CC0-1.0 LICENSE and its catalog points to that license. Allowed for non-production staging only; retain source URL/hash and verify embedded content and provenance before production."
         elif repo=="SpectraStudios/SourceCityToolkit_glb":
             disposition="QUARANTINE_TEXTURE_EXCEPTION_REVIEW"
             reason="Source indicates texture exceptions; inspect the exact model and all embedded/external textures before redistribution."
@@ -148,11 +148,20 @@ def main():
     lfields=["repo","path","url","status","sha256","dedupe_of","license_hint","qualification","reason","production_approved"]
     with (out/"license-qualification.csv").open("w",newline="",encoding="utf-8") as f:
         w=csv.DictWriter(f,fieldnames=lfields); w.writeheader(); w.writerows(license_rows)
+    staging_allowlist=[x for x in license_rows if x["qualification"]=="ALLOW_STAGING_CC0_REPOSITORY_LICENSE" and x["status"]=="DOWNLOADED"]
+    with (out/"license-staging-allowlist.csv").open("w",newline="",encoding="utf-8") as f:
+        w=csv.DictWriter(f,fieldnames=lfields); w.writeheader(); w.writerows(staging_allowlist)
+    quarantine=[x for x in license_rows if x["qualification"]!="ALLOW_STAGING_CC0_REPOSITORY_LICENSE"]
+    with (out/"license-quarantine.csv").open("w",newline="",encoding="utf-8") as f:
+        w=csv.DictWriter(f,fieldnames=lfields); w.writeheader(); w.writerows(quarantine)
     from collections import Counter
     qualification_counts=Counter(x["qualification"] for x in license_rows)
     summary["license_qualification_rows"]=len(license_rows)
     summary["license_qualification_counts"]=dict(sorted(qualification_counts.items()))
+    summary["staging_allowlist_rows"]=len(staging_allowlist)
+    summary["quarantine_rows"]=len(quarantine)
+    summary["production_approved"]=0
     (out/"summary.json").write_text(json.dumps(summary,indent=2,ensure_ascii=False),encoding="utf-8")
-    (out/"runtime-readiness.md").write_text("# Allpha GLB Asset Audit - Runtime Readiness\\n\\nThis audit reads the existing acquisition artifact; it does not rerun acquisition or upload to production.\\n\\nDuplicate SHA-256 references are reported separately and are not treated as missing binaries. Structure PASS only confirms GLB v2 header, declared byte length and JSON chunk. The license-qualification CSV is a conservative review queue, not legal clearance. External URIs require dependency resolution. Size and triangle thresholds are triage heuristics. Every asset remains NOT APPROVED pending license, visual, security, mobile-performance and renderer QA.\\n",encoding="utf-8")
+    (out/"runtime-readiness.md").write_text("# Allpha GLB Asset Audit - Runtime Readiness\\n\\nThis audit reads the existing acquisition artifact; it does not rerun acquisition or upload to production.\\n\\nDuplicate SHA-256 references are reported separately and are not treated as missing binaries. Structure PASS only confirms GLB v2 header, declared byte length and JSON chunk. The license-staging-allowlist CSV permits non-production staging only; it is not production/legal clearance. License-quarantine CSV records assets excluded from staging pending review. External URIs require dependency resolution. Size and triangle thresholds are triage heuristics. Every asset remains NOT APPROVED pending license, visual, security, mobile-performance and renderer QA.\\n",encoding="utf-8")
     print(json.dumps(summary,indent=2))
 if __name__=="__main__": main()
