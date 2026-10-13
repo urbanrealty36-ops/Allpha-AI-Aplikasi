@@ -1,6 +1,6 @@
 # Phase Roadmap Crosswalk — Allpha
 
-- **Status:** Draft mapping for ADR-0001; Product Owner approved the two-namespace approach on 2026-10-13. Engineering Lead approval is pending.
+- **Status:** Namespace decision accepted by explicit Product Owner directive on 2026-10-13; detailed mapping review remains a follow-up. This crosswalk is still a high-level routing aid, not requirement-level acceptance evidence.
 - **Authority:** Master PRD v3.0.0 Part XVIII §82 remains the product roadmap source. Phase Master Plan v1.1.0 is the detailed engineering execution sequence, not a silent replacement for the PRD.
 - **Purpose:** Provide a readable initial mapping between PRD Product Phases (`PRD-P00`–`PRD-P24`) and Engineering Execution Phases (`ENG-P00`–`ENG-P37`).
 - **Important:** This is a high-level routing proposal, not proof that a mapped feature is implemented or accepted. The detailed mapping must be reviewed against each requirement, acceptance scenario, owner, and dependency before ADR-0001 can be marked accepted.
@@ -50,7 +50,7 @@
 - [ ] Review cross-cutting ownership (security, privacy, moderation, analytics, observability) and avoid implying a single phase contains all relevant work.
 - [ ] Confirm phase references in issues/PRs/evidence use explicit `PRD-Pnn` or `ENG-Pnn` labels.
 - [ ] Confirm that the PRD remains unchanged unless separately approved.
-- [ ] Record reviewer role, decision, date, and requested changes in ADR-0001.
+- [x] Product Owner decision recorded in ADR-0001 on 2026-10-13; Engineering Lead detailed mapping review remains open as follow-up.
 
 ## Approval log
 
@@ -61,4 +61,9 @@
 
 ## Exit condition
 
-ADR-0001 may be marked `accepted` only after Engineering Lead approval is recorded, the mapping review checklist is completed or remaining limitations are explicitly accepted, and the ADR/crosswalk references are read-back verified. Phase 00 still requires its separate evidence-based exit review.
+ADR-0001 is accepted by explicit Product Owner direction dated 2026-10-13 to unblock execution. Engineering Lead detailed mapping review remains open and must not be represented as complete. Phase 00 still requires its separate evidence-based exit review.
+
+
+## Execution decision (2026-10-13)
+
+Product Owner directed: “Approve aja udah, langsung ke phase selanjutnya.” The two-namespace decision is accepted and ENG-P01 may proceed. This does not waive evidence-based phase acceptance; Phase 00 remains open until its independent exit criteria are verified. Detailed crosswalk review is a follow-up task and must not block platform-foundation work.
