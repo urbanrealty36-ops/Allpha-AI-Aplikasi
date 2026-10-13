@@ -7,8 +7,8 @@ Monorepo for Allpha's client applications and canonical backend API.
 - apps/web: Next.js web thin slice.
 - apps/api: FastAPI with Supabase Auth token validation, user-scoped PostgREST access, identity and organization endpoints.
 - apps/api/supabase/migrations: versioned schema, tenant authorization, and audit migrations.
-- apps/client: boundary for native Android/iOS client work.
-- apps/super-admin: boundary for the separate operator console.
+- apps/client: React Native + Expo native Android/iOS thin slice with Supabase Auth, SecureStore session persistence, API health, and authenticated `GET /v1/me`.
+- apps/super-admin: independent Next.js operator console with live read-only checks for `/healthz`, `/readyz`, and `/v1/system/status`; privileged operations stay disabled until operator authorization/audit endpoints exist.
 - docker-compose.yml: local web/API launch.
 - Canonical database: Supabase AllphaAiAplikasi-db (dvdziauyvuhcnqhrrvww).
 
@@ -29,6 +29,23 @@ Web in another terminal:
 cd apps/web
 npm install
 npm run dev
+```
+
+Super Admin (run separately; default port 3000, use `--port 3001` when Web is also running):
+```bash
+cd apps/super-admin
+npm install
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run dev -- --port 3001
+```
+
+Native Android/iOS (see `apps/client/README.md` for Supabase configuration and platform-specific API origins):
+```bash
+cd apps/client
+npm install
+npm run typecheck && npm test
+npx expo prebuild --platform android && npx expo run:android
+# macOS + Xcode:
+npx expo prebuild --platform ios && npx expo run:ios
 ```
 
 Open http://localhost:3000; the browser client checks the API at http://localhost:8000.
@@ -70,4 +87,4 @@ GitHub Actions runs API tests and the web production build on pushes to main. Th
 
 ENG-P02 is IN_PROGRESS: code and additive migrations are committed to main and applied to the canonical Supabase project. It is not yet acceptance-passed: latest CI, real authenticated flows, cross-tenant negative tests, and target deployment verification remain required. See docs/PHASES/ENG_P02_DATABASE_AUTHORIZATION.md.
 
-Full transitive dependency lockfiles and deployment-platform-specific production URLs/secrets remain outstanding from ENG-P01. Native Android/iOS application behavior is not claimed as implemented.
+ENG-P01 remains `in_progress`: native source, Expo prebuild configuration, auth/profile API slice, Super Admin diagnostics UI, CORS allowlist, and platform CI are committed. Acceptance still requires successful Android APK and iOS simulator builds, the full latest CI run, configured real Supabase Auth session/profile journey, target-device verification, deployment-specific URLs/secrets, and reproducible dependency lockfiles. Do not claim production readiness from source checks or CI alone.
