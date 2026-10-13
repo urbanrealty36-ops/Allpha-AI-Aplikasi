@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api.auth import current_user
@@ -38,7 +39,8 @@ def test_create_organization_uses_authenticated_identity(monkeypatch):
         calls.append((method, path, access_token, kwargs))
         return [{"id": "org-1", "name": "Test Org", "slug": "test-org", "owner_id": "user-123"}]
 
-    async def fake_current_user():
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "test-token"
         return {"id": "user-123", "email": "test@example.invalid"}
 
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
