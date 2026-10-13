@@ -1,5 +1,9 @@
 name: Allpha GLB Asset Acquisition Audit
 on:
+  push:
+    paths:
+      - '.github/workflows/allpha-glb-asset-acquisition.yml'
+      - 'tools/3d-assets/acquire_glb_assets.py'
   workflow_dispatch:
     inputs:
       max_assets:
