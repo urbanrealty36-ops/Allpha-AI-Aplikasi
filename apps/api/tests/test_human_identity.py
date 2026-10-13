@@ -140,3 +140,135 @@ def test_consent_record_is_bound_to_authenticated_user_and_immutable_insert(monk
         "granted": True,
     }
     assert calls[0][3]["prefer"] == "return=representation"
+
+
+
+def test_social_graph_endpoints_require_authentication():
+    assert client.get("/v1/me/social-graph").status_code == 401
+    assert client.get("/v1/me/interests").status_code == 401
+    assert client.post(
+        "/v1/me/social-edges",
+        json={"target_user_id": "00000000-0000-0000-0000-000000000002", "edge_type": "follow"},
+    ).status_code == 401
+    assert client.put(
+        "/v1/me/interests",
+        json={"interest_key": "ai", "preference": "interested"},
+    ).status_code == 401
+
+
+def test_social_edge_payload_is_strict_and_supported_types_only():
+    from allpha_api.main import SocialEdgeCreate
+
+    with pytest.raises(ValidationError):
+        SocialEdgeCreate.model_validate({
+            "target_user_id": "00000000-0000-0000-0000-000000000002",
+            "edge_type": "friend",
+        })
+    with pytest.raises(ValidationError):
+        SocialEdgeCreate.model_validate({
+            "target_user_id": "00000000-0000-0000-0000-000000000002",
+            "edge_type": "follow",
+            "actor_user_id": "00000000-0000-0000-0000-000000000003",
+        })
+
+
+def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "id": "edge-123",
+            "target_user_id": "00000000-0000-0000-0000-000000000002",
+            "edge_type": "follow",
+            "status": "active",
+            "created_at": "2026-10-14T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/social-edges",
+            headers={"Authorization": "Bearer test"},
+            json={"target_user_id": "00000000-0000-0000-0000-000000000002", "edge_type": "follow"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert calls[0][0:3] == ("POST", "social_edges", "social-session-token")
+    assert calls[0][3]["body"] == {
+        "actor_user_id": "human-123",
+        "target_user_id": "00000000-0000-0000-0000-000000000002",
+        "edge_type": "follow",
+    }
+
+
+def test_social_edge_rejects_self_target(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-session-token"
+        return {"id": "00000000-0000-0000-0000-000000000001"}
+
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/social-edges",
+            headers={"Authorization": "Bearer test"},
+            json={"target_user_id": "00000000-0000-0000-0000-000000000001", "edge_type": "block"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SOCIAL_EDGE_SELF_TARGET"
+
+
+def test_interest_preference_is_bound_to_authenticated_user(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "interest_key": "ai.social",
+            "preference": "not_interested",
+            "created_at": "2026-10-14T00:00:00Z",
+            "updated_at": "2026-10-14T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-session-token"
+        return {"id": "human-123"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.put(
+            "/v1/me/interests",
+            headers={"Authorization": "Bearer test"},
+            json={"interest_key": "ai.social", "preference": "not_interested"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls[0][0:3] == ("POST", "user_interests", "interest-session-token")
+    assert calls[0][3]["body"] == {
+        "user_id": "human-123",
+        "interest_key": "ai.social",
+        "preference": "not_interested",
+    }
+    assert calls[0][3]["prefer"] == "resolution=merge-duplicates,return=representation"
