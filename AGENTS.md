@@ -171,10 +171,72 @@ Before any planning, code generation, editing, migration, deployment, or executi
 
 The Product Owner has explicitly directed that implementation work be committed directly to `main`. Do not create new working branches or require a pull request for routine changes. Use direct commits on `main` through the connected GitHub integration. Do not create approval gates, manual sign-offs, multi-stage asset publication workflows, or excessive CI checks that delay normal product implementation. Keep the default CI to a small build/test smoke check and fix failures directly on `main`.
 
-Build the full product as one monorepo with three independently deployable/extractable application areas: `apps/client`, `apps/super-admin`, and `apps/backend` (the existing `apps/web` and `apps/api` may be reused/migrated rather than duplicated). Each area must expose clear API/configuration boundaries so it can later be split into its own repository with minimal refactoring. Add native Android/iOS support in the client architecture; do not substitute PWA for native mobile.
+Build Allpha in the existing canonical GitHub monorepo `urbanrealty36-ops/Allpha-AI-Aplikasi`. Its architecture has exactly **three client/frontend applications and one backend application area**—not four frontend applications and not four separate Git repositories:
+- `apps/web`: Web client (Next.js).
+- `apps/client`: Native end-user client for Android/iOS (React Native + Expo; not a PWA).
+- `apps/super-admin`: separate Super Admin client.
+- `apps/api`: the one canonical backend, Python + FastAPI, owning API contracts, domain/application services, authorization, data access, migrations and engine invocation.
+These are four logical application areas inside one monorepo. Do not invent, add, rename, or duplicate `apps/backend` while `apps/api` is canonical. Do not describe the backend as a fourth client. All three clients call the same canonical backend domain contracts; expose clear configuration/API boundaries so each can be extracted into its own repository later only if explicitly directed.
 
 GLB developer workflow: assets available to the owner/developer should be able to flow from Storage/catalog to the UI renderer through a straightforward catalog/manifest/API path, without a mandatory manual approval chain. Keep only automatic basic file readability/format checks and a clear failure state. Do not claim legal rights, public authorization, or production readiness merely because an asset renders; where asset rights or user safety are uncertain, make that limitation visible without blocking local developer preview. Do not create a parallel asset registry or bypass the canonical backend for privileged writes.
 
 The owner has asked to defer elaborate security/validation governance in favor of building working applications and integrations. Implement pragmatic, lightweight controls as part of each feature; do not turn optional audits or future hardening into blockers for ordinary development. Never expose secrets in clients, never fabricate live business data, and never claim unperformed tests/integrations succeeded. These basic correctness requirements are not a workflow approval gate.
 
 Preferred execution loop: read relevant source/docs → implement directly on main → run the smallest relevant smoke test → report commit, what works, known gaps, and next phase. Do not stop implementation just because a later phase will add deeper hardening.
+
+
+## 12. Mandatory topology and client-to-engine boundary (read before every implementation)
+
+### 12.1 Canonical application count and ownership
+
+The canonical repository is one GitHub monorepo: `urbanrealty36-ops/Allpha-AI-Aplikasi`. Inside it there are exactly three client applications and one backend application area:
+1. **Web client:** `apps/web`.
+2. **Native client (Android/iOS):** `apps/client`.
+3. **Super Admin client:** `apps/super-admin`.
+4. **Canonical backend only:** `apps/api` — Python/FastAPI.
+
+The phrase “four application areas” means these three clients plus one backend; it never means four frontend clients. The API/backend is not a UI client. `apps/api` is canonical: do not create or assume a second `apps/backend`, a parallel API server, or a duplicate engine. Keep the current monorepo; do not split or create repositories unless the Product Owner explicitly directs it.
+
+### 12.2 Required request path
+
+For every business feature, the default and required path is:
+
+`Web / Native / Super Admin → typed/versioned FastAPI endpoint → authentication + trusted caller/tenant/resource context → authorization/policy/quota → application/domain service → canonical domain engine (when owned/required) → repository/data provider → response/event`.
+
+The backend is the authority for business truth, permission decisions, domain lifecycle, billing/credits, publication status, workflow state, Agent actions, memory policy, model selection and usage metering. The client may render state and perform presentation-only validation; it must not reimplement or bypass authoritative business logic.
+
+### 12.3 Database and provider access rules
+
+- Client-side Supabase Auth for sign-in/session lifecycle is permitted where the existing auth contract requires it. This exception does **not** authorize direct client reads/writes to business tables or privileged RPCs.
+- Clients MUST NOT use Supabase/Postgres table queries, RPC, or direct provider SDK calls to bypass FastAPI for business/domain operations. This includes client-side business writes and privileged operations, even if a publishable key or RLS is present.
+- Supabase Storage, Realtime, or other direct client data-plane access is permitted only where an explicit existing PRD/API contract authorizes it, scope is limited to the signed-in user/resource, and security rules/RLS are verified. Otherwise use backend-issued authorized references, URLs, subscriptions or API operations. Never hardcode private URLs or embed service-role/provider secrets in a client.
+- AI/LLM/model-provider calls for Allpha features MUST pass through the canonical backend AI Gateway and Model Router. No client-side provider key, direct LLM SDK call, feature-specific provider bypass, or model policy/budget decision in the UI.
+- Workflow execution, orchestration, memory writes/retrieval, agent tools, credits, commerce/settlement, asset catalog/lifecycle, moderation and Super Admin actions must use their canonical backend-owned services/engines. UI visibility is not authorization.
+- RLS is defense-in-depth; it does not replace backend business rules, tenant authorization, policy checks, quotas, audit or engine invocation.
+
+### 12.4 Mandatory source-to-engine mapping before coding
+
+Before modifying a feature, the agent MUST inspect actual files and produce a concise traceability map with:
+- client surface(s) and exact source files;
+- API client/configuration and exact FastAPI route + request/response schema;
+- application/domain service invoked by that route;
+- canonical engine owner and exact call path (or explicit evidence that no engine applies);
+- repository/query/provider path and relevant schema/migration;
+- authentication, ownership, tenant, permission, budget/quota and audit behavior;
+- tests covering allowed and denied paths, including proof that clients cannot bypass the API.
+
+Do not guess module paths or infer that an engine exists because its name appears in documentation. If an engine/service/endpoint is absent or disconnected, report it as a gap and implement it in the canonical backend within the owning Phase; do not create a shadow implementation in a client.
+
+### 12.5 Mandatory direct-database audit
+
+For each of the three clients, search and review all database/provider access patterns, including `createClient`, `.from(`, `.rpc(`, generated DB clients, REST calls to Supabase, and Storage/Realtime subscriptions. Classify every result as:
+- allowed authentication/session operation;
+- explicitly authorized Storage/Realtime/data-plane exception with contract and scope;
+- prohibited business-table/RPC/provider bypass;
+- unused/dead code requiring removal or explanation.
+
+Fix every confirmed bypass in the owning Phase, add a regression check where practical, and record the evidence in the fixed phase plan. Do not claim the audit passes based on search alone; trace call sites and run relevant tests.
+
+### 12.6 Required pre-implementation gate
+
+Before any code change, the agent MUST read the complete Master PRD, this AGENTS.md, and the fixed phase plan; inspect the current `main` tree and CI; identify the owning Phase and canonical engine; and complete the source-to-engine map above. If repo structure or source documents conflict, stop and report the exact contradiction instead of silently inventing another application or backend. No Phase can be marked `integration_verified`, `acceptance_passed`, or `production_verified` until the real client → API → service/engine → authorized data path and negative/bypass tests have evidence.
