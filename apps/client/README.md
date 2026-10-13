@@ -1,10 +1,22 @@
-# Allpha Client
+# Allpha Native Client (Android + iOS)
+React Native + Expo prebuild; native application, not a PWA.
 
-Primary end-user client boundary. Native Android/iOS is the target; web client code currently lives in `apps/web` and will be migrated or shared here without duplicating business logic.
+## Configuration
+Set local, uncommitted values:
+- `EXPO_PUBLIC_API_BASE_URL`: canonical FastAPI origin. Android emulator default: `http://10.0.2.2:8000`; iOS simulator default: `http://localhost:8000`. Physical devices need a reachable LAN/HTTPS origin.
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (publishable key only).
 
-- All domain operations use the typed backend API.
-- Shared API contracts belong in `packages/contracts`.
-- Keep platform-specific camera, microphone, push notification, secure storage, and 3D capabilities behind adapters.
-- GLB assets are discovered from the backend asset catalog/manifest and loaded by the shared renderer; do not hard-code private Storage URLs.
+All `EXPO_PUBLIC_*` values are public. Never bundle service-role, database, JWT signing, AI-provider or payment secrets.
 
-Initial implementation step: select and bootstrap the native runtime, then connect auth/profile and the asset catalog to real APIs.
+## Run
+```bash
+npm install
+npm run typecheck
+npm test
+npx expo prebuild --platform android && npx expo run:android
+# macOS + Xcode:
+npx expo prebuild --platform ios && npx expo run:ios
+```
+
+The first slice includes API health, email sign-in/sign-up, secure session persistence and authenticated `GET /v1/me`. Settings editing, social graph, push, WebRTC and 3D renderer remain in their owning phases.

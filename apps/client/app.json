@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Allpha",
+    "slug": "allpha",
+    "scheme": "allpha",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.allpha.universe", "deploymentTarget": "15.1" },
+    "android": { "package": "com.allpha.universe", "edgeToEdgeEnabled": true },
+    "plugins": ["expo-secure-store"]
+  }
+}

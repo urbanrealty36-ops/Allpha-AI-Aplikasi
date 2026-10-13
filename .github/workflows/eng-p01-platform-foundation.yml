@@ -1,4 +1,4 @@
-name: Allpha Main Smoke Check
+name: ENG-P01 Platform Foundation
 
 on:
   push:
@@ -8,21 +8,24 @@ on:
       - "apps/web/**"
       - "apps/client/**"
       - "apps/super-admin/**"
+      - "docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md"
+      - "docs/architecture/ADR-0001-native-client-expo.md"
       - ".github/workflows/eng-p01-platform-foundation.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-
 concurrency:
-  group: main-smoke-${{ github.ref }}
+  group: eng-p01-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  api-smoke:
-    name: API smoke tests
+  api-tests:
+    name: API regression tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,15 +35,69 @@ jobs:
         working-directory: apps/api
         run: python -m pip install -e ".[dev]" && pytest -q
 
-  web-smoke:
-    name: Web build
+  web-build:
+    name: Existing Web typecheck and build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - name: Install and build web
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
         working-directory: apps/web
-        run: npm install && npm run build
+      - run: npm run typecheck && npm run build
+        working-directory: apps/web
+
+  super-admin-build:
+    name: Super Admin typecheck, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
+        working-directory: apps/super-admin
+      - run: npm run typecheck && npm test && npm run build
+        working-directory: apps/super-admin
+
+  native-android-build:
+    name: Native Android prebuild and debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: npm install --no-audit --no-fund && npm run typecheck && npm test
+        working-directory: apps/client
+      - run: npx expo prebuild --platform android --no-install && npx expo export --platform android
+        working-directory: apps/client
+      - run: ./gradlew assembleDebug
+        working-directory: apps/client/android
+
+  native-ios-build:
+    name: Native iOS prebuild and simulator build
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund && npm run typecheck && npm test
+        working-directory: apps/client
+      - run: npx expo prebuild --platform ios --no-install && npx expo export --platform ios
+        working-directory: apps/client
+      - run: npx pod-install
+        working-directory: apps/client
+      - run: xcodebuild -workspace ios/Allpha.xcworkspace -scheme Allpha -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+        working-directory: apps/client

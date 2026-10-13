@@ -1,10 +1,10 @@
 # Allpha Super Admin
+Independent Next.js operator console. The ENG-P01 slice performs read-only checks against the canonical FastAPI service.
 
-Independent operations and governance application boundary.
+```bash
+npm install
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run dev
+npm run typecheck && npm test && npm run build
+```
 
-- Owns operator-facing screens, not a second copy of business engines.
-- All reads and mutations use the backend API and its explicit operator permissions.
-- Can be deployed separately from the end-user client.
-- Keep environment configuration and deployment independent so this directory can later become its own repository.
-
-Initial implementation step: connect operator session, service health, asset catalog, and user/tenant operations to real backend endpoints.
+It calls actual `/healthz`, `/readyz`, and `/v1/system/status` endpoints. It does not synthesize user/business data. Identity/tenant management, moderation, asset operations and privileged actions remain disabled until operator authentication, scopes, authorization, audit and backend endpoints exist. Never place service-role credentials in browser-visible variables.

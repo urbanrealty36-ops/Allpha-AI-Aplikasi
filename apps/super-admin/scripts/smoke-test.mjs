@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const page=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
+const pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
+assert.ok(pkg.dependencies.next);
+assert.match(page,/\/healthz/); assert.match(page,/\/readyz/); assert.match(page,/\/v1\/system\/status/);
+assert.match(page,/NEXT_PUBLIC_API_BASE_URL/); assert.match(page,/Privileged operations/);
+assert.match(page,/until autentikasi operator/);
+assert.doesNotMatch(page,/service_role|SUPABASE_SERVICE_ROLE_KEY/i);
+console.log("ENG-P01 Super Admin source smoke tests passed.");

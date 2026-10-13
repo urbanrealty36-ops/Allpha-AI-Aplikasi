@@ -45,7 +45,7 @@ Aturan anti-kelalaian: satu phase tidak boleh dianggap selesai jika suatu aplika
 | Phase | Cakupan tetap | Status saat rekonsiliasi | Fokus/entry berikutnya |
 |---|---|---|---|
 | ENG-P00 | Product contract dan delivery governance minimum | in_progress | Pertahankan dokumen ini sebagai satu-satunya phase plan; jangan menambah status board terpisah |
-| ENG-P01 | Platform foundation dan deployable thin slice untuk Web, API, Native Client, Super Admin | in_progress | **Gap nyata:** bootstrap Android/iOS sungguhan di `apps/client`; konfigurasi build, navigation, design foundation, API base URL/session boundary dan satu screen berjalan. Jangan mengulang Web/API yang sudah ada |
+| ENG-P01 | Platform foundation dan deployable thin slice untuk Web, API, Native Client, Super Admin | in_progress | Native bootstrap React Native + Expo disetujui melalui ADR-0001; tutup auth/session + API identity slice, Super Admin operational shell dengan API health nyata, dan CI build Android/iOS. Jangan klaim acceptance passed sebelum seluruh bukti journey/build tersedia. |
 | ENG-P02 | Database, authentication, authorization, tenant isolation | in_progress | Lanjutkan schema/API yang ada di Supabase kanonis; tutup integrasi login, ownership dan negative tenant tests sesuai kebutuhan nyata |
 | ENG-P03 | Human identity, profile, settings, privacy | in_progress | Reuse Web/API yang ada; hubungkan native auth/profile/settings. Jangan menyebut selesai sebelum Client journey tersedia |
 | ENG-P04 | Social Graph: follow/relationship, block/mute, interest graph dan privacy | not_started | Implementasi sesuai scope kanonis; jangan salah menganggap Agent Identity sebagai Social Graph |
@@ -86,7 +86,7 @@ Aturan anti-kelalaian: satu phase tidak boleh dianggap selesai jika suatu aplika
 **Makna status:** status di atas adalah baseline konservatif dari bukti repo yang telah diperiksa, bukan klaim audit penuh semua domain. Perbarui hanya saat ada bukti nyata. Status historis Agent Identity berlabel ENG-P04 tidak mengubah definisi ENG-P04=Social Graph dan ENG-P05=Agent Identity.
 
 ## 4. Urutan kerja langsung berikutnya
-1. **ENG-P01 — native gap:** buat source project Android/iOS yang benar-benar buildable di `apps/client`; implementasikan launch screen, navigation, API configuration dan satu alur nyata. Pilih stack native setelah cek dependency/PRD; jangan membuat phase atau dokumen baru.
+1. **ENG-P01 — foundation:** React Native + Expo native Android/iOS (ADR-0001), API-backed session/profile slice, Super Admin console terpisah, dan CI API/Web/Super Admin/native. Pertahankan status `in_progress` sampai bukti acceptance journey dan kedua platform tersedia; jangan membuat phase baru.
 2. **ENG-P02/P03 — integrasi native:** sambungkan login/session, profile, preferences dan privacy ke API/Supabase yang sudah ada; hindari duplikasi Web.
 3. **ENG-P04 — Social Graph:** bangun API/data/policy dan screen pada setiap client yang terdampak.
 4. **ENG-P05 — Agent Identity:** lanjutkan kode yang sudah ada dan lengkapi integrasi; jangan ulang dari nol.

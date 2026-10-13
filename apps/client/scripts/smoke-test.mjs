@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { readFileSync, existsSync } from "node:fs";
+const app=readFileSync(new URL("../App.tsx",import.meta.url),"utf8");
+const cfg=JSON.parse(readFileSync(new URL("../app.json",import.meta.url),"utf8"));
+const pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
+assert.equal(cfg.expo.ios.bundleIdentifier,"com.allpha.universe");
+assert.equal(cfg.expo.android.package,"com.allpha.universe");
+assert.ok(pkg.dependencies.expo && pkg.dependencies["expo-secure-store"]);
+assert.match(app,/signInWithPassword/); assert.match(app,/signUp\(/);
+assert.match(app,/Authorization: "Bearer " \+ session.access_token/);
+assert.match(app,/SecureStore\.setItemAsync/); assert.match(app,/\/healthz/);
+assert.doesNotMatch(app,/service_role|SUPABASE_SERVICE_ROLE_KEY/i);
+assert.ok(existsSync(new URL("../README.md",import.meta.url)));
+console.log("ENG-P01 native source/config smoke tests passed.");
