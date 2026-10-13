@@ -15,6 +15,40 @@ def test_agent_routes_require_authentication():
     assert client.patch("/v1/agents/00000000-0000-0000-0000-000000000001", json={"status": "active"}).status_code == 401
 
 
+def test_http_errors_use_stable_envelope_and_request_id():
+    response = client.get("/v1/agents")
+    body = response.json()
+    assert response.status_code == 401
+    assert body["error"]["code"] == "AUTH_REQUIRED"
+    assert body["error"]["message"] == "Bearer token diperlukan."
+    assert body["error"]["request_id"]
+    assert response.headers["x-request-id"] == body["error"]["request_id"]
+
+
+def test_agent_request_validation_uses_safe_stable_error_envelope():
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "human-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/agents/00000000-0000-0000-0000-000000000001",
+            headers={"Authorization": "Bearer test"},
+            json={"display_name": "A"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    body = response.json()
+    assert response.status_code == 422
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["message"] == "Permintaan tidak valid."
+    assert body["error"]["request_id"] == response.headers["x-request-id"]
+    assert body["error"]["fields"]
+    assert "input" not in body["error"]
+
+
 def test_agent_identity_is_not_a_human_profile_payload():
     with pytest.raises(ValidationError):
         AgentCreate.model_validate({"handle": "agent_01", "display_name": "Agent One", "owner_user_id": "spoofed"})
