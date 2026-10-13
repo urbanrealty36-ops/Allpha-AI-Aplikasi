@@ -220,6 +220,68 @@ def test_list_agents_is_scoped_to_current_active_owner(monkeypatch):
     assert calls[0][3]["params"]["status"] == "eq.active"
 
 
+def test_get_agent_returns_only_current_active_owner_record(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": "agent-owned-by-a", "ownership_role": "owner", "status": "active", "created_at": "2026-10-13T00:00:00Z"}]
+        return [{"id": "agent-owned-by-a", "handle": "owner_agent", "display_name": "Owner Agent", "visibility": "private", "status": "draft"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "human-a-token"
+        return {"id": "human-a", "email": "human-a@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/agents/00000000-0000-0000-0000-000000000001", headers={"Authorization": "Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["agent"]["handle"] == "owner_agent"
+    assert response.json()["ownership"]["owner_user_id"] == "human-a"
+    assert calls[0][1] == "agent_ownerships"
+    assert calls[0][3]["params"]["owner_user_id"] == "eq.human-a"
+    assert calls[1][1] == "ai_agents"
+    assert calls[1][3]["params"]["id"] == "eq.00000000-0000-0000-0000-000000000001"
+
+
+def test_patch_agent_updates_only_after_active_owner_check(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": "00000000-0000-0000-0000-000000000001", "ownership_role": "owner", "status": "active"}]
+        return [{"id": "00000000-0000-0000-0000-000000000001", "display_name": "Updated Agent", "visibility": "public", "status": "active"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "human-a-token"
+        return {"id": "human-a", "email": "human-a@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/agents/00000000-0000-0000-0000-000000000001",
+            headers={"Authorization": "Bearer test"},
+            json={"display_name": "Updated Agent", "visibility": "public", "status": "active"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["agent"]["display_name"] == "Updated Agent"
+    assert [call[1] for call in calls] == ["agent_ownerships", "ai_agents"]
+    assert calls[1][0] == "PATCH"
+    assert calls[1][2] == "human-a-token"
+    assert calls[1][3]["body"] == {"display_name": "Updated Agent", "visibility": "public", "status": "active"}
+    assert calls[1][3]["prefer"] == "return=representation"
+
+
 def test_patch_agent_does_not_update_when_caller_is_not_owner(monkeypatch):
     calls = []
 
