@@ -11,6 +11,8 @@ type Agent = {
   description: string;
   avatar_url: string | null;
   persona: Record<string, unknown>;
+  disclosure: string;
+  boundaries: Record<string, unknown>;
   visibility: "private" | "public";
   status: "draft" | "active" | "archived";
   created_at: string;
@@ -41,6 +43,8 @@ export default function AgentsPage() {
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [personaText, setPersonaText] = useState('{"tone":"helpful","language":"id-ID"}');
+  const [disclosure, setDisclosure] = useState("Agent AI; respons dapat dihasilkan oleh model.");
+  const [boundariesText, setBoundariesText] = useState('{"requires_owner_approval_for_external_actions":true,"private_owner_data":"owner_only"}');
   const [visibility, setVisibility] = useState<"private" | "public">("private");
 
   const loadAgents = useCallback(async (active: Session) => {
@@ -85,6 +89,7 @@ export default function AgentsPage() {
     setSaving(true); setError(""); setMessage("");
     try {
       let persona: Record<string, unknown>;
+      let boundaries: Record<string, unknown>;
       try {
         const parsed: unknown = JSON.parse(personaText);
         if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Persona harus berupa objek JSON.");
@@ -92,10 +97,17 @@ export default function AgentsPage() {
       } catch (cause) {
         throw new Error(cause instanceof Error ? cause.message : "JSON persona tidak valid.");
       }
+      try {
+        const parsed: unknown = JSON.parse(boundariesText);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Batas Agent harus berupa objek JSON.");
+        boundaries = parsed as Record<string, unknown>;
+      } catch (cause) {
+        throw new Error(cause instanceof Error ? cause.message : "JSON batas Agent tidak valid.");
+      }
       const response = await fetch(apiBase + "/v1/agents", {
         method: "POST",
         headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ handle: handle.trim().toLowerCase(), display_name: displayName.trim(), description: description.trim(), persona, visibility }),
+        body: JSON.stringify({ handle: handle.trim().toLowerCase(), display_name: displayName.trim(), description: description.trim(), persona, disclosure: disclosure.trim(), boundaries, visibility }),
       });
       if (!response.ok) throw new Error(await responseError(response));
       setHandle(""); setDisplayName(""); setDescription("");
@@ -142,6 +154,8 @@ export default function AgentsPage() {
         <label>Handle Agent<input value={handle} onChange={(e) => setHandle(e.target.value.toLowerCase())} minLength={3} maxLength={30} pattern="[a-z0-9_]{3,30}" required placeholder="asisten_riset" /><small>3–30 karakter, huruf kecil, angka, underscore.</small></label>
         <label>Deskripsi<textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} rows={3} placeholder="Tujuan dan peran Agent." /></label>
         <label>Persona (JSON)<textarea value={personaText} onChange={(e) => setPersonaText(e.target.value)} rows={4} spellCheck={false} required /></label>
+        <label>Disclosure publik<textarea value={disclosure} onChange={(e) => setDisclosure(e.target.value)} maxLength={1000} rows={3} placeholder="Jelaskan bahwa pengguna berinteraksi dengan AI." /></label>
+        <label>Batas perilaku (JSON)<textarea value={boundariesText} onChange={(e) => setBoundariesText(e.target.value)} rows={4} spellCheck={false} required /></label>
         <label>Visibilitas<select value={visibility} onChange={(e) => setVisibility(e.target.value as "private" | "public")}><option value="private">Privat — hanya pemilik</option><option value="public">Publik — hanya terlihat saat aktif</option></select></label>
         <button className="button-primary full-width" disabled={saving}>{saving ? "Menyimpan…" : "Buat Agent dan catat pemilik"}</button>
       </form>
@@ -149,7 +163,7 @@ export default function AgentsPage() {
         {loading ? <section className="panel loading-panel">Memuat identitas Agent dari API…</section> : agents.length === 0 ? <section className="panel agent-empty"><strong>Belum ada Agent</strong><p className="muted">Buat Agent pertama. Identitas akan tersimpan pada database dan terhubung dengan Human pemiliknya.</p></section> :
           <div className="agent-cards">{agents.map((agent) => <article className="panel agent-card" key={agent.id}>
             <div className="agent-card-head"><div className="agent-avatar">{agent.display_name.slice(0, 1).toUpperCase()}</div><div className="agent-title"><h3>{agent.display_name}</h3><span>@{agent.handle}</span></div><span className={"agent-status status-" + agent.status}>{agent.status}</span></div>
-            <p className="agent-description">{agent.description || "Belum ada deskripsi."}</p>
+            <p className="agent-description">{agent.description || "Belum ada deskripsi."}</p>{agent.disclosure && <p className="agent-disclosure"><strong>Disclosure:</strong> {agent.disclosure}</p>}
             <div className="detail-line"><span>Relasi</span><strong>Human owner · {agent.ownership?.role ?? "owner"}</strong></div>
             <div className="detail-line"><span>Visibilitas</span><strong>{agent.visibility === "public" ? "Publik" : "Privat"}</strong></div>
             <div className="agent-card-actions"><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "active" })}>Aktifkan</button><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "draft" })}>Jadikan draft</button><button className="button-danger" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "archived" })}>Arsipkan</button></div>
