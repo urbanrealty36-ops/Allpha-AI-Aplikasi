@@ -62,7 +62,7 @@
 - **Migration evidence:** Supabase migration history now matches the versioned repository filenames; live schema inspection confirms both Agent tables have RLS, the deferred owner constraint trigger exists, direct ownership UPDATE/DELETE is revoked, and the create RPC is `SECURITY INVOKER`. Security Advisor returned zero lints after the final security migration.
 - **Verified from live Supabase metadata:** migration `20261013062523` is recorded; Security Advisor returned zero lints; `anon` has column-level SELECT for Passport fields but not `persona`/`boundaries`.
 - **Live database facts:** canonical Supabase currently has 0 rows in `auth.users` and 0 rows in `ai_agents`; therefore no existing real Human account or Agent is available for a real create/publish/revoke journey. The anonymous role query ran in a rolled-back transaction and returned 0 visible public/active Agents; no test rows were created.
-- **Not yet verified:** GitHub Actions result for latest `main` commit (combined status returns no checks; the available workflow-run connector only returns PR-triggered runs), real signed-in create/update journey, cross-user IDOR denial against actual sessions, anonymous Passport HTTP request against deployed API, revocation against live Agent data, and browser/mobile responsive E2E.
+- **Not yet verified:** GitHub Actions result for latest `main` commit (combined status previously returned no checks; recheck after this documentation commit), real signed-in create/update journey, cross-user IDOR denial against actual sessions, anonymous Passport HTTP request against deployed API, revocation against live Agent data, and browser/mobile responsive E2E. These environment-dependent tests are **deferred until a hosted API/web test environment is available**; a local desktop is not a prerequisite for continuing repository implementation.
 - Public/active is currently the owner-controlled publication state. A dedicated moderation/eligibility approval lifecycle and version history are not implemented in ENG-P04; do not claim this endpoint proves a moderated or verified Agent.
 - Activating an Agent updates identity lifecycle only; it does not start an Agent Runtime, Model Router, tools, memory, skills, billing, usage metering or execution permissions.
 - Ownership transfer/delegated operator management is not exposed yet. The schema supports role values but this slice only provisions the primary owner.
@@ -75,8 +75,18 @@
 - [x] Responsive UI for creating and managing identity implemented.
 - [x] Schema/authorization smoke tests added.
 - [ ] CI green on latest main commit (no run/check result surfaced yet; verify Actions are running for direct-main commits).
-- [ ] Real authenticated integration and cross-user ownership tests pass (blocked until a real test Human account is provisioned in the canonical Supabase Auth project).
-- [ ] Public Passport journey and revocation verified end-to-end (anonymous column-limited projection is configured; live API/real Agent test remains open).
+- [ ] Real authenticated integration and cross-user ownership tests pass (**deferred** until a hosted test environment and approved test accounts or isolated test project are available; no local desktop is required).
+- [ ] Public Passport journey and revocation verified end-to-end (anonymous column-limited projection is configured; live API/real Agent test is **deferred until hosted API/web testing is available**).
 - [ ] Moderation/publication eligibility and Agent versioning contract reconciled with the owning domains.
 
 The phase remains `in_progress` until the unchecked integration/security/acceptance items have reproducible evidence.
+
+
+## Execution update — remote-only continuation (2026-10-13)
+
+- Product Owner confirmed there is no local desktop environment available. Do not block routine ENG-P04 implementation on local execution and do not request local setup as a prerequisite.
+- Keep the lightweight GitHub Actions workflow enabled for every push to `main`; API pytest and web production build remain automated CI checks. Do not remove these checks to compensate for unavailable local hardware.
+- Hosted CI and the connected GitHub/Supabase tools are the available verification paths. Report CI as `NOT_VERIFIED` unless a run/check result is actually observed; an empty status response is not a pass.
+- Defer only environment-dependent acceptance: authenticated Human → create/configure Agent → public anonymous Passport → revoke → Passport returns 404; two-user cross-owner isolation; and deployed browser/mobile responsive journey. Resume those tests when a hosted API/web test environment and approved test identities or an isolated test project are available.
+- Current live Supabase metadata/security checks remain valid evidence, but no real Auth users or Agent rows exist; do not create production fixtures without authorization.
+- Status remains `in_progress`; no acceptance checkbox is promoted by this deferral.
