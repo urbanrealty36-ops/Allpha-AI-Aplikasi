@@ -54,6 +54,8 @@ jobs:
           path: |
             allpha-glb-asset-audit/asset-audit.csv
             allpha-glb-asset-audit/license-qualification.csv
+            allpha-glb-asset-audit/license-staging-allowlist.csv
+            allpha-glb-asset-audit/license-quarantine.csv
             allpha-glb-asset-audit/summary.json
             allpha-glb-asset-audit/runtime-readiness.md
           if-no-files-found: error
