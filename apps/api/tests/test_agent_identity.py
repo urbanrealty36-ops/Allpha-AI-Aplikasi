@@ -101,3 +101,38 @@ def test_create_agent_uses_atomic_rpc_and_server_derived_owner(monkeypatch):
     assert calls[0][3]["body"]["p_boundaries"] == {"private_owner_data": "owner_only"}
     assert "owner_user_id" not in calls[0][3]["body"]
     assert response.json()["ownership"]["owner_user_id"] == "human-123"
+
+
+
+def test_public_passport_returns_only_public_projection(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "id": "agent-1",
+            "handle": "research_bot",
+            "display_name": "Research Bot",
+            "description": "Public description",
+            "disclosure": "AI-generated responses",
+            "visibility": "public",
+            "status": "active",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consumer-session-token"
+        return {"id": "consumer-456", "email": "consumer@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/agent-passports/research_bot", headers={"Authorization": "Bearer consumer-token"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["passport"]["handle"] == "research_bot"
+    assert "persona" not in response.json()["passport"]
+    assert "boundaries" not in response.json()["passport"]
+    assert "owner_user_id" not in response.json()["passport"]
+    assert "persona" not in calls[0][3]["params"]["select"]
