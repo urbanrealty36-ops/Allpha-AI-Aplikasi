@@ -11,7 +11,7 @@ def test_identity_settings_endpoints_require_authentication():
     for path in ("/v1/me/settings", "/v1/me/consents"):
         response = client.get(path)
         assert response.status_code == 401
-        assert response.json()["detail"]["code"] == "AUTH_REQUIRED"
+        assert response.json()["error"]["code"] == "AUTH_REQUIRED"
     response = client.patch("/v1/me/settings", json={"theme": "dark"})
     assert response.status_code == 401
 
