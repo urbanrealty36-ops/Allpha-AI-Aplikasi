@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -39,6 +40,40 @@ async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content={"error": {"code": "INTERNAL_ERROR", "message": "An unexpected error occurred.", "request_id": request_id}},
+        headers={"X-Request-ID": request_id},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    """Return a stable, non-sensitive error envelope for expected API failures."""
+    request_id = getattr(request.state, "request_id", "unknown")
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    code = detail.get("code") if isinstance(detail.get("code"), str) else "REQUEST_FAILED"
+    message = detail.get("message") if isinstance(detail.get("message"), str) else "Permintaan tidak dapat diproses."
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": code, "message": message, "request_id": request_id}},
+        headers={"X-Request-ID": request_id, **(exc.headers or {})},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Expose safe field/type hints without echoing submitted values or internals."""
+    request_id = getattr(request.state, "request_id", "unknown")
+    fields = []
+    for item in exc.errors():
+        location = [str(part) for part in item.get("loc", ()) if part not in ("body", "query", "path", "header")]
+        fields.append({"field": ".".join(location), "reason": str(item.get("type", "invalid"))})
+    return JSONResponse(
+        status_code=422,
+        content={"error": {
+            "code": "VALIDATION_ERROR",
+            "message": "Permintaan tidak valid.",
+            "request_id": request_id,
+            "fields": fields,
+        }},
         headers={"X-Request-ID": request_id},
     )
 
