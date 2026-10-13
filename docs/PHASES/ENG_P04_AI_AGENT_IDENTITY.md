@@ -16,10 +16,10 @@
 
 ### Data and migrations
 
-- `20261013060000_eng_p04_ai_agent_identity.sql`: `public.ai_agents` and `public.agent_ownerships`, unique handle, status/visibility constraints, indexes, RLS and atomic `public.create_ai_agent(...)` RPC.
-- `20261013060100_eng_p04_agent_ownership_rls_helpers.sql`: private security-definer ownership helper to avoid recursive RLS evaluation and updated-at trigger.
-- `20261013060200_eng_p04_agent_owner_insert_policy.sql` and `20261013060300_eng_p04_agent_creator_rls_fix.sql`: creator validation for atomic owner-link creation without recursive policy lookup.
-- `20261013060400_eng_p04_agent_disclosure_boundaries.sql`: first-class disclosure and behavior-boundary fields; expanded atomic create RPC.
+- `20261013054429_eng_p04_ai_agent_identity.sql`: `public.ai_agents` and `public.agent_ownerships`, unique handle, status/visibility constraints, indexes, RLS and atomic `public.create_ai_agent(...)` RPC.
+- `20261013054446_eng_p04_agent_ownership_rls_helpers.sql`: private security-definer ownership helper to avoid recursive RLS evaluation and updated-at trigger.
+- `20261013054513_eng_p04_agent_owner_insert_policy.sql` and `20261013054613_eng_p04_agent_creator_rls_fix.sql`: creator validation for atomic owner-link creation without recursive policy lookup.
+- `20261013054639_eng_p04_agent_disclosure_boundaries.sql`: first-class disclosure and behavior-boundary fields; expanded atomic create RPC.
 - Migrations were applied to canonical Supabase project `dvdziauyvuhcnqhrrvww` (AllphaAiAplikasi-db). No human profile row is repurposed as an Agent identity.
 
 ### API
@@ -28,10 +28,12 @@
 - `GET /v1/agents`: returns Agents with an active owner relationship for the caller.
 - `GET /v1/agents/{agent_id}` and `PATCH /v1/agents/{agent_id}`: owner-scoped retrieval and updates.
 - `GET /v1/agent-passports/{handle}`: returns only public, active passport fields; private persona and boundaries are not included.
+- `apps/web/app/agents/passport/[handle]/page.tsx`: authenticated Passport UI fetches the public projection with the user's bearer session; the browser does not open the protected API endpoint without auth headers.
 - Strict Pydantic schemas reject client-supplied `owner_user_id`, `created_by`, role and other unknown authority fields. Updates are limited to identity, disclosure/boundaries, visibility and lifecycle status.
 
 ### UI
 
+- `.github/workflows/ci.yml`: lightweight API pytest + web production build workflow.
 - `apps/web/app/agents/page.tsx`: real-session Agent workspace; create Agent with handle, display name, description, persona JSON, disclosure, behavior-boundaries JSON and visibility; view ownership relation; change lifecycle status; open public passport.
 - `apps/web/app/page.tsx`: authenticated entry link to AI Agent Studio.
 - `apps/web/app/globals.css`: responsive Agent workspace styling.
@@ -47,7 +49,8 @@
 - Canonical owner relationship is explicit in `agent_ownerships`; owner is derived server-side from the signed-in Supabase user.
 - Row-level security scopes private Agent reads and mutations to active ownership. Public passport reads require `visibility=public` and `status=active`.
 - Private persona and behavior-boundary configuration are not exposed by the public passport projection.
-- The ownership helper functions live in non-exposed `private` schema with execution restricted to authenticated users; no service-role key is used by the API.
+- The ownership helper functions live in non-exposed `private` schema; the public create RPC remains `SECURITY INVOKER`. A deferred database constraint trigger rejects any Agent insert whose transaction does not create an active owner relation. Direct ownership update/delete is revoked from `authenticated`; no service-role key is used by the API.
+- Security Advisor returned no findings after the final ownership/RPC migration.
 
 ## Acceptance evidence and known gaps
 
