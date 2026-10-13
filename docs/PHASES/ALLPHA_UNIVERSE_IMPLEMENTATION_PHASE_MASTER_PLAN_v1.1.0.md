@@ -10,8 +10,8 @@
 
 - Product roadmap references use `PRD-Pnn` and follow Master PRD v3.0.0 Part XVIII §82.
 - Engineering execution references use `ENG-Pnn` and follow this plan's 00–37 sequencing.
-- The initial crosswalk is [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md). It is a proposal pending Engineering Lead review; it is not evidence of implementation or acceptance.
-- ADR-0001 status: Product Owner approved Option 3 on 2026-10-13; Engineering Lead approval pending. Do not mark accepted or advance Phase 00 based on this approval alone.
+- The [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md) records the accepted namespace decision; detailed mapping review remains follow-up.
+- ADR-0001 status: `accepted` by explicit Product Owner directive on 2026-10-13. This does not mark Phase 00 complete; ENG-P01 execution is authorized to proceed.
 
 ## 1. Mandat Dokumen
 
@@ -279,6 +279,8 @@ acceptance criteria, dan phase target. - Tidak ada konflik definisi
 domain/entitas yang diketahui dibiarkan tanpa keputusan.
 
 ## PHASE 01 --- New Platform Foundation & Deployable Thin Slice
+
+**Execution status (2026-10-13):** `in_progress` — branch `feat/eng-p01-platform-foundation`; initial scaffold and CI checks are being implemented. This is not a completion claim.
 
 **Tujuan:** Membuat fondasi aplikasi baru yang dapat dibangun, diuji,
 dideploy, dan diobservasi dari awal.
@@ -1802,3 +1804,11 @@ This initial board deliberately leaves all phase acceptance boxes unchecked; no 
 ## 14.8 Current reconciliation limitation and next executable step
 
 Repository inspection for this documentation update confirms the Master PRD and AGENTS.md are present. The previous asset-acquisition evidence is summarized above, but the complete 927-row artifact manifest has not yet been cross-checked in this commit against per-file GLB geometry and rights. Accordingly this update **does not** claim all 927 files are mapped, uploaded to production Storage, published, or visible in native UI. Next executable task is to locate/commit the real artifact manifest, generate a reproducible 927-row mapping draft, review candidate assignments against all 14 categories, and run the official publish-to-render acceptance path without bypassing lifecycle governance.
+
+
+## Execution checkpoint — 2026-10-13
+
+- ADR-0001: accepted by Product Owner directive; crosswalk details remain a follow-up review.
+- ENG-P00/Phase 00: governance documents exist, but independent repository/dependency/app test baseline evidence is still open. Do not mark ENG-P00 complete.
+- ENG-P01: authorized and started on `feat/eng-p01-platform-foundation` to establish the missing deployable source baseline rather than wait for a separate app repository baseline that has not been confirmed.
+- Current implementation will start with a minimal web/API thin slice and reproducible tests. Native mobile framework selection remains subject to ADR-0002; do not invent a final mobile framework decision in this scaffold.
