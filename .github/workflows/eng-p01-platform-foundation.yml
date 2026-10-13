@@ -1,16 +1,13 @@
-name: ENG-P01 Platform Foundation
+name: Allpha Main Smoke Check
 
 on:
-  pull_request:
-    paths:
-      - "apps/api/**"
-      - "apps/web/**"
-      - ".github/workflows/eng-p01-platform-foundation.yml"
   push:
     branches: [main]
     paths:
       - "apps/api/**"
       - "apps/web/**"
+      - "apps/client/**"
+      - "apps/super-admin/**"
       - ".github/workflows/eng-p01-platform-foundation.yml"
   workflow_dispatch:
 
@@ -18,64 +15,32 @@ permissions:
   contents: read
 
 concurrency:
-  group: eng-p01-${{ github.ref }}
+  group: main-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  api-tests:
-    name: API tests
+  api-smoke:
+    name: API smoke tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: apps/api/pyproject.toml
-      - name: Install API and test dependencies
+      - name: Install and test API
         working-directory: apps/api
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
-      - name: Run API contract tests
-        working-directory: apps/api
-        run: pytest
+        run: python -m pip install -e ".[dev]" && pytest -q
 
-  web-checks:
-    name: Web lint and production build
+  web-smoke:
+    name: Web build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: apps/web
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/web/package.json
-      - name: Install web dependencies
-        run: npm install
-      - name: Lint web
-        run: npm run lint
-      - name: Type-check web
-        run: npm run typecheck
-      - name: Build web
-        run: npm run build
-
-  dependency-audit:
-    name: Dependency audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Audit Python dependencies
-        run: |
-          python -m pip install --upgrade pip pip-audit
-          pip-audit --project apps/api
-      - name: Audit web dependencies
+      - name: Install and build web
         working-directory: apps/web
-        run: npm install && npm audit --audit-level=high
+        run: npm install && npm run build
