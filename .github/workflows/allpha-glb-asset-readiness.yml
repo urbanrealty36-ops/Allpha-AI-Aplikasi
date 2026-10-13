@@ -1,0 +1,55 @@
+name: Allpha GLB Asset Audit and Runtime Readiness
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: "Existing acquisition artifact ID; acquisition will not be repeated"
+        required: true
+        default: "11786256809"
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: allpha-glb-asset-readiness
+  cancel-in-progress: false
+jobs:
+  audit-existing-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout canonical repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download existing acquisition artifact
+        env:
+          GH_TOKEN: \${{ github.token }}
+          ARTIFACT_ID: \${{ inputs.artifact_id }}
+        run: |
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/\${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output existing-acquisition-artifact.zip
+      - name: Extract prior artifact
+        run: |
+          mkdir -p artifact-root extracted
+          unzip -q existing-acquisition-artifact.zip -d artifact-root
+          test -f artifact-root/allpha-glb-acquisition.zip
+          unzip -q artifact-root/allpha-glb-acquisition.zip -d extracted
+          test -f extracted/manifest.csv
+      - name: Audit GLB structure, hash and runtime triage
+        run: python tools/3d-assets/audit_glb_readiness.py --root extracted --out allpha-glb-asset-audit
+      - name: Upload compact audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-asset-readiness-\${{ github.run_number }}
+          path: |
+            allpha-glb-asset-audit/asset-audit.csv
+            allpha-glb-asset-audit/summary.json
+            allpha-glb-asset-audit/runtime-readiness.md
+          if-no-files-found: error
+          retention-days: 30
