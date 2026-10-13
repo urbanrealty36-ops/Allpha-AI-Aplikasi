@@ -34,3 +34,23 @@ def test_system_status_reports_version_and_capabilities() -> None:
     assert body["service"] == "allpha-api"
     assert body["capabilities"]["database"] is False
     assert body["capabilities"]["authentication"] is False
+
+
+def test_cors_allows_configured_local_web_origin() -> None:
+    response = client.options(
+        "/v1/me",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert "authorization" in response.headers.get("access-control-allow-headers", "").lower()
+
+
+def test_cors_does_not_reflect_untrusted_origins() -> None:
+    response = client.get("/healthz", headers={"Origin": "https://untrusted.example"})
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") is None

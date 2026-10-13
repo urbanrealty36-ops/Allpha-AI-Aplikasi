@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -22,6 +23,24 @@ app = FastAPI(
     title="Allpha Platform API",
     version=APP_VERSION,
     description="Allpha API with Supabase-backed identity and tenant authorization.",
+)
+
+# Browser origins are explicit and configurable. Defaults are local development only;
+# production deployments must set ALLPHA_CORS_ORIGINS to exact trusted origins.
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLPHA_CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:3001,http://localhost:19006,http://localhost:8081",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
 )
 
 
