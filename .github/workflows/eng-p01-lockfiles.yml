@@ -1,0 +1,54 @@
+name: ENG-P01 Generate Dependency Lockfiles
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/package.json"
+      - "apps/client/package.json"
+      - "apps/super-admin/package.json"
+      - ".github/workflows/eng-p01-lockfiles.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eng-p01-lockfiles-main
+  cancel-in-progress: false
+
+jobs:
+  generate-lockfiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Resolve and install dependencies from package manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for app in apps/web apps/client apps/super-admin; do
+            echo "::group::Install $app"
+            (cd "$app" && npm install --no-audit --no-fund)
+            test -s "$app/package-lock.json"
+            echo "::endgroup::"
+          done
+      - name: Commit generated lockfiles to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/package-lock.json apps/client/package-lock.json apps/super-admin/package-lock.json
+          if git diff --cached --quiet; then
+            echo "All dependency lockfiles are already current."
+            exit 0
+          fi
+          git commit -m "build(eng-p01): add reproducible npm lockfiles"
+          git push origin HEAD:main
