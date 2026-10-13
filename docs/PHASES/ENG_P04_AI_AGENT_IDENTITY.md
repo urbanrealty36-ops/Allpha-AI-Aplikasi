@@ -98,3 +98,13 @@ The phase remains `in_progress` until the unchecked integration/security/accepta
 - Defer only environment-dependent acceptance: authenticated Human → create/configure Agent → public anonymous Passport → revoke → Passport returns 404; two-user cross-owner isolation; and deployed browser/mobile responsive journey. Resume those tests when a hosted API/web test environment and approved test identities or an isolated test project are available.
 - Current live Supabase metadata/security checks remain valid evidence, but no real Auth users or Agent rows exist; do not create production fixtures without authorization.
 - Status remains `in_progress`; no acceptance checkbox is promoted by this deferral.
+
+
+## API contract and error-envelope follow-up (2026-10-13)
+
+- Standardized expected HTTP failures to `error.code`, `error.message`, and `error.request_id`; the `X-Request-ID` response header mirrors the body request ID. The handler preserves HTTP status and safe response headers without forwarding database internals.
+- Standardized request-schema failures to HTTP 422 with `VALIDATION_ERROR`, a generic safe message, request ID, and field/type hints that do not echo submitted values.
+- Added API tests for stable auth/validation error envelopes, owner-scoped GET, and successful PATCH only after an active owner relation check. Existing non-owner PATCH denial and public Passport projection tests remain in place.
+- No database schema or migration change was required. Public Passport still requests only the allowlisted public columns and filters `visibility=public` plus `status=active`; RLS and anonymous column grants remain the database enforcement layer.
+- CI remains `NOT_VERIFIED` until a concrete Actions run/check is observed. No test command was run locally and no real authenticated/anonymous E2E was performed in this change.
+- Status remains `in_progress`; real two-owner isolation, create → publish → anonymous read → revoke → 404, and deployed browser/mobile journeys remain deferred until hosted API/web and approved test identities or an isolated test project are available.
