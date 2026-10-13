@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      ALLPHA_ENVIRONMENT: ${ALLPHA_ENVIRONMENT:-development}
+      ALLPHA_API_VERSION: ${ALLPHA_API_VERSION:-0.1.0}
+      PORT: 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    environment:
+      PORT: 3000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
