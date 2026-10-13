@@ -50,7 +50,7 @@
 
 | Risk ID | Risk | Impact | Mitigation / exit condition | Owner | Status |
 |---|---|---|---|---|---|
-| R-001 | Phase roadmap namespace/crosswalk approval pending | Ambiguous phase authority and incorrect completion claims | Engineering Lead review/approval; finalize crosswalk; update references and evidence | Product owner + engineering lead | IN_PROGRESS |
+| R-001 | Detailed requirement-level phase crosswalk review pending | Incorrect phase mapping or completion claims | Engineering Lead reviews requirement-level mapping and evidence; keep PRD-P00–P24 and ENG-P00–P37 distinct | Engineering Lead | IN_PROGRESS |
 | R-002 | Repository has GLB acquisition/audit tooling but no verified app vertical slice | Mistakenly treating asset tooling as product implementation | Inspect source tree/CI and explicitly separate tooling from product capability | Engineering | IN_PROGRESS |
 | R-003 | Architecture choices are open | Premature stack/provider decisions create rework | Approve relevant ADR before dependent production implementation | Architecture owner TBD | OPEN |
 | R-004 | 82-domain scope and many integrations | Delivery complexity, duplicated engines and hidden dependencies | Enforce ownership map, dependency graph and vertical slices | Product/engineering | OPEN |
