@@ -60,10 +60,25 @@ def main():
     mp=root/"manifest.csv"
     if not mp.exists(): raise SystemExit("manifest not found: "+str(mp))
     with mp.open(newline="",encoding="utf-8") as f: rows=list(csv.DictReader(f))
-    reports=[]; totals={"manifest_rows":len(rows),"files_found":0,"structurally_valid":0,"structurally_invalid":0,"missing_files":0,"license_quarantine":0,"external_dependency_files":0,"oversize_files":0,"high_triangle_files":0}
+    reports=[]; totals={"manifest_rows":len(rows),"files_found":0,"structurally_valid":0,"structurally_invalid":0,"missing_files":0,"duplicate_references":0,"license_quarantine":0,"external_dependency_files":0,"oversize_files":0,"high_triangle_files":0}
     for row in rows:
-        if row.get("status") not in ("DOWNLOADED","DUPLICATE_SHA256"): continue
-        local=row.get("local_file",""); file=root/local if local else None; r=dict(row)
+        status=row.get("status")
+        if status not in ("DOWNLOADED","DUPLICATE_SHA256"): continue
+        r=dict(row)
+        lic=(row.get("license") or "UNKNOWN").lower()
+        license_review=not lic.strip() or "unknown" in lic or "review" in lic or "exception" in lic or "mit;" in lic or "quarantine" in lic
+        if status=="DUPLICATE_SHA256":
+            # A duplicate is a manifest reference to an already-downloaded SHA-256,
+            # not a missing binary. Preserve the source/license evidence without
+            # attempting to audit a second copy of the same bytes.
+            r.update({"audit_status":"DUPLICATE_REFERENCE","parse_error":"","license_review_required":license_review,
+                      "license_gate":"REVIEW_REQUIRED" if license_review else "SOURCE_HINT_ONLY",
+                      "production_approved":False,"flags":"DUPLICATE_SHA256_REFERENCE"})
+            totals["duplicate_references"]+=1
+            if license_review: totals["license_quarantine"]+=1
+            reports.append(r)
+            continue
+        local=row.get("local_file",""); file=root/local if local else None
         if not file or not file.is_file():
             r.update({"audit_status":"MISSING_FILE","parse_error":"manifest path missing"}); totals["missing_files"]+=1; reports.append(r); continue
         totals["files_found"]+=1; size=file.stat().st_size; h=hashlib.sha256()
@@ -73,8 +88,6 @@ def main():
         r["actual_bytes"]=size; r["actual_sha256"]=digest
         r["size_matches_manifest"]=(str(size)==str(row.get("bytes","")))
         r["sha256_matches_manifest"]=(digest==row.get("sha256",""))
-        lic=(row.get("license") or "UNKNOWN").lower()
-        license_review=not lic.strip() or "unknown" in lic or "review" in lic or "exception" in lic or "mit;" in lic or "quarantine" in lic
         r["license_review_required"]=license_review; r["license_gate"]="REVIEW_REQUIRED" if license_review else "SOURCE_HINT_ONLY"
         r["oversize_for_mobile"]=size>a.max_file_mib*1024*1024
         r["high_triangle_count"]=int(parsed.get("triangle_count_estimate",0))>a.max_triangles
@@ -101,7 +114,7 @@ def main():
         w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(reports)
     summary={**totals,"max_file_mib_threshold":a.max_file_mib,"max_triangle_threshold":a.max_triangles,
       "unique_downloaded_assets_audited":sum(1 for r in reports if r.get("status")=="DOWNLOADED"),
-      "duplicate_references_audited":sum(1 for r in reports if r.get("status")=="DUPLICATE_SHA256"),
+      "duplicate_references_audited":totals["duplicate_references"],
       "production_approved":0,"gate":"REQUIRES_LICENSE_VISUAL_MOBILE_RUNTIME_REVIEW",
       "note":"Structural audit only; not legal clearance, visual QA, malware scan, GPU performance, or renderer compatibility."}
     (out/"summary.json").write_text(json.dumps(summary,indent=2,ensure_ascii=False),encoding="utf-8")
