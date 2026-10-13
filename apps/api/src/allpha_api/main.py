@@ -138,19 +138,25 @@ async def healthz() -> dict[str, str]:
 
 
 @app.get("/readyz", tags=["system"])
-async def readyz() -> dict[str, Any]:
+async def readyz() -> JSONResponse:
+    # Core readiness requires canonical Supabase API/Auth configuration.
+    # Optional engines are reported but do not block this foundation slice.
     configured = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_PUBLISHABLE_KEY"))
-    return {
-        "status": "ready",
-        "service": APP_NAME,
-        "version": APP_VERSION,
-        "dependencies": {
-            "database": "configured" if configured else "not_configured",
-            "authentication": "configured" if configured else "not_configured",
-            "object_storage": "not_configured",
-            "ai_gateway": "not_configured",
-        },
+    dependencies = {
+        "database": "configured" if configured else "not_configured",
+        "authentication": "configured" if configured else "not_configured",
+        "object_storage": "not_configured",
+        "ai_gateway": "not_configured",
     }
+    return JSONResponse(
+        status_code=200 if configured else 503,
+        content={
+            "status": "ready" if configured else "not_ready",
+            "service": APP_NAME,
+            "version": APP_VERSION,
+            "dependencies": dependencies,
+        },
+    )
 
 
 @app.get("/v1/system/status", tags=["system"])
