@@ -107,4 +107,8 @@ create policy user_interests_delete_self on public.user_interests
 for delete to authenticated using (user_id = (select auth.uid()));
 
 grant select, insert, delete on public.social_edges to authenticated;
+drop trigger if exists user_interests_set_updated_at on public.user_interests;
+create trigger user_interests_set_updated_at before update on public.user_interests
+for each row execute function public.set_updated_at();
+
 grant select, insert, update, delete on public.user_interests to authenticated;
