@@ -1,5 +1,9 @@
 name: Allpha GLB Asset Audit and Runtime Readiness
 on:
+  push:
+    paths:
+      - '.github/workflows/allpha-glb-asset-readiness.yml'
+      - 'tools/3d-assets/audit_glb_readiness.py'
   workflow_dispatch:
     inputs:
       artifact_id:
