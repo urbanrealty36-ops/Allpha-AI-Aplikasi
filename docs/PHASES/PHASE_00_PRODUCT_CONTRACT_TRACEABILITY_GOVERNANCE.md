@@ -273,3 +273,37 @@ No application source tree, dependency manifests, API service, native client, we
 ## Product Owner directive — 2026-10-13
 
 The Product Owner explicitly instructed to accept ADR-0001 and proceed immediately to the next phase. ADR-0001 is now recorded as accepted in the execution branch. Engineering Lead review of detailed mappings remains follow-up work and is not falsely recorded as completed. Phase 00 itself remains `in_progress` until its separate evidence gate is satisfied; ENG-P01 is underway.
+
+
+## Current Phase 00 reconciliation audit — 2026-10-13
+
+This section supersedes historical baseline observations where the repository has since changed. It records the current state observed during reconciliation; it does not declare Phase 00 accepted.
+
+### Source-of-truth reconciliation
+
+- **Master PRD v3.0.0:** its product roadmap remains PRD Phase 00–24. PRD Phase 00 acceptance requires a usable product/engineering contract that removes guessing about scope, owners, dependencies, forbidden actions and completion criteria.
+- **AGENTS.md:** mandates reading the complete PRD, inspecting current repository/dependencies/CI, recording conflicts, and retaining reproducible evidence. It explicitly prohibits treating a green build or existing code as phase acceptance.
+- **Engineering Phase Plan v1.1.0:** uses the separate ENG-P00–ENG-P37 namespace. This is permitted as an execution namespace under accepted ADR-0001; it does not renumber or amend the PRD roadmap.
+- **ADR-0001:** accepted by explicit Product Owner directive on 2026-10-13. Engineering Lead detailed crosswalk review remains a follow-up and is not recorded as completed. The independent ENG-P00 acceptance gate remains open.
+- **Canonical source repository:** the currently inspected repository is `urbanrealty36-ops/Allpha-AI-Aplikasi`, default branch `main`. The current README and source files show `apps/web`, `apps/api`, and boundaries for `apps/client` and `apps/super-admin`. This supersedes the earlier 2026-10-13 tree snapshot that did not yet contain an application source tree.
+- **Prior engineering work:** ENG-P01 through ENG-P04 have implementation notes and code in the repository, but their own documents still record outstanding integration/acceptance criteria. Their presence does not close ENG-P00 and must not be erased or retroactively called accepted.
+- **Deployment strategy:** production hosting/provider and production web/API URLs are not established by the source evidence reviewed here. Do not assume Railway or any other provider. This is an explicit decision prerequisite for deployment-dependent acceptance, not permission to deploy.
+- **Status board:** the Phase Plan references `docs/PHASES/phase-status-board.csv`, but a fetch of that exact path returned 404 and repository search did not locate it. Treat the canonical status board as missing until its actual path is verified or it is created.
+
+### Evidence observed
+
+- Current README documents the application monorepo, local web/API startup, Docker Compose, and canonical Supabase project.
+- Current code paths `apps/api/src/allpha_api/main.py` and `apps/web/app/page.tsx` exist; ENG-P02 documentation records Supabase/auth and integration acceptance still outstanding.
+- GitHub Actions run [Allpha Smoke #58](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38359314210) passed API tests and web build on commit `ec922047b3a0bcdfdab4d341574b7844b44e8550`. Later documentation commits `e267b10995d6150e5f5a45f856fabab90262dc22` and `0e6825548434d1338945cc37d99dfea0e2550320` are newer; run #58 is therefore not evidence for the latest commit.
+- The successful GLB acquisition/readiness workflows are asset-tooling evidence only and are not application build/test evidence.
+
+### Remaining Phase 00 exit work
+
+- [ ] Reconcile requirement-level mapping between all 82 domains, PRD-P00–P24, ENG-P00–P37, owners, dependencies and acceptance evidence; preserve the namespace distinction.
+- [ ] Verify/repair the referenced phase status board and make its statuses match the actual phase-specific documents.
+- [ ] Confirm the source tree, current default-branch commit, CI workflow coverage, and actual latest Actions results; record exact commit/run evidence.
+- [ ] Assign explicit owners to open risks and blockers; keep the hosting decision open until the Product Owner approves an ADR or existing approved source is found.
+- [ ] Review Phase 00 glossary, data classification, lifecycle, API/error, evidence and release rules against the PRD and AGENTS.md.
+- [ ] Produce a Phase 00 evidence bundle and record authorized acceptance sign-off.
+
+**Current conclusion:** ENG-P00 / PRD-P00 remains `in_progress`. The governance documents are useful but the Phase 00 exit gate is not yet evidenced as passed. No later phase is promoted by this audit.
