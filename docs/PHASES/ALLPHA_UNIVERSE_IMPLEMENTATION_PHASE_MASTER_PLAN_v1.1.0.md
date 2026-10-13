@@ -1833,3 +1833,14 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - ENG-P01 status remains `in_progress`: npm/pip transitive lockfiles are not committed yet, actual staging/production deployment has not been performed, and latest CI for the deployment changes is pending. Direct dependency versions are pinned for web; full dependency reproducibility is still outstanding.
 - Supabase project `dvdziauyvuhcnqhrrvww` (AllphaAiAplikasi-db) is reachable and ACTIVE_HEALTHY, but the inspected `public` schema currently shows no product tables; this foundation does not yet connect API/auth to Supabase. That is ENG-P02 work, not a reason to block this thin slice.
 - Next: finish lockfile strategy and confirm latest CI; then ENG-P02 connects canonical Supabase, session/auth and ownership. Build asset catalog → GLB manifest → renderer as an early vertical slice after API/data foundation.
+
+
+## ENG-P02 execution update — canonical Supabase (2026-10-13)
+
+- Current implementation details and acceptance gates: [ENG-P02 Database & Authorization](./ENG_P02_DATABASE_AUTHORIZATION.md).
+- Canonical Supabase project: AllphaAiAplikasi-db, ref dvdziauyvuhcnqhrrvww. Live inspection found existing profiles, organizations, and organization_memberships tables with RLS, contrary to the earlier ENG-P01 note that public was empty. The earlier note is superseded by the actual live schema inspection recorded in the ENG-P02 document.
+- Additive migrations applied to the canonical project: identity/tenant baseline was already recorded at 20261013052302; authorization/audit at 20261013052409; security-definer grants at 20261013052557; private-schema helpers at 20261013052733; organization-creation audit at 20261013052744. Repository migration files now use the corresponding version names. The first baseline SQL was reconstructed from live schema because its original source was absent from the repository; exact historical byte-for-byte parity is not claimed.
+- API now validates Supabase Auth bearer tokens server-side and passes the caller JWT to PostgREST so RLS remains authoritative. Added /v1/me, PATCH /v1/me/profile, GET/POST /v1/organizations, and tenant membership listing. No service-role key is used in these routes.
+- Security Advisor returned no findings after moving authorization helper functions into the non-exposed private schema and restricting trigger function execution.
+- ENG-P02 remains IN_PROGRESS until CI is green for the latest commit, real Supabase Auth/profile/org flows and cross-tenant authorization tests pass, and deployment secrets/configuration are exercised in the target environment. Do not mark integration_verified or acceptance_passed based on schema and unit smoke tests alone.
+- Next dependency after ENG-P02 acceptance: ENG-P03 Identity/Profile completion, followed by early GLB catalog → authorized manifest/API → renderer vertical slice. Keep all routine commits directly on main.
