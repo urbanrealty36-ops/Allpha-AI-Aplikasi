@@ -90,7 +90,12 @@ def test_agent_configuration_rejects_oversized_json():
 
 
 def test_agent_configuration_rejects_excessive_nesting():
-    deeply_nested = {"level": {"level": {"level": {"level": {"level": {"level": {"level": {"level": {"too_deep": True}}}}}}}}
+    deeply_nested = {}
+    cursor = deeply_nested
+    for _ in range(8):
+        cursor["level"] = {}
+        cursor = cursor["level"]
+    cursor["too_deep"] = True
     with pytest.raises(ValidationError):
         AgentCreate.model_validate({
             "handle": "research_bot",
