@@ -44,11 +44,31 @@ async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
 
 class ProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    username: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[a-zA-Z0-9_]+$")
+    username: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[a-z0-9_]+$")
     display_name: str | None = Field(default=None, max_length=80)
     avatar_url: str | None = Field(default=None, max_length=2048)
     bio: str | None = Field(default=None, max_length=500)
     visibility: Literal["public", "private"] | None = None
+    locale: Literal["id-ID", "en-US"] | None = None
+
+
+class NotificationPreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    product_updates: bool
+    security_alerts: bool
+    social_activity: bool
+
+
+class PrivacyPreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    discoverable_by_username: bool
+
+
+class UserSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    theme: Literal["light", "dark", "system"] | None = None
+    notification_preferences: NotificationPreferences | None = None
+    privacy_settings: PrivacyPreferences | None = None
 
 
 class OrganizationCreate(BaseModel):
@@ -103,13 +123,13 @@ async def get_me(user: dict[str, Any] = Depends(current_user), request: Request 
     rows = await user_db_request(
         "GET", "profiles",
         access_token,
-        params={"select": "id,username,display_name,avatar_url,bio,visibility,created_at,updated_at", "id": f"eq.{user['id']}", "limit": "1"},
+        params={"select": "id,username,display_name,avatar_url,bio,visibility,locale,account_status,created_at,updated_at", "id": f"eq.{user['id']}", "limit": "1"},
     )
     if not rows:
         # Profile creation is self-scoped by RLS; no privileged service key is used.
         rows = await user_db_request(
             "POST", "profiles", access_token,
-            body={"id": user["id"], "display_name": (user.get("user_metadata") or {}).get("display_name", "")[:80]},
+            body={"id": user["id"], "display_name": (user.get("user_metadata") or {}).get("display_name", "")[:80], "locale": (user.get("user_metadata") or {}).get("locale", "id-ID")},
             prefer="return=representation",
         )
     return {"user": {"id": user["id"], "email": user.get("email"), "email_confirmed_at": user.get("email_confirmed_at")}, "profile": rows[0] if rows else None}
@@ -128,6 +148,73 @@ async def update_my_profile(payload: ProfileUpdate, user: dict[str, Any] = Depen
     if not result:
         raise HTTPException(status_code=404, detail={"code": "PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
     return {"profile": result[0]}
+
+
+
+@app.get("/v1/me/settings", tags=["identity"])
+async def get_my_settings(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "user_settings", request.state.supabase_access_token,
+        params={"select": "user_id,theme,notification_preferences,privacy_settings,updated_at", "user_id": f"eq.{user['id']}", "limit": "1"},
+    )
+    if not rows:
+        rows = await user_db_request(
+            "POST", "user_settings", request.state.supabase_access_token,
+            body={"user_id": user["id"]}, prefer="return=representation",
+        )
+    return {"settings": rows[0] if rows else None}
+
+
+@app.patch("/v1/me/settings", tags=["identity"])
+async def update_my_settings(payload: UserSettingsUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada pengaturan yang diubah."})
+    if "notification_preferences" in changes and payload.notification_preferences:
+        changes["notification_preferences"] = payload.notification_preferences.model_dump()
+    if "privacy_settings" in changes and payload.privacy_settings:
+        changes["privacy_settings"] = payload.privacy_settings.model_dump()
+    token = request.state.supabase_access_token
+    rows = await user_db_request(
+        "PATCH", "user_settings", token,
+        params={"user_id": f"eq.{user['id']}", "select": "user_id,theme,notification_preferences,privacy_settings,updated_at"},
+        body=changes, prefer="return=representation",
+    )
+    if not rows:
+        existing = await user_db_request(
+            "GET", "user_settings", token,
+            params={"select": "user_id", "user_id": f"eq.{user['id']}", "limit": "1"},
+        )
+        if not existing:
+            rows = await user_db_request(
+                "POST", "user_settings", token,
+                body={"user_id": user["id"], **changes}, prefer="return=representation",
+            )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "SETTINGS_NOT_FOUND", "message": "Pengaturan tidak dapat diperbarui."})
+    return {"settings": rows[0]}
+
+
+@app.get("/v1/me/consents", tags=["identity"])
+async def get_my_consents(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "user_consents", request.state.supabase_access_token,
+        params={"select": "consent_type,policy_version,granted,recorded_at", "user_id": f"eq.{user['id']}", "order": "recorded_at.desc", "limit": "100"},
+    )
+    return {"items": rows}
+
+
+@app.post("/v1/me/deactivation-request", tags=["identity"])
+async def request_account_deactivation(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "PATCH", "profiles", request.state.supabase_access_token,
+        params={"id": f"eq.{user['id']}", "select": "id,account_status,updated_at"},
+        body={"account_status": "deactivation_requested"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+    return {"profile": rows[0], "message": "Permintaan penonaktifan akun tercatat. Akun belum dihapus."}
 
 
 @app.get("/v1/organizations", tags=["organizations"])
