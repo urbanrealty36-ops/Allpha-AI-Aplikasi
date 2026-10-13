@@ -1,26 +1,25 @@
-"""Minimal API thin slice for platform foundation.
-
-Health endpoints report this process only. They do not claim that external
-systems (database, storage, AI providers) are configured or reachable.
-"""
+"""Allpha API foundation and authenticated identity/tenant endpoints."""
 from __future__ import annotations
 
 import os
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from allpha_api.auth import current_user, user_db_request
 
 APP_NAME = "allpha-api"
-APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.1.0")
+APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
 STARTED_AT = time.time()
 
 app = FastAPI(
     title="Allpha Platform API",
     version=APP_VERSION,
-    description="Foundation endpoints for the Allpha AI Social Universe.",
+    description="Allpha API with Supabase-backed identity and tenant authorization.",
 )
 
 
@@ -35,36 +34,44 @@ async def request_context(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    # Do not return exception details to clients.
     request_id = getattr(request.state, "request_id", "unknown")
     return JSONResponse(
         status_code=500,
-        content={
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "An unexpected error occurred.",
-                "request_id": request_id,
-            }
-        },
+        content={"error": {"code": "INTERNAL_ERROR", "message": "An unexpected error occurred.", "request_id": request_id}},
         headers={"X-Request-ID": request_id},
     )
 
 
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[a-zA-Z0-9_]+$")
+    display_name: str | None = Field(default=None, max_length=80)
+    avatar_url: str | None = Field(default=None, max_length=2048)
+    bio: str | None = Field(default=None, max_length=500)
+    visibility: Literal["public", "private"] | None = None
+
+
+class OrganizationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=120)
+    slug: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+
+
 @app.get("/healthz", tags=["system"])
 async def healthz() -> dict[str, str]:
-    """Liveness probe: process is able to serve requests."""
     return {"status": "ok", "service": APP_NAME}
 
 
 @app.get("/readyz", tags=["system"])
 async def readyz() -> dict[str, Any]:
-    """Readiness for the API process only; external dependencies are not wired yet."""
+    configured = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_PUBLISHABLE_KEY"))
     return {
-        "status": "ready",
+        "status": "ready" if configured else "degraded",
         "service": APP_NAME,
         "version": APP_VERSION,
         "dependencies": {
-            "database": "not_configured",
+            "database": "configured" if configured else "not_configured",
+            "authentication": "configured" if configured else "not_configured",
             "object_storage": "not_configured",
             "ai_gateway": "not_configured",
         },
@@ -73,7 +80,7 @@ async def readyz() -> dict[str, Any]:
 
 @app.get("/v1/system/status", tags=["system"])
 async def system_status(request: Request) -> dict[str, Any]:
-    """Internal foundation diagnostics; reports configuration, never secrets."""
+    configured = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_PUBLISHABLE_KEY"))
     return {
         "service": APP_NAME,
         "version": APP_VERSION,
@@ -83,7 +90,81 @@ async def system_status(request: Request) -> dict[str, Any]:
         "capabilities": {
             "health_checks": True,
             "structured_error_contract": True,
-            "database": False,
-            "authentication": False,
+            "database": configured,
+            "authentication": configured,
+            "tenant_authorization": configured,
         },
     }
+
+
+@app.get("/v1/me", tags=["identity"])
+async def get_me(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+    access_token = request.state.supabase_access_token
+    rows = await user_db_request(
+        "GET", "profiles",
+        access_token,
+        params={"select": "id,username,display_name,avatar_url,bio,visibility,created_at,updated_at", "id": f"eq.{user['id']}", "limit": "1"},
+    )
+    if not rows:
+        # Profile creation is self-scoped by RLS; no privileged service key is used.
+        rows = await user_db_request(
+            "POST", "profiles", access_token,
+            body={"id": user["id"], "display_name": (user.get("user_metadata") or {}).get("display_name", "")[:80]},
+            prefer="return=representation",
+        )
+    return {"user": {"id": user["id"], "email": user.get("email"), "email_confirmed_at": user.get("email_confirmed_at")}, "profile": rows[0] if rows else None}
+
+
+@app.patch("/v1/me/profile", tags=["identity"])
+async def update_my_profile(payload: ProfileUpdate, user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan profil."})
+    result = await user_db_request(
+        "PATCH", "profiles", request.state.supabase_access_token,
+        params={"id": f"eq.{user['id']}", "select": "id,username,display_name,avatar_url,bio,visibility,created_at,updated_at"},
+        body=changes, prefer="return=representation",
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail={"code": "PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+    return {"profile": result[0]}
+
+
+@app.get("/v1/organizations", tags=["organizations"])
+async def list_organizations(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "organizations", request.state.supabase_access_token,
+        params={"select": "id,name,slug,owner_id,created_at,updated_at", "order": "created_at.desc", "limit": "100"},
+    )
+    return {"items": rows}
+
+
+@app.post("/v1/organizations", status_code=201, tags=["organizations"])
+async def create_organization(payload: OrganizationCreate, user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+    # owner_id comes from the validated Supabase Auth identity, never the client payload.
+    rows = await user_db_request(
+        "POST", "organizations", request.state.supabase_access_token,
+        body={"name": payload.name, "slug": payload.slug, "owner_id": user["id"]},
+        params={"select": "id,name,slug,owner_id,created_at,updated_at"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=500, detail={"code": "CREATE_FAILED", "message": "Organisasi tidak dapat dibuat."})
+    return {"organization": rows[0]}
+
+
+@app.get("/v1/organizations/{organization_id}/memberships", tags=["organizations"])
+async def list_organization_memberships(organization_id: uuid.UUID, user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "organization_memberships", request.state.supabase_access_token,
+        params={"select": "organization_id,user_id,role,invited_by,created_at", "organization_id": f"eq.{organization_id}", "order": "created_at.asc", "limit": "500"},
+    )
+    # RLS filters memberships; return 404 rather than disclose a private tenant's existence.
+    if not rows:
+        orgs = await user_db_request(
+            "GET", "organizations", request.state.supabase_access_token,
+            params={"select": "id", "id": f"eq.{organization_id}", "limit": "1"},
+        )
+        if not orgs:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Organisasi tidak ditemukan."})
+    return {"items": rows}
