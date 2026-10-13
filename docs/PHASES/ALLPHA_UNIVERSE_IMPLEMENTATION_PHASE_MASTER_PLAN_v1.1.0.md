@@ -243,6 +243,8 @@ yang dibutuhkan benar-benar siap.
 - [Product Contract, Traceability & Delivery Governance](./PHASE_00_PRODUCT_CONTRACT_TRACEABILITY_GOVERNANCE.md)
 - [Requirement Traceability Matrix — 82 domains](./REQUIREMENT_TRACEABILITY_MATRIX.md)
 - [ADR and Risk Register](./ADR_AND_RISK_REGISTER.md)
+- [Master PRD Section Traceability — 91 numbered sections](./MASTER_PRD_SECTION_TRACEABILITY.md)
+- [Phase Execution, Test, Evidence and Release Templates](./PHASE_EXECUTION_TEMPLATES.md)
 
 **Phase 00 evidence/status:** governance package authored and read-back verified; no application test suite or app build was run because the inspected repository root currently exposes `.github/`, `docs/`, `tools/`, `AGENTS.md`, and `README.md`, with two GLB acquisition/readiness workflows. Requirements and domain mapping are drafts awaiting review; ADR-0001 remains open. Do not mark this phase `COMPLETE` until the Phase 00 exit checklist in the governance document is reviewed and signed off.
 
