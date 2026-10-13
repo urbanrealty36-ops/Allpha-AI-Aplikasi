@@ -87,6 +87,13 @@ jobs:
         working-directory: apps/client
       - run: ./gradlew assembleDebug
         working-directory: apps/client/android
+      - name: Upload Android debug APK evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-eng-p01-android-debug-apk
+          path: apps/client/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
 
   native-ios-build:
     name: Native iOS prebuild and simulator build
@@ -105,3 +112,10 @@ jobs:
         working-directory: apps/client
       - run: xcodebuild -workspace ios/Allpha.xcworkspace -scheme Allpha -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
         working-directory: apps/client
+      - name: Upload iOS simulator build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-eng-p01-ios-simulator-build
+          path: apps/client/ios/build/Build/Products/Debug-iphonesimulator/Allpha.app
+          if-no-files-found: warn
+          retention-days: 14
