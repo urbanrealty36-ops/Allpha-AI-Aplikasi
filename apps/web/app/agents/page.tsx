@@ -167,7 +167,7 @@ export default function AgentsPage() {
             <div className="detail-line"><span>Relasi</span><strong>Human owner · {agent.ownership?.role ?? "owner"}</strong></div>
             <div className="detail-line"><span>Visibilitas</span><strong>{agent.visibility === "public" ? "Publik" : "Privat"}</strong></div>
             <div className="agent-card-actions"><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "active" })}>Aktifkan</button><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "draft" })}>Jadikan draft</button><button className="button-danger" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "archived" })}>Arsipkan</button></div>
-            <small className="agent-footnote">ID Agent: {agent.id} · Dibuat {new Date(agent.created_at).toLocaleDateString("id-ID")}</small>
+            {agent.visibility === "public" && agent.status === "active" && <a className="agent-passport-link" href={apiBase + "/v1/agent-passports/" + agent.handle} target="_blank" rel="noreferrer">Buka Agent Passport ↗</a>}<small className="agent-footnote">ID Agent: {agent.id} · Dibuat {new Date(agent.created_at).toLocaleDateString("id-ID")}</small>
           </article>)}</div>}
       </section>
     </div>
