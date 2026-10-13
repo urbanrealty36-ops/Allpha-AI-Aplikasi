@@ -193,3 +193,40 @@ def test_profile_update_is_self_scoped_and_rejects_server_owned_fields(monkeypat
 
     assert response.status_code == 422
     assert calls == []
+
+def test_profile_update_query_is_scoped_to_authenticated_user(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{"id": "authenticated-user", "display_name": "My profile"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "scoped-test-token"
+        return {"id": "authenticated-user", "email": "user@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/me/profile",
+            headers={"Authorization": "Bearer scoped-test-token"},
+            json={"display_name": "My profile"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls == [(
+        "PATCH",
+        "profiles",
+        "scoped-test-token",
+        {
+            "params": {
+                "id": "eq.authenticated-user",
+                "select": "id,username,display_name,avatar_url,bio,visibility,created_at,updated_at",
+            },
+            "body": {"display_name": "My profile"},
+            "prefer": "return=representation",
+        },
+    )]
