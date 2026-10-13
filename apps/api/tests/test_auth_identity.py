@@ -107,3 +107,65 @@ def test_invalid_supabase_bearer_token_is_rejected(monkeypatch):
     assert response.json()["error"]["code"] == "INVALID_TOKEN"
     assert "definitely-invalid" not in response.text
 
+def test_expired_supabase_bearer_token_is_rejected(monkeypatch):
+    class FakeResponse:
+        status_code = 403
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://staging-example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    response = client.get("/v1/organizations", headers={"Authorization": "Bearer expired-token-fixture"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "INVALID_TOKEN"
+    assert "expired-token-fixture" not in response.text
+
+
+def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+    import uuid
+
+    foreign_organization_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "tenant-b-token"
+        return {"id": "tenant-b-user", "email": "tenant-b@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get(
+            f"/v1/organizations/{foreign_organization_id}/memberships",
+            headers={"Authorization": "Bearer tenant-b-session"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert calls[0][1] == "organization_memberships"
+    assert calls[0][3]["params"]["organization_id"] == f"eq.{foreign_organization_id}"
+    assert calls[1][1] == "organizations"
+    assert calls[1][3]["params"]["id"] == f"eq.{foreign_organization_id}"
+    assert all(call[2] == "tenant-b-token" for call in calls)
+
