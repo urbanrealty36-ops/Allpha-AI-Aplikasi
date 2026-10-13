@@ -265,6 +265,8 @@ class AgentCreate(BaseModel):
     description: str = Field(default="", max_length=1000)
     avatar_url: str | None = Field(default=None, max_length=2048)
     persona: dict[str, Any] = Field(default_factory=dict)
+    disclosure: str = Field(default="", max_length=1000)
+    boundaries: dict[str, Any] = Field(default_factory=dict)
     visibility: Literal["private", "public"] = "private"
 
 
@@ -275,11 +277,13 @@ class AgentUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     avatar_url: str | None = Field(default=None, max_length=2048)
     persona: dict[str, Any] | None = None
+    disclosure: str | None = Field(default=None, max_length=1000)
+    boundaries: dict[str, Any] | None = None
     visibility: Literal["private", "public"] | None = None
     status: Literal["draft", "active", "archived"] | None = None
 
 
-_AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,visibility,status,created_by,created_at,updated_at"
+_AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at"
 
 
 @app.get("/v1/agents", tags=["agents"])
@@ -312,6 +316,7 @@ async def create_my_agent(payload: AgentCreate, request: Request, user: dict[str
             "p_handle": payload.handle, "p_display_name": payload.display_name,
             "p_description": payload.description, "p_avatar_url": payload.avatar_url,
             "p_persona": payload.persona, "p_visibility": payload.visibility,
+            "p_disclosure": payload.disclosure, "p_boundaries": payload.boundaries,
         },
     )
     if not result:
@@ -341,6 +346,22 @@ async def update_my_agent(agent_id: uuid.UUID, payload: AgentUpdate, request: Re
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
     return {"agent": rows[0], "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+
+
+@app.get("/v1/agent-passports/{handle}", tags=["agents"])
+async def get_public_agent_passport(handle: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Expose only owner-published identity/disclosure, never private persona or boundary configuration.
+    import re
+    if not re.fullmatch(r"[a-z0-9_]{3,30}", handle):
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Passport Agent tidak ditemukan."})
+    rows = await user_db_request(
+        "GET", "ai_agents", request.state.supabase_access_token,
+        params={"select": "id,handle,display_name,description,avatar_url,disclosure,visibility,status,created_at",
+                "handle": f"eq.{handle}", "visibility": "eq.public", "status": "eq.active", "limit": "1"},
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Passport Agent tidak ditemukan."})
+    return {"passport": rows[0]}
 
 
 @app.get("/v1/agents/{agent_id}", tags=["agents"])
