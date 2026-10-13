@@ -352,6 +352,33 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
     return {"edge": rows[0]}
 
 
+@app.post("/v1/me/follow-requests/{edge_id}/accept", tags=["social"])
+async def accept_my_follow_request(edge_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "PATCH", "social_edges", request.state.supabase_access_token,
+        params={"id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
+                "edge_type": "eq.follow", "status": "eq.requested",
+                "select": "id,actor_user_id,target_user_id,edge_type,status,created_at"},
+        body={"status": "active"}, prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan mengikuti tidak ditemukan atau sudah diproses."})
+    return {"edge": rows[0]}
+
+
+@app.delete("/v1/me/follow-requests/{edge_id}", tags=["social"])
+async def reject_my_follow_request(edge_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "DELETE", "social_edges", request.state.supabase_access_token,
+        params={"id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
+                "edge_type": "eq.follow", "status": "eq.requested", "select": "id"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan mengikuti tidak ditemukan atau sudah diproses."})
+    return {"removed": rows[0]}
+
+
 @app.delete("/v1/me/social-edges/{target_user_id}/{edge_type}", tags=["social"])
 async def delete_my_social_edge(target_user_id: uuid.UUID, edge_type: Literal["follow", "block", "mute"], request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if str(target_user_id) == str(user["id"]):
