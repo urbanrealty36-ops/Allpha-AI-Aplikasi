@@ -44,7 +44,9 @@ Open the web app at http://localhost:3000; API health is http://localhost:8000/h
 
 ## Supabase configuration
 
-Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY only in the backend runtime environment. SUPABASE_PUBLISHABLE_KEY is safe for public client contexts, but these API routes use it server-side together with the user's bearer token; RLS is enforced by forwarding that token to PostgREST. Do not configure a service-role key for these endpoints and never expose privileged keys to clients.
+Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY only in the backend runtime environment. For the web browser build, set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to the canonical project's URL and publishable key. SUPABASE_PUBLISHABLE_KEY is safe for public client contexts, but these API routes use it server-side together with the user's bearer token; RLS is enforced by forwarding that token to PostgREST. Do not configure a service-role key for these endpoints and never expose privileged keys to clients.
+
+Human Identity UI: open the web app root to sign in/sign up, then edit profile fields and persisted user preferences. The browser uses Supabase Auth for sessions and the API for profile/settings data. See docs/PHASES/ENG_P03_HUMAN_IDENTITY.md for scope and remaining acceptance evidence.
 
 Authenticated endpoints:
 - GET /v1/me
