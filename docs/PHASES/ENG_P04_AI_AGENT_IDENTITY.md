@@ -20,6 +20,7 @@
 - `20261013054446_eng_p04_agent_ownership_rls_helpers.sql`: private security-definer ownership helper to avoid recursive RLS evaluation and updated-at trigger.
 - `20261013054513_eng_p04_agent_owner_insert_policy.sql` and `20261013054613_eng_p04_agent_creator_rls_fix.sql`: creator validation for atomic owner-link creation without recursive policy lookup.
 - `20261013054639_eng_p04_agent_disclosure_boundaries.sql`: first-class disclosure and behavior-boundary fields; expanded atomic create RPC.
+- `20261013055121_eng_p04_restrict_agent_table_writes.sql` and `20261013055143_eng_p04_enforce_agent_owner_and_invoker_rpc.sql`: restrict direct ownership mutation, keep the exposed RPC as `SECURITY INVOKER`, and add a deferred constraint trigger that rejects an Agent without an active owner at transaction commit.
 - Migrations were applied to canonical Supabase project `dvdziauyvuhcnqhrrvww` (AllphaAiAplikasi-db). No human profile row is repurposed as an Agent identity.
 
 ### API
@@ -28,6 +29,7 @@
 - `GET /v1/agents`: returns Agents with an active owner relationship for the caller.
 - `GET /v1/agents/{agent_id}` and `PATCH /v1/agents/{agent_id}`: owner-scoped retrieval and updates.
 - `GET /v1/agent-passports/{handle}`: returns only public, active passport fields; private persona and boundaries are not included.
+- Passport detail UI at `/agents/passport/[handle]` fetches the protected API with the current user's bearer session.
 - `apps/web/app/agents/passport/[handle]/page.tsx`: authenticated Passport UI fetches the public projection with the user's bearer session; the browser does not open the protected API endpoint without auth headers.
 - Strict Pydantic schemas reject client-supplied `owner_user_id`, `created_by`, role and other unknown authority fields. Updates are limited to identity, disclosure/boundaries, visibility and lifecycle status.
 
@@ -36,6 +38,7 @@
 - `.github/workflows/ci.yml`: lightweight API pytest + web production build workflow.
 - `apps/web/app/agents/page.tsx`: real-session Agent workspace; create Agent with handle, display name, description, persona JSON, disclosure, behavior-boundaries JSON and visibility; view ownership relation; change lifecycle status; open public passport.
 - `apps/web/app/page.tsx`: authenticated entry link to AI Agent Studio.
+- `.env.example` already defines `NEXT_PUBLIC_API_BASE_URL`, Supabase URL and public publishable-key placeholders; production values still need deployment verification.
 - `apps/web/app/globals.css`: responsive Agent workspace styling.
 - UI calls the FastAPI backend with the active Supabase session token. It does not write privileged Agent data directly from the browser.
 
@@ -54,7 +57,7 @@
 
 ## Acceptance evidence and known gaps
 
-- **Migration evidence:** Supabase connector confirmed each migration application returned success; re-check live migration history and table/RLS definitions before final acceptance.
+- **Migration evidence:** Supabase migration history now matches the versioned repository filenames; live schema inspection confirms both Agent tables have RLS, the deferred owner constraint trigger exists, direct ownership UPDATE/DELETE is revoked, and the create RPC is `SECURITY INVOKER`. Security Advisor returned zero lints after the final security migration.
 - **Not yet verified:** current GitHub Actions result for the latest commit, real signed-in create/list/update/passport journey, cross-user IDOR denial, and browser/mobile responsive E2E.
 - Public/active is currently the owner-controlled publication state. A dedicated moderation/eligibility approval lifecycle and version history are not implemented in ENG-P04; do not claim this endpoint proves a moderated or verified Agent.
 - Activating an Agent updates identity lifecycle only; it does not start an Agent Runtime, Model Router, tools, memory, skills, billing, usage metering or execution permissions.
