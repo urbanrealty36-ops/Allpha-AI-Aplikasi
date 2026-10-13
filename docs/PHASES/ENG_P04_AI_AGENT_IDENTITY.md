@@ -33,7 +33,7 @@
 - `GET /v1/agent-passports/{handle}`: returns only public, active Passport fields and is accessible without Human login; private persona and boundaries are not included.
 - `user_db_request` supports anonymous requests by omitting the Authorization bearer header while retaining the Supabase publishable API key; the database's column grants and RLS remain authoritative.
 - `apps/web/app/agents/passport/[handle]/page.tsx`: Passport UI fetches the public projection without requiring a Human session.
-- Strict Pydantic schemas reject client-supplied `owner_user_id`, `created_by`, role and other unknown authority fields. Updates are limited to identity, disclosure/boundaries, visibility and lifecycle status.
+- Strict Pydantic schemas reject client-supplied `owner_user_id`, `created_by`, role and other unknown authority fields. Updates are limited to identity, disclosure/boundaries, visibility and lifecycle status. Persona and boundary JSON is bounded to 16 KiB, at most 8 nesting levels and 256 values before persistence.
 
 ### UI
 
@@ -46,7 +46,7 @@
 
 ### Tests
 
-- `apps/api/tests/test_agent_identity.py`: unauthenticated-route checks, strict schema validation, rejection of owner/creator authority fields, disclosure/boundary payload validation, owner-filtered list/update checks, public projection checks, and inactive/revoked Passport filtering. These tests are committed but the workflow result is not available yet.
+- `apps/api/tests/test_agent_identity.py`: unauthenticated-route checks, strict schema validation, rejection of owner/creator authority fields, disclosure/boundary payload validation and bounded JSON size/depth, owner-filtered list/update checks, public projection checks, and inactive/revoked Passport filtering. The new tests are committed; execution remains `NOT_VERIFIED` because GitHub returned no status checks for the latest commit.
 
 ## Security and privacy controls
 
@@ -81,6 +81,14 @@
 
 The phase remains `in_progress` until the unchecked integration/security/acceptance items have reproducible evidence.
 
+
+## Contract and input-boundary review (2026-10-13)
+
+- Added server-side limits for Agent `persona` and `boundaries` JSON in `apps/api/src/allpha_api/main.py`: maximum 16 KiB serialized UTF-8, maximum nesting depth 8 and maximum 256 values. Non-JSON values and non-finite numbers are rejected before the RPC/database write.
+- Added API schema tests for oversized create payloads, excessive nesting, and oversized update payloads in `apps/api/tests/test_agent_identity.py`.
+- No database migration was needed; these limits are request-contract validation and do not alter the stored schema.
+- Verification: changes are committed on `main`. GitHub combined status for test commit `9bb03c76f6e143b037c30401c865ab25603bbcef` returned an empty status list, so test execution and web build remain `NOT_VERIFIED`; no local execution was claimed.
+- Ownership boundary remains server-derived owner ID + active owner relation + RLS. Anonymous Passport remains limited to active/public records and a column allowlist; no live public Agent data exists to exercise it end-to-end.
 
 ## Execution update — remote-only continuation (2026-10-13)
 
