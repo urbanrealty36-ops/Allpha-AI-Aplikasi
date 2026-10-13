@@ -133,6 +133,18 @@ class ConsentCreate(BaseModel):
     granted: bool
 
 
+class SocialEdgeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_user_id: uuid.UUID
+    edge_type: Literal["follow", "block", "mute"]
+
+
+class InterestPreferenceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    interest_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    preference: Literal["interested", "not_interested"] = "interested"
+
+
 class OrganizationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=2, max_length=120)
@@ -300,6 +312,96 @@ async def request_account_deactivation(request: Request, user: dict[str, Any] = 
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
     return {"profile": rows[0], "message": "Permintaan penonaktifan akun tercatat. Akun belum dihapus."}
+
+
+@app.get("/v1/me/social-graph", tags=["social"])
+async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = request.state.supabase_access_token
+    outgoing = await user_db_request(
+        "GET", "social_edges", token,
+        params={"select": "id,target_user_id,edge_type,status,created_at",
+                "actor_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "500"},
+    )
+    incoming_blocks = await user_db_request(
+        "GET", "social_edges", token,
+        params={"select": "id,actor_user_id,edge_type,created_at",
+                "target_user_id": f"eq.{user['id']}", "edge_type": "eq.block",
+                "order": "created_at.desc", "limit": "500"},
+    )
+    interests = await user_db_request(
+        "GET", "user_interests", token,
+        params={"select": "interest_key,preference,created_at,updated_at",
+                "user_id": f"eq.{user['id']}", "order": "interest_key.asc", "limit": "500"},
+    )
+    return {"outgoing": outgoing, "blocked_by": incoming_blocks, "interests": interests}
+
+
+@app.post("/v1/me/social-edges", status_code=201, tags=["social"])
+async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if str(payload.target_user_id) == str(user["id"]):
+        raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Relasi sosial tidak dapat ditujukan ke akun sendiri."})
+    rows = await user_db_request(
+        "POST", "social_edges", request.state.supabase_access_token,
+        body={"actor_user_id": user["id"], "target_user_id": str(payload.target_user_id), "edge_type": payload.edge_type},
+        params={"select": "id,target_user_id,edge_type,status,created_at"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "SOCIAL_EDGE_NOT_RECORDED", "message": "Relasi sosial tidak dapat disimpan."})
+    return {"edge": rows[0]}
+
+
+@app.delete("/v1/me/social-edges/{target_user_id}/{edge_type}", tags=["social"])
+async def delete_my_social_edge(target_user_id: uuid.UUID, edge_type: Literal["follow", "block", "mute"], request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if str(target_user_id) == str(user["id"]):
+        raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Relasi sosial tidak valid."})
+    rows = await user_db_request(
+        "DELETE", "social_edges", request.state.supabase_access_token,
+        params={"actor_user_id": f"eq.{user['id']}", "target_user_id": f"eq.{target_user_id}",
+                "edge_type": f"eq.{edge_type}", "select": "id,target_user_id,edge_type"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "SOCIAL_EDGE_NOT_FOUND", "message": "Relasi sosial tidak ditemukan."})
+    return {"removed": rows[0]}
+
+
+@app.get("/v1/me/interests", tags=["social"])
+async def get_my_interests(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "user_interests", request.state.supabase_access_token,
+        params={"select": "interest_key,preference,created_at,updated_at",
+                "user_id": f"eq.{user['id']}", "order": "interest_key.asc", "limit": "500"},
+    )
+    return {"items": rows}
+
+
+@app.put("/v1/me/interests", tags=["social"])
+async def upsert_my_interest(payload: InterestPreferenceCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "POST", "user_interests", request.state.supabase_access_token,
+        body={"user_id": user["id"], "interest_key": payload.interest_key, "preference": payload.preference},
+        params={"on_conflict": "user_id,interest_key", "select": "interest_key,preference,created_at,updated_at"},
+        prefer="resolution=merge-duplicates,return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "INTEREST_NOT_RECORDED", "message": "Preferensi minat tidak dapat disimpan."})
+    return {"item": rows[0]}
+
+
+@app.delete("/v1/me/interests/{interest_key}", tags=["social"])
+async def delete_my_interest(interest_key: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,79}", interest_key):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_INTEREST_KEY", "message": "Kunci minat tidak valid."})
+    rows = await user_db_request(
+        "DELETE", "user_interests", request.state.supabase_access_token,
+        params={"user_id": f"eq.{user['id']}", "interest_key": f"eq.{interest_key}",
+                "select": "interest_key"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "INTEREST_NOT_FOUND", "message": "Preferensi minat tidak ditemukan."})
+    return {"removed": rows[0]}
 
 
 @app.get("/v1/organizations", tags=["organizations"])
