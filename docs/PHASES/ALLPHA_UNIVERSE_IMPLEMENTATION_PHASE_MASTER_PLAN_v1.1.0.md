@@ -1891,3 +1891,12 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - Preserve the lightweight automated CI workflow. Unit/API tests and production build remain mandatory automation; do not delete tests or call unobserved checks green.
 - Mark the real-user create/configure/publish/revoke flow, two-user IDOR/ownership isolation, and responsive browser/mobile E2E as deferred/not verified. Revisit after hosted deployment/test environment and approved test identities are available.
 - ENG-P04 remains `in_progress`; no dependent phase is advanced by this decision.
+
+
+### ENG-P04 contract review update (2026-10-13)
+
+- Added server-side JSON limits for Agent `persona` and `boundaries`: maximum 16 KiB serialized UTF-8, nesting depth 8 and 256 values. Invalid/non-finite JSON-like values are rejected at the API schema boundary before database mutation.
+- Added schema tests for oversized create payloads, excessive nesting, and oversized update payloads. Source and tests are committed on `main`; latest observed test commit is `9bb03c76f6e143b037c30401c865ab25603bbcef`.
+- GitHub combined status for that commit returned `statuses: []`. This is `NOT_VERIFIED`, not a pass/fail. The lightweight CI workflow remains enabled and should run on pushes to `main`; check the Actions UI for the actual workflow run.
+- No database migration was needed for request-level validation. Live Supabase security metadata remains as previously recorded; real-user, two-owner, deployed Passport/revocation and responsive browser/device tests remain deferred pending a hosted test environment and approved test identities.
+- ENG-P04 remains `in_progress`; no acceptance box or dependent phase is advanced by this change.
