@@ -349,13 +349,13 @@ async def update_my_agent(agent_id: uuid.UUID, payload: AgentUpdate, request: Re
 
 
 @app.get("/v1/agent-passports/{handle}", tags=["agents"])
-async def get_public_agent_passport(handle: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    # Expose only owner-published identity/disclosure, never private persona or boundary configuration.
+async def get_public_agent_passport(handle: str) -> dict[str, Any]:
+    # Anonymous access is restricted by column grants + RLS to active public Passport fields.
     import re
     if not re.fullmatch(r"[a-z0-9_]{3,30}", handle):
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Passport Agent tidak ditemukan."})
     rows = await user_db_request(
-        "GET", "ai_agents", request.state.supabase_access_token,
+        "GET", "ai_agents", None,
         params={"select": "id,handle,display_name,description,avatar_url,disclosure,visibility,status,created_at",
                 "handle": f"eq.{handle}", "visibility": "eq.public", "status": "eq.active", "limit": "1"},
     )
