@@ -20,9 +20,9 @@ def test_ready_reports_supabase_configuration_without_exposing_secrets(monkeypat
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_PUBLISHABLE_KEY", raising=False)
     response = client.get("/readyz")
-    assert response.status_code == 200
+    assert response.status_code == 503
     payload = response.json()
-    assert payload["status"] == "ready"
+    assert payload["status"] == "not_ready"
     assert payload["dependencies"]["database"] == "not_configured"
     assert "SUPABASE" not in response.text
 
