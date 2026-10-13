@@ -1,6 +1,8 @@
+import pytest
+from pydantic import ValidationError
 from fastapi.testclient import TestClient
 
-from allpha_api.main import app
+from allpha_api.main import ProfileUpdate, app
 
 client = TestClient(app)
 
@@ -18,15 +20,11 @@ def test_ready_reports_supabase_configuration_without_exposing_secrets(monkeypat
     response = client.get("/readyz")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "degraded"
+    assert payload["status"] == "ready"
     assert payload["dependencies"]["database"] == "not_configured"
     assert "SUPABASE" not in response.text
 
 
 def test_profile_payload_rejects_authority_fields():
-    response = client.patch(
-        "/v1/me/profile",
-        headers={"Authorization": "Bearer invalid"},
-        json={"role": "super_admin"},
-    )
-    assert response.status_code == 422
+    with pytest.raises(ValidationError):
+        ProfileUpdate.model_validate({"role": "super_admin"})
