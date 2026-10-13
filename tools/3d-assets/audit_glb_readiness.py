@@ -118,6 +118,41 @@ def main():
       "production_approved":0,"gate":"REQUIRES_LICENSE_VISUAL_MOBILE_RUNTIME_REVIEW",
       "note":"Structural audit only; not legal clearance, visual QA, malware scan, GPU performance, or renderer compatibility."}
     (out/"summary.json").write_text(json.dumps(summary,indent=2,ensure_ascii=False),encoding="utf-8")
-    (out/"runtime-readiness.md").write_text("# Allpha GLB Asset Audit - Runtime Readiness\n\nThis audit reads the existing acquisition artifact; it does not rerun acquisition or upload to production.\n\nStructure PASS only confirms GLB v2 header, declared byte length and JSON chunk. External URIs require dependency resolution. License hints are not legal clearance. Size and triangle thresholds are triage heuristics. Every asset remains NOT APPROVED pending license, visual, security, mobile-performance and renderer QA.\n",encoding="utf-8")
+    # Produce a conservative per-reference license qualification queue. Repository
+    # license metadata is only a lead; no item is marked production-approved here.
+    license_rows=[]
+    for r in reports:
+        repo=(r.get("repo") or "").strip()
+        lic=(r.get("license") or "UNKNOWN").strip()
+        if repo=="rostock/3DModels" and lic=="CC0-1.0":
+            disposition="CC0_SOURCE_CANDIDATE_REQUIRES_PER_FILE_CONFIRMATION"
+            reason="Repository license hint is CC0-1.0; confirm exact asset provenance, embedded textures/dependencies and source license evidence."
+        elif repo=="SpectraStudios/SourceCityToolkit_glb":
+            disposition="QUARANTINE_TEXTURE_EXCEPTION_REVIEW"
+            reason="Source indicates texture exceptions; inspect the exact model and all embedded/external textures before redistribution."
+        elif repo=="c-frame/valid-avatars-glb":
+            disposition="QUARANTINE_LIKENESS_AND_UNDERLYING_RIGHTS"
+            reason="MIT code/model license hint does not establish rights to likeness, identity, or third-party underlying material."
+        elif repo=="ramjigeddam/3d" or "unknown" in lic.lower():
+            disposition="QUARANTINE_NO_LICENSE_EVIDENCE"
+            reason="No reliable per-asset redistribution license evidence recorded; keep out of production."
+        else:
+            disposition="REQUIRES_PER_MODEL_LICENSE_REVIEW"
+            reason="No source-specific clearance rule applies; inspect the exact asset license and dependencies."
+        license_rows.append({
+            "repo":repo,"path":r.get("path",""),"url":r.get("url",""),
+            "status":r.get("status",""),"sha256":r.get("sha256",""),
+            "dedupe_of":r.get("dedupe_of",""),"license_hint":lic,
+            "qualification":disposition,"reason":reason,"production_approved":False
+        })
+    lfields=["repo","path","url","status","sha256","dedupe_of","license_hint","qualification","reason","production_approved"]
+    with (out/"license-qualification.csv").open("w",newline="",encoding="utf-8") as f:
+        w=csv.DictWriter(f,fieldnames=lfields); w.writeheader(); w.writerows(license_rows)
+    from collections import Counter
+    qualification_counts=Counter(x["qualification"] for x in license_rows)
+    summary["license_qualification_rows"]=len(license_rows)
+    summary["license_qualification_counts"]=dict(sorted(qualification_counts.items()))
+    (out/"summary.json").write_text(json.dumps(summary,indent=2,ensure_ascii=False),encoding="utf-8")
+    (out/"runtime-readiness.md").write_text("# Allpha GLB Asset Audit - Runtime Readiness\\n\\nThis audit reads the existing acquisition artifact; it does not rerun acquisition or upload to production.\\n\\nDuplicate SHA-256 references are reported separately and are not treated as missing binaries. Structure PASS only confirms GLB v2 header, declared byte length and JSON chunk. The license-qualification CSV is a conservative review queue, not legal clearance. External URIs require dependency resolution. Size and triangle thresholds are triage heuristics. Every asset remains NOT APPROVED pending license, visual, security, mobile-performance and renderer QA.\\n",encoding="utf-8")
     print(json.dumps(summary,indent=2))
 if __name__=="__main__": main()
