@@ -97,6 +97,8 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
       - name: Install Android SDK packages
