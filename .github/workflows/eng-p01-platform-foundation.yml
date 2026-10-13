@@ -137,3 +137,30 @@ jobs:
           path: apps/client/ios/build/Build/Products/Debug-iphonesimulator/Allpha.app
           if-no-files-found: warn
           retention-days: 14
+
+  supabase-real-journey:
+    name: Supabase real auth/profile/logout journey (configured environment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run real Supabase integration when dedicated test credentials are configured
+        working-directory: apps/api
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          ALLPHA_API_BASE_URL: ${{ secrets.ALLPHA_API_BASE_URL }}
+          ALLPHA_E2E_TEST_EMAIL: ${{ secrets.ALLPHA_E2E_TEST_EMAIL }}
+          ALLPHA_E2E_TEST_PASSWORD: ${{ secrets.ALLPHA_E2E_TEST_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_PUBLISHABLE_KEY" || -z "$ALLPHA_API_BASE_URL" || -z "$ALLPHA_E2E_TEST_EMAIL" || -z "$ALLPHA_E2E_TEST_PASSWORD" ]]; then
+            echo "::warning::Real Supabase journey not run: configure SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, ALLPHA_API_BASE_URL, ALLPHA_E2E_TEST_EMAIL and ALLPHA_E2E_TEST_PASSWORD as repository Actions secrets."
+            exit 0
+          fi
+          python -m pip install --disable-pip-version-check httpx
+          python scripts/verify_supabase_journey.py
