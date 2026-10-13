@@ -230,3 +230,45 @@ def test_profile_update_query_is_scoped_to_authenticated_user(monkeypatch):
             "prefer": "return=representation",
         },
     )]
+
+
+def test_social_graph_includes_incoming_follow_requests_scoped_to_authenticated_user(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        if path == "social_edges" and kwargs.get("params", {}).get("status") == "eq.requested":
+            return [{"id": "request-1", "actor_user_id": "follower-1", "edge_type": "follow", "status": "requested"}]
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-test-token"
+        return {"id": "recipient-user", "email": "recipient@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get(
+            "/v1/me/social-graph",
+            headers={"Authorization": "Bearer social-test-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["incoming_requests"] == [
+        {"id": "request-1", "actor_user_id": "follower-1", "edge_type": "follow", "status": "requested"}
+    ]
+    request_call = next(call for call in calls if call[1] == "social_edges" and call[3]["params"].get("status") == "eq.requested")
+    assert request_call[0] == "GET"
+    assert request_call[2] == "social-test-token"
+    assert request_call[3]["params"]["target_user_id"] == "eq.recipient-user"
+    assert request_call[3]["params"]["edge_type"] == "eq.follow"
+    assert request_call[3]["params"]["status"] == "eq.requested"
+
+
+def test_social_graph_requires_authentication():
+    response = client.get("/v1/me/social-graph")
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_REQUIRED"
