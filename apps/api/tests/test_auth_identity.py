@@ -13,7 +13,7 @@ def test_authenticated_routes_reject_missing_bearer_token():
     for path in ("/v1/me", "/v1/organizations"):
         response = client.get(path)
         assert response.status_code == 401
-        assert response.json()["detail"]["code"] == "AUTH_REQUIRED"
+        assert response.json()["error"]["code"] == "AUTH_REQUIRED"
 
 
 def test_ready_reports_supabase_configuration_without_exposing_secrets(monkeypatch):
