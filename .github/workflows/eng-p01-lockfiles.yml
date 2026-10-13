@@ -51,4 +51,15 @@ jobs:
             exit 0
           fi
           git commit -m "build(eng-p01): add reproducible npm lockfiles"
-          git push origin HEAD:main
+          # Other ENG-P01 commits may land while dependency resolution is running.
+          # Rebase the generated lockfile commit onto the latest main before pushing.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep "$attempt"
+          done
+          echo "Could not publish lockfiles after three non-fast-forward retries." >&2
+          exit 1
