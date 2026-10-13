@@ -272,3 +272,42 @@ def test_interest_preference_is_bound_to_authenticated_user(monkeypatch):
         "preference": "not_interested",
     }
     assert calls[0][3]["prefer"] == "resolution=merge-duplicates,return=representation"
+
+
+
+def test_follow_request_accept_is_scoped_to_authenticated_target(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "id": "edge-123",
+            "actor_user_id": "human-sender",
+            "target_user_id": "human-recipient",
+            "edge_type": "follow",
+            "status": "active",
+            "created_at": "2026-10-14T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "recipient-session-token"
+        return {"id": "human-recipient"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/follow-requests/00000000-0000-0000-0000-000000000123/accept",
+            headers={"Authorization": "Bearer test"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls[0][0:3] == ("PATCH", "social_edges", "recipient-session-token")
+    assert calls[0][3]["params"]["target_user_id"] == "eq.human-recipient"
+    assert calls[0][3]["params"]["status"] == "eq.requested"
+    assert calls[0][3]["body"] == {"status": "active"}
