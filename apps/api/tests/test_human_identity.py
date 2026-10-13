@@ -14,6 +14,11 @@ def test_identity_settings_endpoints_require_authentication():
         assert response.json()["error"]["code"] == "AUTH_REQUIRED"
     response = client.patch("/v1/me/settings", json={"theme": "dark"})
     assert response.status_code == 401
+    response = client.post(
+        "/v1/me/consents",
+        json={"consent_type": "privacy_policy", "policy_version": "v1", "granted": True},
+    )
+    assert response.status_code == 401
 
 
 def test_profile_update_cannot_change_authority_fields():
