@@ -10,6 +10,9 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
+type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
+type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
+type SocialGraph = { outgoing: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[] };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")).replace(/\/$/, "");
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -82,7 +85,10 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social">("profile");
+  const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
+  const [targetUserId, setTargetUserId] = useState("");
+  const [interestKey, setInterestKey] = useState("");
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
   async function apiRequest(path: string, init: RequestInit = {}) {
@@ -103,6 +109,49 @@ function Profile({ session }: { session: Session }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [session.access_token, retry]);
+  async function loadSocialGraph() {
+    setError(""); setMessage("");
+    try { setSocialGraph(await apiRequest("/v1/me/social-graph") as SocialGraph); }
+    catch (e) { setError(e instanceof Error ? e.message : "Social Graph tidak dapat dimuat."); }
+  }
+  async function addSocialEdge(edgeType: "follow" | "block" | "mute") {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) });
+      setTargetUserId(""); setMessage(edgeType === "follow" ? "Permintaan mengikuti dikirim." : edgeType === "block" ? "Akun diblokir." : "Akun dibisukan.");
+      await loadSocialGraph();
+    } catch (e) { setError(e instanceof Error ? e.message : "Relasi sosial gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function removeSocialEdge(edge: SocialEdge) {
+    const target = edge.target_user_id || edge.actor_user_id;
+    if (!target) return;
+    setBusy(true); setError(""); setMessage("");
+    try { await apiRequest("/v1/me/social-edges/" + encodeURIComponent(target) + "/" + edge.edge_type, { method: "DELETE" }); setMessage("Relasi dihapus."); await loadSocialGraph(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Relasi tidak dapat dihapus."); }
+    finally { setBusy(false); }
+  }
+  async function resolveFollowRequest(edgeId: string, accept: boolean) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest(accept ? "/v1/me/follow-requests/" + encodeURIComponent(edgeId) + "/accept" : "/v1/me/follow-requests/" + encodeURIComponent(edgeId), { method: accept ? "POST" : "DELETE" });
+      setMessage(accept ? "Permintaan diterima." : "Permintaan ditolak."); await loadSocialGraph();
+    } catch (e) { setError(e instanceof Error ? e.message : "Permintaan gagal diproses."); }
+    finally { setBusy(false); }
+  }
+  async function saveInterest() {
+    const key = interestKey.trim().toLowerCase(); if (!key) return;
+    setBusy(true); setError(""); setMessage("");
+    try { await apiRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference: "interested" }) }); setInterestKey(""); setMessage("Minat tersimpan."); await loadSocialGraph(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Minat tidak dapat disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function removeInterest(key: string) {
+    setBusy(true); setError(""); setMessage("");
+    try { await apiRequest("/v1/me/interests/" + encodeURIComponent(key), { method: "DELETE" }); setMessage("Minat dihapus."); await loadSocialGraph(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Minat tidak dapat dihapus."); }
+    finally { setBusy(false); }
+  }
   async function saveProfile() {
     if (!profile) return; setBusy(true); setError(""); setMessage("");
     try {
@@ -142,7 +191,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -165,7 +214,29 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.kicker}>PRIVASI</Text><Text style={s.body}>Temukan profil melalui username</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Dapat ditemukan" secondary={!settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: true } })}/><Button title="Tidak ditemukan" secondary={settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: false } })}/></View>
         <Button title={busy ? "Menyimpan…" : "Simpan pengaturan"} disabled={busy} onPress={() => void saveSettings()}/>
-      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text>}
+      </> : tab === "settings" ? settings ? <>
+        <Text style={s.kicker}>PREFERENSI</Text><Text style={s.body}>Tema aplikasi</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}><Button title="Sistem" secondary={settings.theme !== "system"} onPress={() => setSettings({ ...settings, theme: "system" })}/><Button title="Terang" secondary={settings.theme !== "light"} onPress={() => setSettings({ ...settings, theme: "light" })}/><Button title="Gelap" secondary={settings.theme !== "dark"} onPress={() => setSettings({ ...settings, theme: "dark" })}/></View>
+        <Text style={s.kicker}>NOTIFIKASI</Text>
+        {(["product_updates", "security_alerts", "social_activity"] as const).map((key) => <Button key={key} title={(settings.notification_preferences[key] ? "✓ " : "○ ") + ({ product_updates: "Pembaruan produk", security_alerts: "Peringatan keamanan", social_activity: "Aktivitas sosial" }[key])} secondary={!settings.notification_preferences[key]} onPress={() => setSettings({ ...settings, notification_preferences: { ...settings.notification_preferences, [key]: !settings.notification_preferences[key] } })}/>)}
+        <Text style={s.kicker}>PRIVASI</Text><Text style={s.body}>Temukan profil melalui username</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}><Button title="Dapat ditemukan" secondary={!settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: true } })}/><Button title="Tidak ditemukan" secondary={settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: false } })}/></View>
+        <Button title={busy ? "Menyimpan…" : "Simpan pengaturan"} disabled={busy} onPress={() => void saveSettings()}/>
+      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text> : socialGraph ? <>
+        <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
+        <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
+        <TextInput accessibilityLabel="ID pengguna target" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder="UUID akun Allpha" placeholderTextColor="#8B94AC"/>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Ikuti" disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("follow")}/><Button title="Blokir" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("block")}/><Button title="Bisukan" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("mute")}/></View>
+        <Text style={s.kicker}>PERMINTAAN MASUK ({socialGraph.incoming_requests.length})</Text>
+        {socialGraph.incoming_requests.length ? socialGraph.incoming_requests.map(edge => <View key={edge.id} style={s.socialRow}><Text style={s.body}>{edge.actor_user_id}</Text><View style={{ flexDirection: "row", gap: 8 }}><Button title="Terima" disabled={busy} onPress={() => void resolveFollowRequest(edge.id, true)}/><Button title="Tolak" secondary disabled={busy} onPress={() => void resolveFollowRequest(edge.id, false)}/></View></View>) : <Text style={s.muted}>Belum ada permintaan masuk.</Text>}
+        <Text style={s.kicker}>RELASI ({socialGraph.outgoing.length})</Text>
+        {socialGraph.outgoing.map(edge => <View key={edge.id} style={s.socialRow}><Text style={s.body}>{edge.edge_type} · {edge.target_user_id} · {edge.status || "active"}</Text><Button title="Hapus" secondary disabled={busy} onPress={() => void removeSocialEdge(edge)}/></View>)}
+        <Text style={s.kicker}>MINAT</Text>
+        <TextInput accessibilityLabel="Tambah minat" value={interestKey} onChangeText={value => setInterestKey(value.toLowerCase())} autoCapitalize="none" maxLength={80} style={field} placeholder="contoh: desain.3d" placeholderTextColor="#8B94AC"/>
+        <Button title="Simpan minat" disabled={busy || !interestKey.trim()} onPress={() => void saveInterest()}/>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{socialGraph.interests.map(item => <Button key={item.interest_key} title={item.interest_key + " ×"} secondary disabled={busy} onPress={() => void removeInterest(item.interest_key)}/>)}</View>
+        {socialGraph.blocked_by.length > 0 && <Text style={s.muted}>Akun yang memblokir Anda: {socialGraph.blocked_by.map(edge => edge.actor_user_id).join(", ")}</Text>}
+      </> : <><Text style={s.muted}>Data Social Graph belum dimuat.</Text><Button title="Muat ulang" onPress={() => void loadSocialGraph()}/></>}
       {!!error && !loading && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       {!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}
       <Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/>
@@ -183,5 +254,5 @@ function Navigator() {
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
 const s = StyleSheet.create({
- page:{flexGrow:1,justifyContent:"center",backgroundColor:"#0B1020",padding:22,gap:20},brand:{alignItems:"center",gap:6,marginBottom:8},mark:{width:54,height:54,borderRadius:18,backgroundColor:"#A5B4FC",alignItems:"center",justifyContent:"center",marginBottom:8},markText:{fontSize:28,fontWeight:"900",color:"#10152A"},eyebrow:{color:"#A5B4FC",letterSpacing:3,fontSize:10,fontWeight:"800"},brandTitle:{color:"#F5F7FF",fontSize:34,fontWeight:"800"},muted:{color:"#A5ADC3",fontSize:13,lineHeight:20,textAlign:"center"},card:{backgroundColor:"#141B31",borderColor:"#29314B",borderWidth:1,borderRadius:26,padding:22,gap:15},kicker:{color:"#A5B4FC",letterSpacing:2,fontSize:10,fontWeight:"800"},hero:{color:"#F7F8FF",fontSize:25,fontWeight:"800",lineHeight:32},title:{color:"#F7F8FF",fontSize:22,fontWeight:"800"},body:{color:"#C0C7DA",fontSize:14,lineHeight:22},button:{minHeight:49,borderRadius:14,backgroundColor:"#A5B4FC",padding:14,alignItems:"center",justifyContent:"center",marginTop:2},secondary:{backgroundColor:"transparent",borderWidth:1,borderColor:"#3A4566"},buttonText:{color:"#11162B",fontWeight:"800",fontSize:14},secondaryText:{color:"#E1E6F8"},disabled:{opacity:.45},pressed:{opacity:.8},input:{minHeight:50,backgroundColor:"#0D1326",color:"#F7F8FF",borderColor:"#303A58",borderWidth:1,borderRadius:13,paddingHorizontal:14,fontSize:15},status:{color:"#A5ADC3",fontSize:12},warning:{color:"#FBBF24",fontSize:12,lineHeight:18},error:{color:"#FCA5A5",backgroundColor:"#321D2B",padding:12,borderRadius:10,fontSize:13,lineHeight:19},success:{color:"#86EFAC",backgroundColor:"#12302C",padding:12,borderRadius:10,fontSize:13,lineHeight:19},footnote:{color:"#747E9A",textAlign:"center",fontSize:11,lineHeight:18},loading:{flex:1,backgroundColor:"#0B1020",alignItems:"center",justifyContent:"center",gap:12}
+ page:{flexGrow:1,justifyContent:"center",backgroundColor:"#0B1020",padding:22,gap:20},brand:{alignItems:"center",gap:6,marginBottom:8},mark:{width:54,height:54,borderRadius:18,backgroundColor:"#A5B4FC",alignItems:"center",justifyContent:"center",marginBottom:8},markText:{fontSize:28,fontWeight:"900",color:"#10152A"},eyebrow:{color:"#A5B4FC",letterSpacing:3,fontSize:10,fontWeight:"800"},brandTitle:{color:"#F5F7FF",fontSize:34,fontWeight:"800"},muted:{color:"#A5ADC3",fontSize:13,lineHeight:20,textAlign:"center"},card:{backgroundColor:"#141B31",borderColor:"#29314B",borderWidth:1,borderRadius:26,padding:22,gap:15},kicker:{color:"#A5B4FC",letterSpacing:2,fontSize:10,fontWeight:"800"},hero:{color:"#F7F8FF",fontSize:25,fontWeight:"800",lineHeight:32},title:{color:"#F7F8FF",fontSize:22,fontWeight:"800"},body:{color:"#C0C7DA",fontSize:14,lineHeight:22},button:{minHeight:49,borderRadius:14,backgroundColor:"#A5B4FC",padding:14,alignItems:"center",justifyContent:"center",marginTop:2},secondary:{backgroundColor:"transparent",borderWidth:1,borderColor:"#3A4566"},buttonText:{color:"#11162B",fontWeight:"800",fontSize:14},secondaryText:{color:"#E1E6F8"},disabled:{opacity:.45},pressed:{opacity:.8},input:{minHeight:50,backgroundColor:"#0D1326",color:"#F7F8FF",borderColor:"#303A58",borderWidth:1,borderRadius:13,paddingHorizontal:14,fontSize:15},status:{color:"#A5ADC3",fontSize:12},warning:{color:"#FBBF24",fontSize:12,lineHeight:18},error:{color:"#FCA5A5",backgroundColor:"#321D2B",padding:12,borderRadius:10,fontSize:13,lineHeight:19},success:{color:"#86EFAC",backgroundColor:"#12302C",padding:12,borderRadius:10,fontSize:13,lineHeight:19},socialRow:{gap:8,paddingVertical:10,borderBottomWidth:1,borderBottomColor:"#29314B"},footnote:{color:"#747E9A",textAlign:"center",fontSize:11,lineHeight:18},loading:{flex:1,backgroundColor:"#0B1020",alignItems:"center",justifyContent:"center",gap:12}
 });
