@@ -1,7 +1,9 @@
 import pytest
 from pydantic import ValidationError
+from fastapi import Request
 from fastapi.testclient import TestClient
 
+from allpha_api.auth import current_user
 from allpha_api.main import AgentCreate, AgentUpdate, app
 
 client = TestClient(app)
@@ -59,3 +61,43 @@ def test_agent_update_accepts_bounded_profile_fields():
     assert value.display_name == "Research Agent"
     assert value.visibility == "public"
     assert value.status == "active"
+
+
+
+def test_create_agent_uses_atomic_rpc_and_server_derived_owner(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "id": "agent-1",
+            "handle": "research_bot",
+            "display_name": "Research Bot",
+            "created_by": "human-123",
+            "visibility": "private",
+            "status": "draft",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "human-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post("/v1/agents", headers={"Authorization": "Bearer test"}, json={
+            "handle": "research_bot",
+            "display_name": "Research Bot",
+            "persona": {"tone": "concise"},
+            "disclosure": "AI-generated responses",
+            "boundaries": {"private_owner_data": "owner_only"},
+        })
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert calls[0][0:3] == ("POST", "rpc/create_ai_agent", "human-session-token")
+    assert calls[0][3]["body"]["p_disclosure"] == "AI-generated responses"
+    assert calls[0][3]["body"]["p_boundaries"] == {"private_owner_data": "owner_only"}
+    assert "owner_user_id" not in calls[0][3]["body"]
+    assert response.json()["ownership"]["owner_user_id"] == "human-123"
