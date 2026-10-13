@@ -29,13 +29,13 @@ jobs:
           python-version: "3.12"
       - name: Download existing acquisition artifact
         env:
-          GH_TOKEN: \${{ github.token }}
-          ARTIFACT_ID: \${{ inputs.artifact_id }}
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
         run: |
           curl --fail --location --retry 3 \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/\${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
             --output existing-acquisition-artifact.zip
       - name: Extract prior artifact
         run: |
@@ -50,7 +50,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: allpha-glb-asset-readiness-\${{ github.run_number }}
+          name: allpha-glb-asset-readiness-${{ github.run_number }}
           path: |
             allpha-glb-asset-audit/asset-audit.csv
             allpha-glb-asset-audit/summary.json
