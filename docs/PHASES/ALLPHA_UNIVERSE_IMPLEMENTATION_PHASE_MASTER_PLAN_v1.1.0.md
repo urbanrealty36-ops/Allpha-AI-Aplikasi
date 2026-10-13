@@ -1812,3 +1812,14 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - ENG-P00/Phase 00: governance documents exist, but independent repository/dependency/app test baseline evidence is still open. Do not mark ENG-P00 complete.
 - ENG-P01: authorized and started on `feat/eng-p01-platform-foundation` to establish the missing deployable source baseline rather than wait for a separate app repository baseline that has not been confirmed.
 - Current implementation will start with a minimal web/API thin slice and reproducible tests. Native mobile framework selection remains subject to ADR-0002; do not invent a final mobile framework decision in this scaffold.
+
+
+## Execution mode update — Product Owner directive (2026-10-13)
+
+- **Canonical implementation branch: `main` only.** Routine work must be committed directly to `main`; do not create new branches or require PR/approval workflow for implementation.
+- **Keep CI simple:** run relevant build/test smoke checks; do not add multiple redundant audit/security/approval jobs as prerequisites to normal implementation. Fix actionable failures directly on `main`.
+- **Monorepo topology:** maintain three separable product areas: `apps/client` (native Android/iOS plus web client where appropriate), `apps/super-admin`, and `apps/backend` (FastAPI API/domain services). Existing `apps/web` and `apps/api` can be migrated into these boundaries; avoid duplicate app implementations. Shared contracts/types live in a shared package and all privileged mutations flow through backend APIs.
+- **GLB-to-UI path:** make developer-owned assets available to the catalog/manifest and renderer through a direct, simple API/Storage path. Do not require a manual multi-step approval chain merely to preview/render an asset in developer UI. Use only lightweight automatic format/readability checks and visible errors. Public exposure and uncertain licensing must remain explicit; a preview does not silently declare rights cleared.
+- Security hardening and comprehensive validation can be expanded after the product and integrations are functioning. Basic secret isolation, real data, and correct ownership/API boundaries remain in place from the start.
+- ENG-P01 foundation was merged into `main` by commit `0d46d97c1df23aca0c96cf88a159e60422270315`. Its CI was not green at merge time; treat the thin slice as present but do not claim the workflow passed. Fix the smallest actionable CI issue directly on `main` as implementation continues.
+- Next implementation target: ENG-P02 — Supabase database connectivity, authentication/session wiring, and tenant/resource ownership boundaries, then ENG-P03 identity/profile. In parallel, build the client/admin/backend monorepo shape and the straightforward GLB catalog-to-renderer path.
