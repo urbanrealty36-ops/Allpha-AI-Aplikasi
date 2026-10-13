@@ -149,3 +149,19 @@ Every implementation report MUST include:
 - **Next step:** next dependency-ordered task or Phase and its entry criteria.
 
 Never claim a command, test, migration, deployment, visual inspection, real-device test, integration, upload, or release occurred unless its result was actually observed.
+
+
+## Mandatory Phase Plan Study, Reconciliation, and Evidence-Gated Check-off
+
+Before any planning, code generation, editing, migration, deployment, or execution, every human/AI agent MUST:
+1. Read the entire canonical Master PRD at `docs/PRD/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE.md`.
+2. Read the entire current canonical phase plan at `docs/PHASES/ALLPHA_UNIVERSE_IMPLEMENTATION_PHASE_MASTER_PLAN_v1.1.0.md`, plus every phase-specific document and current status board relevant to the task.
+3. Inspect the repository default branch/head, source tree, tests, migrations, CI, artifact manifests, and current evidence; inspect live backend/database state only through authorized canonical connectors and official APIs.
+4. Reconcile requirements, phase dependencies, domain/API/data ownership, UI/UX, security/privacy, tests, and acceptance criteria before proposing implementation. If source docs conflict or required evidence is missing, record the conflict/blocker and stop rather than silently guessing.
+5. Do not mark a phase/checklist item complete because code was written, an asset downloaded, a file exists in Storage, a screenshot looks correct, or CI is green. Tick `[x]` and set `COMPLETE` only when that individual acceptance criterion has reproducible linked evidence covering its required backend/data/API, UI, security/privacy, integration/E2E, runtime/device and operational checks.
+6. After each implementation change, update the same canonical Phase Plan/status board in the same PR/commit: implementation commit, migration status, API evidence, UI evidence, security results, E2E/regression report, limitations, reviewer and date. Keep incomplete items `[ ]` and statuses `NOT_VERIFIED`, `IN_PROGRESS`, `BLOCKED`, or `IN_REVIEW` as appropriate. Never mark dependent phases complete automatically.
+7. For GLB publication, preserve the complete lifecycle: artifact inventory/provenance/license → dedup/validation/optimization → immutable manifest/checksum/size → official lifecycle API and storage → moderation/approval → authorized manifest/signed URL → renderer → native Android/iOS visual and interaction QA. Never write directly to the asset registry to bypass review. Storage presence is not publication approval.
+8. The 14 canonical 3D category keys are `universe`, `galaxy`, `world`, `orbit`, `capsule`, `district`, `booth`, `content-feed`, `agent-character`, `live-stage`, `human-live`, `sticker-social`, `animation`, and `navigation-fx`. A category mapping is a candidate until supported by actual file metadata/geometry and evidence. Never fabricate a per-file inventory or force-fit a category.
+9. The 25 Themes × 14 categories are 350 template slots, not proof of 350 unique approved assets. District city scenes use validated Scene Schema/World DSL and canonical backend entity IDs; GLBs provide presentation only and cannot grant permission, ownership, billing, entitlement or moderation state.
+10. Final Phase 37 is a validation/release gate, not a place to hide missing feature implementation. Return any missing capability to its owning phase and preserve traceability.
+
