@@ -17,6 +17,17 @@ on:
 
 permissions:
   contents: read
+
+# Public client configuration shared by the four monorepo app surfaces.
+# These are public URLs/keys only; never place service-role or provider secrets here.
+env:
+  ALLPHA_API_BASE_URL: https://allpha-api.up.railway.app
+  NEXT_PUBLIC_API_BASE_URL: https://allpha-api.up.railway.app
+  NEXT_PUBLIC_SUPABASE_URL: https://dvdziauyvuhcnqhrrvww.supabase.co
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Kc2veoWBTA_Plv-LBMfMqw_82bu43hg
+  EXPO_PUBLIC_API_BASE_URL: https://allpha-api.up.railway.app
+  EXPO_PUBLIC_SUPABASE_URL: https://dvdziauyvuhcnqhrrvww.supabase.co
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Kc2veoWBTA_Plv-LBMfMqw_82bu43hg
 concurrency:
   group: eng-p01-${{ github.ref }}
   cancel-in-progress: true
