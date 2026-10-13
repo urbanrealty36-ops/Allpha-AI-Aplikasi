@@ -126,6 +126,13 @@ class UserSettingsUpdate(BaseModel):
     privacy_settings: PrivacyPreferences | None = None
 
 
+class ConsentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    consent_type: Literal["terms_of_service", "privacy_policy", "product_updates"]
+    policy_version: str = Field(min_length=1, max_length=40)
+    granted: bool
+
+
 class OrganizationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=2, max_length=120)
@@ -263,6 +270,25 @@ async def get_my_consents(request: Request, user: dict[str, Any] = Depends(curre
         params={"select": "consent_type,policy_version,granted,recorded_at", "user_id": f"eq.{user['id']}", "order": "recorded_at.desc", "limit": "100"},
     )
     return {"items": rows}
+
+
+@app.post("/v1/me/consents", status_code=201, tags=["identity"])
+async def record_my_consent(payload: ConsentCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Consent history is append-only: user_id is always derived from the authenticated identity.
+    rows = await user_db_request(
+        "POST", "user_consents", request.state.supabase_access_token,
+        body={
+            "user_id": user["id"],
+            "consent_type": payload.consent_type,
+            "policy_version": payload.policy_version,
+            "granted": payload.granted,
+        },
+        params={"select": "consent_type,policy_version,granted,recorded_at"},
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "CONSENT_NOT_RECORDED", "message": "Persetujuan tidak dapat dicatat. Periksa apakah versi kebijakan sudah pernah dicatat."})
+    return {"consent": rows[0]}
 
 
 @app.post("/v1/me/deactivation-request", tags=["identity"])
