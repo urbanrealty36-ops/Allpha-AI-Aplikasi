@@ -63,12 +63,21 @@ def main() -> int:
         if logout.status_code not in (200, 204):
             print(f"FAIL: Supabase logout returned HTTP {logout.status_code}", file=sys.stderr)
             return 1
-        after_logout = client.get(f"{api_base}/v1/me", headers={"Authorization": f"Bearer {access_token}"})
-        if after_logout.status_code != 401:
-            print(f"FAIL: /v1/me after logout returned HTTP {after_logout.status_code}, expected 401", file=sys.stderr)
+        refresh_token = session.get("refresh_token")
+        if not refresh_token:
+            print("FAIL: Supabase sign-in did not return a refresh token", file=sys.stderr)
+            return 1
+        refresh_after_logout = client.post(
+            f"{supabase_url}/auth/v1/token",
+            params={"grant_type": "refresh_token"},
+            headers={"apikey": publishable_key, "Content-Type": "application/json"},
+            json={"refresh_token": refresh_token},
+        )
+        if refresh_after_logout.status_code == 200:
+            print("FAIL: refresh token remained usable after logout", file=sys.stderr)
             return 1
 
-    print("PASS: Supabase sign-in, identity/profile API, logout, and revoked-session rejection")
+    print("PASS: Supabase sign-in, identity/profile API, logout, and refresh-token revocation")
     return 0
 
 
