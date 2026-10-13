@@ -329,12 +329,18 @@ async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(c
                 "target_user_id": f"eq.{user['id']}", "edge_type": "eq.block",
                 "order": "created_at.desc", "limit": "500"},
     )
+    incoming_requests = await user_db_request(
+        "GET", "social_edges", token,
+        params={"select": "id,actor_user_id,edge_type,status,created_at",
+                "target_user_id": f"eq.{user['id']}", "edge_type": "eq.follow",
+                "status": "eq.requested", "order": "created_at.desc", "limit": "500"},
+    )
     interests = await user_db_request(
         "GET", "user_interests", token,
         params={"select": "interest_key,preference,created_at,updated_at",
                 "user_id": f"eq.{user['id']}", "order": "interest_key.asc", "limit": "500"},
     )
-    return {"outgoing": outgoing, "blocked_by": incoming_blocks, "interests": interests}
+    return {"outgoing": outgoing, "incoming_requests": incoming_requests, "blocked_by": incoming_blocks, "interests": interests}
 
 
 @app.post("/v1/me/social-edges", status_code=201, tags=["social"])
