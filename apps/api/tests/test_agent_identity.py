@@ -188,3 +188,20 @@ def test_patch_agent_does_not_update_when_caller_is_not_owner(monkeypatch):
     assert len(calls) == 1
     assert calls[0][1] == "agent_ownerships"
     assert calls[0][3]["params"]["owner_user_id"] == "eq.human-b"
+
+
+
+def test_public_passport_hides_private_draft_or_revoked_agent(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return []
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    response = client.get("/v1/agent-passports/revoked_agent")
+
+    assert response.status_code == 404
+    assert calls[0][0:3] == ("GET", "ai_agents", None)
+    assert calls[0][3]["params"]["visibility"] == "eq.public"
+    assert calls[0][3]["params"]["status"] == "eq.active"
