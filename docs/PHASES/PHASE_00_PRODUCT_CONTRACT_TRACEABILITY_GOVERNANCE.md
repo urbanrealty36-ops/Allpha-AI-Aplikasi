@@ -228,3 +228,43 @@ The Product Owner has explicitly approved Option 3: separate the Master PRD prod
 - Phase Master Plan and section traceability have been annotated with the interim approval state.
 - Master PRD and `AGENTS.md` are intentionally unchanged until required Engineering Lead review and any separately approved source changes.
 - Phase 00 remains `in_progress`; no Phase 01 start/acceptance claim is made by this update.
+
+
+## Phase 00 baseline inspection — 2026-10-13
+
+**Status:** partial inspection recorded; Phase 00 exit gate remains open.
+
+### Repository structure observed on `main`
+
+The inspected recursive Git tree at commit `038ef8535712d162e03a0c359329556375b9080d` contained:
+- `.github/workflows/allpha-glb-asset-acquisition.yml`
+- `.github/workflows/allpha-glb-asset-readiness.yml`
+- `docs/PRD/` and `docs/PHASES/` governance/requirements documents
+- `tools/3d-assets/acquire_glb_assets.py`
+- `tools/3d-assets/audit_glb_readiness.py`
+- `AGENTS.md` and a minimal `README.md`
+
+No application source tree, dependency manifests, API service, native client, web client, admin app, or test harness appeared in this recursive tree. This is a verified observation of the inspected tree, not a claim that source code cannot exist in another repository/branch or unlinked environment. The intended source repository and baseline must be confirmed before any application build/test command can be responsibly selected.
+
+### CI evidence observed
+
+- [GLB Asset Audit and Runtime Readiness — success](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38340754770), commit `d949f78d8d5518ca67dc5ce9eaa0c8c56b4ee4d4`, 2026-10-13.
+- [GLB Asset Acquisition Audit — success](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38339243759), commit `728bf7e681fe2c771a9a84a79907a1a96bcf1e94`, 2026-10-13.
+- Recent readiness runs also include failures: [run 38340047496](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38340047496) and [run 38340020232](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38340020232).
+- These workflows validate GLB acquisition/readiness only. They do **not** establish app lint/typecheck/build/unit/integration/security/E2E status. The inspected latest 10 workflow runs were all asset workflows; app-level CI evidence was not found in that window.
+
+### Open blockers / next actions
+
+1. Confirm canonical application source location and whether it belongs in this repository or a separately bound repository.
+2. Engineering Lead must review ADR-0001 and the crosswalk, then record explicit decision, role, date, rationale and any changes in [GitHub issue #1](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/issues/1).
+3. Inspect actual manifests, dependency lockfiles, test suites, migrations, API/UI modules and CI once the source location is confirmed.
+4. Run only documented reproducible commands; record exact command, environment, result and evidence. Missing source/toolchain means `BLOCKED`, not `PASS`.
+5. Review requirement mapping and record a separate Phase 00 sign-off after all exit criteria are evidenced.
+
+### Current gate state
+
+- ADR-0001: Product Owner approved Option 3; Engineering Lead decision pending.
+- Repository/source baseline: partially inspected; app source location unconfirmed.
+- App dependency/build/test/security baseline: not established.
+- Phase 00: `in_progress`, not accepted.
+- Phase 01: not declared ready.
