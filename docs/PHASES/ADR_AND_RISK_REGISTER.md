@@ -6,7 +6,7 @@
 
 | ADR | Decision topic | Status | Blocking scope |
 |---|---|---|---|
-| ADR-0001 | Separate product-roadmap and engineering-execution namespaces with an explicit crosswalk | PRODUCT OWNER APPROVED — ENGINEERING LEAD APPROVAL PENDING | Final canonical crosswalk and phase status/check-off rules |
+| ADR-0001 | Separate product-roadmap and engineering-execution namespaces with an explicit crosswalk | ACCEPTED — PRODUCT OWNER DIRECTIVE (2026-10-13) | Namespace decision accepted; detailed crosswalk review is follow-up |
 | ADR-0002 | Native cross-platform mobile stack and 3D/WebRTC capability spike | OPEN | Phase 01 native foundation and later spatial/live integration |
 | ADR-0003 | Web framework and component implementation standard | OPEN | Phase 01 web foundation |
 | ADR-0004 | Queue/worker and durable workflow persistence semantics | OPEN | Phase 01 platform contracts; Phase 07–11 production execution |
