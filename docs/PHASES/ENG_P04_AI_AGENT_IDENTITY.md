@@ -61,7 +61,8 @@
 
 - **Migration evidence:** Supabase migration history now matches the versioned repository filenames; live schema inspection confirms both Agent tables have RLS, the deferred owner constraint trigger exists, direct ownership UPDATE/DELETE is revoked, and the create RPC is `SECURITY INVOKER`. Security Advisor returned zero lints after the final security migration.
 - **Verified from live Supabase metadata:** migration `20261013062523` is recorded; Security Advisor returned zero lints; `anon` has column-level SELECT for Passport fields but not `persona`/`boundaries`.
-- **Not yet verified:** GitHub Actions result for latest `main` commit (connector returns no status checks/run evidence), real signed-in create/update journey, cross-user IDOR denial against actual sessions, anonymous Passport HTTP request against deployed API, revocation against live Agent data, and browser/mobile responsive E2E.
+- **Live database facts:** canonical Supabase currently has 0 rows in `auth.users` and 0 rows in `ai_agents`; therefore no existing real Human account or Agent is available for a real create/publish/revoke journey. The anonymous role query ran in a rolled-back transaction and returned 0 visible public/active Agents; no test rows were created.
+- **Not yet verified:** GitHub Actions result for latest `main` commit (combined status returns no checks; the available workflow-run connector only returns PR-triggered runs), real signed-in create/update journey, cross-user IDOR denial against actual sessions, anonymous Passport HTTP request against deployed API, revocation against live Agent data, and browser/mobile responsive E2E.
 - Public/active is currently the owner-controlled publication state. A dedicated moderation/eligibility approval lifecycle and version history are not implemented in ENG-P04; do not claim this endpoint proves a moderated or verified Agent.
 - Activating an Agent updates identity lifecycle only; it does not start an Agent Runtime, Model Router, tools, memory, skills, billing, usage metering or execution permissions.
 - Ownership transfer/delegated operator management is not exposed yet. The schema supports role values but this slice only provisions the primary owner.
@@ -73,8 +74,8 @@
 - [x] Authenticated API contracts and owner-derived atomic create path implemented.
 - [x] Responsive UI for creating and managing identity implemented.
 - [x] Schema/authorization smoke tests added.
-- [ ] CI green on latest main commit (no run/check result surfaced yet).
-- [ ] Real authenticated integration and cross-user ownership tests pass.
+- [ ] CI green on latest main commit (no run/check result surfaced yet; verify Actions are running for direct-main commits).
+- [ ] Real authenticated integration and cross-user ownership tests pass (blocked until a real test Human account is provisioned in the canonical Supabase Auth project).
 - [ ] Public Passport journey and revocation verified end-to-end (anonymous column-limited projection is configured; live API/real Agent test remains open).
 - [ ] Moderation/publication eligibility and Agent versioning contract reconciled with the owning domains.
 
