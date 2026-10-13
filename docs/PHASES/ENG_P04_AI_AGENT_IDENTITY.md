@@ -22,6 +22,7 @@
 - `20261013054639_eng_p04_agent_disclosure_boundaries.sql`: first-class disclosure and behavior-boundary fields; expanded atomic create RPC.
 - `20261013055121_eng_p04_restrict_agent_table_writes.sql` and `20261013055143_eng_p04_enforce_agent_owner_and_invoker_rpc.sql`: restrict direct ownership mutation, keep the exposed RPC as `SECURITY INVOKER`, and add a deferred constraint trigger that rejects an Agent without an active owner at transaction commit.
 - `20261013055318_eng_p04_index_agent_creator.sql`: adds the index for the Agent creator foreign key; the remaining performance-advisor finding is an existing ENG-P02 organization-membership FK.
+- `20261013062523_eng_p04_public_passport_anonymous_projection.sql`: enables anonymous reads only for active/public Agents and grants `anon` SELECT on the limited Passport columns; Supabase live privilege inspection confirms `anon` cannot select `persona` or `boundaries`.
 - Migrations were applied to canonical Supabase project `dvdziauyvuhcnqhrrvww` (AllphaAiAplikasi-db). No human profile row is repurposed as an Agent identity.
 
 ### API
@@ -29,9 +30,9 @@
 - `POST /v1/agents`: authenticated create; owner identity is derived from validated Supabase Auth `auth.uid()`, not client input. Agent and owner relation are created atomically.
 - `GET /v1/agents`: returns Agents with an active owner relationship for the caller.
 - `GET /v1/agents/{agent_id}` and `PATCH /v1/agents/{agent_id}`: owner-scoped retrieval and updates.
-- `GET /v1/agent-passports/{handle}`: returns only public, active passport fields; private persona and boundaries are not included.
-- Passport detail UI at `/agents/passport/[handle]` fetches the protected API with the current user's bearer session.
-- `apps/web/app/agents/passport/[handle]/page.tsx`: authenticated Passport UI fetches the public projection with the user's bearer session; the browser does not open the protected API endpoint without auth headers.
+- `GET /v1/agent-passports/{handle}`: returns only public, active Passport fields and is accessible without Human login; private persona and boundaries are not included.
+- `user_db_request` supports anonymous requests by omitting the Authorization bearer header while retaining the Supabase publishable API key; the database's column grants and RLS remain authoritative.
+- `apps/web/app/agents/passport/[handle]/page.tsx`: Passport UI fetches the public projection without requiring a Human session.
 - Strict Pydantic schemas reject client-supplied `owner_user_id`, `created_by`, role and other unknown authority fields. Updates are limited to identity, disclosure/boundaries, visibility and lifecycle status.
 
 ### UI
@@ -45,7 +46,7 @@
 
 ### Tests
 
-- `apps/api/tests/test_agent_identity.py`: unauthenticated-route checks, strict schema validation, rejection of owner/creator authority fields, and disclosure/boundary payload validation.
+- `apps/api/tests/test_agent_identity.py`: unauthenticated-route checks, strict schema validation, rejection of owner/creator authority fields, disclosure/boundary payload validation, owner-filtered list/update checks, public projection checks, and inactive/revoked Passport filtering. These tests are committed but the workflow result is not available yet.
 
 ## Security and privacy controls
 
@@ -59,7 +60,8 @@
 ## Acceptance evidence and known gaps
 
 - **Migration evidence:** Supabase migration history now matches the versioned repository filenames; live schema inspection confirms both Agent tables have RLS, the deferred owner constraint trigger exists, direct ownership UPDATE/DELETE is revoked, and the create RPC is `SECURITY INVOKER`. Security Advisor returned zero lints after the final security migration.
-- **Not yet verified:** current GitHub Actions result for the latest commit, real signed-in create/list/update/passport journey, cross-user IDOR denial, and browser/mobile responsive E2E.
+- **Verified from live Supabase metadata:** migration `20261013062523` is recorded; Security Advisor returned zero lints; `anon` has column-level SELECT for Passport fields but not `persona`/`boundaries`.
+- **Not yet verified:** GitHub Actions result for latest `main` commit (connector returns no status checks/run evidence), real signed-in create/update journey, cross-user IDOR denial against actual sessions, anonymous Passport HTTP request against deployed API, revocation against live Agent data, and browser/mobile responsive E2E.
 - Public/active is currently the owner-controlled publication state. A dedicated moderation/eligibility approval lifecycle and version history are not implemented in ENG-P04; do not claim this endpoint proves a moderated or verified Agent.
 - Activating an Agent updates identity lifecycle only; it does not start an Agent Runtime, Model Router, tools, memory, skills, billing, usage metering or execution permissions.
 - Ownership transfer/delegated operator management is not exposed yet. The schema supports role values but this slice only provisions the primary owner.
@@ -71,9 +73,9 @@
 - [x] Authenticated API contracts and owner-derived atomic create path implemented.
 - [x] Responsive UI for creating and managing identity implemented.
 - [x] Schema/authorization smoke tests added.
-- [ ] CI green on latest main commit.
+- [ ] CI green on latest main commit (no run/check result surfaced yet).
 - [ ] Real authenticated integration and cross-user ownership tests pass.
-- [ ] Public passport journey and revocation verified end-to-end.
+- [ ] Public Passport journey and revocation verified end-to-end (anonymous column-limited projection is configured; live API/real Agent test remains open).
 - [ ] Moderation/publication eligibility and Agent versioning contract reconciled with the owning domains.
 
 The phase remains `in_progress` until the unchecked integration/security/acceptance items have reproducible evidence.
