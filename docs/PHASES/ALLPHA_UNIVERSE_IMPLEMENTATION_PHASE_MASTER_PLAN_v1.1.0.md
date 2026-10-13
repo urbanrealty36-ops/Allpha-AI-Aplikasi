@@ -1900,3 +1900,12 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - GitHub combined status for that commit returned `statuses: []`. This is `NOT_VERIFIED`, not a pass/fail. The lightweight CI workflow remains enabled and should run on pushes to `main`; check the Actions UI for the actual workflow run.
 - No database migration was needed for request-level validation. Live Supabase security metadata remains as previously recorded; real-user, two-owner, deployed Passport/revocation and responsive browser/device tests remain deferred pending a hosted test environment and approved test identities.
 - ENG-P04 remains `in_progress`; no acceptance box or dependent phase is advanced by this change.
+
+
+### ENG-P04 API contract/error-handling follow-up (2026-10-13)
+
+- Standardized FastAPI HTTP exceptions and request validation into a stable error envelope with code, safe message, request ID, and mirrored `X-Request-ID`; validation responses expose only field/type hints and do not echo payload values.
+- Added tests for stable authentication/validation error contracts, owner-scoped Agent GET, owner-checked PATCH success, and retained existing non-owner denial/public Passport projection cases.
+- No schema/migration changes. Public Passport query remains limited to public projection columns and active/public filters; live RLS/column grants remain the enforcement boundary.
+- Automated CI workflow remains enabled for every push to `main` (API pytest + web production build). Current run result: `NOT_VERIFIED` until a concrete hosted workflow result is available; no local test/build execution is claimed.
+- ENG-P04 remains `in_progress`. Deferred acceptance remains: hosted create/configure/publish/anonymous-read/revoke journey, real two-owner isolation/IDOR, and deployed browser/mobile responsive evidence. No production fixture users or Agent records were created.
