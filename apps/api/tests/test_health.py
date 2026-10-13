@@ -12,14 +12,28 @@ def test_healthz_reports_process_liveness() -> None:
     assert response.headers.get("x-request-id")
 
 
-def test_readiness_does_not_claim_unconfigured_dependencies() -> None:
+def test_readiness_fails_closed_when_core_dependencies_are_unconfigured(monkeypatch) -> None:
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_PUBLISHABLE_KEY", raising=False)
+    response = client.get("/readyz")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["dependencies"]["database"] == "not_configured"
+    assert body["dependencies"]["authentication"] == "not_configured"
+    assert body["dependencies"]["object_storage"] == "not_configured"
+    assert body["dependencies"]["ai_gateway"] == "not_configured"
+
+
+def test_readiness_passes_when_core_supabase_configuration_exists(monkeypatch) -> None:
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "test-publishable-key")
     response = client.get("/readyz")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert body["dependencies"]["database"] == "not_configured"
-    assert body["dependencies"]["object_storage"] == "not_configured"
-    assert body["dependencies"]["ai_gateway"] == "not_configured"
+    assert body["dependencies"]["database"] == "configured"
+    assert body["dependencies"]["authentication"] == "configured"
 
 
 def test_request_id_is_preserved() -> None:
