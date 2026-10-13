@@ -48,6 +48,10 @@ begin
     ) then
       raise exception using errcode = '42501', message = 'follow disallowed by block';
     end if;
+    -- An explicit accept action may change requested -> active. Do not reset that decision.
+    if tg_op = 'UPDATE' and old.status = 'requested' and new.status = 'active' then
+      return new;
+    end if;
     select p.visibility into target_visibility
       from public.profiles p where p.id = new.target_user_id;
     if target_visibility = 'private' then
@@ -83,15 +87,25 @@ for select to authenticated
 using (
   actor_user_id = (select auth.uid())
   or (edge_type = 'block' and target_user_id = (select auth.uid()))
+  or (edge_type = 'follow' and status = 'requested' and target_user_id = (select auth.uid()))
 );
 drop policy if exists social_edges_insert_actor on public.social_edges;
 create policy social_edges_insert_actor on public.social_edges
 for insert to authenticated
 with check (actor_user_id = (select auth.uid()) and target_user_id <> (select auth.uid()));
+drop policy if exists social_edges_update_follow_request on public.social_edges;
+create policy social_edges_update_follow_request on public.social_edges
+for update to authenticated
+using (edge_type = 'follow' and status = 'requested' and target_user_id = (select auth.uid()))
+with check (edge_type = 'follow' and status = 'active' and target_user_id = (select auth.uid()));
+
 drop policy if exists social_edges_delete_actor on public.social_edges;
 create policy social_edges_delete_actor on public.social_edges
 for delete to authenticated
-using (actor_user_id = (select auth.uid()));
+using (
+  actor_user_id = (select auth.uid())
+  or (edge_type = 'follow' and status = 'requested' and target_user_id = (select auth.uid()))
+);
 
 drop policy if exists user_interests_select_self on public.user_interests;
 create policy user_interests_select_self on public.user_interests
@@ -106,7 +120,7 @@ drop policy if exists user_interests_delete_self on public.user_interests;
 create policy user_interests_delete_self on public.user_interests
 for delete to authenticated using (user_id = (select auth.uid()));
 
-grant select, insert, delete on public.social_edges to authenticated;
+grant select, insert, update, delete on public.social_edges to authenticated;
 drop trigger if exists user_interests_set_updated_at on public.user_interests;
 create trigger user_interests_set_updated_at before update on public.user_interests
 for each row execute function public.set_updated_at();
