@@ -99,5 +99,5 @@
 | §90 | Localization | 00–37; ADR-0001 required | Requirement IDs, owner, acceptance, code/API/data/UI/security/tests/evidence as applicable | NOT_VERIFIED |
 | §91 | Product and delivery risks | 00–37; ADR-0001 required | Requirement IDs, owner, acceptance, code/API/data/UI/security/tests/evidence as applicable | NOT_VERIFIED |
 
-## Phase rule
-The PRD's Part XVIII §82 defines Phase 00–24, while the current Phase Plan defines Phase 00–37. Mapping §82 to the latter is blocked pending ADR-0001 approval. All mappings above are proposed routing aids and must be refined at the phase-specific requirement level.
+## Phase namespace rule
+The Master PRD Part XVIII §82 defines product roadmap phases 00–24 (`PRD-P00`–`PRD-P24`). The Phase Master Plan v1.1.0 defines engineering execution phases 00–37 (`ENG-P00`–`ENG-P37`). ADR-0001 Option 3 has Product Owner approval dated 2026-10-13; Engineering Lead approval remains pending. See [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md). Until that review is recorded, all phase mappings remain proposed routing aids and must be refined at the requirement/acceptance level. Do not claim ADR-0001 accepted or change phase status based only on Product Owner approval.
