@@ -11,7 +11,6 @@ client = TestClient(app)
 
 def test_agent_routes_require_authentication():
     assert client.get("/v1/agents").status_code == 401
-    assert client.get("/v1/agent-passports/research_bot").status_code == 401
     assert client.post("/v1/agents", json={"handle": "helper_01", "display_name": "Helper"}).status_code == 401
     assert client.patch("/v1/agents/00000000-0000-0000-0000-000000000001", json={"status": "active"}).status_code == 401
 
@@ -119,16 +118,8 @@ def test_public_passport_returns_only_public_projection(monkeypatch):
             "status": "active",
         }]
 
-    async def fake_current_user(request: Request):
-        request.state.supabase_access_token = "consumer-session-token"
-        return {"id": "consumer-456", "email": "consumer@example.invalid"}
-
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
-    app.dependency_overrides[current_user] = fake_current_user
-    try:
-        response = client.get("/v1/agent-passports/research_bot", headers={"Authorization": "Bearer consumer-token"})
-    finally:
-        app.dependency_overrides.clear()
+    response = client.get("/v1/agent-passports/research_bot")
 
     assert response.status_code == 200
     assert response.json()["passport"]["handle"] == "research_bot"
@@ -136,3 +127,4 @@ def test_public_passport_returns_only_public_projection(monkeypatch):
     assert "boundaries" not in response.json()["passport"]
     assert "owner_user_id" not in response.json()["passport"]
     assert "persona" not in calls[0][3]["params"]["select"]
+    assert calls[0][0:3] == ("GET", "ai_agents", None)
