@@ -1854,3 +1854,13 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - No mock identity or profile data is rendered. If public Supabase browser configuration is missing, the UI shows a configuration state instead of inventing a user.
 - ENG-P03 remains IN_PROGRESS pending green CI on the latest main commit, live authenticated account/profile/settings tests, email confirmation check and deployment configuration verification. Storage upload, notification delivery, legal consent capture against published documents, and full account deletion are explicitly not claimed as implemented.
 - Next after acceptance: ENG-P04 — AI Agent Identity, keeping human owner identity and Agent identity separate.
+
+
+## ENG-P04 execution update — AI Agent Identity (2026-10-13)
+
+- Detail and acceptance status: [ENG-P04 AI Agent Identity](./ENG_P04_AI_AGENT_IDENTITY.md).
+- Implemented on `main`: separate `ai_agents` identity table, explicit `agent_ownerships` relation, RLS/private ownership helpers, atomic create RPC, Agent create/list/get/update APIs, authenticated public Agent Passport projection, persona/disclosure/boundaries fields, responsive Agent Studio UI, and API schema/auth tests.
+- Canonical Supabase project `dvdziauyvuhcnqhrrvww`; migration applications reported success for `eng_p04_ai_agent_identity`, `eng_p04_agent_ownership_rls_helpers`, `eng_p04_agent_owner_insert_policy`, `eng_p04_agent_creator_rls_fix`, and `eng_p04_agent_disclosure_boundaries`.
+- **Phase-number crosswalk needs reconciliation:** Master PRD v3 roadmap names Agent Identity/Persona/Passport as Phase 02; the phase-plan initial board lists Agent identity/passport under Phase 05; ENG-P03 note calls this work ENG-P04. Preserve ENG-P04 as this engineering work-package identifier; do not silently renumber canonical PRD phases.
+- ENG-P04 remains `in_progress`: current CI for the latest main commit, real authenticated end-to-end journey, cross-user/IDOR denial, and public passport/revocation checks are not yet verified. The public/active flag is owner-controlled at this point; moderation eligibility and Agent version history are not claimed complete. Activating an Agent does not imply Agent Runtime activation.
+- Next step: verify latest CI and live RLS/API behavior; fix failures directly on `main`; then execute authenticated Agent create → configure disclosure/boundaries → public passport → revoke by switching to private/draft/archive. Keep the status board unchecked until evidence is retained.
