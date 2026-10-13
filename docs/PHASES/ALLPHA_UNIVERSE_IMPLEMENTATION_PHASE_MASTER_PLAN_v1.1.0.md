@@ -1918,3 +1918,21 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - Security Advisor returned `lints=[]`; Supabase migration history includes the ENG-P04 migrations through `20261013062523_eng_p04_public_passport_anonymous_projection`. No schema change was made for error contract work.
 - The evidence applies to the exact commit above; this plan update triggers another CI run and must not be considered verified until that run is observed.
 - ENG-P04 remains `in_progress`: live authenticated create/configure/publish/anonymous-read/revoke, real two-owner isolation/IDOR, and deployed browser/mobile E2E remain pending hosted test environment and approved test identities or isolated test project.
+
+
+### ENG-P04 deployment discovery and E2E acceptance checklist (2026-10-13)
+
+- **Binding verified:** Railway service `Allpha-AI-Aplikasi` (project `reliable-purpose`) is connected to `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`. It is not the healthy service set from the separate `Allpha-Universe-PWA` repository.
+- **Deployment not ready:** the service has no public domains and no configured runtime variable names. Its latest deployment is `FAILED`; Railpack failed to infer a build/start command at monorepo root (`start.sh` missing). One monorepo service cannot currently provide both a verifiable web origin and API origin.
+- **Next technical prerequisite:** configure distinct Railway services/root directories for `apps/web` and `apps/api`, add the correct non-secret runtime configuration, deploy, and verify `/healthz` and web reachability. Do not claim these URLs exist until Railway returns domains and health checks succeed.
+- **Isolation and identities:** canonical Supabase `dvdziauyvuhcnqhrrvww` has zero Auth users, Agents, and ownership rows. No production fixture users or Agent records were created. E2E requires a separately isolated test database/project and two approved Human identities; the current project is not a safe fixture environment.
+- **CI evidence:** [Allpha Smoke #58](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38359314210) is green for `ec922047b3a0bcdfdab4d341574b7844b44e8550`: `api-tests` and `web-build` both succeeded. The combined-status endpoint returns an empty list and is not used as proof. Recheck the run triggered by this documentation commit.
+- **Acceptance checklist (keep open until evidence is attached):**
+  - [ ] Confirm public web URL and API URL from this repo's Railway services; verify web HTTP response and API `/healthz`.
+  - [ ] Apply canonical migrations to an isolated test database; provision two approved Human test identities only in that isolated environment.
+  - [ ] Human A creates Agent and configures persona/disclosure/boundaries/visibility.
+  - [ ] Public Passport anonymous request returns only the allowlisted public projection.
+  - [ ] Revoke public visibility/status; anonymous Passport request returns HTTP 404.
+  - [ ] Human B cannot list, GET, or PATCH Human A's Agent; assert no private persona/boundaries leak.
+  - [ ] Capture run logs/status, request IDs, HTTP assertions, and browser/mobile evidence; redact tokens and personal data.
+- ENG-P04 remains `in_progress`; do not name/advance the next Phase until these checks pass with retained evidence.
