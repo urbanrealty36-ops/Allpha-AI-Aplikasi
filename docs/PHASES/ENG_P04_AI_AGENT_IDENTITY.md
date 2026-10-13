@@ -108,3 +108,13 @@ The phase remains `in_progress` until the unchecked integration/security/accepta
 - No database schema or migration change was required. Public Passport still requests only the allowlisted public columns and filters `visibility=public` plus `status=active`; RLS and anonymous column grants remain the database enforcement layer.
 - CI remains `NOT_VERIFIED` until a concrete Actions run/check is observed. No test command was run locally and no real authenticated/anonymous E2E was performed in this change.
 - Status remains `in_progress`; real two-owner isolation, create → publish → anonymous read → revoke → 404, and deployed browser/mobile journeys remain deferred until hosted API/web and approved test identities or an isolated test project are available.
+
+
+## CI evidence update — error contract regression repaired (2026-10-13)
+
+- Hosted run [Allpha Smoke #56](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38359171771) for commit `4aba7140f860fc5b7d797a4ab2003f257e323b87` completed with conclusion `success`.
+- API suite: `30 passed, 1 warning`; web `npm run build`: success. This evidence is for that exact commit; the current documentation update will trigger a new CI run.
+- The earlier failures were real and are recorded: malformed deeply nested test fixture caused collection SyntaxError; after correcting it, two existing auth tests still expected the old `detail` envelope. The fixture and tests were corrected; the subsequent run passed.
+- Latest code behavior: expected HTTP errors and request validation use the stable `error` envelope with request ID; API validation hints do not echo submitted payload values. Frontend error rendering already supports `error.message`.
+- Security Advisor: `lints=[]`. Live migration history still includes all ENG-P04 migrations through `20261013062523_eng_p04_public_passport_anonymous_projection`; no migration was needed for API error handling.
+- This CI result does not substitute for hosted real-user acceptance. ENG-P04 remains `in_progress` pending actual create/configure/publish/anonymous Passport/revoke flow, two-owner IDOR isolation, and deployed browser/mobile evidence.
