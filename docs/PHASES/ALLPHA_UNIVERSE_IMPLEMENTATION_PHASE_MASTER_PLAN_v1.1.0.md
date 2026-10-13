@@ -1823,3 +1823,13 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - Security hardening and comprehensive validation can be expanded after the product and integrations are functioning. Basic secret isolation, real data, and correct ownership/API boundaries remain in place from the start.
 - ENG-P01 foundation was merged into `main` by commit `0d46d97c1df23aca0c96cf88a159e60422270315`. Its CI was not green at merge time; treat the thin slice as present but do not claim the workflow passed. Fix the smallest actionable CI issue directly on `main` as implementation continues.
 - Next implementation target: ENG-P02 — Supabase database connectivity, authentication/session wiring, and tenant/resource ownership boundaries, then ENG-P03 identity/profile. In parallel, build the client/admin/backend monorepo shape and the straightforward GLB catalog-to-renderer path.
+
+
+## ENG-P01 execution update — direct-main implementation (2026-10-13)
+
+- Implementation policy is direct commits to `main`; no new branch was created for this work.
+- Current foundation files: `apps/api` FastAPI thin slice; `apps/web` Next.js thin slice; `apps/client/README.md` and `apps/super-admin/README.md` establish extractable boundaries; root `README.md`, `.env.example`, `docker-compose.yml`, `apps/web/Dockerfile`, and Next standalone output document/provide local container deployment.
+- Smoke CI workflow is lightweight: API pytest and web production build only. A previous main run passed both jobs: [run 38350451270](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38350451270). Newer runs after container/deployment changes must be checked separately; do not use the earlier green run as proof that later commits built.
+- ENG-P01 status remains `in_progress`: npm/pip transitive lockfiles are not committed yet, actual staging/production deployment has not been performed, and latest CI for the deployment changes is pending. Direct dependency versions are pinned for web; full dependency reproducibility is still outstanding.
+- Supabase project `dvdziauyvuhcnqhrrvww` (AllphaAiAplikasi-db) is reachable and ACTIVE_HEALTHY, but the inspected `public` schema currently shows no product tables; this foundation does not yet connect API/auth to Supabase. That is ENG-P02 work, not a reason to block this thin slice.
+- Next: finish lockfile strategy and confirm latest CI; then ENG-P02 connects canonical Supabase, session/auth and ownership. Build asset catalog → GLB manifest → renderer as an early vertical slice after API/data foundation.
