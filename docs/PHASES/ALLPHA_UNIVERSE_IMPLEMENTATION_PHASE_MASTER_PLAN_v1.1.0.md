@@ -251,7 +251,7 @@ yang dibutuhkan benar-benar siap.
 - [Master PRD Section Traceability — 91 numbered sections](./MASTER_PRD_SECTION_TRACEABILITY.md)
 - [Phase Execution, Test, Evidence and Release Templates](./PHASE_EXECUTION_TEMPLATES.md)
 
-**Phase 00 evidence/status:** governance package authored and read-back verified; no application test suite or app build was run because the inspected repository root currently exposes `.github/`, `docs/`, `tools/`, `AGENTS.md`, and `README.md`, with two GLB acquisition/readiness workflows. Requirements and domain mapping are drafts awaiting review; ADR-0001 remains open. Do not mark this phase `COMPLETE` until the Phase 00 exit checklist in the governance document is reviewed and signed off.
+**Phase 00 evidence/status:** governance package authored and read-back verified; no application test suite or app build was run because the inspected repository root currently exposes `.github/`, `docs/`, `tools/`, `AGENTS.md`, and `README.md`, with two GLB acquisition/readiness workflows. Requirements and domain mapping remain drafts awaiting review. ADR-0001 is accepted by explicit Product Owner directive (2026-10-13); detailed Engineering Lead crosswalk review remains a follow-up, not a fabricated approval. Phase 00 itself remains `in_progress`; do not mark it `COMPLETE` until the exit checklist and evidence are reviewed and signed off.
 
 
 **Tujuan:** Menetapkan kontrak produk dan cara kerja agar semua AI
