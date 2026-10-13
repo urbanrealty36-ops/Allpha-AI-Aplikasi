@@ -221,7 +221,7 @@ The Master PRD Part XVIII describes a Phase 00–24 roadmap with phase names tha
 
 ## ADR-0001 review status (2026-10-13)
 
-The Product Owner has explicitly approved Option 3: separate the Master PRD product-roadmap namespace (`PRD-P00`–`PRD-P24`) from the detailed engineering execution namespace (`ENG-P00`–`ENG-P37`) and maintain an explicit crosswalk. Engineering Lead approval is still pending; ADR-0001 must not be marked accepted yet.
+The Product Owner has explicitly approved Option 3: separate the Master PRD product-roadmap namespace (`PRD-P00`–`PRD-P24`) from the detailed engineering execution namespace (`ENG-P00`–`ENG-P37`) and maintain an explicit crosswalk. Engineering Lead detailed crosswalk review is deferred follow-up; ADR-0001 is accepted by Product Owner direction, without claiming Engineering Lead approval.
 
 - Crosswalk: [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md).
 - Decision register: [ADR and Risk Register](./ADR_AND_RISK_REGISTER.md).
@@ -256,15 +256,20 @@ No application source tree, dependency manifests, API service, native client, we
 ### Open blockers / next actions
 
 1. Confirm canonical application source location and whether it belongs in this repository or a separately bound repository.
-2. Engineering Lead must review ADR-0001 and the crosswalk, then record explicit decision, role, date, rationale and any changes in [GitHub issue #1](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/issues/1).
+2. Engineering Lead should review detailed crosswalk mapping as follow-up; this is not a blocker to ENG-P01. Track mapping review and the independent Phase 00 evidence gate in [GitHub issue #1](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/issues/1).
 3. Inspect actual manifests, dependency lockfiles, test suites, migrations, API/UI modules and CI once the source location is confirmed.
 4. Run only documented reproducible commands; record exact command, environment, result and evidence. Missing source/toolchain means `BLOCKED`, not `PASS`.
 5. Review requirement mapping and record a separate Phase 00 sign-off after all exit criteria are evidenced.
 
 ### Current gate state
 
-- ADR-0001: Product Owner approved Option 3; Engineering Lead decision pending.
+- ADR-0001: accepted by Product Owner directive; Engineering Lead detailed crosswalk review remains a follow-up.
 - Repository/source baseline: partially inspected; app source location unconfirmed.
 - App dependency/build/test/security baseline: not established.
 - Phase 00: `in_progress`, not accepted.
 - Phase 01: not declared ready.
+
+
+## Product Owner directive — 2026-10-13
+
+The Product Owner explicitly instructed to accept ADR-0001 and proceed immediately to the next phase. ADR-0001 is now recorded as accepted in the execution branch. Engineering Lead review of detailed mappings remains follow-up work and is not falsely recorded as completed. Phase 00 itself remains `in_progress` until its separate evidence gate is satisfied; ENG-P01 is underway.
