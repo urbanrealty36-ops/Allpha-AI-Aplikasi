@@ -69,6 +69,33 @@ Follow this sequence for every implementation task, adapting depth to task risk 
 11. **EVIDENCE:** retain logs, test output, screenshots/video where applicable, migration results, traces, CI links, and known limitations.
 12. **REPORT:** state changed files, commit/PR, requirement coverage, tests actually run, evidence links, status per completion contract, known issues, and next Phase/dependency.
 
+## 3A. Mandatory implementation order for every feature/domain
+
+This rule applies to every implementation involving Frontend, Backend, UI/UX, any of the 14 canonical 3D Theme GLB categories, features/domains, engines, business logic, orchestration, Workflow Engine, memory, Model Router/LLM, external APIs/providers, or architecture.
+
+### Before implementation
+1. Read the complete Master PRD, this AGENTS.md, and the fixed phase plan; then read the relevant ADRs, API/schema/design-system/asset contracts and current tests.
+2. Inspect the actual `main` tree, current code, migrations/schema, CI, configuration and existing integration. Map the affected client(s) → typed FastAPI route/contract → service/canonical engine → repository/provider → canonical Supabase data, including ownership, permissions, failure paths and tests.
+3. Record the owning ENG-P00–ENG-P37 phase, dependencies, acceptance criteria and coverage of Web, API/DB, Native Client, and Super Admin. Do not create a new phase or parallel checklist/status board. If source conflicts or a required decision is unresolved, document the exact blocker; do not guess.
+
+### Default implementation order
+Use this dependency order for a feature slice. “Develop” means inspect and change only what the scope requires; do not add needless schema changes or touch unaffected applications.
+
+1. **Supabase database/schema:** inspect the existing canonical project first. If data changes are needed, add a version-controlled migration with constraints/indexes, least-privilege grants/RLS as applicable, and upgrade/repair strategy. Never create a second database or apply unsafe/destructive production changes without an approved recovery plan.
+2. **Backend server — `apps/api`:** implement the typed/versioned FastAPI contract, trusted caller/resource context, authorization and policy/quota checks, application/domain service, canonical engine invocation, repository/provider access, stable errors and observability. The API owns business truth.
+3. **Native Client — `apps/client` (Android/iOS):** implement the affected native journey against the canonical API contracts; keep behavior and business rules consistent with Web. Never bypass the API for business writes or call LLM/provider APIs directly.
+4. **Web Client — `apps/web`:** implement the corresponding responsive web journey using the same canonical API contracts and business behavior as Native.
+5. **Super Admin — `apps/super-admin`:** implement authorized operator/governance surfaces when the feature requires them; otherwise explicitly record `NOT AFFECTED` with a reason.
+6. **End-to-end integration:** connect each affected client to the same `apps/api` domain contract, canonical service/engine, authorized data/provider path and Supabase source of truth. Reconcile environment configuration, authentication/session behavior, request/response schemas, loading/empty/success/error/retry/recovery states and observability. No mock or placeholder may be reported as a live integration.
+7. **Functional verification and evidence:** run the smallest relevant checks during implementation and required contract, migration, authorization, integration, UI/E2E and device checks before claiming the applicable acceptance status. If the Product Owner defers full integration tests, mark them `DEFERRED / NOT VERIFIED`; do not claim all applications are fully integrated or phase acceptance has passed.
+
+### Cross-cutting requirements
+- UI/UX must follow the PRD and existing design system and implement real states/actions, accessibility and responsive behavior—not just a visual shell.
+- 3D GLB work must use the 14 canonical keys in this file, inspect actual file metadata/integrity and map assets through the canonical API/catalog/manifest/renderer path. Storage presence or rendering alone does not prove publication rights or production readiness.
+- AI/LLM execution must go through the canonical AI Gateway/Model Router. External API integrations must handle secrets server-side, timeouts, bounded retries, rate/budget limits, provider errors and idempotency where applicable.
+- Keep all four application areas represented in the phase plan as `CHANGE`, `INTEGRATE`, or `NOT AFFECTED` with a reason. Update the owning fixed-phase row in the same direct-to-`main` commit when status or next action changes.
+- Never claim a test, migration, integration, visual/device QA or deployment passed unless its actual result was observed. Keep phase status evidence-based.
+
 ## 4. Phase and completion rules
 
 - Every Phase must be a usable vertical slice including UI, API, data, domain engine, permissions, failure states, observability, documentation, integration, and acceptance tests.
