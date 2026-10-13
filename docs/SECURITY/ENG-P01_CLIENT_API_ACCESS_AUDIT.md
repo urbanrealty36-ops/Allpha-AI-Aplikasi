@@ -64,3 +64,79 @@ All routes below are declared in `apps/api/src/allpha_api/main.py`. Authenticate
 4. Run integration tests only against dedicated staging Supabase with separate test identities and tenant fixtures; do not use canonical production for destructive tests.
 5. Capture final CI run/job evidence and independently probe all three deployed URLs when network access is available.
 6. Keep ENG-P01 `in_progress` until all acceptance evidence is present.
+
+## Expanded client/provider inventory (2026-10-14)
+
+Repository tree at audited commit contained 32 files across the three clients. Runtime classification:
+
+| Path | Provider/API access | Classification |
+|---|---|---|
+| `apps/web/lib/supabase.ts` | Lazy browser-only Supabase client, publishable key, session persistence/refresh | Active shared Auth/session helper; imported by Web identity and Agent pages |
+| `apps/web/app/page.tsx` | Supabase Auth methods; FastAPI `/v1/me`, `/v1/me/profile`, `/v1/me/settings`, `/v1/me/deactivation-request` | Active; business profile/settings operations via API |
+| `apps/web/app/agents/page.tsx` | Supabase Auth/session; FastAPI Agent endpoints | Active; Agent business operations via API |
+| `apps/web/app/agents/passport/[handle]/page.tsx` | Public FastAPI passport endpoint; no Supabase import | Active public read; no provider bypass found |
+| `apps/client/App.tsx` | Native Supabase Auth/session client, Expo SecureStore; FastAPI `/v1/me` | Active native thin slice; Auth/session is allowed |
+| `apps/super-admin/app/page.tsx` | FastAPI `/healthz`, `/readyz`, `/v1/system/status`; no Supabase client | Active diagnostics only; privileged operational workflows are not established by this page |
+| `apps/*/app/layout.tsx`, `globals.css`, Next config, ESLint config, Dockerfiles | No runtime business provider calls observed in inspected contents | Active build/presentation configuration, not data-access helpers |
+| `apps/*/package.json`, lockfiles, `tsconfig.json`, `app.json` | Dependency/build configuration | Build-time, not runtime data access |
+| `apps/client/scripts/smoke-test.mjs`, `apps/super-admin/scripts/smoke-test.mjs` | Local smoke-test scripts | Test-only |
+| `apps/client/README.md`, `apps/super-admin/README.md` | Documentation | Not runtime code |
+
+No standalone Web/Super Admin provider helper beyond the listed Web helper was observed in the tracked tree. Native has an inline Supabase client in `App.tsx`; this is active Auth/session use, not a shared helper. The three client package lockfiles are not runtime access paths. The source audit does not label code as dead solely because it has few call sites; no confirmed unused runtime provider helper was found in this inventory.
+
+## Endpoint → SQL/RPC → table → grant/RLS map
+
+The live canonical Supabase project was inspected read-only on 2026-10-14. The database reported RLS enabled for `profiles`, `organizations`, `organization_memberships`, `audit_events`, `user_settings`, `user_consents`, `ai_agents`, and `agent_ownerships`. Applied migration history included ENG-P02/P03/P04 migrations through `20261013090730_eng_p02_least_privilege_identity_tenant_grants`. This is production schema inspection only; no destructive integration was run against it.
+
+| Endpoint | Data operation | Table/RPC | Authorization evidence / gap |
+|---|---|---|---|
+| `GET /healthz` | No DB call | None | Public liveness only |
+| `GET /readyz` | Env configuration check, not a live DB query | None | Reports Supabase configured from env; it does not prove DB reachability |
+| `GET /v1/system/status` | Env/configuration diagnostics | None | Review exposure/operational authorization as a follow-up; current response includes environment and capability booleans |
+| `GET /v1/me` | GET; if missing, POST self profile | `profiles` | `id=auth user id`; RLS profile self/public read and self insert; column-level insert grant restricts mutable fields |
+| `PATCH /v1/me/profile` | PATCH selected fields | `profiles` | Filter uses authenticated user's ID; profile schema rejects authority fields; column grant limits updates |
+| `GET /v1/me/settings` | GET; if missing, POST self settings | `user_settings` | `user_id=auth user id`; RLS self-scoped; grants currently include select/insert/update to authenticated |
+| `PATCH /v1/me/settings` | PATCH selected settings, fallback self insert if absent | `user_settings` | Filter and RLS use authenticated user's ID; payload schema rejects `user_id` |
+| `GET /v1/me/consents` | GET consent history | `user_consents` | Query filters `user_id=auth user id`; RLS self select; client updates/deletes denied |
+| `POST /v1/me/deactivation-request` | POST RPC after correction | `rpc/request_account_deactivation` → `profiles` | New migration makes target derive from `auth.uid()`; direct update to `account_status` remains excluded from column-level grants. Migration still needs staging application/integration verification |
+| `GET /v1/organizations` | GET organizations | `organizations` | RLS requires membership/ownership; result set relies on RLS rather than an explicit user filter |
+| `POST /v1/organizations` | POST organization; trigger creates owner membership and audit path | `organizations`, `organization_memberships`, `audit_events` | API derives `owner_id` from verified Auth identity; insert grant limited to slug/name/owner_id; membership direct mutations denied |
+| `GET /v1/organizations/{id}/memberships` | GET memberships then organization existence lookup | `organization_memberships`, `organizations` | RLS scopes membership to self/admin and organization to member/owner; handler returns 404 when RLS hides tenant. Real cross-tenant staging proof pending |
+| `GET /v1/agents` | GET ownership relationships and related Agent rows | `agent_ownerships`, `ai_agents` | Query scopes owner to verified user and active ownership; RLS applies |
+| `POST /v1/agents` | POST atomic RPC | `rpc/create_ai_agent` → `ai_agents`, `agent_ownerships` | RPC is SECURITY INVOKER, derives `auth.uid()`, validates payload, inserts active owner; execute granted to authenticated; direct ownership updates/deletes denied |
+| `PATCH /v1/agents/{id}` | Owner check then PATCH | `agent_ownerships`, `ai_agents` | API owner predicate plus RLS; existing regression covers non-owner 404/no update |
+| `GET /v1/agent-passports/{handle}` | Anonymous/public projection read | `ai_agents` | Public/active filters; anonymous SELECT grant/policy uses public projection; private persona/boundaries/ownership excluded |
+| `GET /v1/agents/{id}` | GET Agent after ownership check | `agent_ownerships`, `ai_agents` | Owner predicate plus RLS; expand direct cross-user staging test |
+
+### Confirmed code/grant mismatch and correction
+
+The former deactivation handler directly PATCHed `profiles.account_status`, but the applied least-privilege migration grants `UPDATE` only on `username, display_name, avatar_url, bio, visibility, locale`. `account_status` is deliberately server-owned, so that handler's write path was inconsistent with the grants.
+
+Correction committed to `main`:
+- Endpoint now calls `POST rpc/request_account_deactivation`.
+- Migration `20261014100000_eng_p01_scoped_account_deactivation_rpc.sql` defines a SECURITY DEFINER function with empty search_path, derives the target only from `auth.uid()`, and grants execute only to `authenticated`.
+- API regression asserts the handler calls the scoped RPC with an empty body and does not pass a caller-selected user ID.
+
+This is a source-level correction. The new migration has not been applied to the production database, and must not be applied to production as part of this audit. Validate the migration and the behavior in isolated staging first.
+
+## Regression coverage added/retained
+
+- Added invalid Supabase bearer token test: Auth 401/403 → stable `401 INVALID_TOKEN`, no token leakage.
+- Added expired-token fixture test for the same fail-closed contract.
+- Added handler-level manipulated foreign organization ID test: memberships and organization queries carry the supplied ID but the foreign tenant is returned as `404 NOT_FOUND` when RLS hides it.
+- Added deactivation route regression for the scoped RPC.
+- Existing Agent regressions cover client-forged ownership/authority fields, server-derived owner, active-owner filtering, and non-owner update denial.
+- Mocked handler tests prove API query construction/error behavior only; they do not prove live RLS, SQL grants, expired JWT semantics at Supabase, or tenant isolation. Those require isolated staging integration.
+
+## Staging and live verification status
+
+- Supabase connector lists only canonical project `dvdziauyvuhcnqhrrvww` (`AllphaAiAplikasi-db`); `list_branches` returned no development branches. No separate staging Supabase project or provisioned two-user/two-tenant fixtures were found through the connected account.
+- Do not run tenant integration against the canonical production project. Creating a Supabase branch/project requires a separate explicit cost confirmation; therefore live two-identity integration remains blocked pending an approved isolated staging target and fixtures.
+- The latest ENG-P01 run `38468039718` on commit `1fd62a442fafa099524cf94e9c25b24a6566d3f8` had Web typecheck/build, configured Supabase journey, API regressions, Super Admin build and staging tenant-isolation job successful; Android native prebuild/debug APK failed and iOS simulator build was still in progress at inspection. The run must be rechecked after the current security commits.
+- Latest Allpha Smoke run `38468039854` on the same prior commit completed successfully. It does not include the newer deactivation fix or expanded token/tenant regressions.
+- Independent external HTTP probes remain unverified because the execution environment previously failed DNS resolution. Railway connector status/logs are not equivalent to independent external HTTP response evidence.
+
+## Current decision
+
+ENG-P01 remains `in_progress`. Do not promote status until (a) current commit's CI jobs are final and Android failure is fixed or properly explained, (b) the new SQL migration and tests pass in isolated staging, (c) real two-user/two-tenant access tests pass, and (d) endpoint verification evidence is recorded.
+
