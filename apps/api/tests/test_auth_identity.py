@@ -169,3 +169,27 @@ def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(mo
     assert calls[1][3]["params"]["id"] == f"eq.{foreign_organization_id}"
     assert all(call[2] == "tenant-b-token" for call in calls)
 
+def test_profile_update_is_self_scoped_and_rejects_server_owned_fields(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{"id": "authenticated-user", "display_name": "Updated"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "scoped-test-token"
+        return {"id": "authenticated-user", "email": "user@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/me/profile",
+            headers={"Authorization": "Bearer scoped-test-token"},
+            json={"display_name": "Updated", "id": "another-user", "account_status": "active"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert calls == []
