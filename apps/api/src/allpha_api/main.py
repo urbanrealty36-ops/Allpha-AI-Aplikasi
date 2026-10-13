@@ -268,10 +268,8 @@ async def get_my_consents(request: Request, user: dict[str, Any] = Depends(curre
 @app.post("/v1/me/deactivation-request", tags=["identity"])
 async def request_account_deactivation(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await user_db_request(
-        "PATCH", "profiles", request.state.supabase_access_token,
-        params={"id": f"eq.{user['id']}", "select": "id,account_status,updated_at"},
-        body={"account_status": "deactivation_requested"},
-        prefer="return=representation",
+        "POST", "rpc/request_account_deactivation", request.state.supabase_access_token,
+        body={},
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
