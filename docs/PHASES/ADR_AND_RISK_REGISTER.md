@@ -6,7 +6,7 @@
 
 | ADR | Decision topic | Status | Blocking scope |
 |---|---|---|---|
-| ADR-0001 | Canonical phase roadmap: Master PRD Phase 00–24 vs Phase Plan v1.1.0 Phase 00–37 | PROPOSED — approval required | Phase numbering/check-off after Phase 00; all dependent phase status claims |
+| ADR-0001 | Separate product-roadmap and engineering-execution namespaces with an explicit crosswalk | PRODUCT OWNER APPROVED — ENGINEERING LEAD APPROVAL PENDING | Final canonical crosswalk and phase status/check-off rules |
 | ADR-0002 | Native cross-platform mobile stack and 3D/WebRTC capability spike | OPEN | Phase 01 native foundation and later spatial/live integration |
 | ADR-0003 | Web framework and component implementation standard | OPEN | Phase 01 web foundation |
 | ADR-0004 | Queue/worker and durable workflow persistence semantics | OPEN | Phase 01 platform contracts; Phase 07–11 production execution |
@@ -25,24 +25,32 @@
 
 ## 2. ADR-0001 — Phase roadmap reconciliation
 
-- **Status:** PROPOSED; not approved.
-- **Context:** Master PRD v3.0.0 Part XVIII §82 lists a Phase 00–24 roadmap. The current Phase Master Plan v1.1.0 defines Phase 00–37 and different titles/order for some phases. `AGENTS.md` explicitly says the PRD roadmap currently defines 00–24 and warns not to invent later phase numbering or claim it canonical without reconciliation.
-- **Options:**
-  1. Treat the Master PRD Phase 00–24 roadmap as canonical and revise the 00–37 plan to a mapped implementation sequence.
-  2. Formally approve Phase Plan v1.1.0 as an expanded sequencing plan; retain PRD Phase 00–24 as product roadmap and publish an explicit crosswalk, with a reviewed PRD/AGENTS change if the canonical phase IDs are being amended.
-  3. Maintain two phase namespaces (PRD product roadmap and engineering execution plan) with explicit crosswalk and no ambiguous phase IDs in issues/commits.
-- **Trade-offs:** Option 1 maximizes PRD literal consistency but may lose detailed sequencing. Option 2 preserves current detailed execution plan but requires governance approval and source updates. Option 3 preserves both but adds coordination overhead.
-- **Recommendation (not a decision):** Option 3 until the product owner explicitly approves whether phase IDs are shared or separately namespaced.
-- **Consequence until approved:** Do not silently claim the Phase 00–37 IDs override PRD roadmap. Continue Phase 00 documentation and use document-qualified phase references. Dependent implementation phase status remains gated by the decision.
-- **Owner/approver:** Product owner + engineering lead (names/approval not yet recorded).
-- **Evidence:** Phase Plan v1.1.0 §§1–4; Master PRD Part XVIII §82; AGENTS.md §4.
-- **Migration/rollback:** Update crosswalk, phase board, references and status only after approved decision; preserve prior versions and links.
+- **Status:** `product_owner_approved`; **engineering_lead_approval_pending**. Not yet accepted/final.
+- **Decision proposed and approved by Product Owner:** Option 3 — maintain two explicit namespaces:
+  1. **PRD Product Phase (`PRD-P00`–`PRD-P24`):** the product roadmap and feature/acceptance framing in Master PRD v3.0.0 Part XVIII §82.
+  2. **Engineering Execution Phase (`ENG-P00`–`ENG-P37`):** the detailed implementation sequence in Phase Master Plan v1.1.0.
+- **Approval record:** Product Owner approval of Option 3 was explicitly supplied in the project conversation on 2026-10-13. The approver's role is recorded; personal identity/signature is not independently verified here. Engineering Lead approval is not yet recorded.
+- **Context:** Master PRD v3.0.0 Part XVIII §82 lists Phase 00–24. The Phase Master Plan v1.1.0 defines Phase 00–37 with a more detailed and differently ordered implementation sequence. `AGENTS.md` states that phase plans must not silently override the PRD and requires reconciliation before later phase numbering is treated as canonical.
+- **Decision scope:** This decision separates namespaces and requires a reviewed crosswalk. It does **not** rewrite PRD requirements, declare all 38 engineering phases complete/canonical product phases, approve application architecture choices, or authorize dependent phase status changes without evidence.
+- **Crosswalk:** [Phase Roadmap Crosswalk](./PHASE_ROADMAP_CROSSWALK.md). The initial mapping is a proposed routing aid; exact requirement-level mapping and dependencies remain subject to engineering review.
+- **Rules pending Engineering Lead approval:**
+  - Use `PRD-Pnn` when referring to product roadmap phases and acceptance framing.
+  - Use `ENG-Pnn` when referring to execution plan tasks, commits, PRs, and engineering phase status.
+  - Do not refer to a bare phase number in governance decisions or cross-phase evidence when the namespace could be ambiguous.
+  - Keep the PRD's 00–24 roadmap unchanged until a separate approved decision explicitly amends it.
+  - Phase completion statuses remain those specified by the PRD; a phase-plan checklist or successful CI alone does not establish acceptance.
+- **Trade-offs:** This preserves the product roadmap while retaining detailed engineering sequencing, at the cost of maintaining crosswalk references and explicit namespace labels.
+- **Consequence until fully approved:** Treat Option 3 as Product Owner-approved but not as an accepted ADR. Keep Phase 00 `in_progress`; do not mark ADR-0001 accepted or advance Phase 01 until Engineering Lead review is recorded and the Phase 00 exit evidence is reviewed.
+- **Owner/approvers:** Product Owner (approval recorded); Engineering Lead (approval pending).
+- **Evidence:** Master PRD Part XVIII §82; `AGENTS.md` §§1 and 4; Phase Plan v1.1.0 §§1–4; Product Owner instruction dated 2026-10-13.
+- **Migration/rollback:** After Engineering Lead approval, update crosswalk and affected phase references. Preserve PRD phase IDs and historical links. If Engineering Lead rejects or requests changes, revise the crosswalk and decision record without marking the ADR accepted.
+- **Next action:** Engineering Lead reviews the namespace split, mapping, naming convention and phase-status consequences; records approve/reject/request-changes with role and date.
 
 ## 3. Risk register
 
 | Risk ID | Risk | Impact | Mitigation / exit condition | Owner | Status |
 |---|---|---|---|---|---|
-| R-001 | Phase roadmap conflict | Ambiguous phase authority and incorrect completion claims | Approve ADR-0001; publish crosswalk; update source docs | Product owner + engineering lead | BLOCKED |
+| R-001 | Phase roadmap namespace/crosswalk approval pending | Ambiguous phase authority and incorrect completion claims | Engineering Lead review/approval; finalize crosswalk; update references and evidence | Product owner + engineering lead | IN_PROGRESS |
 | R-002 | Repository has GLB acquisition/audit tooling but no verified app vertical slice | Mistakenly treating asset tooling as product implementation | Inspect source tree/CI and explicitly separate tooling from product capability | Engineering | IN_PROGRESS |
 | R-003 | Architecture choices are open | Premature stack/provider decisions create rework | Approve relevant ADR before dependent production implementation | Architecture owner TBD | OPEN |
 | R-004 | 82-domain scope and many integrations | Delivery complexity, duplicated engines and hidden dependencies | Enforce ownership map, dependency graph and vertical slices | Product/engineering | OPEN |
