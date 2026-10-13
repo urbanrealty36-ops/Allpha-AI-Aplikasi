@@ -79,3 +79,31 @@ def test_organization_create_rejects_client_authority_fields():
             "slug": "tenant-test",
             "tenant_id": "00000000-0000-4000-8000-000000000001",
         })
+
+def test_invalid_supabase_bearer_token_is_rejected(monkeypatch):
+    class FakeResponse:
+        status_code = 401
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://staging-example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    response = client.get("/v1/me", headers={"Authorization": "Bearer definitely-invalid"})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "INVALID_TOKEN"
+    assert "definitely-invalid" not in response.text
+
