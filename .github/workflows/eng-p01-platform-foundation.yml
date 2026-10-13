@@ -33,7 +33,7 @@ jobs:
           python-version: "3.12"
       - name: Install and test API
         working-directory: apps/api
-        run: python -m pip install -e ".[dev]" && pytest -q
+        run: python -m pip install -e ".[dev]" && python -m compileall -q src tests scripts && pytest -q
 
   web-build:
     name: Existing Web typecheck and build
