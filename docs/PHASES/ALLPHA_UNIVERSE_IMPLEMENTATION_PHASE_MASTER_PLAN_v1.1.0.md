@@ -1844,3 +1844,13 @@ Repository inspection for this documentation update confirms the Master PRD and 
 - Security Advisor returned no findings after moving authorization helper functions into the non-exposed private schema and restricting trigger function execution.
 - ENG-P02 remains IN_PROGRESS until CI is green for the latest commit, real Supabase Auth/profile/org flows and cross-tenant authorization tests pass, and deployment secrets/configuration are exercised in the target environment. Do not mark integration_verified or acceptance_passed based on schema and unit smoke tests alone.
 - Next dependency after ENG-P02 acceptance: ENG-P03 Identity/Profile completion, followed by early GLB catalog → authorized manifest/API → renderer vertical slice. Keep all routine commits directly on main.
+
+
+## ENG-P03 execution update — Human Identity (2026-10-13)
+
+- Implementation and scope/evidence: [ENG-P03 Human Identity](./ENG_P03_HUMAN_IDENTITY.md).
+- Added browser Supabase Auth session/sign-in/sign-up/sign-out, real profile loading/saving via FastAPI, user settings persistence, privacy/discoverability preferences and an account deactivation request state.
+- Canonical Supabase migration additions: profile locale/account status, user_settings, user_consents and settings RLS. Profile visibility remains canonical in profiles.visibility.
+- No mock identity or profile data is rendered. If public Supabase browser configuration is missing, the UI shows a configuration state instead of inventing a user.
+- ENG-P03 remains IN_PROGRESS pending green CI on the latest main commit, live authenticated account/profile/settings tests, email confirmation check and deployment configuration verification. Storage upload, notification delivery, legal consent capture against published documents, and full account deletion are explicitly not claimed as implemented.
+- Next after acceptance: ENG-P04 — AI Agent Identity, keeping human owner identity and Agent identity separate.
