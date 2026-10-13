@@ -30,7 +30,7 @@ jobs:
       - name: Download existing acquisition artifact
         env:
           GH_TOKEN: ${{ github.token }}
-          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          ARTIFACT_ID: ${{ inputs.artifact_id || '11786256809' }}
         run: |
           curl --fail --location --retry 3 \
             -H "Authorization: Bearer $GH_TOKEN" \
