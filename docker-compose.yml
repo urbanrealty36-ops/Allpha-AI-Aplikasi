@@ -2,6 +2,7 @@ services:
   api:
     build:
       context: ./apps/api
+      dockerfile: Dockerfile
     environment:
       ALLPHA_ENVIRONMENT: ${ALLPHA_ENVIRONMENT:-development}
       ALLPHA_API_VERSION: ${ALLPHA_API_VERSION:-0.2.0}
@@ -10,19 +11,42 @@ services:
       PORT: 8000
     ports:
       - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   web:
     build:
       context: ./apps/web
+      dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-          NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
     environment:
       PORT: 3000
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  super-admin:
+    build:
+      context: ./apps/super-admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    environment:
+      PORT: 3000
+    ports:
+      - "${SUPER_ADMIN_PORT:-3001}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
