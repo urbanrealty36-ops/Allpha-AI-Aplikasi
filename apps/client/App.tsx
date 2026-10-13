@@ -8,7 +8,8 @@ import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
-type Profile = { id: string; username: string | null; display_name: string; bio: string; locale: string; visibility: string };
+type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
+type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")).replace(/\/$/, "");
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -79,15 +80,98 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 }
 
 function Profile({ session }: { session: Session }) {
-  const [profile, setProfile] = useState<Profile | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [retry, setRetry] = useState(0);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [tab, setTab] = useState<"profile" | "settings">("profile");
+  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
+  async function apiRequest(path: string, init: RequestInit = {}) {
+    const response = await fetch(apiBase + path, {
+      ...init,
+      headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json", ...(init.headers || {}) },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
+    return body;
+  }
   useEffect(() => {
     let active = true; setLoading(true); setError("");
-    fetch(apiBase + "/v1/me", { headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" } })
-      .then(async r => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b?.error?.message || b?.detail?.message || "Profil tidak dapat dimuat (" + r.status + ")."); return b; })
-      .then(b => { if (active) setProfile(b.profile || null); }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Koneksi gagal."); }).finally(() => { if (active) setLoading(false); });
+    Promise.all([apiRequest("/v1/me"), apiRequest("/v1/me/settings")])
+      .then(([identity, preferences]) => {
+        if (active) { setProfile(identity.profile || null); setSettings(preferences.settings || null); }
+      }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Koneksi gagal."); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [session.access_token, retry]);
-  return <ScrollView contentContainerStyle={s.page}><Brand/><View style={s.card}><Text style={s.title}>Profil Anda</Text>{loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> : profile ? <><Text style={s.hero}>{profile.display_name || "Pengguna Allpha"}</Text><Text style={s.muted}>{profile.username ? "@" + profile.username : session.user.email || session.user.id}</Text><Text style={s.body}>{profile.bio || "Profil dibaca dari backend Allpha."}</Text><Text style={s.status}>Visibilitas: {profile.visibility} · Bahasa: {profile.locale}</Text></> : <Text style={s.muted}>API belum mengembalikan profil.</Text>}<Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/></View><Text style={s.footnote}>Data dibaca melalui API resmi, bukan langsung dari database.</Text></ScrollView>;
+  async function saveProfile() {
+    if (!profile) return; setBusy(true); setError(""); setMessage("");
+    try {
+      const data = await apiRequest("/v1/me/profile", { method: "PATCH", body: JSON.stringify({
+        username: profile.username || null, display_name: profile.display_name, avatar_url: profile.avatar_url || null,
+        bio: profile.bio, visibility: profile.visibility, locale: profile.locale,
+      }) });
+      setProfile((current) => current ? { ...current, ...data.profile } : current); setMessage("Profil berhasil disimpan.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Profil tidak dapat disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function saveSettings() {
+    if (!profile || !settings) return; setBusy(true); setError(""); setMessage("");
+    try {
+      const [identity, prefs] = await Promise.all([
+        apiRequest("/v1/me/profile", { method: "PATCH", body: JSON.stringify({ locale: profile.locale }) }),
+        apiRequest("/v1/me/settings", { method: "PATCH", body: JSON.stringify(settings) }),
+      ]);
+      setProfile((current) => current ? { ...current, ...identity.profile } : current);
+      setSettings(prefs.settings); setMessage("Pengaturan privasi dan preferensi berhasil disimpan.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Pengaturan tidak dapat disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function requestDeactivation() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const data = await apiRequest("/v1/me/deactivation-request", { method: "POST", body: "{}" });
+      setProfile((current) => current ? { ...current, account_status: data.profile.account_status } : current);
+      setMessage(data.message || "Permintaan penonaktifan akun tercatat.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Permintaan penonaktifan gagal."); }
+    finally { setBusy(false); }
+  }
+  const field = { ...s.input, flex: 1 } as const;
+  return <ScrollView contentContainerStyle={s.page}><Brand/>
+    <View style={s.card}>
+      <Text style={s.kicker}>HUMAN IDENTITY</Text><Text style={s.title}>Identitas Anda</Text>
+      <Text style={s.muted}>{session.user.email || session.user.id}</Text>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/>
+      </View>
+      {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
+      tab === "profile" ? profile ? <>
+        <Text style={s.muted}>Perubahan disimpan melalui API Allpha dan sesi akun Anda.</Text>
+        <Text style={s.muted}>Nama tampilan</Text><TextInput accessibilityLabel="Nama tampilan" value={profile.display_name} onChangeText={display_name => setProfile({ ...profile, display_name })} maxLength={80} style={field} placeholder="Nama tampilan" placeholderTextColor="#8B94AC"/>
+        <Text style={s.muted}>Username (huruf kecil, angka, _)</Text><TextInput accessibilityLabel="Username" autoCapitalize="none" value={profile.username || ""} onChangeText={value => setProfile({ ...profile, username: value.toLowerCase() || null })} maxLength={30} style={field} placeholder="nama_pengguna" placeholderTextColor="#8B94AC"/>
+        <Text style={s.muted}>URL avatar</Text><TextInput accessibilityLabel="URL avatar" autoCapitalize="none" keyboardType="url" value={profile.avatar_url || ""} onChangeText={value => setProfile({ ...profile, avatar_url: value || null })} style={field} placeholder="https://…" placeholderTextColor="#8B94AC"/>
+        <Text style={s.muted}>Bio</Text><TextInput accessibilityLabel="Bio" multiline value={profile.bio} onChangeText={bio => setProfile({ ...profile, bio })} maxLength={500} style={[field, { minHeight: 90, textAlignVertical: "top" }]} placeholder="Ceritakan tentang diri Anda" placeholderTextColor="#8B94AC"/>
+        <Text style={s.muted}>Bahasa</Text><View style={{ flexDirection: "row", gap: 8 }}><Button title="Bahasa Indonesia" secondary={profile.locale !== "id-ID"} onPress={() => setProfile({ ...profile, locale: "id-ID" })}/><Button title="English" secondary={profile.locale !== "en-US"} onPress={() => setProfile({ ...profile, locale: "en-US" })}/></View>
+        <Text style={s.muted}>Visibilitas profil</Text><View style={{ flexDirection: "row", gap: 8 }}><Button title="Publik" secondary={profile.visibility !== "public"} onPress={() => setProfile({ ...profile, visibility: "public" })}/><Button title="Privat" secondary={profile.visibility !== "private"} onPress={() => setProfile({ ...profile, visibility: "private" })}/></View>
+        <Button title={busy ? "Menyimpan…" : "Simpan profil"} disabled={busy || profile.account_status === "deactivation_requested"} onPress={() => void saveProfile()}/>
+        <Text style={s.muted}>Status akun: {profile.account_status === "deactivation_requested" ? "Permintaan penonaktifan tercatat" : "Aktif"}</Text>
+        <Button title={profile.account_status === "deactivation_requested" ? "Penonaktifan diminta" : "Minta penonaktifan akun"} secondary disabled={busy || profile.account_status === "deactivation_requested"} onPress={() => void requestDeactivation()}/>
+      </> : <Text style={s.muted}>Profil belum tersedia.</Text> :
+      settings ? <>
+        <Text style={s.kicker}>PREFERENSI</Text><Text style={s.body}>Tema aplikasi</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}><Button title="Sistem" secondary={settings.theme !== "system"} onPress={() => setSettings({ ...settings, theme: "system" })}/><Button title="Terang" secondary={settings.theme !== "light"} onPress={() => setSettings({ ...settings, theme: "light" })}/><Button title="Gelap" secondary={settings.theme !== "dark"} onPress={() => setSettings({ ...settings, theme: "dark" })}/></View>
+        <Text style={s.kicker}>NOTIFIKASI</Text>
+        {(["product_updates", "security_alerts", "social_activity"] as const).map((key) => <Button key={key} title={(settings.notification_preferences[key] ? "✓ " : "○ ") + ({ product_updates: "Pembaruan produk", security_alerts: "Peringatan keamanan", social_activity: "Aktivitas sosial" }[key])} secondary={!settings.notification_preferences[key]} onPress={() => setSettings({ ...settings, notification_preferences: { ...settings.notification_preferences, [key]: !settings.notification_preferences[key] } })}/>)}
+        <Text style={s.kicker}>PRIVASI</Text><Text style={s.body}>Temukan profil melalui username</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}><Button title="Dapat ditemukan" secondary={!settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: true } })}/><Button title="Tidak ditemukan" secondary={settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: false } })}/></View>
+        <Button title={busy ? "Menyimpan…" : "Simpan pengaturan"} disabled={busy} onPress={() => void saveSettings()}/>
+      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text>}
+      {!!error && !loading && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+      {!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}
+      <Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/>
+    </View>
+    <Text style={s.footnote}>Data identitas, pengaturan dan privasi dibaca/ditulis melalui API resmi. Tidak ada akses database langsung dari aplikasi.</Text>
+  </ScrollView>;
 }
 
 function Navigator() {
