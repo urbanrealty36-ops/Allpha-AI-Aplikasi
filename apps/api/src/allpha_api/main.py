@@ -255,3 +255,109 @@ async def list_organization_memberships(organization_id: uuid.UUID, user: dict[s
         if not orgs:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Organisasi tidak ditemukan."})
     return {"items": rows}
+
+
+# ENG-P04 — AI Agent identity is separate from the signed-in Human identity.
+class AgentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    handle: str = Field(min_length=3, max_length=30, pattern=r"^[a-z0-9_]+$")
+    display_name: str = Field(min_length=2, max_length=80)
+    description: str = Field(default="", max_length=1000)
+    avatar_url: str | None = Field(default=None, max_length=2048)
+    persona: dict[str, Any] = Field(default_factory=dict)
+    visibility: Literal["private", "public"] = "private"
+
+
+class AgentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    handle: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[a-z0-9_]+$")
+    display_name: str | None = Field(default=None, min_length=2, max_length=80)
+    description: str | None = Field(default=None, max_length=1000)
+    avatar_url: str | None = Field(default=None, max_length=2048)
+    persona: dict[str, Any] | None = None
+    visibility: Literal["private", "public"] | None = None
+    status: Literal["draft", "active", "archived"] | None = None
+
+
+_AGENT_FIELDS = "id,handle,display_name,description,avatar_url,persona,visibility,status,created_by,created_at,updated_at"
+
+
+@app.get("/v1/agents", tags=["agents"])
+async def list_my_agents(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await user_db_request(
+        "GET", "agent_ownerships", request.state.supabase_access_token,
+        params={
+            "select": f"agent_id,ownership_role,status,created_at,agent:ai_agents({_AGENT_FIELDS})",
+            "owner_user_id": f"eq.{user['id']}", "ownership_role": "eq.owner",
+            "status": "eq.active", "order": "created_at.desc", "limit": "100",
+        },
+    )
+    items = []
+    for row in rows or []:
+        agent = row.get("agent")
+        if agent:
+            items.append({**agent, "ownership": {
+                "owner_user_id": user["id"], "role": row["ownership_role"],
+                "status": row["status"], "since": row["created_at"],
+            }})
+    return {"items": items}
+
+
+@app.post("/v1/agents", status_code=201, tags=["agents"])
+async def create_my_agent(payload: AgentCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # RPC derives the owner from auth.uid() and creates Agent + ownership atomically.
+    result = await user_db_request(
+        "POST", "rpc/create_ai_agent", request.state.supabase_access_token,
+        body={
+            "p_handle": payload.handle, "p_display_name": payload.display_name,
+            "p_description": payload.description, "p_avatar_url": payload.avatar_url,
+            "p_persona": payload.persona, "p_visibility": payload.visibility,
+        },
+    )
+    if not result:
+        raise HTTPException(status_code=500, detail={"code": "AGENT_CREATE_FAILED", "message": "Agent tidak dapat dibuat."})
+    agent = result[0] if isinstance(result, list) else result
+    return {"agent": agent, "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+
+
+@app.patch("/v1/agents/{agent_id}", tags=["agents"])
+async def update_my_agent(agent_id: uuid.UUID, payload: AgentUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan Agent."})
+    token = request.state.supabase_access_token
+    ownership = await user_db_request(
+        "GET", "agent_ownerships", token,
+        params={"select": "agent_id,ownership_role,status", "agent_id": f"eq.{agent_id}",
+                "owner_user_id": f"eq.{user['id']}", "ownership_role": "eq.owner", "status": "eq.active", "limit": "1"},
+    )
+    if not ownership:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    rows = await user_db_request(
+        "PATCH", "ai_agents", token,
+        params={"id": f"eq.{agent_id}", "select": _AGENT_FIELDS},
+        body=changes, prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    return {"agent": rows[0], "ownership": {"owner_user_id": user["id"], "role": "owner", "status": "active"}}
+
+
+@app.get("/v1/agents/{agent_id}", tags=["agents"])
+async def get_my_agent(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = request.state.supabase_access_token
+    ownership = await user_db_request(
+        "GET", "agent_ownerships", token,
+        params={"select": "agent_id,ownership_role,status,created_at", "agent_id": f"eq.{agent_id}",
+                "owner_user_id": f"eq.{user['id']}", "ownership_role": "eq.owner", "status": "eq.active", "limit": "1"},
+    )
+    if not ownership:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    rows = await user_db_request(
+        "GET", "ai_agents", token,
+        params={"select": _AGENT_FIELDS, "id": f"eq.{agent_id}", "limit": "1"},
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    owner = ownership[0]
+    return {"agent": rows[0], "ownership": {"owner_user_id": user["id"], "role": owner["ownership_role"], "status": owner["status"], "since": owner["created_at"]}}
