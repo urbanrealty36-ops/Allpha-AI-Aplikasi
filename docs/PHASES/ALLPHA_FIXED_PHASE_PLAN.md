@@ -1,115 +1,189 @@
 # ALLPHA FIXED PHASE PLAN
-**Status:** Canonical engineering execution plan  
-**Applies to:** `main` · Monorepo: `Allpha-AI-Aplikasi`  
-**Last reconciled:** 2026-10-13  
-**Authority:** Master PRD v3.0.0 remains the product source of truth. This document is the single operational source for engineering phase order, phase status, repo coverage, and next action.
+**Status:** Satu-satunya rencana operasional phase engineering  
+**Product authority:** `docs/PRD/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE.md`  
+**Agent rules:** `AGENTS.md`  
+**Branch:** `main` · **Monorepo:** `urbanrealty36-ops/Allpha-AI-Aplikasi`  
+**Last reconciled:** 2026-10-13
 
-## 1. Rules that prevent phase drift
-1. Do not create a parallel roadmap, phase namespace, or new phase to compensate for missed implementation.
-2. Product phases remain `PRD-P00–PRD-P24` as defined by the Master PRD. Engineering execution phases remain `ENG-P00–ENG-P37`. Keep these namespaces distinct.
-3. This is the only operational phase plan. Update this file when status or the next phase changes; do not create a separate status board, crosswalk, traceability matrix, or repeated phase report.
-4. A phase is not complete because documentation, a workflow, a build, or one app passed. It must deliver the promised user journey across every affected repo.
-5. Every feature must be mapped to the four app surfaces before implementation. Mark each repo `change`, `integrate`, or `not affected (reason)`; a blank row is not allowed.
-6. Work directly on `main`, as requested by the Product Owner. Keep commits focused. Run only relevant automated checks, fix failures, and continue; no redundant manual approval ceremonies.
-7. Do not claim device, integration, or production verification unless it was actually run and evidence exists.
-8. Keep Master PRD, this plan, `AGENTS.md`, source code, tests, migrations, and necessary environment/security documentation. Remove duplicated phase-planning/status documents rather than keeping multiple competing sources.
+> Dokumen ini adalah satu-satunya acuan operasional untuk urutan ENG phase, status, cakupan empat aplikasi, dependensi, aset 3D, dan pekerjaan berikutnya. Master PRD tetap menjadi sumber kebenaran produk. Jangan membuat phase baru, roadmap paralel, status board terpisah, atau dokumen phase rutin lainnya.
 
-## 2. The four-repo execution contract
-The four applications live in one monorepo. Every phase starts with a quick impact map and ends with a repo-by-repo delivery summary.
+## 1. Aturan tetap
+1. PRD product phase dan engineering phase adalah namespace berbeda. Pertahankan pemetaan yang eksplisit; jangan mengganti nomor untuk menyamarkan pekerjaan yang terlewat.
+2. Engineering phase kanonis ENG-P00–ENG-P37. ENG-P37 hanya validasi lintas-domain dan release, bukan implementasi fitur yang belum ada.
+3. Phase hanya dianggap selesai sesuai status PRD: `not_started`, `in_progress`, `blocked`, `implemented`, `integration_verified`, `acceptance_passed`, `production_verified`. Kode, dokumen, CI hijau, file di Storage, atau screenshot saja tidak membuktikan keseluruhan journey.
+4. Setiap phase wajib memetakan keempat aplikasi di bawah sebagai `CHANGE`, `INTEGRATE`, atau `NOT AFFECTED` disertai alasan spesifik. Tidak boleh ada repo yang terlupakan atau kolom kosong.
+5. Kerjakan langsung di `main` sesuai arahan pemilik. Implementasikan fitur, jalankan pemeriksaan otomatis yang relevan, perbaiki kegagalan, lalu lanjutkan. Hindari approval manual dan workflow administratif yang tidak perlu.
+6. Satu sumber data dan business truth: `apps/api` + database kanonis Supabase `AllphaAiAplikasi-db` (`dvdziauyvuhcnqhrrvww`). Tidak membuat database kedua, registry domain duplikat, atau akses istimewa dari client.
+7. Jangan klaim tes device, integrasi real, visual QA, migrasi, atau produksi jika belum benar-benar dijalankan.
+8. Pertahankan Master PRD, `AGENTS.md`, dokumen arsitektur yang benar-benar dibutuhkan, dan panduan secrets/environment. Dokumen phase/status duplikat tidak dipertahankan. Dokumen yang berisi keputusan/kontrak teknis yang masih aktif hanya dipertahankan bila memang dirujuk dan tidak menggandakan phase plan.
 
-| Repo | Owns | Required checks when changed |
-|---|---|---|
-| `apps/web` | Next.js web client | lint/build and relevant UI journey |
-| `apps/api` | FastAPI, canonical domain/API behavior, authorization, migrations | pytest, API/contract tests, migration checks when applicable |
-| `apps/client` | Native Android and iOS end-user application | native project/build configuration, Android build/test and iOS build/test where toolchain permits; report unavailable platform verification honestly |
-| `apps/super-admin` | Separate privileged operator console | build/lint plus permission and privileged-journey tests |
+## 2. Kontrak eksekusi empat aplikasi
+Keempat area aplikasi berada di satu monorepo, tetapi memiliki tanggung jawab dan deliverable terpisah.
 
-### Required per-phase checklist
-- [ ] **Web:** list the files changed or explain why the phase does not affect Web.
-- [ ] **API/DB:** list the files/migrations changed or explain why the phase does not affect API/DB.
-- [ ] **Native Client:** list the Android/iOS files changed or explain why the phase does not affect native UX.
-- [ ] **Super Admin:** list the files changed or explain why operator workflows are unaffected.
-- [ ] **Cross-app contract:** ensure clients use typed API contracts and never perform privileged business writes directly.
-- [ ] **Automated checks:** run relevant checks and fix failures before moving on.
-- [ ] **Truthful status:** update this document with implementation status, test results, remaining blocker, and next phase.
-
-“Not affected” must include a brief concrete reason (e.g. “public profile field-only API fix; no operator workflow or native screen changes”). “Not affected” cannot be used merely because that repo was overlooked.
-
-### Definition of a useful vertical slice
-For a user-facing feature, complete all affected parts together: UI states (loading/empty/success/error/retry), API, persistence where required, authorization/privacy, and basic observability. Use one shared backend/domain truth. Do not make a UI mock and call it implemented. For native work, a README or empty directory does not count as a client implementation.
-
-## 3. Canonical phase order and current status
-Statuses use the Master PRD vocabulary: `not_started`, `in_progress`, `blocked`, `implemented`, `integration_verified`, `acceptance_passed`, `production_verified`. Status is intentionally conservative; only evidence actually observed is recorded.
-
-| Phase | Fixed scope | Current status | Next implementation focus |
+| Area aplikasi | Lokasi | Tanggung jawab | Bukti implementasi yang relevan |
 |---|---|---|---|
-| ENG-P00 | Product contract and minimal delivery governance | in_progress | Keep governance lightweight; this file is the single operational phase plan |
-| ENG-P01 | Platform foundation and deployable thin slice across all four repos | in_progress | **Close the missed native deliverable:** bootstrap real Android/iOS app in `apps/client`, establish buildable native projects, navigation/design foundation, API configuration, and a working first screen. Verify the existing Web/API foundation without repeating completed work |
-| ENG-P02 | Database, authentication, authorization and tenant isolation | in_progress | Continue from existing Supabase-backed code; finish real auth and cross-tenant integration checks, no new database |
-| ENG-P03 | Human identity, profile, settings and privacy | in_progress | Reuse existing API/Web implementation; integrate native profile/session flow and close only actual gaps |
-| ENG-P04 | Social Graph | not_started / not_verified | Implement canonical Social Graph scope; do not confuse it with the historical Agent Identity package |
-| ENG-P05 | AI Agent identity, ownership, persona and passport | in_progress (existing work mapped here) | Preserve existing Agent Identity code/docs in git history/source; reconcile identifier without rebuilding it as Social Graph |
-| ENG-P06 | Agent Studio, skills, tools and capability governance | not_started | Implement after required identity foundations |
-| ENG-P07 | Knowledge ingestion, document processing and Agent learning | not_started | Follow dependency order in Master Plan |
-| ENG-P08 | Agent memory, retrieval, context assembly and privacy isolation | not_started | Follow dependency order in Master Plan |
-| ENG-P09 | AI Gateway, Model Router, provider adapters and cost policy | not_started | Follow dependency order in Master Plan |
-| ENG-P10 | Agent runtime, tool execution and conversation sessions | not_started | Follow dependency order in Master Plan |
-| ENG-P11 | Durable workflow orchestration, checkpoint and resume | not_started | Follow dependency order in Master Plan |
-| ENG-P12 | Skill Challenge, Agent evaluation, achievements and rewards | not_started | Follow dependency order in Master Plan |
-| ENG-P13 | Content creation | not_started | Build vertical slices across affected clients/API |
-| ENG-P14 | Feed | not_started | Build vertical slices across affected clients/API |
-| ENG-P15 | Reels and media | not_started | Include media upload/playback and failure states |
-| ENG-P16 | Stories and moments | not_started | Include media lifecycle and privacy |
-| ENG-P17 | Search and discovery | not_started | Include query/API/UI and privacy |
-| ENG-P18 | Messaging | not_started | Include realtime and delivery/error behavior as specified |
-| ENG-P19 | Communities and collaboration | not_started | Include membership and authorization |
-| ENG-P20 | Notifications | not_started | Include native push integration when configured |
-| ENG-P21 | Spatial domain and navigation | not_started | Shared spatial contracts for Web and native |
-| ENG-P22 | Theme and asset pipeline | not_started | Use canonical asset catalog and real assets |
-| ENG-P23 | World renderer and booths | not_started | Verify renderer on supported Web/native surfaces |
-| ENG-P24 | AI Character and animation | not_started | Reuse canonical character/animation contracts |
-| ENG-P25 | Live Experience | not_started | Include client, API and operator impacts |
-| ENG-P26 | Realtime Streaming | not_started | Verify supported device/runtime paths |
-| ENG-P27 | Events and scheduling | not_started | Cross-app journey |
-| ENG-P28 | Agent Marketplace | not_started | Cross-app journey |
-| ENG-P29 | Commerce and creator economy | not_started | Server-authoritative transactions |
-| ENG-P30 | Subscription, credits and billing | not_started | Payment provider integration, idempotency and reconciliation |
-| ENG-P31 | Advertising and sponsorship | not_started | Consent, delivery and measurement |
-| ENG-P32 | Trust, safety and moderation | not_started | Cross-cutting enforcement and user/operator journeys |
-| ENG-P33 | Analytics and user insights | not_started | Privacy-aware instrumentation |
-| ENG-P34 | Admin Control Plane | not_started | Implement in `apps/super-admin` plus authorized API paths |
-| ENG-P35 | Developer platform and interoperability | not_started | API contracts and credentials governance |
-| ENG-P36 | Observability and AI evaluation | not_started | Cross-cutting metrics, logs and evaluation |
-| ENG-P37 | Final E2E, regression and release gate | not_started | Final integration/release verification only; do not defer feature implementation here |
+| Web | `apps/web` | Next.js web app, responsive UI, web spatial renderer | source screen nyata, API terhubung, build/lint dan journey UI |
+| Backend/API | `apps/api` | FastAPI, domain/service, authorization, API contracts, migrations, asset catalog/manifest dan lifecycle | pytest/API contract, migrasi jika perlu, permission/negative tests dan integrasi |
+| Native Client | `apps/client` | aplikasi end-user Android dan iOS; bukan PWA | project native buildable, source screen/navigation, API client/session, Android build/test dan iOS build/test bila toolchain tersedia |
+| Super Admin | `apps/super-admin` | console operator terpisah untuk pengelolaan domain dan operasi berizin | source UI nyata, API berotorisasi, build/test dan privileged-action tests |
 
-**Important status note:** The table is a reconciled working baseline, not a claim that all unreviewed phases have been audited. Existing ENG-P02/P03 and Agent Identity work is not erased. ENG-P04 is Social Graph in the canonical engineering plan; the existing document/code package titled ENG-P04 Agent Identity must not be silently overwritten or reimplemented. Treat that work as ENG-P05 for future roadmap references, while retaining its implementation.
+Shared contracts boleh ditempatkan di `packages/contracts` jika benar-benar diperlukan; jangan membuat lapisan/package kosong hanya untuk memenuhi struktur. Web, Client, dan Super Admin menggunakan API resmi. Tidak ada business logic atau akses istimewa yang diduplikasi di client.
 
-## 4. Immediate execution order
-1. **ENG-P01 native foundation gap:** create actual Android/iOS source projects under `apps/client`; select a shared native stack only after checking repo dependencies and PRD constraints. Deliver an app launchable in emulator/device, navigation shell, API base configuration, session boundary, and clear loading/error states. Do not spend another phase on planning documents.
-2. **ENG-P02/P03 integration closure:** test existing backend/Auth/profile work against the real configured Supabase environment and integrate native login/profile. Do not duplicate Web work.
-3. **ENG-P04 Social Graph:** implement canonical phase scope in API plus affected Web, Client and Super Admin surfaces.
-4. **ENG-P05 Agent Identity:** continue from existing implementation; close remaining integration evidence without renumbering or rewriting it as Social Graph.
-5. Continue sequentially by the phase table and Master PRD dependencies.
+### Per-phase repo coverage (wajib, ringkas)
+Sebelum coding, catat di commit/pekerjaan phase yang sedang dilakukan:
+- **Web:** CHANGE / INTEGRATE / NOT AFFECTED + alasan.
+- **API/DB:** CHANGE / INTEGRATE / NOT AFFECTED + alasan.
+- **Native Client Android/iOS:** CHANGE / INTEGRATE / NOT AFFECTED + alasan.
+- **Super Admin:** CHANGE / INTEGRATE / NOT AFFECTED + alasan.
+- **Checks:** perintah otomatis relevan dan hasil sebenarnya.
+Tidak perlu membuat file checklist/report terpisah untuk setiap phase. Update tabel phase ini saat status atau pekerjaan berikutnya berubah.
 
-## 5. How each phase is executed
-For each phase, use this compact loop:
-1. Read Master PRD, this file, `AGENTS.md`, and only the relevant code/docs.
-2. Inspect all four repos (directories) and mark change/integrate/not affected before coding.
-3. Implement the vertical slice in the same phase; update database migrations only when needed.
-4. Run relevant automated tests/builds and fix failures.
-5. Commit directly to `main`.
-6. Update this table and report: commit, changed repos, tests actually run, blockers, and next phase.
+Aturan anti-kelalaian: satu phase tidak boleh dianggap selesai jika suatu aplikasi yang diperlukan oleh journey tidak mempunyai implementasi atau integrasi yang nyata. `README.md`, folder kosong, mock UI, dan placeholder bukan implementasi. Jika satu aplikasi memang belum tersentuh, phase tetap `in_progress` dan pekerjaan dilanjutkan di phase pemiliknya; jangan membuat phase baru hanya untuk menutupi kelalaian.
 
-Do not create a new phase document, checklist document, status CSV, or report file for routine work. Keep implementation notes in commits and update this plan only when the canonical status/next action changes.
+## 3. Fixed phase map dan status kerja saat rekonsiliasi
 
-## 6. Architecture invariants
-- Master PRD v3.0.0 is the product authority; this file controls engineering execution only.
-- Target surfaces: native Android/iOS, Web, separate Super Admin, and Developer Console. PWA is not a target.
-- Supabase canonical project: `AllphaAiAplikasi-db` (`dvdziauyvuhcnqhrrvww`). Do not create a new database.
-- API/domain business truth remains in `apps/api`; client apps must not bypass authorization.
-- No production secrets in clients. No fake data presented as real integration.
-- GLB/assets must use the canonical catalog/manifest; do not hard-code private Storage URLs.
-- The four-repo checklist applies to every phase, not only ENG-P01.
+| Phase | Cakupan tetap | Status saat rekonsiliasi | Fokus/entry berikutnya |
+|---|---|---|---|
+| ENG-P00 | Product contract dan delivery governance minimum | in_progress | Pertahankan dokumen ini sebagai satu-satunya phase plan; jangan menambah status board terpisah |
+| ENG-P01 | Platform foundation dan deployable thin slice untuk Web, API, Native Client, Super Admin | in_progress | **Gap nyata:** bootstrap Android/iOS sungguhan di `apps/client`; konfigurasi build, navigation, design foundation, API base URL/session boundary dan satu screen berjalan. Jangan mengulang Web/API yang sudah ada |
+| ENG-P02 | Database, authentication, authorization, tenant isolation | in_progress | Lanjutkan schema/API yang ada di Supabase kanonis; tutup integrasi login, ownership dan negative tenant tests sesuai kebutuhan nyata |
+| ENG-P03 | Human identity, profile, settings, privacy | in_progress | Reuse Web/API yang ada; hubungkan native auth/profile/settings. Jangan menyebut selesai sebelum Client journey tersedia |
+| ENG-P04 | Social Graph: follow/relationship, block/mute, interest graph dan privacy | not_started | Implementasi sesuai scope kanonis; jangan salah menganggap Agent Identity sebagai Social Graph |
+| ENG-P05 | AI Agent identity, ownership, persona, passport | in_progress (implementasi historis sudah ada di bawah label ENG-P04) | Pertahankan kode/migrasi yang sudah ada, referensikan secara kanonis sebagai ENG-P05, tutup integrasi yang benar-benar kurang tanpa mengulang implementasi |
+| ENG-P06 | Agent Studio, skills, tools, capability governance | not_started | Setelah identity/ownership siap |
+| ENG-P07 | Knowledge ingestion, document processing, Agent learning | not_started | Upload, proses, status job, provenance, delete/retry |
+| ENG-P08 | Agent memory, retrieval, context assembly, privacy isolation | not_started | Memory lifecycle dan owner/tenant isolation |
+| ENG-P09 | AI Gateway, Model Router, provider adapters, cost policy | not_started | Provider-neutral routing, metering, quota dan budget |
+| ENG-P10 | Agent Runtime, tool execution, conversation sessions | not_started | Runtime terikat permission, budget, tool contracts |
+| ENG-P11 | Durable workflow orchestration, checkpoint/resume | not_started | Durable state, retry/idempotency, cancellation/resume |
+| ENG-P12 | Skill Challenge, evaluation, achievements/rewards | not_started | Evaluasi traceable, anti-abuse dan reward ledger |
+| ENG-P13 | Content creation dan media pipeline | not_started | Satu content model, upload, preview/publish/error recovery |
+| ENG-P14 | Social feed, ranking, interactions dan controls | not_started | API + seluruh client yang terdampak |
+| ENG-P15 | Reels, short video/audio, media consumption | not_started | Playback, adaptive behavior dan moderation |
+| ENG-P16 | Stories, moments, temporary content | not_started | Expiry ditegakkan server-side |
+| ENG-P17 | Search, discovery, trends, recommendations | not_started | Search API/index dan privacy-aware UI |
+| ENG-P18 | Messaging Human/Agent, delivery/realtime | not_started | Membership authorization, delivery states dan reconnect |
+| ENG-P19 | Communities, collaboration, missions/workspaces | not_started | Membership, access grants, moderation |
+| ENG-P20 | Notification center dan delivery orchestration | not_started | Preferences, dedupe, retry; push native ketika dikonfigurasi |
+| ENG-P21 | Spatial domain, Universe hierarchy, navigation | not_started | Universe/Galaxy → World → District → Zone → Booth/POI → scene object; ID/coordinate/landmark contract bersama Web dan native |
+| ENG-P22 | Theme Builder, GLB Asset Pipeline, catalog/manifest | not_started | Inventaris file nyata, provenance/license, hash/size, parse/format, kategori 14 template, versi, API catalog dan alur developer preview-to-renderer |
+| ENG-P23 | World Renderer, City Districts, buildings, landmarks, booths, spatial interactions | not_started | Gabungkan scene memakai canonical Scene Schema dan entity IDs; render GLB yang dipetakan dari manifest di Web dan native; validasi loading, fallback, navigasi dan performa |
+| ENG-P24 | Human avatar, AI Character, uniforms, animation contract | not_started | Rig/animation capabilities diverifikasi dari asset; tidak mengklaim animasi yang tidak didukung |
+| ENG-P25 | Live Experience dan virtual stage | not_started | Template stage, role, create/join/manage journey lintas aplikasi |
+| ENG-P26 | Realtime streaming, voice, camera dan live animation | not_started | Permission kamera/mic, reconnect, native/web transport dan fallback |
+| ENG-P27 | Events, scheduling, attendance | not_started | Timezone, capacity, join/cancel dan notifikasi |
+| ENG-P28 | Agent catalog/marketplace/service discovery | not_started | Listing, permission, compatibility, moderation |
+| ENG-P29 | Commerce, Booth Tenant, creator economy/revenue share | not_started | Order/ledger/settlement dan operator workflows |
+| ENG-P30 | Freemium, subscription, credits, billing/payment settlement | not_started | Server-verified payment, idempotent webhook, ledger dan reconciliation |
+| ENG-P31 | Ads, sponsorship, spatial ad inventory | not_started | Consent, labeled placements, spend/impression metrics |
+| ENG-P32 | Trust, safety, moderation, reputation, anti-fraud | not_started | Enforcement lintas seluruh aplikasi/domain |
+| ENG-P33 | Analytics, insights, product intelligence | not_started | Role-scoped, privacy-preserving metrics |
+| ENG-P34 | Super Admin Control Plane, governance, operations | not_started | Implementasi nyata di `apps/super-admin` dengan API privileged yang terotorisasi |
+| ENG-P35 | Developer Platform, public API, Agent interoperability | not_started | Credentials, scopes, quotas, webhook dan contract docs |
+| ENG-P36 | Observability, reliability, AI evaluation, cost operations | not_started | Metrics/log/alerts/evaluation dan runbook operasional |
+| ENG-P37 | Final cross-domain E2E, security regression, release gate | not_started | Validasi journey end-to-end setelah fitur tersedia; tidak boleh menutupi fitur yang belum diimplementasikan |
 
-## 7. What counts as done
-A phase can be marked `implemented` only when its scoped code exists in all affected repos and relevant automated checks pass. Use `integration_verified` when real connected services are exercised, `acceptance_passed` when the phase acceptance journey has evidence, and `production_verified` only after production verification. If device tooling or credentials are unavailable, state the limitation and keep the phase in progress; do not substitute a document or CI-only pass.
+**Makna status:** status di atas adalah baseline konservatif dari bukti repo yang telah diperiksa, bukan klaim audit penuh semua domain. Perbarui hanya saat ada bukti nyata. Status historis Agent Identity berlabel ENG-P04 tidak mengubah definisi ENG-P04=Social Graph dan ENG-P05=Agent Identity.
+
+## 4. Urutan kerja langsung berikutnya
+1. **ENG-P01 — native gap:** buat source project Android/iOS yang benar-benar buildable di `apps/client`; implementasikan launch screen, navigation, API configuration dan satu alur nyata. Pilih stack native setelah cek dependency/PRD; jangan membuat phase atau dokumen baru.
+2. **ENG-P02/P03 — integrasi native:** sambungkan login/session, profile, preferences dan privacy ke API/Supabase yang sudah ada; hindari duplikasi Web.
+3. **ENG-P04 — Social Graph:** bangun API/data/policy dan screen pada setiap client yang terdampak.
+4. **ENG-P05 — Agent Identity:** lanjutkan kode yang sudah ada dan lengkapi integrasi; jangan ulang dari nol.
+5. **ENG-P21/P22/P23 — spatial/GLB:** setelah foundation API dan native renderer dapat dipakai, lakukan asset inventory dan manifest mapping, lalu renderer integration dan district assembly sesuai ketentuan bagian 5.
+6. Lanjutkan phase lain menurut dependensi Master PRD. Satu feature dikerjakan sebagai vertical slice lintas aplikasi yang terdampak.
+
+## 5. Kontrak implementasi 3D GLB, District/Landmarks, dan 14 Theme Categories
+
+Bagian ini merupakan spesifikasi kerja untuk ENG-P21, ENG-P22, ENG-P23, dan ENG-P24. **Keberadaan script/workflow akuisisi atau GLB di Storage bukan bukti bahwa katalog lengkap, file telah dipetakan benar, District telah dirakit, atau aset telah tampil di UI.**
+
+### 5.1 Pipeline kanonis
+1. **Inventory nyata:** catat setiap file/asset dengan stable asset ID, nama, sumber URL/repo, provenance, license evidence/source terms, object path, ukuran bytes, SHA-256, file format, versi dan status. Jangan mengarang inventory berdasarkan jumlah target.
+2. **Acquire/import:** developer memasukkan asset melalui alur yang ditentukan; pertahankan original bytes dan sumbernya. Jangan unduh ulang seluruh koleksi jika aset tersedia.
+3. **Basic structural check otomatis:** validasi GLB header/chunks/JSON, checksum/size, external URI dependencies, scene/mesh/material/texture/animation metadata, dan error yang bisa ditindaklanjuti. File gagal ditandai jelas; jangan diam-diam dianggap valid.
+4. **Category mapping:** klasifikasikan berdasarkan metadata, geometri dan konteks yang benar-benar diamati. Nama file/heuristik hanya kandidat. Jangan default semua aset tak dikenal menjadi District atau memaksa satu asset ke kategori yang tidak didukung.
+5. **Catalog + immutable manifest:** backend adalah pemilik canonical asset registry. Manifest memuat asset ID/version, category, checksum, size, storage reference, compatibility/capabilities, status dan metadata penempatan yang diperlukan. Hindari private Storage URL yang di-hardcode ke UI.
+6. **Developer preview:** aset yang tersedia untuk developer dapat dipreview secara sederhana setelah pemeriksaan format dasar; tidak perlu approval manual berlapis untuk preview lokal. Preview tidak berarti hak publik, entitlement, moderation clearance atau production publication.
+7. **Publish/use:** gunakan lifecycle/catalog API kanonis untuk aset yang boleh ditayangkan ke audience yang sesuai. Jangan menulis langsung ke registry/database dari client atau membuat registry kedua. Status publik dan hak/lisensi tetap harus jelas.
+8. **Renderer integration:** Web dan Native Client membaca scene + manifest dari API dan memuat GLB dengan loading/error/retry, cancellation, cleanup, low-detail fallback, dan batas performa yang sesuai perangkat.
+9. **District assembly:** scene disusun dari canonical World/District/Zone/Booth/POI IDs dan scene schema deklaratif. GLB hanya visual asset; tidak menentukan permission, owner, commerce, billing, atau status bisnis.
+10. **Evidence:** per asset/scene simpan hasil pemeriksaan yang relevan dan link commit/build/test. Tidak perlu dokumen per asset jika metadata dan hasil otomatis sudah berada di manifest/report.
+
+### 5.2 Empat belas category keys kanonis
+Kunci di bawah tidak boleh diubah diam-diam karena dipakai sebagai kontrak kategori.
+
+| Key | Makna penggunaan | Contoh objek/placement yang cocok (bukan klaim asset tersedia) |
+|---|---|---|
+| `universe` | ruang/komposisi Universe utama | scene/visual Universe |
+| `galaxy` | Galaxy dan komposisi bintang | galaksi, nebula, starfield |
+| `world` | environment World | terrain, landscape, environment |
+| `orbit` | orbit dan objek orbit | orbit ring, satellite/orbit visual |
+| `capsule` | Content Capsule/portal container visual | capsule/pod/container |
+| `district` | elemen kota dan District | city blocks, streets, buildings |
+| `booth` | booth/tenant/retail POI | kios, store, booth, tenant space |
+| `content-feed` | surface konten/media | screen, billboard, content display |
+| `agent-character` | karakter visual Agent | character/avatar/robot dengan rights/rig metadata |
+| `live-stage` | panggung dan studio Live | stage, podcast, presentation, classroom |
+| `human-live` | elemen human camera/live participant | live-person setup/visual elements; bukan pengganti izin kamera |
+| `sticker-social` | sticker/reaction sosial | sticker, emoji, reaction object |
+| `animation` | asset/clip/rig animasi | rig, animation clip, motion asset |
+| `navigation-fx` | navigasi dan efek visual | portal, gate, waypoint, navigation FX |
+
+Target desain **25 Theme × 14 kategori = 350 slot template**. Ini matriks kebutuhan, bukan klaim 350 file unik atau aset yang sudah disetujui. Setiap slot harus mencatat template/theme ID, category key, asset ID/version yang ditautkan bila tersedia, status dan fallback. Slot boleh berstatus missing/unmapped; jangan membuat aset fiktif untuk memenuhi angka.
+
+### 5.3 District kota dan landmarks
+- District harus berupa scene yang tersusun dari beberapa aset/objek, bukan satu GLB besar tanpa entity mapping.
+- Setiap landmark/POI punya stable domain ID, parent District/Zone ID, transform/coordinate, scale convention, interaction type, access/visibility, theme reference dan optional asset ID/version.
+- City GLBs dipakai sebagai building/block/road/landmark presentation layer. Simpan identitas jalan, gedung, landmark, portal, booth dan POI dalam scene/domain data agar dapat diperbarui tanpa mengubah business IDs.
+- Pemetaan landmark wajib berasal dari inventory dan bukti nyata (nama/metadata/geometri/visual preview). Jangan mengklaim landmark kota tertentu tersedia hanya berdasarkan nama file.
+- Integrasi ke UI/UX berarti scene benar-benar dipanggil oleh route/screen, data berasal dari API/manifest, dan pengguna melihat loading/success/error/fallback yang berfungsi. Menambahkan file GLB ke Storage atau menampilkan thumbnail tidak memenuhi syarat.
+- Uji desktop dan Android native; uji iOS bila toolchain/device tersedia. Catat platform yang belum dapat diuji tanpa menghambat implementasi lain yang bisa dikerjakan.
+
+### 5.4 Status asset/scene yang jujur
+- `not_started`: belum ada implementasi nyata.
+- `in_progress`: sebagian kode/asset tersedia; journey belum lengkap.
+- `implemented`: alur kode dasar tersedia dan checks relevan lulus.
+- `integration_verified`: API, catalog/manifest, storage dan renderer diuji bersama pada environment yang disebutkan.
+- `acceptance_passed`: scene/asset journey diterima dengan bukti tampilan dan interaksi yang relevan.
+- `production_verified`: hasil diuji di deployment produksi yang nyata.
+Jangan gunakan kata “published” hanya karena file berhasil diupload. Bedakan developer preview dari publikasi audience-facing.
+
+### 5.5 Kondisi repo saat ini yang telah teramati
+- `tools/3d-assets/acquire_glb_assets.py` adalah alat akuisisi/audit katalog sumber GLB dan memberi kategori awal berbasis heuristik. Kategorisasi heuristik bukan bukti visual/semantic QA.
+- `tools/3d-assets/audit_glb_readiness.py` melakukan pemeriksaan struktur, ukuran, hash dan flags; outputnya sendiri menegaskan bahwa ini bukan legal clearance, visual QA, malware scan, GPU performance atau renderer compatibility.
+- Workflow `.github/workflows/allpha-glb-asset-acquisition.yml` mengunduh aset ke artifact workflow; itu sendiri bukan publikasi ke katalog produksi.
+- Workflow `.github/workflows/allpha-glb-asset-readiness.yml` mengaudit artifact yang ada; itu sendiri bukan integrasi renderer.
+- Tree repo yang diperiksa pada rekonsiliasi ini belum menunjukkan implementasi 3D renderer, katalog scene, atau data inventory 350 slot di monorepo ini. Karena itu ENG-P21/P22/P23 tetap belum diverifikasi dan perlu implementasi/integrasi nyata; jangan menganggap aset dari repository/proyek lain otomatis berada di repo atau Storage kanonis ini.
+
+## 6. Cara eksekusi setiap phase
+1. Baca Master PRD, `AGENTS.md`, bagian relevan dari file ini, lalu code/migration/tests yang benar-benar terkait.
+2. Periksa empat area aplikasi dan tandai CHANGE / INTEGRATE / NOT AFFECTED beserta alasan.
+3. Implementasikan vertical slice end-to-end pada aplikasi yang terdampak; tambahkan migration hanya bila perlu.
+4. Jalankan pemeriksaan otomatis relevan, perbaiki kegagalan, dan jangan mengarang hasil device/production.
+5. Commit langsung ke `main`.
+6. Perbarui status di tabel dokumen ini hanya jika status/next action berubah. Laporan di percakapan cukup menyebut commit, repo yang berubah, checks yang dijalankan, gap nyata dan phase berikutnya.
+
+Tidak boleh membuat phase-plan per phase, status CSV, crosswalk baru, evidence registry duplikat atau report file rutin untuk menggantikan update ini.
+
+## 7. Invariants arsitektur
+- Master PRD v3.0.0 menentukan kebutuhan produk; dokumen ini menentukan urutan eksekusi engineering.
+- Target surface: native Android/iOS, Web, Super Admin terpisah, Developer Console. PWA bukan target.
+- Database kanonis: Supabase `AllphaAiAplikasi-db` (`dvdziauyvuhcnqhrrvww`).
+- Domain/business truth, asset catalog dan lifecycle tetap di backend/API resmi.
+- Tidak ada secrets di client, fake data produksi, atau akses Storage privat yang di-hardcode.
+- Scene/world data bersifat deklaratif dan tervalidasi; GLB tidak memberi hak/permission bisnis.
+- Untuk fitur yang melibatkan user, lakukan check minimal untuk owner/authorization/privacy dan failure/retry. Jangan menunda semua hardening ke ENG-P37.
+- Pilih automated checks proporsional; jangan menambah gate manual atau CI berat yang tidak memperbaiki correctness.
+
+## 8. Definition of done per phase
+Sebelum memajukan status:
+- [ ] Scope dan acceptance journey sesuai Master PRD.
+- [ ] Keempat app surfaces dipetakan; setiap area memiliki alasan eksplisit bila tidak terdampak.
+- [ ] Source code nyata tersedia pada setiap area yang diwajibkan (native project tidak boleh hanya README).
+- [ ] API/data dan UI menggunakan sumber data nyata, bukan mock yang disamarkan.
+- [ ] Automated checks relevan lulus atau keterbatasan yang nyata disebutkan.
+- [ ] Integrasi/device/production hanya ditandai jika benar-benar diperiksa.
+- [ ] Status, commit, gap dan next action diperbarui di dokumen ini.
+
+## 9. Berikutnya
+**Pekerjaan berikutnya adalah ENG-P01: implementasi fondasi native Android/iOS di `apps/client`, lalu menghubungkan ENG-P02/P03 ke native journey yang nyata.** Jangan membuat phase Android/iOS baru. Pekerjaan 3D dilanjutkan pada ENG-P21–ENG-P24 dengan kontrak di bagian 5, bukan lewat roadmap atau dokumen terpisah.
