@@ -118,6 +118,6 @@ def test_skill_tool_preview_requires_declared_tool_and_owner(monkeypatch):
             json={"tool_key": "unknown.tool", "inputs": {}},
         )
         assert undeclared.status_code == 422
-        assert undeclared.json()["detail"]["code"] == "UNKNOWN_TOOL_DEPENDENCY"
+        assert undeclared.json()["error"]["code"] == "UNKNOWN_TOOL_DEPENDENCY"
     finally:
         app.dependency_overrides.clear()
