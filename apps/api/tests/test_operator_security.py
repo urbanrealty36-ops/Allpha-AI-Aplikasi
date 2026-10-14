@@ -262,3 +262,35 @@ def test_operator_grant_revoke_is_scoped_and_audited(monkeypatch):
         assert kwargs["body"]["status"] == "revoked"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_operator_cannot_self_grant_or_escalate_scopes(monkeypatch):
+    async def fake_db(method, path, token, **kwargs):
+        return [{
+            "id": "grant-operator",
+            "user_id": "operator",
+            "scopes": ["platform:operators.manage", "platform:operations.read"],
+            "status": "active",
+            "expires_at": None,
+        }]
+
+    async def fake_audit(request, **kwargs):
+        return None
+
+    async def unexpected_privileged(*args, **kwargs):
+        raise AssertionError("privileged store must not be called for a self-escalation attempt")
+
+    monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "write_operator_audit", fake_audit)
+    monkeypatch.setattr(security, "privileged_rest_request", unexpected_privileged)
+    install_auth("operator")
+    try:
+        response = client.post("/v1/admin/operator/grants", json={
+            "user_id": "00000000-0000-0000-0000-000000000099",
+            "scopes": ["platform:operators.manage", "platform:capabilities.review"],
+            "reason": "Escalate review scope",
+        })
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "OPERATOR_SCOPE_ESCALATION_DENIED"
+    finally:
+        app.dependency_overrides.clear()
