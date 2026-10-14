@@ -32,14 +32,14 @@ All routes below are declared in `apps/api/src/allpha_api/main.py`. Authenticate
 | Endpoint | Auth / observed data path | Status / follow-up |
 |---|---|---|
 | `GET /healthz` | Public health probe; no business data | Railway healthcheck logs observed HTTP 200 |
-| `GET /readyz` | Readiness handler; inspect exact dependency checks | Must verify with runtime probe |
+| `GET /readyz` | Checks configured Supabase URL/publishable key, then probes `/auth/v1/health` and `/rest/v1/` with bounded timeout; returns `reachable` only for HTTP 200 on both | Unit test mocks both upstream probes; deployed runtime probe remains unverified |
 | `GET /v1/system/status` | System diagnostics handler | Confirm operator/public exposure policy and data returned |
 | `GET /v1/me` | `current_user` → `user_db_request` → identity/profile rows | Add/retain token and owner-scope regressions |
 | `PATCH /v1/me/profile` | `current_user` → `user_db_request` → profile update | Confirm user ID is derived server-side and RLS is enforced |
 | `GET /v1/me/settings` | `current_user` → `user_db_request` → settings rows | Confirm owner-scoped query and policy |
 | `PATCH /v1/me/settings` | `current_user` → `user_db_request` → settings writes | Confirm no client-supplied owner ID can change scope |
 | `GET /v1/me/consents` | `current_user` → `user_db_request` → consent rows | Confirm owner scope and migration policy |
-| `POST /v1/me/deactivation-request` | `current_user` → `user_db_request` → deactivation request | Confirm idempotency and authorization |
+| `POST /v1/me/deactivation-request` | `current_user` → `rpc/request_account_deactivation` → `profiles` | API regression checks scoped RPC invocation; migration is not applied to production and real integration remains unverified |
 | `GET /v1/organizations` | `current_user` → `user_db_request` → organization membership/data | Review tenant membership predicates and RLS |
 | `POST /v1/organizations` | `current_user` → `user_db_request` → organization creation | Confirm creator/membership fields are server-derived/atomic |
 | `GET /v1/organizations/{organization_id}/memberships` | `current_user` → organization membership lookup, then organization lookup | Explicit cross-tenant negative test required |
@@ -53,8 +53,10 @@ All routes below are declared in `apps/api/src/allpha_api/main.py`. Authenticate
 
 - Existing API security tests reject missing and malformed bearer tokens.
 - Existing agent tests cover server-derived ownership, active-owner filtering, non-owner update rejection, and public passport field projection.
-- One recent GitHub Actions Smoke run completed successfully. ENG-P01 workflow was still in progress at the last status check; that is not a complete acceptance result.
-- Railway reports the API, Web and Super Admin services Online with successful latest deployments. API logs contain `GET /healthz` → `200 OK`. External HTTP probing from the current execution environment failed at DNS resolution, so no independent HTTP response is claimed for Web/Admin in this audit.
+- Allpha Smoke run [`38490988430`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38490988430) on commit `c6ae8ae32c53c825c6a27e35bf3d84c2f832eb21` completed successfully; its jobs show API regression tests and Web build passed. It does not exercise a real browser-authenticated journey or native device UI.
+- ENG-P01 run [`38490988221`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38490988221) for the same commit was pending at the last inspection. An older run on commit `3800125cf84fdbc696fd5fe80c55c9dfc569824a` had one API test failure and Android/iOS builds still in progress; no artifacts from that run were available when queried. Do not treat its partial build steps as final evidence.
+- Railway connector had previously reported the API, Web and Super Admin services Online, and API logs contained `GET /healthz` → `200 OK`. Independent external HTTP probes to the known Railway URLs failed due DNS resolution in this execution environment; no independent response is claimed for any of the three URLs in this session.
+- The last source-level inventory found no direct Supabase business-table/RPC/Storage/Realtime access in the inspected client entry points; Web and Native use Supabase for Auth/session while observed business data calls go through FastAPI. This remains a bounded source audit, not proof of no indirect access in every dependency.
 
 ## Acceptance still required
 
