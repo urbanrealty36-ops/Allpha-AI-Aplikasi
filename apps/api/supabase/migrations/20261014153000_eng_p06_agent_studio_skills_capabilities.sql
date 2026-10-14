@@ -183,6 +183,19 @@ create policy agent_skill_versions_owner_insert on public.agent_skill_versions
 revoke all on public.agent_skill_versions from anon, public;
 grant select, insert on public.agent_skill_versions to authenticated;
 
+create or replace function public.prepare_agent_skill_update()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  new.version := old.version + 1;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
 create or replace function public.capture_agent_skill_version()
 returns trigger
 language plpgsql
@@ -190,18 +203,18 @@ security invoker
 set search_path = ''
 as $$
 begin
-  if tg_op = 'UPDATE' then
-    new.version := old.version + 1;
-    new.updated_at := now();
-  end if;
   insert into public.agent_skill_versions(skill_id, agent_id, version, created_by, snapshot)
   values (new.id, new.agent_id, new.version, new.created_by, to_jsonb(new));
   return new;
 end;
 $$;
+drop trigger if exists agent_skills_prepare_update on public.agent_skills;
+create trigger agent_skills_prepare_update
+  before update on public.agent_skills
+  for each row execute function public.prepare_agent_skill_update();
 drop trigger if exists agent_skills_capture_version on public.agent_skills;
 create trigger agent_skills_capture_version
-  before insert or update on public.agent_skills
+  after insert or update on public.agent_skills
   for each row execute function public.capture_agent_skill_version();
 
 comment on table public.agent_skill_versions is 'Immutable owner-scoped snapshots of every persisted Agent Skill version.';
