@@ -74,3 +74,30 @@ def test_vector_sink_delegates_atomic_upsert_with_deterministic_idempotency_key(
         assert repo.calls[0][2] == repo.calls[1][2]
         assert repo.calls[0][0] == repo.calls[1][0]
     asyncio.run(scenario())
+
+
+def test_vector_sink_does_not_turn_conflicting_replay_into_new_idempotency_key():
+    class Repo:
+        def __init__(self):
+            self.payload_by_key = {}
+            self.keys = []
+        async def upsert_batch(self, records, *, expected_source_version, idempotency_key):
+            payload = tuple(records)
+            self.keys.append(idempotency_key)
+            prior = self.payload_by_key.get(idempotency_key)
+            if prior is not None and prior != payload:
+                raise VectorPersistenceConflict("idempotency key reused with different payload")
+            self.payload_by_key[idempotency_key] = payload
+
+    async def scenario():
+        job, request, response = fixture_values()
+        repo = Repo()
+        sink = IdempotentKnowledgeVectorSink(repo)
+        await sink(job, request, response)
+        changed = response.model_copy(update={
+            "vectors": [response.vectors[0].model_copy(update={"values": [0.2, 0.3]})]
+        })
+        with pytest.raises(VectorPersistenceConflict):
+            await sink(job, request, changed)
+        assert repo.keys[0] == repo.keys[1] == request.idempotency_key
+    asyncio.run(scenario())
