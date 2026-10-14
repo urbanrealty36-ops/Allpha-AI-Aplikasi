@@ -424,3 +424,103 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
     assert kwargs["params"]["select"] == "organization_id,user_id,role,invited_by,created_at"
     # This mock regression proves the caller token is forwarded to PostgREST.
     # It does not prove live RLS enforcement; that requires an isolated non-production DB.
+
+
+
+def test_record_consent_uses_authenticated_user_and_caller_session(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "consent_type": "privacy_policy",
+            "policy_version": "policy-test-v1",
+            "granted": True,
+            "recorded_at": "2026-10-14T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "authenticated-consent-user", "email": "consent@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer consent-session-token"},
+            json={"consent_type": "privacy_policy", "policy_version": "policy-test-v1", "granted": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["consent"]["consent_type"] == "privacy_policy"
+    assert len(calls) == 1
+    method, path, token, kwargs = calls[0]
+    assert (method, path, token) == ("POST", "user_consents", "consent-session-token")
+    assert kwargs["body"] == {
+        "user_id": "authenticated-consent-user",
+        "consent_type": "privacy_policy",
+        "policy_version": "policy-test-v1",
+        "granted": True,
+    }
+
+
+def test_record_consent_rejects_forged_identity_fields_before_database_write():
+    response = client.post(
+        "/v1/me/consents",
+        headers={"Authorization": "Bearer any-token"},
+        json={
+            "user_id": "another-user",
+            "consent_type": "privacy_policy",
+            "policy_version": "policy-test-v1",
+            "granted": True,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_record_consent_requires_authentication():
+    response = client.post(
+        "/v1/me/consents",
+        json={"consent_type": "privacy_policy", "policy_version": "policy-test-v1", "granted": True},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
+def test_get_consents_is_scoped_to_authenticated_user(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{"consent_type": "terms_of_service", "policy_version": "terms-test-v1", "granted": True, "recorded_at": "2026-10-14T00:00:00Z"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-read-token"
+        return {"id": "consent-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/me/consents", headers={"Authorization": "Bearer consent-read-token"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["consent_type"] == "terms_of_service"
+    assert calls == [(
+        "GET",
+        "user_consents",
+        "consent-read-token",
+        {"params": {
+            "select": "consent_type,policy_version,granted,recorded_at",
+            "user_id": "eq.consent-owner",
+            "order": "recorded_at.desc",
+            "limit": "100",
+        }},
+    )]
