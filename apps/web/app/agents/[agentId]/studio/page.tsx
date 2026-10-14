@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
 
+type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; error_code?: string | null; sha256: string; created_at: string };
 type Skill = {
   id: string; agent_id: string; slug: string; name: string; description: string;
   category: string; instructions: string; required_permission_scopes: string[];
@@ -31,7 +32,7 @@ export default function AgentStudioPage() {
   const agentId = params.agentId;
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
-  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);\n  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);\n  const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [versionHistory, setVersionHistory] = useState<{ skillId: string; items: SkillVersion[] } | null>(null);
@@ -72,18 +73,18 @@ export default function AgentStudioPage() {
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
-      const [skillResponse, capabilityResponse, toolsResponse] = await Promise.all([
+      const [skillResponse, capabilityResponse, toolsResponse, knowledgeResponse] = await Promise.all([
         fetch(`${apiBase}/v1/agents/${agentId}/skills`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/capabilities`, { headers, cache: "no-store" }),
-        fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),
+        fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),\n        fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { headers, cache: "no-store" }),
       ]);
       if (!skillResponse.ok) throw new Error(await readError(skillResponse));
       if (!capabilityResponse.ok) throw new Error(await readError(capabilityResponse));
-      if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));
-      const [skillBody, capabilityBody, toolsBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json()]);
+      if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));\n      if (!knowledgeResponse.ok) throw new Error(await readError(knowledgeResponse));
+      const [skillBody, capabilityBody, toolsBody, knowledgeBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json(), knowledgeResponse.json()]);
       setSkills(Array.isArray(skillBody.items) ? skillBody.items : []);
       setCapabilities(Array.isArray(capabilityBody.items) ? capabilityBody.items : []);
-      setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
+      setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);\n      setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Agent Studio tidak dapat dimuat.");
     } finally { setLoading(false); }
@@ -102,7 +103,7 @@ export default function AgentStudioPage() {
       if (!active) return;
       setSession(next);
       if (next) void load(next);
-      else { setSkills([]); setCapabilities([]); setLoading(false); setError("Sesi berakhir. Silakan masuk kembali."); }
+      else { setSkills([]); setCapabilities([]); setKnowledgeSources([]); setLoading(false); setError("Sesi berakhir. Silakan masuk kembali."); }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase, load]);
@@ -132,6 +133,36 @@ export default function AgentStudioPage() {
       setNotice("Skill tersimpan sebagai draft. Definisi Skill tidak memberikan izin eksekusi otomatis.");
       await load(session);
     } catch (cause) { setError(cause instanceof SyntaxError ? "JSON Schema, tests, model requirements, rubric, provenance, dan terms harus berupa JSON valid." : cause instanceof Error ? cause.message : "Skill tidak dapat disimpan."); }
+    finally { setSaving(false); }
+  }
+
+  async function uploadKnowledge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !knowledgeFile) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const form = new FormData(); form.append("file", knowledgeFile);
+      const response = await fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { method: "POST", headers: { Authorization: "Bearer " + session.access_token }, body: form });
+      if (!response.ok) throw new Error(await readError(response));
+      setKnowledgeFile(null); setNotice("Dokumen masuk karantina privat. Pemrosesan baru dapat dilanjutkan setelah pemindai malware terkonfigurasi.");
+      await load(session);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Dokumen gagal diunggah."); }
+    finally { setSaving(false); }
+  }
+
+  async function knowledgeAction(source: KnowledgeSource, action: "process" | "retry" | "delete") {
+    if (!session) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources/${source.id}${action === "delete" ? "" : "/" + action}`, {
+        method: action === "delete" ? "DELETE" : "POST",
+        headers: { Authorization: "Bearer " + session.access_token, ...(action === "retry" ? { "Content-Type": "application/json" } : {}) },
+        ...(action === "retry" ? { body: JSON.stringify({ reason: "retry dari Agent Studio" }) } : {}),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      setNotice(action === "delete" ? "Sumber dan turunannya telah diminta untuk dihapus." : "Permintaan pemrosesan telah dijalankan. Status aktual ditampilkan pada daftar sumber.");
+      await load(session);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi sumber pengetahuan gagal."); }
     finally { setSaving(false); }
   }
 
@@ -215,6 +246,18 @@ export default function AgentStudioPage() {
     </header>
     {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
     {notice && <div role="status" className="rounded-xl border p-3 text-sm">{notice}</div>}
+    <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
+      <div><h2 className="text-xl font-semibold">Sumber pengetahuan</h2><p className="mt-1 text-sm text-neutral-600">PDF, Markdown, TXT, DOCX · maksimum 15 MiB. Dokumen tetap privat dan dikarantina sampai pemeriksaan malware berhasil; status indexed belum berarti siap untuk retrieval.</p></div>
+      <form onSubmit={uploadKnowledge} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="grid flex-1 gap-1 text-sm">Pilih dokumen<input type="file" accept=".pdf,.md,.txt,.docx,application/pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={e => setKnowledgeFile(e.target.files?.[0] || null)} className="rounded-lg border p-2" required /></label>
+        <button disabled={saving || !session || !knowledgeFile} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Memproses…" : "Unggah ke karantina"}</button>
+      </form>
+      <div className="space-y-3">{knowledgeSources.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">Belum ada sumber pengetahuan.</p> : knowledgeSources.map(source => <article key={source.id} className="rounded-xl border p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{source.filename}</h3><p className="mt-1 text-xs text-neutral-500">{(source.size_bytes / 1024).toFixed(1)} KiB · SHA-256 {source.sha256.slice(0, 12)}…</p></div><span className="rounded-full border px-2 py-1 text-xs">{source.status}</span></div>
+        <p className="mt-2 text-sm text-neutral-600">Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</p>
+        <div className="mt-3 flex flex-wrap gap-2">{(source.status === "quarantined" || source.status === "failed") && <button type="button" disabled={saving} onClick={() => void knowledgeAction(source, source.status === "failed" ? "retry" : "process")} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50">{source.status === "failed" ? "Coba lagi" : "Proses dokumen"}</button>}<button type="button" disabled={saving} onClick={() => { if (window.confirm("Hapus dokumen dan seluruh chunk terkait?")) void knowledgeAction(source, "delete"); }} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50">Hapus</button></div>
+      </article>)}</div>
+    </section>
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
         <div><h2 className="text-xl font-semibold">Skill Agent</h2><p className="mt-1 text-sm text-neutral-600">Setiap Skill memiliki skema, instruksi, batasan, scope, budget, tes, dan versi.</p></div>
