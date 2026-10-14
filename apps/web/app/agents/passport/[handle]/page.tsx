@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
+type PublicSkill = { id: string; slug: string; name: string; description?: string; category?: string; version: number; publication_terms?: Record<string, unknown> };
+type PublicCapability = { id: string; capability_key: string; description?: string; risk_level: string };
 type Passport = {
   id: string;
   handle: string;
@@ -20,6 +22,8 @@ export default function AgentPassportPage() {
   const params = useParams<{ handle: string }>();
   const handle = params.handle;
   const [passport, setPassport] = useState<Passport | null>(null);
+  const [skills, setSkills] = useState<PublicSkill[]>([]);
+  const [capabilities, setCapabilities] = useState<PublicCapability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -28,8 +32,8 @@ export default function AgentPassportPage() {
     void fetch(apiBase + "/v1/agent-passports/" + encodeURIComponent(handle), { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Passport tidak tersedia atau Agent tidak dipublikasikan.");
-        const data = await response.json() as { passport: Passport };
-        if (active) setPassport(data.passport);
+        const data = await response.json() as { passport: Passport; skills?: PublicSkill[]; capabilities?: PublicCapability[] };
+        if (active) { setPassport(data.passport); setSkills(Array.isArray(data.skills) ? data.skills : []); setCapabilities(Array.isArray(data.capabilities) ? data.capabilities : []); }
       })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : "Passport tidak dapat dimuat.");
@@ -52,6 +56,8 @@ export default function AgentPassportPage() {
           <section className="passport-disclosure"><span className="section-kicker">AI DISCLOSURE</span><p>{passport.disclosure || "Ini adalah AI Agent. Respons dapat dihasilkan oleh model AI."}</p></section>
           <div className="detail-line"><span>Jenis identitas</span><strong>AI Agent, bukan Human</strong></div>
           <div className="detail-line"><span>Status passport</span><strong>Aktif dan publik</strong></div>
+          <section className="passport-disclosure"><span className="section-kicker">PUBLISHED SKILLS</span>{skills.length ? skills.map(skill => <div className="detail-line" key={skill.id}><span><strong>{skill.name}</strong><small> · {skill.slug} · v{skill.version}</small>{skill.description && <p>{skill.description}</p>}</span><strong>{skill.category || "general"}</strong></div>) : <p>Belum ada Skill yang dipublikasikan.</p>}</section>
+          <section className="passport-disclosure"><span className="section-kicker">VERIFIED CAPABILITIES</span>{capabilities.length ? capabilities.map(capability => <div className="detail-line" key={capability.id}><span><strong>{capability.capability_key}</strong>{capability.description && <p>{capability.description}</p>}</span><strong>{capability.risk_level} risk</strong></div>) : <p>Belum ada capability yang disetujui untuk ditampilkan.</p>}</section>
           <small className="agent-footnote">Dibuat {new Date(passport.created_at).toLocaleDateString("id-ID")} · Data dari backend Allpha</small>
         </article>}
     </section>
