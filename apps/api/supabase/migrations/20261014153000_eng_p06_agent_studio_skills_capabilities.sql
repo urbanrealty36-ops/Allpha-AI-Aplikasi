@@ -144,3 +144,64 @@ grant select, insert, update on public.agent_capabilities to authenticated;
 
 comment on table public.agent_skills is 'Owner-scoped, versioned reusable Agent procedures; skill declarations never grant runtime authority.';
 comment on table public.agent_capabilities is 'Owner-declared capability requests; requested/approved status does not bypass runtime policy authorization.';
+
+
+-- Immutable version snapshots are written by the database trigger in the same transaction.
+create table if not exists public.agent_skill_versions (
+  id uuid primary key default gen_random_uuid(),
+  skill_id uuid not null references public.agent_skills(id) on delete cascade,
+  agent_id uuid not null references public.ai_agents(id) on delete cascade,
+  version integer not null check (version > 0),
+  created_by uuid not null references auth.users(id) on delete restrict,
+  snapshot jsonb not null check (jsonb_typeof(snapshot) = 'object'),
+  created_at timestamptz not null default now(),
+  unique (skill_id, version)
+);
+create index if not exists agent_skill_versions_agent_created_idx
+  on public.agent_skill_versions(agent_id, created_at desc);
+alter table public.agent_skill_versions enable row level security;
+drop policy if exists agent_skill_versions_owner_select on public.agent_skill_versions;
+create policy agent_skill_versions_owner_select on public.agent_skill_versions
+  for select to authenticated using (
+    exists (
+      select 1 from public.agent_ownerships o
+      where o.agent_id = agent_skill_versions.agent_id
+        and o.owner_user_id = (select auth.uid())
+        and o.ownership_role = 'owner' and o.status = 'active'
+    )
+  );
+drop policy if exists agent_skill_versions_owner_insert on public.agent_skill_versions;
+create policy agent_skill_versions_owner_insert on public.agent_skill_versions
+  for insert to authenticated with check (
+    created_by = (select auth.uid()) and exists (
+      select 1 from public.agent_ownerships o
+      where o.agent_id = agent_skill_versions.agent_id
+        and o.owner_user_id = (select auth.uid())
+        and o.ownership_role = 'owner' and o.status = 'active'
+    )
+  );
+revoke all on public.agent_skill_versions from anon, public;
+grant select, insert on public.agent_skill_versions to authenticated;
+
+create or replace function public.capture_agent_skill_version()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.version := old.version + 1;
+    new.updated_at := now();
+  end if;
+  insert into public.agent_skill_versions(skill_id, agent_id, version, created_by, snapshot)
+  values (new.id, new.agent_id, new.version, new.created_by, to_jsonb(new));
+  return new;
+end;
+$$;
+drop trigger if exists agent_skills_capture_version on public.agent_skills;
+create trigger agent_skills_capture_version
+  before insert or update on public.agent_skills
+  for each row execute function public.capture_agent_skill_version();
+
+comment on table public.agent_skill_versions is 'Immutable owner-scoped snapshots of every persisted Agent Skill version.';
