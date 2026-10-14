@@ -107,7 +107,13 @@ async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=Fi
 async def list_sources(agent_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
     token=await _owned(agent_id,request,user)
     rows=await user_db_request("GET","agent_knowledge_sources",token,params={"select":SOURCE_FIELDS,"agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"100"})
-    return {"items":rows or []}
+    sources=rows or []
+    if not sources: return {"items":[]}
+    jobs=await user_db_request("GET","agent_knowledge_jobs",token,params={"select":JOB_FIELDS,"agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"200"})
+    latest={}
+    for job in (jobs or []):
+        latest.setdefault(job["source_id"],job)
+    return {"items":[{**source,"latest_job":latest.get(source["id"])} for source in sources]}
 
 @router.get("/sources/{source_id}")
 async def get_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
