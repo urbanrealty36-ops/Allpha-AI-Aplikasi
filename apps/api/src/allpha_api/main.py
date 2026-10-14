@@ -820,7 +820,6 @@ async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: 
     if not current:
         raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
     changes["version"] = int(current[0].get("version") or 1) + 1
-    changes["updated_at"] = "now()"
     rows = await user_db_request(
         "PATCH", "agent_skills", token,
         params={"id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "select": _SKILL_FIELDS},
