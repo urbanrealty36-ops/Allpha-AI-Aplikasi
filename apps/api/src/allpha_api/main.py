@@ -736,6 +736,18 @@ class AgentSkillCreate(BaseModel):
     def validate_skill_objects(cls, value: dict[str, Any]) -> dict[str, Any]:
         return _validate_agent_config(value) or {}
 
+    @field_validator("budget_limits")
+    @classmethod
+    def validate_skill_budget_limits(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _validate_agent_config(value)
+        runtime = value.get("max_runtime_seconds", 30)
+        calls = value.get("max_tool_calls", 5)
+        if not isinstance(runtime, int) or isinstance(runtime, bool) or not 1 <= runtime <= 3600:
+            raise ValueError("max_runtime_seconds must be an integer from 1 to 3600")
+        if not isinstance(calls, int) or isinstance(calls, bool) or not 0 <= calls <= 100:
+            raise ValueError("max_tool_calls must be an integer from 0 to 100")
+        return value
+
     @field_validator("tests")
     @classmethod
     def validate_skill_tests(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -768,6 +780,20 @@ class AgentSkillUpdate(BaseModel):
     @classmethod
     def validate_optional_skill_objects(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
         return _validate_agent_config(value) if value is not None else None
+
+    @field_validator("budget_limits")
+    @classmethod
+    def validate_optional_skill_budget_limits(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        _validate_agent_config(value)
+        runtime = value.get("max_runtime_seconds", 30)
+        calls = value.get("max_tool_calls", 5)
+        if not isinstance(runtime, int) or isinstance(runtime, bool) or not 1 <= runtime <= 3600:
+            raise ValueError("max_runtime_seconds must be an integer from 1 to 3600")
+        if not isinstance(calls, int) or isinstance(calls, bool) or not 0 <= calls <= 100:
+            raise ValueError("max_tool_calls must be an integer from 0 to 100")
+        return value
 
     @field_validator("tests")
     @classmethod
