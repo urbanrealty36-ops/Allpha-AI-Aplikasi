@@ -6,7 +6,6 @@ owner/source-version fencing in the canonical database.
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -116,20 +115,14 @@ class IdempotentKnowledgeVectorSink:
         response: EmbeddingResponse,
     ) -> None:
         records = build_vector_records(job, request, response)
-        # Include response provenance in the batch key; repository must still compare
-        # the stored payload when a key already exists rather than silently overwrite.
-        batch_digest = hashlib.sha256(
-            "|".join(
-                f"{r.chunk_id}:{r.content_sha256}:{r.provider_id}:{r.model_id}:"
-                f"{r.model_version}:{r.dimensions}"
-                for r in records
-            ).encode("utf-8")
-        ).hexdigest()
-        key = f"{request.idempotency_key}:{batch_digest}"
+        # The idempotency key must be stable across retries. Do not salt it with
+        # the payload digest: doing so would turn a conflicting replay into a new write.
+        # The repository compares a canonical payload fingerprint for this stable key
+        # and raises VectorPersistenceConflict when the same key is reused differently.
         await self.repository.upsert_batch(
             records,
             expected_source_version=request.source_version,
-            idempotency_key=key,
+            idempotency_key=request.idempotency_key,
         )
 
 
