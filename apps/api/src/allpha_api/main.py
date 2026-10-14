@@ -871,6 +871,29 @@ async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: 
     return {"skill": rows[0]}
 
 
+@app.get("/v1/agents/{agent_id}/skills/{skill_id}/versions", tags=["agent-studio"])
+async def list_agent_skill_versions(
+    agent_id: uuid.UUID,
+    skill_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    token = await _require_agent_owner(agent_id, request, user)
+    skill = await user_db_request(
+        "GET", "agent_skills", token,
+        params={"select": "id", "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "limit": "1"},
+    )
+    if not skill:
+        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    versions = await user_db_request(
+        "GET", "agent_skill_versions", token,
+        params={"select": "id,skill_id,agent_id,version,created_by,snapshot,created_at",
+                "skill_id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}",
+                "order": "version.desc", "limit": "50"},
+    )
+    return {"items": versions or []}
+
+
 @app.get("/v1/agents/{agent_id}/capabilities", tags=["agent-studio"])
 async def list_agent_capabilities(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     token = await _require_agent_owner(agent_id, request, user)
