@@ -177,3 +177,10 @@ The currently inspected `apps/api/src/allpha_api/main.py` has 26 declared HTTP r
 - `test_social_graph_reads_are_scoped_to_authenticated_identity` mocks the authenticated identity and verifies the four Social Graph/interest reads filter actor/recipient/user IDs using that identity and forward the caller access token.
 - This is a deterministic handler regression only. It does not prove live RLS/grants or cross-tenant isolation; those remain deferred until an isolated non-production Supabase environment with two users/tenants is available.
 
+## Organizations/Memberships — live schema reconciliation (2026-10-14)
+
+- Source review confirms POST /v1/organizations derives owner_id from the validated authenticated identity and forwards the user's Supabase session token to PostgREST.
+- Existing regression test_create_organization_uses_authenticated_identity verifies the derived owner and rejects client-supplied authority fields.
+- Added test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope in commit 5160ddbcc98a5479738f154f41f2993aca119e3d. This is a mocked positive-path regression: it verifies the caller session token and organization filter are forwarded and a returned membership is serialized. It does not prove live RLS.
+- Live Supabase inspection found only seven application tables in public; public.organizations, public.organization_memberships, and public.audit_events are absent. Yet the Supabase migration history records the ENG-P02 organization migration versions. This is a schema/migration-history discrepancy and blocks any claim of live membership/RLS verification.
+- No production DDL or migration was run. Reconcile the canonical schema and migration files in an isolated non-production database first; do not mark ENG-P02 acceptance/integration verified until real user-token and RLS tests run against that isolated environment.
