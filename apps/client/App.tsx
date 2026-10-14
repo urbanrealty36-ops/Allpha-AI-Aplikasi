@@ -13,6 +13,7 @@ type Settings = { theme: "light" | "dark" | "system"; notification_preferences: 
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[] };
+type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")).replace(/\/$/, "");
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -85,7 +86,10 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents">("profile");
+  const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
+  const [consentLoading, setConsentLoading] = useState(false);
+  const [consentError, setConsentError] = useState("");
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
@@ -109,6 +113,15 @@ function Profile({ session }: { session: Session }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [session.access_token, retry]);
+  async function loadConsentHistory() {
+    setConsentLoading(true); setConsentError("");
+    try {
+      const payload = await apiRequest("/v1/me/consents") as { items?: ConsentRecord[] };
+      setConsentHistory(Array.isArray(payload.items) ? payload.items : []);
+    } catch (cause) {
+      setConsentError(cause instanceof Error ? cause.message : "Riwayat persetujuan tidak dapat dimuat.");
+    } finally { setConsentLoading(false); }
+  }
   async function loadSocialGraph() {
     setError(""); setMessage("");
     try { setSocialGraph(await apiRequest("/v1/me/social-graph") as SocialGraph); }
@@ -191,7 +204,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -214,7 +227,13 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.kicker}>PRIVASI</Text><Text style={s.body}>Temukan profil melalui username</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Dapat ditemukan" secondary={!settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: true } })}/><Button title="Tidak ditemukan" secondary={settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: false } })}/></View>
         <Button title={busy ? "Menyimpan…" : "Simpan pengaturan"} disabled={busy} onPress={() => void saveSettings()}/>
-      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text> : socialGraph ? <>
+      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text> : tab === "consents" ? <>
+        <Text style={s.kicker}>PRIVASI & TRANSPARANSI</Text><Text style={s.title}>Riwayat persetujuan</Text>
+        <Text style={s.body}>Bagian ini hanya menampilkan catatan yang sudah tersimpan melalui API Allpha. Persetujuan baru belum dapat direkam sampai versi resmi Terms of Service dan Privacy Policy ditetapkan.</Text>
+        {consentLoading ? <ActivityIndicator color="#A5B4FC"/> : consentError ? <><Text accessibilityRole="alert" style={s.error}>{consentError}</Text><Button title="Coba lagi" secondary onPress={() => void loadConsentHistory()}/></> : consentHistory === null ? <Text style={s.muted}>Riwayat belum dimuat.</Text> : consentHistory.length === 0 ? <Text style={s.muted}>Belum ada catatan persetujuan pada akun ini.</Text> : consentHistory.map((item, index) => <View key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index} style={s.socialRow}><Text style={s.body}>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</Text><Text style={s.muted}>Versi tercatat: {item.policy_version}</Text><Text style={s.muted}>{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</Text></View>)}
+        <Text style={s.muted}>Tidak ada versi kebijakan atau catatan persetujuan contoh yang dibuat oleh aplikasi.</Text>
+        <Button title="Muat ulang riwayat" secondary disabled={consentLoading} onPress={() => void loadConsentHistory()}/>
+      </> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
         <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
         <TextInput accessibilityLabel="ID pengguna target" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder="UUID akun Allpha" placeholderTextColor="#8B94AC"/>
