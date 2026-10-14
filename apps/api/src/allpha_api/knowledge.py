@@ -130,7 +130,7 @@ async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=Fi
     try: await _storage("POST",f"agent-knowledge/{path}",token,data,media)
     except HTTPException:
         await _admin_db_request("DELETE","agent_knowledge_sources",token,params={"id":f"eq.{sid}"}); raise
-    jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(sid),"agent_id":str(agent_id),"owner_id":user["id"],"status":"queued","stage":"awaiting_malware_scan","attempt":0,"progress":0},prefer="return=representation")
+    jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(sid),"source_version":1,"agent_id":str(agent_id),"owner_id":user["id"],"status":"queued","stage":"awaiting_malware_scan","attempt":0,"progress":0},prefer="return=representation")
     return {"source":rows[0],"job":jobs[0] if jobs else None,"publication":"private","retrieval_ready":False}
 
 @router.get("/sources")
@@ -157,7 +157,7 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
     if source["status"] not in ("quarantined","failed"): raise HTTPException(409,detail={"code":"SOURCE_STATE_CONFLICT","message":"Sumber tidak berada pada status yang dapat diproses ulang."})
     prior_jobs=await user_db_request("GET","agent_knowledge_jobs",token,params={"select":"id,attempt","source_id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"100"})
     attempt=max((int(item.get("attempt",0)) for item in (prior_jobs or [])),default=0)+1
-    jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"processing","stage":"malware_scan","attempt":attempt,"progress":5},prefer="return=representation")
+    jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"source_version":source.get("source_version",1),"agent_id":str(agent_id),"owner_id":user["id"],"status":"processing","stage":"malware_scan","attempt":attempt,"progress":5},prefer="return=representation")
     job=jobs[0] if jobs else None
     await _admin_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"processing","processing_stage":"malware_scan","error_code":None})
     try:
@@ -169,9 +169,9 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
         if not chunks: raise HTTPException(422,detail={"code":"NO_TEXT_EXTRACTED","message":"Tidak ada teks yang dapat diekstrak dari dokumen."})
         await user_db_request("DELETE","agent_knowledge_chunks",token,params={"source_id":f"eq.{source_id}","owner_id":f"eq.{user['id']}"})
         for start in range(0,len(chunks),50):
-            batch=[{"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"chunk_index":start+i,"content":v["content"],"source_location":v["source_location"],"source_version":source.get("source_version",1),"content_sha256":hashlib.sha256(v["content"].encode()).hexdigest()} for i,v in enumerate(chunks[start:start+50])]
+            batch=[{"source_id":str(source_id),"source_version":source.get("source_version",1),"agent_id":str(agent_id),"owner_id":user["id"],"chunk_index":start+i,"content":v["content"],"source_location":v["source_location"],"source_version":source.get("source_version",1),"content_sha256":hashlib.sha256(v["content"].encode()).hexdigest()} for i,v in enumerate(chunks[start:start+50])]
             await user_db_request("POST","agent_knowledge_chunks",token,body=batch,prefer="return=minimal")
-        index_jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"queued","stage":"embedding_indexing","attempt":0,"progress":75},prefer="return=representation")
+        index_jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"source_version":source.get("source_version",1),"agent_id":str(agent_id),"owner_id":user["id"],"status":"queued","stage":"embedding_indexing","attempt":0,"progress":75},prefer="return=representation")
         if not index_jobs:
             raise HTTPException(503,detail={"code":"INDEXING_HANDOFF_FAILED","message":"Permintaan indexing belum dapat dimasukkan ke antrean."})
         await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"indexed_pending_embeddings","processing_stage":"awaiting_model_router","error_code":None})
