@@ -1,3 +1,4 @@
+from pathlib import Path
 import uuid
 
 from fastapi import Request
@@ -146,3 +147,20 @@ def test_capability_request_cannot_forge_status_or_creator():
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 422
+
+
+def test_eng_p06_migration_declares_owner_rls_versioning_and_no_runtime_grant():
+    migration_path = Path(__file__).parents[1] / "supabase" / "migrations" / "20261014073741_eng_p06_agent_studio_skills_capabilities.sql"
+    sql = migration_path.read_text(encoding="utf-8").lower()
+    assert "create table if not exists public.agent_skills" in sql
+    assert "create table if not exists public.agent_skill_versions" in sql
+    assert "create table if not exists public.agent_capabilities" in sql
+    assert "alter table public.agent_skills enable row level security" in sql
+    assert "alter table public.agent_capabilities enable row level security" in sql
+    assert "agent_skills_owner_insert" in sql
+    assert "agent_capabilities_owner_insert" in sql
+    assert "status = 'requested'" in sql
+    assert "revoke all on public.agent_skills, public.agent_capabilities from anon, public" in sql
+    assert "security invoker" in sql
+    assert "security definer" not in sql
+    assert "immutable owner-scoped snapshots" in sql
