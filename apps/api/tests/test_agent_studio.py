@@ -1,0 +1,140 @@
+import uuid
+
+from fastapi import Request
+from fastapi.testclient import TestClient
+
+from allpha_api.auth import current_user
+from allpha_api.main import app
+
+client = TestClient(app)
+AGENT_ID = "00000000-0000-0000-0000-000000000010"
+SKILL_ID = "00000000-0000-0000-0000-000000000020"
+
+
+def auth_as(user_id="owner-a"):
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = f"token-{user_id}"
+        return {"id": user_id, "email": f"{user_id}@example.invalid"}
+    return fake_current_user
+
+
+def test_skill_and_capability_routes_require_authentication():
+    assert client.get(f"/v1/agents/{AGENT_ID}/skills").status_code == 401
+    assert client.post(f"/v1/agents/{AGENT_ID}/skills", json={"slug": "summarize_text", "name": "Summarize"}).status_code == 401
+    assert client.get(f"/v1/agents/{AGENT_ID}/capabilities").status_code == 401
+
+
+def test_skill_create_is_owner_scoped_and_starts_as_draft(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": AGENT_ID}]
+        if path == "agent_skills":
+            assert method == "POST"
+            assert kwargs["body"]["created_by"] == "owner-a"
+            assert kwargs["body"]["agent_id"] == AGENT_ID
+            assert kwargs["body"]["status"] == "draft"
+            assert kwargs["body"]["version"] == 1
+            return [{"id": SKILL_ID, **kwargs["body"]}]
+        raise AssertionError(path)
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        response = client.post(f"/v1/agents/{AGENT_ID}/skills", headers={"Authorization": "Bearer test"}, json={
+            "slug": "summarize_text", "name": "Summarize Text",
+            "instructions": "Summarize only authorized input.",
+            "required_permission_scopes": ["content:read"],
+            "budget_limits": {"max_runtime_seconds": 20, "max_tool_calls": 3},
+        })
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["skill"]["status"] == "draft"
+    assert calls[0][1] == "agent_ownerships"
+    assert calls[1][1] == "agent_skills"
+
+
+def test_skill_routes_hide_agent_from_non_owner(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        return []
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as("owner-b")
+    try:
+        response = client.get(f"/v1/agents/{AGENT_ID}/skills", headers={"Authorization": "Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert [call[1] for call in calls] == ["agent_ownerships"]
+
+
+def test_skill_update_increments_version_and_rejects_authority_fields(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": AGENT_ID}]
+        if method == "GET" and path == "agent_skills":
+            return [{"id": SKILL_ID, "agent_id": AGENT_ID, "version": 3, "status": "draft"}]
+        if method == "PATCH" and path == "agent_skills":
+            return [{"id": SKILL_ID, "agent_id": AGENT_ID, "version": kwargs["body"]["version"], "name": "Updated Skill"}]
+        raise AssertionError((method, path))
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        response = client.patch(f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}", headers={"Authorization": "Bearer test"}, json={"name": "Updated Skill"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["skill"]["version"] == 4
+    assert calls[-1][3]["body"]["version"] == 4
+
+    rejected = client.patch(f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}", headers={"Authorization": "Bearer test"}, json={"created_by": "owner-b"})
+    assert rejected.status_code == 422
+
+
+def test_capability_request_is_declarative_and_not_runtime_authority(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": AGENT_ID}]
+        if path == "agent_capabilities":
+            body = kwargs["body"]
+            assert body["created_by"] == "owner-a"
+            assert body["status"] == "requested"
+            return [{"id": "cap-1", **body}]
+        raise AssertionError(path)
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        response = client.post(f"/v1/agents/{AGENT_ID}/capabilities", headers={"Authorization": "Bearer test"}, json={
+            "capability_key": "calendar.read", "description": "Read connected calendar",
+            "required_permission_scopes": ["calendar:read"], "risk_level": "medium",
+        })
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["capability"]["status"] == "requested"
+    assert response.json()["runtime_authorized"] is False
+
+
+def test_capability_request_cannot_forge_status_or_creator():
+    response = client.post(f"/v1/agents/{AGENT_ID}/capabilities", headers={"Authorization": "Bearer test"}, json={
+        "capability_key": "calendar.read", "created_by": "owner-b", "status": "approved",
+    })
+    assert response.status_code == 401
