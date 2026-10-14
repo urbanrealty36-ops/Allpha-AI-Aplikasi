@@ -23,6 +23,7 @@ create table if not exists public.platform_operator_grants (
   created_at timestamptz not null default now(),
   revoked_at timestamptz,
   revoked_by uuid references auth.users(id) on delete restrict,
+  revocation_reason text check (revocation_reason is null or char_length(revocation_reason) between 8 and 500),
   check (
     (status = 'active' and revoked_at is null and revoked_by is null)
     or (status = 'revoked' and revoked_at is not null and revoked_by is not null)
@@ -89,7 +90,7 @@ begin
       (actor_user_id, action, resource_type, resource_id, outcome, request_id, metadata)
     values
       (event_actor, event_action, 'platform_operator_grant', new.id::text, 'allowed',
-       coalesce(current_setting('request.headers', true)::jsonb ->> 'x-request-id', 'db-grant'),
+       coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-request-id', 'db-grant'),
        jsonb_build_object('target_user_id', new.user_id, 'scopes', new.scopes,
                           'expires_at', new.expires_at, 'reason', new.reason));
     return new;
@@ -102,9 +103,9 @@ begin
       (actor_user_id, action, resource_type, resource_id, outcome, request_id, metadata)
     values
       (event_actor, event_action, 'platform_operator_grant', new.id::text, 'allowed',
-       coalesce(current_setting('request.headers', true)::jsonb ->> 'x-request-id', 'db-revoke'),
+       coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-request-id', 'db-revoke'),
        jsonb_build_object('target_user_id', new.user_id, 'scopes', new.scopes,
-                          'reason', new.reason));
+                          'reason', new.revocation_reason));
   end if;
   return new;
 end;
