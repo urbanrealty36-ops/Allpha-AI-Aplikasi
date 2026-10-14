@@ -29,9 +29,13 @@ def test_chunk_preserves_source_location_and_bounded_chunks():
     assert chunks[1]["source_location"] == {"kind": "page", "index": 4, "offset": 1800}
 
 def test_text_extract_requires_utf8():
+    from fastapi import HTTPException
+
     assert _extract("notes.txt", b"hello")[0]["text"] == "hello"
-    with pytest.raises(ValueError, match="INVALID_TEXT_ENCODING"):
-        _extract("notes.txt", b"\xff")
+    with pytest.raises(HTTPException) as error:
+        _extract("notes.txt", b"\\xff")
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "DOCUMENT_PARSE_FAILED"
 
 def test_scanner_fails_closed_when_unconfigured(monkeypatch):
     monkeypatch.delenv("ALLPHA_DOCUMENT_SCANNER_URL", raising=False)
