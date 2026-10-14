@@ -15,6 +15,7 @@ type Capability = {
   id: string; capability_key: string; description: string; risk_level: string;
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
 };
+type SkillVersion = { id: string; version: number; created_at: string; snapshot: { name?: string; changelog?: string; status?: string } };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function readError(response: Response) {
@@ -31,6 +32,8 @@ export default function AgentStudioPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
+  const [versionHistory, setVersionHistory] = useState<{ skillId: string; items: SkillVersion[] } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -120,6 +123,21 @@ export default function AgentStudioPage() {
     finally { setSaving(false); }
   }
 
+  async function loadSkillVersions(skill: Skill) {
+    if (!session) return;
+    setHistoryLoading(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/agents/${agentId}/skills/${skill.id}/versions`, {
+        headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      const body = await response.json();
+      setVersionHistory({ skillId: skill.id, items: Array.isArray(body.items) ? body.items : [] });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Riwayat versi tidak dapat dimuat.");
+    } finally { setHistoryLoading(false); }
+  }
+
   async function requestCapability(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session) return;
@@ -178,6 +196,8 @@ export default function AgentStudioPage() {
             <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{skill.name}</h3><p className="text-xs text-neutral-500">{skill.slug} · v{skill.version}</p></div><span className="rounded-full border px-2 py-1 text-xs">{skill.status}</span></div>
             {skill.description && <p className="mt-2 text-sm text-neutral-700">{skill.description}</p>}
             <p className="mt-2 text-xs text-neutral-500">Scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</p>
+            <button type="button" onClick={() => void loadSkillVersions(skill)} disabled={historyLoading} className="mt-3 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50">{historyLoading && versionHistory?.skillId === skill.id ? "Memuat riwayat…" : "Lihat riwayat versi"}</button>
+            {versionHistory?.skillId === skill.id && <div className="mt-3 space-y-2 border-t pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Riwayat versi tersimpan</p>{versionHistory.items.length === 0 ? <p className="text-sm text-neutral-500">Belum ada snapshot yang dapat ditampilkan.</p> : versionHistory.items.map(version => <div key={version.id} className="rounded-lg bg-neutral-50 p-2 text-sm"><div className="flex justify-between gap-2"><strong>v{version.version} · {version.snapshot?.name || skill.name}</strong><span className="text-xs text-neutral-500">{version.snapshot?.status || "snapshot"}</span></div><p className="mt-1 text-xs text-neutral-600">{version.snapshot?.changelog || "Tanpa changelog"} · {new Date(version.created_at).toLocaleString("id-ID")}</p></div>)}</div>}
           </article>)}
         </div>
       </section>
