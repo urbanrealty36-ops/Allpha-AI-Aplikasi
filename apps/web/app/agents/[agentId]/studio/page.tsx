@@ -11,6 +11,7 @@ type Skill = {
   tool_dependencies: string[]; version: number; status: "draft" | "published" | "archived";
   changelog?: string; updated_at?: string;
 };
+type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean };
 type Capability = {
   id: string; capability_key: string; description: string; risk_level: string;
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
@@ -31,6 +32,7 @@ export default function AgentStudioPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [versionHistory, setVersionHistory] = useState<{ skillId: string; items: SkillVersion[] } | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -70,15 +72,18 @@ export default function AgentStudioPage() {
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
-      const [skillResponse, capabilityResponse] = await Promise.all([
+      const [skillResponse, capabilityResponse, toolsResponse] = await Promise.all([
         fetch(`${apiBase}/v1/agents/${agentId}/skills`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/capabilities`, { headers, cache: "no-store" }),
+        fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),
       ]);
       if (!skillResponse.ok) throw new Error(await readError(skillResponse));
       if (!capabilityResponse.ok) throw new Error(await readError(capabilityResponse));
-      const [skillBody, capabilityBody] = await Promise.all([skillResponse.json(), capabilityResponse.json()]);
+      if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));
+      const [skillBody, capabilityBody, toolsBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json()]);
       setSkills(Array.isArray(skillBody.items) ? skillBody.items : []);
       setCapabilities(Array.isArray(capabilityBody.items) ? capabilityBody.items : []);
+      setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Agent Studio tidak dapat dimuat.");
     } finally { setLoading(false); }
@@ -223,7 +228,7 @@ export default function AgentStudioPage() {
           <label className="grid gap-1 text-sm">Kategori<input value={category} onChange={e => setCategory(e.target.value)} maxLength={60} className="rounded-lg border px-3 py-2" placeholder="general"/></label>
           <label className="grid gap-1 text-sm">Input JSON Schema<textarea required value={inputSchema} onChange={e => setInputSchema(e.target.value)} rows={3} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
           <label className="grid gap-1 text-sm">Output JSON Schema<textarea required value={outputSchema} onChange={e => setOutputSchema(e.target.value)} rows={3} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
-          <label className="grid gap-1 text-sm">Tool dependencies (key dipisah koma)<input value={toolDependencies} onChange={e => setToolDependencies(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="content.search, calendar.read"/></label>
+          <fieldset className="grid gap-2 text-sm"><legend className="font-medium">Tool dependencies dari registry</legend>{registeredTools.length ? registeredTools.map(tool => <label key={tool.key} className="flex items-start gap-2 rounded-lg border p-3"><input type="checkbox" checked={toolDependencies.split(",").map(x => x.trim()).includes(tool.key)} onChange={e => setToolDependencies(current => { const selected = current.split(",").map(x => x.trim()).filter(Boolean); return (e.target.checked ? [...selected, tool.key] : selected.filter(key => key !== tool.key)).join(", "); })} className="mt-1"/><span><strong>{tool.name}</strong> <span className="text-neutral-500">{tool.key} · v{tool.version} · {tool.risk_level}</span><span className="block text-neutral-600">{tool.description}</span></span></label>) : <p className="text-neutral-500">Tidak ada tool executable di registry atau katalog belum termuat.</p>}</fieldset>
           <label className="grid gap-1 text-sm">Permission scopes (pisahkan koma)<input value={scope} onChange={e => setScope(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="content:read"/></label>
           <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm">Batas runtime (detik)<input type="number" min="1" max="3600" value={budgetSeconds} onChange={e => setBudgetSeconds(e.target.value)} className="rounded-lg border px-3 py-2"/></label><label className="grid gap-1 text-sm">Batas tool calls<input type="number" min="0" max="100" value={budgetToolCalls} onChange={e => setBudgetToolCalls(e.target.value)} className="rounded-lg border px-3 py-2"/></label></div>
           <label className="grid gap-1 text-sm">Model requirements (JSON)<textarea value={modelRequirements} onChange={e => setModelRequirements(e.target.value)} rows={2} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
@@ -246,7 +251,7 @@ export default function AgentStudioPage() {
               <label className="grid gap-1 text-sm">Deskripsi<textarea maxLength={2000} value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={2} className="rounded-lg border px-3 py-2"/></label>
               <label className="grid gap-1 text-sm">Instruksi<textarea maxLength={12000} value={editInstructions} onChange={e => setEditInstructions(e.target.value)} rows={3} className="rounded-lg border px-3 py-2"/></label>
               <label className="grid gap-1 text-sm">Permission scopes<input value={editScopes} onChange={e => setEditScopes(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="pisahkan koma"/></label>
-              <label className="grid gap-1 text-sm">Tool dependencies<input value={editToolDependencies} onChange={e => setEditToolDependencies(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="key dipisah koma"/></label>
+              <fieldset className="grid gap-2 text-sm"><legend className="font-medium">Tool dependencies dari registry</legend>{registeredTools.map(tool => <label key={tool.key} className="flex items-start gap-2 rounded-lg border p-3"><input type="checkbox" checked={editToolDependencies.split(",").map(x => x.trim()).includes(tool.key)} onChange={e => setEditToolDependencies(current => { const selected = current.split(",").map(x => x.trim()).filter(Boolean); return (e.target.checked ? [...selected, tool.key] : selected.filter(key => key !== tool.key)).join(", "); })} className="mt-1"/><span><strong>{tool.name}</strong> <span className="text-neutral-500">{tool.key} · v{tool.version}</span><span className="block text-neutral-600">{tool.description}</span></span></label>)}</fieldset>
               <label className="grid gap-1 text-sm">Changelog<input maxLength={2000} value={editChangelog} onChange={e => setEditChangelog(e.target.value)} className="rounded-lg border px-3 py-2"/></label>
               <div className="flex gap-2"><button disabled={saving || !session} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan versi baru"}</button><button type="button" onClick={() => setEditingSkillId(null)} className="rounded-lg border px-3 py-2 text-xs">Batal</button></div>
             </form>}
