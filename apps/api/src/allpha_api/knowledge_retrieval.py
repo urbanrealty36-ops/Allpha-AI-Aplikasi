@@ -133,6 +133,8 @@ async def retrieve_knowledge(
     owner_id = str(user["id"])
     agent = str(agent_id)
     try:
+        if service.repository is None or not await service.repository.authorize_agent(owner_id=owner_id, agent_id=agent):
+            raise KnowledgeAccessDenied("owner does not have active access to this agent")
         allowed = await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=agent) if service.policy else None
         if not allowed or any(value not in {"public", "internal", "confidential", "restricted"} for value in allowed):
             raise KnowledgeRetrievalUnavailable("approved sensitivity policy is missing or invalid")
