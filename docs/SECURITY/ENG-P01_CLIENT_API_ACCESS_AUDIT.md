@@ -138,6 +138,10 @@ This is a source-level correction. The new migration has not been applied to the
 - Latest Allpha Smoke run `38468039854` on the same prior commit completed successfully. It does not include the newer deactivation fix or expanded token/tenant regressions.
 - Independent external HTTP probes remain unverified because the execution environment previously failed DNS resolution. Railway connector status/logs are not equivalent to independent external HTTP response evidence.
 
+## Readiness UI contract correction (2026-10-14)
+
+The Super Admin diagnostics page previously interpreted every `/readyz` dependency value other than `configured` as missing. FastAPI `/readyz` reports `reachable` for successful live probes of Supabase Auth and PostgREST, while optional `object_storage` and `ai_gateway` currently report `not_configured`. This made the UI display a warning even when the required Auth/database probes were healthy. Corrected `apps/super-admin/app/page.tsx` to evaluate only `database` and `authentication` against `reachable` and added source smoke assertions in `apps/super-admin/scripts/smoke-test.mjs`. Commits: `5149e502ed2042999a56760d8e5a3bee62e5e481`, `0aa716ae48bb117d5355cc1db32bc91e818b051a`. CI result for the final documentation commit is not yet verified; do not treat source assertions as runtime UI verification.
+
 ## Current decision
 
 ENG-P01 remains `in_progress`. Do not promote status until (a) current commit's CI jobs are final and Android failure is fixed or properly explained, (b) the new SQL migration and tests pass in isolated staging, (c) real two-user/two-tenant access tests pass, and (d) endpoint verification evidence is recorded.
