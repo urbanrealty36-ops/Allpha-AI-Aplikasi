@@ -12,6 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
@@ -159,19 +160,51 @@ async def healthz() -> dict[str, str]:
 
 @app.get("/readyz", tags=["system"])
 async def readyz() -> JSONResponse:
-    # Core readiness requires canonical Supabase API/Auth configuration.
-    # Optional engines are reported but do not block this foundation slice.
-    configured = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_PUBLISHABLE_KEY"))
+    """Fail closed unless the canonical Supabase Auth and PostgREST APIs respond."""
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+    if not supabase_url or not publishable_key:
+        dependencies = {
+            "database": "not_configured",
+            "authentication": "not_configured",
+            "object_storage": "not_configured",
+            "ai_gateway": "not_configured",
+        }
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": APP_NAME,
+                "version": APP_VERSION,
+                "dependencies": dependencies,
+            },
+        )
+
+    headers = {"apikey": publishable_key}
+    auth_status = "unavailable"
+    database_status = "unavailable"
+    try:
+        # Bound probe time so readiness checks cannot tie up workers indefinitely.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
+            auth_response = await client.get(f"{supabase_url}/auth/v1/health", headers=headers)
+            database_response = await client.get(f"{supabase_url}/rest/v1/", headers=headers)
+        auth_status = "reachable" if auth_response.status_code == 200 else "unavailable"
+        database_status = "reachable" if database_response.status_code == 200 else "unavailable"
+    except httpx.HTTPError:
+        # Do not leak upstream URLs, response bodies, or credentials from readiness.
+        pass
+
+    ready = auth_status == "reachable" and database_status == "reachable"
     dependencies = {
-        "database": "configured" if configured else "not_configured",
-        "authentication": "configured" if configured else "not_configured",
+        "database": database_status,
+        "authentication": auth_status,
         "object_storage": "not_configured",
         "ai_gateway": "not_configured",
     }
     return JSONResponse(
-        status_code=200 if configured else 503,
+        status_code=200 if ready else 503,
         content={
-            "status": "ready" if configured else "not_ready",
+            "status": "ready" if ready else "not_ready",
             "service": APP_NAME,
             "version": APP_VERSION,
             "dependencies": dependencies,
