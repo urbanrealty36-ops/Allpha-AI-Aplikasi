@@ -315,6 +315,13 @@ async def create_operator_grant(
     request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:operators.manage")),
 ) -> dict[str, Any]:
+    # Operators may delegate only scopes they themselves hold and may never
+    # elevate themselves through a second grant. Initial bootstrap is out-of-band.
+    if str(payload.user_id) == operator["id"] or not set(payload.scopes).issubset(set(operator["scopes"])):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "OPERATOR_SCOPE_ESCALATION_DENIED", "message": "Grant tidak boleh menaikkan hak atau memberikan grant kepada diri sendiri."},
+        )
     rows = await privileged_rest_request(
         "POST",
         "platform_operator_grants",
