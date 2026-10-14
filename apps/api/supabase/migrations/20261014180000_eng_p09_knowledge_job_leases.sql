@@ -1,6 +1,10 @@
 -- ENG-P09: database-backed queue lease primitives.
 -- SOURCE ONLY. Validate concurrency, privileges, and migration order in approved
 -- isolated non-production before applying anywhere.
+alter table public.agent_knowledge_sources
+  add column if not exists sensitivity text
+    check (sensitivity in ('public','internal','confidential','restricted'));
+
 alter table public.agent_knowledge_jobs
   add column if not exists source_version integer,
   add column if not exists lease_token uuid,
@@ -27,7 +31,8 @@ create index if not exists agent_knowledge_jobs_claim_idx
   where status in ('queued','processing');
 
 create or replace function public.claim_agent_knowledge_job(
-  p_lease_seconds integer default 90
+  p_lease_seconds integer default 90,
+  p_stage text default null
 )
 returns setof public.agent_knowledge_jobs
 language plpgsql
@@ -45,6 +50,7 @@ begin
   select j.id into v_job_id
   from public.agent_knowledge_jobs j
   where j.available_at <= now()
+    and (p_stage is null or j.stage = p_stage)
     and j.attempt < j.max_attempts
     and (
       j.status = 'queued'
@@ -163,7 +169,7 @@ begin
 end;
 $$;
 
-revoke all on function public.claim_agent_knowledge_job(integer) from public, anon, authenticated;
+revoke all on function public.claim_agent_knowledge_job(integer, text) from public, anon, authenticated;
 revoke all on function public.finalize_agent_knowledge_job(uuid, uuid, text, text, integer, text, integer) from public, anon, authenticated;
-grant execute on function public.claim_agent_knowledge_job(integer) to service_role;
+grant execute on function public.claim_agent_knowledge_job(integer, text) to service_role;
 grant execute on function public.finalize_agent_knowledge_job(uuid, uuid, text, text, integer, text, integer) to service_role;
