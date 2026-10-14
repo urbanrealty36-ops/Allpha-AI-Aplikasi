@@ -139,8 +139,28 @@ create policy agent_capabilities_owner_update on public.agent_capabilities
   );
 
 revoke all on public.agent_skills, public.agent_capabilities from anon, public;
+drop policy if exists agent_skills_public_passport_select on public.agent_skills;
+create policy agent_skills_public_passport_select on public.agent_skills
+  for select to anon, authenticated using (
+    status = 'published' and exists (
+      select 1 from public.ai_agents a
+      where a.id = agent_skills.agent_id and a.visibility = 'public' and a.status = 'active'
+    )
+  );
 grant select, insert, update, delete on public.agent_skills to authenticated;
+grant select (id, agent_id, slug, name, description, category, version, status, publication_terms, created_at, updated_at)
+  on public.agent_skills to anon;
+drop policy if exists agent_capabilities_public_passport_select on public.agent_capabilities;
+create policy agent_capabilities_public_passport_select on public.agent_capabilities
+  for select to anon, authenticated using (
+    status = 'approved' and exists (
+      select 1 from public.ai_agents a
+      where a.id = agent_capabilities.agent_id and a.visibility = 'public' and a.status = 'active'
+    )
+  );
 grant select, insert, update on public.agent_capabilities to authenticated;
+grant select (id, agent_id, capability_key, description, risk_level, status, created_at, updated_at)
+  on public.agent_capabilities to anon;
 
 comment on table public.agent_skills is 'Owner-scoped, versioned reusable Agent procedures; skill declarations never grant runtime authority.';
 comment on table public.agent_capabilities is 'Owner-declared capability requests; requested/approved status does not bypass runtime policy authorization.';
