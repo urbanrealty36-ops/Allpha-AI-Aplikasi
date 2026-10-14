@@ -49,6 +49,14 @@ The caller MUST validate response cardinality, finite numeric values, dimensions
 - Separate physical index per model/dimension: supports controlled model migration and parallel evaluation, but increases schema/operations complexity.
 - Unindexed flexible vectors: flexible for prototypes, but does not satisfy production vector-index performance/acceptance and is not a release solution.
 
+## Recommended implementation decision (pending architecture-owner approval)
+
+**Recommendation:** use a model-versioned index registry and keep each physical vector index dimension-specific; do not use an unindexed flexible vector column for production retrieval. Store immutable provider_id, model_id, model_version, dimensions, and embedding contract version with every index generation. A model/dimension change creates a new index generation, followed by dual-read evaluation and an explicit cutover; the prior generation remains available for rollback until the new generation passes acceptance. This avoids silently mixing incompatible vector spaces.
+
+**Evaluation protocol recommendation:** maintain a versioned, owner-reviewed relevance set with query, expected source/chunk IDs, allowed sensitivity, and expected authorization outcome. Report Recall@5, MRR@10, citation/source correctness, latency, and cost. Add mandatory negative cases for cross-owner and cross-tenant retrieval; the acceptable leakage count is zero. The architecture owner must approve the dataset, minimum retrieval thresholds, latency/cost budgets, and evaluator version before any source can become ready. These thresholds are intentionally not fabricated here.
+
+**Not selected:** this ADR does not select a vendor/provider, embedding model, immutable model version, or numeric vector dimension. The repo contains no approved deployment policy or evidence supporting one. Those values must be supplied through the canonical Model Router policy and then recorded as a versioned deployment decision. Until then, physical vector DDL and live embedding remain blocked; no schema is to be applied to production as a test.
+
 ## Consequences
 
 Until the open decisions are approved and the canonical router/worker exist, do not claim vector indexing, retrieval readiness, or ENG-P07 completion. Keep migrations source-only and do not apply them to production Supabase.
