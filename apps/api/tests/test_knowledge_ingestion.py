@@ -67,3 +67,14 @@ def test_eng_p07_migration_has_private_storage_and_owner_rls():
     assert "public=false" in sql
     assert "sha256" in sql and "source_location" in sql
     assert "references public.ai_agents(id) on delete cascade" in sql
+
+def test_eng_p07_full_text_index_and_embedding_handoff_contract():
+    migrations = Path(__file__).parents[1] / "supabase" / "migrations"
+    fulltext = (migrations / "20261014173000_eng_p07_knowledge_fulltext_index.sql").read_text(encoding="utf-8").lower()
+    api = (Path(__file__).parents[1] / "src" / "allpha_api" / "knowledge.py").read_text(encoding="utf-8")
+    assert "generated always as (to_tsvector" in fulltext
+    assert "using gin(search_vector)" in fulltext
+    assert '"stage":"embedding_indexing"' in api
+    assert '"status":"queued"' in api
+    assert '"retrieval_ready":false' in api
+    assert "ENG-P09 Model Router worker" in api
