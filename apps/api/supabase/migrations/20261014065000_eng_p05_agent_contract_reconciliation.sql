@@ -10,7 +10,7 @@ alter table public.ai_agents
 -- contracts with different validation and disclosure/boundary semantics.
 drop function if exists public.create_ai_agent(text, text, text, text, jsonb, text);
 
-create function public.create_ai_agent(
+create or replace function public.create_ai_agent(
   p_handle text,
   p_display_name text,
   p_description text default '',
