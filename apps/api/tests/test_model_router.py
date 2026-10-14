@@ -4,18 +4,25 @@ from datetime import datetime, timezone
 import pytest
 
 from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
-from allpha_api.model_router import ModelRouterRejected, ModelRouterUnavailable, route_embedding
+from allpha_api.model_router import (
+    CanonicalModelRouter,
+    EmbeddingRoute,
+    ModelRouterRejected,
+    ModelRouterUnavailable,
+    ModelRouterTransient,
+    route_embedding,
+)
 
 
 def request():
     return EmbeddingRequest(task_id="task-1", idempotency_key="idem-1", trace_id="trace-1", owner_id="owner-1", agent_id="agent-1", source_id="source-1", source_version=1, sensitivity="internal", attempt=1, timeout_ms=5000, chunks=[{"chunk_id":"chunk-1","content_sha256":"a"*64,"text":"example"}])
 
 
-def response():
-    return EmbeddingResponse(task_id="task-1", provider_id="router-policy", model_id="selected-model", model_version="version-1", dimensions=2, vectors=[{"chunk_id":"chunk-1","content_sha256":"a"*64,"values":[0.1,0.2]}], trace_id="trace-1", completed_at=datetime.now(timezone.utc))
+def response(provider_id="router-policy", model_id="selected-model", model_version="version-1", digest=None):
+    return EmbeddingResponse(task_id="task-1", provider_id=provider_id, model_id=model_id, model_version=model_version, dimensions=2, vectors=[{"chunk_id":"chunk-1","content_sha256":digest or "a"*64,"values":[0.1,0.2]}], trace_id="trace-1", completed_at=datetime.now(timezone.utc))
 
 
-class FakeCanonicalRouter:
+class FakeRouter:
     def __init__(self, value):
         self.value = value
         self.calls = 0
@@ -25,30 +32,95 @@ class FakeCanonicalRouter:
         return self.value
 
 
+class FakeAdapter:
+    def __init__(self, values):
+        self.values = list(values)
+        self.calls = 0
+
+    async def embed(self, payload, *, model_id):
+        self.calls += 1
+        value = self.values.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
 def test_missing_canonical_router_fails_closed():
     async def scenario():
         with pytest.raises(ModelRouterUnavailable):
             await route_embedding(None, request())
-
     asyncio.run(scenario())
 
 
 def test_router_response_with_matching_provenance_is_accepted():
     async def scenario():
-        router = FakeCanonicalRouter(response())
+        router = FakeRouter(response())
         result = await route_embedding(router, request())
         assert result.model_id == "selected-model"
         assert router.calls == 1
-
     asyncio.run(scenario())
 
 
 def test_router_response_with_wrong_chunk_hash_is_rejected():
     async def scenario():
-        invalid = response().model_copy(update={"vectors": [{"chunk_id":"chunk-1","content_sha256":"b"*64,"values":[0.1,0.2]}]})
+        invalid = response(digest="b"*64)
         with pytest.raises(ModelRouterRejected) as error:
-            await route_embedding(FakeCanonicalRouter(invalid), request())
+            await route_embedding(FakeRouter(invalid), request())
         assert error.value.failure.code == "MODEL_ROUTER_RESPONSE_INVALID"
         assert error.value.failure.retryable is False
+    asyncio.run(scenario())
 
+
+def test_canonical_router_selects_configured_route_and_records_metering():
+    async def scenario():
+        records = []
+        async def meter(req, res):
+            records.append((req.task_id, res.usage_units, res.cost_microunits))
+        adapter = FakeAdapter([response()])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": adapter},
+            metering_sink=meter,
+        )
+        result = await router.embed(request())
+        assert result.model_id == "selected-model"
+        assert adapter.calls == 1
+        assert records == [("task-1", None, None)]
+    asyncio.run(scenario())
+
+
+def test_canonical_router_fails_closed_without_sensitivity_policy():
+    async def scenario():
+        router = CanonicalModelRouter(routes={}, adapters={})
+        with pytest.raises(ModelRouterUnavailable):
+            await router.embed(request())
+    asyncio.run(scenario())
+
+
+def test_canonical_router_retries_only_transient_adapter_failures():
+    async def scenario():
+        adapter = FakeAdapter([ModelRouterTransient("temporary"), response()])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
+            adapters={"router-policy": adapter},
+            retry_delay_seconds=0,
+        )
+        result = await router.embed(request())
+        assert result.model_id == "selected-model"
+        assert adapter.calls == 2
+    asyncio.run(scenario())
+
+
+def test_canonical_router_rejects_wrong_model_identity_without_retry():
+    async def scenario():
+        adapter = FakeAdapter([response(model_id="unapproved-model"), response()])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=2)},
+            adapters={"router-policy": adapter},
+            retry_delay_seconds=0,
+        )
+        with pytest.raises(ModelRouterRejected) as error:
+            await router.embed(request())
+        assert error.value.failure.code == "MODEL_ROUTER_ROUTE_IDENTITY_MISMATCH"
+        assert adapter.calls == 1
     asyncio.run(scenario())
