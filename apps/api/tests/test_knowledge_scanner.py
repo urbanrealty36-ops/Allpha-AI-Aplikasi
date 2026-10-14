@@ -40,7 +40,7 @@ class FakeAsyncClient:
         return type(self).response
 
 
-def setup_function(monkeypatch):
+@pytest.fixture(autouse=True)\ndef scanner_client_mock(monkeypatch):
     FakeAsyncClient.response = FakeResponse()
     FakeAsyncClient.error = None
     FakeAsyncClient.calls = []
