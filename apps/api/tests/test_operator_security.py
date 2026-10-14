@@ -322,3 +322,108 @@ def test_operator_migration_has_rls_private_append_only_audit_and_trigger_contra
     assert "platform_operator_grants_audit_insert" in sql
     assert "platform_operator_grants_audit_revoke" in sql
     assert "revoke all on public.platform_operator_audit_events from public, anon, authenticated, service_role" in sql
+
+
+def test_capability_review_requires_scope_and_updates_only_pending_request(monkeypatch):
+    calls = []
+    async def fake_db(method, path, token, **kwargs):
+        return [{
+            "id": "operator-grant",
+            "user_id": "operator",
+            "scopes": ["platform:capabilities.review"],
+            "status": "active",
+            "expires_at": None,
+        }]
+
+    async def fake_audit(request, **kwargs):
+        calls.append(("audit", kwargs["outcome"], kwargs["metadata"]))
+
+    async def fake_privileged(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET":
+            return [{
+                "id": "00000000-0000-0000-0000-000000000777",
+                "agent_id": "00000000-0000-0000-0000-000000000010",
+                "capability_key": "content.publish",
+                "description": "Publish content",
+                "risk_level": "low",
+                "status": "requested",
+            }]
+        return [{
+            "id": "00000000-0000-0000-0000-000000000777",
+            "status": "approved",
+            "reviewed_by": "operator",
+            "review_reason": "Policy review completed",
+        }]
+
+    monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "write_operator_audit", fake_audit)
+    monkeypatch.setattr(security, "privileged_rest_request", fake_privileged)
+    install_auth("operator")
+    try:
+        response = client.post(
+            "/v1/admin/operator/capabilities/00000000-0000-0000-0000-000000000777/review",
+            json={"decision": "approved", "reason": "Policy review completed"},
+        )
+        assert response.status_code == 200
+        assert response.json()["runtime_authorized"] is False
+        patch_call = next(call for call in calls if call[0] == "PATCH")
+        assert patch_call[2]["params"]["status"] == "eq.requested"
+        assert patch_call[2]["body"]["reviewed_by"] == "operator"
+        assert patch_call[2]["body"]["status"] == "approved"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_high_risk_capability_review_requires_separate_scope(monkeypatch):
+    events = []
+    async def fake_db(method, path, token, **kwargs):
+        return [{
+            "id": "operator-grant",
+            "user_id": "operator",
+            "scopes": ["platform:capabilities.review"],
+            "status": "active",
+            "expires_at": None,
+        }]
+
+    async def fake_audit(request, **kwargs):
+        events.append((kwargs["action"], kwargs["outcome"]))
+
+    async def fake_privileged(method, table, **kwargs):
+        assert method == "GET"
+        return [{
+            "id": "00000000-0000-0000-0000-000000000777",
+            "agent_id": "00000000-0000-0000-0000-000000000010",
+            "capability_key": "billing.refund",
+            "description": "Refund payment",
+            "risk_level": "critical",
+            "status": "requested",
+        }]
+
+    monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "write_operator_audit", fake_audit)
+    monkeypatch.setattr(security, "privileged_rest_request", fake_privileged)
+    install_auth("operator")
+    try:
+        response = client.post(
+            "/v1/admin/operator/capabilities/00000000-0000-0000-0000-000000000777/review",
+            json={"decision": "approved", "reason": "Reviewed carefully"},
+        )
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "HIGH_RISK_REVIEW_SCOPE_REQUIRED"
+        assert events == [("operator.scope.check", "allowed"), ("agent.capability.review", "denied")]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_capability_review_migration_protects_fields_and_audits_transactionally():
+    migration_path = Path(__file__).parents[1] / "supabase" / "migrations" / "20261014150000_eng_p06_capability_review_audit.sql"
+    sql = migration_path.read_text(encoding="utf-8")
+    assert "reviewed_by" in sql and "reviewed_at" in sql and "review_reason" in sql
+    assert "private.guard_agent_capability_review_fields" in sql
+    assert "auth.role()" in sql
+    assert "private.audit_agent_capability_review" in sql
+    assert "public.platform_operator_audit_events" in sql
+    assert "old.status = 'requested' and new.status in ('approved','denied')" in sql
+    assert "'platform:capabilities.review.high_risk'" in sql
+    assert "grant select, update on public.agent_capabilities to service_role" in sql
