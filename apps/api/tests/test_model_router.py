@@ -124,3 +124,40 @@ def test_canonical_router_rejects_wrong_model_identity_without_retry():
         assert error.value.failure.code == "MODEL_ROUTER_ROUTE_IDENTITY_MISMATCH"
         assert adapter.calls == 1
     asyncio.run(scenario())
+
+
+def test_canonical_router_times_out_and_returns_retryable_failure():
+    async def scenario():
+        class HangingAdapter:
+            async def embed(self, payload, *, model_id):
+                await asyncio.sleep(0.05)
+                return response()
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=1)},
+            adapters={"router-policy": HangingAdapter()},
+            retry_delay_seconds=0,
+        )
+        payload = request().model_copy(update={"timeout_ms": 5})
+        with pytest.raises(ModelRouterRejected) as error:
+            await router.embed(payload)
+        assert error.value.failure.code == "MODEL_ROUTER_TIMEOUT"
+        assert error.value.failure.retryable is True
+    asyncio.run(scenario())
+
+
+def test_canonical_router_does_not_retry_terminal_provider_rejection():
+    async def scenario():
+        adapter = FakeAdapter([ModelRouterRejected(
+            __import__("allpha_api.embedding_contract", fromlist=["EmbeddingFailure"]).EmbeddingFailure(
+                task_id="task-1", code="POLICY_REJECTED", retryable=False, trace_id="trace-1"
+            )
+        )])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1", max_attempts=3)},
+            adapters={"router-policy": adapter},
+            retry_delay_seconds=0,
+        )
+        with pytest.raises(ModelRouterRejected):
+            await router.embed(request())
+        assert adapter.calls == 1
+    asyncio.run(scenario())
