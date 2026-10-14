@@ -7,14 +7,55 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
 
 router = APIRouter(prefix="/v1/admin", tags=["platform-operations"])
+OperatorScope = Literal[
+    "platform:operations.read",
+    "platform:security.audit.read",
+    "platform:capabilities.review",
+    "platform:operators.manage",
+]
+
+
+class OperatorGrantCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: UUID
+    scopes: list[OperatorScope] = Field(min_length=1, max_length=4)
+    reason: str = Field(min_length=8, max_length=500)
+    expires_at: datetime | None = None
+
+    @field_validator("scopes")
+    @classmethod
+    def unique_scopes(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("Scope tidak boleh duplikat.")
+        return value
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_must_be_future(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return value
+        if value.tzinfo is None:
+            raise ValueError("expires_at harus menyertakan zona waktu.")
+        if value <= datetime.now(timezone.utc):
+            raise ValueError("expires_at harus berada di masa depan.")
+        return value
+
+
+class OperatorGrantRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+
+
 _AUDIT_TIMEOUT = httpx.Timeout(5.0, connect=2.0)
 
 
@@ -113,6 +154,50 @@ async def read_operator_audit(*, limit: int = 100) -> list[dict[str, Any]]:
     return payload
 
 
+async def privileged_rest_request(
+    method: str,
+    table: str,
+    *,
+    params: dict[str, str] | None = None,
+    body: dict[str, Any] | None = None,
+    prefer: str | None = None,
+) -> Any:
+    """Call PostgREST using a server-only key; never expose it to clients."""
+    base_url, headers = _audit_config()
+    if prefer:
+        headers = {**headers, "Prefer": prefer}
+    try:
+        async with httpx.AsyncClient(timeout=_AUDIT_TIMEOUT) as client:
+            response = await client.request(
+                method,
+                f"{base_url}/rest/v1/{table}",
+                headers=headers,
+                params=params,
+                json=body,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OPERATOR_STORE_UNAVAILABLE", "message": "Penyimpanan governance tidak tersedia."},
+        ) from exc
+    if response.status_code >= 400:
+        code = "OPERATOR_GRANT_CONFLICT" if response.status_code == 409 else "OPERATOR_STORE_UNAVAILABLE"
+        status = 409 if response.status_code == 409 else 503
+        raise HTTPException(
+            status_code=status,
+            detail={"code": code, "message": "Perubahan grant operator tidak dapat diproses."},
+        )
+    if not response.content:
+        return None
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OPERATOR_STORE_UNAVAILABLE", "message": "Respons penyimpanan governance tidak valid."},
+        ) from exc
+
+
 def require_operator_scope(required_scope: str):
     """Return a dependency enforcing a live grant and exact scope."""
     async def dependency(
@@ -205,3 +290,79 @@ async def get_operator_audit(
 ) -> dict[str, Any]:
     events = await read_operator_audit(limit=limit)
     return {"items": events, "limit": min(max(1, limit), 100)}
+
+
+@router.get("/operator/grants", name="list_operator_grants")
+async def list_operator_grants(
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:operators.manage")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "GET",
+        "platform_operator_grants",
+        params={
+            "select": "id,user_id,scopes,status,reason,granted_by,expires_at,created_at,revoked_at,revoked_by,revocation_reason",
+            "order": "created_at.desc",
+            "limit": str(min(max(1, limit), 100)),
+        },
+    )
+    return {"items": rows or [], "limit": min(max(1, limit), 100)}
+
+
+@router.post("/operator/grants", status_code=201, name="create_operator_grant")
+async def create_operator_grant(
+    payload: OperatorGrantCreate,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:operators.manage")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "POST",
+        "platform_operator_grants",
+        params={"select": "id,user_id,scopes,status,reason,granted_by,expires_at,created_at"},
+        body={
+            "user_id": str(payload.user_id),
+            "scopes": payload.scopes,
+            "status": "active",
+            "reason": payload.reason,
+            "granted_by": operator["id"],
+            "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+        },
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OPERATOR_GRANT_CREATE_FAILED", "message": "Grant operator tidak dapat dibuat."},
+        )
+    return {"grant": rows[0]}
+
+
+@router.post("/operator/grants/{grant_id}/revoke", name="revoke_operator_grant")
+async def revoke_operator_grant(
+    grant_id: UUID,
+    payload: OperatorGrantRevoke,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:operators.manage")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "PATCH",
+        "platform_operator_grants",
+        params={
+            "id": f"eq.{grant_id}",
+            "status": "eq.active",
+            "select": "id,user_id,scopes,status,reason,granted_by,expires_at,created_at,revoked_at,revoked_by,revocation_reason",
+        },
+        body={
+            "status": "revoked",
+            "revoked_at": datetime.now(timezone.utc).isoformat(),
+            "revoked_by": operator["id"],
+            "revocation_reason": payload.reason,
+        },
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "OPERATOR_GRANT_NOT_FOUND", "message": "Grant aktif tidak ditemukan."},
+        )
+    return {"grant": rows[0], "revoked": True}
