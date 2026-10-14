@@ -467,20 +467,36 @@ def test_record_consent_uses_authenticated_user_and_caller_session(monkeypatch):
     }
 
 
-def test_record_consent_rejects_forged_identity_fields_before_database_write():
-    response = client.post(
-        "/v1/me/consents",
-        headers={"Authorization": "Bearer any-token"},
-        json={
-            "user_id": "another-user",
-            "consent_type": "privacy_policy",
-            "policy_version": "policy-test-v1",
-            "granted": True,
-        },
-    )
+def test_record_consent_rejects_forged_identity_fields_before_database_write(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "consent-session-token"
+        return {"id": "authenticated-consent-user", "email": "consent@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/consents",
+            headers={"Authorization": "Bearer consent-session-token"},
+            json={
+                "user_id": "another-user",
+                "consent_type": "privacy_policy",
+                "policy_version": "policy-test-v1",
+                "granted": True,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert calls == []
 
 
 def test_record_consent_requires_authentication():
