@@ -32,7 +32,9 @@ export default function AgentStudioPage() {
   const agentId = params.agentId;
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
-  const [skills, setSkills] = useState<Skill[]>([]);\n  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);\n  const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
+  const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [versionHistory, setVersionHistory] = useState<{ skillId: string; items: SkillVersion[] } | null>(null);
@@ -76,15 +78,18 @@ export default function AgentStudioPage() {
       const [skillResponse, capabilityResponse, toolsResponse, knowledgeResponse] = await Promise.all([
         fetch(`${apiBase}/v1/agents/${agentId}/skills`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/capabilities`, { headers, cache: "no-store" }),
-        fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),\n        fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { headers, cache: "no-store" }),
+        fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),
+        fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { headers, cache: "no-store" }),
       ]);
       if (!skillResponse.ok) throw new Error(await readError(skillResponse));
       if (!capabilityResponse.ok) throw new Error(await readError(capabilityResponse));
-      if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));\n      if (!knowledgeResponse.ok) throw new Error(await readError(knowledgeResponse));
+      if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));
+      if (!knowledgeResponse.ok) throw new Error(await readError(knowledgeResponse));
       const [skillBody, capabilityBody, toolsBody, knowledgeBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json(), knowledgeResponse.json()]);
       setSkills(Array.isArray(skillBody.items) ? skillBody.items : []);
       setCapabilities(Array.isArray(capabilityBody.items) ? capabilityBody.items : []);
-      setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);\n      setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
+      setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
+      setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Agent Studio tidak dapat dimuat.");
     } finally { setLoading(false); }
