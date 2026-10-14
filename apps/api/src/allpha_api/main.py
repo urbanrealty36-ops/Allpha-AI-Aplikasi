@@ -29,13 +29,14 @@ app = FastAPI(
     description="Allpha API with Supabase-backed identity and tenant authorization.",
 )
 
-# Browser origins are explicit and configurable. Defaults are local development only;
-# production deployments must set ALLPHA_CORS_ORIGINS to exact trusted origins.
+# Browser origins are explicit and configurable. The default includes the canonical
+# production web/admin origins plus local development. Railway should set
+# ALLPHA_CORS_ORIGINS explicitly to the same exact origin allowlist.
 cors_origins = [
     origin.strip()
     for origin in os.getenv(
         "ALLPHA_CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:3001,http://localhost:19006,http://localhost:8081",
+        "https://allpha.web.id,https://adm.allpha.web.id,http://localhost:3000,http://localhost:3001,http://localhost:19006,http://localhost:8081",
     ).split(",")
     if origin.strip()
 ]
