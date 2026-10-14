@@ -119,7 +119,9 @@ async def get_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,u
 async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
     token=await _owned(agent_id,request,user); source=await _source(agent_id,source_id,token,user)
     if source["status"] not in ("quarantined","failed"): raise HTTPException(409,detail={"code":"SOURCE_STATE_CONFLICT","message":"Sumber tidak berada pada status yang dapat diproses ulang."})
-    jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"processing","stage":"malware_scan","attempt":1,"progress":5},prefer="return=representation")
+    prior_jobs=await user_db_request("GET","agent_knowledge_jobs",token,params={"select":"id,attempt","source_id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"100"})
+    attempt=max((int(item.get("attempt",0)) for item in (prior_jobs or [])),default=0)+1
+    jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"processing","stage":"malware_scan","attempt":attempt,"progress":5},prefer="return=representation")
     job=jobs[0] if jobs else None
     await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"processing","processing_stage":"malware_scan","error_code":None})
     try:
@@ -133,9 +135,12 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
         for start in range(0,len(chunks),50):
             batch=[{"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"chunk_index":start+i,"content":v["content"],"source_location":v["source_location"],"source_version":source.get("source_version",1),"content_sha256":hashlib.sha256(v["content"].encode()).hexdigest()} for i,v in enumerate(chunks[start:start+50])]
             await user_db_request("POST","agent_knowledge_chunks",token,body=batch,prefer="return=minimal")
-        await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"indexed_pending_embeddings","processing_stage":"text_extracted","error_code":None})
+        index_jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"queued","stage":"embedding_indexing","attempt":0,"progress":75},prefer="return=representation")
+        if not index_jobs:
+            raise HTTPException(503,detail={"code":"INDEXING_HANDOFF_FAILED","message":"Permintaan indexing belum dapat dimasukkan ke antrean."})
+        await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"indexed_pending_embeddings","processing_stage":"awaiting_model_router","error_code":None})
         if job: await user_db_request("PATCH","agent_knowledge_jobs",token,params={"id":f"eq.{job['id']}"},body={"status":"succeeded","stage":"text_extracted","progress":70})
-        return {"source_id":str(source_id),"status":"indexed_pending_embeddings","chunks_created":len(chunks),"retrieval_ready":False,"next_dependency":"ENG-P09 Model Router embeddings and retrieval indexing"}
+        return {"source_id":str(source_id),"status":"indexed_pending_embeddings","chunks_created":len(chunks),"indexing_job_id":index_jobs[0]["id"],"indexing_job_status":"queued","retrieval_ready":False,"next_dependency":"ENG-P09 Model Router worker consumes embedding_indexing jobs; ready status remains blocked until vector index and retrieval evaluation pass"}
     except Exception as exc:
         if isinstance(exc, HTTPException):
             code=(exc.detail.get("code") if isinstance(exc.detail,dict) else None) or "PROCESSING_FAILED"
