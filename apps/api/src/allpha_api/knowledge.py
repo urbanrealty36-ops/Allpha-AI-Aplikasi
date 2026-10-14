@@ -38,6 +38,35 @@ async def _storage(method: str,path: str,token: str,data: bytes|None=None,media_
         status=403 if r.status_code in (401,403) else 503
         raise HTTPException(status,detail={"code":"STORAGE_OPERATION_FAILED","message":"Operasi penyimpanan dokumen gagal."})
 
+async def _admin_db_request(method: str, path: str, access_token: str | None = None, *, params: dict[str, str] | None = None, body: Any = None, prefer: str | None = None) -> Any:
+    """Server-only mutations; clients cannot write lifecycle state around the API."""
+    base = os.getenv("SUPABASE_URL", "").rstrip("/")
+    service_role = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    secret = os.getenv("SUPABASE_SECRET_KEY", "")
+    if not base or not (service_role or secret):
+        raise HTTPException(503, detail={"code": "KNOWLEDGE_WRITE_UNAVAILABLE", "message": "Operasi sumber pengetahuan belum dikonfigurasi di server."})
+    key = service_role or secret
+    headers = {"apikey": key, "Content-Type": "application/json"}
+    if service_role:
+        headers["Authorization"] = f"Bearer {service_role}"
+    if prefer:
+        headers["Prefer"] = prefer
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3)) as client:
+            response = await client.request(method, f"{base}/rest/v1/{path}", headers=headers, params=params, json=body)
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={"code": "KNOWLEDGE_DATABASE_UNAVAILABLE", "message": "Database sumber pengetahuan tidak tersedia."}) from exc
+    if response.status_code == 404:
+        return []
+    if response.status_code == 409:
+        raise HTTPException(409, detail={"code": "KNOWLEDGE_CONFLICT", "message": "Status sumber pengetahuan berubah; muat ulang sebelum mencoba lagi."})
+    if response.status_code >= 400:
+        raise HTTPException(503, detail={"code": "KNOWLEDGE_WRITE_FAILED", "message": "Perubahan sumber pengetahuan gagal disimpan."})
+    if not response.content:
+        return None
+    return response.json()
+
+
 async def _scan(data: bytes,filename: str,media_type: str):
     endpoint=os.getenv("ALLPHA_DOCUMENT_SCANNER_URL","").strip()
     if not endpoint: raise HTTPException(503,detail={"code":"SCANNER_NOT_CONFIGURED","message":"Dokumen tetap dikarantina sampai pemindai malware dikonfigurasi."})
@@ -95,11 +124,11 @@ async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=Fi
         except (zipfile.BadZipFile,ValueError): raise HTTPException(422,detail={"code":"INVALID_FILE_SIGNATURE","message":"Struktur DOCX tidak valid."})
     sid=uuid.uuid4(); digest=hashlib.sha256(data).hexdigest(); path=f"{user['id']}/{agent_id}/{sid}/{filename}"
     body={"id":str(sid),"agent_id":str(agent_id),"owner_id":user["id"],"filename":filename,"media_type":media,"size_bytes":len(data),"sha256":digest,"storage_path":path,"source_version":1,"status":"quarantined","processing_stage":"awaiting_malware_scan","provenance":{"kind":"user_upload","filename":filename,"sha256":digest,"source_version":1}}
-    rows=await user_db_request("POST","agent_knowledge_sources",token,params={"select":SOURCE_FIELDS},body=body,prefer="return=representation")
+    rows=await _admin_db_request("POST","agent_knowledge_sources",token,params={"select":SOURCE_FIELDS},body=body,prefer="return=representation")
     if not rows: raise HTTPException(500,detail={"code":"SOURCE_CREATE_FAILED","message":"Metadata dokumen gagal disimpan."})
     try: await _storage("POST",f"agent-knowledge/{path}",token,data,media)
     except HTTPException:
-        await user_db_request("DELETE","agent_knowledge_sources",token,params={"id":f"eq.{sid}"}); raise
+        await _admin_db_request("DELETE","agent_knowledge_sources",token,params={"id":f"eq.{sid}"}); raise
     jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(sid),"agent_id":str(agent_id),"owner_id":user["id"],"status":"queued","stage":"awaiting_malware_scan","attempt":0,"progress":0},prefer="return=representation")
     return {"source":rows[0],"job":jobs[0] if jobs else None,"publication":"private","retrieval_ready":False}
 
@@ -129,7 +158,7 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
     attempt=max((int(item.get("attempt",0)) for item in (prior_jobs or [])),default=0)+1
     jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"processing","stage":"malware_scan","attempt":attempt,"progress":5},prefer="return=representation")
     job=jobs[0] if jobs else None
-    await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"processing","processing_stage":"malware_scan","error_code":None})
+    await _admin_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"processing","processing_stage":"malware_scan","error_code":None})
     try:
         url,key=_storage_config()
         async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.get(f"{url}/storage/v1/object/authenticated/agent-knowledge/{source['storage_path']}",headers={"apikey":key,"Authorization":f"Bearer {token}"})
