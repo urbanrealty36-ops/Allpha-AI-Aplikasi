@@ -40,7 +40,7 @@ class Repo:
         self.authorize_calls = []
     async def authorize_agent(self, *, owner_id, agent_id):
         self.authorize_calls.append((owner_id, agent_id))
-        return self.authorized and owner_id == "owner-a" and agent_id == "agent-a"
+        return self.authorized and owner_id == "owner-a" and agent_id in {"agent-a", str(uuid.UUID(int=101))}
     async def search_hybrid(self, **kwargs):
         self.search_args = kwargs
         return self.hits
