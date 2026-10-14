@@ -27,6 +27,78 @@ def test_ready_reports_supabase_configuration_without_exposing_secrets(monkeypat
     assert "SUPABASE" not in response.text
 
 
+def test_ready_requires_live_supabase_auth_and_postgrest(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://staging-example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+
+    class FakeResponse:
+        def __init__(self, status_code):
+            self.status_code = status_code
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.calls = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url.endswith("/auth/v1/health"):
+                return FakeResponse(200)
+            if url.endswith("/rest/v1/"):
+                return FakeResponse(503)
+            raise AssertionError(f"Unexpected readiness probe URL: {url}")
+
+    monkeypatch.setattr("allpha_api.main.httpx.AsyncClient", FakeAsyncClient)
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "not_ready"
+    assert payload["dependencies"]["authentication"] == "reachable"
+    assert payload["dependencies"]["database"] == "unavailable"
+    assert "staging-example" not in response.text
+    assert "sb_publishable_test_only" not in response.text
+
+
+def test_ready_returns_ready_only_when_auth_and_postgrest_respond(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://staging-example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+
+    class FakeResponse:
+        status_code = 200
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, **kwargs):
+            assert url.endswith(("/auth/v1/health", "/rest/v1/"))
+            assert kwargs["headers"] == {"apikey": "sb_publishable_test_only"}
+            return FakeResponse()
+
+    monkeypatch.setattr("allpha_api.main.httpx.AsyncClient", FakeAsyncClient)
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["dependencies"]["authentication"] == "reachable"
+    assert payload["dependencies"]["database"] == "reachable"
+    assert payload["dependencies"]["object_storage"] == "not_configured"
+    assert payload["dependencies"]["ai_gateway"] == "not_configured"
+
+
 def test_profile_payload_rejects_authority_fields():
     with pytest.raises(ValidationError):
         ProfileUpdate.model_validate({"role": "super_admin"})
