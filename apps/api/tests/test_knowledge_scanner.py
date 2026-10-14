@@ -40,11 +40,11 @@ class FakeAsyncClient:
         return type(self).response
 
 
-def setup_function():
+def setup_function(monkeypatch):
     FakeAsyncClient.response = FakeResponse()
     FakeAsyncClient.error = None
     FakeAsyncClient.calls = []
-    knowledge.httpx.AsyncClient = FakeAsyncClient
+    monkeypatch.setattr(knowledge.httpx, "AsyncClient", FakeAsyncClient)
 
 
 def test_scanner_missing_endpoint_fails_closed(monkeypatch):
