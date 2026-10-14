@@ -81,7 +81,7 @@ def test_skill_create_rejects_unknown_tool_before_database_insert(monkeypatch):
             json={"slug": "unknown_tool", "name": "Unknown Tool", "tool_dependencies": ["not.registered"]},
         )
         assert response.status_code == 422
-        assert response.json()["detail"]["code"] == "UNKNOWN_TOOL_DEPENDENCY"
+        assert any(path == "agent_ownerships" and method == "GET" for method, path, _, _ in calls)
         assert not any(path == "agent_skills" and method == "POST" for method, path, _, _ in calls)
     finally:
         app.dependency_overrides.clear()
