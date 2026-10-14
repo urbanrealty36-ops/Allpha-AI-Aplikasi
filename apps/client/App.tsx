@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { NavigationContainer, useNavigation, type NavigationProp } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
+import * as DocumentPicker from "expo-document-picker";
 import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -13,6 +14,7 @@ type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "des
 type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean };
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[]; tool_dependencies?: string[] };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
+type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; error_code?: string | null; created_at: string };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
@@ -102,6 +104,8 @@ function Profile({ session }: { session: Session }) {
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [studioToolDependencies, setStudioToolDependencies] = useState<string[]>([]);
   const [studioCapabilities, setStudioCapabilities] = useState<AgentCapability[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [studioSlug, setStudioSlug] = useState("");
   const [studioSkillName, setStudioSkillName] = useState("");
   const [studioInstructions, setStudioInstructions] = useState("");
@@ -265,21 +269,76 @@ function Profile({ session }: { session: Session }) {
     setStudioAgentId(agentId); setAgentLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + session.access_token };
-      const [skillsResponse, capabilitiesResponse, toolsResponse] = await Promise.all([
+      const [skillsResponse, capabilitiesResponse, toolsResponse, knowledgeResponse] = await Promise.all([
         fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/skills", { headers, cache: "no-store" }),
         fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/capabilities", { headers, cache: "no-store" }),
         fetch(apiBase + "/v1/tools", { headers, cache: "no-store" }),
+        fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/knowledge/sources", { headers, cache: "no-store" }),
       ]);
-      const [skillsBody, capabilitiesBody, toolsBody] = await Promise.all([skillsResponse.json(), capabilitiesResponse.json(), toolsResponse.json()]);
+      const [skillsBody, capabilitiesBody, toolsBody, knowledgeBody] = await Promise.all([skillsResponse.json(), capabilitiesResponse.json(), toolsResponse.json(), knowledgeResponse.json()]);
       if (!skillsResponse.ok) throw new Error(skillsBody?.error?.message || "Skills tidak dapat dimuat.");
       if (!capabilitiesResponse.ok) throw new Error(capabilitiesBody?.error?.message || "Capabilities tidak dapat dimuat.");
       if (!toolsResponse.ok) throw new Error(toolsBody?.error?.message || "Tool Registry tidak dapat dimuat.");
+      if (!knowledgeResponse.ok) throw new Error(knowledgeBody?.error?.message || "Sumber pengetahuan tidak dapat dimuat.");
       setStudioSkills(Array.isArray(skillsBody.items) ? skillsBody.items : []);
       setStudioCapabilities(Array.isArray(capabilitiesBody.items) ? capabilitiesBody.items : []);
       setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
+      setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
     } catch (e) { setError(e instanceof Error ? e.message : "Agent Studio tidak dapat dimuat."); }
     finally { setAgentLoading(false); }
   }
+  async function loadKnowledgeSources(agentId = studioAgentId) {
+    if (!agentId) return;
+    setKnowledgeLoading(true);
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/knowledge/sources", { headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" }, cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error?.message || "Sumber pengetahuan tidak dapat dimuat.");
+      setKnowledgeSources(Array.isArray(body.items) ? body.items : []);
+    } catch (e) { setError(e instanceof Error ? e.message : "Sumber pengetahuan tidak dapat dimuat."); }
+    finally { setKnowledgeLoading(false); }
+  }
+  async function uploadKnowledgeDocument() {
+    if (!studioAgentId) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "text/markdown", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets?.[0]) return;
+      const asset = picked.assets[0];
+      if (asset.size != null && asset.size > 15 * 1024 * 1024) throw new Error("Ukuran dokumen maksimum 15 MiB.");
+      const form = new FormData();
+      form.append("file", { uri: asset.uri, name: asset.name, type: asset.mimeType || "application/octet-stream" } as any);
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(studioAgentId) + "/knowledge/sources", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" }, body: form });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Dokumen gagal diunggah.");
+      setMessage("Dokumen masuk karantina privat; pemrosesan menunggu pemindai malware.");
+      await loadKnowledgeSources(studioAgentId);
+    } catch (e) { setError(e instanceof Error ? e.message : "Dokumen gagal diunggah."); }
+    finally { setBusy(false); }
+  }
+  async function knowledgeSourceAction(source: KnowledgeSource, action: "process" | "retry" | "delete") {
+    if (!studioAgentId) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(studioAgentId) + "/knowledge/sources/" + encodeURIComponent(source.id) + (action === "delete" ? "" : "/" + action), {
+        method: action === "delete" ? "DELETE" : "POST",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", ...(action === "retry" ? { "Content-Type": "application/json" } : {}) },
+        ...(action === "retry" ? { body: JSON.stringify({ reason: "retry dari Native Agent Studio" }) } : {}),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Operasi sumber pengetahuan gagal.");
+      setMessage(action === "delete" ? "Penghapusan sumber diminta." : "Permintaan pemrosesan selesai; periksa status sumber.");
+      await loadKnowledgeSources(studioAgentId);
+    } catch (e) { setError(e instanceof Error ? e.message : "Operasi sumber pengetahuan gagal."); }
+    finally { setBusy(false); }
+  }
+  function confirmKnowledgeDelete(source: KnowledgeSource) {
+    Alert.alert("Hapus dokumen?", "Dokumen dan chunk turunannya akan dihapus.", [
+      { text: "Batal", style: "cancel" },
+      { text: "Hapus", style: "destructive", onPress: () => void knowledgeSourceAction(source, "delete") },
+    ]);
+  }
+
   async function createStudioSkill() {
     if (!studioAgentId) return;
     setBusy(true); setError(""); setMessage("");
@@ -362,7 +421,7 @@ function Profile({ session }: { session: Session }) {
           <Button title={busy ? "Membuat…" : "Buat Agent privat"} disabled={busy || agentName.trim().length < 2 || !/^[a-z0-9_]{3,30}$/.test(agentHandle.trim())} onPress={() => void createAgent()}/>
           <Button title="Muat ulang daftar" secondary disabled={agentLoading} onPress={() => void loadAgents()}/>
           {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/></View></View>) : <Text style={s.muted}>Belum ada Agent. Buat identitas pertama Anda.</Text>}
-          {studioAgentId && <View style={s.socialRow}><Text style={s.kicker}>AGENT STUDIO · SKILLS & CAPABILITIES</Text><Text style={s.muted}>Kelola prosedur dan deklarasi capability. Deklarasi tidak memberi izin eksekusi; runtime wajib memeriksa policy pada setiap aksi.</Text><TextInput accessibilityLabel="Slug Skill" value={studioSlug} onChangeText={setStudioSlug} autoCapitalize="none" maxLength={60} style={field} placeholder="summarize_text" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Nama Skill" value={studioSkillName} onChangeText={setStudioSkillName} maxLength={100} style={field} placeholder="Nama Skill" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Instruksi Skill" value={studioInstructions} onChangeText={setStudioInstructions} multiline maxLength={12000} style={[field,{minHeight:80,textAlignVertical:"top"}]} placeholder="Instruksi dan batasan prosedural" placeholderTextColor="#8B94AC"/><Text style={s.kicker}>TOOL DEPENDENCIES · REGISTRY</Text>{registeredTools.length ? registeredTools.map(tool => <Pressable key={tool.key} accessibilityRole="checkbox" accessibilityState={{ checked: studioToolDependencies.includes(tool.key) }} onPress={() => setStudioToolDependencies(current => current.includes(tool.key) ? current.filter(key => key !== tool.key) : [...current, tool.key])} style={[s.socialRow, { flexDirection: "row", alignItems: "flex-start", gap: 10 }]}><Text style={s.body}>{studioToolDependencies.includes(tool.key) ? "☑" : "□"}</Text><View style={{ flex: 1 }}><Text style={s.body}>{tool.name} · {tool.key} · v{tool.version}</Text><Text style={s.muted}>{tool.description} · risiko {tool.risk_level}</Text></View></Pressable>) : <Text style={s.muted}>Tidak ada tool executable atau registry belum termuat.</Text>}<TextInput accessibilityLabel="Permission scopes Skill" value={studioScope} onChangeText={setStudioScope} style={field} placeholder="content:read (pisahkan koma)" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Buat Skill draft"} disabled={busy || studioSlug.trim().length < 3 || studioSkillName.trim().length < 2} onPress={() => void createStudioSkill()}/><Text style={s.kicker}>SKILLS ({studioSkills.length})</Text>{studioSkills.map(skill => <View key={skill.id} style={s.socialRow}><Text style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text><Text style={s.muted}>{skill.status} · scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</Text></View>)}<TextInput accessibilityLabel="Capability key" value={studioCapabilityKey} onChangeText={setStudioCapabilityKey} autoCapitalize="none" style={field} placeholder="calendar.read" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Deskripsi capability" value={studioCapabilityDescription} onChangeText={setStudioCapabilityDescription} style={field} placeholder="Tujuan capability" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Ajukan capability"} secondary disabled={busy || studioCapabilityKey.trim().length < 3} onPress={() => void requestStudioCapability()}/><Text style={s.kicker}>CAPABILITIES ({studioCapabilities.length})</Text>{studioCapabilities.map(cap => <View key={cap.id} style={s.socialRow}><Text style={s.body}>{cap.capability_key} · {cap.status}</Text><Text style={s.muted}>Risiko: {cap.risk_level} · bukan izin runtime</Text></View>)}<Button title="Tutup Agent Studio" secondary onPress={() => setStudioAgentId(null)}/></View>}
+          {studioAgentId && <View style={s.socialRow}><Text style={s.kicker}>AGENT STUDIO · SKILLS & CAPABILITIES</Text><Text style={s.muted}>Kelola prosedur dan deklarasi capability. Deklarasi tidak memberi izin eksekusi; runtime wajib memeriksa policy pada setiap aksi.</Text><TextInput accessibilityLabel="Slug Skill" value={studioSlug} onChangeText={setStudioSlug} autoCapitalize="none" maxLength={60} style={field} placeholder="summarize_text" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Nama Skill" value={studioSkillName} onChangeText={setStudioSkillName} maxLength={100} style={field} placeholder="Nama Skill" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Instruksi Skill" value={studioInstructions} onChangeText={setStudioInstructions} multiline maxLength={12000} style={[field,{minHeight:80,textAlignVertical:"top"}]} placeholder="Instruksi dan batasan prosedural" placeholderTextColor="#8B94AC"/><Text style={s.kicker}>TOOL DEPENDENCIES · REGISTRY</Text>{registeredTools.length ? registeredTools.map(tool => <Pressable key={tool.key} accessibilityRole="checkbox" accessibilityState={{ checked: studioToolDependencies.includes(tool.key) }} onPress={() => setStudioToolDependencies(current => current.includes(tool.key) ? current.filter(key => key !== tool.key) : [...current, tool.key])} style={[s.socialRow, { flexDirection: "row", alignItems: "flex-start", gap: 10 }]}><Text style={s.body}>{studioToolDependencies.includes(tool.key) ? "☑" : "□"}</Text><View style={{ flex: 1 }}><Text style={s.body}>{tool.name} · {tool.key} · v{tool.version}</Text><Text style={s.muted}>{tool.description} · risiko {tool.risk_level}</Text></View></Pressable>) : <Text style={s.muted}>Tidak ada tool executable atau registry belum termuat.</Text>}<TextInput accessibilityLabel="Permission scopes Skill" value={studioScope} onChangeText={setStudioScope} style={field} placeholder="content:read (pisahkan koma)" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Buat Skill draft"} disabled={busy || studioSlug.trim().length < 3 || studioSkillName.trim().length < 2} onPress={() => void createStudioSkill()}/><View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>KNOWLEDGE SOURCES</Text><Text style={s.title}>Pengetahuan Agent</Text><Text style={s.muted}>PDF, Markdown, TXT, DOCX · maks. 15 MiB. Dokumen tetap privat sampai pipeline indexing dan evaluasi selesai.</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={busy ? "Menunggu…" : "Pilih & unggah dokumen"} disabled={busy} onPress={() => void uploadKnowledgeDocument()}/><Button title="Muat ulang" secondary disabled={knowledgeLoading} onPress={() => void loadKnowledgeSources()}/></View>{knowledgeLoading ? <ActivityIndicator color="#A5B4FC"/> : knowledgeSources.length ? knowledgeSources.map(source => <View key={source.id} style={s.socialRow}><Text style={s.body}>{source.filename}</Text><Text style={s.muted}>{(source.size_bytes / 1024).toFixed(1)} KiB · {source.status}</Text><Text style={s.muted}>Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</Text><Text style={s.status}>SHA-256: {source.sha256.slice(0, 16)}…</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{(source.status === "quarantined" || source.status === "failed") && <Button title={source.status === "failed" ? "Coba lagi" : "Proses"} secondary disabled={busy} onPress={() => void knowledgeSourceAction(source, source.status === "failed" ? "retry" : "process")}/>}<Button title="Hapus" secondary disabled={busy} onPress={() => confirmKnowledgeDelete(source)}/></View></View>) : <Text style={s.muted}>Belum ada sumber pengetahuan untuk Agent ini.</Text>}</View><Text style={s.kicker}>SKILLS ({studioSkills.length})</Text>{studioSkills.map(skill => <View key={skill.id} style={s.socialRow}><Text style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text><Text style={s.muted}>{skill.status} · scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</Text></View>)}<TextInput accessibilityLabel="Capability key" value={studioCapabilityKey} onChangeText={setStudioCapabilityKey} autoCapitalize="none" style={field} placeholder="calendar.read" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Deskripsi capability" value={studioCapabilityDescription} onChangeText={setStudioCapabilityDescription} style={field} placeholder="Tujuan capability" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Ajukan capability"} secondary disabled={busy || studioCapabilityKey.trim().length < 3} onPress={() => void requestStudioCapability()}/><Text style={s.kicker}>CAPABILITIES ({studioCapabilities.length})</Text>{studioCapabilities.map(cap => <View key={cap.id} style={s.socialRow}><Text style={s.body}>{cap.capability_key} · {cap.status}</Text><Text style={s.muted}>Risiko: {cap.risk_level} · bukan izin runtime</Text></View>)}<Button title="Tutup Agent Studio" secondary onPress={() => setStudioAgentId(null)}/></View>}
         </>}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
