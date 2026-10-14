@@ -23,16 +23,11 @@ PARSER_TIMEOUT_SECONDS = 12
 
 def _parse_child(send_conn, filename: str, data: bytes) -> None:
     try:
-        try:
-            import resource
-            resource.setrlimit(resource.RLIMIT_CPU, (6, 6))
-            resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
-            resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_CHARS, MAX_OUTPUT_CHARS))
-            resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
-        except (ImportError, AttributeError, OSError, ValueError):
-            # Unsupported limits must not silently imply sandbox guarantees;
-            # the parent still enforces a hard wall-clock deadline.
-            pass
+        import resource
+        resource.setrlimit(resource.RLIMIT_CPU, (6, 6))
+        resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_CHARS, MAX_OUTPUT_CHARS))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
         ext = os.path.splitext(filename.lower())[1]
         if ext in (".txt", ".md"):
             pages = [{"location": {"kind": "document", "index": 1}, "text": data.decode("utf-8-sig")}]
