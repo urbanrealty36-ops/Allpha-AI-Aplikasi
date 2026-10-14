@@ -121,6 +121,7 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
     if source["status"] not in ("quarantined","failed"): raise HTTPException(409,detail={"code":"SOURCE_STATE_CONFLICT","message":"Sumber tidak berada pada status yang dapat diproses ulang."})
     jobs=await user_db_request("POST","agent_knowledge_jobs",token,params={"select":JOB_FIELDS},body={"source_id":str(source_id),"agent_id":str(agent_id),"owner_id":user["id"],"status":"processing","stage":"malware_scan","attempt":1,"progress":5},prefer="return=representation")
     job=jobs[0] if jobs else None
+    await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"processing","processing_stage":"malware_scan","error_code":None})
     try:
         url,key=_storage_config()
         async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.get(f"{url}/storage/v1/object/authenticated/agent-knowledge/{source['storage_path']}",headers={"apikey":key,"Authorization":f"Bearer {token}"})
@@ -135,11 +136,19 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
         await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"indexed_pending_embeddings","processing_stage":"text_extracted","error_code":None})
         if job: await user_db_request("PATCH","agent_knowledge_jobs",token,params={"id":f"eq.{job['id']}"},body={"status":"succeeded","stage":"text_extracted","progress":70})
         return {"source_id":str(source_id),"status":"indexed_pending_embeddings","chunks_created":len(chunks),"retrieval_ready":False,"next_dependency":"ENG-P09 Model Router embeddings and retrieval indexing"}
-    except HTTPException as exc:
-        code=(exc.detail.get("code") if isinstance(exc.detail,dict) else None) or "PROCESSING_FAILED"
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            code=(exc.detail.get("code") if isinstance(exc.detail,dict) else None) or "PROCESSING_FAILED"
+            status_code=exc.status_code
+            message=exc.detail.get("message","Pemrosesan dokumen gagal.") if isinstance(exc.detail,dict) else "Pemrosesan dokumen gagal."
+        else:
+            code="DOCUMENT_PARSE_FAILED"
+            status_code=422
+            message="Dokumen tidak dapat diproses oleh parser yang tersedia."
         await user_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"failed","processing_stage":"failed","error_code":code})
         if job: await user_db_request("PATCH","agent_knowledge_jobs",token,params={"id":f"eq.{job['id']}"},body={"status":"failed","stage":"failed","error_code":code})
-        raise
+        if isinstance(exc, HTTPException): raise
+        raise HTTPException(status_code,detail={"code":code,"message":message}) from exc
 
 @router.post("/sources/{source_id}/retry")
 async def retry_source(agent_id: uuid.UUID,source_id: uuid.UUID,payload: RetryRequest,request: Request,user: dict[str,Any]=Depends(current_user)):
