@@ -78,3 +78,14 @@ def test_eng_p07_full_text_index_and_embedding_handoff_contract():
     assert '"status":"queued"' in api
     assert '"retrieval_ready":false' in api
     assert "ENG-P09 Model Router worker" in api
+
+def test_knowledge_mutations_are_api_only_and_storage_paths_are_scoped():
+    migration = Path(__file__).parents[1] / "supabase" / "migrations" / "20261014170000_eng_p07_knowledge_ingestion.sql"
+    sql = migration.read_text(encoding="utf-8").lower()
+    api = (Path(__file__).parents[1] / "src" / "allpha_api" / "knowledge.py").read_text(encoding="utf-8")
+    assert "grant select on public.agent_knowledge_sources,public.agent_knowledge_jobs,public.agent_knowledge_chunks to authenticated" in sql
+    assert "grant select,insert,update,delete on public.agent_knowledge_sources to authenticated" not in sql
+    assert "s.storage_path=storage.objects.name and s.status='quarantined'" in sql
+    assert "SUPABASE_SERVICE_ROLE_KEY" in api
+    assert "_admin_db_request" in api
+    assert "urllib.parse import quote" in api
