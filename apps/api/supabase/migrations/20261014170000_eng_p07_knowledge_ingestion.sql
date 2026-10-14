@@ -69,15 +69,13 @@ create policy agent_knowledge_chunks_owner_insert on public.agent_knowledge_chun
 drop policy if exists agent_knowledge_chunks_owner_delete on public.agent_knowledge_chunks;
 create policy agent_knowledge_chunks_owner_delete on public.agent_knowledge_chunks for delete to authenticated using(owner_id=(select auth.uid()));
 revoke all on public.agent_knowledge_sources,public.agent_knowledge_jobs,public.agent_knowledge_chunks from anon,public;
-grant select,insert,update,delete on public.agent_knowledge_sources to authenticated;
-grant select,insert,update on public.agent_knowledge_jobs to authenticated;
-grant select,insert,delete on public.agent_knowledge_chunks to authenticated;
+grant select on public.agent_knowledge_sources,public.agent_knowledge_jobs,public.agent_knowledge_chunks to authenticated;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('agent-knowledge','agent-knowledge',false,15728640,array['application/pdf','text/markdown','text/plain','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
 on conflict(id) do update set public=false,file_size_limit=15728640,allowed_mime_types=excluded.allowed_mime_types;
 drop policy if exists agent_knowledge_storage_owner_select on storage.objects;
-create policy agent_knowledge_storage_owner_select on storage.objects for select to authenticated using(bucket_id='agent-knowledge' and (storage.foldername(name))[1]=(select auth.uid())::text);
+create policy agent_knowledge_storage_owner_select on storage.objects for select to authenticated using(bucket_id='agent-knowledge' and (storage.foldername(name))[1]=(select auth.uid())::text and exists(select 1 from public.agent_knowledge_sources s where s.owner_id=(select auth.uid()) and s.storage_path=storage.objects.name));
 drop policy if exists agent_knowledge_storage_owner_insert on storage.objects;
-create policy agent_knowledge_storage_owner_insert on storage.objects for insert to authenticated with check(bucket_id='agent-knowledge' and (storage.foldername(name))[1]=(select auth.uid())::text);
+create policy agent_knowledge_storage_owner_insert on storage.objects for insert to authenticated with check(bucket_id='agent-knowledge' and (storage.foldername(name))[1]=(select auth.uid())::text and exists(select 1 from public.agent_knowledge_sources s where s.owner_id=(select auth.uid()) and s.storage_path=storage.objects.name and s.status='quarantined'));
 drop policy if exists agent_knowledge_storage_owner_delete on storage.objects;
-create policy agent_knowledge_storage_owner_delete on storage.objects for delete to authenticated using(bucket_id='agent-knowledge' and (storage.foldername(name))[1]=(select auth.uid())::text);
+create policy agent_knowledge_storage_owner_delete on storage.objects for delete to authenticated using(bucket_id='agent-knowledge' and (storage.foldername(name))[1]=(select auth.uid())::text and exists(select 1 from public.agent_knowledge_sources s where s.owner_id=(select auth.uid()) and s.storage_path=storage.objects.name));
