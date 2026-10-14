@@ -122,7 +122,7 @@ class KnowledgeEmbeddingWorker:
                 error_code="STALE_SOURCE_VERSION",
             )
             return
-        sensitivity = source.get("sensitivity")
+        sensitivity = source.get("sensitivity") or (source.get("provenance") or {}).get("sensitivity")
         if sensitivity not in {"public", "internal", "confidential", "restricted"}:
             raise WorkerConfigurationError("source sensitivity classification is absent or invalid")
         chunks = await self.store.load_chunks(job)
@@ -198,7 +198,7 @@ class SupabaseKnowledgeJobStore:
 
     async def load_source(self, job):
         rows = await self._request("GET", "agent_knowledge_sources", params={
-            "select": "id,agent_id,owner_id,source_version,status,sensitivity",
+            "select": "id,agent_id,owner_id,source_version,status,sensitivity,provenance",
             "id": f"eq.{job['source_id']}", "owner_id": f"eq.{job['owner_id']}",
             "agent_id": f"eq.{job['agent_id']}", "limit": "1",
         })
