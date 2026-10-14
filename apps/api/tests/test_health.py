@@ -51,8 +51,8 @@ def test_readiness_passes_when_core_supabase_configuration_exists(monkeypatch) -
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert body["dependencies"]["database"] == "configured"
-    assert body["dependencies"]["authentication"] == "configured"
+    assert body["dependencies"]["database"] == "reachable"
+    assert body["dependencies"]["authentication"] == "reachable"
 
 
 def test_request_id_is_preserved() -> None:
