@@ -1,6 +1,6 @@
 # ADR-0004: Model Router and Knowledge Job Runtime
 
-- Status: Proposed
+- Status: Accepted for source implementation; non-production validation pending
 - Scope: ENG-P09 canonical AI Gateway/Model Router and ENG-P07 knowledge indexing jobs
 - Date: 2026-10-14
 
@@ -41,5 +41,6 @@ The architecture owner must confirm which runtime is canonical and available in 
 ## Acceptance evidence
 
 - Router contract tests include absent router, valid response, provenance mismatch, invalid dimensions, timeout, retryable and terminal failures.
-- Queue tests prove concurrent claims do not duplicate work, expired leases recover, stale source versions cannot publish, and finalization requires the current lease.
+- Queue tests must prove concurrent claims do not duplicate work, expired leases recover, stale source versions cannot publish, and finalization requires the current lease. SQL concurrency/privilege tests remain pending approved isolated non-production.
+- Router tests cover missing route, route identity/provenance mismatch, bounded transient retry, and metering callback. Provider adapter contract, real metering persistence, timeout regression, and deployment configuration remain pending.
 - Integration tests use only the approved isolated non-production environment.
