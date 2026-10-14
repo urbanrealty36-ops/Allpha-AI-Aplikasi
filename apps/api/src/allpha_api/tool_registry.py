@@ -45,7 +45,7 @@ def _normalize_text(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("text must be a string")
     if len(value) > 4000:
         raise ValueError("text must contain at most 4000 characters")
-    return {"text": re.sub(r"\\s+", " ", value).strip()}
+    return {"text": re.sub(r"\s+", " ", value).strip()}
 
 
 _TEXT_NORMALIZE = ToolDefinition(
