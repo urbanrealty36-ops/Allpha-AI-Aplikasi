@@ -17,7 +17,7 @@ create or replace function private.guard_platform_operator_grant_update()
 returns trigger
 language plpgsql
 set search_path = ''
-as $
+as $$
 begin
   if old.status <> 'active' or new.status <> 'revoked' then
     raise exception using errcode = '42501', message = 'Operator grants may only transition from active to revoked';
@@ -35,7 +35,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 revoke all on function private.guard_platform_operator_grant_update() from public, anon, authenticated, service_role;
 drop trigger if exists platform_operator_grants_guard_update on public.platform_operator_grants;
 create trigger platform_operator_grants_guard_update
