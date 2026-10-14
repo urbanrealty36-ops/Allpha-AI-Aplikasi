@@ -26,8 +26,27 @@ def test_readiness_fails_closed_when_core_dependencies_are_unconfigured(monkeypa
 
 
 def test_readiness_passes_when_core_supabase_configuration_exists(monkeypatch) -> None:
+    class HealthyResponse:
+        status_code = 200
+
+    class HealthySupabaseClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, url: str, headers: dict[str, str]):
+            assert url in {
+                "https://example.supabase.co/auth/v1/health",
+                "https://example.supabase.co/rest/v1/",
+            }
+            assert headers == {"apikey": "test-publishable-key"}
+            return HealthyResponse()
+
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "test-publishable-key")
+    monkeypatch.setattr("allpha_api.main.httpx.AsyncClient", lambda **kwargs: HealthySupabaseClient())
     response = client.get("/readyz")
     assert response.status_code == 200
     body = response.json()
