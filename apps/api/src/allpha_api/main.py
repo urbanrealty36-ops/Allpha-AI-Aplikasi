@@ -668,7 +668,22 @@ async def get_public_agent_passport(handle: str) -> dict[str, Any]:
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Passport Agent tidak ditemukan."})
-    return {"passport": rows[0]}
+    passport = rows[0]
+    # Anonymous projection deliberately excludes instructions, schemas, tool dependencies,
+    # permission scopes, budgets, tests, persona, boundaries, and ownership.
+    skills = await user_db_request(
+        "GET", "agent_skills", None,
+        params={"select": "id,slug,name,description,category,version,status,publication_terms,created_at,updated_at",
+                "agent_id": f"eq.{passport['id']}", "status": "eq.published",
+                "order": "version.desc", "limit": "50"},
+    )
+    capabilities = await user_db_request(
+        "GET", "agent_capabilities", None,
+        params={"select": "id,capability_key,description,risk_level,status,created_at,updated_at",
+                "agent_id": f"eq.{passport['id']}", "status": "eq.approved",
+                "order": "created_at.desc", "limit": "50"},
+    )
+    return {"passport": passport, "skills": skills or [], "capabilities": capabilities or []}
 
 
 @app.get("/v1/agents/{agent_id}", tags=["agents"])
