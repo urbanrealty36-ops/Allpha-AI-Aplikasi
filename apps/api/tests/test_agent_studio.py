@@ -171,6 +171,9 @@ def test_eng_p06_migration_declares_owner_rls_versioning_and_no_runtime_grant():
     assert "alter table public.agent_skills enable row level security" in sql
     assert "alter table public.agent_capabilities enable row level security" in sql
     assert "agent_skills_owner_insert" in sql
+    assert "snapshot = (" in sql
+    assert "s.version = agent_skill_versions.version" in sql
+    assert "s.created_by = agent_skill_versions.created_by" in sql
     assert "agent_capabilities_owner_insert" in sql
     assert "status = 'requested'" in sql
     assert "revoke all on public.agent_skills, public.agent_capabilities from anon, public" in sql
