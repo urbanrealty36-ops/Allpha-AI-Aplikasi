@@ -38,6 +38,12 @@ This supports a durable database-backed job record, but does not prove that a sa
 
 The architecture owner must confirm which runtime is canonical and available in the target environment. Until then, implementation may define typed contracts and tests but must not claim a live worker or create a provider-specific embedding implementation. Physical vector-index dimensions remain an explicit follow-up decision after the Model Router's approved model policy is known.
 
+## Implementation status (2026-10-14)
+
+The source now includes `apps/api/src/allpha_api/knowledge_worker.py`, a lease-based worker entrypoint that claims only `embedding_indexing`, checks the claimed source version and sensitivity classification, routes every batch through the canonical Model Router, and requires an injected idempotent vector sink. The worker finalizes successful embedding work as `embedding_indexed_pending_retrieval_qa` at 95%; it never marks a source `ready`. The executable `allpha-knowledge-worker` refuses to start unless `ALLPHA_KNOWLEDGE_WORKER_FACTORY=module:function` is configured. No factory, approved provider adapter/model policy, or vector sink is configured in the repo/deployment, so this is implemented source, not an enabled live worker.
+
+The source-only migration filters atomic lease claims by stage and adds a nullable constrained source sensitivity field. Existing source records are not assigned a guessed sensitivity. Unit tests cover stage selection, stale source-version refusal, missing router retry, and missing sensitivity fail-closed. Expired lease recovery and database finalization are implemented in SQL but remain unverified until the migration is run in approved isolated non-production with concurrent worker tests.
+
 ## Acceptance evidence
 
 - Router contract tests include absent router, valid response, provenance mismatch, invalid dimensions, timeout, retryable and terminal failures.
