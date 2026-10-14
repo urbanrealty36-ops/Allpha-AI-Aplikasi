@@ -76,7 +76,7 @@ def test_eng_p07_full_text_index_and_embedding_handoff_contract():
     assert "using gin(search_vector)" in fulltext
     assert '"stage":"embedding_indexing"' in api
     assert '"status":"queued"' in api
-    assert '"retrieval_ready":false' in api
+    assert '"retrieval_ready":False' in api
     assert "ENG-P09 Model Router worker" in api
 
 def test_knowledge_mutations_are_api_only_and_storage_paths_are_scoped():
