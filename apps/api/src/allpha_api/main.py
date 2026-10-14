@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
 from allpha_api.operator_security import router as operator_security_router
+from allpha_api.knowledge import router as knowledge_router
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -990,3 +991,4 @@ async def request_agent_capability(agent_id: uuid.UUID, payload: AgentCapability
 
 # Dedicated platform operator API: every route enforces a live grant, exact scope, and durable audit.
 app.include_router(operator_security_router)
+app.include_router(knowledge_router)
