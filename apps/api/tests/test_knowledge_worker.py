@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from datetime import datetime, timezone
 
 from allpha_api.embedding_contract import EmbeddingResponse
@@ -10,7 +11,7 @@ class FakeStore:
     def __init__(self, source_version=2, job_version=2, sensitivity="internal", chunks=None):
         self.job = {"id":"job-1","lease_token":"lease-1","source_id":"source-1","owner_id":"owner-1","agent_id":"agent-1","source_version":job_version,"attempt":1}
         self.source = {"id":"source-1","source_version":source_version,"sensitivity":sensitivity}
-        self.chunks = chunks if chunks is not None else [{"id":"chunk-1","content":"hello","content_sha256":"a"*64,"source_version":job_version}]
+        self.chunks = chunks if chunks is not None else [{"id":"chunk-1","content":"hello","content_sha256":hashlib.sha256(b"hello").hexdigest(),"source_version":job_version}]
         self.claims = []
         self.finalizations = []
     async def claim(self, *, lease_seconds, stage):
@@ -37,10 +38,11 @@ class FakeRouter:
 
 
 def embedding_response():
+    digest = hashlib.sha256(b"hello").hexdigest()
     return EmbeddingResponse(
         task_id="job-1:0", provider_id="provider", model_id="model",
         model_version="v1", dimensions=2,
-        vectors=[{"chunk_id":"chunk-1","content_sha256":"a"*64,"values":[0.1,0.2]}],
+        vectors=[{"chunk_id":"chunk-1","content_sha256":digest,"values":[0.1,0.2]}],
         trace_id="job-1", completed_at=datetime.now(timezone.utc),
     )
 
@@ -98,4 +100,22 @@ def test_worker_fails_closed_without_sensitivity_classification():
         await KnowledgeEmbeddingWorker(store, router, sink).process_once()
         assert store.finalizations[-1]["error_code"] == "KNOWLEDGE_WORKER_PREREQUISITE_MISSING"
         assert not router.requests
+    asyncio.run(scenario())
+
+
+def test_worker_fails_closed_when_chunk_hash_does_not_match_content():
+    async def scenario():
+        store = FakeStore(chunks=[{
+            "id": "chunk-1",
+            "content": "tampered",
+            "content_sha256": hashlib.sha256(b"hello").hexdigest(),
+            "source_version": 2,
+        }])
+        router = FakeRouter(result=embedding_response())
+        async def sink(*args):
+            raise AssertionError("sink must not be called for tampered content")
+        await KnowledgeEmbeddingWorker(store, router, sink).process_once()
+        assert router.requests == []
+        assert store.finalizations[-1]["outcome"] == "failed"
+        assert store.finalizations[-1]["error_code"] == "KNOWLEDGE_WORKER_PREREQUISITE_MISSING"
     asyncio.run(scenario())
