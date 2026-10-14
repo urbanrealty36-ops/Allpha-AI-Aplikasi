@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
+from allpha_api.embedding_contract import EmbeddingFailure, EmbeddingRequest, EmbeddingResponse
 from allpha_api.model_router import (
     CanonicalModelRouter,
     EmbeddingRoute,
@@ -148,7 +148,7 @@ def test_canonical_router_times_out_and_returns_retryable_failure():
 def test_canonical_router_does_not_retry_terminal_provider_rejection():
     async def scenario():
         adapter = FakeAdapter([ModelRouterRejected(
-            __import__("allpha_api.embedding_contract", fromlist=["EmbeddingFailure"]).EmbeddingFailure(
+            EmbeddingFailure(
                 task_id="task-1", code="POLICY_REJECTED", retryable=False, trace_id="trace-1"
             )
         )])
