@@ -21,6 +21,7 @@ OperatorScope = Literal[
     "platform:operations.read",
     "platform:security.audit.read",
     "platform:capabilities.review",
+    "platform:capabilities.review.high_risk",
     "platform:operators.manage",
 ]
 
@@ -53,6 +54,12 @@ class OperatorGrantCreate(BaseModel):
 
 class OperatorGrantRevoke(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+
+
+class CapabilityReviewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["approved", "denied"]
     reason: str = Field(min_length=8, max_length=500)
 
 
@@ -373,3 +380,88 @@ async def revoke_operator_grant(
             detail={"code": "OPERATOR_GRANT_NOT_FOUND", "message": "Grant aktif tidak ditemukan."},
         )
     return {"grant": rows[0], "revoked": True}
+
+
+@router.get("/operator/capabilities", name="list_operator_capability_requests")
+async def list_operator_capability_requests(
+    limit: int = 50,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "GET",
+        "agent_capabilities",
+        params={
+            "select": "id,agent_id,created_by,capability_key,description,required_permission_scopes,risk_level,status,created_at",
+            "status": "eq.requested",
+            "order": "created_at.asc",
+            "limit": str(min(max(1, limit), 100)),
+        },
+    )
+    return {"items": rows or [], "limit": min(max(1, limit), 100)}
+
+
+@router.post("/operator/capabilities/{capability_id}/review", name="review_operator_capability")
+async def review_operator_capability(
+    capability_id: UUID,
+    payload: CapabilityReviewPayload,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    current = await privileged_rest_request(
+        "GET",
+        "agent_capabilities",
+        params={
+            "select": "id,agent_id,created_by,capability_key,description,risk_level,status",
+            "id": f"eq.{capability_id}",
+            "status": "eq.requested",
+            "limit": "1",
+        },
+    )
+    if not current:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "CAPABILITY_REQUEST_NOT_FOUND", "message": "Permintaan capability yang masih menunggu tidak ditemukan."},
+        )
+    capability = current[0]
+    risk_level = capability.get("risk_level", "critical")
+    if risk_level in ("high", "critical") and "platform:capabilities.review.high_risk" not in operator["scopes"]:
+        await write_operator_audit(
+            request,
+            actor_user_id=operator["id"],
+            action="agent.capability.review",
+            outcome="denied",
+            resource_type="agent_capability",
+            resource_id=str(capability_id),
+            metadata={"risk_level": risk_level, "reason": "high_risk_scope_required"},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "HIGH_RISK_REVIEW_SCOPE_REQUIRED", "message": "Capability berisiko tinggi memerlukan scope review tambahan."},
+        )
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    rows = await privileged_rest_request(
+        "PATCH",
+        "agent_capabilities",
+        params={
+            "id": f"eq.{capability_id}",
+            "status": "eq.requested",
+            "select": "id,agent_id,capability_key,description,risk_level,status,reviewed_by,reviewed_at,review_reason,updated_at",
+        },
+        body={
+            "status": payload.decision,
+            "reviewed_by": operator["id"],
+            "reviewed_at": timestamp,
+            "review_reason": payload.reason,
+            "updated_at": timestamp,
+        },
+        prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAPABILITY_REVIEW_CONFLICT", "message": "Permintaan sudah diproses atau berubah; muat ulang daftar."},
+        )
+    # The database trigger records the decision in the same transaction as the
+    # status update. A direct API audit write here would create a non-atomic gap.
+    return {"capability": rows[0], "runtime_authorized": False}
