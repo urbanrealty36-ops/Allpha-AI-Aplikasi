@@ -40,6 +40,13 @@ export default function AgentStudioPage() {
   const [notice, setNotice] = useState("");
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editInstructions, setEditInstructions] = useState("");
+  const [editScopes, setEditScopes] = useState("");
+  const [editToolDependencies, setEditToolDependencies] = useState("");
+  const [editChangelog, setEditChangelog] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [scope, setScope] = useState("");
@@ -123,6 +130,42 @@ export default function AgentStudioPage() {
     finally { setSaving(false); }
   }
 
+  function beginSkillEdit(skill: Skill) {
+    setEditingSkillId(skill.id);
+    setEditName(skill.name);
+    setEditDescription(skill.description || "");
+    setEditInstructions(skill.instructions || "");
+    setEditScopes(skill.required_permission_scopes?.join(", ") || "");
+    setEditToolDependencies(skill.tool_dependencies?.join(", ") || "");
+    setEditChangelog("Perubahan versi " + (skill.version + 1));
+    setError(""); setNotice("");
+  }
+
+  async function saveSkillEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !editingSkillId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/agents/${agentId}/skills/${editingSkillId}`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(), description: editDescription.trim(), instructions: editInstructions.trim(),
+          required_permission_scopes: editScopes.split(",").map(x => x.trim()).filter(Boolean),
+          tool_dependencies: editToolDependencies.split(",").map(x => x.trim()).filter(Boolean),
+          changelog: editChangelog.trim(),
+        }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      setEditingSkillId(null);
+      setNotice("Perubahan Skill tersimpan sebagai versi baru. Riwayat versi diperbarui oleh database.");
+      setVersionHistory(null);
+      await load(session);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Perubahan Skill tidak dapat disimpan.");
+    } finally { setSaving(false); }
+  }
+
   async function loadSkillVersions(skill: Skill) {
     if (!session) return;
     setHistoryLoading(true); setError(""); setNotice("");
@@ -196,7 +239,17 @@ export default function AgentStudioPage() {
             <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{skill.name}</h3><p className="text-xs text-neutral-500">{skill.slug} · v{skill.version}</p></div><span className="rounded-full border px-2 py-1 text-xs">{skill.status}</span></div>
             {skill.description && <p className="mt-2 text-sm text-neutral-700">{skill.description}</p>}
             <p className="mt-2 text-xs text-neutral-500">Scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</p>
-            <button type="button" onClick={() => void loadSkillVersions(skill)} disabled={historyLoading} className="mt-3 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50">{historyLoading && versionHistory?.skillId === skill.id ? "Memuat riwayat…" : "Lihat riwayat versi"}</button>
+            <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => beginSkillEdit(skill)} className="rounded-lg border px-3 py-1.5 text-xs font-medium">Edit Skill</button><button type="button" onClick={() => void loadSkillVersions(skill)} disabled={historyLoading} className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50">{historyLoading && versionHistory?.skillId === skill.id ? "Memuat riwayat…" : "Lihat riwayat versi"}</button></div>
+            {editingSkillId === skill.id && <form onSubmit={saveSkillEdit} className="mt-3 grid gap-3 rounded-xl bg-neutral-50 p-3">
+              <p className="text-sm font-semibold">Edit Skill · menyimpan akan membuat versi baru</p>
+              <label className="grid gap-1 text-sm">Nama<input required minLength={2} maxLength={100} value={editName} onChange={e => setEditName(e.target.value)} className="rounded-lg border px-3 py-2"/></label>
+              <label className="grid gap-1 text-sm">Deskripsi<textarea maxLength={2000} value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={2} className="rounded-lg border px-3 py-2"/></label>
+              <label className="grid gap-1 text-sm">Instruksi<textarea maxLength={12000} value={editInstructions} onChange={e => setEditInstructions(e.target.value)} rows={3} className="rounded-lg border px-3 py-2"/></label>
+              <label className="grid gap-1 text-sm">Permission scopes<input value={editScopes} onChange={e => setEditScopes(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="pisahkan koma"/></label>
+              <label className="grid gap-1 text-sm">Tool dependencies<input value={editToolDependencies} onChange={e => setEditToolDependencies(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="key dipisah koma"/></label>
+              <label className="grid gap-1 text-sm">Changelog<input maxLength={2000} value={editChangelog} onChange={e => setEditChangelog(e.target.value)} className="rounded-lg border px-3 py-2"/></label>
+              <div className="flex gap-2"><button disabled={saving || !session} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan versi baru"}</button><button type="button" onClick={() => setEditingSkillId(null)} className="rounded-lg border px-3 py-2 text-xs">Batal</button></div>
+            </form>}
             {versionHistory?.skillId === skill.id && <div className="mt-3 space-y-2 border-t pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Riwayat versi tersimpan</p>{versionHistory.items.length === 0 ? <p className="text-sm text-neutral-500">Belum ada snapshot yang dapat ditampilkan.</p> : versionHistory.items.map(version => <div key={version.id} className="rounded-lg bg-neutral-50 p-2 text-sm"><div className="flex justify-between gap-2"><strong>v{version.version} · {version.snapshot?.name || skill.name}</strong><span className="text-xs text-neutral-500">{version.snapshot?.status || "snapshot"}</span></div><p className="mt-1 text-xs text-neutral-600">{version.snapshot?.changelog || "Tanpa changelog"} · {new Date(version.created_at).toLocaleString("id-ID")}</p></div>)}</div>}
           </article>)}
         </div>
