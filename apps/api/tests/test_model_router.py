@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -24,24 +25,30 @@ class FakeCanonicalRouter:
         return self.value
 
 
-@pytest.mark.asyncio
-async def test_missing_canonical_router_fails_closed():
-    with pytest.raises(ModelRouterUnavailable):
-        await route_embedding(None, request())
+def test_missing_canonical_router_fails_closed():
+    async def scenario():
+        with pytest.raises(ModelRouterUnavailable):
+            await route_embedding(None, request())
+
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_router_response_with_matching_provenance_is_accepted():
-    router = FakeCanonicalRouter(response())
-    result = await route_embedding(router, request())
-    assert result.model_id == "selected-model"
-    assert router.calls == 1
+def test_router_response_with_matching_provenance_is_accepted():
+    async def scenario():
+        router = FakeCanonicalRouter(response())
+        result = await route_embedding(router, request())
+        assert result.model_id == "selected-model"
+        assert router.calls == 1
+
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_router_response_with_wrong_chunk_hash_is_rejected():
-    invalid = response().model_copy(update={"vectors": [{"chunk_id":"chunk-1","content_sha256":"b"*64,"values":[0.1,0.2]}]})
-    with pytest.raises(ModelRouterRejected) as error:
-        await route_embedding(FakeCanonicalRouter(invalid), request())
-    assert error.value.failure.code == "MODEL_ROUTER_RESPONSE_INVALID"
-    assert error.value.failure.retryable is False
+def test_router_response_with_wrong_chunk_hash_is_rejected():
+    async def scenario():
+        invalid = response().model_copy(update={"vectors": [{"chunk_id":"chunk-1","content_sha256":"b"*64,"values":[0.1,0.2]}]})
+        with pytest.raises(ModelRouterRejected) as error:
+            await route_embedding(FakeCanonicalRouter(invalid), request())
+        assert error.value.failure.code == "MODEL_ROUTER_RESPONSE_INVALID"
+        assert error.value.failure.retryable is False
+
+    asyncio.run(scenario())
