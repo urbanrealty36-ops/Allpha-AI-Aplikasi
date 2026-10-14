@@ -12,7 +12,7 @@ assert.match(page,/\/v1\/admin\/operator\/grants/);
 assert.match(page,/\/v1\/admin\/operator\/audit/);
 assert.match(page,/\/v1\/admin\/operator\/capabilities/);
 assert.match(page,/platform:capabilities.review.high_risk/);
-assert.match(page,/Approve request/); assert.match(page,/Deny request/);
+assert.match(page,/Approve request/); assert.match(page,/Deny request/); assert.match(page,/window.confirm/);
 assert.match(page,/platform:operators.manage/);
 assert.match(page,/tidak disimpan ke localStorage\/sessionStorage/);
 assert.doesNotMatch(page,/service_role|SUPABASE_SERVICE_ROLE_KEY/i);
