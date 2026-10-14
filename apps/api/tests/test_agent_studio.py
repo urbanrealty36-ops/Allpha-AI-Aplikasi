@@ -177,3 +177,10 @@ def test_eng_p06_migration_declares_owner_rls_versioning_and_no_runtime_grant():
     assert "security invoker" in sql
     assert "security definer" not in sql
     assert "immutable owner-scoped snapshots" in sql
+    assert "before update on public.agent_skills" in sql
+    assert "after insert or update on public.agent_skills" in sql
+    assert "revoke all on function public.prepare_agent_skill_update() from public, anon, authenticated" in sql
+    assert "revoke all on function public.capture_agent_skill_version() from public, anon, authenticated" in sql
+    assert "status in ('requested','revoked')" in sql
+    assert "grant select, insert, update on public.agent_capabilities to authenticated" in sql
+    assert "grant update on public.agent_capabilities" not in sql
