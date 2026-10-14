@@ -16,6 +16,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -282,6 +283,13 @@ async def get_my_settings(request: Request, user: dict[str, Any] = Depends(curre
 @app.patch("/v1/me/settings", tags=["identity"])
 async def update_my_settings(payload: UserSettingsUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "tool_dependencies" in changes:
+        try:
+            validate_tool_dependencies(changes["tool_dependencies"])
+        except UnknownToolError as exc:
+            raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL_DEPENDENCY", "message": f"Tool tidak terdaftar atau tidak memiliki handler: {exc}"}) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail={"code": "INVALID_TOOL_DEPENDENCIES", "message": str(exc)}) from exc
     if not changes:
         raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada pengaturan yang diubah."})
     if "notification_preferences" in changes and payload.notification_preferences:
@@ -804,6 +812,17 @@ class AgentSkillUpdate(BaseModel):
         return value
 
 
+class AgentToolExecutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool_key: str = Field(min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("inputs")
+    @classmethod
+    def validate_tool_input_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_agent_config(value)
+
+
 class AgentCapabilityRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     capability_key: str = Field(min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
@@ -825,6 +844,12 @@ async def _require_agent_owner(agent_id: uuid.UUID, request: Request, user: dict
     return token
 
 
+@app.get("/v1/tools", tags=["agent-tools"])
+async def get_tool_registry(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """List tools with concrete handlers; listing them does not grant permission."""
+    return {"items": list_tools(), "runtime_mode": "owner_preview_only", "agent_autonomy_enabled": False}
+
+
 @app.get("/v1/agents/{agent_id}/skills", tags=["agent-studio"])
 async def list_agent_skills(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     token = await _require_agent_owner(agent_id, request, user)
@@ -839,6 +864,12 @@ async def list_agent_skills(agent_id: uuid.UUID, request: Request, user: dict[st
 @app.post("/v1/agents/{agent_id}/skills", status_code=201, tags=["agent-studio"])
 async def create_agent_skill(agent_id: uuid.UUID, payload: AgentSkillCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     token = await _require_agent_owner(agent_id, request, user)
+    try:
+        validate_tool_dependencies(payload.tool_dependencies)
+    except UnknownToolError as exc:
+        raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL_DEPENDENCY", "message": f"Tool tidak terdaftar atau tidak memiliki handler: {exc}"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TOOL_DEPENDENCIES", "message": str(exc)}) from exc
     body = payload.model_dump()
     body.update({"agent_id": str(agent_id), "created_by": user["id"], "status": "draft", "version": 1})
     rows = await user_db_request("POST", "agent_skills", token, params={"select": _SKILL_FIELDS},
@@ -892,6 +923,44 @@ async def list_agent_skill_versions(
                 "order": "version.desc", "limit": "50"},
     )
     return {"items": versions or []}
+
+
+@app.post("/v1/agents/{agent_id}/skills/{skill_id}/execute-tool", tags=["agent-tools"])
+async def execute_skill_tool(
+    agent_id: uuid.UUID,
+    skill_id: uuid.UUID,
+    payload: AgentToolExecutionRequest,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Run one registered low-risk handler as an owner preview, not autonomous Agent runtime."""
+    token = await _require_agent_owner(agent_id, request, user)
+    rows = await user_db_request(
+        "GET", "agent_skills", token,
+        params={"select": "id,tool_dependencies,budget_limits,status", "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "limit": "1"},
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    skill = rows[0]
+    try:
+        validate_tool_dependencies(skill.get("tool_dependencies") or [])
+        registered = {item["key"]: item for item in list_tools()}
+        tool = registered.get(payload.tool_key)
+        if tool is None:
+            raise UnknownToolError(payload.tool_key)
+        if payload.tool_key not in (skill.get("tool_dependencies") or []):
+            raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Tool harus tercantum pada dependensi Skill."})
+        budget = skill.get("budget_limits") or {}
+        if int(budget.get("max_tool_calls", 5)) < 1:
+            raise HTTPException(status_code=422, detail={"code": "TOOL_BUDGET_EXHAUSTED", "message": "Budget Skill tidak mengizinkan pemanggilan tool."})
+        result = execute_tool(payload.tool_key, payload.inputs)
+    except UnknownToolError as exc:
+        raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL_DEPENDENCY", "message": f"Tool tidak terdaftar atau tidak memiliki handler: {exc}"}) from exc
+    except ToolInputError as exc:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TOOL_INPUT", "message": str(exc)}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TOOL_DEPENDENCIES", "message": str(exc)}) from exc
+    return {"tool_key": payload.tool_key, "tool_version": tool["version"], "result": result, "execution_mode": "owner_preview", "agent_runtime_authorized": False}
 
 
 @app.get("/v1/agents/{agent_id}/capabilities", tags=["agent-studio"])
