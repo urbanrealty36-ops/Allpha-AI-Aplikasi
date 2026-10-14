@@ -1,7 +1,11 @@
 import asyncio
+import uuid
 
 import pytest
+from fastapi import Request
+from fastapi.testclient import TestClient
 
+from allpha_api.auth import current_user
 from allpha_api.knowledge_retrieval import (
     KnowledgeAccessDenied,
     KnowledgeRetrievalService,
@@ -9,13 +13,23 @@ from allpha_api.knowledge_retrieval import (
     RetrievalHit,
     RetrievalRequest,
 )
+from allpha_api.main import app
 
 
-def request():
+def internal_request():
     return RetrievalRequest(
         owner_id="owner-a", agent_id="agent-a", query="contract details",
         allowed_sensitivities=["internal"], limit=5, trace_id="trace-a",
     )
+
+
+class Policy:
+    def __init__(self, values=None):
+        self.values = values if values is not None else ["internal"]
+        self.calls = []
+    async def allowed_sensitivities(self, *, owner_id, agent_id):
+        self.calls.append((owner_id, agent_id))
+        return self.values
 
 
 class Repo:
@@ -23,7 +37,9 @@ class Repo:
         self.authorized = authorized
         self.hits = hits or []
         self.search_args = None
+        self.authorize_calls = []
     async def authorize_agent(self, *, owner_id, agent_id):
+        self.authorize_calls.append((owner_id, agent_id))
         return self.authorized and owner_id == "owner-a" and agent_id == "agent-a"
     async def search_hybrid(self, **kwargs):
         self.search_args = kwargs
@@ -41,10 +57,12 @@ def hit(**overrides):
     return RetrievalHit(**value)
 
 
-def test_retrieval_fails_closed_when_repository_is_missing():
+def test_retrieval_fails_closed_when_repository_or_policy_is_missing():
     async def scenario():
         with pytest.raises(KnowledgeRetrievalUnavailable):
-            await KnowledgeRetrievalService(None).retrieve(request())
+            await KnowledgeRetrievalService(None).retrieve(internal_request())
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await KnowledgeRetrievalService(Repo()).retrieve(internal_request())
     asyncio.run(scenario())
 
 
@@ -52,7 +70,7 @@ def test_retrieval_requires_owner_authorization_before_search():
     async def scenario():
         repo = Repo(authorized=False)
         with pytest.raises(KnowledgeAccessDenied):
-            await KnowledgeRetrievalService(repo).retrieve(request())
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
         assert repo.search_args is None
     asyncio.run(scenario())
 
@@ -60,7 +78,7 @@ def test_retrieval_requires_owner_authorization_before_search():
 def test_retrieval_scopes_search_and_returns_source_provenance():
     async def scenario():
         repo = Repo(hits=[hit()])
-        results = await KnowledgeRetrievalService(repo).retrieve(request())
+        results = await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
         assert results[0].source_id == "source-a"
         assert repo.search_args["owner_id"] == "owner-a"
         assert repo.search_args["agent_id"] == "agent-a"
@@ -73,7 +91,7 @@ def test_retrieval_rejects_cross_owner_result_even_if_adapter_is_buggy():
     async def scenario():
         repo = Repo(hits=[hit(owner_id="owner-b")])
         with pytest.raises(KnowledgeAccessDenied):
-            await KnowledgeRetrievalService(repo).retrieve(request())
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
     asyncio.run(scenario())
 
 
@@ -81,5 +99,75 @@ def test_retrieval_rejects_disallowed_sensitivity():
     async def scenario():
         repo = Repo(hits=[hit(sensitivity="restricted")])
         with pytest.raises(KnowledgeAccessDenied):
-            await KnowledgeRetrievalService(repo).retrieve(request())
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+    asyncio.run(scenario())
+
+
+def test_retrieval_rejects_missing_source_provenance():
+    async def scenario():
+        repo = Repo(hits=[hit(source_id="", content_sha256="")])
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+    asyncio.run(scenario())
+
+
+def test_public_route_rejects_forged_owner_and_sensitivity_fields(monkeypatch):
+    async def fake_current_user(request: Request):
+        request.state.user_id = "owner-a"
+        return {"id": "owner-a"}
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = TestClient(app).post(
+            f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+            json={"query":"private info","owner_id":"owner-b","allowed_sensitivities":["restricted"]},
+            headers={"Authorization":"Bearer test"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+def test_public_route_fails_closed_when_retrieval_not_configured(monkeypatch):
+    async def fake_current_user(request: Request):
+        return {"id": "owner-a"}
+    app.dependency_overrides[current_user] = fake_current_user
+    prior = getattr(app.state, "knowledge_retrieval_service", None)
+    if hasattr(app.state, "knowledge_retrieval_service"):
+        delattr(app.state, "knowledge_retrieval_service")
+    try:
+        response = TestClient(app).post(
+            f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+            json={"query":"private info"},
+            headers={"Authorization":"Bearer test"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+        if prior is not None:
+            app.state.knowledge_retrieval_service = prior
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "KNOWLEDGE_RETRIEVAL_UNAVAILABLE"
+
+
+def test_public_route_derives_owner_from_authenticated_identity_and_policy():
+    async def fake_current_user(request: Request):
+        return {"id": "owner-a"}
+    async def scenario():
+        repo = Repo(hits=[hit()])
+        policy = Policy(["internal"])
+        app.state.knowledge_retrieval_service = KnowledgeRetrievalService(repo, policy)
+        app.dependency_overrides[current_user] = fake_current_user
+        try:
+            response = TestClient(app).post(
+                f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+                json={"query":"contract details","limit":5},
+                headers={"Authorization":"Bearer test","X-Request-ID":"trace-http"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+            delattr(app.state, "knowledge_retrieval_service")
+        assert response.status_code == 200
+        assert repo.authorize_calls[0] == ("owner-a", str(uuid.UUID(int=101)))
+        assert policy.calls == [("owner-a", str(uuid.UUID(int=101)))]
+        assert repo.search_args["owner_id"] == "owner-a"
+        assert response.json()["results"][0]["source_id"] == "source-a"
     asyncio.run(scenario())
