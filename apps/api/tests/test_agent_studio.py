@@ -100,7 +100,11 @@ def test_skill_update_increments_version_and_rejects_authority_fields(monkeypatc
     assert response.json()["skill"]["version"] == 4
     assert calls[-1][3]["body"]["version"] == 4
 
-    rejected = client.patch(f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}", headers={"Authorization": "Bearer test"}, json={"created_by": "owner-b"})
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        rejected = client.patch(f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}", headers={"Authorization": "Bearer test"}, json={"created_by": "owner-b"})
+    finally:
+        app.dependency_overrides.clear()
     assert rejected.status_code == 422
 
 
@@ -134,7 +138,11 @@ def test_capability_request_is_declarative_and_not_runtime_authority(monkeypatch
 
 
 def test_capability_request_cannot_forge_status_or_creator():
-    response = client.post(f"/v1/agents/{AGENT_ID}/capabilities", headers={"Authorization": "Bearer test"}, json={
-        "capability_key": "calendar.read", "created_by": "owner-b", "status": "approved",
-    })
-    assert response.status_code == 401
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        response = client.post(f"/v1/agents/{AGENT_ID}/capabilities", headers={"Authorization": "Bearer test"}, json={
+            "capability_key": "calendar.read", "created_by": "owner-b", "status": "approved",
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
