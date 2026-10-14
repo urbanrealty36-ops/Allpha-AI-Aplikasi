@@ -1,4 +1,47 @@
 -- ENG-P06: capability review provenance and atomic audit.
+-- Freeze grant identity/scope fields after creation; service-role updates are revocation-only.
+alter table public.platform_operator_grants
+  drop constraint if exists platform_operator_grants_revocation_reason_check;
+alter table public.platform_operator_grants
+  add constraint platform_operator_grants_revocation_reason_check
+  check (
+    (status = 'active' and revocation_reason is null)
+    or (status = 'revoked' and revocation_reason is not null and char_length(revocation_reason) between 8 and 500)
+  );
+
+revoke update on public.platform_operator_grants from service_role;
+grant update (status, revoked_at, revoked_by, revocation_reason)
+  on public.platform_operator_grants to service_role;
+
+create or replace function private.guard_platform_operator_grant_update()
+returns trigger
+language plpgsql
+set search_path = ''
+as $
+begin
+  if old.status <> 'active' or new.status <> 'revoked' then
+    raise exception using errcode = '42501', message = 'Operator grants may only transition from active to revoked';
+  end if;
+  if new.user_id is distinct from old.user_id
+     or new.scopes is distinct from old.scopes
+     or new.reason is distinct from old.reason
+     or new.granted_by is distinct from old.granted_by
+     or new.expires_at is distinct from old.expires_at
+     or new.created_at is distinct from old.created_at
+     or new.revoked_at is null
+     or new.revoked_by is null
+     or new.revocation_reason is null then
+    raise exception using errcode = '42501', message = 'Operator grant identity and scopes are immutable';
+  end if;
+  return new;
+end;
+$;
+revoke all on function private.guard_platform_operator_grant_update() from public, anon, authenticated, service_role;
+drop trigger if exists platform_operator_grants_guard_update on public.platform_operator_grants;
+create trigger platform_operator_grants_guard_update
+  before update on public.platform_operator_grants
+  for each row execute function private.guard_platform_operator_grant_update();
+
 -- The separate high-risk review scope is intentionally not implied by the base review scope.
 alter table public.platform_operator_grants
   drop constraint if exists platform_operator_grants_scopes_check;
