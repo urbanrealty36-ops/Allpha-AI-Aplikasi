@@ -689,3 +689,166 @@ async def get_my_agent(agent_id: uuid.UUID, request: Request, user: dict[str, An
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
     owner = ownership[0]
     return {"agent": rows[0], "ownership": {"owner_user_id": user["id"], "role": owner["ownership_role"], "status": owner["status"], "since": owner["created_at"]}}
+
+
+# ENG-P06 — owner-managed reusable Skills and declared capability requests.
+_SKILL_FIELDS = "id,agent_id,created_by,slug,name,description,category,inputs_schema,outputs_schema,instructions,constraints,tool_dependencies,required_permission_scopes,model_requirements,budget_limits,tests,evaluation_rubric,provenance,version,changelog,publication_terms,status,created_at,updated_at"
+_CAPABILITY_FIELDS = "id,agent_id,created_by,capability_key,description,required_permission_scopes,risk_level,status,created_at,updated_at"
+
+
+class AgentSkillCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slug: str = Field(min_length=3, max_length=60, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    name: str = Field(min_length=2, max_length=100)
+    description: str = Field(default="", max_length=2000)
+    category: str = Field(default="general", min_length=2, max_length=60)
+    inputs_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
+    outputs_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
+    instructions: str = Field(default="", max_length=12000)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    tool_dependencies: list[str] = Field(default_factory=list, max_length=30)
+    required_permission_scopes: list[str] = Field(default_factory=list, max_length=30)
+    model_requirements: dict[str, Any] = Field(default_factory=dict)
+    budget_limits: dict[str, Any] = Field(default_factory=lambda: {"max_runtime_seconds": 30, "max_tool_calls": 5})
+    tests: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+    evaluation_rubric: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    changelog: str = Field(default="", max_length=2000)
+    publication_terms: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("inputs_schema", "outputs_schema", "constraints", "model_requirements", "budget_limits", "evaluation_rubric", "provenance", "publication_terms")
+    @classmethod
+    def validate_skill_objects(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _validate_agent_config(value) or {}
+
+    @field_validator("tests")
+    @classmethod
+    def validate_skill_tests(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for item in value:
+            _validate_agent_config(item)
+        return value
+
+
+class AgentSkillUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=2, max_length=100)
+    description: str | None = Field(default=None, max_length=2000)
+    category: str | None = Field(default=None, min_length=2, max_length=60)
+    inputs_schema: dict[str, Any] | None = None
+    outputs_schema: dict[str, Any] | None = None
+    instructions: str | None = Field(default=None, max_length=12000)
+    constraints: dict[str, Any] | None = None
+    tool_dependencies: list[str] | None = Field(default=None, max_length=30)
+    required_permission_scopes: list[str] | None = Field(default=None, max_length=30)
+    model_requirements: dict[str, Any] | None = None
+    budget_limits: dict[str, Any] | None = None
+    tests: list[dict[str, Any]] | None = Field(default=None, max_length=50)
+    evaluation_rubric: dict[str, Any] | None = None
+    provenance: dict[str, Any] | None = None
+    changelog: str | None = Field(default=None, max_length=2000)
+    publication_terms: dict[str, Any] | None = None
+    status: Literal["draft", "published", "archived"] | None = None
+
+    @field_validator("inputs_schema", "outputs_schema", "constraints", "model_requirements", "budget_limits", "evaluation_rubric", "provenance", "publication_terms")
+    @classmethod
+    def validate_optional_skill_objects(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _validate_agent_config(value) if value is not None else None
+
+    @field_validator("tests")
+    @classmethod
+    def validate_optional_skill_tests(cls, value: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+        if value is not None:
+            for item in value:
+                _validate_agent_config(item)
+        return value
+
+
+class AgentCapabilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    capability_key: str = Field(min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
+    description: str = Field(default="", max_length=1000)
+    required_permission_scopes: list[str] = Field(default_factory=list, max_length=30)
+    risk_level: Literal["low", "medium", "high", "critical"] = "low"
+
+
+async def _require_agent_owner(agent_id: uuid.UUID, request: Request, user: dict[str, Any]) -> str:
+    token = request.state.supabase_access_token
+    ownership = await user_db_request(
+        "GET", "agent_ownerships", token,
+        params={"select": "agent_id", "agent_id": f"eq.{agent_id}",
+                "owner_user_id": f"eq.{user['id']}", "ownership_role": "eq.owner",
+                "status": "eq.active", "limit": "1"},
+    )
+    if not ownership:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    return token
+
+
+@app.get("/v1/agents/{agent_id}/skills", tags=["agent-studio"])
+async def list_agent_skills(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = await _require_agent_owner(agent_id, request, user)
+    rows = await user_db_request(
+        "GET", "agent_skills", token,
+        params={"select": _SKILL_FIELDS, "agent_id": f"eq.{agent_id}",
+                "order": "updated_at.desc", "limit": "100"},
+    )
+    return {"items": rows or []}
+
+
+@app.post("/v1/agents/{agent_id}/skills", status_code=201, tags=["agent-studio"])
+async def create_agent_skill(agent_id: uuid.UUID, payload: AgentSkillCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = await _require_agent_owner(agent_id, request, user)
+    body = payload.model_dump()
+    body.update({"agent_id": str(agent_id), "created_by": user["id"], "status": "draft", "version": 1})
+    rows = await user_db_request("POST", "agent_skills", token, params={"select": _SKILL_FIELDS},
+                                 body=body, prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=500, detail={"code": "SKILL_CREATE_FAILED", "message": "Skill tidak dapat dibuat."})
+    return {"skill": rows[0]}
+
+
+@app.patch("/v1/agents/{agent_id}/skills/{skill_id}", tags=["agent-studio"])
+async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: AgentSkillUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = await _require_agent_owner(agent_id, request, user)
+    changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan Skill."})
+    current = await user_db_request(
+        "GET", "agent_skills", token,
+        params={"select": _SKILL_FIELDS, "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "limit": "1"},
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    changes["version"] = int(current[0].get("version") or 1) + 1
+    changes["updated_at"] = "now()"
+    rows = await user_db_request(
+        "PATCH", "agent_skills", token,
+        params={"id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "select": _SKILL_FIELDS},
+        body=changes, prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    return {"skill": rows[0]}
+
+
+@app.get("/v1/agents/{agent_id}/capabilities", tags=["agent-studio"])
+async def list_agent_capabilities(agent_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = await _require_agent_owner(agent_id, request, user)
+    rows = await user_db_request(
+        "GET", "agent_capabilities", token,
+        params={"select": _CAPABILITY_FIELDS, "agent_id": f"eq.{agent_id}",
+                "order": "created_at.desc", "limit": "100"},
+    )
+    return {"items": rows or []}
+
+
+@app.post("/v1/agents/{agent_id}/capabilities", status_code=201, tags=["agent-studio"])
+async def request_agent_capability(agent_id: uuid.UUID, payload: AgentCapabilityRequest, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    token = await _require_agent_owner(agent_id, request, user)
+    body = payload.model_dump()
+    body.update({"agent_id": str(agent_id), "created_by": user["id"], "status": "requested"})
+    rows = await user_db_request("POST", "agent_capabilities", token, params={"select": _CAPABILITY_FIELDS},
+                                 body=body, prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=500, detail={"code": "CAPABILITY_REQUEST_FAILED", "message": "Permintaan capability tidak dapat disimpan."})
+    return {"capability": rows[0], "runtime_authorized": False}
