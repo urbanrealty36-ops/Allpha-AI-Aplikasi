@@ -379,3 +379,48 @@ def test_social_graph_reads_are_scoped_to_authenticated_identity(monkeypatch):
     assert calls[2][3]["params"]["status"] == "eq.requested"
     assert calls[3][1] == "user_interests"
     assert calls[3][3]["params"]["user_id"] == "eq.authenticated-social-user"
+
+
+def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(monkeypatch):
+    organization_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    membership = {
+        "organization_id": organization_id,
+        "user_id": "tenant-a-user",
+        "role": "owner",
+        "invited_by": "tenant-a-user",
+        "created_at": "2026-10-14T00:00:00Z",
+    }
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        assert path == "organization_memberships"
+        return [membership]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "tenant-a-session-token"
+        return {"id": "tenant-a-user", "email": "tenant-a@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get(
+            f"/v1/organizations/{organization_id}/memberships",
+            headers={"Authorization": "Bearer tenant-a-session-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [membership]}
+    assert len(calls) == 1
+    method, path, access_token, kwargs = calls[0]
+    assert (method, path, access_token) == (
+        "GET",
+        "organization_memberships",
+        "tenant-a-session-token",
+    )
+    assert kwargs["params"]["organization_id"] == f"eq.{organization_id}"
+    assert kwargs["params"]["select"] == "organization_id,user_id,role,invited_by,created_at"
+    # This mock regression proves the caller token is forwarded to PostgREST.
+    # It does not prove live RLS enforcement; that requires an isolated non-production DB.
