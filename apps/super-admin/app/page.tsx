@@ -251,8 +251,10 @@ export default function OperationsPage() {
       setNotice("Grant operator berhasil dibuat dan dicatat dalam audit.");
       const current = await adminFetch("/v1/admin/operator/grants?limit=100", session, setSession);
       setGrants((await responseBody<{ items: Grant[] }>(current)).items);
-      const auditResponse = await adminFetch("/v1/admin/operator/audit?limit=50", session, setSession);
-      setAudit((await responseBody<{ items: AuditEvent[] }>(auditResponse)).items);
+      if (operator?.scopes.includes("platform:security.audit.read")) {
+        const auditResponse = await adminFetch("/v1/admin/operator/audit?limit=50", session, setSession);
+        setAudit((await responseBody<{ items: AuditEvent[] }>(auditResponse)).items);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Grant operator gagal dibuat.");
     } finally {
@@ -262,11 +264,13 @@ export default function OperationsPage() {
 
   async function revokeGrant(grant: Grant) {
     if (!session || !window.confirm("Cabut akses operator " + grant.user_id + "?")) return;
+    const reason = window.prompt("Alasan pencabutan akses (minimal 8 karakter):", "Akses operasional berakhir");
+    if (!reason || reason.trim().length < 8) return;
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await adminFetch("/v1/admin/operator/grants/" + grant.id + "/revoke", session, setSession, {
         method: "POST",
-        body: JSON.stringify({ reason: "Access revoked by authorized operator" }),
+        body: JSON.stringify({ reason: reason.trim() }),
       });
       await responseBody<{ grant: Grant; revoked: boolean }>(response);
       setNotice("Grant dicabut. Pemeriksaan grant berikutnya akan menolak aksesnya.");
