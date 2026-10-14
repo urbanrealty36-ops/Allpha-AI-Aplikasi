@@ -19,6 +19,19 @@ def auth_as(user_id="owner-a"):
     return fake_current_user
 
 
+def test_skill_budget_limits_are_bounded():
+    from allpha_api.main import AgentSkillCreate, AgentSkillUpdate
+    import pytest
+
+    assert AgentSkillCreate(slug="safe_skill", name="Safe Skill").budget_limits["max_runtime_seconds"] == 30
+    with pytest.raises(ValueError):
+        AgentSkillCreate(slug="safe_skill", name="Safe Skill", budget_limits={"max_runtime_seconds": 99999, "max_tool_calls": 5})
+    with pytest.raises(ValueError):
+        AgentSkillCreate(slug="safe_skill", name="Safe Skill", budget_limits={"max_runtime_seconds": 30, "max_tool_calls": 1000})
+    with pytest.raises(ValueError):
+        AgentSkillUpdate(budget_limits={"max_runtime_seconds": 0, "max_tool_calls": 5})
+
+
 def test_skill_and_capability_routes_require_authentication():
     assert client.get(f"/v1/agents/{AGENT_ID}/skills").status_code == 401
     assert client.post(f"/v1/agents/{AGENT_ID}/skills", json={"slug": "summarize_text", "name": "Summarize"}).status_code == 401
