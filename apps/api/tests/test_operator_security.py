@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
+from pathlib import Path
 
 from allpha_api.auth import current_user
 from allpha_api.main import app
@@ -294,3 +295,30 @@ def test_operator_cannot_self_grant_or_escalate_scopes(monkeypatch):
         assert response.json()["error"]["code"] == "OPERATOR_SCOPE_ESCALATION_DENIED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_operator_audit_configuration_fails_closed_without_server_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_SECRET_KEY", raising=False)
+    try:
+        security._audit_config()
+        assert False, "missing audit key must fail closed"
+    except HTTPException as exc:
+        assert exc.status_code == 503
+        assert exc.detail["code"] == "OPERATOR_AUDIT_UNAVAILABLE"
+
+
+def test_operator_migration_has_rls_private_append_only_audit_and_trigger_contract():
+    migration_path = Path(__file__).parents[1] / "supabase" / "migrations" / "20261014140000_eng_p06_platform_operator_grants_and_audit.sql"
+    sql = migration_path.read_text(encoding="utf-8")
+    assert "public.platform_operator_grants" in sql
+    assert "user_id = (select auth.uid())" in sql
+    assert "status = 'active'" in sql
+    assert "expires_at > now()" in sql
+    assert "public.platform_operator_audit_events" in sql
+    assert "alter table public.platform_operator_audit_events enable row level security" in sql
+    assert "grant select, insert on public.platform_operator_audit_events to service_role" in sql
+    assert "platform_operator_grants_audit_insert" in sql
+    assert "platform_operator_grants_audit_revoke" in sql
+    assert "revoke all on public.platform_operator_audit_events from public, anon, authenticated, service_role" in sql
