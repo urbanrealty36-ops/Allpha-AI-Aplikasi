@@ -7,6 +7,7 @@ job is claimed. This module never marks a source retrieval-ready.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib
 import logging
 import os
@@ -138,10 +139,15 @@ class KnowledgeEmbeddingWorker:
             for chunk in batch:
                 if int(chunk.get("source_version", -1)) != version:
                     raise WorkerConfigurationError("chunk source_version differs from job")
+                chunk_text = str(chunk.get("content") or "")
+                actual_digest = hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
+                declared_digest = str(chunk.get("content_sha256") or "").lower()
+                if not chunk_text or actual_digest != declared_digest:
+                    raise WorkerConfigurationError("chunk content hash is absent or does not match stored content")
                 inputs.append({
                     "chunk_id": str(chunk["id"]),
-                    "content_sha256": str(chunk["content_sha256"]),
-                    "text": str(chunk["content"]),
+                    "content_sha256": actual_digest,
+                    "text": chunk_text,
                 })
             request = EmbeddingRequest(
                 task_id=f"{job['id']}:{start // self.batch_size}",
