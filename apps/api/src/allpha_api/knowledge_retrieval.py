@@ -88,7 +88,7 @@ class KnowledgeRetrievalPolicy(Protocol):
 @dataclass
 class KnowledgeRetrievalService:
     repository: KnowledgeRetrievalRepository | None
-    policy: KnowledgeRetrievalPolicy | None
+    policy: KnowledgeRetrievalPolicy | None = None
 
     async def retrieve(self, request: RetrievalRequest) -> list[RetrievalHit]:
         if self.repository is None or self.policy is None:
