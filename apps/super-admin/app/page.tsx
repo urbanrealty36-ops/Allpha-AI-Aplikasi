@@ -6,6 +6,7 @@ type OperatorScope =
   | "platform:operations.read"
   | "platform:security.audit.read"
   | "platform:capabilities.review"
+  | "platform:capabilities.review.high_risk"
   | "platform:operators.manage";
 type AuthSession = {
   access_token: string;
@@ -33,6 +34,17 @@ type AuditEvent = {
   metadata: Record<string, unknown>;
   created_at: string;
 };
+type CapabilityRequest = {
+  id: string;
+  agent_id: string;
+  created_by: string;
+  capability_key: string;
+  description: string;
+  required_permission_scopes: string[];
+  risk_level: "low" | "medium" | "high" | "critical";
+  status: "requested" | "approved" | "denied" | "revoked";
+  created_at: string;
+};
 type Grant = {
   id: string;
   user_id: string;
@@ -53,6 +65,7 @@ const allScopes: OperatorScope[] = [
   "platform:operations.read",
   "platform:security.audit.read",
   "platform:capabilities.review",
+  "platform:capabilities.review.high_risk",
   "platform:operators.manage",
 ];
 
@@ -142,6 +155,8 @@ export default function OperationsPage() {
   );
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [capabilities, setCapabilities] = useState<CapabilityRequest[]>([]);
+  const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [targetUser, setTargetUser] = useState("");
   const [selectedScopes, setSelectedScopes] = useState<OperatorScope[]>([]);
   const [grantReason, setGrantReason] = useState("");
@@ -152,6 +167,7 @@ export default function OperationsPage() {
   const online = probes.filter((probe) => probe.status === "online").length;
   const canReadAudit = Boolean(operator?.scopes.includes("platform:security.audit.read"));
   const canManage = Boolean(operator?.scopes.includes("platform:operators.manage"));
+  const canReview = Boolean(operator?.scopes.includes("platform:capabilities.review"));
   const availableGrantScopes = useMemo(
     () => allScopes.filter((scope) => operator?.scopes.includes(scope)),
     [operator],
@@ -202,6 +218,13 @@ export default function OperationsPage() {
     } else {
       setGrants([]);
     }
+    if (access.operator.scopes.includes("platform:capabilities.review")) {
+      const capabilityResponse = await adminFetch("/v1/admin/operator/capabilities?limit=50", activeSession, setSession);
+      const capabilityBody = await responseBody<{ items: CapabilityRequest[] }>(capabilityResponse);
+      setCapabilities(capabilityBody.items);
+    } else {
+      setCapabilities([]);
+    }
   };
 
   useEffect(() => { void refreshProbes(); }, []);
@@ -210,6 +233,7 @@ export default function OperationsPage() {
       setOperator(null);
       setAudit([]);
       setGrants([]);
+      setCapabilities([]);
       return;
     }
     let cancelled = false;
