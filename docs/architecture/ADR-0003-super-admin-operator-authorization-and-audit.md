@@ -1,6 +1,6 @@
 # ADR-0003 — Super Admin Operator Authorization and Durable Audit
 
-- **Status:** Proposed — requires Product Owner / security decision before privileged implementation
+- **Status:** Accepted by Product Owner — dedicated grant table + server-owned append-only audit
 - **Date:** 2026-10-14
 - **Scope:** ENG-P06 operator authentication, privileged permission scopes, capability governance and platform-wide audit
 - **Authority:** Master PRD v3.0 §5.9, §7.3 and Part XVI §78; `AGENTS.md` security and authorization invariants
@@ -13,14 +13,11 @@
 - Source migration `20261013052409_eng_p02_authz_audit_and_org_creation.sql` defines organization-scoped `public.audit_events`, but the current fixed phase plan records a live-schema discrepancy and says `organizations`, `organization_memberships`, and `audit_events` were absent during read-only inspection. Do not assume that table is available for global operator audit or apply reconstructed migrations to production.
 - No operator grant registry or approved platform-wide audit write path has been verified in the repository/live schema.
 
-## Decision required
+## Accepted decision
 
-Choose the authoritative source for platform-operator grants and how those grants are provisioned/revoked. Candidate options:
+The Product Owner approved option 2: **dedicated server-queried operator grant records** keyed to `auth.users`, with explicit scopes, active/revoked lifecycle, optional expiry, grant/revocation metadata, and per-request backend lookup. The first grant/bootstrap must be provisioned through a trusted Supabase administrative channel after the migration is verified; no user can self-assign operator status. Operator grant management API prevents self-grant and scope escalation.
 
-1. **Trusted Supabase `app_metadata` claims.** Small implementation footprint, but claim changes/revocation can remain stale until tokens refresh; requires a tightly controlled administrative provisioning path and a defined scope schema.
-2. **Dedicated server-queried operator grant records (recommended).** A canonical database table keyed to `auth.users`, with active status, explicit scopes, grant/revocation metadata and server-side lookup on each privileged request. This gives clearer revocation and audit semantics, but requires a reconciled, versioned migration and an authorized provisioning mechanism.
-
-Separately decide whether platform-wide operator events extend a verified canonical audit engine/table or require a dedicated append-only platform audit contract. Organization-scoped `audit_events` must not be silently repurposed as a global audit system.
+Platform-wide privileged events use the dedicated append-only `public.platform_operator_audit_events` table. The organization-scoped `public.audit_events` table is not repurposed. Grant insert/revocation is captured by a database trigger in the same transaction; API scope decisions are recorded through a server-only Supabase key. If the audit sink is unavailable, privileged requests fail closed.
 
 ## Recommended security contract
 
@@ -35,4 +32,4 @@ Separately decide whether platform-wide operator events extend a verified canoni
 
 ## Consequences and implementation gate
 
-Until the decision is approved and the canonical schema/write path is reconciled, Super Admin privileged actions remain disabled. ENG-P06 stays `in_progress`. This ADR is a proposal, not evidence that operator authorization or audit is implemented.
+Implementation has begun under ENG-P06: versioned source migration, backend operator scope dependencies, server-only audit writes, operator grant list/create/revoke endpoints, and regression tests are present. The migration has **not** been applied to canonical Supabase; do not issue grants or enable these endpoints in production until the migration lifecycle and server-only key configuration are verified in isolated non-production. Capability approval remains disabled until its specific route/UI is implemented and tested. ENG-P06 stays `in_progress`.
