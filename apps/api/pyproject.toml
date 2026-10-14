@@ -20,6 +20,9 @@ dev = [
   "pytest>=8.0,<9.0",
 ]
 
+[project.scripts]
+allpha-knowledge-worker = "allpha_api.knowledge_worker:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
