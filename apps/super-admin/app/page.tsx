@@ -12,7 +12,7 @@ export default function OperationsPage() {
    try { const r=await fetch(apiBase+path,{cache:"no-store",headers:{Accept:"application/json"}}); const b=await r.json() as Payload;
     if(!r.ok)return {label:labels[i],path,status:"offline",detail:"HTTP "+r.status};
     if(path==="/healthz")return {label:labels[i],path,status:b.status==="ok"?"online":"warning",detail:b.service||"Respons diterima"};
-    if(path==="/readyz"){const missing=Object.entries(b.dependencies||{}).filter(([,v])=>v!=="configured").map(([k])=>k);return {label:labels[i],path,status:b.status==="ready"&&!missing.length?"online":"warning",detail:missing.length?"Belum dikonfigurasi: "+missing.join(", "):"Dependensi dilaporkan siap"};}
+    if(path==="/readyz"){const dependencies=b.dependencies||{};const missing=["database","authentication"].filter((key)=>dependencies[key]!=="reachable");return {label:labels[i],path,status:b.status==="ready"&&!missing.length?"online":"warning",detail:missing.length?"Dependensi inti belum terjangkau: "+missing.join(", "):"Auth dan database terjangkau"};}
     const missing=Object.entries(b.capabilities||{}).filter(([,v])=>v===false).map(([k])=>k);return {label:labels[i],path,status:missing.length?"warning":"online",detail:"Versi "+(b.version||"—")+" · "+(b.environment||"environment tidak dilaporkan")+(missing.length?" · belum tersedia: "+missing.join(", "):"")};
    }catch{return {label:labels[i],path,status:"offline",detail:"Tidak dapat terhubung ke "+apiBase};}
   }));
