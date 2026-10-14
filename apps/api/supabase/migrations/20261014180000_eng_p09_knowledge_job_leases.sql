@@ -47,6 +47,20 @@ begin
     raise exception 'LEASE_SECONDS_OUT_OF_RANGE' using errcode = '22023';
   end if;
 
+  -- Expired leases that exhausted their retry budget must not remain stuck
+  -- forever in processing; transition them before selecting recoverable work.
+  update public.agent_knowledge_jobs j
+  set status = 'failed',
+      stage = 'lease_expired_attempts_exhausted',
+      error_code = 'JOB_ATTEMPTS_EXHAUSTED',
+      lease_token = null,
+      lease_expires_at = null,
+      updated_at = now()
+  where j.status = 'processing'
+    and j.lease_expires_at < now()
+    and j.attempt >= j.max_attempts
+    and (p_stage is null or j.stage = p_stage);
+
   select j.id into v_job_id
   from public.agent_knowledge_jobs j
   where j.available_at <= now()
