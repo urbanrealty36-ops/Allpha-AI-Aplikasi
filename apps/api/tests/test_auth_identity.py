@@ -617,3 +617,120 @@ def test_social_edge_rejects_self_target_before_database_write(monkeypatch):
     assert response.json()["error"]["code"] == "SOCIAL_EDGE_SELF_TARGET"
     assert calls == []
 
+def test_follow_request_accept_is_scoped_to_authenticated_recipient(monkeypatch):
+    calls = []
+    edge_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{"id": edge_id, "actor_user_id": "requester", "target_user_id": "recipient", "edge_type": "follow", "status": "active"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "recipient-token"
+        return {"id": "recipient", "email": "recipient@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            f"/v1/me/follow-requests/{edge_id}/accept",
+            headers={"Authorization": "Bearer recipient-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    method, path, token, kwargs = calls[0]
+    assert (method, path, token) == ("PATCH", "social_edges", "recipient-token")
+    assert kwargs["params"]["id"] == f"eq.{edge_id}"
+    assert kwargs["params"]["target_user_id"] == "eq.recipient"
+    assert kwargs["params"]["status"] == "eq.requested"
+    assert kwargs["body"] == {"status": "active"}
+
+
+def test_follow_request_accept_returns_safe_not_found_when_not_owned_or_pending(monkeypatch):
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "recipient-token"
+        return {"id": "recipient", "email": "recipient@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/follow-requests/dddddddd-dddd-4ddd-8ddd-dddddddddddd/accept",
+            headers={"Authorization": "Bearer recipient-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "FOLLOW_REQUEST_NOT_FOUND"
+
+
+def test_interest_upsert_and_delete_are_scoped_to_authenticated_user(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        if method == "POST":
+            return [{"interest_key": "desain.3d", "preference": "interested"}]
+        return [{"interest_key": "desain.3d"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-session-token"
+        return {"id": "interest-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        put_response = client.put(
+            "/v1/me/interests",
+            headers={"Authorization": "Bearer interest-session-token"},
+            json={"interest_key": "desain.3d", "preference": "interested"},
+        )
+        delete_response = client.delete(
+            "/v1/me/interests/desain.3d",
+            headers={"Authorization": "Bearer interest-session-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert put_response.status_code == 200
+    assert delete_response.status_code == 200
+    assert len(calls) == 2
+    assert calls[0][0:3] == ("POST", "user_interests", "interest-session-token")
+    assert calls[0][3]["body"]["user_id"] == "interest-owner"
+    assert calls[0][3]["params"]["on_conflict"] == "user_id,interest_key"
+    assert calls[1][0:3] == ("DELETE", "user_interests", "interest-session-token")
+    assert calls[1][3]["params"]["user_id"] == "eq.interest-owner"
+    assert calls[1][3]["params"]["interest_key"] == "eq.desain.3d"
+
+
+def test_social_edge_delete_returns_not_found_and_never_deletes_another_actor_edge(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-delete-token"
+        return {"id": "authenticated-actor", "email": "actor@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.delete(
+            "/v1/me/social-edges/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/follow",
+            headers={"Authorization": "Bearer social-delete-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SOCIAL_EDGE_NOT_FOUND"
+    assert calls[0][3]["params"]["actor_user_id"] == "eq.authenticated-actor"
+
