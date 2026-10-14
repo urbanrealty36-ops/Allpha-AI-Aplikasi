@@ -7,6 +7,7 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.knowledge_parser import parse_document_isolated
 
 router = APIRouter(prefix="/v1/agents/{agent_id}/knowledge", tags=["agent-knowledge"])
 MAX_BYTES = 15 * 1024 * 1024
@@ -79,21 +80,12 @@ async def _scan(data: bytes,filename: str,media_type: str):
     if verdict!="clean": raise HTTPException(422,detail={"code":"MALWARE_SCAN_REJECTED","message":"Dokumen ditolak atau pemindai tidak memberikan verdict clean."})
 
 def _extract(filename: str,data: bytes):
-    ext=os.path.splitext(filename.lower())[1]
-    if ext in (".txt",".md"):
-        try: return [{"location":{"kind":"document","index":1},"text":data.decode("utf-8-sig")}]
-        except UnicodeDecodeError as exc: raise ValueError("INVALID_TEXT_ENCODING") from exc
-    if ext==".pdf":
-        from pypdf import PdfReader
-        reader=PdfReader(io.BytesIO(data),strict=True)
-        return [{"location":{"kind":"page","index":i},"text":page.extract_text() or ""} for i,page in enumerate(reader.pages,1)]
-    if ext==".docx":
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            if "word/document.xml" not in z.namelist(): raise ValueError("INVALID_DOCX")
-            root=ET.fromstring(z.read("word/document.xml"))
-        ns={"w":"http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-        return [{"location":{"kind":"paragraph","index":i},"text":"".join(p.itertext()).strip()} for i,p in enumerate(root.findall(".//w:p",ns),1) if "".join(p.itertext()).strip()]
-    raise ValueError("UNSUPPORTED_FORMAT")
+    try:
+        return parse_document_isolated(filename, data)
+    except TimeoutError as exc:
+        raise HTTPException(422,detail={"code":"DOCUMENT_PARSER_TIMEOUT","message":"Parser melewati batas waktu; dokumen tetap tidak siap untuk retrieval."}) from exc
+    except (ValueError, OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(422,detail={"code":"DOCUMENT_PARSE_FAILED","message":"Dokumen ditolak parser terisolasi atau melewati batas sumber daya."}) from exc
 
 def _chunk(pages):
     out=[]
