@@ -19,6 +19,7 @@ type SettingsResponse = { settings: Settings | null };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string; created_at?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested"; created_at?: string; updated_at?: string };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[] };
+type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function apiError(response: Response): Promise<string> {
@@ -35,7 +36,10 @@ export default function HomePage() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
-  const [tab, setTab] = useState<"profile" | "settings" | "social">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents">("profile");
+  const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
+  const [consentLoading, setConsentLoading] = useState(false);
+  const [consentError, setConsentError] = useState("");
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
@@ -90,6 +94,19 @@ export default function HomePage() {
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Autentikasi gagal."); }
     finally { setSaving(false); }
+  }
+
+  async function loadConsentHistory() {
+    if (!session) return;
+    setConsentLoading(true); setConsentError("");
+    try {
+      const response = await fetch(apiBase + "/v1/me/consents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      if (!response.ok) throw new Error(await apiError(response));
+      const payload = await response.json() as { items?: ConsentRecord[] };
+      setConsentHistory(Array.isArray(payload.items) ? payload.items : []);
+    } catch (cause) {
+      setConsentError(cause instanceof Error ? cause.message : "Riwayat persetujuan tidak dapat dimuat.");
+    } finally { setConsentLoading(false); }
   }
 
   async function loadSocialGraph() {
@@ -221,7 +238,7 @@ export default function HomePage() {
     <section className="workspace-heading"><div><span className="section-kicker">RUANG PERSONAL</span><h1>Identitas manusia</h1><p>Profil dan pengaturan yang tersimpan pada akun Allpha Anda.</p></div>
       {profile && <div className="profile-chip">{profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <span>{(profile.display_name || session.user.email || "A").slice(0, 1).toUpperCase()}</span>}<div><strong>{profile.display_name || "Pengguna Allpha"}</strong><small>{profile.username ? "@" + profile.username : "Username belum diatur"}</small></div></div>}
     </section>
-    <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button></nav>
+    <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button><button className={tab === "consents" ? "active" : ""} onClick={() => { setTab("consents"); void loadConsentHistory(); }}>Riwayat persetujuan</button></nav>
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
     {loading || !profile || !settings ? <section className="panel loading-panel">Mengambil profil dan pengaturan dari backend…</section> : tab === "social" ? <section className="panel settings-panel social-panel">
       <div className="panel-heading"><span className="section-kicker">SOCIAL GRAPH</span><h2>Relasi dan minat Anda</h2><p>Relasi disimpan melalui API terautentikasi. Untuk saat ini, gunakan ID pengguna target; pencarian akun akan menjadi bagian dari discovery.</p></div>
@@ -234,6 +251,10 @@ export default function HomePage() {
         <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<input value={interestKey} onChange={(e) => setInterestKey(e.target.value.toLowerCase())} maxLength={80} pattern="[a-z0-9][a-z0-9._-]{0,79}" placeholder="contoh: desain.3d" /></label><button type="button" className="button-primary" disabled={saving || !interestKey.trim()} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}>{item.interest_key}<button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
         {socialGraph.blocked_by.length > 0 && <p className="muted">Akun yang memblokir Anda: {socialGraph.blocked_by.map((edge) => edge.actor_user_id).join(", ")}</p>}
       </> : <p className="muted">Data Social Graph belum dimuat.</p>}
+    </section> : tab === "consents" ? <section className="panel settings-panel social-panel" aria-labelledby="consent-history-title">
+      <div className="panel-heading"><span className="section-kicker">PRIVASI & TRANSPARANSI</span><h2 id="consent-history-title">Riwayat persetujuan</h2><p>Riwayat ini hanya menampilkan catatan yang sudah tersimpan melalui API Allpha. Persetujuan baru tidak dapat direkam sebelum versi resmi Terms of Service dan Privacy Policy ditetapkan.</p></div>
+      {consentLoading ? <p className="muted" role="status">Memuat riwayat persetujuan…</p> : consentError ? <div><p className="notice error" role="alert">{consentError}</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Coba lagi</button></div> : consentHistory === null ? <p className="muted">Riwayat belum dimuat.</p> : consentHistory.length === 0 ? <div className="social-row"><p className="muted">Belum ada catatan persetujuan pada akun ini.</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Muat ulang</button></div> : <div className="consent-history-list">{consentHistory.map((item, index) => <article className="social-row" key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index}><div><strong>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</strong><p className="muted">Versi tercatat: <code>{item.policy_version}</code></p><p className="muted">{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</p></div><span className="consent-state">{item.granted ? "Tercatat" : "Tidak diberikan"}</span></article>)}</div>}
+      <p className="muted">Tidak ada versi kebijakan atau catatan persetujuan contoh yang dibuat oleh aplikasi.</p>
     </section> : tab === "profile" ?
       <div className="content-grid"><form className="panel profile-form" onSubmit={saveProfile}>
         <div className="panel-heading"><span className="section-kicker">PROFIL PUBLIK</span><h2>Informasi manusia</h2><p>Perubahan dikirim ke API dan disimpan di database akun Anda.</p></div>
