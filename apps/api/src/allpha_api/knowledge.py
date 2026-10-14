@@ -15,6 +15,11 @@ ALLOWED = {".pdf": {"application/pdf"}, ".md": {"text/markdown","text/plain","ap
 SOURCE_FIELDS = "id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,source_version,status,processing_stage,error_code,provenance,created_at,updated_at"
 JOB_FIELDS = "id,source_id,agent_id,owner_id,status,stage,attempt,progress,error_code,created_at,updated_at"
 
+class SensitivityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sensitivity: str = Field(min_length=1, max_length=32)
+
+
 class RetryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str | None = Field(default=None, max_length=300)
@@ -138,6 +143,23 @@ async def list_sources(agent_id: uuid.UUID,request: Request,user: dict[str,Any]=
     for job in (jobs or []):
         latest.setdefault(job["source_id"],job)
     return {"items":[{**source,"latest_job":latest.get(source["id"])} for source in sources]}
+
+@router.patch("/sources/{source_id}/sensitivity")
+async def classify_source(agent_id: uuid.UUID,source_id: uuid.UUID,body: SensitivityRequest,request: Request,user: dict[str,Any]=Depends(current_user)):
+    token=await _owned(agent_id,request,user)
+    if body.sensitivity not in ("public", "internal", "confidential", "restricted"):
+        raise HTTPException(422,detail={"code":"INVALID_KNOWLEDGE_SENSITIVITY","message":"Pilih klasifikasi public, internal, confidential, atau restricted."})
+    source=await _source(agent_id,source_id,token,user)
+    if source.get("status") not in ("quarantined", "failed"):
+        raise HTTPException(409,detail={"code":"SENSITIVITY_CHANGE_NOT_ALLOWED","message":"Klasifikasi hanya dapat diubah sebelum pemrosesan atau setelah sumber gagal."})
+    provenance=dict(source.get("provenance") or {})
+    provenance["sensitivity"]=body.sensitivity
+    provenance["sensitivity_set_by"]=str(user["id"])
+    rows=await _admin_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","agent_id":f"eq.{agent_id}","owner_id":f"eq.{user['id']}"},body={"provenance":provenance},prefer="return=representation")
+    if not rows:
+        raise HTTPException(409,detail={"code":"SENSITIVITY_UPDATE_FAILED","message":"Klasifikasi tidak tersimpan; muat ulang sumber lalu coba kembali."})
+    return {"source_id":str(source_id),"sensitivity":body.sensitivity,"status":rows[0].get("status",source.get("status"))}
+
 
 @router.get("/sources/{source_id}")
 async def get_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
