@@ -427,3 +427,6 @@ def test_capability_review_migration_protects_fields_and_audits_transactionally(
     assert "old.status = 'requested' and new.status in ('approved','denied')" in sql
     assert "'platform:capabilities.review.high_risk'" in sql
     assert "grant select, update on public.agent_capabilities to service_role" in sql
+    assert "private.guard_platform_operator_grant_update" in sql
+    assert "grant update (status, revoked_at, revoked_by, revocation_reason)" in sql
+    assert "Operator grant identity and scopes are immutable" in sql
