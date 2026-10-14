@@ -267,3 +267,42 @@ Fix every confirmed bypass in the owning Phase, add a regression check where pra
 ### 12.6 Required pre-implementation gate
 
 Before any code change, the agent MUST read the complete Master PRD, this AGENTS.md, and the fixed phase plan; inspect the current `main` tree and CI; identify the owning Phase and canonical engine; and complete the source-to-engine map above. If repo structure or source documents conflict, stop and report the exact contradiction instead of silently inventing another application or backend. No Phase can be marked `integration_verified`, `acceptance_passed`, or `production_verified` until the real client → API → service/engine → authorized data path and negative/bypass tests have evidence.
+
+## 13. Product Owner testing sequence — implement phases first, full staging audit at ENG-P37
+
+The Product Owner has explicitly directed that **full real-environment integration testing, staging-based acceptance, and consolidated end-to-end/security audit are deferred until the final validation phase, ENG-P37**, after all feature phases ENG-P00–ENG-P36 have been implemented. This instruction changes the timing of the consolidated staging test campaign; it does not authorize fabricated results, unsafe production testing, or skipping implementation-time checks.
+
+### 13.1 During each implementation phase (ENG-P00–ENG-P36)
+
+Follow the implementation order for the affected vertical slice:
+
+1. Read the relevant requirements in the complete Master PRD, this file, and the single fixed phase plan; inspect existing source, schema/migrations, contracts, and dependencies.
+2. **Supabase database/schema:** inspect the canonical schema and existing data path first. If the feature requires a schema change, implement a versioned migration and relevant constraints/indexes/grants/RLS. Do not create another project/database or use canonical production as a test database.
+3. **Backend server (apps/api):** implement the typed/versioned FastAPI contract, validation, trusted identity/resource context, authorization/policy, domain service/engine, data access, errors and observability.
+4. **Native Client (apps/client):** implement the corresponding Android/iOS user journey through the canonical API.
+5. **Web client (apps/web):** implement the matching responsive journey using the same API contracts and business behavior as Native.
+6. **Super Admin (apps/super-admin):** implement authorized operator surfaces where the feature requires them; otherwise record NOT AFFECTED and the reason.
+7. **Integrate the path:** connect client → FastAPI endpoint → service/engine → repository/provider → canonical Supabase data path. Keep one backend/API as the business source of truth.
+8. Run **lightweight implementation-time checks** appropriate to the change, such as unit/source regression tests, typecheck, lint, build, contract/schema checks, migration static checks, and CI smoke tests. Fix failures that can be safely verified in the current environment.
+9. Record actual checks and results in the owning row of the fixed phase plan when status/next action changes. State explicitly which checks are automated/source-only and which real integrations have not been exercised.
+
+### 13.2 Deferred until ENG-P37 — consolidated staging and real acceptance
+
+After all implementation phases ENG-P00–ENG-P36 have working implementation slices, use ENG-P37 for the consolidated real-environment campaign, including as applicable:
+
+- Verify an **already-existing, explicitly confirmed non-production/staging environment** and its database target before running live tests. Never assume an environment is staging because of its name.
+- Run real Supabase authentication, data-path, migration fresh-install/upgrade, RLS/grants, owner/tenant isolation, and cross-user negative tests.
+- Run authenticated client journeys across Web, Android and iOS where toolchains/devices are available, and the separate Super Admin application.
+- Verify the complete client → API → canonical service/engine → Supabase path, external integrations, deployment health, failure/retry/recovery, security/privacy and relevant observability.
+- Retain CI links, command/test results, logs, migration outcomes, deployment evidence, and browser/device screenshots or recordings where available.
+- Return any discovered missing feature or domain behavior to its owning ENG-P00–ENG-P36 phase; ENG-P37 must not become a substitute implementation phase.
+
+Do not create a new Supabase project or branch merely to satisfy this sequence. If no existing isolated staging environment is available at ENG-P37, report the exact blocker and request an approved environment; do not run destructive, tenant-isolation, or migration experiments against canonical production.
+
+### 13.3 Status and truthfulness rules during the deferral
+
+- Deferring the consolidated staging campaign is **not** the same as passing it. Until real dependencies have been exercised, describe that evidence as DEFERRED / NOT VERIFIED.
+- During implementation phases, use source-level and automated checks to find/fix defects early; do not defer obvious correctness, authorization, privacy, secret-handling, or API-boundary defects until ENG-P37.
+- Do not claim integration_verified, acceptance_passed, or production_verified for a real integration merely because source code, mock tests, a green build, or CI smoke tests exist.
+- Keep the phase status evidence-based and update the fixed phase plan. The next phase may proceed according to the dependency order while deferred staging evidence remains explicitly open for ENG-P37, provided the implementation is present and no known safety-critical defect blocks the work.
+
