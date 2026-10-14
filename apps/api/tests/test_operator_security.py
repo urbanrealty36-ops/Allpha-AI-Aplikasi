@@ -432,4 +432,4 @@ def test_capability_review_migration_protects_fields_and_audits_transactionally(
     assert "Operator grant identity and scopes are immutable" in sql
     assert "as $\nbegin" in sql
     assert "\nend;\n$;" in sql
-    assert "as $\nbegin" not in sql
+    assert "returns trigger\nlanguage plpgsql\nset search_path = ''\nas $\nbegin" not in sql
