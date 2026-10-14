@@ -158,7 +158,7 @@ def test_operator_grant_create_uses_verified_actor_and_audited_scope(monkeypatch
         return [{
             "id": "grant-operator",
             "user_id": "operator",
-            "scopes": ["platform:operators.manage"],
+            "scopes": ["platform:operators.manage", "platform:operations.read"],
             "status": "active",
             "expires_at": None,
         }]
