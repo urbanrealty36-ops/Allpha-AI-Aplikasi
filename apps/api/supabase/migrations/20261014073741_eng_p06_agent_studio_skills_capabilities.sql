@@ -198,6 +198,12 @@ create policy agent_skill_versions_owner_insert on public.agent_skill_versions
       where o.agent_id = agent_skill_versions.agent_id
         and o.owner_user_id = (select auth.uid())
         and o.ownership_role = 'owner' and o.status = 'active'
+    ) and snapshot = (
+      select to_jsonb(s) from public.agent_skills s
+      where s.id = agent_skill_versions.skill_id
+        and s.agent_id = agent_skill_versions.agent_id
+        and s.version = agent_skill_versions.version
+        and s.created_by = agent_skill_versions.created_by
     )
   );
 revoke all on public.agent_skill_versions from anon, public;
