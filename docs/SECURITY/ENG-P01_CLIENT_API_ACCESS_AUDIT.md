@@ -146,3 +146,31 @@ The Super Admin diagnostics page previously interpreted every `/readyz` dependen
 
 ENG-P01 remains `in_progress`. Do not promote status until (a) current commit's CI jobs are final and Android failure is fixed or properly explained, (b) the new SQL migration and tests pass in isolated staging, (c) real two-user/two-tenant access tests pass, and (d) endpoint verification evidence is recorded.
 
+
+## Latest CI and artifact evidence (2026-10-14)
+
+- ENG-P01 run [38492138663](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38492138663), commit `49bdd4dcd19157bb15eea75d28086dea32e5bae6`, completed with conclusion `success`. Android debug APK, iOS Simulator build, API regressions, Web typecheck/build, and Super Admin typecheck/tests/build all completed successfully.
+- Android artifact: `allpha-eng-p01-android-debug-apk`, archive size 44,283,658 bytes, GitHub artifact digest `sha256:5704f3e7bb1ab72458f80cc53783022991f83839e9c346ad9a7f507a6b7280e8`. This digest is for the GitHub artifact archive, not the APK file itself. Workflow is being strengthened to include an APK-level SHA-256 manifest.
+- iOS Simulator build job passed, but no iOS artifact was listed for this run. Inspection of the workflow found the upload step used a path under `apps/client/ios/build` without directing Xcode's DerivedData there, and used `if-no-files-found: warn`; a green job therefore did not prove an artifact was uploaded. The workflow is being corrected to set `-derivedDataPath ios/build`, package `Allpha.app`, generate SHA-256, and fail if expected artifact files are missing. The new artifact evidence will only be confirmed after the resulting run finishes.
+- Latest Allpha Smoke run [38492154109](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38492154109) on `3000f42ba94884f8fa5088340bdb50fe9c349e36` completed successfully; scope is API regression + Web build and is not a substitute for the full native run.
+
+## Route → service/engine → repository/data mapping (source-level)
+
+The currently inspected `apps/api/src/allpha_api/main.py` has 26 declared HTTP routes. The route handlers call `user_db_request` directly for most domain operations; `apps/api/src/allpha_api/auth.py` provides the Auth JWT validation and user-token PostgREST transport. A dedicated domain service/engine/repository layer is not present in this slice. The table below records the actual path, not an inferred engine that does not exist yet.
+
+| Route group | HTTP route(s) | Current handler → data path | Owner/security boundary | Layering gap / regression focus |
+|---|---|---|---|---|
+| Readiness | `/healthz`, `/readyz`, `/v1/system/status` | FastAPI handler → upstream Auth/PostgREST probes or diagnostics | Readiness is not business authorization; system status exposure requires review | Runtime external probe remains unverified from this environment |
+| Human identity/profile | `/v1/me`, `/v1/me/profile` | Handler → `user_db_request` → `profiles` | User ID is derived from validated Supabase Auth identity; query filters on that ID | Add/retain tests for spoofed authority fields and owner-scoped filters |
+| Settings/privacy | `/v1/me/settings` | Handler → `user_db_request` → `user_settings` | `user_id` filter/body derived from authenticated user | Ensure read/update/insert remain self-scoped |
+| Consent/deactivation | `/v1/me/consents`, `/v1/me/deactivation-request` | Handler → `user_db_request` → `user_consents` or `rpc/request_account_deactivation` | Consent user ID is server-derived; deactivation RPC is intended to be scoped by `auth.uid()` | Deactivation migration is in repo but absent from production migration history; do not apply to prod to make tests pass |
+| Social graph/interests | `/v1/me/social-graph`, `/v1/me/social-edges`, follow request accept/reject, `/v1/me/interests` | Handler → `user_db_request` → `social_edges`, `user_interests` | Filters derive actor/recipient/user ID from authenticated identity; PostgREST requests carry caller token | Added regression that asserts outgoing/incoming/block/follow-request/interest reads all use authenticated identity |
+| Organizations/memberships | `/v1/organizations`, `/v1/organizations/{organization_id}/memberships` | Handler → `user_db_request` → `organizations`, `organization_memberships` | Owner derived server-side on create; membership lookup relies on RLS and hides absent/private org via 404 | Mocked IDOR regression exists; live two-tenant RLS proof remains blocked |
+| Agent identity/ownership | `/v1/agents`, `/v1/agents/{agent_id}`, `/v1/agent-passports/{handle}` | Handler → `user_db_request` → `agent_ownerships`, `ai_agents`, public passport read | Authenticated owner filter for private operations; public passport route is separate | Existing mocked owner/non-owner/forged-owner regressions; no live RLS/tenant proof |
+| Canonical business data access | all authenticated business routes above | FastAPI → caller-token `user_db_request` → Supabase PostgREST/RLS | No service-role key in clients; client source scan found Auth/session direct calls only | Structural gap: route handlers currently mix HTTP concerns and data access. Refactor domain by domain to a single canonical service/repository path; do not add a competing engine or run broad unbounded rewrite |
+
+### Regression added with this audit update
+
+- `test_social_graph_reads_are_scoped_to_authenticated_identity` mocks the authenticated identity and verifies the four Social Graph/interest reads filter actor/recipient/user IDs using that identity and forward the caller access token.
+- This is a deterministic handler regression only. It does not prove live RLS/grants or cross-tenant isolation; those remain deferred until an isolated non-production Supabase environment with two users/tenants is available.
+

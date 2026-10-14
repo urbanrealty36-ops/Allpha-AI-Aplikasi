@@ -118,11 +118,16 @@ jobs:
           fi
       - run: ./gradlew assembleDebug
         working-directory: apps/client/android
+      - name: Generate Android APK SHA-256 manifest
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/SHA256SUMS
+        working-directory: apps/client/android
       - name: Upload Android debug APK evidence
         uses: actions/upload-artifact@v4
         with:
           name: allpha-eng-p01-android-debug-apk
-          path: apps/client/android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            apps/client/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/client/android/app/build/outputs/apk/debug/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
 
@@ -150,13 +155,25 @@ jobs:
           fi
       - run: npx pod-install
         working-directory: apps/client
-      - run: xcodebuild -workspace ios/Allpha.xcworkspace -scheme Allpha -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - run: xcodebuild -workspace ios/Allpha.xcworkspace -scheme Allpha -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO build
+        working-directory: apps/client
+      - name: Package iOS simulator app and generate SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="ios/build/Build/Products/Debug-iphonesimulator/Allpha.app"
+          archive_path="ios/build/Allpha-ios-simulator.app.zip"
+          test -d "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "$archive_path"
+          shasum -a 256 "$archive_path" > ios/build/SHA256SUMS
         working-directory: apps/client
       - name: Upload iOS simulator build evidence
         uses: actions/upload-artifact@v4
         with:
           name: allpha-eng-p01-ios-simulator-build
-          path: apps/client/ios/build/Build/Products/Debug-iphonesimulator/Allpha.app
-          if-no-files-found: warn
+          path: |
+            apps/client/ios/build/Allpha-ios-simulator.app.zip
+            apps/client/ios/build/SHA256SUMS
+          if-no-files-found: error
           retention-days: 14
 

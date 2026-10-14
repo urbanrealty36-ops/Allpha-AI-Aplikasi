@@ -344,3 +344,38 @@ def test_social_graph_requires_authentication():
     response = client.get("/v1/me/social-graph")
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
+def test_social_graph_reads_are_scoped_to_authenticated_identity(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-scope-token"
+        return {"id": "authenticated-social-user", "email": "social@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get(
+            "/v1/me/social-graph",
+            headers={"Authorization": "Bearer social-scope-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert len(calls) == 4
+    assert all(call[2] == "social-scope-token" for call in calls)
+    assert calls[0][1] == "social_edges"
+    assert calls[0][3]["params"]["actor_user_id"] == "eq.authenticated-social-user"
+    assert calls[1][3]["params"]["target_user_id"] == "eq.authenticated-social-user"
+    assert calls[1][3]["params"]["edge_type"] == "eq.block"
+    assert calls[2][3]["params"]["target_user_id"] == "eq.authenticated-social-user"
+    assert calls[2][3]["params"]["edge_type"] == "eq.follow"
+    assert calls[2][3]["params"]["status"] == "eq.requested"
+    assert calls[3][1] == "user_interests"
+    assert calls[3][3]["params"]["user_id"] == "eq.authenticated-social-user"
