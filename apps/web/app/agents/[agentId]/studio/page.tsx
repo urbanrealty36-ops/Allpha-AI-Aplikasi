@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
 
-type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; error_code?: string | null; sha256: string; created_at: string };
+type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; error_code?: string | null; sha256: string; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type Skill = {
   id: string; agent_id: string; slug: string; name: string; description: string;
   category: string; instructions: string; required_permission_scopes: string[];
@@ -259,7 +259,7 @@ export default function AgentStudioPage() {
       </form>
       <div className="space-y-3">{knowledgeSources.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">Belum ada sumber pengetahuan.</p> : knowledgeSources.map(source => <article key={source.id} className="rounded-xl border p-3">
         <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{source.filename}</h3><p className="mt-1 text-xs text-neutral-500">{(source.size_bytes / 1024).toFixed(1)} KiB · SHA-256 {source.sha256.slice(0, 12)}…</p></div><span className="rounded-full border px-2 py-1 text-xs">{source.status}</span></div>
-        <p className="mt-2 text-sm text-neutral-600">Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</p>
+        <p className="mt-2 text-sm text-neutral-600">Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</p>{source.latest_job && <p className="mt-1 text-xs text-neutral-500">Job: {source.latest_job.status} · {source.latest_job.stage} · {source.latest_job.progress}% · percobaan {source.latest_job.attempt}{source.latest_job.error_code ? " · " + source.latest_job.error_code : ""}</p>}
         <div className="mt-3 flex flex-wrap gap-2">{(source.status === "quarantined" || source.status === "failed") && <button type="button" disabled={saving} onClick={() => void knowledgeAction(source, source.status === "failed" ? "retry" : "process")} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50">{source.status === "failed" ? "Coba lagi" : "Proses dokumen"}</button>}<button type="button" disabled={saving} onClick={() => { if (window.confirm("Hapus dokumen dan seluruh chunk terkait?")) void knowledgeAction(source, "delete"); }} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50">Hapus</button></div>
       </article>)}</div>
     </section>
