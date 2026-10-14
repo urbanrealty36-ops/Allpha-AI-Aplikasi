@@ -4,14 +4,14 @@ import hashlib, io, os, re, uuid, zipfile, xml.etree.ElementTree as ET
 from typing import Any
 from urllib.parse import quote
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, user_db_request
 
 router = APIRouter(prefix="/v1/agents/{agent_id}/knowledge", tags=["agent-knowledge"])
 MAX_BYTES = 15 * 1024 * 1024
 ALLOWED = {".pdf": {"application/pdf"}, ".md": {"text/markdown","text/plain","application/octet-stream"}, ".txt": {"text/plain","text/markdown","application/octet-stream"}, ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}}
-SOURCE_FIELDS = "id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,source_version,status,processing_stage,error_code,provenance,created_at,updated_at"
+SOURCE_FIELDS = "id,agent_id,owner_id,filename,media_type,size_bytes,sha256,storage_path,source_version,sensitivity,status,processing_stage,error_code,provenance,created_at,updated_at"
 JOB_FIELDS = "id,source_id,agent_id,owner_id,status,stage,attempt,progress,error_code,created_at,updated_at"
 
 class RetryRequest(BaseModel):
@@ -110,8 +110,10 @@ async def _source(agent_id,source_id,token,user):
     return rows[0]
 
 @router.post("/sources",status_code=201)
-async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=File(...),user: dict[str,Any]=Depends(current_user)):
+async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=File(...),sensitivity: str | None=Form(default=None),user: dict[str,Any]=Depends(current_user)):
     token=await _owned(agent_id,request,user); filename=os.path.basename((file.filename or "").replace("\\","/")).strip()
+    if sensitivity not in (None, "public", "internal", "confidential", "restricted"):
+        raise HTTPException(422,detail={"code":"INVALID_KNOWLEDGE_SENSITIVITY","message":"Pilih klasifikasi public, internal, confidential, atau restricted."})
     ext=os.path.splitext(filename.lower())[1]; media=(file.content_type or "application/octet-stream").split(";")[0].lower()
     if not filename or ext not in ALLOWED or media not in ALLOWED[ext]: raise HTTPException(415,detail={"code":"UNSUPPORTED_DOCUMENT","message":"Format yang didukung: PDF, Markdown, TXT, dan DOCX."})
     data=await file.read(MAX_BYTES+1)
@@ -124,7 +126,7 @@ async def upload_source(agent_id: uuid.UUID,request: Request,file: UploadFile=Fi
                 if "word/document.xml" not in z.namelist(): raise ValueError()
         except (zipfile.BadZipFile,ValueError): raise HTTPException(422,detail={"code":"INVALID_FILE_SIGNATURE","message":"Struktur DOCX tidak valid."})
     sid=uuid.uuid4(); digest=hashlib.sha256(data).hexdigest(); path=f"{user['id']}/{agent_id}/{sid}/{filename}"
-    body={"id":str(sid),"agent_id":str(agent_id),"owner_id":user["id"],"filename":filename,"media_type":media,"size_bytes":len(data),"sha256":digest,"storage_path":path,"source_version":1,"status":"quarantined","processing_stage":"awaiting_malware_scan","provenance":{"kind":"user_upload","filename":filename,"sha256":digest,"source_version":1}}
+    body={"id":str(sid),"agent_id":str(agent_id),"owner_id":user["id"],"filename":filename,"media_type":media,"size_bytes":len(data),"sha256":digest,"storage_path":path,"source_version":1,"sensitivity":sensitivity,"status":"quarantined","processing_stage":"awaiting_malware_scan","provenance":{"kind":"user_upload","filename":filename,"sha256":digest,"source_version":1}}
     rows=await _admin_db_request("POST","agent_knowledge_sources",token,params={"select":SOURCE_FIELDS},body=body,prefer="return=representation")
     if not rows: raise HTTPException(500,detail={"code":"SOURCE_CREATE_FAILED","message":"Metadata dokumen gagal disimpan."})
     try: await _storage("POST",f"agent-knowledge/{path}",token,data,media)
@@ -154,6 +156,8 @@ async def get_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,u
 @router.post("/sources/{source_id}/process")
 async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Request,user: dict[str,Any]=Depends(current_user)):
     token=await _owned(agent_id,request,user); source=await _source(agent_id,source_id,token,user)
+    if source.get("sensitivity") not in ("public", "internal", "confidential", "restricted"):
+        raise HTTPException(409,detail={"code":"SENSITIVITY_CLASSIFICATION_REQUIRED","message":"Tetapkan klasifikasi sensitivitas secara eksplisit sebelum dokumen diproses."})
     if source["status"] not in ("quarantined","failed"): raise HTTPException(409,detail={"code":"SOURCE_STATE_CONFLICT","message":"Sumber tidak berada pada status yang dapat diproses ulang."})
     prior_jobs=await user_db_request("GET","agent_knowledge_jobs",token,params={"select":"id,attempt","source_id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","order":"created_at.desc","limit":"100"})
     attempt=max((int(item.get("attempt",0)) for item in (prior_jobs or [])),default=0)+1
