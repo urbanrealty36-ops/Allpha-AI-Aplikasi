@@ -152,7 +152,7 @@ def test_public_route_derives_owner_from_authenticated_identity_and_policy():
     async def fake_current_user(request: Request):
         return {"id": "owner-a"}
     async def scenario():
-        repo = Repo(hits=[hit()])
+        repo = Repo(hits=[hit(agent_id=str(uuid.UUID(int=101)))])
         policy = Policy(["internal"])
         app.state.knowledge_retrieval_service = KnowledgeRetrievalService(repo, policy)
         app.dependency_overrides[current_user] = fake_current_user
