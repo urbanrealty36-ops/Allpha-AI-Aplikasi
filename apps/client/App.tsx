@@ -91,6 +91,7 @@ function Profile({ session }: { session: Session }) {
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
@@ -123,9 +124,10 @@ function Profile({ session }: { session: Session }) {
     } finally { setConsentLoading(false); }
   }
   async function loadSocialGraph() {
-    setError(""); setMessage("");
+    setSocialLoading(true); setError(""); setMessage("");
     try { setSocialGraph(await apiRequest("/v1/me/social-graph") as SocialGraph); }
     catch (e) { setError(e instanceof Error ? e.message : "Social Graph tidak dapat dimuat."); }
+    finally { setSocialLoading(false); }
   }
   async function addSocialEdge(edgeType: "follow" | "block" | "mute") {
     setBusy(true); setError(""); setMessage("");
@@ -233,7 +235,7 @@ function Profile({ session }: { session: Session }) {
         {consentLoading ? <ActivityIndicator color="#A5B4FC"/> : consentError ? <><Text accessibilityRole="alert" style={s.error}>{consentError}</Text><Button title="Coba lagi" secondary onPress={() => void loadConsentHistory()}/></> : consentHistory === null ? <Text style={s.muted}>Riwayat belum dimuat.</Text> : consentHistory.length === 0 ? <Text style={s.muted}>Belum ada catatan persetujuan pada akun ini.</Text> : consentHistory.map((item, index) => <View key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index} style={s.socialRow}><Text style={s.body}>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</Text><Text style={s.muted}>Versi tercatat: {item.policy_version}</Text><Text style={s.muted}>{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</Text></View>)}
         <Text style={s.muted}>Tidak ada versi kebijakan atau catatan persetujuan contoh yang dibuat oleh aplikasi.</Text>
         <Button title="Muat ulang riwayat" secondary disabled={consentLoading} onPress={() => void loadConsentHistory()}/>
-      </> : socialGraph ? <>
+      </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
         <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
         <TextInput accessibilityLabel="ID pengguna target" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder="UUID akun Allpha" placeholderTextColor="#8B94AC"/>
