@@ -171,26 +171,38 @@ def test_public_passport_returns_only_public_projection(monkeypatch):
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
-        return [{
-            "id": "agent-1",
-            "handle": "research_bot",
-            "display_name": "Research Bot",
-            "description": "Public description",
-            "disclosure": "AI-generated responses",
-            "visibility": "public",
-            "status": "active",
-        }]
+        if path == "ai_agents":
+            return [{
+                "id": "agent-1",
+                "handle": "research_bot",
+                "display_name": "Research Bot",
+                "description": "Public description",
+                "disclosure": "AI-generated responses",
+                "visibility": "public",
+                "status": "active",
+            }]
+        if path == "agent_skills":
+            return [{"id": "skill-1", "slug": "summary", "name": "Summary", "version": 2, "status": "published"}]
+        if path == "agent_capabilities":
+            return [{"id": "cap-1", "capability_key": "calendar.read", "status": "approved"}]
+        raise AssertionError(path)
 
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     response = client.get("/v1/agent-passports/research_bot")
 
     assert response.status_code == 200
     assert response.json()["passport"]["handle"] == "research_bot"
+    assert response.json()["skills"][0]["version"] == 2
+    assert response.json()["capabilities"][0]["status"] == "approved"
     assert "persona" not in response.json()["passport"]
     assert "boundaries" not in response.json()["passport"]
     assert "owner_user_id" not in response.json()["passport"]
     assert "persona" not in calls[0][3]["params"]["select"]
     assert calls[0][0:3] == ("GET", "ai_agents", None)
+    assert calls[1][1] == "agent_skills"
+    assert calls[1][3]["params"]["select"] == "id,slug,name,description,category,version,status,publication_terms,created_at,updated_at"
+    assert calls[2][1] == "agent_capabilities"
+    assert "required_permission_scopes" not in calls[2][3]["params"]["select"]
 
 
 
