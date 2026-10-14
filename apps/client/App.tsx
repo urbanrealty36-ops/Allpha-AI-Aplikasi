@@ -8,6 +8,8 @@ import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
+type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
+type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status"> & { disclosure?: string; created_at?: string };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
@@ -86,7 +88,13 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents">("profile");
+  const [agents, setAgents] = useState<AgentIdentity[]>([]);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentHandle, setAgentHandle] = useState("");
+  const [agentName, setAgentName] = useState("");
+  const [agentDescription, setAgentDescription] = useState("");
+  const [agentPassport, setAgentPassport] = useState<AgentPassport | null>(null);
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
@@ -199,6 +207,46 @@ function Profile({ session }: { session: Session }) {
     } catch (e) { setError(e instanceof Error ? e.message : "Permintaan penonaktifan gagal."); }
     finally { setBusy(false); }
   }
+  async function loadAgents() {
+    setAgentLoading(true); setError("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || "Daftar Agent tidak dapat dimuat.");
+      setAgents(Array.isArray(body.items) ? body.items : []);
+    } catch (e) { setError(e instanceof Error ? e.message : "Daftar Agent tidak dapat dimuat."); }
+    finally { setAgentLoading(false); }
+  }
+  async function createAgent() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" }, body: JSON.stringify({ handle: agentHandle.trim().toLowerCase(), display_name: agentName.trim(), description: agentDescription.trim(), persona: { tone: "helpful", language: "id-ID" }, disclosure: "AI Agent; respons dapat dihasilkan oleh model.", boundaries: { requires_owner_approval_for_external_actions: true, private_owner_data: "owner_only" }, visibility: "private" }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || "Agent tidak dapat dibuat.");
+      setAgentHandle(""); setAgentName(""); setAgentDescription(""); setMessage("Identitas Agent dibuat dan pemilik ditetapkan oleh server."); await loadAgents();
+    } catch (e) { setError(e instanceof Error ? e.message : "Agent tidak dapat dibuat."); }
+    finally { setBusy(false); }
+  }
+  async function updateAgent(agent: AgentIdentity, changes: Partial<Pick<AgentIdentity, "visibility" | "status">>) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(agent.id), { method: "PATCH", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" }, body: JSON.stringify(changes) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || "Status Agent tidak dapat diperbarui.");
+      setMessage("Identitas Agent diperbarui."); await loadAgents();
+    } catch (e) { setError(e instanceof Error ? e.message : "Status Agent tidak dapat diperbarui."); }
+    finally { setBusy(false); }
+  }
+  async function loadPassport(handle: string) {
+    setAgentPassport(null); setError(""); setMessage(""); setAgentLoading(true);
+    try {
+      const response = await fetch(apiBase + "/v1/agent-passports/" + encodeURIComponent(handle), { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || "Passport publik tidak tersedia.");
+      setAgentPassport(body.passport);
+    } catch (e) { setError(e instanceof Error ? e.message : "Passport tidak dapat dimuat."); }
+    finally { setAgentLoading(false); }
+  }
   const field = { ...s.input, flex: 1 } as const;
   return <ScrollView contentContainerStyle={s.page}><Brand/>
     <View style={s.card}>
@@ -206,7 +254,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -235,6 +283,17 @@ function Profile({ session }: { session: Session }) {
         {consentLoading ? <ActivityIndicator color="#A5B4FC"/> : consentError ? <><Text accessibilityRole="alert" style={s.error}>{consentError}</Text><Button title="Coba lagi" secondary onPress={() => void loadConsentHistory()}/></> : consentHistory === null ? <Text style={s.muted}>Riwayat belum dimuat.</Text> : consentHistory.length === 0 ? <Text style={s.muted}>Belum ada catatan persetujuan pada akun ini.</Text> : consentHistory.map((item, index) => <View key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index} style={s.socialRow}><Text style={s.body}>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</Text><Text style={s.muted}>Versi tercatat: {item.policy_version}</Text><Text style={s.muted}>{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</Text></View>)}
         <Text style={s.muted}>Tidak ada versi kebijakan atau catatan persetujuan contoh yang dibuat oleh aplikasi.</Text>
         <Button title="Muat ulang riwayat" secondary disabled={consentLoading} onPress={() => void loadConsentHistory()}/>
+      </> : tab === "agents" ? <>
+        <Text style={s.kicker}>AI AGENT IDENTITY</Text><Text style={s.title}>Agent Studio & Passport</Text>
+        <Text style={s.muted}>Identitas Agent terpisah dari Human. Ownership ditentukan backend dari sesi terautentikasi; tidak ada owner ID dari client.</Text>
+        {agentPassport ? <View style={s.socialRow}><Text style={s.title}>{agentPassport.display_name}</Text><Text style={s.body}>@{agentPassport.handle} · {agentPassport.status} · {agentPassport.visibility}</Text><Text style={s.body}>{agentPassport.description || "Tanpa deskripsi publik."}</Text><Text style={s.muted}>{agentPassport.disclosure || "AI Agent; respons dapat dihasilkan oleh model."}</Text><Button title="Kembali ke daftar" secondary onPress={() => setAgentPassport(null)}/></View> : <>
+          <TextInput accessibilityLabel="Nama Agent" value={agentName} onChangeText={setAgentName} maxLength={80} style={field} placeholder="Nama Agent" placeholderTextColor="#8B94AC"/>
+          <TextInput accessibilityLabel="Handle Agent" value={agentHandle} onChangeText={value => setAgentHandle(value.toLowerCase())} autoCapitalize="none" maxLength={30} style={field} placeholder="handle_agent (3–30 karakter)" placeholderTextColor="#8B94AC"/>
+          <TextInput accessibilityLabel="Deskripsi Agent" value={agentDescription} onChangeText={setAgentDescription} maxLength={1000} style={field} placeholder="Deskripsi Agent" placeholderTextColor="#8B94AC"/>
+          <Button title={busy ? "Membuat…" : "Buat Agent privat"} disabled={busy || agentName.trim().length < 2 || !/^[a-z0-9_]{3,30}$/.test(agentHandle.trim())} onPress={() => void createAgent()}/>
+          <Button title="Muat ulang daftar" secondary disabled={agentLoading} onPress={() => void loadAgents()}/>
+          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/></View></View>) : <Text style={s.muted}>Belum ada Agent. Buat identitas pertama Anda.</Text>}
+        </>}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
         <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
