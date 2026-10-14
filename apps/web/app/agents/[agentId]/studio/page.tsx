@@ -40,6 +40,18 @@ export default function AgentStudioPage() {
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [scope, setScope] = useState("");
+  const [category, setCategory] = useState("general");
+  const [inputSchema, setInputSchema] = useState('{"type":"object"}');
+  const [outputSchema, setOutputSchema] = useState('{"type":"object"}');
+  const [toolDependencies, setToolDependencies] = useState("");
+  const [budgetSeconds, setBudgetSeconds] = useState("30");
+  const [budgetToolCalls, setBudgetToolCalls] = useState("5");
+  const [modelRequirements, setModelRequirements] = useState("{}");
+  const [skillTests, setSkillTests] = useState("[]");
+  const [evaluationRubric, setEvaluationRubric] = useState("{}");
+  const [provenance, setProvenance] = useState("{}");
+  const [publicationTerms, setPublicationTerms] = useState("{}");
+  const [changelog, setChangelog] = useState("Versi awal");
   const [capabilityKey, setCapabilityKey] = useState("");
   const [capabilityDescription, setCapabilityDescription] = useState("");
   const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high" | "critical">("low");
@@ -89,17 +101,22 @@ export default function AgentStudioPage() {
         method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
         body: JSON.stringify({
           slug: slug.trim().toLowerCase(), name: name.trim(), description: description.trim(),
-          instructions: instructions.trim(), required_permission_scopes: scope.split(",").map(x => x.trim()).filter(Boolean),
+          instructions: instructions.trim(), category: category.trim() || "general",
+          inputs_schema: JSON.parse(inputSchema), outputs_schema: JSON.parse(outputSchema),
+          tool_dependencies: toolDependencies.split(",").map(x => x.trim()).filter(Boolean),
+          required_permission_scopes: scope.split(",").map(x => x.trim()).filter(Boolean),
           constraints: { external_actions_require_owner_approval: true },
-          budget_limits: { max_runtime_seconds: 30, max_tool_calls: 5 },
-          changelog: "Versi awal",
+          budget_limits: { max_runtime_seconds: Number(budgetSeconds), max_tool_calls: Number(budgetToolCalls) },
+          model_requirements: JSON.parse(modelRequirements), tests: JSON.parse(skillTests),
+          evaluation_rubric: JSON.parse(evaluationRubric), provenance: JSON.parse(provenance),
+          publication_terms: JSON.parse(publicationTerms), changelog: changelog.trim(),
         }),
       });
       if (!response.ok) throw new Error(await readError(response));
       setSlug(""); setName(""); setDescription(""); setInstructions(""); setScope("");
       setNotice("Skill tersimpan sebagai draft. Definisi Skill tidak memberikan izin eksekusi otomatis.");
       await load(session);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Skill tidak dapat disimpan."); }
+    } catch (cause) { setError(cause instanceof SyntaxError ? "JSON Schema, tests, model requirements, rubric, provenance, dan terms harus berupa JSON valid." : cause instanceof Error ? cause.message : "Skill tidak dapat disimpan."); }
     finally { setSaving(false); }
   }
 
@@ -142,7 +159,18 @@ export default function AgentStudioPage() {
           </div>
           <label className="grid gap-1 text-sm">Deskripsi<textarea value={description} onChange={e => setDescription(e.target.value)} maxLength={2000} rows={2} className="rounded-lg border px-3 py-2"/></label>
           <label className="grid gap-1 text-sm">Instruksi prosedural<textarea value={instructions} onChange={e => setInstructions(e.target.value)} maxLength={12000} rows={3} className="rounded-lg border px-3 py-2" placeholder="Langkah-langkah dan batasan Skill"/></label>
+          <label className="grid gap-1 text-sm">Kategori<input value={category} onChange={e => setCategory(e.target.value)} maxLength={60} className="rounded-lg border px-3 py-2" placeholder="general"/></label>
+          <label className="grid gap-1 text-sm">Input JSON Schema<textarea required value={inputSchema} onChange={e => setInputSchema(e.target.value)} rows={3} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Output JSON Schema<textarea required value={outputSchema} onChange={e => setOutputSchema(e.target.value)} rows={3} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Tool dependencies (key dipisah koma)<input value={toolDependencies} onChange={e => setToolDependencies(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="content.search, calendar.read"/></label>
           <label className="grid gap-1 text-sm">Permission scopes (pisahkan koma)<input value={scope} onChange={e => setScope(e.target.value)} className="rounded-lg border px-3 py-2" placeholder="content:read"/></label>
+          <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm">Batas runtime (detik)<input type="number" min="1" max="3600" value={budgetSeconds} onChange={e => setBudgetSeconds(e.target.value)} className="rounded-lg border px-3 py-2"/></label><label className="grid gap-1 text-sm">Batas tool calls<input type="number" min="0" max="100" value={budgetToolCalls} onChange={e => setBudgetToolCalls(e.target.value)} className="rounded-lg border px-3 py-2"/></label></div>
+          <label className="grid gap-1 text-sm">Model requirements (JSON)<textarea value={modelRequirements} onChange={e => setModelRequirements(e.target.value)} rows={2} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Test cases (array JSON)<textarea value={skillTests} onChange={e => setSkillTests(e.target.value)} rows={3} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Evaluation rubric (JSON)<textarea value={evaluationRubric} onChange={e => setEvaluationRubric(e.target.value)} rows={2} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Provenance / sumber (JSON)<textarea value={provenance} onChange={e => setProvenance(e.target.value)} rows={2} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Publication / entitlement terms (JSON)<textarea value={publicationTerms} onChange={e => setPublicationTerms(e.target.value)} rows={2} className="rounded-lg border px-3 py-2 font-mono text-xs"/></label>
+          <label className="grid gap-1 text-sm">Changelog<input value={changelog} onChange={e => setChangelog(e.target.value)} maxLength={2000} className="rounded-lg border px-3 py-2"/></label>
           <button disabled={saving || !session} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Buat Skill draft"}</button>
         </form>
         <div className="space-y-3 border-t pt-4">
