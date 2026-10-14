@@ -198,7 +198,7 @@ class SupabaseKnowledgeJobStore:
 
     async def load_source(self, job):
         rows = await self._request("GET", "agent_knowledge_sources", params={
-            "select": "id,agent_id,owner_id,source_version,status,sensitivity,provenance",
+            "select": "id,agent_id,owner_id,source_version,status,provenance",
             "id": f"eq.{job['source_id']}", "owner_id": f"eq.{job['owner_id']}",
             "agent_id": f"eq.{job['agent_id']}", "limit": "1",
         })
