@@ -198,7 +198,7 @@ async def privileged_rest_request(
         ) from exc
 
 
-def require_operator_scope(required_scope: str):
+def require_operator_scope(required_scope: str | None):
     """Return a dependency enforcing a live grant and exact scope."""
     async def dependency(
         request: Request,
@@ -250,13 +250,13 @@ def require_operator_scope(required_scope: str):
             if isinstance(declared, list):
                 scopes.update(scope for scope in declared if isinstance(scope, str))
 
-        if required_scope not in scopes:
+        if not scopes or (required_scope is not None and required_scope not in scopes):
             await write_operator_audit(
                 request,
                 actor_user_id=actor_id,
                 action="operator.scope.check",
                 outcome="denied",
-                metadata={"required_scope": required_scope},
+                metadata={"required_scope": required_scope or "any_operator_scope"},
             )
             raise HTTPException(
                 status_code=403,
@@ -270,7 +270,7 @@ def require_operator_scope(required_scope: str):
             actor_user_id=actor_id,
             action="operator.scope.check",
             outcome="allowed",
-            metadata={"required_scope": required_scope},
+            metadata={"required_scope": required_scope or "any_operator_scope"},
         )
         return {"id": actor_id, "email": user.get("email"), "scopes": sorted(scopes)}
     return dependency
@@ -278,7 +278,7 @@ def require_operator_scope(required_scope: str):
 
 @router.get("/operator/access", name="get_operator_access")
 async def get_operator_access(
-    operator: dict[str, Any] = Depends(require_operator_scope("platform:operations.read")),
+    operator: dict[str, Any] = Depends(require_operator_scope(None)),
 ) -> dict[str, Any]:
     return {"operator": operator, "authorization": "verified"}
 
