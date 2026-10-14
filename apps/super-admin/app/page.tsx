@@ -309,6 +309,39 @@ export default function OperationsPage() {
     }
   }
 
+  async function reviewCapability(capability: CapabilityRequest, decision: "approved" | "denied") {
+    if (!session) return;
+    const reason = reviewReasons[capability.id]?.trim() || "";
+    if (reason.length < 8) {
+      setError("Alasan review minimal 8 karakter.");
+      return;
+    }
+    const highRisk = capability.risk_level === "high" || capability.risk_level === "critical";
+    if (highRisk && !operator?.scopes.includes("platform:capabilities.review.high_risk")) {
+      setError("Capability berisiko tinggi memerlukan scope review tambahan.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await adminFetch("/v1/admin/operator/capabilities/" + capability.id + "/review", session, setSession, {
+        method: "POST",
+        body: JSON.stringify({ decision, reason }),
+      });
+      await responseBody<{ capability: CapabilityRequest; runtime_authorized: boolean }>(response);
+      setNotice("Keputusan capability tersimpan. Status approved tidak dengan sendirinya memberikan izin runtime.");
+      const refreshed = await adminFetch("/v1/admin/operator/capabilities?limit=50", session, setSession);
+      setCapabilities((await responseBody<{ items: CapabilityRequest[] }>(refreshed)).items);
+      if (canReadAudit) {
+        const auditResponse = await adminFetch("/v1/admin/operator/audit?limit=50", session, setSession);
+        setAudit((await responseBody<{ items: AuditEvent[] }>(auditResponse)).items);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Review capability gagal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function logout() {
     setSession(null); setOperator(null); setAudit([]); setGrants([]); setError(""); setNotice("");
   }
@@ -359,6 +392,24 @@ export default function OperationsPage() {
           {grants.map((grant) => <tr key={grant.id}><td><code>{grant.user_id}</code></td><td>{grant.scopes.join(", ")}</td><td><span className={"pill " + (grant.status === "active" ? "online" : "warning")}>{grant.status}</span></td><td>{grant.status === "revoked" ? grant.revocation_reason || grant.reason : grant.reason}</td><td>{grant.status === "active" && <button className="secondaryButton" disabled={busy || grant.user_id === operator?.id} onClick={() => void revokeGrant(grant)}>Cabut</button>}</td></tr>)}
           {!grants.length && <tr><td colSpan={5} className="emptyCell">Belum ada grant yang dapat ditampilkan.</td></tr>}
         </tbody></table></div>
+      </section>}
+      {session && canReview && <section className="panel" id="capability-review">
+        <header className="panelHead"><div><h2>Capability review</h2><p>Hanya permintaan berstatus requested yang dapat diputuskan; keputusan dicatat oleh trigger database.</p></div><span className="pill warning">REVIEW SCOPE</span></header>
+        <div className="capabilityList">
+          {capabilities.map((capability) => {
+            const highRisk = capability.risk_level === "high" || capability.risk_level === "critical";
+            const highRiskAllowed = operator?.scopes.includes("platform:capabilities.review.high_risk");
+            return <article className="capabilityCard" key={capability.id}>
+              <div className="capabilityHead"><div><strong>{capability.capability_key}</strong><p>{capability.description || "Tidak ada deskripsi."}</p></div><span className={"pill " + (highRisk ? "warning" : "online")}>{capability.risk_level.toUpperCase()}</span></div>
+              <p className="muted">Agent: <code>{capability.agent_id}</code> · Pemohon: <code>{capability.created_by}</code></p>
+              <p className="muted">Permission scopes: {(capability.required_permission_scopes || []).join(", ") || "Belum dideklarasikan"}</p>
+              {highRisk && !highRiskAllowed && <p className="riskWarning">Scope tambahan diperlukan: platform:capabilities.review.high_risk</p>}
+              <label className="reviewReason">Alasan keputusan<input value={reviewReasons[capability.id] || ""} onChange={(event) => setReviewReasons((current) => ({ ...current, [capability.id]: event.target.value }))} minLength={8} maxLength={500} placeholder="Alasan review (min. 8 karakter)" /></label>
+              <div className="reviewActions"><button disabled={busy || (highRisk && !highRiskAllowed) || (reviewReasons[capability.id] || "").trim().length < 8} onClick={() => void reviewCapability(capability, "approved")}>Approve request</button><button className="secondaryButton" disabled={busy || (highRisk && !highRiskAllowed) || (reviewReasons[capability.id] || "").trim().length < 8} onClick={() => void reviewCapability(capability, "denied")}>Deny request</button></div>
+            </article>;
+          })}
+          {!capabilities.length && <p className="emptyCell">Tidak ada permintaan capability yang menunggu review.</p>}
+        </div>
       </section>}
       {session && canReadAudit && <section className="panel" id="operator-audit">
         <header className="panelHead"><div><h2>Audit events</h2><p>Event terbaru dari tabel audit khusus operator; token dan payload sensitif tidak ditampilkan.</p></div><span className="pill online">AUDIT READ</span></header>
