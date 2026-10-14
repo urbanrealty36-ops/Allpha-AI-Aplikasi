@@ -8,7 +8,6 @@ No default provider/model is selected: deployment policy must configure both.
 import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Protocol
-
 from allpha_api.embedding_contract import EmbeddingFailure, EmbeddingRequest, EmbeddingResponse, validate_response_matches_request
 
 class ModelRouterUnavailable(RuntimeError):
@@ -42,11 +41,11 @@ class EmbeddingRoute:
 MeteringSink = Callable[[EmbeddingRequest, EmbeddingResponse], Awaitable[None]]
 
 class CanonicalModelRouter:
-    """Own route selection, bounded timeout/retry and successful-call metering.
+    """Own policy route selection, bounded timeout/retry and usage/cost metering.
 
     routes is deployment-owned policy keyed by sensitivity. Missing entries fail
-    closed. adapters are registered server-side provider integrations. The router
-    does not guess a provider, model, dimension or fallback.
+    closed. adapters are registered server-side provider integrations. No provider,
+    model, dimension or fallback is guessed by this module.
     """
     def __init__(self, *, routes: dict[str, EmbeddingRoute], adapters: dict[str, EmbeddingAdapter], metering_sink: MeteringSink | None = None, retry_delay_seconds: float = 0.15):
         self._routes = dict(routes)
@@ -61,9 +60,8 @@ class CanonicalModelRouter:
         adapter = self._adapters.get(route.provider_id)
         if adapter is None:
             raise ModelRouterUnavailable(f"No provider adapter registered for provider_id={route.provider_id}")
-        attempts = min(route.max_attempts, 8)
         last_error: Exception | None = None
-        for attempt in range(attempts):
+        for attempt in range(min(route.max_attempts, 8)):
             try:
                 response = await asyncio.wait_for(adapter.embed(request, model_id=route.model_id), timeout=request.timeout_ms / 1000)
                 if response.provider_id != route.provider_id or response.model_id != route.model_id:
@@ -83,14 +81,22 @@ class CanonicalModelRouter:
                 last_error = exc
             except ModelRouterTransient as exc:
                 last_error = exc
-            if attempt + 1 < attempts:
+            if attempt + 1 < min(route.max_attempts, 8):
                 await asyncio.sleep(self._retry_delay_seconds * (attempt + 1))
         code = "MODEL_ROUTER_TIMEOUT" if isinstance(last_error, asyncio.TimeoutError) else "MODEL_ROUTER_TRANSIENT_FAILURE"
-        failure = EmbeddingFailure(task_id=request.task_id, code=code, retryable=True, retry_after_ms=int(self._retry_delay_seconds * 1000), trace_id=request.trace_id)
-        raise ModelRouterRejected(failure) from last_error
+        raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code=code, retryable=True, retry_after_ms=int(self._retry_delay_seconds * 1000), trace_id=request.trace_id)) from last_error
 
-async def route_embedding(router: CanonicalModelRouter | None, request: EmbeddingRequest) -> EmbeddingResponse:
-    """Shared entry point for domain modules; fail closed without canonical router."""
+async def route_embedding(router: EmbeddingRouter | None, request: EmbeddingRequest) -> EmbeddingResponse:
+    """Shared entry point; fail closed and validate provenance at the boundary."""
     if router is None:
         raise ModelRouterUnavailable("Canonical AI Gateway/Model Router embedding capability is not configured")
-    return await router.embed(request)
+    response = await router.embed(request)
+    try:
+        validate_response_matches_request(request, response)
+    except ValueError as exc:
+        raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_RESPONSE_INVALID", retryable=False, trace_id=request.trace_id)) from exc
+    return response
+
+class EmbeddingRouter(Protocol):
+    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        """The canonical router contract consumed by feature modules."""
