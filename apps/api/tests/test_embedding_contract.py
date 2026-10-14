@@ -47,6 +47,7 @@ def test_embedding_contract_rejects_dimension_mismatch():
         )
 
 def test_embedding_contract_rejects_duplicate_chunk_ids():
-    request = make_request()
+    request = make_request().model_dump()
+    request["chunks"] = [request["chunks"][0], request["chunks"][0]]
     with pytest.raises(ValidationError, match="unique"):
-        request.model_copy(update={"chunks": [request.chunks[0], request.chunks[0]]})
+        EmbeddingRequest.model_validate(request)
