@@ -184,3 +184,55 @@ def test_eng_p06_migration_declares_owner_rls_versioning_and_no_runtime_grant():
     assert "status in ('requested','revoked')" in sql
     assert "grant select, insert, update on public.agent_capabilities to authenticated" in sql
     assert "grant update on public.agent_capabilities" not in sql
+
+
+def test_skill_version_history_is_owner_scoped_and_checks_skill_membership(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": AGENT_ID}]
+        if path == "agent_skills":
+            assert kwargs["params"]["id"] == f"eq.{SKILL_ID}"
+            assert kwargs["params"]["agent_id"] == f"eq.{AGENT_ID}"
+            return [{"id": SKILL_ID}]
+        if path == "agent_skill_versions":
+            return [{"id": "version-1", "skill_id": SKILL_ID, "agent_id": AGENT_ID,
+                     "version": 2, "snapshot": {"name": "Skill v2"}, "created_at": "2026-10-14T00:00:00Z"}]
+        raise AssertionError(path)
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        response = client.get(
+            f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}/versions",
+            headers={"Authorization": "Bearer test"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["version"] == 2
+    assert [call[1] for call in calls] == ["agent_ownerships", "agent_skills", "agent_skill_versions"]
+
+
+def test_skill_version_history_hides_foreign_agent(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append(path)
+        return []
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as("owner-b")
+    try:
+        response = client.get(
+            f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}/versions",
+            headers={"Authorization": "Bearer test"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert calls == ["agent_ownerships"]
