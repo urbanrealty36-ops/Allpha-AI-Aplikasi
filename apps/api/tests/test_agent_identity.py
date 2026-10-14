@@ -330,3 +330,22 @@ def test_public_passport_hides_private_draft_or_revoked_agent(monkeypatch):
     assert calls[0][0:3] == ("GET", "ai_agents", None)
     assert calls[0][3]["params"]["visibility"] == "eq.public"
     assert calls[0][3]["params"]["status"] == "eq.active"
+
+def test_agent_schema_and_rpc_migration_match_api_contract():
+    from pathlib import Path
+
+    migrations = Path(__file__).resolve().parents[1] / "supabase" / "migrations"
+    baseline = migrations / "20261013060000_eng_p04_ai_agent_identity.sql"
+    forward = migrations / "20261014170000_eng_p05_agent_contract_reconciliation.sql"
+    assert baseline.is_file(), "canonical Agent identity baseline migration must be present"
+    assert forward.is_file(), "forward Agent contract reconciliation migration must be present"
+
+    baseline_sql = baseline.read_text(encoding="utf-8")
+    forward_sql = forward.read_text(encoding="utf-8")
+    assert "create table if not exists public.ai_agents" in baseline_sql.lower()
+    assert "create table if not exists public.agent_ownerships" in baseline_sql.lower()
+    assert "add column if not exists disclosure" in forward_sql.lower()
+    assert "add column if not exists boundaries" in forward_sql.lower()
+    assert "p_disclosure text" in forward_sql.lower()
+    assert "p_boundaries jsonb" in forward_sql.lower()
+    assert "grant execute on function public.create_ai_agent(text, text, text, text, jsonb, text, text, jsonb) to authenticated" in forward_sql.lower()
