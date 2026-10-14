@@ -33,7 +33,7 @@ def test_text_extract_requires_utf8():
 
     assert _extract("notes.txt", b"hello")[0]["text"] == "hello"
     with pytest.raises(HTTPException) as error:
-        _extract("notes.txt", b"\\xff")
+        _extract("notes.txt", b"\xff")
     assert error.value.status_code == 422
     assert error.value.detail["code"] == "DOCUMENT_PARSE_FAILED"
 
