@@ -10,6 +10,8 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
 type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status"> & { disclosure?: string; created_at?: string };
+type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[] };
+type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
@@ -94,6 +96,15 @@ function Profile({ session }: { session: Session }) {
   const [agentHandle, setAgentHandle] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
+  const [studioAgentId, setStudioAgentId] = useState<string | null>(null);
+  const [studioSkills, setStudioSkills] = useState<AgentSkill[]>([]);
+  const [studioCapabilities, setStudioCapabilities] = useState<AgentCapability[]>([]);
+  const [studioSlug, setStudioSlug] = useState("");
+  const [studioSkillName, setStudioSkillName] = useState("");
+  const [studioInstructions, setStudioInstructions] = useState("");
+  const [studioScope, setStudioScope] = useState("");
+  const [studioCapabilityKey, setStudioCapabilityKey] = useState("");
+  const [studioCapabilityDescription, setStudioCapabilityDescription] = useState("");
   const [agentPassport, setAgentPassport] = useState<AgentPassport | null>(null);
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
@@ -247,6 +258,57 @@ function Profile({ session }: { session: Session }) {
     } catch (e) { setError(e instanceof Error ? e.message : "Passport tidak dapat dimuat."); }
     finally { setAgentLoading(false); }
   }
+  async function loadAgentStudio(agentId: string) {
+    setStudioAgentId(agentId); setAgentLoading(true); setError("");
+    try {
+      const headers = { Authorization: "Bearer " + session.access_token };
+      const [skillsResponse, capabilitiesResponse] = await Promise.all([
+        fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/skills", { headers, cache: "no-store" }),
+        fetch(apiBase + "/v1/agents/" + encodeURIComponent(agentId) + "/capabilities", { headers, cache: "no-store" }),
+      ]);
+      const [skillsBody, capabilitiesBody] = await Promise.all([skillsResponse.json(), capabilitiesResponse.json()]);
+      if (!skillsResponse.ok) throw new Error(skillsBody?.error?.message || "Skills tidak dapat dimuat.");
+      if (!capabilitiesResponse.ok) throw new Error(capabilitiesBody?.error?.message || "Capabilities tidak dapat dimuat.");
+      setStudioSkills(Array.isArray(skillsBody.items) ? skillsBody.items : []);
+      setStudioCapabilities(Array.isArray(capabilitiesBody.items) ? capabilitiesBody.items : []);
+    } catch (e) { setError(e instanceof Error ? e.message : "Agent Studio tidak dapat dimuat."); }
+    finally { setAgentLoading(false); }
+  }
+  async function createStudioSkill() {
+    if (!studioAgentId) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(studioAgentId) + "/skills", {
+        method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: studioSlug.trim().toLowerCase(), name: studioSkillName.trim(), instructions: studioInstructions.trim(),
+          required_permission_scopes: studioScope.split(",").map(x => x.trim()).filter(Boolean),
+          constraints: { external_actions_require_owner_approval: true },
+          budget_limits: { max_runtime_seconds: 30, max_tool_calls: 5 }, changelog: "Versi awal",
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || "Skill tidak dapat dibuat.");
+      setStudioSlug(""); setStudioSkillName(""); setStudioInstructions("");
+      setMessage("Skill disimpan sebagai draft; belum memberikan izin runtime."); await loadAgentStudio(studioAgentId);
+    } catch (e) { setError(e instanceof Error ? e.message : "Skill tidak dapat dibuat."); }
+    finally { setBusy(false); }
+  }
+  async function requestStudioCapability() {
+    if (!studioAgentId) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(studioAgentId) + "/capabilities", {
+        method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ capability_key: studioCapabilityKey.trim().toLowerCase(), description: studioCapabilityDescription.trim(), required_permission_scopes: studioScope.split(",").map(x => x.trim()).filter(Boolean), risk_level: "low" }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message || "Capability tidak dapat diminta.");
+      setStudioCapabilityKey(""); setStudioCapabilityDescription("");
+      setMessage("Capability tercatat sebagai permintaan; runtime_authorized tetap false."); await loadAgentStudio(studioAgentId);
+    } catch (e) { setError(e instanceof Error ? e.message : "Capability tidak dapat diminta."); }
+    finally { setBusy(false); }
+  }
   const field = { ...s.input, flex: 1 } as const;
   return <ScrollView contentContainerStyle={s.page}><Brand/>
     <View style={s.card}>
@@ -292,7 +354,8 @@ function Profile({ session }: { session: Session }) {
           <TextInput accessibilityLabel="Deskripsi Agent" value={agentDescription} onChangeText={setAgentDescription} maxLength={1000} style={field} placeholder="Deskripsi Agent" placeholderTextColor="#8B94AC"/>
           <Button title={busy ? "Membuat…" : "Buat Agent privat"} disabled={busy || agentName.trim().length < 2 || !/^[a-z0-9_]{3,30}$/.test(agentHandle.trim())} onPress={() => void createAgent()}/>
           <Button title="Muat ulang daftar" secondary disabled={agentLoading} onPress={() => void loadAgents()}/>
-          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/></View></View>) : <Text style={s.muted}>Belum ada Agent. Buat identitas pertama Anda.</Text>}
+          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/></View></View>) : <Text style={s.muted}>Belum ada Agent. Buat identitas pertama Anda.</Text>}
+          {studioAgentId && <View style={s.socialRow}><Text style={s.kicker}>AGENT STUDIO · SKILLS & CAPABILITIES</Text><Text style={s.muted}>Kelola prosedur dan deklarasi capability. Deklarasi tidak memberi izin eksekusi; runtime wajib memeriksa policy pada setiap aksi.</Text><TextInput accessibilityLabel="Slug Skill" value={studioSlug} onChangeText={setStudioSlug} autoCapitalize="none" maxLength={60} style={field} placeholder="summarize_text" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Nama Skill" value={studioSkillName} onChangeText={setStudioSkillName} maxLength={100} style={field} placeholder="Nama Skill" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Instruksi Skill" value={studioInstructions} onChangeText={setStudioInstructions} multiline maxLength={12000} style={[field,{minHeight:80,textAlignVertical:"top"}]} placeholder="Instruksi dan batasan prosedural" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Permission scopes Skill" value={studioScope} onChangeText={setStudioScope} style={field} placeholder="content:read (pisahkan koma)" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Buat Skill draft"} disabled={busy || studioSlug.trim().length < 3 || studioSkillName.trim().length < 2} onPress={() => void createStudioSkill()}/><Text style={s.kicker}>SKILLS ({studioSkills.length})</Text>{studioSkills.map(skill => <View key={skill.id} style={s.socialRow}><Text style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text><Text style={s.muted}>{skill.status} · scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</Text></View>)}<TextInput accessibilityLabel="Capability key" value={studioCapabilityKey} onChangeText={setStudioCapabilityKey} autoCapitalize="none" style={field} placeholder="calendar.read" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Deskripsi capability" value={studioCapabilityDescription} onChangeText={setStudioCapabilityDescription} style={field} placeholder="Tujuan capability" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Ajukan capability"} secondary disabled={busy || studioCapabilityKey.trim().length < 3} onPress={() => void requestStudioCapability()}/><Text style={s.kicker}>CAPABILITIES ({studioCapabilities.length})</Text>{studioCapabilities.map(cap => <View key={cap.id} style={s.socialRow}><Text style={s.body}>{cap.capability_key} · {cap.status}</Text><Text style={s.muted}>Risiko: {cap.risk_level} · bukan izin runtime</Text></View>}<Button title="Tutup Agent Studio" secondary onPress={() => setStudioAgentId(null)}/></View>}
         </>}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
