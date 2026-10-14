@@ -343,7 +343,7 @@ export default function OperationsPage() {
   }
 
   function logout() {
-    setSession(null); setOperator(null); setAudit([]); setGrants([]); setError(""); setNotice("");
+    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setError(""); setNotice("");
   }
 
   return <main className="shell">
@@ -354,7 +354,7 @@ export default function OperationsPage() {
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
       {canReview && <a className="nav" href="#capability-review">◇ &nbsp; Capability review</a>}
-      {canReadAudit && <a className="nav" href="#operator-audit">≋ &nbsp; Audit events</a>
+      {canReadAudit && <a className="nav" href="#operator-audit">≋ &nbsp; Audit events</a>}
       <div className="sidebarFoot">● &nbsp; ENG-P06 <small>Least privilege</small></div>
     </aside>
     <section className="main" id="overview">
