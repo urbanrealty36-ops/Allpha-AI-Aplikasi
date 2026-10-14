@@ -4,6 +4,7 @@ const page=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
 const pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
 assert.ok(pkg.dependencies.next);
 assert.match(page,/\/healthz/); assert.match(page,/\/readyz/); assert.match(page,/\/v1\/system\/status/);
+assert.match(page,/\["database","authentication"\]/); assert.match(page,/!=="reachable"/); assert.match(page,/Auth dan database terjangkau/);
 assert.match(page,/NEXT_PUBLIC_API_BASE_URL/); assert.match(page,/Privileged operations/);
 assert.match(page,/sampai autentikasi operator/);
 assert.doesNotMatch(page,/service_role|SUPABASE_SERVICE_ROLE_KEY/i);
