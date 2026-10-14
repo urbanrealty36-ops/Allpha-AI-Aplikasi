@@ -1,28 +1,353 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-type Probe = { label: string; path: string; status: "checking" | "online" | "warning" | "offline"; detail: string };
-type Payload = { status?: string; service?: string; version?: string; environment?: string; dependencies?: Record<string,string>; capabilities?: Record<string,boolean> };
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+type OperatorScope =
+  | "platform:operations.read"
+  | "platform:security.audit.read"
+  | "platform:capabilities.review"
+  | "platform:operators.manage";
+type AuthSession = {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  user: { id: string; email?: string };
+};
+type AuthPayload = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  user?: { id: string; email?: string };
+  error_description?: string;
+  msg?: string;
+};
+type Operator = { id: string; email?: string; scopes: OperatorScope[] };
+type AuditEvent = {
+  id: string;
+  actor_user_id?: string | null;
+  action: string;
+  resource_type: string;
+  resource_id?: string | null;
+  outcome: "allowed" | "denied" | "error";
+  request_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+type Grant = {
+  id: string;
+  user_id: string;
+  scopes: OperatorScope[];
+  status: "active" | "revoked";
+  reason: string;
+  granted_by: string;
+  expires_at?: string | null;
+  created_at: string;
+  revoked_at?: string | null;
+  revoked_by?: string | null;
+  revocation_reason?: string | null;
+};
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
+const allScopes: OperatorScope[] = [
+  "platform:operations.read",
+  "platform:security.audit.read",
+  "platform:capabilities.review",
+  "platform:operators.manage",
+];
+
+function sessionFrom(payload: AuthPayload): AuthSession {
+  if (!payload.access_token || !payload.refresh_token || !payload.user?.id) {
+    throw new Error(payload.error_description || payload.msg || "Supabase Auth tidak mengembalikan sesi yang valid.");
+  }
+  return {
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token,
+    expires_at: Date.now() + Math.max(60, payload.expires_in || 3600) * 1000,
+    user: payload.user,
+  };
+}
+async function authRequest(body: Record<string, string>, grant: "password" | "refresh_token"): Promise<AuthSession> {
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error("Konfigurasi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY belum tersedia.");
+  }
+  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=${grant}`, {
+    method: "POST",
+    headers: { apikey: publishableKey, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as AuthPayload;
+  if (!response.ok) throw new Error(payload.error_description || payload.msg || "Autentikasi Supabase gagal.");
+  return sessionFrom(payload);
+}
+async function refreshAuth(session: AuthSession): Promise<AuthSession> {
+  return authRequest({ refresh_token: session.refresh_token }, "refresh_token");
+}
+async function adminFetch(
+  path: string,
+  session: AuthSession,
+  setSession: (value: AuthSession | null) => void,
+  init: RequestInit = {},
+): Promise<Response> {
+  let current = session;
+  if (current.expires_at <= Date.now() + 30_000) {
+    try {
+      current = await refreshAuth(current);
+      setSession(current);
+    } catch {
+      setSession(null);
+      throw new Error("Sesi berakhir. Silakan login kembali.");
+    }
+  }
+  const send = (token: string) => fetch(apiBase + path, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  let response = await send(current.access_token);
+  if (response.status === 401) {
+    try {
+      current = await refreshAuth(current);
+      setSession(current);
+      response = await send(current.access_token);
+    } catch {
+      setSession(null);
+      throw new Error("Sesi tidak valid atau telah berakhir. Silakan login kembali.");
+    }
+  }
+  return response;
+}
+async function responseBody<T>(response: Response): Promise<T> {
+  const body = await response.json().catch(() => ({})) as { error?: { message?: string; code?: string } };
+  if (!response.ok) throw new Error(body.error?.message || `Permintaan gagal (HTTP ${response.status}).`);
+  return body as T;
+}
+
 export default function OperationsPage() {
- const [probes,setProbes]=useState<Probe[]>(["/healthz","/readyz","/v1/system/status"].map((path,i)=>({label:["API liveness","Dependency readiness","System diagnostics"][i],path,status:"checking",detail:"Menunggu pemeriksaan"})));
- const [busy,setBusy]=useState(false); const [checkedAt,setCheckedAt]=useState("");
- const refresh=useCallback(async()=>{
-  setBusy(true); const paths=["/healthz","/readyz","/v1/system/status"], labels=["API liveness","Dependency readiness","System diagnostics"];
-  const results=await Promise.all(paths.map(async(path,i):Promise<Probe>=>{
-   try { const r=await fetch(apiBase+path,{cache:"no-store",headers:{Accept:"application/json"}}); const b=await r.json() as Payload;
-    if(!r.ok)return {label:labels[i],path,status:"offline",detail:"HTTP "+r.status};
-    if(path==="/healthz")return {label:labels[i],path,status:b.status==="ok"?"online":"warning",detail:b.service||"Respons diterima"};
-    if(path==="/readyz"){const dependencies=b.dependencies||{};const missing=["database","authentication"].filter((key)=>dependencies[key]!=="reachable");return {label:labels[i],path,status:b.status==="ready"&&!missing.length?"online":"warning",detail:missing.length?"Dependensi inti belum terjangkau: "+missing.join(", "):"Auth dan database terjangkau"};}
-    const missing=Object.entries(b.capabilities||{}).filter(([,v])=>v===false).map(([k])=>k);return {label:labels[i],path,status:missing.length?"warning":"online",detail:"Versi "+(b.version||"—")+" · "+(b.environment||"environment tidak dilaporkan")+(missing.length?" · belum tersedia: "+missing.join(", "):"")};
-   }catch{return {label:labels[i],path,status:"offline",detail:"Tidak dapat terhubung ke "+apiBase};}
-  }));
-  setProbes(results);setCheckedAt(new Date().toLocaleString("id-ID"));setBusy(false);
- },[]);
- useEffect(()=>{void refresh();},[refresh]);
- const online=probes.filter(p=>p.status==="online").length;
- return <main className="shell"><aside className="sidebar"><a className="brand" href="/"><span className="mark">A</span><span><b>ALLPHA</b><small>CONTROL PLANE</small></span></a><p className="navLabel">OPERATIONS</p><a className="nav active" href="#overview">◈ &nbsp; Overview</a><div className="nav disabled">◎ &nbsp; Identity & tenants <small>ENG-P02</small></div><div className="nav disabled">◇ &nbsp; Asset catalog <small>ENG-P22</small></div><div className="nav disabled">≋ &nbsp; Audit & governance <small>ENG-P26</small></div><div className="sidebarFoot">● &nbsp; Foundation mode <small>ENG-P01</small></div></aside>
- <section className="main" id="overview"><header className="top"><div><p className="eyebrow">PLATFORM OPERATIONS / FOUNDATION</p><h1>System overview</h1><p className="sub">Status layanan aktual dari canonical FastAPI backend.</p></div><button onClick={()=>void refresh()} disabled={busy}>{busy?"Memeriksa…":"↻ Refresh status"}</button></header>
- <section className="summary"><article><label>API endpoint</label><strong className="endpoint">{apiBase}</strong><small>NEXT_PUBLIC_API_BASE_URL</small></article><article><label>Probe sehat</label><strong>{online}<span> / {probes.length}</span></strong><small>Pemeriksaan endpoint nyata</small></article><article><label>Privileged operations</label><strong className="restricted">Restricted</strong><small>Menunggu operator auth scope</small></article></section>
- <section className="panel"><header className="panelHead"><div><h2>Service checks</h2><p>Hasil fetch langsung; bukan data dashboard sintetis.</p></div><span className="live">● LIVE CHECK</span></header>{probes.map(p=><article className="probe" key={p.path}><span className={"icon "+p.status}>{p.status==="online"?"✓":p.status==="checking"?"…":"!"}</span><div className="probeText"><b>{p.label}</b><code>{p.path}</code><p>{p.detail}</p></div><span className={"pill "+p.status}>{p.status==="online"?"ONLINE":p.status==="checking"?"CHECKING":p.status==="warning"?"PARTIAL":"OFFLINE"}</span></article>)}<footer className="panelFoot"><span>Terakhir diperiksa: {checkedAt||"—"}</span><span>Browser operator → API</span></footer></section>
- <section className="notice"><b>i</b><div><strong>Security boundary aktif</strong><p>Console ini hanya menampilkan endpoint diagnostik yang tersedia. Operasi admin tetap dinonaktifkan sampai autentikasi operator, permission scope, audit, dan endpoint backend resmi tersedia.</p></div></section><footer className="pageFoot">Allpha Universe · ENG-P01 · Status mencerminkan endpoint yang dapat dijangkau browser.</footer></section></main>;
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [operator, setOperator] = useState<Operator | null>(null);
+  const [probes, setProbes] = useState<{ label: string; path: string; status: "checking" | "online" | "warning" | "offline"; detail: string }[]>(
+    ["/healthz", "/readyz", "/v1/system/status"].map((path, i) => ({
+      label: ["API liveness", "Dependency readiness", "System diagnostics"][i],
+      path, status: "checking", detail: "Menunggu pemeriksaan",
+    })),
+  );
+  const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [targetUser, setTargetUser] = useState("");
+  const [selectedScopes, setSelectedScopes] = useState<OperatorScope[]>([]);
+  const [grantReason, setGrantReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [checkedAt, setCheckedAt] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const online = probes.filter((probe) => probe.status === "online").length;
+  const canReadAudit = Boolean(operator?.scopes.includes("platform:security.audit.read"));
+  const canManage = Boolean(operator?.scopes.includes("platform:operators.manage"));
+  const availableGrantScopes = useMemo(
+    () => allScopes.filter((scope) => operator?.scopes.includes(scope)),
+    [operator],
+  );
+
+  const refreshProbes = async () => {
+    setBusy(true);
+    const paths = ["/healthz", "/readyz", "/v1/system/status"];
+    const labels = ["API liveness", "Dependency readiness", "System diagnostics"];
+    const results = await Promise.all(paths.map(async (path, i) => {
+      try {
+        const response = await fetch(apiBase + path, { cache: "no-store", headers: { Accept: "application/json" } });
+        const body = await response.json() as { status?: string; service?: string; version?: string; environment?: string; dependencies?: Record<string, string>; capabilities?: Record<string, boolean> };
+        if (!response.ok) return { label: labels[i], path, status: "offline" as const, detail: "HTTP " + response.status };
+        if (path === "/healthz") return { label: labels[i], path, status: body.status === "ok" ? "online" as const : "warning" as const, detail: body.service || "Respons diterima" };
+        if (path === "/readyz") {
+          const missing = ["database", "authentication"].filter((key) => body.dependencies?.[key] !== "reachable");
+          return { label: labels[i], path, status: body.status === "ready" && !missing.length ? "online" as const : "warning" as const, detail: missing.length ? "Dependensi inti belum terjangkau: " + missing.join(", ") : "Auth dan database terjangkau" };
+        }
+        const missing = Object.entries(body.capabilities || {}).filter(([, value]) => value === false).map(([key]) => key);
+        return { label: labels[i], path, status: missing.length ? "warning" as const : "online" as const, detail: "Versi " + (body.version || "—") + " · " + (body.environment || "environment tidak dilaporkan") + (missing.length ? " · belum tersedia: " + missing.join(", ") : "") };
+      } catch {
+        return { label: labels[i], path, status: "offline" as const, detail: "Tidak dapat terhubung ke " + apiBase };
+      }
+    }));
+    setProbes(results);
+    setCheckedAt(new Date().toLocaleString("id-ID"));
+    setBusy(false);
+  };
+
+  const loadOperatorData = async (activeSession: AuthSession) => {
+    setError("");
+    setNotice("");
+    const accessResponse = await adminFetch("/v1/admin/operator/access", activeSession, setSession);
+    const access = await responseBody<{ operator: Operator }>(accessResponse);
+    setOperator(access.operator);
+    if (access.operator.scopes.includes("platform:security.audit.read")) {
+      const auditResponse = await adminFetch("/v1/admin/operator/audit?limit=50", activeSession, setSession);
+      const auditBody = await responseBody<{ items: AuditEvent[] }>(auditResponse);
+      setAudit(auditBody.items);
+    } else {
+      setAudit([]);
+    }
+    if (access.operator.scopes.includes("platform:operators.manage")) {
+      const grantsResponse = await adminFetch("/v1/admin/operator/grants?limit=100", activeSession, setSession);
+      const grantBody = await responseBody<{ items: Grant[] }>(grantsResponse);
+      setGrants(grantBody.items);
+    } else {
+      setGrants([]);
+    }
+  };
+
+  useEffect(() => { void refreshProbes(); }, []);
+  useEffect(() => {
+    if (!session) {
+      setOperator(null);
+      setAudit([]);
+      setGrants([]);
+      return;
+    }
+    let cancelled = false;
+    void loadOperatorData(session).catch((cause: unknown) => {
+      if (!cancelled) {
+        setOperator(null);
+        setError(cause instanceof Error ? cause.message : "Akses operator tidak dapat diverifikasi.");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [session?.access_token]);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const activeSession = await authRequest({ email: email.trim(), password }, "password");
+      setSession(activeSession);
+      setPassword("");
+      setNotice("Login berhasil. Backend sedang memverifikasi grant operator.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Login gagal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createGrant(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !targetUser.trim() || !selectedScopes.length) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await adminFetch("/v1/admin/operator/grants", session, setSession, {
+        method: "POST",
+        body: JSON.stringify({ user_id: targetUser.trim(), scopes: selectedScopes, reason: grantReason }),
+      });
+      await responseBody<{ grant: Grant }>(response);
+      setTargetUser(""); setSelectedScopes([]); setGrantReason("");
+      setNotice("Grant operator berhasil dibuat dan dicatat dalam audit.");
+      const current = await adminFetch("/v1/admin/operator/grants?limit=100", session, setSession);
+      setGrants((await responseBody<{ items: Grant[] }>(current)).items);
+      const auditResponse = await adminFetch("/v1/admin/operator/audit?limit=50", session, setSession);
+      setAudit((await responseBody<{ items: AuditEvent[] }>(auditResponse)).items);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Grant operator gagal dibuat.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeGrant(grant: Grant) {
+    if (!session || !window.confirm("Cabut akses operator " + grant.user_id + "?")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await adminFetch("/v1/admin/operator/grants/" + grant.id + "/revoke", session, setSession, {
+        method: "POST",
+        body: JSON.stringify({ reason: "Access revoked by authorized operator" }),
+      });
+      await responseBody<{ grant: Grant; revoked: boolean }>(response);
+      setNotice("Grant dicabut. Pemeriksaan grant berikutnya akan menolak aksesnya.");
+      const current = await adminFetch("/v1/admin/operator/grants?limit=100", session, setSession);
+      setGrants((await responseBody<{ items: Grant[] }>(current)).items);
+      const auditResponse = await adminFetch("/v1/admin/operator/audit?limit=50", session, setSession);
+      setAudit((await responseBody<{ items: AuditEvent[] }>(auditResponse)).items);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Grant operator gagal dicabut.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function logout() {
+    setSession(null); setOperator(null); setAudit([]); setGrants([]); setError(""); setNotice("");
+  }
+
+  return <main className="shell">
+    <aside className="sidebar">
+      <a className="brand" href="/"><span className="mark">A</span><span><b>ALLPHA</b><small>CONTROL PLANE</small></span></a>
+      <p className="navLabel">OPERATIONS</p>
+      <a className="nav active" href="#overview">◈ &nbsp; Overview</a>
+      <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
+      {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
+      {canReadAudit && <a className="nav" href="#operator-audit">≋ &nbsp; Audit events</a>}
+      <div className="sidebarFoot">● &nbsp; ENG-P06 <small>Least privilege</small></div>
+    </aside>
+    <section className="main" id="overview">
+      <header className="top">
+        <div><p className="eyebrow">PLATFORM OPERATIONS / GOVERNANCE</p><h1>Operator security</h1><p className="sub">Login Supabase, grant server-side, permission scope eksak, audit durable.</p></div>
+        {session && <button onClick={logout} disabled={busy}>Logout</button>}
+      </header>
+      <section className="summary">
+        <article><label>API endpoint</label><strong className="endpoint">{apiBase}</strong><small>Canonical FastAPI</small></article>
+        <article><label>Probe sehat</label><strong>{online}<span> / {probes.length}</span></strong><small>{checkedAt || "Memeriksa layanan…"}</small></article>
+        <article><label>Privileged operations</label><strong className={operator ? "authorized" : "restricted"}>{operator ? "Scope verified" : "Restricted"}</strong><small>{operator ? operator.scopes.length + " scope terverifikasi" : "Setiap tindakan istimewa diperiksa backend"}</small></article>
+      </section>
+      {!session && <section className="panel authPanel">
+        <header className="panelHead"><div><h2>Login operator</h2><p>Gunakan akun Supabase yang telah menerima grant operator secara terpisah.</p></div><span className="pill warning">GRANT REQUIRED</span></header>
+        <form className="authForm" onSubmit={login}>
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          <button type="submit" disabled={busy}>{busy ? "Memverifikasi…" : "Login & verifikasi operator"}</button>
+        </form>
+        <p className="muted">Sesi hanya disimpan di memori halaman ini; token tidak disimpan ke localStorage/sessionStorage. Refresh halaman akan meminta login ulang.</p>
+      </section>}
+      {session && <section className="panel" id="operator-access">
+        <header className="panelHead"><div><h2>Operator identity & scopes</h2><p>Otorisasi dikonfirmasi oleh backend, bukan oleh status login saja.</p></div><span className="pill online">AUTHENTICATED</span></header>
+        {operator ? <><p className="operatorIdentity">{operator.email || operator.id}</p><code>{operator.id}</code><div className="scopeList">{operator.scopes.map((scope) => <span className="scopeChip" key={scope}>{scope}</span>)}</div></> : <p className="muted">Backend belum memverifikasi grant operator.</p>}
+        <button onClick={() => session && void loadOperatorData(session)} disabled={busy}>Refresh akses & audit</button>
+      </section>}
+      {session && canManage && <section className="panel" id="operator-grants">
+        <header className="panelHead"><div><h2>Operator grants</h2><p>Grant dan pencabutan memakai endpoint backend dan dicatat oleh trigger audit database.</p></div><span className="pill online">MANAGE SCOPE</span></header>
+        <form className="grantForm" onSubmit={createGrant}>
+          <label>Supabase User ID<input value={targetUser} onChange={(event) => setTargetUser(event.target.value)} placeholder="UUID pengguna target" required pattern="[0-9a-fA-F-]{36}" /></label>
+          <label>Alasan pemberian grant<input value={grantReason} onChange={(event) => setGrantReason(event.target.value)} minLength={8} maxLength={500} required placeholder="Alasan operasional (min. 8 karakter)" /></label>
+          <fieldset><legend>Scopes yang boleh didelegasikan</legend>{availableGrantScopes.map((scope) => <label className="checkRow" key={scope}><input type="checkbox" checked={selectedScopes.includes(scope)} onChange={(event) => setSelectedScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope))} />{scope}</label>)}</fieldset>
+          <button type="submit" disabled={busy || !selectedScopes.length || !targetUser.trim()}>Buat grant</button>
+        </form>
+        <div className="tableWrap"><table><thead><tr><th>Pengguna</th><th>Scopes</th><th>Status</th><th>Alasan</th><th>Aksi</th></tr></thead><tbody>
+          {grants.map((grant) => <tr key={grant.id}><td><code>{grant.user_id}</code></td><td>{grant.scopes.join(", ")}</td><td><span className={"pill " + (grant.status === "active" ? "online" : "warning")}>{grant.status}</span></td><td>{grant.status === "revoked" ? grant.revocation_reason || grant.reason : grant.reason}</td><td>{grant.status === "active" && <button className="secondaryButton" disabled={busy || grant.user_id === operator?.id} onClick={() => void revokeGrant(grant)}>Cabut</button>}</td></tr>)}
+          {!grants.length && <tr><td colSpan={5} className="emptyCell">Belum ada grant yang dapat ditampilkan.</td></tr>}
+        </tbody></table></div>
+      </section>}
+      {session && canReadAudit && <section className="panel" id="operator-audit">
+        <header className="panelHead"><div><h2>Audit events</h2><p>Event terbaru dari tabel audit khusus operator; token dan payload sensitif tidak ditampilkan.</p></div><span className="pill online">AUDIT READ</span></header>
+        <div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Aktor</th><th>Aksi</th><th>Resource</th><th>Hasil</th><th>Request ID</th></tr></thead><tbody>
+          {audit.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("id-ID")}</td><td><code>{event.actor_user_id || "system"}</code></td><td>{event.action}</td><td>{event.resource_type}{event.resource_id ? " · " + event.resource_id : ""}</td><td><span className={"pill " + (event.outcome === "allowed" ? "online" : "warning")}>{event.outcome}</span></td><td><code>{event.request_id}</code></td></tr>)}
+          {!audit.length && <tr><td colSpan={6} className="emptyCell">Belum ada event audit yang dapat ditampilkan.</td></tr>}
+        </tbody></table></div>
+      </section>}
+      {error && <section className="notice errorNotice" role="alert"><b>!</b><div><strong>Permintaan ditolak / gagal</strong><p>{error}</p></div></section>}
+      {notice && <section className="notice successNotice" role="status"><b>✓</b><div><strong>Status</strong><p>{notice}</p></div></section>}
+      <section className="panel">
+        <header className="panelHead"><div><h2>Service checks</h2><p>Probe publik untuk liveness dan readiness; bukan bukti otorisasi operator.</p></div><button onClick={() => void refreshProbes()} disabled={busy}>{busy ? "Memeriksa…" : "Refresh status"}</button></header>
+        {probes.map((probe) => <article className="probe" key={probe.path}><span className={"icon " + probe.status}>{probe.status === "online" ? "✓" : probe.status === "checking" ? "…" : "!"}</span><div className="probeText"><b>{probe.label}</b><code>{probe.path}</code><p>{probe.detail}</p></div><span className={"pill " + probe.status}>{probe.status.toUpperCase()}</span></article>)}
+        <footer className="panelFoot"><span>Terakhir diperiksa: {checkedAt || "—"}</span><span>Browser operator → API</span></footer>
+      </section>
+      <section className="notice"><b>i</b><div><strong>Security boundary aktif</strong><p>Grant pertama harus diberikan melalui kanal administrasi Supabase yang dipercaya. API menolak self-grant dan scope escalation; tindakan istimewa gagal tertutup bila audit tidak tersedia. Migration source-only belum diterapkan ke database.</p></div></section>
+      <footer className="pageFoot">Allpha Universe · ENG-P06 · Status berasal dari respons backend aktual.</footer>
+    </section>
+  </main>;
 }
