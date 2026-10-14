@@ -9,7 +9,7 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
-type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status"> & { disclosure?: string; created_at?: string };
+type AgentPassport = Pick<AgentIdentity, "id" | "handle" | "display_name" | "description" | "visibility" | "status"> & { disclosure?: string; created_at?: string; skills?: { id: string; name: string; slug: string; version: number; description?: string }[]; capabilities?: { id: string; capability_key: string; description?: string; risk_level: string }[] };
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[] };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
@@ -254,7 +254,7 @@ function Profile({ session }: { session: Session }) {
       const response = await fetch(apiBase + "/v1/agent-passports/" + encodeURIComponent(handle), { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message || "Passport publik tidak tersedia.");
-      setAgentPassport(body.passport);
+      setAgentPassport({ ...body.passport, skills: Array.isArray(body.skills) ? body.skills : [], capabilities: Array.isArray(body.capabilities) ? body.capabilities : [] });
     } catch (e) { setError(e instanceof Error ? e.message : "Passport tidak dapat dimuat."); }
     finally { setAgentLoading(false); }
   }
@@ -348,7 +348,7 @@ function Profile({ session }: { session: Session }) {
       </> : tab === "agents" ? <>
         <Text style={s.kicker}>AI AGENT IDENTITY</Text><Text style={s.title}>Agent Studio & Passport</Text>
         <Text style={s.muted}>Identitas Agent terpisah dari Human. Ownership ditentukan backend dari sesi terautentikasi; tidak ada owner ID dari client.</Text>
-        {agentPassport ? <View style={s.socialRow}><Text style={s.title}>{agentPassport.display_name}</Text><Text style={s.body}>@{agentPassport.handle} · {agentPassport.status} · {agentPassport.visibility}</Text><Text style={s.body}>{agentPassport.description || "Tanpa deskripsi publik."}</Text><Text style={s.muted}>{agentPassport.disclosure || "AI Agent; respons dapat dihasilkan oleh model."}</Text><Button title="Kembali ke daftar" secondary onPress={() => setAgentPassport(null)}/></View> : <>
+        {agentPassport ? <View style={s.socialRow}><Text style={s.title}>{agentPassport.display_name}</Text><Text style={s.body}>@{agentPassport.handle} · {agentPassport.status} · {agentPassport.visibility}</Text><Text style={s.body}>{agentPassport.description || "Tanpa deskripsi publik."}</Text><Text style={s.muted}>{agentPassport.disclosure || "AI Agent; respons dapat dihasilkan oleh model."}</Text><Text style={s.kicker}>PUBLISHED SKILLS</Text>{agentPassport.skills?.length ? agentPassport.skills.map(skill => <Text key={skill.id} style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text>) : <Text style={s.muted}>Belum ada Skill yang dipublikasikan.</Text>}<Text style={s.kicker}>VERIFIED CAPABILITIES</Text>{agentPassport.capabilities?.length ? agentPassport.capabilities.map(cap => <Text key={cap.id} style={s.body}>{cap.capability_key} · {cap.risk_level} risk</Text>) : <Text style={s.muted}>Belum ada capability yang disetujui untuk ditampilkan.</Text>}<Button title="Kembali ke daftar" secondary onPress={() => setAgentPassport(null)}/></View> : <>
           <TextInput accessibilityLabel="Nama Agent" value={agentName} onChangeText={setAgentName} maxLength={80} style={field} placeholder="Nama Agent" placeholderTextColor="#8B94AC"/>
           <TextInput accessibilityLabel="Handle Agent" value={agentHandle} onChangeText={value => setAgentHandle(value.toLowerCase())} autoCapitalize="none" maxLength={30} style={field} placeholder="handle_agent (3–30 karakter)" placeholderTextColor="#8B94AC"/>
           <TextInput accessibilityLabel="Deskripsi Agent" value={agentDescription} onChangeText={setAgentDescription} maxLength={1000} style={field} placeholder="Deskripsi Agent" placeholderTextColor="#8B94AC"/>
