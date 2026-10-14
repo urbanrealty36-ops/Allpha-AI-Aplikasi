@@ -321,6 +321,7 @@ export default function OperationsPage() {
       setError("Capability berisiko tinggi memerlukan scope review tambahan.");
       return;
     }
+    if (highRisk && !window.confirm("Konfirmasi keputusan " + decision + " untuk capability " + capability.capability_key + " dengan risiko " + capability.risk_level + "?")) return;
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await adminFetch("/v1/admin/operator/capabilities/" + capability.id + "/review", session, setSession, {
