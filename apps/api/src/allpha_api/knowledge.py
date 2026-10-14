@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib, io, os, re, uuid, zipfile, xml.etree.ElementTree as ET
 from typing import Any
+from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,7 +33,7 @@ async def _storage(method: str,path: str,token: str,data: bytes|None=None,media_
     url,key=_storage_config(); headers={"apikey":key,"Authorization":f"Bearer {token}"}
     if media_type: headers["Content-Type"]=media_type
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.request(method,f"{url}/storage/v1/object/{path}",headers=headers,content=data)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.request(method,f"{url}/storage/v1/object/{quote(path, safe='/')}",headers=headers,content=data)
     except httpx.HTTPError as exc: raise HTTPException(503,detail={"code":"STORAGE_UNAVAILABLE","message":"Penyimpanan dokumen tidak tersedia."}) from exc
     if r.status_code not in (200,201,204):
         status=403 if r.status_code in (401,403) else 503
@@ -161,7 +162,7 @@ async def process_source(agent_id: uuid.UUID,source_id: uuid.UUID,request: Reque
     await _admin_db_request("PATCH","agent_knowledge_sources",token,params={"id":f"eq.{source_id}","owner_id":f"eq.{user['id']}","agent_id":f"eq.{agent_id}"},body={"status":"processing","processing_stage":"malware_scan","error_code":None})
     try:
         url,key=_storage_config()
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.get(f"{url}/storage/v1/object/authenticated/agent-knowledge/{source['storage_path']}",headers={"apikey":key,"Authorization":f"Bearer {token}"})
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20,connect=4)) as c: r=await c.get(f"{url}/storage/v1/object/authenticated/agent-knowledge/{quote(source['storage_path'], safe='/')}",headers={"apikey":key,"Authorization":f"Bearer {token}"})
         if r.status_code!=200: raise HTTPException(503,detail={"code":"STORAGE_UNAVAILABLE","message":"Dokumen karantina tidak dapat dibaca."})
         await _scan(r.content,source["filename"],source["media_type"])
         chunks=_chunk(_extract(source["filename"],r.content))
