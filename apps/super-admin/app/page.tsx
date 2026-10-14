@@ -353,7 +353,8 @@ export default function OperationsPage() {
       <a className="nav active" href="#overview">◈ &nbsp; Overview</a>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
-      {canReadAudit && <a className="nav" href="#operator-audit">≋ &nbsp; Audit events</a>}
+      {canReview && <a className="nav" href="#capability-review">◇ &nbsp; Capability review</a>}
+      {canReadAudit && <a className="nav" href="#operator-audit">≋ &nbsp; Audit events</a>
       <div className="sidebarFoot">● &nbsp; ENG-P06 <small>Least privilege</small></div>
     </aside>
     <section className="main" id="overview">
