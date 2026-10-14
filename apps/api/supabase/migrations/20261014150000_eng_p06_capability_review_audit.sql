@@ -1,4 +1,22 @@
 -- ENG-P06: capability review provenance and atomic audit.
+-- The separate high-risk review scope is intentionally not implied by the base review scope.
+alter table public.platform_operator_grants
+  drop constraint if exists platform_operator_grants_scopes_check;
+alter table public.platform_operator_grants
+  add constraint platform_operator_grants_scopes_check
+  check (
+    cardinality(scopes) > 0
+    and scopes <@ array[
+      'platform:operations.read',
+      'platform:security.audit.read',
+      'platform:capabilities.review',
+      'platform:capabilities.review.high_risk',
+      'platform:operators.manage'
+    ]::text[]
+  );
+
+grant select, update on public.agent_capabilities to service_role;
+
 -- Forward migration; source-only until verified through the approved isolated non-production lifecycle.
 -- Never apply to production as a test.
 
