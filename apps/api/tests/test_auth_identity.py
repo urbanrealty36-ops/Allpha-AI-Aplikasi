@@ -540,3 +540,80 @@ def test_get_consents_is_scoped_to_authenticated_user(monkeypatch):
             "limit": "100",
         }},
     )]
+
+def test_social_edge_create_uses_authenticated_actor_and_caller_token(monkeypatch):
+    calls = []
+    target_user_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{
+            "id": "edge-1",
+            "target_user_id": target_user_id,
+            "edge_type": "follow",
+            "status": "requested",
+            "created_at": "2026-10-14T00:00:00Z",
+        }]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-write-session-token"
+        return {"id": "authenticated-social-actor", "email": "actor@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/social-edges",
+            headers={"Authorization": "Bearer social-write-session-token"},
+            json={"target_user_id": target_user_id, "edge_type": "follow"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["edge"]["target_user_id"] == target_user_id
+    assert calls == [(
+        "POST",
+        "social_edges",
+        "social-write-session-token",
+        {
+            "body": {
+                "actor_user_id": "authenticated-social-actor",
+                "target_user_id": target_user_id,
+                "edge_type": "follow",
+            },
+            "params": {"select": "id,target_user_id,edge_type,status,created_at"},
+            "prefer": "return=representation",
+        },
+    )]
+
+
+def test_social_edge_rejects_self_target_before_database_write(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return []
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "social-self-target-token"
+        return {"id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "email": "self@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post(
+            "/v1/me/social-edges",
+            headers={"Authorization": "Bearer social-self-target-token"},
+            json={
+                "target_user_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "edge_type": "follow",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SOCIAL_EDGE_SELF_TARGET"
+    assert calls == []
+
