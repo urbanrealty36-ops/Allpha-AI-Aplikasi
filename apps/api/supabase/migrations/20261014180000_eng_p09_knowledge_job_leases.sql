@@ -5,6 +5,11 @@ alter table public.agent_knowledge_sources
   add column if not exists sensitivity text
     check (sensitivity in ('public','internal','confidential','restricted'));
 
+update public.agent_knowledge_sources
+set sensitivity = provenance->>'sensitivity'
+where sensitivity is null
+  and provenance->>'sensitivity' in ('public','internal','confidential','restricted');
+
 alter table public.agent_knowledge_jobs
   add column if not exists source_version integer,
   add column if not exists lease_token uuid,
