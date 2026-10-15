@@ -212,24 +212,17 @@ async def recover_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         if row["state"] != "executing":
             return {"task": row, "recovered": True, "replay_performed": False}
         try:
-            updated_at = datetime.fromisoformat(str(row["updated_at"]).replace("Z", "+00:00"))
-        except (KeyError, TypeError, ValueError):
-            raise HTTPException(status_code=409, detail={"code": "TASK_RECOVERY_TIME_UNKNOWN", "message": "Waktu update task tidak valid; tidak dilakukan replay otomatis."})
-        age_seconds = (datetime.now(timezone.utc) - updated_at.astimezone(timezone.utc)).total_seconds()
-        if age_seconds < 120:
-            raise HTTPException(status_code=409, detail={"code": "TASK_STILL_RUNNING", "message": "Task masih berada dalam jendela eksekusi; coba pemulihan kembali setelah 120 detik."})
-        events = list(row.get("event_log") or [])
-        events.append(_event("failed", row["trace_id"], "execution_outcome_unknown_no_replay"))
-        updated = await store.update_task(owner_id, str(task_id), {
-            "state": "failed", "error_code": "EXECUTION_OUTCOME_UNKNOWN",
-            "event_log": events, "updated_at": _now(), "completed_at": _now(),
-        }, expected_state="executing")
-        if not updated:
-            latest = await store.get_task(owner_id, str(task_id))
-            if latest and latest["state"] in {"succeeded", "failed", "cancelled", "timed_out"}:
-                return {"task": latest, "recovered": True, "replay_performed": False}
-            raise HTTPException(status_code=409, detail={"code": "TASK_STATE_CHANGED", "message": "State task berubah saat pemulihan; muat ulang."})
-        return {"task": updated, "recovered": True, "replay_performed": False}
+            lease_expiry = datetime.fromisoformat(str(row.get("lease_expires_at")).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=409, detail={"code": "TASK_LEASE_UNKNOWN", "message": "Lease task tidak dapat diverifikasi; tidak dilakukan replay."})
+        if lease_expiry.tzinfo is None:
+            raise HTTPException(status_code=409, detail={"code": "TASK_LEASE_UNKNOWN", "message": "Zona waktu lease tidak valid; tidak dilakukan replay."})
+        if lease_expiry > datetime.now(timezone.utc):
+            raise HTTPException(status_code=409, detail={"code": "TASK_STILL_RUNNING", "message": "Lease worker masih aktif; pemulihan ditolak."})
+        if row.get("effect_outcome") in {"started", "unknown"}:
+            raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Efek telah dimulai tanpa receipt selesai; replay otomatis dilarang."})
+        return {"task": row, "recovered": True, "replay_performed": False,
+                "resume_available": True, "resume_route": f"/v1/agent-runtime/tasks/{task_id}/execute"}
     except AgentRuntimePersistenceError as exc:
         raise _error(exc) from exc
 
