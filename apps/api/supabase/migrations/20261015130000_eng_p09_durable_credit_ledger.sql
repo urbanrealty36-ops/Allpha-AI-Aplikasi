@@ -208,6 +208,8 @@ declare
   v_existing public.credit_ledger_entries;
   v_policy_row public.credit_policy_versions;
   v_cap jsonb;
+  v_entitlement jsonb;
+  v_active_reservations bigint;
   v_available bigint;
   v_entry public.credit_ledger_entries;
   v_res public.credit_reservations;
@@ -228,10 +230,17 @@ begin
     raise exception 'CREDIT_RESERVATION_VERSION_MISMATCH' using errcode = '22023';
   end if;
   v_cap := v_policy_row.configuration->'capabilities'->v_capability;
+  v_entitlement := v_policy_row.configuration->'entitlements'->(p_command->>'entitlement_version');
   if jsonb_typeof(v_cap) <> 'object' or v_cap->>'tariff_version' <> v_tariff
     or v_cap->>'usage_unit' <> v_usage_unit
     or coalesce((v_cap->>'credits_per_usage_unit')::bigint,0) <= 0 then
     raise exception 'CREDIT_CAPABILITY_TARIFF_UNAVAILABLE' using errcode = '42501';
+  end if;
+  if jsonb_typeof(v_entitlement) <> 'object'
+    or coalesce((v_entitlement->>'max_credits_per_request')::bigint,0) <= 0
+    or coalesce((v_entitlement->>'max_concurrent_reservations')::bigint,0) <= 0
+    or v_credits > (v_entitlement->>'max_credits_per_request')::bigint then
+    raise exception 'CREDIT_ENTITLEMENT_LIMITS_NOT_CONFIGURED' using errcode = '42501';
   end if;
   if v_credits <> v_units * (v_cap->>'credits_per_usage_unit')::bigint then
     raise exception 'CREDIT_RESERVATION_ESTIMATE_MISMATCH' using errcode = '22023';
@@ -249,6 +258,11 @@ begin
   end if;
   insert into public.credit_balance_projection(owner_user_id) values (v_owner) on conflict do nothing;
   select available_credits into v_available from public.credit_balance_projection where owner_user_id = v_owner for update;
+  select count(*) into v_active_reservations from public.credit_reservations
+    where owner_user_id=v_owner and state in ('reserved','pending_reconciliation');
+  if v_active_reservations >= (v_entitlement->>'max_concurrent_reservations')::bigint then
+    raise exception 'CREDIT_CONCURRENT_RESERVATION_LIMIT' using errcode = '23514';
+  end if;
   if v_available < v_credits then raise exception 'INSUFFICIENT_AI_CREDITS' using errcode = '23514'; end if;
   insert into public.credit_ledger_entries(
     owner_user_id,idempotency_key,entry_type,credits,balance_delta,credit_scheme_version,
@@ -291,6 +305,7 @@ declare
   v_entry public.credit_ledger_entries;
   v_policy_row public.credit_policy_versions;
   v_cap jsonb;
+  v_metering public.agent_model_usage_metering;
   v_unused bigint;
 begin
   if v_res_id is null or coalesce(v_key,'') = '' or coalesce(v_source,'') = ''
@@ -322,6 +337,13 @@ begin
       and status in ('approved','retired') for share;
   if not found then raise exception 'CREDIT_SETTLEMENT_POLICY_NOT_FOUND' using errcode = '42501'; end if;
   v_cap := v_policy_row.configuration->'capabilities'->v_res.capability_id;
+  select * into v_metering from public.agent_model_usage_metering
+    where idempotency_key=v_source and owner_id=v_res.owner_user_id::text
+      and task_id=v_res.task_id;
+  if not found then raise exception 'CREDIT_SETTLEMENT_METERING_NOT_FOUND' using errcode = '23503'; end if;
+  if v_metering.usage_units <> v_actual_units or v_metering.usage_unit <> v_usage_unit then
+    raise exception 'CREDIT_SETTLEMENT_METERING_USAGE_MISMATCH' using errcode = '22023';
+  end if;
   if jsonb_typeof(v_cap) <> 'object'
     or v_cap->>'tariff_version' <> v_res.tariff_version
     or v_cap->>'usage_unit' <> v_usage_unit
