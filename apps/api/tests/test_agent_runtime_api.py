@@ -66,6 +66,23 @@ class FakeRuntimeStore:
                     "event_log": list(row.get("event_log") or []) + [{"event": "execution_claimed", "at": "now", "trace_id": row["trace_id"]}]})
         return copy.deepcopy(row)
 
+    async def append_checkpoint(self, owner_id, task_id, lease_token, task_version, sequence, step_key,
+                                input_fingerprint, checkpoint_hash, result_payload):
+        row = self.tasks.get(task_id)
+        if not row or row.get("execution_lease_token") != lease_token or row["task_version"] != task_version:
+            return None
+        row["checkpoint_seq"] = sequence
+        row["checkpoint_hash"] = checkpoint_hash
+        row["current_step_key"] = step_key
+        row["effect_outcome"] = "completed"
+        return {"task_id": task_id, "sequence": sequence, "step_key": step_key,
+                "input_fingerprint": input_fingerprint, "checkpoint_hash": checkpoint_hash,
+                "result_payload": copy.deepcopy(result_payload)}
+
+    async def get_latest_checkpoint(self, task_id):
+        row = self.tasks.get(task_id)
+        return copy.deepcopy(row.get("checkpoint")) if row else None
+
     async def finalize_task(self, owner_id, task_id, lease_token, task_version, *, state, output_payload,
                             error_code, event_log):
         row = self.tasks.get(task_id)
