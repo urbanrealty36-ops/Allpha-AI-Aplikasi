@@ -93,11 +93,36 @@ class AgentRuntimeStore:
 
     async def get_approved_capability(self, agent_id: str, tool_key: str) -> dict[str, Any] | None:
         rows = await self.request("GET", "agent_capabilities", params={
-            "select": "id,capability_key,required_permission_scopes,risk_level,status,policy_version,updated_at",
+            "select": "id,agent_id,capability_key,required_permission_scopes,risk_level,status,policy_version,runtime_policy_id,updated_at",
             "agent_id": f"eq.{agent_id}", "capability_key": f"eq.{tool_key}",
             "status": "eq.approved", "limit": "1",
         })
         return rows[0] if rows and rows[0].get("policy_version") else None
+
+    async def get_approved_runtime_policy(self, agent_id: str, policy_id: str) -> dict[str, Any] | None:
+        rows = await self.request("GET", "agent_runtime_policies", params={
+            "select": "id,agent_id,policy_version,policy_document,policy_digest,approved_tool_keys,required_permission_scopes,risk_constraints,status,approved_at",
+            "id": f"eq.{policy_id}", "agent_id": f"eq.{agent_id}", "status": "eq.approved", "limit": "1",
+        })
+        return rows[0] if rows else None
+
+    async def claim_task(self, owner_id: str, task_id: str, lease_token: str,
+                         *, lease_seconds: int = 60) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/claim_agent_runtime_task", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id,
+            "p_lease_token": lease_token, "p_lease_seconds": lease_seconds,
+        })
+        return rows[0] if rows else None
+
+    async def finalize_task(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
+                            *, state: str, output_payload: dict[str, Any] | None,
+                            error_code: str | None, event_log: list[dict[str, Any]]) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/finalize_agent_runtime_task", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id, "p_lease_token": lease_token,
+            "p_task_version": task_version, "p_terminal_state": state,
+            "p_output_payload": output_payload, "p_error_code": error_code, "p_event_log": event_log,
+        })
+        return rows[0] if rows else None
 
     async def create_session(self, body: dict[str, Any]) -> dict[str, Any]:
         rows = await self.request("POST", "agent_runtime_sessions",
