@@ -139,13 +139,18 @@ class CreditReservationCommand:
     tariff_version: str
     entitlement_version: str
     policy_approval_reference: str
+    policy_version: str
+    estimated_usage_units: int
+    usage_unit: str
 
     def __post_init__(self) -> None:
         if any(not value.strip() for value in (
             self.idempotency_key, self.account_id, self.task_id, self.capability_id,
             self.credit_scheme_version, self.tariff_version, self.entitlement_version,
-            self.policy_approval_reference,
+            self.policy_approval_reference, self.policy_version, self.usage_unit,
         )):
             raise CreditLedgerError("reservation requires trusted identity and explicit policy versions")
         if self.credits_to_reserve <= 0:
             raise CreditLedgerError("reservation amount must be positive")
+        if self.estimated_usage_units <= 0:
+            raise CreditLedgerError("estimated usage units must be positive")
