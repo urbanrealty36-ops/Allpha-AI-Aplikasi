@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from allpha_api.credit_ledger_contract import CreditReservationCommand
@@ -58,33 +60,30 @@ def policy(**changes):
     return ApprovedLifecyclePolicy(**values)
 
 
-@pytest.mark.asyncio
-async def test_reservation_fails_closed_without_policy():
+def test_reservation_fails_closed_without_policy():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
     with pytest.raises(CreditLifecycleBlocked, match="no approved lifecycle policy"):
-        await service.reserve(command(), policy=None)
+        asyncio.run(service.reserve(command(), policy=None))
     assert store.calls == []
 
 
-@pytest.mark.asyncio
-async def test_reservation_requires_matching_approval_reference():
+def test_reservation_requires_matching_approval_reference():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
     with pytest.raises(CreditLifecycleBlocked, match="approval reference mismatch"):
-        await service.reserve(command(), policy=policy(approval_reference="other"))
+        asyncio.run(service.reserve(command(), policy=policy(approval_reference="other")))
     assert store.calls == []
 
 
-@pytest.mark.asyncio
-async def test_success_settles_actual_amount_and_releases_unused_reservation():
+def test_success_settles_actual_amount_and_releases_unused_reservation():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
-    reserved = await service.reserve(command(), policy=policy())
-    result = await service.complete(
+    reserved = asyncio.run(service.reserve(command(), policy=policy()))
+    result = asyncio.run(service.complete(
         reservation=reserved, outcome=OperationOutcome.SUCCEEDED, policy=policy(),
         idempotency_key="settle-key", source_event_id="usage-event-1", actual_credits=7,
-    )
+    ))
     assert result.state == ReservationState.SETTLED
     settlement = store.calls[-1][1]
     assert settlement == SettlementCommand(
@@ -94,43 +93,40 @@ async def test_success_settles_actual_amount_and_releases_unused_reservation():
     )
 
 
-@pytest.mark.asyncio
-async def test_unknown_provider_outcome_is_pending_not_charged_or_released():
+def test_unknown_provider_outcome_is_pending_not_charged_or_released():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
     reserved = await service.reserve(command(), policy=policy())
-    result = await service.complete(
+    result = asyncio.run(service.complete(
         reservation=reserved, outcome=OperationOutcome.UNKNOWN, policy=policy(),
         idempotency_key="finish-key", source_event_id="usage-event-2",
-    )
+    ))
     assert result.state == ReservationState.PENDING_RECONCILIATION
     assert store.calls[-1][0] == "pending"
 
 
-@pytest.mark.asyncio
-async def test_partial_settlement_requires_explicit_capability_approval():
+def test_partial_settlement_requires_explicit_capability_approval():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
     reserved = await service.reserve(command(), policy=policy())
     with pytest.raises(CreditLifecycleBlocked, match="partial settlement requires"):
-        await service.complete(
+        asyncio.run(service.complete(
             reservation=reserved, outcome=OperationOutcome.PARTIAL, policy=policy(),
             idempotency_key="partial-key", source_event_id="usage-event-3",
             actual_credits=4, partial_policy_approved=False,
-        )
+        ))
     assert all(call[0] != "settle" for call in store.calls)
 
 
-@pytest.mark.asyncio
-async def test_actual_charge_cannot_exceed_reservation_or_be_zero_by_default():
+def test_actual_charge_cannot_exceed_reservation_or_be_zero_by_default():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
     reserved = await service.reserve(command(), policy=policy())
     for actual in (0, 11):
         with pytest.raises(CreditLifecycleBlocked):
-            await service.complete(
+            asyncio.run(service.complete(
                 reservation=reserved, outcome=OperationOutcome.SUCCEEDED, policy=policy(),
                 idempotency_key=f"settle-{actual}", source_event_id="usage-event-4",
                 actual_credits=actual,
-            )
+            ))
     assert all(call[0] != "settle" for call in store.calls)
