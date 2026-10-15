@@ -1,63 +1,41 @@
 # ADR-0007 — Agent Runtime Durable Checkpoints and Approved Policy Binding
 
-- **Status:** Proposed — Product Owner / architecture owner approval required
-- **Date:** 2026-10-15
-- **Scope:** ENG-P10 Agent Runtime; dependency on canonical orchestration/worker decision in ADR-0004
+- **Status:** Accepted by Product Owner on 2026-10-15; source implementation authorized
+- **Scope:** ENG-P10 Agent Runtime; must remain aligned with canonical orchestration/worker decision in ADR-0004
 - **Authority:** Master PRD v3.0 §§24–25, Phase 05 acceptance, Part XIX §§83–86, and AGENTS.md
 
-## Context from verified repository state
+## Accepted decision A — durable execution and checkpoints
 
-- The Master PRD requires durable checkpoints and interruption recovery, with acceptance that a task resumes from the latest valid checkpoint without repeating completed external effects.
-- The current ENG-P10 API claims a task by conditional state update, executes the tool in the request worker, then persists the terminal result. It has no durable per-step checkpoint, execution lease token, checkpoint hash, or worker crash/resume protocol.
-- The registered executable tool is currently `text.normalize`, a pure deterministic transformation. This is not proof that future side-effecting tools support idempotency.
-- Runtime execution currently trusts a non-empty `agent_capabilities.policy_version` string when capability status is approved. No canonical immutable runtime-policy registry was found in the inspected source/migration tree to resolve the string to an approved policy document and verify tool/scope authorization.
-- Existing ADR-0004 leaves canonical queue/worker semantics unresolved and requires atomic lease claims and finalization against the current lease/source version. This proposal must not silently override that decision.
+The Product Owner approved Option A: PostgreSQL-backed canonical task lifecycle and checkpoint/effect receipts. This does **not** authorize a second queue or competing workflow engine. The existing canonical task API remains the entry point; durable claims, checkpoints and finalization use server-only database functions with lease ownership, expiry and monotonic versions.
 
-## Decision required A — durable execution and checkpoints
+Implementation contract:
+- Immutable, sequenced checkpoints record task version, step key, input fingerprint, checkpoint hash and result reference/payload.
+- Effect receipts are keyed by task/step/idempotency key and input fingerprint. A completed receipt may be reused only when all identity/fingerprint fields match.
+- A started effect without a confirmed completed receipt is an unknown outcome. Never replay it automatically.
+- Atomic claim/finalize operations compare current lease token, expiry and task version. A stale worker cannot checkpoint or finalize.
+- Side-effecting adapters must accept and propagate stable idempotency keys. Current `text.normalize` is pure and does not prove future adapters satisfy this contract.
+- Do not claim crash-safe resume until the database implementation is exercised with crash/concurrency tests in ENG-P37.
 
-### Option A: Postgres-backed canonical task engine
+## Accepted decision B — immutable runtime policy reference
 
-Add immutable versioned checkpoint/effect-receipt records and a server-only atomic claim/finalize RPC with lease ownership, lease expiry, monotonic checkpoint sequence, task version, step key, input fingerprint, and output/result reference. Side-effecting adapters must accept and propagate a stable idempotency key. Resume may skip an effect only when a durable completed receipt matches the exact task/step/input fingerprint. A started effect with no confirmed receipt is an unknown outcome and must not be replayed automatically.
+Use an Agent-scoped server-owned policy registry with canonical JSON document and SHA-256 digest, approved tool keys, required permission scopes, risk constraints, lifecycle status, approver identity and approval timestamp. Capability approval must reference an existing active approved policy for the same Agent. Runtime execution resolves and validates the policy on every run; a free-form version string alone never authorizes execution. Missing, revoked, mismatched, or digest-invalid policies fail closed.
 
-- Pros: one transactional source of truth and auditable state.
-- Risks: requires tested SQL concurrency, lease expiry, privileges, crash injection, and adapter idempotency; integration checks remain ENG-P37.
+Policy content is immutable after creation. Revocation changes lifecycle status and blocks future execution; historical task/checkpoint/effect records remain auditable.
 
-### Option B: Dedicated queue/worker broker
+## Scope and compatibility
 
-- Pros: purpose-built delivery and worker scaling.
-- Risks: new infrastructure and failure semantics; requires an approved broker/worker stack.
+- This decision selects the Postgres source-of-truth contract; it does not silently settle a separate queue/broker technology or introduce another worker. Any execution-worker deployment details still need to conform to ADR-0004 and must not create a competing lifecycle owner.
+- All new migrations remain source-only until ENG-P37's approved isolated staging window. Do not apply migrations or run concurrency experiments against production.
+- Real SQL transaction, privilege, concurrency, RLS/grants, owner-isolation and authenticated cross-app tests remain ENG-P37.
 
-### Option C: Delegate to an existing canonical Workflow Engine
+## Acceptance criteria
 
-- Pros: avoids duplicate orchestration.
-- Risks: availability and execution contract must be verified first; no competing runtime may be created.
-
-**Recommendation for review, not an approved decision:** evaluate Option A against ADR-0004. Until the architecture owner approves the canonical execution owner and lease/checkpoint semantics, do not claim crash-safe resume or add a competing worker engine.
-
-## Decision required B — immutable runtime policy reference
-
-Propose a canonical server-owned policy registry with immutable versions scoped to an Agent (or an explicitly approved platform scope), containing a canonical policy document/digest, approved tool keys, required permission scopes, risk constraints, lifecycle status, approver identity and approval timestamp. Capability approval must reference an existing active approved policy version for the same Agent; runtime execution must resolve the reference and verify policy digest/status and tool/scope membership on every execution. Free-form version strings alone are not authorization.
-
-Options:
-1. Add an Agent-scoped immutable policy registry and privileged review/approval lifecycle with audit and composite referential integrity.
-2. Bind to an already-existing canonical policy registry if the architecture owner can identify and prove its schema/API and lifecycle.
-
-No existing canonical policy registry was identified in this repository inspection. Option 1 is a proposal only; do not implement until approved. Missing registry/reference, revoked policy, mismatched Agent, digest mismatch, or tool/scope mismatch must fail closed.
-
-## Acceptance tests required after decision approval
-
-- Crash before an effect starts: resume safely from the prior checkpoint.
-- Crash after effect completion and durable receipt: resume skips the completed effect.
-- Crash after effect starts but before completion receipt: mark outcome unknown and do not automatically replay.
-- Duplicate effect request with same idempotency key and same fingerprint: one effect; same key with a different fingerprint: conflict.
-- Lease expiry/reclaim: only current lease holder may checkpoint/finalize; stale worker cannot overwrite newer state.
-- Cancellation racing with claim/finalization cannot overwrite a newer state; terminal states are immutable.
-- Event log is ordered and agrees with state transitions.
-- Policy reference resolves to an immutable approved policy; revoked/unknown/wrong-agent/wrong-tool/wrong-scope policy is denied.
-- Real SQL transaction, privilege, concurrency, RLS/grants, owner-isolation and authenticated cross-app tests run only in the approved isolated staging target under ENG-P37.
-
-## Consequences and current gate
-
-- Source regressions independent of this architecture decision may proceed.
-- Durable checkpoint/resume and policy-registry implementation are **BLOCKED pending approval**.
-- Existing migrations remain source-only. Do not execute them against production or claim integration verification.
+- Crash before effect: resume from the prior valid checkpoint.
+- Crash after completed receipt: resume skips the completed effect.
+- Started effect without completion receipt: mark unknown and do not replay.
+- Same idempotency key/fingerprint is deduplicated; same key with a different fingerprint conflicts.
+- Lease expiry/reclaim permits only the current lease holder to checkpoint/finalize.
+- Cancellation races cannot overwrite newer state; terminal states are immutable.
+- Event order agrees with state transitions.
+- Unknown, revoked, wrong-Agent, wrong-tool, wrong-scope or digest-mismatched policies are denied.
+- Source/unit/contract checks run in CI; real PostgreSQL behavior remains explicitly unverified until ENG-P37.
