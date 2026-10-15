@@ -24,8 +24,6 @@ class FakeRuntimeStore:
 
     @classmethod
     def from_environment(cls):
-        cls.sessions = {}
-        cls.tasks = {}
         return cls()
 
     async def get_agent(self, owner_id, agent_id):
