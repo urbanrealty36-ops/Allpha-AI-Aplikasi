@@ -144,6 +144,7 @@ begin
   return query
   update public.agent_runtime_tasks t
      set state = 'executing',
+         event_log = t.event_log || jsonb_build_array(jsonb_build_object('event', 'execution_claimed', 'at', now(), 'trace_id', t.trace_id)),
          execution_lease_token = p_lease_token,
          lease_expires_at = now() + make_interval(secs => p_lease_seconds),
          updated_at = now(),
