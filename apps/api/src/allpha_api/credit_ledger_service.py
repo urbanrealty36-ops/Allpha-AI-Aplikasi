@@ -104,6 +104,8 @@ class CreditLedgerLifecycleService:
         self._require_policy(policy)
         if command.policy_approval_reference != policy.approval_reference:
             raise CreditLifecycleBlocked("reservation policy approval reference mismatch")
+        if command.policy_version != policy.policy_version:
+            raise CreditLifecycleBlocked("reservation policy version mismatch")
         return await self._store.reserve(command)
 
     async def complete(
@@ -118,13 +120,12 @@ class CreditLedgerLifecycleService:
         partial_policy_approved: bool = False,
     ) -> ReservationReceipt:
         policy = self._require_policy(policy)
-        if reservation.state != ReservationState.RESERVED:
-            if reservation.state in {
-                ReservationState.SETTLED, ReservationState.RELEASED,
-                ReservationState.PENDING_RECONCILIATION,
-            }:
+        if reservation.state in {ReservationState.SETTLED, ReservationState.RELEASED}:
+            if reservation.idempotency_key == idempotency_key:
                 return reservation
-            raise CreditLifecycleBlocked("reservation is not in a chargeable state")
+            raise CreditLifecycleBlocked("terminal reservation cannot be reused with a different idempotency key")
+        if reservation.state not in {ReservationState.RESERVED, ReservationState.PENDING_RECONCILIATION}:
+            raise CreditLifecycleBlocked("reservation is not in a chargeable or recoverable state")
 
         if outcome == OperationOutcome.UNKNOWN:
             return await self._store.mark_pending_reconciliation(
