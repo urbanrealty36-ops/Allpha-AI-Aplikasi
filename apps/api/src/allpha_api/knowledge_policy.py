@@ -79,6 +79,17 @@ class VersionedKnowledgePolicyResolver:
         )
 
 
+
+class VersionedKnowledgeRetrievalPolicy:
+    """Adapter implementing the retrieval service's policy interface."""
+
+    def __init__(self, resolver: VersionedKnowledgePolicyResolver):
+        self._resolver = resolver
+
+    async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
+        resolved = await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
+        return list(resolved.allowed_sensitivities)
+
 def load_policy_resolver_from_environment() -> VersionedKnowledgePolicyResolver | None:
     """Load an explicitly configured server-only module:function policy provider.
 
