@@ -87,6 +87,35 @@ def test_retrieval_scopes_search_and_returns_source_provenance():
     asyncio.run(scenario())
 
 
+def test_retrieval_returns_empty_list_without_fabricating_results():
+    async def scenario():
+        repo = Repo(hits=[])
+        results = await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+        assert results == []
+        assert repo.search_args["owner_id"] == "owner-a"
+        assert repo.search_args["agent_id"] == "agent-a"
+    asyncio.run(scenario())
+
+
+def test_configured_sensitivity_policy_fails_closed_when_unset_or_invalid(monkeypatch):
+    from allpha_api.knowledge_retrieval import ConfiguredKnowledgeRetrievalPolicy
+
+    monkeypatch.delenv("ALLPHA_KNOWLEDGE_ALLOWED_SENSITIVITIES", raising=False)
+    assert asyncio.run(ConfiguredKnowledgeRetrievalPolicy.from_environment().allowed_sensitivities(
+        owner_id="owner-a", agent_id="agent-a"
+    )) == []
+
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_ALLOWED_SENSITIVITIES", "internal,unknown")
+    assert asyncio.run(ConfiguredKnowledgeRetrievalPolicy.from_environment().allowed_sensitivities(
+        owner_id="owner-a", agent_id="agent-a"
+    )) == []
+
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_ALLOWED_SENSITIVITIES", " internal, public,internal ")
+    assert asyncio.run(ConfiguredKnowledgeRetrievalPolicy.from_environment().allowed_sensitivities(
+        owner_id="owner-a", agent_id="agent-a"
+    )) == ["internal", "public"]
+
+
 def test_retrieval_rejects_cross_owner_result_even_if_adapter_is_buggy():
     async def scenario():
         repo = Repo(hits=[hit(owner_id="owner-b")])
@@ -146,6 +175,61 @@ def test_public_route_fails_closed_when_retrieval_not_configured(monkeypatch):
             app.state.knowledge_retrieval_service = prior
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "KNOWLEDGE_RETRIEVAL_UNAVAILABLE"
+
+
+def test_public_route_denies_unowned_agent_before_search():
+    async def fake_current_user(request: Request):
+        return {"id": "owner-a"}
+
+    async def scenario():
+        repo = Repo(authorized=False)
+        prior = getattr(app.state, "knowledge_retrieval_service", None)
+        app.state.knowledge_retrieval_service = KnowledgeRetrievalService(repo, Policy())
+        app.dependency_overrides[current_user] = fake_current_user
+        try:
+            response = TestClient(app).post(
+                f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+                json={"query": "private info"},
+                headers={"Authorization": "Bearer test"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+            if prior is None:
+                delattr(app.state, "knowledge_retrieval_service")
+            else:
+                app.state.knowledge_retrieval_service = prior
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "KNOWLEDGE_ACCESS_DENIED"
+        assert repo.search_args is None
+
+    asyncio.run(scenario())
+
+
+def test_public_route_returns_empty_results_with_trace_when_no_matches():
+    async def fake_current_user(request: Request):
+        return {"id": "owner-a"}
+
+    async def scenario():
+        repo = Repo(hits=[])
+        prior = getattr(app.state, "knowledge_retrieval_service", None)
+        app.state.knowledge_retrieval_service = KnowledgeRetrievalService(repo, Policy())
+        app.dependency_overrides[current_user] = fake_current_user
+        try:
+            response = TestClient(app).post(
+                f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+                json={"query": "no matching source"},
+                headers={"Authorization": "Bearer test", "X-Request-ID": "trace-empty"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+            if prior is None:
+                delattr(app.state, "knowledge_retrieval_service")
+            else:
+                app.state.knowledge_retrieval_service = prior
+        assert response.status_code == 200
+        assert response.json() == {"trace_id": "trace-empty", "results": []}
+
+    asyncio.run(scenario())
 
 
 def test_public_route_derives_owner_from_authenticated_identity_and_policy():
