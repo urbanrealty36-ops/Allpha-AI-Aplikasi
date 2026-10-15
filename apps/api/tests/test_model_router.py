@@ -188,6 +188,11 @@ from allpha_api.cost_policy import CostBudget, CostEstimate, CostPolicyApproval
 from allpha_api.metering_contract import MeteringRecord
 
 
+class TestApprovalVerifier:
+    def is_approved(self, approval):
+        return approval.policy_id == "embedding-cost" and approval.version == "v1" and approval.approval_reference == "ADR/review-reference"
+
+
 def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_call():
     async def scenario():
         adapter = FakeAdapter([response()])
@@ -196,6 +201,8 @@ def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_ca
             adapters={"router-policy": adapter},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={},
+            cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
+            cost_policy_verifier=TestApprovalVerifier(),
         )
         with pytest.raises(ModelRouterUnavailable):
             await router.embed(request())
@@ -211,6 +218,8 @@ def test_canonical_router_cost_policy_rejects_actual_cost_over_reservation():
             adapters={"router-policy": adapter},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 100, 900, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
+            cost_policy_verifier=TestApprovalVerifier(),
         )
         with pytest.raises(ModelRouterRejected) as error:
             await router.embed(request())
@@ -226,6 +235,8 @@ def test_canonical_router_cost_policy_requires_matching_route_version():
             adapters={"router-policy": adapter},
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "other-version", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
+            cost_policy_verifier=TestApprovalVerifier(),
         )
         with pytest.raises(ModelRouterUnavailable):
             await router.embed(request())
@@ -252,6 +263,7 @@ def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
+            cost_policy_verifier=TestApprovalVerifier(),
             metering_sink=Meter(),
         )
         configured.require_runtime_ready()
@@ -268,6 +280,7 @@ def test_runtime_router_rejects_callable_only_non_durable_metering_sink():
             cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
+            cost_policy_verifier=TestApprovalVerifier(),
             metering_sink=lambda request, response: None,
         )
         with pytest.raises(ModelRouterUnavailable, match="durable idempotent metering"):
