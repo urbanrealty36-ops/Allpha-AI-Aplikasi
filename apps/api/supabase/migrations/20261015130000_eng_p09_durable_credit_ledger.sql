@@ -251,10 +251,14 @@ declare
   v_policy text := p_command->>'policy_version';
   v_source text := p_command->>'source_event_id';
   v_actual bigint := (p_command->>'actual_credits')::bigint;
+  v_actual_units bigint := (p_command->>'actual_usage_units')::bigint;
+  v_usage_unit text := p_command->>'usage_unit';
   v_fp text := encode(extensions.digest(p_command::text, 'sha256'), 'hex');
   v_res public.credit_reservations;
   v_existing public.credit_ledger_entries;
   v_entry public.credit_ledger_entries;
+  v_policy_row public.credit_policy_versions;
+  v_cap jsonb;
   v_unused bigint;
 begin
   if v_res_id is null or coalesce(v_key,'') = '' or coalesce(v_source,'') = ''
@@ -275,8 +279,22 @@ begin
   if v_res.state not in ('reserved','pending_reconciliation') then
     raise exception 'CREDIT_RESERVATION_NOT_SETTLEABLE' using errcode = '23514';
   end if;
-  if v_policy <> v_res.policy_version or v_actual > v_res.reserved_credits then
+  if v_policy <> v_res.policy_version or v_actual > v_res.reserved_credits
+    or v_actual_units is null or v_actual_units <= 0 or coalesce(v_usage_unit,'') = '' then
     raise exception 'CREDIT_SETTLEMENT_POLICY_OR_AMOUNT_MISMATCH' using errcode = '22023';
+  end if;
+  select * into v_policy_row from public.credit_policy_versions
+    where policy_version = v_res.policy_version
+      and approval_reference = v_res.policy_approval_reference
+      and status in ('approved','retired') for share;
+  if not found then raise exception 'CREDIT_SETTLEMENT_POLICY_NOT_FOUND' using errcode = '42501'; end if;
+  v_cap := v_policy_row.configuration->'capabilities'->v_res.capability_id;
+  if jsonb_typeof(v_cap) <> 'object'
+    or v_cap->>'tariff_version' <> v_res.tariff_version
+    or v_cap->>'usage_unit' <> v_usage_unit
+    or v_cap->>'usage_unit' <> p_command->>'usage_unit'
+    or v_actual <> v_actual_units * coalesce((v_cap->>'credits_per_usage_unit')::bigint,0) then
+    raise exception 'CREDIT_ACTUAL_USAGE_TARIFF_MISMATCH' using errcode = '22023';
   end if;
   insert into public.credit_ledger_entries(
     owner_user_id,idempotency_key,entry_type,credits,balance_delta,credit_scheme_version,
@@ -396,3 +414,49 @@ grant execute on function public.credit_ledger_grant(jsonb), public.credit_ledge
 comment on table public.credit_ledger_entries is 'Append-only AI Credit accounting entries; source of truth for credit movements.';
 comment on table public.credit_balance_projection is 'Derived available balance; updated in the same transaction as ledger entries.';
 comment on table public.credit_policy_versions is 'Versioned financial policy configuration; values are entered and approved in the Financial phase.';
+
+
+-- Approved policy versions are immutable. A published policy may only be retired;
+-- a retired version can never be reactivated or edited in place.
+create or replace function public.guard_credit_policy_version_mutation()
+returns trigger language plpgsql set search_path = ''
+as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'CREDIT_POLICY_VERSIONS_ARE_IMMUTABLE' using errcode = '55000';
+  end if;
+  if old.status in ('approved','retired') then
+    if new.policy_version <> old.policy_version
+      or new.credit_scheme_version <> old.credit_scheme_version
+      or new.approval_reference <> old.approval_reference
+      or new.configuration <> old.configuration
+      or new.created_by is distinct from old.created_by
+      or new.approved_by is distinct from old.approved_by
+      or new.approved_at is distinct from old.approved_at
+      or new.effective_at is distinct from old.effective_at
+      or new.expires_at is distinct from old.expires_at
+      or (old.status = 'retired' and new.status <> 'retired')
+      or (old.status = 'approved' and new.status not in ('approved','retired')) then
+      raise exception 'CREDIT_POLICY_VERSIONS_ARE_IMMUTABLE' using errcode = '55000';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+create trigger credit_policy_versions_immutable
+before update or delete on public.credit_policy_versions
+for each row execute function public.guard_credit_policy_version_mutation();
+
+create or replace function public.reject_credit_ledger_mutation()
+returns trigger language plpgsql set search_path = ''
+as $$
+begin
+  raise exception 'CREDIT_LEDGER_IS_APPEND_ONLY' using errcode = '55000';
+end;
+$$;
+create trigger credit_ledger_entries_append_only
+before update or delete on public.credit_ledger_entries
+for each row execute function public.reject_credit_ledger_mutation();
+
+revoke all on function public.guard_credit_policy_version_mutation(), public.reject_credit_ledger_mutation()
+  from public, anon, authenticated, service_role;
