@@ -103,6 +103,8 @@ class CanonicalModelRouter:
                 except ValueError as exc:
                     raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_RESPONSE_INVALID", retryable=False, trace_id=request.trace_id)) from exc
                 if cost_authorization is not None:
+                    if (response.usage_unit, response.cost_unit, response.pricing_version) != (cost_authorization.usage_unit, cost_authorization.cost_unit, cost_authorization.pricing_version):
+                        raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_COST_UNIT_MISMATCH", retryable=False, trace_id=request.trace_id))
                     try:
                         validate_actual_cost(
                             authorization=cost_authorization,
