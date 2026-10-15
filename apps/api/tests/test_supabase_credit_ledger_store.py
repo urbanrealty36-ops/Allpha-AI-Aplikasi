@@ -69,7 +69,7 @@ def test_settlement_uses_durable_rpc_with_verified_actual_usage():
     result = asyncio.run(store(handler).settle(SettlementCommand(
         reservation_id=receipt()["reservation_id"], idempotency_key="settle-1",
         source_event_id="usage-event-1", policy_version="policy-v1",
-        actual_credits=12, release_unused=True,
+        actual_credits=12, actual_usage_units=6, usage_unit="embedding_input_unit", release_unused=True,
     )))
     assert result.state == ReservationState.SETTLED
 
