@@ -268,7 +268,7 @@ begin
     end if;
     select * into v_res from public.credit_reservations where reservation_entry_id = v_existing.id;
     return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_res.idempotency_key,
-      'account_id',v_owner,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version);
+      'account_id',v_owner,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
   end if;
   insert into public.credit_balance_projection(owner_user_id) values (v_owner) on conflict do nothing;
   select available_credits into v_available from public.credit_balance_projection where owner_user_id = v_owner for update;
@@ -298,7 +298,7 @@ begin
   update public.credit_balance_projection set available_credits = available_credits - v_credits,
     ledger_entry_count = ledger_entry_count + 1, updated_at = now() where owner_user_id = v_owner;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_res.idempotency_key,
-    'account_id',v_owner,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version);
+    'account_id',v_owner,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
 end;
 $$;
 
@@ -335,7 +335,7 @@ begin
       raise exception 'CREDIT_LEDGER_IDEMPOTENCY_CONFLICT' using errcode = '23505';
     end if;
     return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_key,
-      'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','settled','policy_version',v_res.policy_version);
+      'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','settled','policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
   end if;
   if v_res.state not in ('reserved','pending_reconciliation') then
     raise exception 'CREDIT_RESERVATION_NOT_SETTLEABLE' using errcode = '23514';
@@ -408,7 +408,7 @@ begin
     ledger_entry_count=ledger_entry_count+1+(case when v_unused > 0 then 1 else 0 end),updated_at=now()
     where owner_user_id=v_res.owner_user_id;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_key,
-    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','settled','policy_version',v_res.policy_version);
+    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','settled','policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
 end;
 $$;
 
@@ -437,7 +437,7 @@ begin
       raise exception 'CREDIT_LEDGER_IDEMPOTENCY_CONFLICT' using errcode = '23505';
     end if;
     return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_key,
-      'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version);
+      'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
   end if;
   if v_res.state not in ('reserved','pending_reconciliation') or v_policy <> v_res.policy_version then
     raise exception 'CREDIT_RESERVATION_NOT_RELEASABLE' using errcode = '23514';
@@ -467,7 +467,7 @@ begin
   update public.credit_balance_projection set available_credits=available_credits+v_amount,
     ledger_entry_count=ledger_entry_count+1,updated_at=now() where owner_user_id=v_res.owner_user_id;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_key,
-    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','released','policy_version',v_res.policy_version);
+    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','released','policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
 end;
 $$;
 
@@ -627,7 +627,7 @@ begin
     on conflict (owner_user_id,idempotency_key) do nothing;
   end if;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_res.idempotency_key,
-    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','pending_reconciliation','policy_version',v_res.policy_version);
+    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','pending_reconciliation','policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
 end;
 $$;
 
