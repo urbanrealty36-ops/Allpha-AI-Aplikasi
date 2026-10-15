@@ -1,6 +1,6 @@
 # ADR-0005: Canonical Knowledge Consent and Agent Access Grants
 
-- **Status:** Proposed — awaiting Product Owner decision and Privacy/Security + Data Platform review; NOT approved for schema implementation or activation.
+- **Status:** Option B audit completed: no qualifying canonical engine/schema/API evidenced in the inspected repository. Awaiting Product Owner approval to proceed with fallback Option C, plus Privacy/Security + Data Platform review; NOT approved for schema implementation or activation.
 - **Scope:** ENG-P08 knowledge retrieval authorization; dependency for ENG-P09 indexing/publishing and later derived-data deletion.
 - **Decision owner:** Product Owner. Required reviewers: Privacy/Security and Data Platform.
 - **Date:** 2026-10-15
@@ -14,7 +14,11 @@ Repository evidence:
 - `apps/api/supabase/migrations/20261013053438_eng_p03_human_identity_preferences_and_consent.sql` constrains `public.user_consents.consent_type` to `terms_of_service`, `privacy_policy`, and `product_updates`. It is not a knowledge-consent or Agent-specific grant contract.
 - Current `knowledge_policy.py` defines a fail-closed, versioned provider interface but deliberately has no database implementation.
 - A live Supabase schema inspection was not available through the current connector permissions. Therefore this proposal does not claim the live database has or lacks any table beyond what was verifiably inspected, and no migration may be applied based on this proposal alone.
-- No matching knowledge-consent or Agent access-grant implementation was found in the inspected repository migrations/source search.
+- A second targeted audit of the current `main` tree at `a82c90f44668799484d8d33894695ab0f06d1687` found no separate Permission/Privacy Engine module, knowledge-consent API, or per-Agent knowledge-grant API in the repository file inventory.
+- `apps/api/supabase/migrations/20261013052302_eng_p02_identity_authorization_baseline.sql` defines organization membership/owner/admin helpers; those are organization-scoped roles, not consent for knowledge processing or owner-to-Agent resource grants.
+- `apps/api/supabase/migrations/20261014140000_eng_p06_platform_operator_grants_and_audit.sql` defines platform-operator-only scopes and privileged audit. Those grants authorize platform operations, not an Agent's access to an owner's knowledge.
+- `apps/api/src/allpha_api/main.py` exposes `user_consents` for only `terms_of_service`, `privacy_policy`, and `product_updates`; the schema constraint confirms those semantics.
+- **Option B audit outcome:** no repository-backed canonical engine/schema/API satisfying ADR-0005's required semantics was evidenced. This is a bounded source-repository finding, not proof that no such capability exists outside this repository; live Supabase schema inspection remains unavailable through the current connector permissions.
 
 ## Options
 
