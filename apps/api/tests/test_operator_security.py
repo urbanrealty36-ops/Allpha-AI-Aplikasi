@@ -340,7 +340,7 @@ def test_capability_review_requires_scope_and_updates_only_pending_request(monke
 
     async def fake_privileged(method, table, **kwargs):
         calls.append((method, table, kwargs))
-        if method == "GET":
+        if method == "GET" and table == "agent_capabilities":
             return [{
                 "id": "00000000-0000-0000-0000-000000000777",
                 "agent_id": "00000000-0000-0000-0000-000000000010",
@@ -348,6 +348,17 @@ def test_capability_review_requires_scope_and_updates_only_pending_request(monke
                 "description": "Publish content",
                 "risk_level": "low",
                 "status": "requested",
+                "required_permission_scopes": [],
+            }]
+        if method == "GET" and table == "agent_runtime_policies":
+            return [{
+                "id": "00000000-0000-0000-0000-000000000888",
+                "agent_id": "00000000-0000-0000-0000-000000000010",
+                "policy_version": "runtime-policy-v1",
+                "policy_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "approved_tool_keys": ["content.publish"],
+                "required_permission_scopes": [],
+                "status": "approved",
             }]
         return [{
             "id": "00000000-0000-0000-0000-000000000777",
@@ -355,6 +366,7 @@ def test_capability_review_requires_scope_and_updates_only_pending_request(monke
             "reviewed_by": "operator",
             "review_reason": "Policy review completed",
             "policy_version": "runtime-policy-v1",
+            "runtime_policy_id": "00000000-0000-0000-0000-000000000888",
         }]
 
     monkeypatch.setattr(security, "user_db_request", fake_db)
@@ -373,6 +385,7 @@ def test_capability_review_requires_scope_and_updates_only_pending_request(monke
         assert patch_call[2]["body"]["reviewed_by"] == "operator"
         assert patch_call[2]["body"]["status"] == "approved"
         assert patch_call[2]["body"]["policy_version"] == "runtime-policy-v1"
+        assert patch_call[2]["body"]["runtime_policy_id"] == "00000000-0000-0000-0000-000000000888"
     finally:
         app.dependency_overrides.clear()
 
