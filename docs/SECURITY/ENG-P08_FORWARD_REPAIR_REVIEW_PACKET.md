@@ -487,7 +487,7 @@ The live Supabase migration ledger separately contains versions/names:
 - `20261013052744` — `eng_p02_audit_organization_creation`
 - `20261013090730` — `eng_p02_least_privilege_identity_tenant_grants`
 
-The current repository tree was not able to resolve guessed canonical filenames for the first four versions above, while `20261013090730` is a distinct ledger version referenced in phase history. A filename mismatch or absent source path is not sufficient to conclude those migrations never existed: their original source may be under a different path/name, deleted from current `main`, or available only through Git history/artifacts. Their exact SQL bodies remain **UNRESOLVED PROVENANCE** until commit history/tree evidence or an authoritative schema artifact proves the relationship.
+Superseded by the follow-up lineage pass in section C1/C5: all six ENG-P02 ledger versions now have current same-version source paths, Git blob SHAs, and Git path-history commits recorded. This resolves current source-path coverage, not historical applied SQL byte identity. The 20261013052302 file is explicitly reconstructed; for the other five, path-alignment commits do not prove which exact bytes were applied. Original applied checksums remain **UNRECOVERED** unless an authoritative historical artifact is found.
 
 ### Required provenance recovery steps
 1. Enumerate the complete migration directory at the current `main` commit and map every live ledger version to an exact source path by version prefix and content hash; do not infer a match from the suffix alone.
