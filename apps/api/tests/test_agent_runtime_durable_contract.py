@@ -42,7 +42,7 @@ def test_effect_receipts_dedupe_by_stable_key_and_reject_fingerprint_conflicts()
 
 def test_runtime_rpc_dollar_quoting_is_balanced_and_security_is_restricted():
     sql = MIGRATION.read_text()
-    assert sql.count("as $$") == sql.count("$$;")
+    assert sql.count("as $") + sql.count("do $") == sql.count("$;")
     assert "as $" + "\n" not in sql
     assert "\n$;\n" not in sql
     assert sql.count("security definer") == 6
