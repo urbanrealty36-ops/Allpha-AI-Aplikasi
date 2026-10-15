@@ -88,3 +88,79 @@ Proposed state/flow, subject to approved policy:
 - [ ] Security/Privacy: approve trusted ownership, least-privilege grants/RLS, audit and data-minimization controls.
 
 Until the remaining approvals are recorded, only deterministic source-level contracts and tests that do not activate charging are permitted. Do not implement a production credit conversion, durable ledger schema/migration, provider adapter, or runtime settlement activation based on this document.
+
+
+## Implementation design proposal — review required before persistence (2026-10-15)
+
+This section records a candidate design to accelerate API/Data Platform and Security review. It is **not an approved schema**, does not authorize a migration, and must be reconciled with existing canonical Supabase tables and permissions before implementation.
+
+### A. Finance/Economy decision register
+
+The following values are intentionally unresolved. No implementation may infer them from test fixtures or the name of an integer field.
+
+| Decision | Required signed-off value | Owner | Gate |
+|---|---|---|---|
+| Credit scheme / scale | Stable scheme identifier and meaning of one credit | Finance/Economy | Before tariff activation |
+| Capability catalog | Billable capability IDs and canonical usage units | Product + Finance | Before tariff activation |
+| Tariff schedule | Integer credits per usage unit, version, effective window, approval reference | Finance/Economy | Before reservation/settlement |
+| Fractional usage | Unit quantization and rounding rule per capability | Finance/Economy | Before charge calculation |
+| Quotas / budgets | Plan/entitlement limits, cost ceilings, reset window, concurrency behavior | Product + Finance | Before admission control |
+| Free tier | Included allowance and behavior after allowance is consumed | Product + Finance | Before user-facing charging |
+| Expiry | Which grant types expire, expiry timestamp semantics and ordering | Finance/Economy | Before expiry job |
+| Failed operations | Charge/no-charge conditions and provider timeout ambiguity | Product + Finance | Before settlement |
+| Partial delivery | Chargeable delivered units, minimum charge, cancellation cutoff | Product + Finance | Before partial settlement |
+| Refund/reversal | Eligibility, maximum reversible amount, approvals and audit reason | Finance/Economy | Before compensating entries |
+| Cost policy | Cost unit scale/currency if applicable, rate-card source/version, guardrail threshold | Finance + Platform | Before provider execution |
+| Creator rewards | Eligibility, accrual/settlement, reversals and any cash-conversion policy | Product + Finance | Separate approval under PRD §§34, 66 |
+
+### B. Candidate persistence boundaries
+
+1. **Usage metering** remains a distinct append-only attribution stream. It records actual usage and cost by request/task/trace and pricing version. It must not be used as the credit balance.
+2. **Credit ledger entries** are the financial/accounting source of truth: append-only, uniquely idempotent, owner/account-bound, versioned by credit scheme and tariff/entitlement policy, and linked to the originating task/event.
+3. **Reservations** should be represented by ledger entries or a transactionally consistent reservation record linked to entries. A reservation is not a completed charge.
+4. **Balance projection** is a derived, rebuildable optimization. Ledger entries remain authoritative. Projection changes and ledger append must commit atomically, or use a proven transactional outbox with a replay/reconciliation contract.
+5. **Outbox/reconciliation** must be idempotent and auditable. It may repair projections or stale reservations but must never invent provider usage, tariffs, or successful delivery.
+6. **Policy registry** must resolve an immutable active tariff and cost policy version for the operation. Missing, expired, mismatched, or unapproved policy fails closed before provider execution.
+
+### C. Candidate transaction protocol
+
+The canonical API command should run under a trusted authenticated owner context, derive the account from server-side identity, and accept a client idempotency key only as an untrusted request identifier. It must never accept a client-supplied account balance, owner ID as authority, or final charge as truth.
+
+- **Reserve:** validate capability, entitlement, policy approval, tariff version, cost budget and available spendable balance; atomically append reservation and update/reconcile projection; prevent concurrent reservations from overspending.
+- **Execute:** only after reservation commits, dispatch through the canonical Model Router with the same logical request/task correlation. Do not call providers from Web, Native or Super Admin.
+- **Settle:** on a definitive chargeable outcome, atomically append one settlement tied to the reservation and usage event, release unused reservation, and update the projection/outbox. Repeated identical command is a no-op; same key with different canonical payload is a conflict.
+- **Release:** on a definitive non-chargeable terminal outcome, release the remaining reservation once. A timeout with unknown provider outcome remains recoverable/pending; it must not automatically be treated as either success or failure.
+- **Partial outcome:** settle only under an approved capability-specific rule and verified delivered usage. Without such a rule, do not settle a guessed amount.
+- **Reverse/refund:** append a linked compensating entry with reason and authorized actor; never mutate/delete original entries. Enforce reversal caps atomically.
+- **Reconcile:** detect stale reservations, duplicate/out-of-order events, projection drift, and metering-without-settlement; expose an auditable repair action. Automated repair may not manufacture charge data.
+
+### D. Candidate data model (logical, not a migration)
+
+| Logical record | Minimum responsibility | Key constraints |
+|---|---|---|
+| `credit_ledger_entries` | Append-only grant/reserve/settle/release/expiry/refund/reward/reversal/adjustment | Unique idempotency key in its defined scope; positive integer amount plus explicit entry type; policy/scheme version; linked source and compensating entry |
+| `credit_reservations` (or equivalent ledger-derived state) | Track pending reservation lifecycle and recoverable outcome | Unique request/task reservation identity; state transitions guarded transactionally; no overspend under concurrent requests |
+| `credit_balance_projection` | Fast spendable/reserved/expired balance view | Derived only; version/sequence or replay watermark; updated atomically or via transactional outbox |
+| `credit_policy_versions` | Immutable approved scheme/tariff/entitlement references | Effective dates, approval references, no in-place edits to policies already used by entries |
+| `credit_reconciliation_events` | Repair, stale reservation, projection drift and audit evidence | Idempotent repair command, actor/reason, before/after references, no raw prompt or credential data |
+
+These are logical names only. Before a migration is authored, inspect existing Supabase schema, naming conventions, roles/grants, RLS and the current API repository; reuse or adapt canonical objects instead of creating duplicate tables.
+
+### E. Security/Privacy review checklist
+
+- Owner/account derives from verified API auth context; cross-owner account IDs from request bodies are rejected.
+- Privileged ledger mutation is server-only through FastAPI/domain service; clients cannot insert/update/delete ledger rows or invoke privileged RPCs.
+- RLS and SQL grants are complementary: deny client roles ledger mutation, expose only authorized owner-scoped read projections where product requirements permit, and restrict policy administration to explicitly authorized operators.
+- Use least-privilege service credentials, never expose service-role secrets to client bundles or logs.
+- RPCs (if approved) validate trusted caller context, parameter bounds, idempotency, linkage, and transaction invariants; do not rely on client-side validation.
+- Append-only behavior is enforced at the database permission/trigger/service boundary and tested with negative cases; privileged repair paths are separately audited.
+- Audit metadata records actor, request/task/trace, policy version, idempotency key, reason and timestamps, but excludes prompts, raw document chunks, credentials and unnecessary sensitive payloads.
+- Add cross-owner, forged-account, duplicate-key/different-payload, concurrent overspend, stale reservation, reversal-cap, RLS/grant and direct-DB-bypass negative tests.
+- Review retention, deletion/erasure interactions, export and legal/accounting obligations before final schema approval.
+
+### F. Implementation gates
+
+1. Finance/Economy fills and approves the decision register in section A.
+2. API/Data Platform reviews sections B–D against the live canonical schema and writes the transaction/repair contract; Security/Privacy signs off section E.
+3. Only after these approvals, implement the durable sink, transaction service, approved migration and source/unit/contract tests in ENG-P09. Do not apply migration to production as a test.
+4. ENG-P37 validates real isolated non-production Supabase transaction atomicity, concurrency, RLS/grants, cross-owner negative paths, recovery/reconciliation, and authenticated Web/Native/Super Admin journeys where applicable.
