@@ -71,6 +71,8 @@ class SettlementCommand:
     source_event_id: str
     policy_version: str
     actual_credits: int
+    actual_usage_units: int
+    usage_unit: str
     release_unused: bool
 
 
@@ -117,6 +119,8 @@ class CreditLedgerLifecycleService:
         idempotency_key: str,
         source_event_id: str,
         actual_credits: int | None = None,
+        actual_usage_units: int | None = None,
+        usage_unit: str | None = None,
         partial_policy_approved: bool = False,
     ) -> ReservationReceipt:
         policy = self._require_policy(policy)
@@ -152,8 +156,10 @@ class CreditLedgerLifecycleService:
         else:
             raise CreditLifecycleBlocked("unsupported operation outcome")
 
-        if actual_credits is None or actual_credits < 0:
-            raise CreditLifecycleBlocked("verified actual credit charge is required")
+        if actual_credits is None or actual_credits <= 0:
+            raise CreditLifecycleBlocked("verified positive actual credit charge is required")
+        if actual_usage_units is None or actual_usage_units <= 0 or not (usage_unit or "").strip():
+            raise CreditLifecycleBlocked("verified actual usage units and unit are required")
         if actual_credits > reservation.reserved_credits:
             raise CreditLifecycleBlocked("actual charge exceeds reservation; require explicit recovery policy")
         if actual_credits == 0:
@@ -166,6 +172,8 @@ class CreditLedgerLifecycleService:
                 source_event_id=source_event_id,
                 policy_version=policy.policy_version,
                 actual_credits=actual_credits,
+                actual_usage_units=actual_usage_units,
+                usage_unit=usage_unit,
                 release_unused=actual_credits < reservation.reserved_credits,
             )
         )
