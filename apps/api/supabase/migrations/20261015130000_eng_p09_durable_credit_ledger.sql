@@ -28,7 +28,7 @@ create table public.credit_ledger_entries (
   id uuid primary key default gen_random_uuid(),
   owner_user_id uuid not null references public.credit_ledger_accounts(owner_user_id) on delete restrict,
   idempotency_key text not null check (length(idempotency_key) between 1 and 256),
-  entry_type text not null check (entry_type in ('grant','promotional_grant','reservation','settlement','release','expiry','refund','reward','reversal','adjustment')),
+  entry_type text not null check (entry_type in ('grant','promotional_grant','reservation','settlement','release','expiry','refund','reversal','adjustment')),
   credits bigint not null check (credits > 0),
   balance_delta bigint not null,
   credit_scheme_version text not null check (length(credit_scheme_version) between 1 and 80),
@@ -153,7 +153,7 @@ declare
 begin
   if v_owner is null or v_key is null or length(v_key) not between 1 and 256
     or v_credits is null or v_credits <= 0
-    or v_type not in ('grant','promotional_grant','reward')
+    or v_type not in ('grant','promotional_grant')
     or coalesce(p_command->>'source_event_id','') = ''
     or coalesce(p_command->>'capability_id','') = '' then
     raise exception 'INVALID_CREDIT_GRANT' using errcode = '22023';
