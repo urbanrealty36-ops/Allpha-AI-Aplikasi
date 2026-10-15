@@ -98,3 +98,36 @@ def test_environment_factory_requires_server_only_service_role_key(monkeypatch):
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
     with pytest.raises(ValueError, match="SUPABASE_SERVICE_ROLE_KEY"):
         SupabaseCreditLedgerStore.from_environment()
+
+
+def test_balance_rpc_uses_server_derived_owner_and_validates_projection():
+    seen = {}
+
+    async def handler(request):
+        seen["body"] = json.loads((await request.aread()).decode())
+        return httpx.Response(200, json={
+            "available_credits": 30, "reserved_credits": 8,
+            "ledger_entry_count": 12, "as_of": "2026-10-15T00:00:00Z",
+        })
+
+    result = asyncio.run(store(handler).get_balance(owner_user_id="verified-user"))
+    assert seen["body"] == {"p_owner_user_id": "verified-user"}
+    assert result["available_credits"] == 30
+    assert result["reserved_credits"] == 8
+
+
+def test_reversal_requires_policy_reference_and_reason_payload():
+    seen = {}
+
+    async def handler(request):
+        seen["body"] = json.loads((await request.aread()).decode())
+        return httpx.Response(200, json={"entry_id": "entry-reversal", "idempotent_replay": False})
+
+    entry_id = asyncio.run(store(handler).reverse(
+        owner_user_id="verified-user", original_entry_id="entry-settlement",
+        idempotency_key="reverse-1", credits=3, policy_version="policy-v1",
+        policy_approval_reference="approval-1", source_event_id="support-case-1",
+        reason_code="approved_duplicate_charge",
+    ))
+    assert entry_id == "entry-reversal"
+    assert seen["body"]["p_command"]["reason_code"] == "approved_duplicate_charge"
