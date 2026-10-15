@@ -32,11 +32,18 @@ def test_credit_ledger_mutations_are_server_only_and_append_only():
     assert "credit_ledger_entries_append_only" in sql
     assert "credit_policy_versions_immutable" in sql
     assert "for update" in sql
+    assert "credit_cost_guardrail_not_configured_or_exceeded" in sql
+    assert "credit_actual_cost_guardrail_exceeded_or_mismatch" in sql
+    assert "credit_settlement_metering_not_found" in sql
+    assert "max_concurrent_reservations" in sql
+    assert "max_reversal_credits" in sql
     assert "credit_ledger_reserve" in sql
     assert "credit_ledger_settle" in sql
     assert "credit_ledger_release" in sql
     assert "credit_ledger_reverse" in sql
     assert "credit_ledger_mark_pending" in sql
+    assert "credit_ledger_get_balance" in sql
+    assert "credit_reservations_recovery_idx" in sql
 
 
 def test_migration_has_no_destructive_drop_or_provider_execution():
