@@ -18,6 +18,8 @@ def test_runtime_migration_defines_durable_owner_scoped_sessions_and_tasks():
     assert "revoke all on public.agent_runtime_sessions, public.agent_runtime_tasks from public, anon, authenticated" in normalized
     assert "grant select, insert, update, delete on public.agent_runtime_sessions, public.agent_runtime_tasks to service_role" in normalized
     assert "add column if not exists policy_version text" in normalized
+    assert "revoke update on public.agent_capabilities from authenticated" in normalized
+    assert "grant update (description, required_permission_scopes, risk_level, status, updated_at)" in normalized
     assert "add column if not exists version integer not null default 1" in normalized
 
 
