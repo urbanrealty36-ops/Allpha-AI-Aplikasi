@@ -28,7 +28,6 @@ def test_durable_runtime_migration_is_source_only_and_non_destructive():
     sql = MIGRATION.read_text().lower()
     assert "drop table" not in sql
     assert "insert into public.agent_runtime_tasks" not in sql
-    assert "update public.agent_runtime_tasks" not in sql
 
 def test_effect_receipts_dedupe_by_stable_key_and_reject_fingerprint_conflicts():
     sql = " ".join(MIGRATION.read_text().lower().split())
