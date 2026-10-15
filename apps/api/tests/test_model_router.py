@@ -161,3 +161,51 @@ def test_canonical_router_does_not_retry_terminal_provider_rejection():
             await router.embed(request())
         assert adapter.calls == 1
     asyncio.run(scenario())
+
+
+from allpha_api.cost_policy import CostBudget, CostEstimate
+
+
+def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_call():
+    async def scenario():
+        adapter = FakeAdapter([response()])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": adapter},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
+            cost_estimates={},
+        )
+        with pytest.raises(ModelRouterUnavailable):
+            await router.embed(request())
+        assert adapter.calls == 0
+    asyncio.run(scenario())
+
+
+def test_canonical_router_cost_policy_rejects_actual_cost_over_reservation():
+    async def scenario():
+        adapter = FakeAdapter([response()])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": adapter},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 100, 900)},
+        )
+        with pytest.raises(ModelRouterRejected) as error:
+            await router.embed(request())
+        assert error.value.failure.code == "MODEL_ROUTER_COST_POLICY_REJECTED"
+    asyncio.run(scenario())
+
+
+def test_canonical_router_cost_policy_requires_matching_route_version():
+    async def scenario():
+        adapter = FakeAdapter([response()])
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": adapter},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "other-version", 10, 100)},
+        )
+        with pytest.raises(ModelRouterUnavailable):
+            await router.embed(request())
+        assert adapter.calls == 0
+    asyncio.run(scenario())
