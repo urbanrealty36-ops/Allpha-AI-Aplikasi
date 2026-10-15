@@ -1,6 +1,6 @@
 # ADR-0006 — AI Usage, Cost Attribution, and Credit Ledger Contract
 
-- **Status:** PROPOSED — awaiting explicit Product Owner and Finance/Economy approval; not an approved policy.
+- **Status:** PARTIALLY ACCEPTED — Product Owner approved Option C direction on 2026-10-15; detailed Finance/Economy parameters and technical/security reviews remain open.
 - **Date:** 2026-10-15
 - **Owner:** Allpha Product Owner + Finance/Economy owner; API/Data Platform and Security review required before persistence implementation.
 - **Scope:** ENG-P09 AI Gateway / Model Router cost attribution and its boundary with the canonical AI Credit ledger.
@@ -14,7 +14,9 @@ Usage metering and AI Credit accounting are distinct records:
 - **Usage/cost attribution:** what operation ran, quantity and unit, selected provider/model/version, actual cost amount/unit, pricing version, trace and idempotency identity.
 - **AI Credit ledger:** append-only account-level credit movements and reservations, with balances derived from ledger entries or a safely reconciled projection. AI Credits are not automatically cash.
 
-## Decision required (not yet approved)
+## Decision record and remaining policy decisions
+
+**Product Owner decision (2026-10-15): Option C accepted as the target policy direction** — versioned capability tariffs with independent actual-cost attribution and cost guardrails. This is not approval of any numeric tariff, credit scale, currency/FX policy, rounding rule, free-tier treatment, or failure/partial-delivery charge. The implementation in this commit is therefore limited to policy-neutral domain contracts and source tests. Runtime settlement and durable ledger persistence remain disabled.
 
 ### 1. Usage units
 
@@ -34,7 +36,7 @@ Proposed contract: `cost_microunits` remains an integer amount only when paired 
 - **Option B — capability tariffs independent of actual provider cost:** charge a published credit tariff per eligible capability/unit, while actual infrastructure cost remains a separate cost ledger. Predictable user experience, but requires tariff versioning and margin monitoring.
 - **Option C — versioned capability tariffs with cost guardrails (recommended for review):** each capability has an approved credit tariff and unit/rounding policy; actual provider/infra cost is recorded separately; budget admission checks both the credit entitlement and approved cost ceiling; tariff changes are versioned and do not rewrite prior entries. This avoids pretending cost units and AI Credits are the same currency.
 
-**No option is selected by this ADR yet.** Product Owner and Finance/Economy must explicitly select an option and approve the credit scale, tariff schedule, rounding, free-tier treatment, and handling of failed/partial operations before credit settlement code is enabled.
+**Option C is selected as the target direction, not as a complete economic policy.** Finance/Economy must approve the credit scale, per-capability tariff schedule, billable units, rounding/fractional-unit handling, free-tier treatment, budget thresholds, expiry and failed/partial-operation behavior before credit settlement can be enabled.
 
 ### 4. Ledger record and invariants
 
@@ -80,9 +82,9 @@ Proposed state/flow, subject to approved policy:
 
 ## Required approvals before ledger implementation
 
-- [ ] Product Owner: select conversion/tariff option and approve product behavior.
+- [x] Product Owner: select Option C as the target policy direction (2026-10-15); detailed product behavior remains subject to the approvals below.
 - [ ] Finance/Economy: approve credit unit scale, tariff/pricing versions, rounding, budget and reversal/expiry policy.
 - [ ] API/Data Platform: approve canonical schema, transaction/outbox, uniqueness and projection-reconciliation design.
 - [ ] Security/Privacy: approve trusted ownership, least-privilege grants/RLS, audit and data-minimization controls.
 
-Until those approvals are recorded, this ADR is a proposal only. Do not implement a production credit conversion, ledger schema, migration, provider adapter, or runtime activation based on this document.
+Until the remaining approvals are recorded, only deterministic source-level contracts and tests that do not activate charging are permitted. Do not implement a production credit conversion, durable ledger schema/migration, provider adapter, or runtime settlement activation based on this document.
