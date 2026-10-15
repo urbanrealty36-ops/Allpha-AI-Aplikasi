@@ -68,9 +68,19 @@ class EmbeddingResponse(BaseModel):
     dimensions: int = Field(ge=1, le=8192)
     vectors: list[EmbeddingVector] = Field(min_length=1, max_length=128)
     usage_units: int | None = Field(default=None, ge=0)
+    usage_unit: str | None = Field(default=None, min_length=1, max_length=80)
     cost_microunits: int | None = Field(default=None, ge=0)
+    cost_unit: str | None = Field(default=None, min_length=1, max_length=80)
+    pricing_version: str | None = Field(default=None, min_length=1, max_length=80)
     trace_id: str = Field(min_length=1, max_length=128)
     completed_at: datetime
+
+    @model_validator(mode="after")
+    def validate_cost_attribution(self):
+        values = (self.usage_units, self.usage_unit, self.cost_microunits, self.cost_unit, self.pricing_version)
+        if any(value is not None for value in values) and any(value is None for value in values):
+            raise ValueError("usage and cost attribution requires quantity, unit, cost unit and pricing version")
+        return self
 
     @model_validator(mode="after")
     def validate_vectors(self):
