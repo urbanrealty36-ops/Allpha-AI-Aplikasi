@@ -199,7 +199,7 @@ def test_public_route_denies_unowned_agent_before_search():
             else:
                 app.state.knowledge_retrieval_service = prior
         assert response.status_code == 403
-        assert response.json()["detail"]["code"] == "KNOWLEDGE_ACCESS_DENIED"
+        assert response.json()["error"]["code"] == "KNOWLEDGE_ACCESS_DENIED"
         assert repo.search_args is None
 
     asyncio.run(scenario())
