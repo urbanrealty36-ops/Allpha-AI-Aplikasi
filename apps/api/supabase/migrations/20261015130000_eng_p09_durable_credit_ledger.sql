@@ -168,7 +168,10 @@ begin
       and status = 'approved' and (effective_at is null or effective_at <= now())
       and (expires_at is null or expires_at > now()) for share;
   if not found or not coalesce((v_policy_row.configuration->>'allow_grants')::boolean, false)
-    or not coalesce((v_policy_row.configuration->'allowed_grant_types') ? v_type, false) then
+    or not coalesce((v_policy_row.configuration->'allowed_grant_types') ? v_type, false)
+    or not (v_policy_row.configuration ? 'max_grant_credits')
+    or coalesce((v_policy_row.configuration->>'max_grant_credits')::bigint,-1) < 0
+    or v_credits > (v_policy_row.configuration->>'max_grant_credits')::bigint then
     raise exception 'CREDIT_POLICY_NOT_APPROVED_FOR_GRANT' using errcode = '42501';
   end if;
   insert into public.credit_ledger_accounts(owner_user_id) values (v_owner) on conflict do nothing;
