@@ -145,6 +145,8 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
             "credits_to_reserve": command.credits_to_reserve,
             "estimated_usage_units": command.estimated_usage_units,
             "usage_unit": command.usage_unit,
+            "estimated_cost_microunits": command.estimated_cost_microunits,
+            "cost_unit": command.cost_unit,
             "credit_scheme_version": command.credit_scheme_version,
             "tariff_version": command.tariff_version,
             "entitlement_version": command.entitlement_version,
