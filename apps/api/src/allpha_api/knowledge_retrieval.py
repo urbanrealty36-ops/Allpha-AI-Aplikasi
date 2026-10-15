@@ -227,7 +227,7 @@ class SupabaseKeywordKnowledgeRepository:
             "agent_id": f"eq.{agent_id}",
             "agent_knowledge_sources.status": "eq.ready",
             "agent_knowledge_sources.sensitivity": "in.(" + ",".join(allowed_sensitivities) + ")",
-            "search_vector": "fts.simple." + query,
+            "search_vector": "fts(simple)." + query,
             "order": "chunk_index.asc",
             "limit": str(limit),
         }
