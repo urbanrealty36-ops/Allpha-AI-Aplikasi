@@ -45,7 +45,7 @@ No missing index should be created based only on name comparison; compare full `
 
 ### A3. Constraints
 
-The read-only catalog summary reported 76 CHECK, 9 FK, 7 PK and 4 UNIQUE constraints. This aggregate is not enough to mark individual migrations as matching. The final diff must record each constraint name and exact `pg_get_constraintdef` output, including validation/deferrability where applicable. In particular, verify:
+The earlier aggregate query reported 76 CHECK, 9 FK, 7 PK and 4 UNIQUE constraints; that count is superseded for the current seven application tables by the exact follow-up inventory recorded 2026-10-15: **50 constraints total (29 CHECK, 9 FK, 7 PK, 4 UNIQUE, 1 deferred constraint trigger)**. Keep platform/system-schema objects out of this application-table count. The count alone is not enough to mark individual migrations as matching. The final diff must record each constraint name and exact `pg_get_constraintdef` output, including validation/deferrability where applicable. In particular, verify:
 - `agent_ownerships` composite PK and single active-owner partial unique index;
 - unique Agent handle;
 - unique social-edge identity and edge-type/status checks;
@@ -831,3 +831,30 @@ Required decision record from named reviewers:
 4. **Knowledge source of truth:** choose an authoritative existing consent/grant subsystem or explicitly approve a new reviewed domain contract. The existing `user_consents` enum is only terms of service, privacy policy, and product updates; it is not knowledge-consent storage.
 
 No migration or provider should be activated until those decisions are recorded. Product Owner Option C approval remains direction-only. Until then ENG-P08 stays `in_progress` and ENG-P09 stays `blocked`.
+
+## J. Follow-up exact function-definition audit (2026-10-15)
+
+A second read-only query captured complete function definitions, identity arguments, owner, SECURITY DEFINER, and proconfig for all 14 application functions in public/private inventoried above. All 14 are owned by postgres; no knowledge-policy provider function is present in the inspected catalog.
+
+### Verified source/live semantic matches
+
+- public.create_ai_agent(text,text,text,text,jsonb,text,text,jsonb) is the single live overload. Its body, eight-argument contract, authenticated identity from auth.uid(), payload checks, owner-link insertion, invoker semantics and empty search_path semantically match the later migration 20261013055143_eng_p04_enforce_agent_owner_and_invoker_rpc.sql and the later reconciliation migration. This is a current semantic match, not proof of original historical SQL checksum.
+- private.require_agent_owner() is SECURITY DEFINER with empty search_path, checks an active owner row, and is attached through the deferred ai_agents_require_owner constraint trigger. Its current definition semantically matches the owner-enforcement migration.
+- public.enforce_social_edge_policy() is SECURITY DEFINER with empty search_path; its live behavior matches the current social-graph source for self-edge rejection, reciprocal block check, private-profile follow requests, accept transition, and block cleanup.
+- public.set_updated_at() is a non-definer trigger function with empty search_path; live EXECUTE grants still include PUBLIC/anon/authenticated and require FR-03 review. Trigger attachments on profiles, user_interests, and user_settings are present.
+- private.agent_created_by() and private.has_agent_ownership() use schema-qualified table references and empty search_path. Their owner/Agent checks are present.
+
+### Verified unresolved live/source drift
+
+- private.is_organization_admin() and private.is_organization_member() still reference public.organization_memberships, which is absent from the captured live catalog.
+- public.audit_organization_created() and public.create_organization_owner_membership() still reference missing public.audit_events and public.organization_memberships; these functions cannot be treated as operationally healthy merely because definitions remain present.
+- The historical migration ledger has version/name entries for reconstructed ENG-P02 baselines, but original applied SQL checksums are not available. Do not claim byte-for-byte provenance or replay the reconstructed baseline.
+- Source conflict between 20261013055121 (atomic-RPC-only direct-write contract) and 20261013055143 (authenticated INSERT grants required by the invoker RPC) is resolved only at the observed current-state level: live ACLs match the later migration. The intended long-term contract still needs explicit Privacy/Security + Data Platform approval; this packet does not fabricate that approval.
+- The full live policy/trigger/grant inventory is available in the preceding sections, but a complete per-object normalized source-to-live equality matrix is still not proven for every migration lineage. Do not change the phase to acceptance-passed on aggregate counts alone.
+
+### Required disposition
+
+1. Preserve the current safe fail-closed knowledge policy runtime; do not create a provider or physical consent/grant schema while its canonical owner remains unapproved.
+2. Keep FR-01–FR-05 as review-gated forward repairs; no SQL from this packet is executable migration source.
+3. Resolve missing organization/audit objects through provenance and recovery evidence, not blind replay.
+4. Continue source/unit/contract tests now. Reserve consolidated real Supabase/staging, RLS/grant and cross-user acceptance tests for ENG-P37 as specified in AGENTS.md.
