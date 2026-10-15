@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
@@ -41,7 +41,8 @@ export default function AgentStudioPage() {
   const [retrievalTraceId, setRetrievalTraceId] = useState("");
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalError, setRetrievalError] = useState("");
-  useEffect(() => { setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); setRetrievalLoading(false); }, [agentId]);
+  const retrievalRequestSequence = useRef(0);
+  useEffect(() => { retrievalRequestSequence.current += 1; setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); setRetrievalLoading(false); }, [agentId]);
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
@@ -151,6 +152,7 @@ export default function AgentStudioPage() {
 
   async function retrieveKnowledge() {
     if (!session || !retrievalQuery.trim() || retrievalLoading) return;
+    const requestSequence = ++retrievalRequestSequence.current;
     setRetrievalLoading(true); setRetrievalError(""); setRetrievalResults([]); setRetrievalTraceId("");
     try {
       const response = await fetch(`${apiBase}/v1/agents/${encodeURIComponent(agentId)}/knowledge/retrieve`, {
@@ -161,12 +163,13 @@ export default function AgentStudioPage() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error?.message ?? body?.detail?.message ?? `Retrieval gagal (${response.status}).`);
+      if (requestSequence !== retrievalRequestSequence.current) return;
       const payload = body as RetrievalResponse;
       setRetrievalTraceId(typeof payload.trace_id === "string" ? payload.trace_id : "");
       setRetrievalResults(Array.isArray(payload.results) ? payload.results : []);
     } catch (cause) {
-      setRetrievalError(cause instanceof Error ? cause.message : "Retrieval tidak dapat dijalankan.");
-    } finally { setRetrievalLoading(false); }
+      if (requestSequence === retrievalRequestSequence.current) setRetrievalError(cause instanceof Error ? cause.message : "Retrieval tidak dapat dijalankan.");
+    } finally { if (requestSequence === retrievalRequestSequence.current) setRetrievalLoading(false); }
   }
 
   async function uploadKnowledge(event: FormEvent<HTMLFormElement>) {
