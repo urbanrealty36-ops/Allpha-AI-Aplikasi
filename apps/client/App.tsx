@@ -15,6 +15,8 @@ type RegisteredTool = { key: string; version: string; name: string; description:
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[]; tool_dependencies?: string[] };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
 type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; title: string; status: string; created_at: string; last_activity_at: string };
+type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[] };
+type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; error_code?: string | null; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
@@ -123,6 +125,13 @@ function Profile({ session }: { session: Session }) {
   const [agentPassport, setAgentPassport] = useState<AgentPassport | null>(null);
   const [runtimeSessions, setRuntimeSessions] = useState<Record<string, RuntimeSession[]>>({});
   const [runtimeSessionBusy, setRuntimeSessionBusy] = useState<string | null>(null);
+  const [runtimeSkills, setRuntimeSkills] = useState<Record<string, RuntimeSkill[]>>({});
+  const [runtimeTools, setRuntimeTools] = useState<Record<string, RegisteredTool[]>>({});
+  const [runtimeTasks, setRuntimeTasks] = useState<Record<string, RuntimeTask[]>>({});
+  const [runtimeSkillBySession, setRuntimeSkillBySession] = useState<Record<string, string>>({});
+  const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
+  const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
+  const [runtimeTaskBusy, setRuntimeTaskBusy] = useState<string | null>(null);
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
@@ -141,11 +150,26 @@ function Profile({ session }: { session: Session }) {
     if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
     return body;
   }
+  async function loadRuntimeCatalog(agentId: string) {
+    const [skillsBody, toolsBody] = await Promise.all([
+      apiRequest("/v1/agents/" + encodeURIComponent(agentId) + "/skills"),
+      apiRequest("/v1/tools"),
+    ]) as [{ items?: RuntimeSkill[] }, { items?: RegisteredTool[] }];
+    setRuntimeSkills(current => ({ ...current, [agentId]: skillsBody.items ?? [] }));
+    setRuntimeTools(current => ({ ...current, [agentId]: (toolsBody.items ?? []).filter(tool => tool.executable) }));
+  }
+  async function loadRuntimeSessionTasks(sessionId: string) {
+    const body = await apiRequest("/v1/agent-runtime/sessions/" + encodeURIComponent(sessionId)) as { tasks?: RuntimeTask[] };
+    setRuntimeTasks(current => ({ ...current, [sessionId]: body.tasks ?? [] }));
+  }
   async function loadRuntimeSessions(agentId: string) {
     setRuntimeSessionBusy(agentId); setError("");
     try {
       const body = await apiRequest("/v1/agent-runtime/sessions?limit=100") as { items?: RuntimeSession[] };
-      setRuntimeSessions(current => ({ ...current, [agentId]: (body.items ?? []).filter(item => item.agent_id === agentId) }));
+      const items = (body.items ?? []).filter(item => item.agent_id === agentId);
+      setRuntimeSessions(current => ({ ...current, [agentId]: items }));
+      await loadRuntimeCatalog(agentId);
+      await Promise.all(items.map(item => loadRuntimeSessionTasks(item.id)));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Sesi runtime tidak dapat dimuat."); }
     finally { setRuntimeSessionBusy(null); }
   }
@@ -155,11 +179,42 @@ function Profile({ session }: { session: Session }) {
       const body = await apiRequest("/v1/agent-runtime/sessions", {
         method: "POST", body: JSON.stringify({ agent_id: agent.id, title: "Percakapan " + agent.display_name }),
       }) as { session: RuntimeSession };
-      setMessage("Sesi runtime tersimpan melalui FastAPI. Eksekusi tool memerlukan capability dan policy version yang disetujui.");
-      await loadRuntimeSessions(agent.id);
       setRuntimeSessions(current => ({ ...current, [agent.id]: [body.session, ...(current[agent.id] ?? []).filter(item => item.id !== body.session.id)] }));
+      setRuntimeTasks(current => ({ ...current, [body.session.id]: [] }));
+      await loadRuntimeCatalog(agent.id);
+      setMessage("Sesi runtime tersimpan melalui FastAPI. Pilih Skill terpublikasi untuk membuat task.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Sesi runtime tidak dapat dibuat."); }
     finally { setRuntimeSessionBusy(null); }
+  }
+  async function createRuntimeTask(item: RuntimeSession) {
+    const skillId = runtimeSkillBySession[item.id], toolKey = runtimeToolBySession[item.id];
+    if (!skillId || !toolKey) { setError("Pilih Skill terpublikasi dan tool yang dideklarasikan."); return; }
+    setRuntimeTaskBusy(item.id); setError(""); setMessage("");
+    try {
+      let inputs: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(runtimeInputsBySession[item.id] || "{}");
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Input task harus berupa objek JSON.");
+        inputs = parsed as Record<string, unknown>;
+      } catch (cause) { throw new Error(cause instanceof Error ? cause.message : "Input JSON tidak valid."); }
+      const idempotencyKey = "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+      const body = await apiRequest("/v1/agent-runtime/tasks", {
+        method: "POST", body: JSON.stringify({ session_id: item.id, skill_id: skillId, tool_key: toolKey, inputs, idempotency_key: idempotencyKey }),
+      }) as { task: RuntimeTask; idempotent_replay?: boolean };
+      setRuntimeTasks(current => ({ ...current, [item.id]: [body.task, ...(current[item.id] ?? []).filter(task => task.id !== body.task.id)] }));
+      setRuntimeInputsBySession(current => ({ ...current, [item.id]: "{}" }));
+      setMessage(body.idempotent_replay ? "Task sudah pernah diterima; status dipulihkan." : "Task tersimpan melalui API. Eksekusi tetap membutuhkan policy runtime yang disetujui.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Task tidak dapat dibuat."); }
+    finally { setRuntimeTaskBusy(null); }
+  }
+  async function runtimeTaskAction(item: RuntimeSession, task: RuntimeTask, action: "execute" | "cancel" | "recover") {
+    setRuntimeTaskBusy(task.id); setError(""); setMessage("");
+    try {
+      const body = await apiRequest("/v1/agent-runtime/tasks/" + encodeURIComponent(task.id) + "/" + action, { method: "POST", body: "{}" }) as { task: RuntimeTask };
+      setRuntimeTasks(current => ({ ...current, [item.id]: (current[item.id] ?? []).map(value => value.id === task.id ? body.task : value) }));
+      setMessage(action === "execute" ? "Permintaan eksekusi diproses oleh API." : action === "cancel" ? "Permintaan pembatalan diproses oleh API." : "Status dipulihkan tanpa replay otomatis.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi task gagal."); }
+    finally { setRuntimeTaskBusy(null); }
   }
   useEffect(() => {
     let active = true; setLoading(true); setError("");
@@ -470,7 +525,31 @@ function Profile({ session }: { session: Session }) {
           <TextInput accessibilityLabel="Deskripsi Agent" value={agentDescription} onChangeText={setAgentDescription} maxLength={1000} style={field} placeholder="Deskripsi Agent" placeholderTextColor="#8B94AC"/>
           <Button title={busy ? "Membuat…" : "Buat Agent privat"} disabled={busy || agentName.trim().length < 2 || !/^[a-z0-9_]{3,30}$/.test(agentHandle.trim())} onPress={() => void createAgent()}/>
           <Button title="Muat ulang daftar" secondary disabled={agentLoading} onPress={() => void loadAgents()}/>
-          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/><Button title={runtimeSessionBusy === agent.id ? "Menyimpan…" : "Buat sesi runtime"} disabled={runtimeSessionBusy !== null} secondary onPress={() => void createRuntimeSession(agent)}/><Button title="Muat sesi" disabled={runtimeSessionBusy !== null} secondary onPress={() => void loadRuntimeSessions(agent.id)}/></View>{(runtimeSessions[agent.id] ?? []).map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.title} · {item.status}</Text><Text style={s.muted}>{new Date(item.last_activity_at).toLocaleString("id-ID")} · {item.id}</Text></View>)}</View>) : <Text style={s.muted}>Belum ada Agent. Buat identitas pertama Anda.</Text>}
+          {agentLoading ? <ActivityIndicator color="#A5B4FC"/> : agents.length ? agents.map(agent => <View key={agent.id} style={s.socialRow}><Text style={s.body}>{agent.display_name} · @{agent.handle}</Text><Text style={s.muted}>{agent.status} · {agent.visibility} · {agent.ownership?.role || "owner"}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Lihat Passport" secondary disabled={agent.status !== "active" || agent.visibility !== "public"} onPress={() => void loadPassport(agent.handle)}/><Button title={agent.visibility === "public" ? "Jadikan privat" : "Publikasikan"} disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { visibility: agent.visibility === "public" ? "private" : "public", status: "active" })}/><Button title="Arsipkan" secondary disabled={busy || agent.status === "archived"} onPress={() => void updateAgent(agent, { status: "archived", visibility: "private" })}/><Button title="Kelola Skills & Tools" secondary onPress={() => void loadAgentStudio(agent.id)}/><Button title={runtimeSessionBusy === agent.id ? "Memuat…" : "Buat sesi runtime"} disabled={runtimeSessionBusy !== null} secondary onPress={() => void createRuntimeSession(agent)}/><Button title="Muat sesi & task" disabled={runtimeSessionBusy !== null} secondary onPress={() => void loadRuntimeSessions(agent.id)}/></View>{(runtimeSessions[agent.id] ?? []).map(item => {
+            const selectedSkill = (runtimeSkills[agent.id] ?? []).find(skill => skill.id === runtimeSkillBySession[item.id]);
+            const allowedToolKeys = selectedSkill?.tool_dependencies ?? [];
+            const tasks = runtimeTasks[item.id] ?? [];
+            return <View key={item.id} style={s.socialRow}>
+              <Text style={s.body}>{item.title} · {item.status}</Text><Text style={s.muted}>{new Date(item.last_activity_at).toLocaleString("id-ID")} · {item.id}</Text>
+              <Text style={s.kicker}>SKILL TERPUBLIKASI</Text>
+              {(runtimeSkills[agent.id] ?? []).filter(skill => skill.status === "published").map(skill => <Button key={skill.id} title={(runtimeSkillBySession[item.id] === skill.id ? "✓ " : "") + skill.name + " · v" + skill.version} secondary disabled={runtimeTaskBusy === item.id} onPress={() => { setRuntimeSkillBySession(current => ({ ...current, [item.id]: skill.id })); setRuntimeToolBySession(current => ({ ...current, [item.id]: "" })); }}/>)}
+              {!(runtimeSkills[agent.id] ?? []).some(skill => skill.status === "published") && <Text style={s.muted}>Belum ada Skill terpublikasi. Draft tidak dapat dieksekusi.</Text>}
+              <Text style={s.kicker}>TOOL YANG DIDEKLARASIKAN SKILL</Text>
+              {(runtimeTools[agent.id] ?? []).filter(tool => allowedToolKeys.includes(tool.key)).map(tool => <Button key={tool.key} title={(runtimeToolBySession[item.id] === tool.key ? "✓ " : "") + tool.name + " · " + tool.key} secondary disabled={!selectedSkill || runtimeTaskBusy === item.id} onPress={() => setRuntimeToolBySession(current => ({ ...current, [item.id]: tool.key }))}/>)}
+              <TextInput accessibilityLabel="Input task JSON" value={runtimeInputsBySession[item.id] ?? "{}"} onChangeText={value => setRuntimeInputsBySession(current => ({ ...current, [item.id]: value }))} multiline style={[field,{minHeight:72,textAlignVertical:"top"}]} placeholder="{ } input task JSON" placeholderTextColor="#8B94AC"/>
+              <Button title={runtimeTaskBusy === item.id ? "Membuat task…" : "Buat task"} disabled={runtimeTaskBusy === item.id || !selectedSkill || !runtimeToolBySession[item.id]} onPress={() => void createRuntimeTask(item)}/>
+              <Text style={s.kicker}>TASK LIFECYCLE</Text>
+              {tasks.length === 0 ? <Text style={s.muted}>Belum ada task pada sesi ini.</Text> : tasks.map(task => <View key={task.id} style={s.card}>
+                <Text style={s.body}>{task.tool_key} · {task.state}</Text><Text style={s.muted}>ID: {task.id} · {task.error_code ?? "Tanpa error"}</Text>
+                {task.output_payload && <Text style={s.muted}>Output: {JSON.stringify(task.output_payload)}</Text>}
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                  <Button title="Jalankan" secondary disabled={runtimeTaskBusy === task.id || task.state !== "created"} onPress={() => void runtimeTaskAction(item, task, "execute")}/>
+                  <Button title="Batalkan" secondary disabled={runtimeTaskBusy === task.id || !["created","queued","waiting_for_approval","waiting_for_input"].includes(task.state)} onPress={() => void runtimeTaskAction(item, task, "cancel")}/>
+                  <Button title="Pulihkan" secondary disabled={runtimeTaskBusy === task.id || ["succeeded","partially_succeeded","failed","cancelled","timed_out","budget_exhausted"].includes(task.state)} onPress={() => void runtimeTaskAction(item, task, "recover")}/>
+                </View>
+              </View>)}
+            </View>;
+          })}</View>) : <Text style={s.muted}>Belum ada Agent. Buat identitas pertama Anda.</Text>}
           {studioAgentId && <View style={s.socialRow}><Text style={s.kicker}>AGENT STUDIO · SKILLS & CAPABILITIES</Text><Text style={s.muted}>Kelola prosedur dan deklarasi capability. Deklarasi tidak memberi izin eksekusi; runtime wajib memeriksa policy pada setiap aksi.</Text><TextInput accessibilityLabel="Slug Skill" value={studioSlug} onChangeText={setStudioSlug} autoCapitalize="none" maxLength={60} style={field} placeholder="summarize_text" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Nama Skill" value={studioSkillName} onChangeText={setStudioSkillName} maxLength={100} style={field} placeholder="Nama Skill" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Instruksi Skill" value={studioInstructions} onChangeText={setStudioInstructions} multiline maxLength={12000} style={[field,{minHeight:80,textAlignVertical:"top"}]} placeholder="Instruksi dan batasan prosedural" placeholderTextColor="#8B94AC"/><Text style={s.kicker}>TOOL DEPENDENCIES · REGISTRY</Text>{registeredTools.length ? registeredTools.map(tool => <Pressable key={tool.key} accessibilityRole="checkbox" accessibilityState={{ checked: studioToolDependencies.includes(tool.key) }} onPress={() => setStudioToolDependencies(current => current.includes(tool.key) ? current.filter(key => key !== tool.key) : [...current, tool.key])} style={[s.socialRow, { flexDirection: "row", alignItems: "flex-start", gap: 10 }]}><Text style={s.body}>{studioToolDependencies.includes(tool.key) ? "☑" : "□"}</Text><View style={{ flex: 1 }}><Text style={s.body}>{tool.name} · {tool.key} · v{tool.version}</Text><Text style={s.muted}>{tool.description} · risiko {tool.risk_level}</Text></View></Pressable>) : <Text style={s.muted}>Tidak ada tool executable atau registry belum termuat.</Text>}<TextInput accessibilityLabel="Permission scopes Skill" value={studioScope} onChangeText={setStudioScope} style={field} placeholder="content:read (pisahkan koma)" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Buat Skill draft"} disabled={busy || studioSlug.trim().length < 3 || studioSkillName.trim().length < 2} onPress={() => void createStudioSkill()}/><View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>KNOWLEDGE SOURCES</Text><Text style={s.title}>Pengetahuan Agent</Text><Text style={s.muted}>PDF, Markdown, TXT, DOCX · maks. 15 MiB. Dokumen tetap privat sampai pipeline indexing dan evaluasi selesai.</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={busy ? "Menunggu…" : "Pilih & unggah dokumen"} disabled={busy} onPress={() => void uploadKnowledgeDocument()}/><Button title="Muat ulang" secondary disabled={knowledgeLoading} onPress={() => void loadKnowledgeSources()}/></View>{knowledgeLoading ? <ActivityIndicator color="#A5B4FC"/> : knowledgeSources.length ? knowledgeSources.map(source => <View key={source.id} style={s.socialRow}><Text style={s.body}>{source.filename}</Text><Text style={s.muted}>{(source.size_bytes / 1024).toFixed(1)} KiB · {source.status}</Text><Text style={s.muted}>Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</Text>{source.latest_job && <Text style={s.status}>Job: {source.latest_job.status} · {source.latest_job.stage} · {source.latest_job.progress}% · percobaan {source.latest_job.attempt}{source.latest_job.error_code ? " · " + source.latest_job.error_code : ""}</Text>}<Text style={s.status}>SHA-256: {source.sha256.slice(0, 16)}…</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{(source.status === "quarantined" || source.status === "failed") && <Button title={source.status === "failed" ? "Coba lagi" : "Proses"} secondary disabled={busy} onPress={() => void knowledgeSourceAction(source, source.status === "failed" ? "retry" : "process")}/>}<Button title="Hapus" secondary disabled={busy} onPress={() => confirmKnowledgeDelete(source)}/></View></View>) : <Text style={s.muted}>Belum ada sumber pengetahuan untuk Agent ini.</Text>}</View><View style={[s.card, { padding: 14, borderRadius: 18 }]}>
         <Text style={s.kicker}>API CONTEXT RETRIEVAL</Text><Text style={s.title}>Uji konteks Agent</Text>
         <Text style={s.muted}>Mengambil potongan knowledge milik Agent ini melalui API terautentikasi. Ini preview retrieval dari sumber nyata, bukan jawaban generatif Agent. Policy sensitivitas tetap ditentukan server.</Text>
