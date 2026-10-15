@@ -286,3 +286,29 @@ def test_runtime_router_rejects_callable_only_non_durable_metering_sink():
         with pytest.raises(ModelRouterUnavailable, match="durable idempotent metering"):
             router.require_runtime_ready()
     asyncio.run(scenario())
+
+
+def test_runtime_router_fails_closed_when_cost_policy_approval_is_not_verified():
+    async def scenario():
+        class Meter:
+            async def write_idempotent(self, record):
+                return None
+
+        class DenyVerifier:
+            def is_approved(self, approval):
+                return False
+
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": FakeAdapter([])},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
+            cost_policy_verifier=DenyVerifier(),
+            metering_sink=Meter(),
+        )
+        with pytest.raises(ModelRouterUnavailable, match="verifier-confirmed active"):
+            router.require_runtime_ready()
+        with pytest.raises(ModelRouterUnavailable, match="unverified"):
+            await router.embed(request())
+    asyncio.run(scenario())
