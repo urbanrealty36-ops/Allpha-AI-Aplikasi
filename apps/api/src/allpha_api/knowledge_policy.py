@@ -106,7 +106,6 @@ class VersionedKnowledgePolicyResolver:
         )
 
 
-
 class VersionedKnowledgeRetrievalPolicy:
     """Adapter implementing the retrieval service's policy interface."""
 
@@ -123,6 +122,7 @@ class VersionedKnowledgeRetrievalPolicy:
             raise KnowledgeRetrievalUnavailable("knowledge policy is unavailable or revoked") from exc
         self.last_resolved = resolved
         return list(resolved.allowed_sensitivities)
+
 
 def load_policy_resolver_from_environment() -> VersionedKnowledgePolicyResolver | None:
     """Load an explicitly configured server-only module:function policy provider.
@@ -141,7 +141,9 @@ def load_policy_resolver_from_environment() -> VersionedKnowledgePolicyResolver 
             importlib.import_module(module_name), function_name
         )
         provider = factory()
-    except (ImportError, AttributeError, TypeError, ValueError):
+    except Exception:
+        # Configuration/import/factory failures must leave retrieval unavailable,
+        # not crash startup or accidentally enable a partial policy provider.
         return None
     if not callable(getattr(provider, "resolve", None)):
         return None
