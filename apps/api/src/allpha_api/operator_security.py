@@ -517,20 +517,6 @@ async def review_operator_capability(
             detail={"code": "CAPABILITY_REQUEST_NOT_FOUND", "message": "Permintaan capability yang masih menunggu tidak ditemukan."},
         )
     capability = current[0]
-    runtime_policy = None
-    if payload.decision == "approved":
-        matches = await privileged_rest_request("GET", "agent_runtime_policies", params={
-            "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,status",
-            "agent_id": f"eq.{capability['agent_id']}", "policy_version": f"eq.{payload.policy_version}",
-            "status": "eq.approved", "limit": "1",
-        })
-        runtime_policy = matches[0] if matches else None
-        if not runtime_policy:
-            raise HTTPException(status_code=409, detail={"code": "APPROVED_RUNTIME_POLICY_REQUIRED", "message": "Capability hanya dapat disetujui dengan policy runtime aktif yang sudah disetujui untuk Agent yang sama."})
-        if capability["capability_key"] not in (runtime_policy.get("approved_tool_keys") or []):
-            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_TOOL_DENIED", "message": "Tool capability tidak tercantum dalam policy runtime."})
-        if not set(capability.get("required_permission_scopes") or []).issubset(set(runtime_policy.get("required_permission_scopes") or [])):
-            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_SCOPE_DENIED", "message": "Scope capability melampaui policy runtime."})
     risk_level = capability.get("risk_level", "critical")
     if risk_level in ("high", "critical") and "platform:capabilities.review.high_risk" not in operator["scopes"]:
         await write_operator_audit(
@@ -547,6 +533,20 @@ async def review_operator_capability(
             detail={"code": "HIGH_RISK_REVIEW_SCOPE_REQUIRED", "message": "Capability berisiko tinggi memerlukan scope review tambahan."},
         )
 
+    runtime_policy = None
+    if payload.decision == "approved":
+        matches = await privileged_rest_request("GET", "agent_runtime_policies", params={
+            "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,status",
+            "agent_id": f"eq.{capability['agent_id']}", "policy_version": f"eq.{payload.policy_version}",
+            "status": "eq.approved", "limit": "1",
+        })
+        runtime_policy = matches[0] if matches else None
+        if not runtime_policy:
+            raise HTTPException(status_code=409, detail={"code": "APPROVED_RUNTIME_POLICY_REQUIRED", "message": "Capability hanya dapat disetujui dengan policy runtime aktif yang sudah disetujui untuk Agent yang sama."})
+        if capability["capability_key"] not in (runtime_policy.get("approved_tool_keys") or []):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_TOOL_DENIED", "message": "Tool capability tidak tercantum dalam policy runtime."})
+        if not set(capability.get("required_permission_scopes") or []).issubset(set(runtime_policy.get("required_permission_scopes") or [])):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_SCOPE_DENIED", "message": "Scope capability melampaui policy runtime."})
     timestamp = datetime.now(timezone.utc).isoformat()
     rows = await privileged_rest_request(
         "PATCH",
