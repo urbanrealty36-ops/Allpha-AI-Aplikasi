@@ -6,6 +6,7 @@ owner ID or allowed-sensitivity list from the caller.
 """
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
@@ -85,6 +86,27 @@ class KnowledgeRetrievalPolicy(Protocol):
         ...
 
 
+class ConfiguredKnowledgeRetrievalPolicy:
+    """Explicit server-configured sensitivity allowlist; unset config fails closed.
+
+    This platform-level switch does not replace future owner/tenant-specific policy.
+    Enable it only after intentionally selecting allowed sensitivity classes.
+    """
+    _VALID = {"public", "internal", "confidential", "restricted"}
+
+    def __init__(self, allowed: list[str]):
+        self._allowed = allowed if allowed and all(value in self._VALID for value in allowed) else []
+
+    @classmethod
+    def from_environment(cls) -> "ConfiguredKnowledgeRetrievalPolicy":
+        raw = os.getenv("ALLPHA_KNOWLEDGE_ALLOWED_SENSITIVITIES", "")
+        values = list(dict.fromkeys(item.strip().lower() for item in raw.split(",") if item.strip()))
+        return cls(values)
+
+    async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
+        return list(self._allowed)
+
+
 @dataclass
 class KnowledgeRetrievalService:
     repository: KnowledgeRetrievalRepository | None
@@ -124,7 +146,7 @@ async def retrieve_knowledge(
     user: dict[str, Any] = Depends(current_user),
 ):
     """Authenticated retrieval endpoint; identity and sensitivity never come from JSON."""
-    service = getattr(request.app.state, "knowledge_retrieval_service", None)
+    service = request_scoped_retrieval_service(request)
     if not isinstance(service, KnowledgeRetrievalService):
         raise HTTPException(
             status_code=503,
@@ -265,6 +287,42 @@ class SupabaseKeywordKnowledgeRepository:
                 score=0.0,
             ))
         return hits
+
+
+class KeywordOnlyKnowledgeRepository:
+    """Opt-in keyword-only mode over the existing full-text contract; not hybrid search."""
+    def __init__(self, *, keyword_repository: SupabaseKeywordKnowledgeRepository):
+        self._keyword = keyword_repository
+
+    async def authorize_agent(self, *, owner_id: str, agent_id: str) -> bool:
+        return await self._keyword.authorize_agent(owner_id=owner_id, agent_id=agent_id)
+
+    async def search_hybrid(self, *, owner_id: str, agent_id: str, query: str,
+                            allowed_sensitivities: list[str], limit: int, trace_id: str) -> list[RetrievalHit]:
+        return await self._keyword.search_keyword(
+            owner_id=owner_id, agent_id=agent_id, query=query,
+            allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
+        )
+
+
+def request_scoped_retrieval_service(request: Request) -> KnowledgeRetrievalService | None:
+    """Resolve an injected service or an explicitly enabled, user-token keyword service."""
+    configured = getattr(request.app.state, "knowledge_retrieval_service", None)
+    if isinstance(configured, KnowledgeRetrievalService):
+        return configured
+    mode = os.getenv("ALLPHA_KNOWLEDGE_RETRIEVAL_MODE", "disabled").strip().lower()
+    if mode != "keyword":
+        return None
+    token = getattr(request.state, "supabase_access_token", None)
+    if not isinstance(token, str) or not token.strip():
+        return None
+    policy = ConfiguredKnowledgeRetrievalPolicy.from_environment()
+    if not policy._allowed:
+        return None
+    keyword = SupabaseKeywordKnowledgeRepository(access_token=token)
+    return KnowledgeRetrievalService(
+        repository=KeywordOnlyKnowledgeRepository(keyword_repository=keyword), policy=policy
+    )
 
 
 class HybridKnowledgeRepository:
