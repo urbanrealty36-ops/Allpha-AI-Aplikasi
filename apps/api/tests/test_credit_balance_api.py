@@ -29,7 +29,7 @@ def test_credit_balance_is_scoped_to_verified_auth_identity(monkeypatch):
     try:
         response = TestClient(app).get("/v1/credits/balance", headers={"Authorization": "Bearer test"})
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(current_user, None)
 
     assert response.status_code == 200
     assert response.json()["account_id"] == "auth-user-123"
