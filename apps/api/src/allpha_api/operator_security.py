@@ -466,6 +466,33 @@ async def approve_operator_runtime_policy(
     return {"policy": rows[0], "runtime_authorized": False}
 
 
+@router.post("/operator/runtime-policies/{policy_id}/revoke", name="revoke_operator_runtime_policy")
+async def revoke_operator_runtime_policy(
+    policy_id: UUID,
+    payload: RuntimePolicyApproval,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    current = await privileged_rest_request("GET", "agent_runtime_policies", params={
+        "select": "id,agent_id,policy_version,status",
+        "id": f"eq.{policy_id}", "status": "eq.approved", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_NOT_ACTIVE", "message": "Hanya policy aktif yang dapat dicabut."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.revoke",
+        outcome="attempted", resource_type="agent_runtime_policy", resource_id=str(policy_id),
+        metadata={"agent_id": current[0]["agent_id"], "policy_version": current[0]["policy_version"], "reason": payload.reason})
+    timestamp = datetime.now(timezone.utc).isoformat()
+    rows = await privileged_rest_request("PATCH", "agent_runtime_policies", params={
+        "id": f"eq.{policy_id}", "status": "eq.approved",
+        "select": "id,agent_id,policy_version,status,revoked_by,revoked_at",
+    }, body={"status": "revoked", "revoked_by": operator["id"], "revoked_at": timestamp},
+       prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_REVOCATION_CONFLICT", "message": "Policy berubah selama proses pencabutan."})
+    return {"policy": rows[0], "runtime_authorized": False}
+
+
 @router.get("/operator/capabilities", name="list_operator_capability_requests")
 async def list_operator_capability_requests(
     limit: int = 50,
