@@ -70,6 +70,18 @@ class FakeRuntimeStore:
                     "event_log": list(row.get("event_log") or []) + [{"event": "execution_claimed", "at": "now", "trace_id": row["trace_id"]}]})
         return copy.deepcopy(row)
 
+    async def mark_unknown_effect(self, owner_id, task_id):
+        row = self.tasks.get(task_id)
+        if not row or row["owner_user_id"] != owner_id or row["state"] != "executing":
+            return None
+        if row.get("effect_outcome") not in {"started", "unknown"}:
+            return None
+        row.update({"state": "failed", "error_code": "EXECUTION_OUTCOME_UNKNOWN",
+                    "effect_outcome": "unknown", "execution_lease_token": None,
+                    "lease_expires_at": None, "completed_at": "now", "updated_at": "now",
+                    "task_version": row["task_version"] + 1})
+        return copy.deepcopy(row)
+
     async def append_checkpoint(self, owner_id, task_id, lease_token, task_version, sequence, step_key,
                                 input_fingerprint, checkpoint_hash, result_payload):
         row = self.tasks.get(task_id)
@@ -375,7 +387,7 @@ def test_execute_resumes_from_matching_checkpoint_without_reinvoking_tool(monkey
     finally:
         app.dependency_overrides.pop(current_user, None)
 
-def test_recovery_refuses_unknown_effect_outcome_without_replay(monkeypatch):
+def test_recovery_marks_unknown_effect_failed_without_replay(monkeypatch):
     from datetime import datetime, timedelta, timezone
     c = client(monkeypatch)
     try:
@@ -386,10 +398,11 @@ def test_recovery_refuses_unknown_effect_outcome_without_replay(monkeypatch):
         row["lease_expires_at"] = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         row["effect_outcome"] = "started"
         response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/recover")
-        assert response.status_code == 409
-        assert response.json()["error"]["code"] == "EXECUTION_OUTCOME_UNKNOWN"
-        assert response.json()["error"]["code"] != "replay_performed"
-        assert FakeRuntimeStore.tasks[task["id"]]["state"] == "executing"
+        assert response.status_code == 200
+        assert response.json()["task"]["state"] == "failed"
+        assert response.json()["error_code"] == "EXECUTION_OUTCOME_UNKNOWN"
+        assert response.json()["replay_performed"] is False
+        assert FakeRuntimeStore.tasks[task["id"]]["state"] == "failed"
     finally:
         app.dependency_overrides.pop(current_user, None)
 
