@@ -59,7 +59,11 @@ class FakeRuntimeStore:
 
     async def claim_task(self, owner_id, task_id, lease_token, *, lease_seconds=60):
         row = self.tasks.get(task_id)
-        if not row or row["owner_user_id"] != owner_id or row["state"] not in {"created", "queued", "retrying"}:
+        if not row or row["owner_user_id"] != owner_id:
+            return None
+        if row["state"] not in {"created", "queued", "retrying"} and not (
+            row["state"] == "executing" and row.get("effect_outcome") not in {"started", "unknown"}
+        ):
             return None
         row.update({"state": "executing", "task_version": row["task_version"] + 1,
                     "execution_lease_token": lease_token, "lease_expires_at": "fake-future",
@@ -75,9 +79,11 @@ class FakeRuntimeStore:
         row["checkpoint_hash"] = checkpoint_hash
         row["current_step_key"] = step_key
         row["effect_outcome"] = "completed"
-        return {"task_id": task_id, "sequence": sequence, "step_key": step_key,
-                "input_fingerprint": input_fingerprint, "checkpoint_hash": checkpoint_hash,
-                "result_payload": copy.deepcopy(result_payload)}
+        receipt = {"task_id": task_id, "task_version": task_version, "sequence": sequence, "step_key": step_key,
+                   "input_fingerprint": input_fingerprint, "checkpoint_hash": checkpoint_hash,
+                   "result_payload": copy.deepcopy(result_payload)}
+        row["checkpoint"] = copy.deepcopy(receipt)
+        return receipt
 
     async def get_latest_checkpoint(self, task_id):
         row = self.tasks.get(task_id)
@@ -334,6 +340,40 @@ def test_recovery_does_not_replay_created_task(monkeypatch):
     finally:
         app.dependency_overrides.pop(current_user, None)
 
+
+def test_execute_resumes_from_matching_checkpoint_without_reinvoking_tool(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        task = create_task(c, sid).json()["task"]
+        row = FakeRuntimeStore.tasks[task["id"]]
+        result = {
+            "state": "succeeded", "result": {"text": "hello"},
+            "provider_execution": False, "persistence": "durable_checkpoint",
+            "events": [{"state": "succeeded", "trace_id": row["trace_id"]}],
+        }
+        encoded = json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        row.update({
+            "state": "executing", "task_version": 2,
+            "lease_expires_at": (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat(),
+            "effect_outcome": "completed", "checkpoint_seq": 1,
+            "checkpoint": {
+                "task_id": task["id"], "task_version": 2, "sequence": 1,
+                "step_key": "tool:text.normalize", "input_fingerprint": row["request_fingerprint"],
+                "checkpoint_hash": hashlib.sha256(encoded).hexdigest(), "result_payload": result,
+            },
+        })
+        async def must_not_execute(*args, **kwargs):
+            raise AssertionError("a verified checkpoint must be resumed without re-running the tool")
+        monkeypatch.setattr("allpha_api.agent_runtime_api._runtime.execute_tool", must_not_execute)
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
+        assert response.status_code == 200
+        assert response.json()["task"]["state"] == "succeeded"
+        assert response.json()["task"]["output_payload"]["result"] == {"text": "hello"}
+        assert FakeRuntimeStore.tasks[task["id"]]["execution_lease_token"] is None
+    finally:
+        app.dependency_overrides.pop(current_user, None)
 
 def test_recovery_marks_stale_unknown_execution_without_replay(monkeypatch):
     from datetime import datetime, timedelta, timezone
