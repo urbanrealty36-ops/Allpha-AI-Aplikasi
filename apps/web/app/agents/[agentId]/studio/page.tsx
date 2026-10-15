@@ -41,6 +41,7 @@ export default function AgentStudioPage() {
   const [retrievalTraceId, setRetrievalTraceId] = useState("");
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalError, setRetrievalError] = useState("");
+  useEffect(() => { setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); setRetrievalLoading(false); }, [agentId]);
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
