@@ -210,3 +210,14 @@ ENG-P08 review decision update (2026-10-15): Product Owner approval of ADR-0005 
 - The commits were written to `main` through the canonical Urban Realty GitHub binding. CI for these exact commits must be checked before claiming the new tests passed; a green Railway deployment status alone is not test evidence.
 - No database schema, migration, production data, provider activation, or staging test was changed/run.
 - ENG-P08 remains `in_progress`; ENG-P09 remains `blocked`. Continue source/unit/contract work now. Consolidated staging/Supabase and cross-user acceptance stays deferred to ENG-P37. Independent Privacy/Security and Data Platform decisions remain pending; Product Owner Option C direction approval is recorded but is not a substitute for those reviews.
+
+
+## ENG-P08 follow-up catalog/caller evidence — 2026-10-15
+
+- Read-only production catalog recheck recorded in [Forward-Repair Review Packet, section K](../SECURITY/ENG-P08_FORWARD_REPAIR_REVIEW_PACKET.md): 19 public indexes, 27 public RLS policies, and 7 application triggers re-read from PostgreSQL catalogs. This confirms current inventory and selected definitions, not historical migration checksum identity or post-repair behavior.
+- Trigger review confirms `public.set_updated_at()` remains attached to the profiles, user_interests, and user_settings update triggers; direct EXECUTE grants remain a review-gated FR-03 issue.
+- API contract review recorded the current knowledge path: authenticated owner ID is server-derived; Agent authorization precedes repository search; caller bearer token is used for PostgREST; owner/Agent/source-status/sensitivity filters are pushed into the keyword query; missing provider/service and unapproved vector adapter fail closed. Source/unit tests cover these boundaries, but the newest test commit still has no observed GitHub Actions test result.
+- Review packet now explicitly separates current catalog inventory from historical migration provenance, describes the route-to-database matrix still needed for every handler, and specifies preconditions/postconditions/recovery requirements before any FR-01–FR-05 SQL can become a migration.
+- Relevant commits: policy factory fail-closed hardening `2f428e628da8bf43d70d369a8440e79891218670`; tests `7025f786c2eddec842de191f5ef26b0d0a162911`; phase update `809d98e08758b11b2260a9a2e0413e95bc79c253`; catalog/caller review packet `259e2b33779a6a160d61ca8500890e6c7e1b545b`.
+- CI boundary: Smoke workflow `38665772680` passed on earlier commit `8620afed12ab8e92b021887b606dff00ef3ae771`; it is not evidence that the new factory-exception tests passed. Railway success statuses are not treated as test results.
+- Status unchanged: ENG-P08 `in_progress`; ENG-P09 `blocked`. No production write, migration apply, knowledge provider activation, or staging/cross-user test was performed. ENG-P37 remains the scheduled staging integration acceptance phase.
