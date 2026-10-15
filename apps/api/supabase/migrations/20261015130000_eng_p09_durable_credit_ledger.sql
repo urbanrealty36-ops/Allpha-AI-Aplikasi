@@ -91,9 +91,11 @@ create table public.credit_reconciliation_events (
   actor_type text not null check (actor_type in ('system','operator')),
   actor_id uuid references auth.users(id) on delete restrict,
   details jsonb not null default '{}'::jsonb check (jsonb_typeof(details) = 'object'),
-  payload_fingerprint text not null check (payload_fingerprint ~ '^[0-9a-f]{64}
+  payload_fingerprint text not null check (payload_fingerprint ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz not null default now(),
   unique (owner_user_id, idempotency_key)
 );
+
 
 alter table public.credit_policy_versions enable row level security;
 alter table public.credit_ledger_accounts enable row level security;
