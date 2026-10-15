@@ -30,6 +30,8 @@ jobs:
       - working-directory: apps/web
         run: npm install --no-audit --no-fund
       - working-directory: apps/web
+        run: npm test
+      - working-directory: apps/web
         run: npm run build
 
   native-client-checks:
