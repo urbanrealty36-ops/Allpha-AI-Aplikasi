@@ -29,3 +29,22 @@ def test_durable_runtime_migration_is_source_only_and_non_destructive():
     assert "drop table" not in sql
     assert "insert into public.agent_runtime_tasks" not in sql
     assert "update public.agent_runtime_tasks" not in sql
+
+def test_effect_receipts_dedupe_by_stable_key_and_reject_fingerprint_conflicts():
+    sql = " ".join(MIGRATION.read_text().lower().split())
+    assert "unique (task_id, step_key, idempotency_key)" in sql
+    assert "on conflict (task_id, step_key, idempotency_key) do nothing" in sql
+    assert "receipt.input_fingerprint <> p_input_fingerprint" in sql
+    assert "idempotency key reused with a different input fingerprint" in sql
+    assert "receipt.status <> 'completed'" in sql
+    assert "set status = 'unknown', updated_at = now()" in sql
+
+
+def test_runtime_rpc_dollar_quoting_is_balanced_and_security_is_restricted():
+    sql = MIGRATION.read_text()
+    assert sql.count("as $$") == sql.count("$$;")
+    assert "as $" + "\n" not in sql
+    assert "\n$;\n" not in sql
+    assert sql.count("security definer") == 5
+    assert "set search_path = ''" in sql
+    assert "from public, anon, authenticated" in sql
