@@ -7,6 +7,12 @@ alter table public.ai_agents
 alter table public.agent_capabilities
   add column if not exists policy_version text;
 
+-- Capability policy versions are trusted approval metadata, never owner-authored.
+-- Replace the earlier table-wide UPDATE grant with a least-privilege column grant.
+revoke update on public.agent_capabilities from authenticated;
+grant update (description, required_permission_scopes, risk_level, status, updated_at)
+  on public.agent_capabilities to authenticated;
+
 create or replace function public.bump_ai_agent_version()
 returns trigger
 language plpgsql
