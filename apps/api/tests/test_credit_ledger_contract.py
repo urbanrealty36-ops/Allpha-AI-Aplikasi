@@ -18,7 +18,8 @@ def tariff(**changes):
         usage_unit="embedding_input_unit",
         credits_per_usage_unit=3,
         credit_scheme_version="credits-v1",
-        policy_approval_reference="approval-ref-1",
+        policy_approval_reference="approval-ref-1", policy_version="policy-v1",
+        estimated_usage_units=2, usage_unit="embedding_input_unit",
     )
     values.update(changes)
     return CapabilityTariff(**values)
@@ -96,5 +97,6 @@ def test_reservation_requires_explicit_versions_and_positive_amount():
             idempotency_key="reserve-2", account_id="account-1", task_id="task-1",
             capability_id="embedding", credits_to_reserve=0, credit_scheme_version="credits-v1",
             tariff_version="tariff-v1", entitlement_version="entitlement-v1",
-            policy_approval_reference="approval-ref-1",
+            policy_approval_reference="approval-ref-1", policy_version="policy-v1",
+            estimated_usage_units=2, usage_unit="embedding_input_unit",
         )
