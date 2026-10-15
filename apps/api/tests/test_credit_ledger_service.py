@@ -49,7 +49,8 @@ def command():
         capability_id="capability-x", credits_to_reserve=10,
         credit_scheme_version="scheme-v1", tariff_version="tariff-v1",
         entitlement_version="entitlement-v1", policy_approval_reference="approval-1", policy_version="lifecycle-v1",
-        estimated_usage_units=10, usage_unit="request",
+        estimated_usage_units=10, usage_unit="request", estimated_cost_microunits=10,
+        cost_unit="policy_cost_microunit",
     )
 
 
