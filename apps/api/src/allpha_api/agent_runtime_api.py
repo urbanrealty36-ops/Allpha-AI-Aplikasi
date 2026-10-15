@@ -307,7 +307,16 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         task = AgentTask(envelope)
         try:
             result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
-            completed = await store.finalize_task(owner_id, str(task_id), lease_token, int(row["task_version"]), 
+            checkpoint_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True,
+                                          separators=(",", ":"), allow_nan=False).encode("utf-8")
+            checkpoint = await store.append_checkpoint(
+                owner_id, str(task_id), lease_token, int(row["task_version"]),
+                int(row.get("checkpoint_seq") or 0) + 1, f"tool:{row['tool_key']}",
+                str(row["request_fingerprint"]), hashlib.sha256(checkpoint_bytes).hexdigest(), result,
+            )
+            if not checkpoint:
+                raise AgentRuntimePersistenceError("runtime checkpoint could not be durably committed")
+            completed = await store.finalize_task(owner_id, str(task_id), lease_token, int(row["task_version"]),
                 state=result["state"], output_payload=result, error_code=None,
                 event_log=list(row.get("event_log") or []) + result["events"])
             if not completed:
