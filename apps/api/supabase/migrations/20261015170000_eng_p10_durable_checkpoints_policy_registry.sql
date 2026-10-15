@@ -322,6 +322,43 @@ $;
 revoke all on function public.finalize_agent_runtime_task(uuid, uuid, uuid, integer, text, jsonb, text, jsonb) from public, anon, authenticated;
 grant execute on function public.finalize_agent_runtime_task(uuid, uuid, uuid, integer, text, jsonb, text, jsonb) to service_role;
 
+create or replace function public.mark_agent_runtime_effect_unknown(
+  p_task_id uuid, p_owner_user_id uuid
+)
+returns setof public.agent_runtime_tasks
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  task_row public.agent_runtime_tasks%rowtype;
+begin
+  select * into task_row from public.agent_runtime_tasks
+   where id = p_task_id and owner_user_id = p_owner_user_id for update;
+  if not found or task_row.state <> 'executing'
+     or task_row.lease_expires_at is null or task_row.lease_expires_at > now()
+     or coalesce(task_row.effect_outcome, 'none') not in ('started','unknown') then
+    return;
+  end if;
+  update public.agent_runtime_effect_receipts
+     set status = 'unknown', updated_at = now()
+   where task_id = p_task_id and step_key = task_row.current_step_key and status = 'started';
+  return query
+  update public.agent_runtime_tasks t
+     set state = 'failed', error_code = 'EXECUTION_OUTCOME_UNKNOWN',
+         effect_outcome = 'unknown',
+         event_log = t.event_log || jsonb_build_array(jsonb_build_object(
+           'state', 'failed', 'at', now(), 'trace_id', t.trace_id,
+           'reason_code', 'execution_outcome_unknown_no_replay')),
+         execution_lease_token = null, lease_expires_at = null,
+         completed_at = now(), updated_at = now(), task_version = t.task_version + 1
+   where t.id = p_task_id and t.owner_user_id = p_owner_user_id
+  returning t.*;
+end;
+$;
+revoke all on function public.mark_agent_runtime_effect_unknown(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.mark_agent_runtime_effect_unknown(uuid, uuid) to service_role;
+
 comment on table public.agent_runtime_policies is
   'Agent-scoped immutable policy versions; only approved active versions can authorize tools.';
 comment on table public.agent_runtime_checkpoints is
