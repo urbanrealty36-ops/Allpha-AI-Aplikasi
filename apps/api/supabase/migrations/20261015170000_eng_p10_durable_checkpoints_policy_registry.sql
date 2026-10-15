@@ -199,6 +199,92 @@ $$;
 revoke all on function public.append_agent_runtime_checkpoint(uuid, uuid, uuid, integer, bigint, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.append_agent_runtime_checkpoint(uuid, uuid, uuid, integer, bigint, text, text, text, jsonb) to service_role;
 
+create or replace function public.begin_agent_runtime_effect(
+  p_task_id uuid, p_owner_user_id uuid, p_lease_token uuid, p_task_version integer,
+  p_step_key text, p_idempotency_key text, p_input_fingerprint text
+)
+returns public.agent_runtime_effect_receipts
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  task_row public.agent_runtime_tasks%rowtype;
+  receipt public.agent_runtime_effect_receipts%rowtype;
+begin
+  select * into task_row from public.agent_runtime_tasks
+   where id = p_task_id and owner_user_id = p_owner_user_id for update;
+  if not found or task_row.state <> 'executing'
+     or task_row.execution_lease_token is distinct from p_lease_token
+     or task_row.lease_expires_at is null or task_row.lease_expires_at <= now()
+     or task_row.task_version <> p_task_version then
+    raise exception 'stale lease or task version' using errcode = '40001';
+  end if;
+
+  insert into public.agent_runtime_effect_receipts
+    (task_id, task_version, step_key, idempotency_key, input_fingerprint, status)
+  values
+    (p_task_id, p_task_version, p_step_key, p_idempotency_key, p_input_fingerprint, 'started')
+  on conflict (task_id, step_key, idempotency_key) do nothing;
+
+  select * into receipt from public.agent_runtime_effect_receipts
+   where task_id = p_task_id and step_key = p_step_key
+     and idempotency_key = p_idempotency_key for update;
+  if receipt.input_fingerprint <> p_input_fingerprint then
+    raise exception 'idempotency key reused with a different input fingerprint' using errcode = '23505';
+  end if;
+  update public.agent_runtime_tasks set effect_outcome = receipt.status, current_step_key = p_step_key,
+    updated_at = now() where id = p_task_id;
+  return receipt;
+end;
+$;
+revoke all on function public.begin_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text) from public, anon, authenticated;
+grant execute on function public.begin_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text) to service_role;
+
+create or replace function public.complete_agent_runtime_effect(
+  p_task_id uuid, p_owner_user_id uuid, p_lease_token uuid, p_task_version integer,
+  p_step_key text, p_idempotency_key text, p_input_fingerprint text, p_result_payload jsonb
+)
+returns public.agent_runtime_effect_receipts
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  task_row public.agent_runtime_tasks%rowtype;
+  receipt public.agent_runtime_effect_receipts%rowtype;
+begin
+  select * into task_row from public.agent_runtime_tasks
+   where id = p_task_id and owner_user_id = p_owner_user_id for update;
+  if not found or task_row.state <> 'executing'
+     or task_row.execution_lease_token is distinct from p_lease_token
+     or task_row.lease_expires_at is null or task_row.lease_expires_at <= now()
+     or task_row.task_version <> p_task_version then
+    raise exception 'stale lease or task version' using errcode = '40001';
+  end if;
+  update public.agent_runtime_effect_receipts
+     set status = 'completed', result_payload = p_result_payload,
+         completed_at = now(), updated_at = now()
+   where task_id = p_task_id and step_key = p_step_key
+     and idempotency_key = p_idempotency_key
+     and input_fingerprint = p_input_fingerprint and status = 'started'
+  returning * into receipt;
+  if not found then
+    select * into receipt from public.agent_runtime_effect_receipts
+     where task_id = p_task_id and step_key = p_step_key
+       and idempotency_key = p_idempotency_key and input_fingerprint = p_input_fingerprint;
+    if not found or receipt.status <> 'completed' then
+      raise exception 'effect receipt cannot be completed; outcome remains unknown' using errcode = '40001';
+    end if;
+  end if;
+  update public.agent_runtime_tasks set effect_outcome = 'completed', updated_at = now()
+   where id = p_task_id;
+  return receipt;
+end;
+$;
+revoke all on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) from public, anon, authenticated;
+grant execute on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) to service_role;
+
 comment on table public.agent_runtime_policies is
   'Agent-scoped immutable policy versions; only approved active versions can authorize tools.';
 comment on table public.agent_runtime_checkpoints is
