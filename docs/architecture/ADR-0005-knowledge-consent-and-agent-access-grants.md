@@ -1,6 +1,6 @@
 # ADR-0005: Canonical Knowledge Consent and Agent Access Grants
 
-- **Status:** Option B audit completed: no qualifying canonical engine/schema/API evidenced in the inspected repository. Awaiting Product Owner approval to proceed with fallback Option C, plus Privacy/Security + Data Platform review; NOT approved for schema implementation or activation.
+- **Status:** Product Owner approved the direction to pursue Option C on 2026-10-15. Read-only canonical Supabase schema audit is BLOCKED by connector permissions; physical schema/provider/migration are NOT approved and must not be implemented until schema evidence is available and Privacy/Security + Data Platform approve the design.
 - **Scope:** ENG-P08 knowledge retrieval authorization; dependency for ENG-P09 indexing/publishing and later derived-data deletion.
 - **Decision owner:** Product Owner. Required reviewers: Privacy/Security and Data Platform.
 - **Date:** 2026-10-15
@@ -36,6 +36,31 @@ Repository evidence:
 
 This is a logical contract proposal, not an approved physical schema. Table/column names, uniqueness rules, constraints, RLS, RPCs, grant privileges, history/retention behavior, and migration/rollback strategy must be designed against a read-only inspection of the actual canonical schema and approved by Data Platform and Privacy/Security before implementation. Do not create a second permission engine or duplicate an existing canonical lifecycle.
 
+## Option C direction and canonical schema audit (2026-10-15)
+
+The Product Owner approved the **direction** to pursue Option C; this is not approval of a physical schema or migration.
+
+Read-only inspection was attempted against the canonical Supabase project `AllphaAiAplikasi-db` (project ref `dvdziauyvuhcnqhrrrww`) using project metadata, table inventory, migration inventory, branch inventory, and a read-only `information_schema.tables` query. Each connector operation returned a permission error (`MCP error -32600: You do not have permission to perform this action`). Therefore:
+- The live schema, applied migration ledger, grants/RLS and any existing canonical privacy engine remain **UNVERIFIED**.
+- Do not infer that the live database lacks a capability from the denied inspection.
+- No schema changes, provider, migration, branch, or project were created.
+
+### Review-ready logical design (not physical DDL)
+
+The following is a logical contract for Privacy/Security and Data Platform review only. It intentionally specifies no table names, columns, SQL, RPCs, or physical constraints before schema inspection.
+
+1. **Consent decision:** resolve an explicit owner consent for a named knowledge-processing purpose; include effective status, policy/consent version, recorded/revoked timestamps and audit/provenance reference.
+2. **Agent/resource grant:** resolve an owner-authorized grant scoped to the exact Agent and permitted knowledge resource/source set; include audience, purpose, sensitivity ceiling, lifecycle/expiry/revocation and version.
+3. **Trusted context:** derive owner from authenticated server identity and Agent/resource from the authorized route/domain record. Ignore caller-supplied ownership, consent, grant, audience and sensitivity as authority.
+4. **Decision trace:** bind each allow/deny decision to policy, consent, grant, source and source-version identifiers; never include private source text in audit logs.
+5. **Revocation semantics:** deny subsequent retrieval as soon as revocation is effective under an explicitly reviewed consistency contract; enqueue/track deletion or invalidation of chunks, embeddings, summaries, caches and indexes derived from the revoked scope.
+6. **Fail-closed behavior:** missing, stale, ambiguous, cross-owner/cross-Agent, expired, revoked or unavailable authorization state denies before search. No fallback to general terms/privacy consent or sensitivity allowlists.
+7. **Review questions:** confirm whether any existing canonical service/API outside the inspected repository should own these semantics; determine canonical source-of-truth and lifecycle; define retention/deletion and audit access; confirm RLS/privilege boundaries and revocation propagation; approve consistency/availability behavior and test strategy.
+
+### Required next evidence
+
+An authorized read-only Supabase connector/session with schema inspection permissions is required to inventory canonical schemas, tables/columns, constraints, functions/RPCs, RLS policies, grants, extensions and applied migrations. Reconcile that inventory against repository migrations before deciding whether Option C needs any physical objects. After the evidence is captured, Privacy/Security and Data Platform must review and explicitly approve the mapping before provider implementation or migration design proceeds.
+ 
 ## Proposed decision and runtime invariants
 
 Pending approval, keep ENG-P08 retrieval disabled/fail-closed unless a trusted provider supplies a valid current policy snapshot. The server must derive owner identity from authentication and Agent identity from the route/resource. Client-supplied owner, consent, grant, purpose, sensitivity or audience is never authorization.
