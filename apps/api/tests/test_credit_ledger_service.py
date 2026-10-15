@@ -92,7 +92,7 @@ def test_success_settles_actual_amount_and_releases_unused_reservation():
     assert settlement == SettlementCommand(
         reservation_id="reservation-1", idempotency_key="settle-key",
         source_event_id="usage-event-1", policy_version="lifecycle-v1",
-        actual_credits=7, release_unused=True,
+        actual_credits=7, actual_usage_units=7, usage_unit="request", release_unused=True,
     )
 
 
