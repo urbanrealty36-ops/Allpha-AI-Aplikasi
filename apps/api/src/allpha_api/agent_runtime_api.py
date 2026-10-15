@@ -353,6 +353,19 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             if not completed:
                 raise AgentRuntimePersistenceError("task execution result could not be durably committed")
             return {"task": completed, "idempotent_replay": False}
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if exc.status_code == 409 and str(detail.get("code", "")).startswith("RUNTIME_CHECKPOINT_"):
+                failed_events = list(row.get("event_log") or [])
+                failed_events.append(_event("failed", row["trace_id"], "checkpoint_integrity_rejected"))
+                failed = await store.finalize_task(
+                    owner_id, str(task_id), lease_token, int(row["task_version"]),
+                    state="failed", output_payload=None, error_code=str(detail["code"]),
+                    event_log=failed_events,
+                )
+                if not failed:
+                    raise AgentRuntimePersistenceError("invalid checkpoint could not be durably terminalized") from exc
+            raise
         except (AgentRuntimeBlocked, UnknownToolError) as exc:
             failed_state = task.state.value if task.state.value in {"failed", "timed_out"} else "failed"
             failed_events = list(row.get("event_log") or []) + task.events
