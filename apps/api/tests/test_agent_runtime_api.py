@@ -400,19 +400,15 @@ def test_execute_resumes_from_matching_checkpoint_without_reinvoking_tool(monkey
 def test_expired_lease_can_be_reclaimed_but_stale_worker_cannot_finalize(monkeypatch):
     from datetime import datetime, timedelta, timezone
     store = FakeRuntimeStore()
-    sid = create_session(client(monkeypatch),)  # HTTP helper below creates the persisted session.
-    # Use the API-created task so the fixture follows the same owner/idempotency contract.
     c = client(monkeypatch)
     try:
         session_id = create_session(c)
         task = create_task(c, session_id).json()["task"]
         task_id = task["id"]
         first = FakeRuntimeStore.tasks[task_id]
-        old_claim = awaitable_not_used = None
         first.update({"state": "executing", "task_version": 2, "execution_lease_token": "old-lease",
                       "lease_expires_at": (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(),
                       "effect_outcome": "none"})
-        stale_finalize = awaitable_not_used
         # Run the async store methods via the event loop helper used by pytest's TestClient context.
         import asyncio
         reclaimed = asyncio.run(store.claim_task(OWNER, task_id, "new-lease"))
