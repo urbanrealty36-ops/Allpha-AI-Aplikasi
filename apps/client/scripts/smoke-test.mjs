@@ -36,4 +36,13 @@ assert.match(app,/bukan izin runtime/);
 assert.doesNotMatch(app,/policy-test-v1|terms-test-v1/);
 assert.doesNotMatch(app,/service_role|SUPABASE_SERVICE_ROLE_KEY/i);
 assert.ok(existsSync(new URL("../README.md",import.meta.url)));
-console.log("ENG-P01 native source/config smoke tests passed.");
+
+for (const contract of [
+  "/v1/agent-runtime/tasks", "createRuntimeTask", "runtimeTaskAction",
+  "idempotency_key", "SKILL TERPUBLIKASI", "TASK LIFECYCLE",
+  "Jalankan", "Batalkan", "Pulihkan"
+]) assert.ok(app.includes(contract), `missing Native runtime lifecycle contract: ${contract}`);
+assert.ok(app.includes("loadRuntimeSessionTasks"));
+assert.ok(app.includes("execution tetap membutuhkan policy runtime yang disetujui"));
+
+console.log("ENG-P01 source and ENG-P10 task lifecycle smoke tests passed.");
