@@ -25,10 +25,15 @@ class CostEstimate:
     model_version: str
     usage_units: int
     cost_microunits: int
+    usage_unit: str
+    cost_unit: str
+    pricing_version: str
 
     def __post_init__(self) -> None:
         if not self.provider_id.strip() or not self.model_id.strip() or not self.model_version.strip():
             raise ValueError("cost estimate must identify provider and immutable model version")
+        if not self.usage_unit.strip() or not self.cost_unit.strip() or not self.pricing_version.strip():
+            raise ValueError("cost estimate must identify usage unit, cost unit and pricing version")
         if self.usage_units < 0 or self.cost_microunits < 0:
             raise ValueError("cost estimate values must be non-negative")
 
@@ -38,11 +43,16 @@ class CostBudget:
     sensitivity: str
     max_usage_units: int
     max_cost_microunits: int
+    usage_unit: str
+    cost_unit: str
+    pricing_version: str
     require_actual_cost: bool = True
 
     def __post_init__(self) -> None:
         if self.sensitivity not in {"public", "internal", "confidential", "restricted"}:
             raise ValueError("unsupported sensitivity for cost budget")
+        if not self.usage_unit.strip() or not self.cost_unit.strip() or not self.pricing_version.strip():
+            raise ValueError("cost budget must identify usage unit, cost unit and pricing version")
         if self.max_usage_units < 0 or self.max_cost_microunits < 0:
             raise ValueError("cost budget limits must be non-negative")
 
@@ -71,6 +81,9 @@ class CostAuthorization:
     model_version: str
     reserved_usage_units: int
     reserved_cost_microunits: int
+    usage_unit: str
+    cost_unit: str
+    pricing_version: str
 
 
 def authorize_cost(
@@ -85,6 +98,8 @@ def authorize_cost(
         raise CostPolicyUnavailable("no approved cost budget for requested sensitivity")
     if estimate is None:
         raise CostPolicyUnavailable("no trusted cost estimate for selected provider/model")
+    if (estimate.usage_unit, estimate.cost_unit, estimate.pricing_version) != (budget.usage_unit, budget.cost_unit, budget.pricing_version):
+        raise CostPolicyRejected("estimate units or pricing version do not match the approved budget")
     if estimate.usage_units > budget.max_usage_units:
         raise CostPolicyRejected("estimated usage exceeds approved request budget")
     if estimate.cost_microunits > budget.max_cost_microunits:
@@ -96,6 +111,9 @@ def authorize_cost(
         model_version=estimate.model_version,
         reserved_usage_units=estimate.usage_units,
         reserved_cost_microunits=estimate.cost_microunits,
+        usage_unit=estimate.usage_unit,
+        cost_unit=estimate.cost_unit,
+        pricing_version=estimate.pricing_version,
     )
 
 
@@ -109,6 +127,8 @@ def validate_actual_cost(
     """Reject missing required attribution or usage/cost above the authorized cap."""
     if budget.sensitivity != authorization.sensitivity:
         raise CostPolicyRejected("cost budget sensitivity differs from authorization")
+    if (budget.usage_unit, budget.cost_unit, budget.pricing_version) != (authorization.usage_unit, authorization.cost_unit, authorization.pricing_version):
+        raise CostPolicyRejected("cost budget units or pricing version differ from authorization")
     if actual_usage_units is None or actual_cost_microunits is None:
         if budget.require_actual_cost:
             raise CostPolicyRejected("provider result lacks required usage/cost attribution")
