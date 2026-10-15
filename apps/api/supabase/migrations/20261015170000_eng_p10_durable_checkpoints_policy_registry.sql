@@ -20,8 +20,8 @@ create table if not exists public.agent_runtime_policies (
   created_at timestamptz not null default now(),
   unique (agent_id, policy_version),
   unique (id, agent_id),
-  check ((status = 'approved') = (approved_by is not null and approved_at is not null)),
-  check ((status = 'revoked') = (revoked_by is not null and revoked_at is not null))
+  check (status <> 'approved' or (approved_by is not null and approved_at is not null)),
+  check (status <> 'revoked' or (revoked_by is not null and revoked_at is not null))
 );
 create index if not exists agent_runtime_policies_active_idx
   on public.agent_runtime_policies(agent_id, policy_version) where status = 'approved';
