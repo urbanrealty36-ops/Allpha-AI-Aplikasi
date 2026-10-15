@@ -42,6 +42,8 @@ def test_credit_ledger_mutations_are_server_only_and_append_only():
     assert "credit_ledger_release" in sql
     assert "credit_ledger_reverse" in sql
     assert "credit_ledger_mark_pending" in sql
+    assert "credit_ledger_reconcile_projection" in sql
+    assert "credit_reconciliation_events" in sql
     assert "credit_partial_settlement_not_approved" in sql
     assert "credit_success_settlement_not_approved" in sql
     assert "credit_failure_release_not_approved" in sql
