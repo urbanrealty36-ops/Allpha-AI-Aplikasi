@@ -16,6 +16,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.supabase_credit_ledger_store import CreditLedgerPersistenceError, SupabaseCreditLedgerStore
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
 from allpha_api.operator_security import router as operator_security_router
 from allpha_api.knowledge import router as knowledge_router
@@ -157,6 +158,25 @@ class OrganizationCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     slug: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
 
+
+
+@app.get("/v1/credits/balance", tags=["credits"])
+async def get_credit_balance(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Return the authenticated user's server-derived AI Credit balance projection."""
+    try:
+        store = SupabaseCreditLedgerStore.from_environment()
+        balance = await store.get_balance(owner_user_id=str(user["id"]))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "CREDIT_LEDGER_NOT_CONFIGURED", "message": "Layanan AI Credits belum dikonfigurasi."},
+        ) from exc
+    except CreditLedgerPersistenceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "CREDIT_LEDGER_UNAVAILABLE", "message": "Saldo AI Credits belum dapat dibaca."},
+        ) from exc
+    return {"account_id": user["id"], **balance}
 
 @app.get("/healthz", tags=["system"])
 async def healthz() -> dict[str, str]:
