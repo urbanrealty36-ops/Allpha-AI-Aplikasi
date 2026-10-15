@@ -248,6 +248,7 @@ begin
   if not (v_cap ? 'max_cost_microunits')
     or coalesce(v_cap->>'cost_unit','') <> v_cost_unit
     or coalesce(v_cap->>'cost_pricing_version','') = ''
+    or coalesce((v_cap->>'max_cost_microunits')::bigint,-1) < 0
     or v_estimated_cost > (v_cap->>'max_cost_microunits')::bigint then
     raise exception 'CREDIT_COST_GUARDRAIL_NOT_CONFIGURED_OR_EXCEEDED' using errcode = '42501';
   end if;
@@ -356,13 +357,14 @@ begin
   if v_metering.cost_unit <> v_cap->>'cost_unit'
     or v_metering.pricing_version <> v_cap->>'cost_pricing_version'
     or not (v_cap ? 'max_cost_microunits')
+    or coalesce((v_cap->>'max_cost_microunits')::bigint,-1) < 0
     or v_metering.cost_microunits > (v_cap->>'max_cost_microunits')::bigint then
     raise exception 'CREDIT_ACTUAL_COST_GUARDRAIL_EXCEEDED_OR_MISMATCH' using errcode = '23514';
   end if;
   if jsonb_typeof(v_cap) <> 'object'
     or v_cap->>'tariff_version' <> v_res.tariff_version
     or v_cap->>'usage_unit' <> v_usage_unit
-    or v_cap->>'usage_unit' <> p_command->>'usage_unit'
+
     or v_actual <> v_actual_units * coalesce((v_cap->>'credits_per_usage_unit')::bigint,0) then
     raise exception 'CREDIT_ACTUAL_USAGE_TARIFF_MISMATCH' using errcode = '22023';
   end if;
