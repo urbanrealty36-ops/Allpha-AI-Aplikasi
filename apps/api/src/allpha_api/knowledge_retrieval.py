@@ -306,7 +306,11 @@ class KeywordOnlyKnowledgeRepository:
 
 
 def request_scoped_retrieval_service(request: Request) -> KnowledgeRetrievalService | None:
-    """Resolve an injected service or an explicitly enabled, user-token keyword service."""
+    """Resolve injected wiring or explicitly configured canonical policy provider.
+
+    An environment sensitivity allowlist alone is not authorization and cannot activate
+    retrieval. The provider must resolve current knowledge consent, revocation and grants.
+    """
     configured = getattr(request.app.state, "knowledge_retrieval_service", None)
     if isinstance(configured, KnowledgeRetrievalService):
         return configured
@@ -316,12 +320,17 @@ def request_scoped_retrieval_service(request: Request) -> KnowledgeRetrievalServ
     token = getattr(request.state, "supabase_access_token", None)
     if not isinstance(token, str) or not token.strip():
         return None
-    policy = ConfiguredKnowledgeRetrievalPolicy.from_environment()
-    if not policy._allowed:
+    from allpha_api.knowledge_policy import (
+        VersionedKnowledgeRetrievalPolicy,
+        load_policy_resolver_from_environment,
+    )
+    resolver = load_policy_resolver_from_environment()
+    if resolver is None:
         return None
     keyword = SupabaseKeywordKnowledgeRepository(access_token=token)
     return KnowledgeRetrievalService(
-        repository=KeywordOnlyKnowledgeRepository(keyword_repository=keyword), policy=policy
+        repository=KeywordOnlyKnowledgeRepository(keyword_repository=keyword),
+        policy=VersionedKnowledgeRetrievalPolicy(resolver),
     )
 
 
