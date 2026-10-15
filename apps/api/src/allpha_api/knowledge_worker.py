@@ -21,6 +21,7 @@ import httpx
 
 from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
 from allpha_api.model_router import (
+    CanonicalModelRouter,
     EmbeddingRouter,
     ModelRouterRejected,
     ModelRouterUnavailable,
@@ -258,6 +259,12 @@ def main() -> None:
     worker = factory()
     if not isinstance(worker, KnowledgeEmbeddingWorker):
         raise SystemExit("Worker factory must return KnowledgeEmbeddingWorker")
+    if not isinstance(worker.router, CanonicalModelRouter):
+        raise SystemExit("Worker disabled: runtime must use CanonicalModelRouter")
+    try:
+        worker.router.require_runtime_ready()
+    except ModelRouterUnavailable as exc:
+        raise SystemExit(f"Worker disabled: {exc}") from exc
     asyncio.run(run_forever(worker))
 
 
