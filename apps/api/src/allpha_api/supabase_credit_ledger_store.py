@@ -51,7 +51,9 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
             raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for server-side ledger persistence")
         return cls(supabase_url=url, service_key=key, transport=transport)
 
-    async def _rpc(self, name: str, command: dict[str, Any]) -> dict[str, Any]:
+    async def _rpc(
+        self, name: str, command: dict[str, Any], *, require_operation_receipt: bool = True
+    ) -> dict[str, Any]:
         headers = {
             "apikey": self._service_key,
             "Authorization": f"Bearer {self._service_key}",
@@ -88,7 +90,9 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
             result = response.json()
         except ValueError as exc:
             raise CreditLedgerPersistenceError("Supabase credit ledger returned non-JSON response") from exc
-        if not isinstance(result, dict) or not result.get("reservation_id") and not result.get("entry_id"):
+        if not isinstance(result, dict):
+            raise CreditLedgerPersistenceError("Supabase credit ledger returned an invalid result")
+        if require_operation_receipt and not result.get("reservation_id") and not result.get("entry_id"):
             raise CreditLedgerPersistenceError("Supabase credit ledger did not confirm a durable result")
         return result
 
@@ -105,6 +109,29 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise CreditLedgerPersistenceError("Supabase credit ledger returned an invalid reservation receipt") from exc
+
+
+    async def get_balance(self, *, owner_user_id: str) -> dict[str, Any]:
+        """Read a derived balance projection for an owner ID derived by authenticated API."""
+        result = await self._rpc(
+            "credit_ledger_get_balance",
+            {"p_owner_user_id": owner_user_id},
+            require_operation_receipt=False,
+        )
+        required = {"available_credits", "reserved_credits", "ledger_entry_count", "as_of"}
+        if not required.issubset(result):
+            raise CreditLedgerPersistenceError("Supabase credit ledger returned an invalid balance projection")
+        try:
+            if int(result["available_credits"]) < 0 or int(result["reserved_credits"]) < 0:
+                raise ValueError("negative balance")
+            return {
+                "available_credits": int(result["available_credits"]),
+                "reserved_credits": int(result["reserved_credits"]),
+                "ledger_entry_count": int(result["ledger_entry_count"]),
+                "as_of": result["as_of"],
+            }
+        except (TypeError, ValueError) as exc:
+            raise CreditLedgerPersistenceError("Supabase credit ledger returned invalid balance values") from exc
 
     async def reserve(self, command: CreditReservationCommand) -> ReservationReceipt:
         result = await self._rpc("credit_ledger_reserve", {
