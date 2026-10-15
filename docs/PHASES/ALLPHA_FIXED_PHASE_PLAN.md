@@ -201,3 +201,12 @@ ENG-P08 update (2026-10-15): the live function-definition follow-up was recorded
 
 
 ENG-P08 review decision update (2026-10-15): Product Owner approval of ADR-0005 Option C direction is recorded in [Issue #3 comment](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/issues/3#issuecomment-6188017846). This is Product Owner/design-direction approval only; it is not represented as an independent Privacy/Security or Data Platform sign-off and does not authorize production DB writes. Independent technical decisions for FR-01–FR-05 remain pending until those responsible reviewers explicitly approve. Continue ENG-P08 source/unit/contract work; do not pull ENG-P37 integrated staging acceptance forward.
+
+
+## ENG-P08 implementation update — policy factory fail-closed hardening (2026-10-15)
+
+- Commit `2f428e628da8bf43d70d369a8440e79891218670` hardens `load_policy_resolver_from_environment()`: any ordinary import/configuration/provider-factory exception now returns no resolver. It does not activate a provider or relax the fail-closed retrieval default.
+- Commit `7025f786c2eddec842de191f5ef26b0d0a162911` adds source-level negative tests for import-time exceptions, provider factory exceptions, and a factory result without a callable `resolve` method.
+- The commits were written to `main` through the canonical Urban Realty GitHub binding. CI for these exact commits must be checked before claiming the new tests passed; a green Railway deployment status alone is not test evidence.
+- No database schema, migration, production data, provider activation, or staging test was changed/run.
+- ENG-P08 remains `in_progress`; ENG-P09 remains `blocked`. Continue source/unit/contract work now. Consolidated staging/Supabase and cross-user acceptance stays deferred to ENG-P37. Independent Privacy/Security and Data Platform decisions remain pending; Product Owner Option C direction approval is recorded but is not a substitute for those reviews.
