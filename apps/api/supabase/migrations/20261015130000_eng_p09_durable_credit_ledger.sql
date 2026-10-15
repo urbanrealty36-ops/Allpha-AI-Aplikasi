@@ -202,6 +202,8 @@ declare
   v_tariff text := p_command->>'tariff_version';
   v_units bigint := (p_command->>'estimated_usage_units')::bigint;
   v_usage_unit text := p_command->>'usage_unit';
+  v_estimated_cost bigint := (p_command->>'estimated_cost_microunits')::bigint;
+  v_cost_unit text := p_command->>'cost_unit';
   v_credits bigint := (p_command->>'credits_to_reserve')::bigint;
   v_task text := p_command->>'task_id';
   v_fingerprint text := encode(extensions.digest(p_command::text, 'sha256'), 'hex');
@@ -217,7 +219,8 @@ begin
   if v_owner is null or v_key is null or length(v_key) not between 1 and 256
     or v_credits is null or v_credits <= 0 or v_units is null or v_units <= 0
     or coalesce(v_capability,'') = '' or coalesce(v_task,'') = ''
-    or coalesce(v_usage_unit,'') = '' then
+    or coalesce(v_usage_unit,'') = '' or v_estimated_cost is null
+    or v_estimated_cost < 0 or coalesce(v_cost_unit,'') = '' then
     raise exception 'INVALID_CREDIT_RESERVATION' using errcode = '22023';
   end if;
   select * into v_policy_row from public.credit_policy_versions
@@ -241,6 +244,12 @@ begin
     or coalesce((v_entitlement->>'max_concurrent_reservations')::bigint,0) <= 0
     or v_credits > (v_entitlement->>'max_credits_per_request')::bigint then
     raise exception 'CREDIT_ENTITLEMENT_LIMITS_NOT_CONFIGURED' using errcode = '42501';
+  end if;
+  if not (v_cap ? 'max_cost_microunits')
+    or coalesce(v_cap->>'cost_unit','') <> v_cost_unit
+    or coalesce(v_cap->>'cost_pricing_version','') = ''
+    or v_estimated_cost > (v_cap->>'max_cost_microunits')::bigint then
+    raise exception 'CREDIT_COST_GUARDRAIL_NOT_CONFIGURED_OR_EXCEEDED' using errcode = '42501';
   end if;
   if v_credits <> v_units * (v_cap->>'credits_per_usage_unit')::bigint then
     raise exception 'CREDIT_RESERVATION_ESTIMATE_MISMATCH' using errcode = '22023';
@@ -343,6 +352,12 @@ begin
   if not found then raise exception 'CREDIT_SETTLEMENT_METERING_NOT_FOUND' using errcode = '23503'; end if;
   if v_metering.usage_units <> v_actual_units or v_metering.usage_unit <> v_usage_unit then
     raise exception 'CREDIT_SETTLEMENT_METERING_USAGE_MISMATCH' using errcode = '22023';
+  end if;
+  if v_metering.cost_unit <> v_cap->>'cost_unit'
+    or v_metering.pricing_version <> v_cap->>'cost_pricing_version'
+    or not (v_cap ? 'max_cost_microunits')
+    or v_metering.cost_microunits > (v_cap->>'max_cost_microunits')::bigint then
+    raise exception 'CREDIT_ACTUAL_COST_GUARDRAIL_EXCEEDED_OR_MISMATCH' using errcode = '23514';
   end if;
   if jsonb_typeof(v_cap) <> 'object'
     or v_cap->>'tariff_version' <> v_res.tariff_version
@@ -454,7 +469,9 @@ declare
   v_reversed bigint;
 begin
   if v_owner is null or v_original_id is null or coalesce(v_key,'') = ''
-    or coalesce(v_reason,'') = '' or v_credits is null or v_credits <= 0 then
+    or coalesce(v_reason,'') = '' or coalesce(p_command->>'source_event_id','') = ''
+    or coalesce(p_command->>'entry_type','reversal') not in ('refund','reversal')
+    or v_credits is null or v_credits <= 0 then
     raise exception 'INVALID_CREDIT_REVERSAL' using errcode = '22023';
   end if;
   select * into v_policy_row from public.credit_policy_versions
@@ -480,8 +497,10 @@ begin
   end if;
   select coalesce(sum(credits),0) into v_reversed from public.credit_ledger_entries
     where owner_user_id=v_owner and related_entry_id=v_original.id and entry_type in ('refund','reversal');
-  if v_credits + v_reversed > v_original.credits
-    or v_credits > coalesce((v_policy_row.configuration->>'max_reversal_credits')::bigint,v_original.credits) then
+  if not (v_policy_row.configuration ? 'max_reversal_credits')
+    or coalesce((v_policy_row.configuration->>'max_reversal_credits')::bigint,0) <= 0
+    or v_credits + v_reversed > v_original.credits
+    or v_credits > (v_policy_row.configuration->>'max_reversal_credits')::bigint then
     raise exception 'CREDIT_REVERSAL_LIMIT_EXCEEDED' using errcode = '23514';
   end if;
   insert into public.credit_balance_projection(owner_user_id) values(v_owner) on conflict do nothing;
