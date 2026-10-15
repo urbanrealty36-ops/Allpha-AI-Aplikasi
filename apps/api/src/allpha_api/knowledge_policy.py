@@ -54,7 +54,10 @@ class VersionedKnowledgePolicyResolver:
         self._provider = provider
 
     async def resolve(self, *, owner_id: str, agent_id: str) -> ResolvedKnowledgePolicy:
-        snapshot = await self._provider.resolve(owner_id=owner_id, agent_id=agent_id)
+        try:
+            snapshot = await self._provider.resolve(owner_id=owner_id, agent_id=agent_id)
+        except Exception as exc:
+            raise KnowledgePolicyUnavailable("canonical knowledge policy provider failed") from exc
         if snapshot is None:
             raise KnowledgePolicyUnavailable("canonical knowledge policy snapshot is unavailable")
         if (
@@ -85,6 +88,7 @@ class VersionedKnowledgeRetrievalPolicy:
 
     def __init__(self, resolver: VersionedKnowledgePolicyResolver):
         self._resolver = resolver
+        self.last_resolved: ResolvedKnowledgePolicy | None = None
 
     async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
         try:
@@ -93,6 +97,7 @@ class VersionedKnowledgeRetrievalPolicy:
             # Translate policy failure into the retrieval API's stable fail-closed error.
             from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
             raise KnowledgeRetrievalUnavailable("knowledge policy is unavailable or revoked") from exc
+        self.last_resolved = resolved
         return list(resolved.allowed_sensitivities)
 
 def load_policy_resolver_from_environment() -> VersionedKnowledgePolicyResolver | None:
