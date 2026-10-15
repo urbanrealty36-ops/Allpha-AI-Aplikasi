@@ -7,8 +7,9 @@ No default provider/model is selected: deployment policy must configure both.
 """
 import asyncio
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Protocol
+from typing import Protocol
 from allpha_api.cost_policy import CostBudget, CostEstimate, authorize_cost, validate_actual_cost
+from allpha_api.metering_contract import IdempotentMeteringSink, build_metering_record
 from allpha_api.embedding_contract import EmbeddingFailure, EmbeddingRequest, EmbeddingResponse, validate_response_matches_request
 
 class ModelRouterUnavailable(RuntimeError):
@@ -39,8 +40,6 @@ class EmbeddingRoute:
         if not 1 <= self.max_attempts <= 8:
             raise ValueError("max_attempts must be between 1 and 8")
 
-MeteringSink = Callable[[EmbeddingRequest, EmbeddingResponse], Awaitable[None]]
-
 class CanonicalModelRouter:
     """Own policy route selection, bounded timeout/retry and usage/cost metering.
 
@@ -48,7 +47,7 @@ class CanonicalModelRouter:
     closed. adapters are registered server-side provider integrations. No provider,
     model, dimension or fallback is guessed by this module.
     """
-    def __init__(self, *, routes: dict[str, EmbeddingRoute], adapters: dict[str, EmbeddingAdapter], metering_sink: MeteringSink | None = None, cost_budgets: dict[str, CostBudget] | None = None, cost_estimates: dict[str, CostEstimate] | None = None, retry_delay_seconds: float = 0.15):
+    def __init__(self, *, routes: dict[str, EmbeddingRoute], adapters: dict[str, EmbeddingAdapter], metering_sink: IdempotentMeteringSink | None = None, cost_budgets: dict[str, CostBudget] | None = None, cost_estimates: dict[str, CostEstimate] | None = None, retry_delay_seconds: float = 0.15):
         self._routes = dict(routes)
         self._adapters = dict(adapters)
         self._metering_sink = metering_sink
@@ -58,6 +57,21 @@ class CanonicalModelRouter:
         if self._cost_policy_enabled and (cost_budgets is None or cost_estimates is None):
             raise ValueError("cost_budgets and cost_estimates must be configured together")
         self._retry_delay_seconds = max(0.0, min(retry_delay_seconds, 2.0))
+
+    @property
+    def has_approved_cost_policy(self) -> bool:
+        return self._cost_policy_enabled and bool(self._cost_budgets) and bool(self._cost_estimates)
+
+    @property
+    def has_durable_metering_contract(self) -> bool:
+        return self._metering_sink is not None and callable(getattr(self._metering_sink, "write_idempotent", None))
+
+    def require_runtime_ready(self) -> None:
+        """Enforce runtime-only prerequisites without forcing test-only router construction."""
+        if not self.has_approved_cost_policy:
+            raise ModelRouterUnavailable("runtime requires explicit approved cost budgets and route estimates")
+        if not self.has_durable_metering_contract:
+            raise ModelRouterUnavailable("runtime requires a durable idempotent metering sink")
 
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         route = self._routes.get(request.sensitivity)
@@ -98,7 +112,8 @@ class CanonicalModelRouter:
                     except (ValueError, RuntimeError) as exc:
                         raise ModelRouterRejected(EmbeddingFailure(task_id=request.task_id, code="MODEL_ROUTER_COST_POLICY_REJECTED", retryable=False, trace_id=request.trace_id)) from exc
                 if self._metering_sink is not None:
-                    await self._metering_sink(request, response)
+                    record = build_metering_record(request, response)
+                    await self._metering_sink.write_idempotent(record)
                 return response
             except ModelRouterRejected:
                 raise
