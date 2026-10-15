@@ -1,4 +1,6 @@
 import copy
+import hashlib
+import json
 import uuid
 
 from fastapi.testclient import TestClient
@@ -18,9 +20,17 @@ TASK = "55555555-5555-4555-8555-555555555555"
 class FakeRuntimeStore:
     sessions = {}
     tasks = {}
-    capability = {"id": "cap-1", "capability_key": "text.normalize",
+    capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                   "required_permission_scopes": [], "status": "approved",
-                  "policy_version": "runtime-policy-v1", "updated_at": "2026-10-15T00:00:00Z"}
+                  "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
+                  "updated_at": "2026-10-15T00:00:00Z"}
+    policy_document = {"policy_version": "runtime-policy-v1", "approved_tool_keys": ["text.normalize"],
+                       "required_permission_scopes": []}
+    policy = {"id": "policy-1", "agent_id": AGENT, "policy_version": "runtime-policy-v1",
+              "policy_document": policy_document,
+              "policy_digest": hashlib.sha256(json.dumps(policy_document, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+              "approved_tool_keys": ["text.normalize"], "required_permission_scopes": [],
+              "risk_constraints": {}, "status": "approved"}
 
     @classmethod
     def from_environment(cls):
@@ -43,6 +53,28 @@ class FakeRuntimeStore:
 
     async def get_approved_capability(self, agent_id, tool_key):
         return copy.deepcopy(self.capability) if agent_id == AGENT and tool_key == "text.normalize" else None
+
+    async def get_approved_runtime_policy(self, agent_id, policy_id):
+        return copy.deepcopy(self.policy) if agent_id == AGENT and policy_id == self.policy["id"] and self.policy["status"] == "approved" else None
+
+    async def claim_task(self, owner_id, task_id, lease_token, *, lease_seconds=60):
+        row = self.tasks.get(task_id)
+        if not row or row["owner_user_id"] != owner_id or row["state"] not in {"created", "queued", "retrying"}:
+            return None
+        row.update({"state": "executing", "task_version": row["task_version"] + 1,
+                    "execution_lease_token": lease_token, "lease_expires_at": "fake-future",
+                    "event_log": list(row.get("event_log") or []) + [{"event": "execution_claimed", "at": "now", "trace_id": row["trace_id"]}]})
+        return copy.deepcopy(row)
+
+    async def finalize_task(self, owner_id, task_id, lease_token, task_version, *, state, output_payload,
+                            error_code, event_log):
+        row = self.tasks.get(task_id)
+        if not row or row["owner_user_id"] != owner_id or row.get("execution_lease_token") != lease_token or row["task_version"] != task_version:
+            return None
+        row.update({"state": state, "output_payload": output_payload, "error_code": error_code,
+                    "event_log": event_log, "completed_at": "now", "updated_at": "now",
+                    "execution_lease_token": None, "lease_expires_at": None, "task_version": row["task_version"] + 1})
+        return copy.deepcopy(row)
 
     async def create_session(self, body):
         row = {"id": SESSION, **body, "status": "active", "created_at": "now", "updated_at": "now"}
@@ -97,9 +129,18 @@ def client(monkeypatch, *, user_id=OWNER):
 def setup_function():
     FakeRuntimeStore.sessions = {}
     FakeRuntimeStore.tasks = {}
-    FakeRuntimeStore.capability = {"id": "cap-1", "capability_key": "text.normalize",
+    FakeRuntimeStore.capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                                    "required_permission_scopes": [], "status": "approved",
-                                   "policy_version": "runtime-policy-v1", "updated_at": "2026-10-15T00:00:00Z"}
+                                   "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
+                                   "updated_at": "2026-10-15T00:00:00Z"}
+    FakeRuntimeStore.policy = {"id": "policy-1", "agent_id": AGENT, "policy_version": "runtime-policy-v1",
+                               "policy_document": {"policy_version": "runtime-policy-v1", "approved_tool_keys": ["text.normalize"],
+                                                   "required_permission_scopes": []},
+                               "policy_digest": hashlib.sha256(json.dumps({"policy_version": "runtime-policy-v1",
+                                   "approved_tool_keys": ["text.normalize"], "required_permission_scopes": []},
+                                   sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                               "approved_tool_keys": ["text.normalize"], "required_permission_scopes": [],
+                               "risk_constraints": {}, "status": "approved"}
 
 
 def teardown_function():
