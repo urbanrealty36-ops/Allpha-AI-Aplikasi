@@ -196,6 +196,20 @@ Implementation-time CI evidence is now verified. Run [#675](https://github.com/u
 
 ENG-P10 remains `in_progress`, not closed: the operator approval path that supplies trusted `agent_capabilities.policy_version` and lifecycle/persistence edge-case review still need evidence. Four surfaces: API=CHANGE; Web=INTEGRATE; Native=INTEGRATE; Super Admin=NOT AFFECTED (no operator runtime surface introduced in this slice). No live migration/write, provider call, AI credit charge or staging E2E was performed. Real Supabase migration execution, RLS/grants, concurrency, cross-owner tests against an isolated target, and cross-app acceptance remain DEFERRED / NOT VERIFIED at ENG-P37. Runtime execution continues to fail closed without approved capability `policy_version`; unknown execution outcomes are not blindly replayed.
 
+## ENG-P10 implementation update — ADR-0007 approved (2026-10-15)
+
+The Product Owner approved ADR-0007 Option A. Source implementation is in progress on canonical `main`:
+- `docs/architecture/ADR-0007-agent-runtime-checkpoints-and-policy-binding.md` now records acceptance and scope boundaries.
+- New source-only migration `apps/api/supabase/migrations/20261015170000_eng_p10_durable_checkpoints_policy_registry.sql` adds Agent-scoped immutable policy versions/digests, policy-to-capability binding, task leases/versioning, ordered checkpoints, effect receipts, and server-only claim/checkpoint/finalize RPCs. Existing runtime migration remains separate and unchanged.
+- `agent_runtime_store.py` now exposes policy resolution, atomic lease claim/finalize, and checkpoint persistence/read methods.
+- `agent_runtime_api.py` now validates approved policy status, Agent binding, canonical SHA-256 digest, tool and scope membership before claiming; persists tool output as a checkpoint before finalization; can resume an expired execution from a matching verified checkpoint; and refuses replay for active leases or unknown started effects.
+- `operator_security.py` adds operator-scoped draft creation and high-risk approval of runtime policy versions, and capability approval now requires a matching approved policy for the same Agent.
+- Added source contract coverage for the new migration and API tests for policy digest rejection, checkpoint resume, and unknown-effect recovery.
+
+**Current status remains `in_progress`, not phase-complete.** No local test command could be run in this environment because the repository could not be cloned (network DNS unavailable). The GitHub Actions lookup exposed no push-run result for this changeset; the visible Railway status checks are deployment statuses, not test evidence. Therefore the latest source changes are **NOT CI-verified**. Migration remains source-only; no Supabase migration, database RPC, lease-concurrency, RLS/grant, owner-isolation, or authenticated cross-app test was executed. These real-environment checks remain deferred to ENG-P37.
+
+Four surfaces: API=CHANGE; Web=INTEGRATE; Native Client=INTEGRATE; Super Admin=CHANGE for the new operator policy lifecycle. Next action: run API pytest and the complete Allpha Smoke workflow against the current main head, repair all failures, then continue source-level crash/recovery and effect-receipt contract tests. Keep ENG-P10 `in_progress` until evidence is observed.
+
 > Historical ENG-P08/ENG-P09 notes below are retained as an audit trail. Where their earlier phase/status statements conflict with the current phase map and this section, the current phase rows and dated verification updates above take precedence.
 
 ## ENG-P08 implementation update — policy factory fail-closed hardening (2026-10-15)
