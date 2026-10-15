@@ -661,29 +661,23 @@ No test in this table has been executed against a real isolated Supabase databas
 
 This section records a new **read-only** query set against production project `dvdziauyvuhcnqhrrvww`. It supersedes any assumption that relation-level ACL inspection alone is a complete grant audit. No production write or migration was executed.
 
-### H1. Column-level grants materially expand the risk
+### H1. Explicit column ACLs versus table ACLs — corrected catalog interpretation
 
-The `information_schema.column_privileges` inventory shows these client-role grants:
+The first query used `information_schema.column_privileges`, which includes effective column privileges inherited from table-level grants. Repeated INSERT/SELECT/REFERENCES rows for every column therefore **do not by themselves prove explicit column-level grants**. A follow-up queried `pg_attribute.attacl` directly and separated explicit column ACLs from `pg_class.relacl`.
 
-| Table | Role | Column-level privileges observed | Assessment |
-|---|---|---|---|
-| `agent_ownerships` | `anon` | INSERT, REFERENCES, SELECT on all 5 columns | Unexpected; remove after review |
-| `agent_ownerships` | `authenticated` | INSERT, REFERENCES, SELECT on all 5 columns | **Critical mismatch** with ENG-P04 intent that ownership writes occur only through atomic `create_ai_agent` |
-| `ai_agents` | `anon` | SELECT on `id, handle, display_name, description, avatar_url, status, visibility, disclosure, created_at` | Intended public Passport projection candidate; retain only if source and RLS prove exact intended exposure |
-| `ai_agents` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 13 columns | **Critical mismatch**: column-level INSERT remains despite relation-level ENG-P04 revoke intent; direct insert may still be authorized at SQL privilege layer |
-| `profiles` | `authenticated` | INSERT on 7 self-editable columns; SELECT on 10; UPDATE on 6 self-editable columns | Matches least-privilege design in part; confirm exact RLS and source |
-| `social_edges` | `anon` | INSERT, REFERENCES, SELECT on all 6 columns | Unexpected; remove after review |
-| `social_edges` | `authenticated` | INSERT, REFERENCES, SELECT on all 6; UPDATE on `status` | Review against follow-request transition contract and target-only update policy |
-| `user_consents` | `anon` | INSERT, REFERENCES, SELECT, UPDATE on all 6 columns | Unexpected and privacy-sensitive; no knowledge-consent contract is implied by this table |
-| `user_consents` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 6 columns | Must be checked against user-scoped RLS and server-owned provenance/immutability expectations |
-| `user_interests` | `anon` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Unexpected |
-| `user_interests` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Check self-only RLS and API ownership contract |
-| `user_settings` | `anon` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Unexpected; contains privacy/notification preferences |
-| `user_settings` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Check self-only RLS and API ownership contract |
+Explicit column ACLs actually present in the live snapshot are:
 
-**Important PostgreSQL behavior:** revoking table-level INSERT/UPDATE does not automatically revoke separately granted column-level privileges. FR-01 must therefore inventory and revoke both relation and column ACLs; a repair that only uses `REVOKE ALL ON TABLE` is insufficient where column ACLs persist. FR-01 must include `agent_ownerships`, `social_edges`, `user_consents`, `user_interests`, and `user_settings`; the existing candidate file `20261014130000_eng_p04_revoke_anon_social_graph_privileges.sql` only covers two tables and is not recorded in the live migration ledger. It is not sufficient as the complete repair.
+| Table | Explicit column ACL | Assessment |
+|---|---|---|
+| `ai_agents` | `anon SELECT` on `id, handle, display_name, description, avatar_url, visibility, status, created_at, disclosure` | Matches the intended limited Passport projection in migration `20261013062523`; preserve deliberately, subject to RLS and API response review |
+| `profiles` | `authenticated INSERT(id)`; `authenticated UPDATE(username, display_name, avatar_url, bio, visibility, locale)` | Matches the intended self-editable profile fields; SELECT remains table-level and RLS-scoped |
+| `social_edges` | `authenticated UPDATE(status)` | Required candidate for follow-request acceptance; verify target-only RLS transition and ensure other columns cannot be modified |
 
-Do not remove the explicit `anon SELECT` projection on `ai_agents` indiscriminately: public Passport needs a deliberate, narrowly scoped projection. Confirm column-level grants, RLS predicates, API response shaping, and source migration together before deciding the final allowlist.
+No explicit `attacl` entries were observed on `agent_ownerships`, `user_consents`, `user_interests`, or `user_settings`. The earlier table listing that repeated privileges across all columns reflected table-level ACLs and is superseded by this distinction.
+
+**The real table-level issue remains:** `pg_class.relacl` shows broad relation ACLs, including `anon=arwdDxtm` on `agent_ownerships`, `social_edges`, `user_consents`, `user_interests`, and `user_settings`. The live `agent_ownerships` ACL grants authenticated INSERT/SELECT and extra privileges; `ai_agents` grants authenticated INSERT/SELECT/UPDATE and extra privileges. These are relation-level grants, not explicit per-column grants. FR-01 must reconcile table ACLs, explicit column ACLs, and default ACLs separately; it must not overstate what the column inventory proves.
+
+There is also a **source intent contradiction** requiring repair design review: migration `20261013055121_eng_p04_restrict_agent_table_writes.sql` says only the atomic RPC may create ownership links and revokes direct INSERT, but later migration `20261013055143_eng_p04_enforce_agent_owner_and_invoker_rpc.sql` re-grants `INSERT` on `agent_ownerships` and `SELECT, INSERT, UPDATE` on `ai_agents`. The current live relation ACL matches the latter grants. The live RLS policies also include `ai_agents_insert_creator` and `agent_ownerships_insert_self_owner`. Therefore the remaining risk is not an unproven “column grant survived revoke”; it is a conflict between the intended atomic-RPC-only invariant and the later source grant/policy state. FR-01 must resolve this explicitly and test the chosen contract before implementation.
 
 ### H2. Exact live function/overload inventory
 
