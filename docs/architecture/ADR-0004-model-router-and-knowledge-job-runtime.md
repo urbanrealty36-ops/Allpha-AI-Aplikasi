@@ -50,3 +50,13 @@ The source-only migration filters atomic lease claims by stage and adds a nullab
 - Queue tests must prove concurrent claims do not duplicate work, expired leases recover, stale source versions cannot publish, and finalization requires the current lease. SQL concurrency/privilege tests remain pending approved isolated non-production.
 - Router tests cover missing route, route identity/provenance mismatch, bounded transient retry, and metering callback. Provider adapter contract, real metering persistence, timeout regression, and deployment configuration remain pending.
 - Integration tests use only the approved isolated non-production environment.
+
+
+## ENG-P09 follow-up — approved runtime cost policy and metering contract (2026-10-15)
+
+- `CanonicalModelRouter` now exposes a runtime readiness gate. Knowledge worker startup requires this canonical router, explicit per-sensitivity budgets, route-matched estimates, a `CostPolicyApproval` reference, and an `IdempotentMeteringSink`; missing any prerequisite stops startup before the worker can claim jobs.
+- `CostPolicyApproval` records policy ID, version and an external approval reference. The object is only a reference/attestation field; it does not itself create or prove reviewer approval. No production approval or provider pricing has been fabricated.
+- `apps/api/src/allpha_api/metering_contract.py` defines the canonical immutable metering record and sink contract. A sink implementation must durably commit before success, treat same idempotency key + same fingerprint as a no-op, reject same key + different fingerprint, and propagate storage errors. The contract has no DB schema, persistence adapter, currency mapping, or provider-specific prices yet.
+- Provider SDK integration remains an adapter behind `EmbeddingAdapter` and `CanonicalModelRouter`. No concrete provider was selected or activated; adapter execution is bounded by route identity/version validation, request timeout, bounded transient retries, provenance validation, and cost checks.
+- Unit/contract tests were added in `apps/api/tests/test_metering_contract.py` and extended in `apps/api/tests/test_model_router.py`. They have not yet been observed passing in GitHub Actions and must not be reported as passed until a matching run is inspected.
+- This source-only change does not enable the worker in a deployment, write production data, apply migrations, select model/dimensions/index, enable pgvector/hybrid retrieval, or establish non-production integration evidence. ENG-P37 remains the consolidated staging acceptance phase.
