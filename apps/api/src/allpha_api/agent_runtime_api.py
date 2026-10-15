@@ -245,7 +245,17 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             return {"task": row, "idempotent_replay": True}
         if row["state"] == "cancelled":
             raise HTTPException(status_code=409, detail={"code": "TASK_CANCELLED", "message": "Task telah dibatalkan."})
-        if row["state"] != "created":
+        resuming = row["state"] == "executing"
+        if resuming:
+            try:
+                lease_expiry = datetime.fromisoformat(str(row.get("lease_expires_at")).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=409, detail={"code": "TASK_LEASE_UNKNOWN", "message": "Lease task tidak dapat diverifikasi; tidak dilakukan replay."})
+            if lease_expiry.tzinfo is None or lease_expiry > datetime.now(timezone.utc):
+                raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task masih memiliki lease aktif."})
+            if row.get("effect_outcome") in {"started", "unknown"}:
+                raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Efek telah dimulai tanpa receipt selesai; replay otomatis dilarang."})
+        elif row["state"] != "created":
             raise HTTPException(status_code=409, detail={"code": "TASK_NOT_EXECUTABLE", "message": "Task tidak berada pada state yang dapat dieksekusi."})
         agent = await store.get_agent(owner_id, row["agent_id"])
         skill = await store.get_skill(owner_id, row["agent_id"], row["skill_id"])
@@ -306,19 +316,41 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         )
         task = AgentTask(envelope)
         try:
-            result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
-            checkpoint_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True,
-                                          separators=(",", ":"), allow_nan=False).encode("utf-8")
-            checkpoint = await store.append_checkpoint(
-                owner_id, str(task_id), lease_token, int(row["task_version"]),
-                int(row.get("checkpoint_seq") or 0) + 1, f"tool:{row['tool_key']}",
-                str(row["request_fingerprint"]), hashlib.sha256(checkpoint_bytes).hexdigest(), result,
-            )
-            if not checkpoint:
-                raise AgentRuntimePersistenceError("runtime checkpoint could not be durably committed")
+            resumed_from_checkpoint = False
+            checkpoint = await store.get_latest_checkpoint(str(task_id)) if resuming else None
+            if resuming:
+                if not checkpoint or checkpoint.get("input_fingerprint") != row.get("request_fingerprint") or checkpoint.get("step_key") != f"tool:{row['tool_key']}":
+                    raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Checkpoint tidak cocok dengan input dan step task; replay ditolak."})
+                try:
+                    checkpoint_bytes = json.dumps(checkpoint["result_payload"], ensure_ascii=False, sort_keys=True,
+                                                  separators=(",", ":"), allow_nan=False).encode("utf-8")
+                except (KeyError, TypeError, ValueError, UnicodeEncodeError) as exc:
+                    raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Payload checkpoint tidak valid."}) from exc
+                if hashlib.sha256(checkpoint_bytes).hexdigest() != checkpoint.get("checkpoint_hash"):
+                    raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_DIGEST_MISMATCH", "message": "Digest checkpoint tidak cocok; replay ditolak."})
+                result = checkpoint["result_payload"]
+                if result.get("state") not in {"succeeded", "partially_succeeded", "failed", "timed_out", "budget_exhausted"}:
+                    raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Checkpoint bukan hasil terminal yang dapat dipulihkan."})
+                resumed_from_checkpoint = True
+            else:
+                result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
+                checkpoint_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True,
+                                              separators=(",", ":"), allow_nan=False).encode("utf-8")
+                checkpoint = await store.append_checkpoint(
+                    owner_id, str(task_id), lease_token, int(row["task_version"]),
+                    int(row.get("checkpoint_seq") or 0) + 1, f"tool:{row['tool_key']}",
+                    str(row["request_fingerprint"]), hashlib.sha256(checkpoint_bytes).hexdigest(), result,
+                )
+                if not checkpoint:
+                    raise AgentRuntimePersistenceError("runtime checkpoint could not be durably committed")
+            event_log = list(row.get("event_log") or [])
+            if resumed_from_checkpoint:
+                event_log.append(_event("succeeded" if result["state"] == "succeeded" else result["state"], row["trace_id"], "resumed_from_checkpoint"))
+            else:
+                event_log.extend(result["events"])
             completed = await store.finalize_task(owner_id, str(task_id), lease_token, int(row["task_version"]),
-                state=result["state"], output_payload=result, error_code=None,
-                event_log=list(row.get("event_log") or []) + result["events"])
+                state=result["state"], output_payload=result, error_code=result.get("error_code"),
+                event_log=event_log)
             if not completed:
                 raise AgentRuntimePersistenceError("task execution result could not be durably committed")
             return {"task": completed, "idempotent_replay": False}
