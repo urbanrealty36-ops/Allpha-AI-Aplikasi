@@ -858,3 +858,35 @@ A second read-only query captured complete function definitions, identity argume
 2. Keep FR-01–FR-05 as review-gated forward repairs; no SQL from this packet is executable migration source.
 3. Resolve missing organization/audit objects through provenance and recovery evidence, not blind replay.
 4. Continue source/unit/contract tests now. Reserve consolidated real Supabase/staging, RLS/grant and cross-user acceptance tests for ENG-P37 as specified in AGENTS.md.
+
+
+## K. Follow-up read-only catalog recheck and API authorization contract (2026-10-15)
+
+This section records a further read-only recheck of the canonical production catalog. It is evidence of current state only; it is not a production repair and does not replace historical migration provenance.
+
+### K1. Current indexes, RLS policies, and trigger attachments
+
+- The catalog query returned the same **19 public indexes** across the seven inventoried application tables. Names were enumerated directly from `pg_indexes`; this confirms the current inventory count, not historical migration checksums.
+- The current `pg_policies` query returned **27 public policies**. The policy shapes show owner/participant scoping for `agent_ownerships`, `profiles`, `social_edges`, `user_consents`, `user_interests`, and `user_settings`; `ai_agents` separately exposes a public/active anonymous SELECT policy and authenticated public-or-owned SELECT policy. These policy definitions do not neutralize broad relation grants by themselves; effective authorization is the intersection of grants and RLS.
+- The trigger-definition query returned **7 non-internal application triggers**:
+  - `ai_agents_require_owner` — deferred constraint trigger invoking `private.require_agent_owner()`.
+  - `ai_agents_touch_updated_at` — invokes `private.touch_updated_at()`.
+  - `profiles_create_user_settings` — invokes `public.create_identity_settings_for_existing_user()`.
+  - `profiles_set_updated_at`, `user_interests_set_updated_at`, and `user_settings_set_updated_at` — invoke `public.set_updated_at()`.
+  - `social_edges_policy_before_write` — invokes `public.enforce_social_edge_policy()`.
+- The three `set_updated_at()` attachments are present while its direct EXECUTE ACL remains a separate FR-03 issue. Do not infer trigger behavior after ACL repair until the approved isolated-target tests execute in ENG-P37.
+
+### K2. Route-to-database contract — bounded source evidence
+
+- The knowledge retrieval route derives `owner_id` from the authenticated caller and accepts an Agent identifier in the path. Its service checks Agent ownership before repository search; the keyword repository passes caller bearer credentials to `user_db_request` and pushes owner, Agent, source readiness, and sensitivity filters into the PostgREST query. These are source/unit-contract protections, not proof of live database acceptance.
+- Retrieval is explicitly unavailable if the request-scoped service or canonical policy provider is absent. General terms/privacy consent is not substituted for knowledge-specific consent. Hybrid retrieval fails closed without an approved vector adapter.
+- The current retrieval unit tests cover forged owner/sensitivity request fields, missing runtime configuration, unowned Agent denial before search, cross-owner/cross-Agent returned hits, sensitivity denial, missing provenance, source-version mismatch, unready sources, policy/consent-version trace, and revoked consent before search. These tests still require CI evidence for the newest commits before being counted as passing.
+- The client scan and route inventory remain bounded, not a claim that every dynamic client call and every handler in `apps/api/src/allpha_api/main.py` has been exhaustively reconciled. The remaining caller matrix must map each route/method to: auth dependency, trusted caller ID, PostgREST path/method, query filters, body/column allowlist, required table grants, RLS policy, expected allow case, expected deny case, and tests. Missing live relations for organization/ENG-P06/ENG-P07 routes must be marked non-operational until provenance is resolved.
+
+### K3. Forward-repair disposition
+
+No FR-01–FR-05 SQL is executable from this packet. Before a reviewed migration is created, each repair must include exact precondition assertions, narrowly scoped role/schema/object targets, preservation of the `ai_agents` Passport column allowlist, postcondition queries, application compatibility analysis, and recovery plan. FR-04 must not drop dangling functions or replay reconstructed ENG-P02 baseline SQL. FR-05 must not repurpose `user_consents` or activate a provider until the canonical consent/grant contract is reviewed.
+
+### K4. CI evidence boundary
+
+The latest known passing Allpha Smoke workflow referenced in the fixed phase plan is run [38665772680](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38665772680) on older commit `8620afed12ab8e92b021887b606dff00ef3ae771`. It passed API pytest, Web tests/build, and Native tests/typecheck at that commit. The newly committed policy factory exception tests at `7025f786c2eddec842de191f5ef26b0d0a162911` do **not** yet have an observed GitHub Actions test-run result in the available commit checks; Railway service statuses are deploy checks only. Do not claim these newest tests passed until a test workflow result is visible.
