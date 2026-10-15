@@ -20,6 +20,7 @@ type Agent = {
   ownership?: { owner_user_id: string; role: "owner"; status: "active"; since?: string };
 };
 type AgentListResponse = { items: Agent[] };
+type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; title: string; status: string; created_at: string; last_activity_at: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function responseError(response: Response): Promise<string> {
@@ -46,6 +47,8 @@ export default function AgentsPage() {
   const [disclosure, setDisclosure] = useState("Agent AI; respons dapat dihasilkan oleh model.");
   const [boundariesText, setBoundariesText] = useState('{"requires_owner_approval_for_external_actions":true,"private_owner_data":"owner_only"}');
   const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [runtimeSessions, setRuntimeSessions] = useState<Record<string, RuntimeSession[]>>({});
+  const [runtimeBusyAgent, setRuntimeBusyAgent] = useState<string | null>(null);
 
   const loadAgents = useCallback(async (active: Session) => {
     setLoading(true);
@@ -139,6 +142,40 @@ export default function AgentsPage() {
     }
   }
 
+  async function loadRuntimeSessions(agentId: string) {
+    if (!session) return;
+    setRuntimeBusyAgent(agentId); setError("");
+    try {
+      const response = await fetch(apiBase + "/v1/agent-runtime/sessions?limit=100", {
+        headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      const body = await response.json() as { items?: RuntimeSession[] };
+      setRuntimeSessions(current => ({ ...current, [agentId]: (body.items ?? []).filter(item => item.agent_id === agentId) }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Sesi runtime tidak dapat dimuat.");
+    } finally { setRuntimeBusyAgent(null); }
+  }
+
+  async function createRuntimeSession(agent: Agent) {
+    if (!session) return;
+    setRuntimeBusyAgent(agent.id); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/agent-runtime/sessions", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: agent.id, title: "Percakapan " + agent.display_name }),
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      const body = await response.json() as { session: RuntimeSession };
+      setMessage("Sesi runtime tersimpan melalui FastAPI. Eksekusi tool tetap memerlukan policy yang disetujui.");
+      await loadRuntimeSessions(agent.id);
+      setRuntimeSessions(current => ({ ...current, [agent.id]: [body.session, ...(current[agent.id] ?? []).filter(item => item.id !== body.session.id)] }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Sesi runtime tidak dapat dibuat.");
+    } finally { setRuntimeBusyAgent(null); }
+  }
+
   if (!supabase) return <main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Aktifkan identitas Agent</h1><p>Konfigurasikan Supabase Auth publik pada aplikasi web. Halaman ini tidak membuat identitas contoh.</p><a className="button-primary" href="/">Kembali ke identitas manusia</a></section></main>;
 
   if (!session) return <main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">SESI DIPERLUKAN</span><h1>Agent dimiliki oleh Human.</h1><p>Masuk dengan akun manusia terlebih dahulu. Identitas Agent dan identitas Human tetap terpisah; relasi pemilik disimpan di backend.</p><a className="button-primary" href="/">Masuk ke Allpha</a></section></main>;
@@ -167,6 +204,11 @@ export default function AgentsPage() {
             <div className="detail-line"><span>Relasi</span><strong>Human owner · {agent.ownership?.role ?? "owner"}</strong></div>
             <div className="detail-line"><span>Visibilitas</span><strong>{agent.visibility === "public" ? "Publik" : "Privat"}</strong></div>
             <div className="agent-card-actions"><a className="agent-passport-link" href={"/agents/" + agent.id + "/studio"}>Buka Agent Studio ↗</a><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "active" })}>Aktifkan</button><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "draft" })}>Jadikan draft</button><button className="button-danger" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "archived" })}>Arsipkan</button></div>
+            <div className="runtime-session-panel">
+              <div className="agent-card-actions"><button className="button-quiet" disabled={runtimeBusyAgent === agent.id} onClick={() => void createRuntimeSession(agent)}>{runtimeBusyAgent === agent.id ? "Menyimpan sesi…" : "Buat sesi runtime"}</button><button className="button-quiet" disabled={runtimeBusyAgent === agent.id} onClick={() => void loadRuntimeSessions(agent.id)}>Muat sesi</button></div>
+              {(runtimeSessions[agent.id] ?? []).map((item) => <div className="detail-line" key={item.id}><span>{item.title} · {item.status}</span><strong>{new Date(item.last_activity_at).toLocaleString("id-ID")}</strong></div>)}
+              <small className="agent-footnote">Sesi disimpan melalui API terautentikasi. Eksekusi Agent tetap terkunci sampai capability dan policy version disetujui.</small>
+            </div>
             {agent.visibility === "public" && agent.status === "active" && <a className="agent-passport-link" href={"/agents/passport/" + agent.handle}>Buka Agent Passport ↗</a>}<small className="agent-footnote">ID Agent: {agent.id} · Dibuat {new Date(agent.created_at).toLocaleDateString("id-ID")}</small>
           </article>)}</div>}
       </section>
