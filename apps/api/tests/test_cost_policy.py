@@ -11,7 +11,7 @@ from allpha_api.cost_policy import (
 
 
 def budget(**changes):
-    values = dict(sensitivity="internal", max_usage_units=1000, max_cost_microunits=50000)
+    values = dict(sensitivity="internal", max_usage_units=1000, max_cost_microunits=50000, usage_unit="embedding_input_unit", cost_unit="policy_cost_microunit", pricing_version="test-pricing-v1")
     values.update(changes)
     return CostBudget(**values)
 
@@ -23,6 +23,9 @@ def estimate(**changes):
         model_version="immutable-v1",
         usage_units=100,
         cost_microunits=1200,
+        usage_unit="embedding_input_unit",
+        cost_unit="policy_cost_microunit",
+        pricing_version="test-pricing-v1",
     )
     values.update(changes)
     return CostEstimate(**values)
@@ -108,3 +111,12 @@ def test_optional_attribution_can_be_explicitly_allowed():
         actual_cost_microunits=None,
         budget=permissive_budget,
     )
+
+
+def test_cost_policy_rejects_mismatched_unit_or_pricing_version():
+    with pytest.raises(CostPolicyRejected, match="units or pricing version"):
+        authorize_cost(
+            sensitivity="internal",
+            estimate=estimate(pricing_version="stale-pricing-v0"),
+            budgets={"internal": budget()},
+        )
