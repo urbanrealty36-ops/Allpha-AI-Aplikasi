@@ -164,6 +164,28 @@ def test_task_cancellation_is_durable_and_idempotent(monkeypatch):
         app.dependency_overrides.pop(current_user, None)
 
 
+def test_cancel_race_with_execution_claim_does_not_overwrite_running_state(monkeypatch):
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        task = create_task(c, sid).json()["task"]
+        original_update = FakeRuntimeStore.update_task
+
+        async def race_claim(self, owner_id, task_id, body, *, expected_state=None):
+            # Simulate the executor winning the state CAS after cancellation read.
+            if body.get("state") == "cancelled":
+                FakeRuntimeStore.tasks[task_id]["state"] = "executing"
+            return await original_update(self, owner_id, task_id, body, expected_state=expected_state)
+
+        monkeypatch.setattr(FakeRuntimeStore, "update_task", race_claim)
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/cancel")
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "TASK_STATE_CHANGED"
+        assert FakeRuntimeStore.tasks[task["id"]]["state"] == "executing"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
 def test_task_can_be_recovered_by_owner_after_creation(monkeypatch):
     c = client(monkeypatch)
     try:
@@ -213,6 +235,14 @@ def test_approved_tool_execution_persists_result_and_replay(monkeypatch):
         assert response.status_code == 200
         assert response.json()["task"]["state"] == "succeeded"
         assert response.json()["task"]["output_payload"]["result"] == {"text": "hello"}
+        events = response.json()["task"]["event_log"]
+        state_sequence = [event["state"] for event in events if "state" in event]
+        assert state_sequence == [
+            "created", "policy_check", "budget_reserved", "context_building",
+            "planning", "executing", "validating", "succeeded",
+        ]
+        claim_index = next(i for i, event in enumerate(events) if event.get("event") == "execution_claimed")
+        assert claim_index == 1
         assert repeated.status_code == 200
         assert repeated.json()["idempotent_replay"] is True
     finally:

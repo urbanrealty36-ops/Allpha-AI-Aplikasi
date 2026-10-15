@@ -256,7 +256,7 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             raise HTTPException(status_code=409, detail={"code": "PINNED_VERSION_CHANGED", "message": "Versi Agent atau Skill berubah; buat task baru."})
         if skill.get("status") != "published" or row["tool_key"] not in (skill.get("tool_dependencies") or []):
             raise HTTPException(status_code=403, detail={"code": "SKILL_TOOL_NOT_AUTHORIZED", "message": "Skill atau tool tidak lagi diizinkan."})
-        claim_event = _event("executing", row["trace_id"])
+        claim_event = {"event": "execution_claimed", "at": _now(), "trace_id": row["trace_id"]}
         claimed = await store.update_task(owner_id, str(task_id), {
             "state": "executing", "policy_version": capability["policy_version"],
             "event_log": list(row.get("event_log") or []) + [claim_event], "updated_at": _now(),
@@ -293,7 +293,7 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
             completed = await store.update_task(owner_id, str(task_id), {
                 "state": result["state"], "output_payload": result,
-                "event_log": list(row.get("event_log") or []) + result["events"],
+                "event_log": list(row.get("event_log") or []) + [claim_event] + result["events"],
                 "updated_at": _now(), "completed_at": _now(),
             }, expected_state="executing")
             if not completed:
@@ -303,7 +303,7 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             failed = await store.update_task(owner_id, str(task_id), {
                 "state": task.state.value if task.state.value in {"failed", "timed_out"} else "failed",
                 "error_code": task.error_code or "RUNTIME_BLOCKED",
-                "event_log": list(row.get("event_log") or []) + task.events + [_event("failed", row["trace_id"], "runtime_blocked")],
+                "event_log": list(row.get("event_log") or []) + [claim_event] + task.events + ([_event("failed", row["trace_id"], "runtime_blocked")] if not task.events or task.events[-1].get("state") not in {"failed", "timed_out"} else []),
                 "updated_at": _now(), "completed_at": _now(),
             }, expected_state="executing")
             if not failed:

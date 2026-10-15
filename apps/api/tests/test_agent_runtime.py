@@ -94,3 +94,18 @@ def test_task_state_machine_rejects_invalid_transition():
     task = AgentTask(envelope())
     with pytest.raises(AgentRuntimeBlocked, match="invalid task transition"):
         task.transition(AgentTaskState.SUCCEEDED)
+
+
+@pytest.mark.parametrize("terminal_state", [
+    AgentTaskState.SUCCEEDED,
+    AgentTaskState.PARTIALLY_SUCCEEDED,
+    AgentTaskState.FAILED,
+    AgentTaskState.CANCELLED,
+    AgentTaskState.TIMED_OUT,
+    AgentTaskState.BUDGET_EXHAUSTED,
+])
+def test_terminal_task_states_are_immutable(terminal_state):
+    task = AgentTask(envelope(), state=terminal_state)
+    with pytest.raises(AgentRuntimeBlocked, match="invalid task transition"):
+        task.transition(AgentTaskState.POLICY_CHECK)
+    assert task.state == terminal_state
