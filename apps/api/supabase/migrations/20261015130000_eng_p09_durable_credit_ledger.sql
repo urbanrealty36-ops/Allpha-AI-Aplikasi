@@ -57,6 +57,8 @@ create table public.credit_reservations (
   task_id text not null check (length(task_id) between 1 and 160),
   capability_id text not null check (length(capability_id) between 1 and 128),
   reserved_credits bigint not null check (reserved_credits > 0),
+  estimated_usage_units bigint not null check (estimated_usage_units > 0),
+  usage_unit text not null check (length(usage_unit) between 1 and 80),
   settled_credits bigint not null default 0 check (settled_credits >= 0),
   credit_scheme_version text not null,
   tariff_version text not null,
@@ -285,11 +287,11 @@ begin
   ) returning * into v_entry;
   insert into public.credit_reservations(
     owner_user_id,reservation_entry_id,idempotency_key,task_id,capability_id,reserved_credits,
-    credit_scheme_version,tariff_version,entitlement_version,policy_version,
-    policy_approval_reference,state
+    estimated_usage_units,usage_unit,credit_scheme_version,tariff_version,entitlement_version,
+    policy_version,policy_approval_reference,state
   ) values (
-    v_owner,v_entry.id,v_key,v_task,v_capability,v_credits,v_policy_row.credit_scheme_version,
-    v_tariff,p_command->>'entitlement_version',v_policy,v_approval,'reserved'
+    v_owner,v_entry.id,v_key,v_task,v_capability,v_credits,v_units,v_usage_unit,
+    v_policy_row.credit_scheme_version,v_tariff,p_command->>'entitlement_version',v_policy,v_approval,'reserved'
   ) returning * into v_res;
   update public.credit_balance_projection set available_credits = available_credits - v_credits,
     ledger_entry_count = ledger_entry_count + 1, updated_at = now() where owner_user_id = v_owner;
@@ -365,8 +367,16 @@ begin
     or v_cap->>'tariff_version' <> v_res.tariff_version
     or v_cap->>'usage_unit' <> v_usage_unit
 
+    or v_usage_unit <> v_res.usage_unit
     or v_actual <> v_actual_units * coalesce((v_cap->>'credits_per_usage_unit')::bigint,0) then
     raise exception 'CREDIT_ACTUAL_USAGE_TARIFF_MISMATCH' using errcode = '22023';
+  end if;
+  if v_actual_units < v_res.estimated_usage_units then
+    if not coalesce((v_policy_row.configuration->>'allow_partial_settlement')::boolean,false) then
+      raise exception 'CREDIT_PARTIAL_SETTLEMENT_NOT_APPROVED' using errcode = '42501';
+    end if;
+  elsif not coalesce((v_policy_row.configuration->>'allow_success_settlement')::boolean,false) then
+    raise exception 'CREDIT_SUCCESS_SETTLEMENT_NOT_APPROVED' using errcode = '42501';
   end if;
   insert into public.credit_ledger_entries(
     owner_user_id,idempotency_key,entry_type,credits,balance_delta,credit_scheme_version,
@@ -429,6 +439,15 @@ begin
   end if;
   if v_res.state not in ('reserved','pending_reconciliation') or v_policy <> v_res.policy_version then
     raise exception 'CREDIT_RESERVATION_NOT_RELEASABLE' using errcode = '23514';
+  end if;
+  if not exists (
+    select 1 from public.credit_policy_versions p
+    where p.policy_version=v_res.policy_version
+      and p.approval_reference=v_res.policy_approval_reference
+      and p.status in ('approved','retired')
+      and coalesce((p.configuration->>'allow_definitive_failure_release')::boolean,false)
+  ) then
+    raise exception 'CREDIT_FAILURE_RELEASE_NOT_APPROVED' using errcode = '42501';
   end if;
   v_amount := v_res.reserved_credits - v_res.settled_credits;
   if v_amount <= 0 then raise exception 'CREDIT_RESERVATION_HAS_NO_REMAINDER' using errcode = '23514'; end if;
