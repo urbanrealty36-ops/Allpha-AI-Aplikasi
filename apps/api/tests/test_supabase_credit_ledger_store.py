@@ -132,3 +132,21 @@ def test_reversal_requires_policy_reference_and_reason_payload():
     ))
     assert entry_id == "entry-reversal"
     assert seen["body"]["p_command"]["reason_code"] == "approved_duplicate_charge"
+
+
+def test_projection_reconciliation_is_audited_and_idempotency_keyed():
+    async def handler(request):
+        payload = json.loads((await request.aread()).decode())
+        assert request.url.path.endswith("/rpc/credit_ledger_reconcile_projection")
+        assert payload["p_command"]["reason_code"] == "projection_drift"
+        return httpx.Response(200, json={
+            "event_id": "event-1", "idempotent_replay": False,
+            "before_available_credits": 5, "after_available_credits": 7,
+            "ledger_entry_count": 4,
+        })
+
+    result = asyncio.run(store(handler).reconcile_projection(
+        owner_user_id="verified-user", idempotency_key="repair-1",
+        reason_code="projection_drift", actor_id="operator-user",
+    ))
+    assert result["after_available_credits"] == 7
