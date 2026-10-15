@@ -8,7 +8,7 @@ No default provider/model is selected: deployment policy must configure both.
 import asyncio
 from dataclasses import dataclass
 from typing import Protocol
-from allpha_api.cost_policy import CostBudget, CostEstimate, CostPolicyApproval, authorize_cost, validate_actual_cost
+from allpha_api.cost_policy import CostBudget, CostEstimate, CostPolicyApproval, CostPolicyApprovalVerifier, authorize_cost, validate_actual_cost
 from allpha_api.metering_contract import IdempotentMeteringSink, build_metering_record
 from allpha_api.embedding_contract import EmbeddingFailure, EmbeddingRequest, EmbeddingResponse, validate_response_matches_request
 
@@ -47,13 +47,14 @@ class CanonicalModelRouter:
     closed. adapters are registered server-side provider integrations. No provider,
     model, dimension or fallback is guessed by this module.
     """
-    def __init__(self, *, routes: dict[str, EmbeddingRoute], adapters: dict[str, EmbeddingAdapter], metering_sink: IdempotentMeteringSink | None = None, cost_budgets: dict[str, CostBudget] | None = None, cost_estimates: dict[str, CostEstimate] | None = None, cost_policy_approval: CostPolicyApproval | None = None, retry_delay_seconds: float = 0.15):
+    def __init__(self, *, routes: dict[str, EmbeddingRoute], adapters: dict[str, EmbeddingAdapter], metering_sink: IdempotentMeteringSink | None = None, cost_budgets: dict[str, CostBudget] | None = None, cost_estimates: dict[str, CostEstimate] | None = None, cost_policy_approval: CostPolicyApproval | None = None, cost_policy_verifier: CostPolicyApprovalVerifier | None = None, retry_delay_seconds: float = 0.15):
         self._routes = dict(routes)
         self._adapters = dict(adapters)
         self._metering_sink = metering_sink
         self._cost_budgets = dict(cost_budgets or {})
         self._cost_estimates = dict(cost_estimates or {})
         self._cost_policy_approval = cost_policy_approval
+        self._cost_policy_verifier = cost_policy_verifier
         self._cost_policy_enabled = cost_budgets is not None or cost_estimates is not None or cost_policy_approval is not None
         if self._cost_policy_enabled and (cost_budgets is None or cost_estimates is None):
             raise ValueError("cost_budgets and cost_estimates must be configured together")
@@ -61,7 +62,12 @@ class CanonicalModelRouter:
 
     @property
     def has_approved_cost_policy(self) -> bool:
-        return self._cost_policy_enabled and bool(self._cost_budgets) and bool(self._cost_estimates) and self._cost_policy_approval is not None
+        if not (self._cost_policy_enabled and self._cost_budgets and self._cost_estimates and self._cost_policy_approval and self._cost_policy_verifier):
+            return False
+        try:
+            return self._cost_policy_verifier.is_approved(self._cost_policy_approval) is True
+        except Exception:
+            return False
 
     @property
     def has_durable_metering_contract(self) -> bool:
@@ -70,7 +76,7 @@ class CanonicalModelRouter:
     def require_runtime_ready(self) -> None:
         """Enforce runtime-only prerequisites without forcing test-only router construction."""
         if not self.has_approved_cost_policy:
-            raise ModelRouterUnavailable("runtime requires cost budgets, route estimates, and an explicit approved policy reference")
+            raise ModelRouterUnavailable("runtime requires cost budgets, route estimates, and a verifier-confirmed active cost policy approval")
         if not self.has_durable_metering_contract:
             raise ModelRouterUnavailable("runtime requires a durable idempotent metering sink")
 
@@ -80,6 +86,8 @@ class CanonicalModelRouter:
             raise ModelRouterUnavailable(f"No approved embedding route for sensitivity={request.sensitivity}")
         cost_authorization = None
         if self._cost_policy_enabled:
+            if not self.has_approved_cost_policy:
+                raise ModelRouterUnavailable("cost policy approval is missing, unverified, or inactive")
             estimate = self._cost_estimates.get(request.sensitivity)
             if estimate is not None and (estimate.provider_id != route.provider_id or estimate.model_id != route.model_id or estimate.model_version != route.model_version):
                 raise ModelRouterUnavailable("cost estimate does not match the selected provider/model version")
