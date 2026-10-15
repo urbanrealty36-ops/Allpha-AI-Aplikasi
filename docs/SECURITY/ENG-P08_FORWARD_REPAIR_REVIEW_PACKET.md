@@ -655,3 +655,94 @@ No test in this table has been executed against a real isolated Supabase databas
 - API route/schema gaps for organizations, ENG-P06 skills/capabilities and ENG-P07 knowledge are confirmed from source-vs-live inventory. Do not resolve by blindly replaying migrations.
 - FR-01–FR-03 are ready for reviewer discussion with better concrete test cases, but are **not approved or executable**. FR-04/FR-05 remain blocked on provenance and product/privacy/data-platform contracts.
 - No database write or migration was performed.
+
+
+## H. Follow-up catalog proof — column ACLs, exact overload inventory, triggers and Realtime (2026-10-15)
+
+This section records a new **read-only** query set against production project `dvdziauyvuhcnqhrrvww`. It supersedes any assumption that relation-level ACL inspection alone is a complete grant audit. No production write or migration was executed.
+
+### H1. Column-level grants materially expand the risk
+
+The `information_schema.column_privileges` inventory shows these client-role grants:
+
+| Table | Role | Column-level privileges observed | Assessment |
+|---|---|---|---|
+| `agent_ownerships` | `anon` | INSERT, REFERENCES, SELECT on all 5 columns | Unexpected; remove after review |
+| `agent_ownerships` | `authenticated` | INSERT, REFERENCES, SELECT on all 5 columns | **Critical mismatch** with ENG-P04 intent that ownership writes occur only through atomic `create_ai_agent` |
+| `ai_agents` | `anon` | SELECT on `id, handle, display_name, description, avatar_url, status, visibility, disclosure, created_at` | Intended public Passport projection candidate; retain only if source and RLS prove exact intended exposure |
+| `ai_agents` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 13 columns | **Critical mismatch**: column-level INSERT remains despite relation-level ENG-P04 revoke intent; direct insert may still be authorized at SQL privilege layer |
+| `profiles` | `authenticated` | INSERT on 7 self-editable columns; SELECT on 10; UPDATE on 6 self-editable columns | Matches least-privilege design in part; confirm exact RLS and source |
+| `social_edges` | `anon` | INSERT, REFERENCES, SELECT on all 6 columns | Unexpected; remove after review |
+| `social_edges` | `authenticated` | INSERT, REFERENCES, SELECT on all 6; UPDATE on `status` | Review against follow-request transition contract and target-only update policy |
+| `user_consents` | `anon` | INSERT, REFERENCES, SELECT, UPDATE on all 6 columns | Unexpected and privacy-sensitive; no knowledge-consent contract is implied by this table |
+| `user_consents` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 6 columns | Must be checked against user-scoped RLS and server-owned provenance/immutability expectations |
+| `user_interests` | `anon` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Unexpected |
+| `user_interests` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Check self-only RLS and API ownership contract |
+| `user_settings` | `anon` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Unexpected; contains privacy/notification preferences |
+| `user_settings` | `authenticated` | INSERT, REFERENCES, SELECT, UPDATE on all 5 columns | Check self-only RLS and API ownership contract |
+
+**Important PostgreSQL behavior:** revoking table-level INSERT/UPDATE does not automatically revoke separately granted column-level privileges. FR-01 must therefore inventory and revoke both relation and column ACLs; a repair that only uses `REVOKE ALL ON TABLE` is insufficient where column ACLs persist. FR-01 must include `agent_ownerships`, `social_edges`, `user_consents`, `user_interests`, and `user_settings`; the existing candidate file `20261014130000_eng_p04_revoke_anon_social_graph_privileges.sql` only covers two tables and is not recorded in the live migration ledger. It is not sufficient as the complete repair.
+
+Do not remove the explicit `anon SELECT` projection on `ai_agents` indiscriminately: public Passport needs a deliberate, narrowly scoped projection. Confirm column-level grants, RLS predicates, API response shaping, and source migration together before deciding the final allowlist.
+
+### H2. Exact live function/overload inventory
+
+The live `pg_proc` query returned 14 application function identities across `public` and `private`; there is exactly **one** live `public.create_ai_agent` overload:
+`create_ai_agent(p_handle text, p_display_name text, p_description text, p_avatar_url text, p_persona jsonb, p_visibility text, p_disclosure text, p_boundaries jsonb)`.
+It is INVOKER (`prosecdef=false`), has an empty `search_path` configuration, and its ACL is `postgres/authenticated/service_role EXECUTE`; anon is not granted EXECUTE. No second six-argument overload was returned by the current live inventory. This current observation supersedes older phase-plan notes that described a legacy six-argument overload as still present; the migration history and exact historical body remain separate provenance questions.
+
+The trigger-only `public.set_updated_at()` is INVOKER with empty `search_path`, but its ACL includes `PUBLIC`, `anon`, `authenticated`, and `service_role`. Its expected use is through table triggers, so FR-03 should remove direct client/PUBLIC EXECUTE while preserving trigger operation; test both trigger update behavior and direct EXECUTE denial in an isolated database.
+
+The observed application triggers and attached function fingerprints are:
+
+| Table | Trigger | Definition | Function mode/config |
+|---|---|---|---|
+| `ai_agents` | `ai_agents_require_owner` | AFTER INSERT, DEFERRABLE INITIALLY DEFERRED constraint trigger | `private.require_agent_owner()`, SECURITY DEFINER, empty search_path |
+| `ai_agents` | `ai_agents_touch_updated_at` | BEFORE UPDATE | `private.touch_updated_at()`, INVOKER, empty search_path |
+| `profiles` | `profiles_create_user_settings` | AFTER INSERT | `public.create_identity_settings_for_existing_user()`, SECURITY DEFINER, empty search_path |
+| `profiles` | `profiles_set_updated_at` | BEFORE UPDATE | `public.set_updated_at()`, INVOKER, empty search_path |
+| `social_edges` | `social_edges_policy_before_write` | BEFORE INSERT OR UPDATE OF edge_type, actor_user_id, target_user_id, status | `public.enforce_social_edge_policy()`, SECURITY DEFINER, empty search_path |
+| `user_interests` | `user_interests_set_updated_at` | BEFORE UPDATE | `public.set_updated_at()`, INVOKER, empty search_path |
+| `user_settings` | `user_settings_set_updated_at` | BEFORE UPDATE | `public.set_updated_at()`, INVOKER, empty search_path |
+
+Supabase-managed Storage triggers were also enumerated on `storage.buckets` and `storage.objects`; they are platform-managed and must not be modified as part of FR-01–FR-05. Trigger body fingerprints and exact definitions are recorded in the current catalog evidence; hashes are comparison aids, not proof of semantic safety.
+
+### H3. Realtime publication scope
+
+The live `supabase_realtime` publication contains:
+- `public.social_edges`: columns `id, actor_user_id, target_user_id, edge_type, status, created_at`, no publication row filter.
+- `public.user_interests`: columns `user_id, interest_key, preference, created_at, updated_at`, no publication row filter.
+
+This is publication membership, **not** proof that a given client can read each row. Effective Realtime authorization remains unverified. Before changing publication membership, trace actual subscriptions and verify owner/target RLS behavior using two distinct test identities in isolated non-production. Positive cases must receive only authorized rows; negative cases must not reveal another user's interests, blocks/mutes, or relationship metadata. Do not run cross-user subscription tests on production.
+
+### H4. FR-01–FR-03 test outcomes and non-production gate
+
+The new queries complete the **catalog observation** portion only. They do not constitute positive/negative runtime tests. Current test status:
+
+| Repair | Static/source evidence | Positive isolated runtime test | Negative isolated runtime test | Decision |
+|---|---|---|---|---|
+| FR-01 anon + column ACL revocation | Current relation/column ACL evidence captured; candidate migration is incomplete for full scope | NOT RUN — no positively verified isolated Supabase target | NOT RUN — production must not be used for cross-user tests | Pending Privacy/Security + Data Platform |
+| FR-02 default privileges | Earlier catalog snapshot records broad `public` default ACLs; exact per-owner/schema/default-role matrix still needs final diff | NOT RUN — no positively verified isolated Supabase target | NOT RUN — production must not be used to create probe objects | Pending Privacy/Security + Data Platform |
+| FR-03 trigger-only function EXECUTE | Current `set_updated_at()` ACL includes PUBLIC/anon/authenticated; three table triggers depend on it | NOT RUN — trigger-preservation test requires isolated DB | NOT RUN — direct client-role EXECUTE denial requires isolated DB | Pending Privacy/Security + Data Platform |
+
+The canonical Supabase project is production and currently returns zero development branches. Railway's existing staging environment does not by itself prove the API's effective database URL/credentials target an isolated database. No approved existing non-production Supabase target has been positively established in this turn. Consequently, no FR migration, disposable-object probe, direct grant test, tenant-isolation test, or migration experiment was run.
+
+### H5. Decision requests — explicit status, no inferred approval
+
+The Product Owner's prior approval of Option C in ADR-0005 approves the **direction only**. It is not approval for a physical consent/grant schema, provider, or migration. No Privacy/Security or Data Platform reviewer identity, signed decision, review comment, or approval artifact was found in the evidence inspected for this update. Their decisions therefore remain **PENDING**, not assumed.
+
+Required decisions:
+1. **FR-01:** approve complete revocation of unexpected `anon` relation and column grants on the five owner-scoped tables listed in H1; separately preserve/review the intended `ai_agents` public Passport column allowlist; explicitly decide authenticated column grants on `ai_agents` and `agent_ownerships` against atomic RPC and API ownership contracts.
+2. **FR-02:** approve the exact default-ACL scope (owner, schema, role, object classes) and least-privilege baseline; do not change global defaults until object ownership and RPC contracts are confirmed.
+3. **FR-03:** approve revoking direct `PUBLIC`/`anon`/`authenticated` EXECUTE on `public.set_updated_at()` while retaining trigger invocation; validate role/trigger semantics.
+4. **FR-04:** Data Platform must identify provenance for the absent `organizations`, `organization_memberships`, and `audit_events` objects despite recorded ledger entries, including whether an authoritative snapshot/backup or original applied migration source exists. No blind replay.
+5. **FR-05 / ADR-0005 Option C:** Privacy/Security and Data Platform must nominate the canonical source of truth for owner knowledge consent, per-Agent access grants, purpose, versioning, revocation, retention/deletion propagation and audit. Existing `user_consents` is limited to terms/privacy/product updates and must not be repurposed without an explicit reviewed decision.
+
+### H6. Next safe execution order
+
+1. Complete source-to-live normalized definition comparison for each live constraint/index/function/trigger/policy and migration version; separate current source match from unavailable historical checksum provenance.
+2. Trace every direct Supabase SDK/REST/Realtime call in all three clients and every FastAPI repository path; reconcile API callers against column ACLs and policies.
+3. Keep FR-01–FR-03 as non-executable review candidates until the matrix above is approved; prepare a narrow forward-repair migration with precondition assertions and postcondition queries only after review.
+4. Positively prove an already-existing non-production database target (effective DB host/project ref, environment configuration without disclosing secrets, role/credential separation and non-production marker). Railway environment name alone is insufficient.
+5. In that isolated target, test each migration on the approved existing schema; assert allowed operation succeeds, denied operation fails, trigger effects persist, Realtime cannot leak rows, and migration re-run/rollback or forward-recovery behavior is understood.
+6. Update the fixed phase row only when the above evidence exists. Until then ENG-P08 remains `in_progress`, ENG-P09 remains `blocked`, and knowledge retrieval remains fail-closed.
