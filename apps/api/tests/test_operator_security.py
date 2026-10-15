@@ -354,7 +354,47 @@ def test_capability_review_requires_scope_and_updates_only_pending_request(monke
             "status": "approved",
             "reviewed_by": "operator",
             "review_reason": "Policy review completed",
+            "policy_version": "runtime-policy-v1",
         }]
+
+    monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "write_operator_audit", fake_audit)
+    monkeypatch.setattr(security, "privileged_rest_request", fake_privileged)
+    install_auth("operator")
+    try:
+        response = client.post(
+            "/v1/admin/operator/capabilities/00000000-0000-0000-0000-000000000777/review",
+            json={"decision": "approved", "reason": "Policy review completed", "policy_version": "runtime-policy-v1"},
+        )
+        assert response.status_code == 200
+        assert response.json()["runtime_authorized"] is False
+        patch_call = next(call for call in calls if call[0] == "PATCH")
+        assert patch_call[2]["params"]["status"] == "eq.requested"
+        assert patch_call[2]["body"]["reviewed_by"] == "operator"
+        assert patch_call[2]["body"]["status"] == "approved"
+        assert patch_call[2]["body"]["policy_version"] == "runtime-policy-v1"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_capability_approval_requires_explicit_policy_version(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        return [{"id": "operator-grant", "user_id": "operator",
+                 "scopes": ["platform:capabilities.review"], "status": "active", "expires_at": None}]
+
+    async def fake_audit(request, **kwargs):
+        calls.append(("audit", kwargs.get("outcome")))
+
+    async def fake_privileged(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET":
+            return [{"id": "00000000-0000-0000-0000-000000000777",
+                     "agent_id": "00000000-0000-0000-0000-000000000010",
+                     "capability_key": "content.publish", "description": "Publish content",
+                     "risk_level": "low", "status": "requested"}]
+        return [{"id": "capability", "status": "approved"}]
 
     monkeypatch.setattr(security, "user_db_request", fake_db)
     monkeypatch.setattr(security, "write_operator_audit", fake_audit)
@@ -365,12 +405,31 @@ def test_capability_review_requires_scope_and_updates_only_pending_request(monke
             "/v1/admin/operator/capabilities/00000000-0000-0000-0000-000000000777/review",
             json={"decision": "approved", "reason": "Policy review completed"},
         )
-        assert response.status_code == 200
-        assert response.json()["runtime_authorized"] is False
-        patch_call = next(call for call in calls if call[0] == "PATCH")
-        assert patch_call[2]["params"]["status"] == "eq.requested"
-        assert patch_call[2]["body"]["reviewed_by"] == "operator"
-        assert patch_call[2]["body"]["status"] == "approved"
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "POLICY_VERSION_REQUIRED"
+        assert not any(call[0] == "PATCH" for call in calls)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_denial_cannot_set_runtime_policy_version(monkeypatch):
+    async def fake_db(method, path, token, **kwargs):
+        return [{"id": "operator-grant", "user_id": "operator",
+                 "scopes": ["platform:capabilities.review"], "status": "active", "expires_at": None}]
+
+    async def unexpected_privileged(*args, **kwargs):
+        raise AssertionError("Denied review must be rejected before database mutation")
+
+    monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "privileged_rest_request", unexpected_privileged)
+    install_auth("operator")
+    try:
+        response = client.post(
+            "/v1/admin/operator/capabilities/00000000-0000-0000-0000-000000000777/review",
+            json={"decision": "denied", "reason": "Capability not permitted", "policy_version": "runtime-policy-v1"},
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "POLICY_VERSION_NOT_ALLOWED"
     finally:
         app.dependency_overrides.clear()
 

@@ -61,6 +61,11 @@ class CapabilityReviewPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision: Literal["approved", "denied"]
     reason: str = Field(min_length=8, max_length=500)
+    # Trusted operator supplies a version reference; this is not the policy document.
+    policy_version: str | None = Field(
+        default=None, min_length=1, max_length=80,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$",
+    )
 
 
 _AUDIT_TIMEOUT = httpx.Timeout(5.0, connect=2.0)
@@ -407,6 +412,16 @@ async def review_operator_capability(
     request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
 ) -> dict[str, Any]:
+    if payload.decision == "approved" and not payload.policy_version:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "POLICY_VERSION_REQUIRED", "message": "Persetujuan capability wajib menetapkan policy_version yang eksplisit."},
+        )
+    if payload.decision == "denied" and payload.policy_version is not None:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "POLICY_VERSION_NOT_ALLOWED", "message": "Policy version hanya boleh ditetapkan saat capability disetujui."},
+        )
     current = await privileged_rest_request(
         "GET",
         "agent_capabilities",
@@ -446,13 +461,14 @@ async def review_operator_capability(
         params={
             "id": f"eq.{capability_id}",
             "status": "eq.requested",
-            "select": "id,agent_id,capability_key,description,risk_level,status,reviewed_by,reviewed_at,review_reason,updated_at",
+            "select": "id,agent_id,capability_key,description,risk_level,status,policy_version,reviewed_by,reviewed_at,review_reason,updated_at",
         },
         body={
             "status": payload.decision,
             "reviewed_by": operator["id"],
             "reviewed_at": timestamp,
             "review_reason": payload.reason,
+            "policy_version": payload.policy_version if payload.decision == "approved" else None,
             "updated_at": timestamp,
         },
         prefer="return=representation",
