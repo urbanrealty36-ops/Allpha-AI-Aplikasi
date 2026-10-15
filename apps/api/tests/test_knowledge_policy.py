@@ -78,3 +78,15 @@ def test_versioned_policy_fails_closed_when_snapshot_is_missing():
                 owner_id="owner-a", agent_id="agent-a"
             )
     asyncio.run(scenario())
+
+def test_versioned_policy_fails_closed_when_provider_raises():
+    class BrokenProvider:
+        async def resolve(self, *, owner_id, agent_id):
+            raise TimeoutError("synthetic test timeout")
+
+    async def scenario():
+        with pytest.raises(KnowledgePolicyUnavailable):
+            await VersionedKnowledgePolicyResolver(BrokenProvider()).resolve(
+                owner_id="owner-a", agent_id="agent-a"
+            )
+    asyncio.run(scenario())
