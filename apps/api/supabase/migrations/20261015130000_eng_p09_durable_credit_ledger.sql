@@ -623,6 +623,9 @@ declare
   v_reason text := coalesce(p_command->>'reason_code','provider_outcome_unknown');
   v_fp text := encode(extensions.digest(jsonb_build_object('reservation_id',p_command->>'reservation_id','reason_code',coalesce(p_command->>'reason_code','provider_outcome_unknown'))::text,'sha256'),'hex');
   v_res public.credit_reservations;
+  v_event public.credit_reconciliation_events;
+  v_event_key text;
+  v_event_exists boolean;
 begin
   if v_res_id is null then raise exception 'INVALID_CREDIT_RESERVATION_ID' using errcode = '22023'; end if;
   select * into v_res from public.credit_reservations where id=v_res_id for update;
@@ -630,15 +633,25 @@ begin
   if v_res.state in ('settled','released') then
     raise exception 'CREDIT_RESERVATION_ALREADY_TERMINAL' using errcode = '23514';
   end if;
+  v_event_key := 'pending:'||v_res.id::text;
+  select * into v_event from public.credit_reconciliation_events
+    where owner_user_id=v_res.owner_user_id and idempotency_key=v_event_key;
+  v_event_exists := found;
+  if v_event_exists and v_event.payload_fingerprint <> v_fp then
+    raise exception 'CREDIT_RECONCILIATION_IDEMPOTENCY_CONFLICT' using errcode = '23505';
+  end if;
   if v_res.state <> 'pending_reconciliation' then
     update public.credit_reservations set state='pending_reconciliation',updated_at=now() where id=v_res.id;
+  end if;
+  if not v_event_exists then
     insert into public.credit_reconciliation_events(
       owner_user_id,reservation_id,event_type,reason_code,idempotency_key,actor_type,payload_fingerprint
-    ) values (v_res.owner_user_id,v_res.id,'outcome_unknown',v_reason,'pending:'||v_res.id::text,'system',v_fp)
-    on conflict (owner_user_id,idempotency_key) do nothing;
+    ) values (v_res.owner_user_id,v_res.id,'outcome_unknown',v_reason,v_event_key,'system',v_fp);
   end if;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_res.idempotency_key,
-    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','pending_reconciliation','policy_version',v_res.policy_version,'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
+    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,
+    'state','pending_reconciliation','policy_version',v_res.policy_version,
+    'estimated_usage_units',v_res.estimated_usage_units,'usage_unit',v_res.usage_unit);
 end;
 $$;
 
