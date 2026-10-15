@@ -52,7 +52,8 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
         return cls(supabase_url=url, service_key=key, transport=transport)
 
     async def _rpc(
-        self, name: str, command: dict[str, Any], *, require_operation_receipt: bool = True
+        self, name: str, command: Any, *, require_operation_receipt: bool = True,
+        argument_name: str = "p_command"
     ) -> dict[str, Any]:
         headers = {
             "apikey": self._service_key,
@@ -65,7 +66,7 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
                 response = await client.post(
                     f"{self._base_url}/rest/v1/rpc/{name}",
                     headers=headers,
-                    json={"p_command": command},
+                    json={argument_name: command},
                 )
         except httpx.HTTPError as exc:
             raise CreditLedgerPersistenceError("Supabase credit ledger is unavailable; commit status is unknown") from exc
@@ -115,8 +116,9 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
         """Read a derived balance projection for an owner ID derived by authenticated API."""
         result = await self._rpc(
             "credit_ledger_get_balance",
-            {"p_owner_user_id": owner_user_id},
+            owner_user_id,
             require_operation_receipt=False,
+            argument_name="p_owner_user_id",
         )
         required = {"available_credits", "reserved_credits", "ledger_entry_count", "as_of"}
         if not required.issubset(result):
