@@ -45,6 +45,6 @@ def test_runtime_rpc_dollar_quoting_is_balanced_and_security_is_restricted():
     assert sql.count("as $$") == sql.count("$$;")
     assert "as $" + "\n" not in sql
     assert "\n$;\n" not in sql
-    assert sql.count("security definer") == 5
+    assert sql.count("security definer") == 6
     assert "set search_path = ''" in sql
     assert "from public, anon, authenticated" in sql
