@@ -90,3 +90,26 @@ def test_versioned_policy_fails_closed_when_provider_raises():
                 owner_id="owner-a", agent_id="agent-a"
             )
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("value", [
+    {},
+    "not-a-policy-snapshot",
+    snapshot(policy_version=None),
+    snapshot(consent_version=42),
+    snapshot(resolved_at_version=None),
+    snapshot(knowledge_consent_granted="true"),
+    snapshot(consent_revoked=0),
+    snapshot(grants_active=None),
+    snapshot(allowed_purposes=None),
+    snapshot(allowed_purposes=("agent_context_retrieval", 7)),
+    snapshot(allowed_sensitivities=None),
+    snapshot(allowed_sensitivities=("internal", None)),
+])
+def test_versioned_policy_fails_closed_on_malformed_provider_snapshot(value):
+    async def scenario():
+        with pytest.raises(KnowledgePolicyUnavailable):
+            await VersionedKnowledgePolicyResolver(Provider(value)).resolve(
+                owner_id="owner-a", agent_id="agent-a"
+            )
+    asyncio.run(scenario())
