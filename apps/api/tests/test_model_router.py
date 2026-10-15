@@ -73,10 +73,13 @@ def test_router_response_with_wrong_chunk_hash_is_rejected():
 
 def test_canonical_router_selects_configured_route_and_records_metering():
     async def scenario():
-        records = []
-        async def meter(req, res):
-            records.append((req.task_id, res.usage_units, res.cost_microunits))
-        adapter = FakeAdapter([response()])
+        class Meter:
+            def __init__(self):
+                self.records = []
+            async def write_idempotent(self, record):
+                self.records.append(record)
+        meter = Meter()
+        adapter = FakeAdapter([response(usage_units=5, cost_microunits=20)])
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": adapter},
@@ -85,7 +88,11 @@ def test_canonical_router_selects_configured_route_and_records_metering():
         result = await router.embed(request())
         assert result.model_id == "selected-model"
         assert adapter.calls == 1
-        assert records == [("task-1", None, None)]
+        assert len(meter.records) == 1
+        assert isinstance(meter.records[0], MeteringRecord)
+        assert meter.records[0].idempotency_key == "idem-1"
+        assert meter.records[0].usage_units == 5
+        assert meter.records[0].cost_microunits == 20
     asyncio.run(scenario())
 
 
@@ -164,6 +171,7 @@ def test_canonical_router_does_not_retry_terminal_provider_rejection():
 
 
 from allpha_api.cost_policy import CostBudget, CostEstimate
+from allpha_api.metering_contract import MeteringRecord
 
 
 def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_call():
@@ -208,4 +216,44 @@ def test_canonical_router_cost_policy_requires_matching_route_version():
         with pytest.raises(ModelRouterUnavailable):
             await router.embed(request())
         assert adapter.calls == 0
+    asyncio.run(scenario())
+
+
+def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
+    async def scenario():
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": FakeAdapter([])},
+        )
+        with pytest.raises(ModelRouterUnavailable, match="cost budgets"):
+            router.require_runtime_ready()
+
+        class Meter:
+            async def write_idempotent(self, record):
+                return None
+
+        configured = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": FakeAdapter([])},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100)},
+            metering_sink=Meter(),
+        )
+        configured.require_runtime_ready()
+        assert configured.has_approved_cost_policy
+        assert configured.has_durable_metering_contract
+    asyncio.run(scenario())
+
+
+def test_runtime_router_rejects_callable_only_non_durable_metering_sink():
+    async def scenario():
+        router = CanonicalModelRouter(
+            routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
+            adapters={"router-policy": FakeAdapter([])},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100)},
+            metering_sink=lambda request, response: None,
+        )
+        with pytest.raises(ModelRouterUnavailable, match="durable idempotent metering"):
+            router.require_runtime_ready()
     asyncio.run(scenario())
