@@ -386,3 +386,11 @@ ENG-P10 remains `in_progress`, not closed: the operator approval path that suppl
 - **Safety boundary:** current recovery does not replay an `executing` task with unknown outcome. The current tool registry only exposes pure `text.normalize`; this is not evidence of external side-effect idempotency for future tools.
 - **ENG-P10 remains `in_progress`.** This source change does not close worker-crash/resume acceptance, immutable policy binding, or full runtime lifecycle acceptance.
 - **ENG-P37 remains `DEFERRED / NOT VERIFIED`:** staging migration execution, SQL concurrency/lease tests, RLS/grants, owner isolation and authenticated cross-app E2E are untouched. No live DB mutation, provider call, or credit charge occurred.
+
+
+### ENG-P10 regression commit CI verified — run #682 (2026-10-15)
+
+- Commit [`47e53063b1af747c368fc24cfbf071284eb09e94`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/47e53063b1af747c368fc24cfbf071284eb09e94) passed Allpha Smoke [run #682](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38748227954): API `pytest apps/api/tests`, Web `npm test` + `npm run build`, and Native `npm test` + `npm run typecheck` all succeeded.
+- Web build emitted a non-fatal lint/config warning: `ESLint: nextVitals is not iterable`; the build exited successfully. This is not represented as a clean lint result.
+- The new event-order, cancellation-CAS race, and terminal-state immutability regressions are covered by API pytest. This is automated source evidence only; no worker crash recovery, external side-effect replay, approved-policy registry, or live database semantics are verified by this run.
+- Next action: obtain Product Owner / architecture-owner decision on proposed ADR-0007 before implementing durable checkpoint/lease semantics or a canonical immutable policy registry. ENG-P10 remains `in_progress`; ENG-P37 staging/integration work remains deferred and not verified.
