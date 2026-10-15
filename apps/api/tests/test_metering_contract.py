@@ -59,4 +59,4 @@ def test_metering_record_rejects_identity_mismatch(changes):
 
 def test_embedding_response_rejects_partial_usage_cost_unit_attribution():
     with pytest.raises(ValueError, match="usage and cost attribution"):
-        response(usage_units=None)
+        response(usage_units=None, cost_microunits=125)
