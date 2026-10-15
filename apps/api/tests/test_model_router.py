@@ -18,8 +18,8 @@ def request():
     return EmbeddingRequest(task_id="task-1", idempotency_key="idem-1", trace_id="trace-1", owner_id="owner-1", agent_id="agent-1", source_id="source-1", source_version=1, sensitivity="internal", attempt=1, timeout_ms=5000, chunks=[{"chunk_id":"chunk-1","content_sha256":"a"*64,"text":"example"}])
 
 
-def response(provider_id="router-policy", model_id="selected-model", model_version="version-1", digest=None):
-    return EmbeddingResponse(task_id="task-1", provider_id=provider_id, model_id=model_id, model_version=model_version, dimensions=2, vectors=[{"chunk_id":"chunk-1","content_sha256":digest or "a"*64,"values":[0.1,0.2]}], trace_id="trace-1", completed_at=datetime.now(timezone.utc))
+def response(provider_id="router-policy", model_id="selected-model", model_version="version-1", digest=None, usage_units=None, cost_microunits=None):
+    return EmbeddingResponse(task_id="task-1", provider_id=provider_id, model_id=model_id, model_version=model_version, dimensions=2, vectors=[{"chunk_id":"chunk-1","content_sha256":digest or "a"*64,"values":[0.1,0.2]}], trace_id="trace-1", completed_at=datetime.now(timezone.utc), usage_units=usage_units, cost_microunits=cost_microunits)
 
 
 class FakeRouter:
@@ -183,7 +183,7 @@ def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_ca
 
 def test_canonical_router_cost_policy_rejects_actual_cost_over_reservation():
     async def scenario():
-        adapter = FakeAdapter([response()])
+        adapter = FakeAdapter([response(usage_units=100, cost_microunits=1200)])
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": adapter},
