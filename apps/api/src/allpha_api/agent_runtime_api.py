@@ -127,10 +127,13 @@ async def create_task(payload: TaskCreate, request: Request,
             raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool tidak terdaftar."}) from exc
         if payload.tool_key not in (skill.get("tool_dependencies") or []):
             raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Tool tidak tercantum pada Skill."})
-        encoded = json.dumps({
-            "session_id": str(payload.session_id), "skill_id": str(payload.skill_id),
-            "tool_key": payload.tool_key, "inputs": payload.inputs,
-        }, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        try:
+            encoded = json.dumps({
+                "session_id": str(payload.session_id), "skill_id": str(payload.skill_id),
+                "tool_key": payload.tool_key, "inputs": payload.inputs,
+            }, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError) as exc:
+            raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_INPUT", "message": "Input task harus berupa JSON valid."}) from exc
         if len(encoded) > 16_384:
             raise HTTPException(status_code=413, detail={"code": "TASK_INPUT_TOO_LARGE", "message": "Input task melebihi 16 KiB."})
         fingerprint = hashlib.sha256(encoded).hexdigest()
@@ -296,7 +299,7 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             if not completed:
                 raise AgentRuntimePersistenceError("task execution result could not be durably committed")
             return {"task": completed, "idempotent_replay": False}
-        except AgentRuntimeBlocked as exc:
+        except (AgentRuntimeBlocked, UnknownToolError) as exc:
             failed = await store.update_task(owner_id, str(task_id), {
                 "state": task.state.value if task.state.value in {"failed", "timed_out"} else "failed",
                 "error_code": task.error_code or "RUNTIME_BLOCKED",
