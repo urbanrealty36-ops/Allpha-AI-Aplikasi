@@ -157,6 +157,33 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
         })
         return self._receipt(result)
 
+
+    async def reverse(
+        self, *, owner_user_id: str, original_entry_id: str, idempotency_key: str,
+        credits: int, policy_version: str, policy_approval_reference: str,
+        source_event_id: str, reason_code: str, entry_type: str = "reversal",
+        actor_type: str = "operator", actor_id: str | None = None,
+    ) -> str:
+        """Append a policy-approved compensating entry; never mutate the original."""
+        if entry_type not in {"refund", "reversal"}:
+            raise ValueError("entry_type must be refund or reversal")
+        if actor_type not in {"system", "operator"}:
+            raise ValueError("actor_type must be system or operator")
+        result = await self._rpc("credit_ledger_reverse", {
+            "owner_user_id": owner_user_id,
+            "original_entry_id": original_entry_id,
+            "idempotency_key": idempotency_key,
+            "credits": credits,
+            "policy_version": policy_version,
+            "policy_approval_reference": policy_approval_reference,
+            "source_event_id": source_event_id,
+            "reason_code": reason_code,
+            "entry_type": entry_type,
+            "actor_type": actor_type,
+            "actor_id": actor_id,
+        })
+        return str(result["entry_id"])
+
     async def grant(
         self, *, owner_user_id: str, idempotency_key: str, entry_type: str,
         credits: int, policy_version: str, policy_approval_reference: str,
