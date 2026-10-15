@@ -204,7 +204,7 @@ create or replace function public.begin_agent_runtime_effect(
   p_task_id uuid, p_owner_user_id uuid, p_lease_token uuid, p_task_version integer,
   p_step_key text, p_idempotency_key text, p_input_fingerprint text
 )
-returns public.agent_runtime_effect_receipts
+returns setof public.agent_runtime_effect_receipts
 language plpgsql
 security definer
 set search_path = ''
@@ -236,9 +236,9 @@ begin
   end if;
   update public.agent_runtime_tasks set effect_outcome = receipt.status, current_step_key = p_step_key,
     updated_at = now() where id = p_task_id;
-  return receipt;
+  return next receipt;
 end;
-$$;
+$;
 revoke all on function public.begin_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text) from public, anon, authenticated;
 grant execute on function public.begin_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text) to service_role;
 
@@ -280,9 +280,9 @@ begin
   end if;
   update public.agent_runtime_tasks set effect_outcome = 'completed', updated_at = now()
    where id = p_task_id;
-  return receipt;
+  return next receipt;
 end;
-$$;
+$;
 revoke all on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) to service_role;
 
