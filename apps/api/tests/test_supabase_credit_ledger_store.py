@@ -27,7 +27,8 @@ def reservation_command():
         credit_scheme_version="scheme-v1", tariff_version="tariff-v1",
         entitlement_version="entitlement-v1", policy_approval_reference="approval-1",
         policy_version="policy-v1", estimated_usage_units=10,
-        usage_unit="embedding_input_unit",
+        usage_unit="embedding_input_unit", estimated_cost_microunits=100,
+        cost_unit="policy_cost_microunit",
     )
 
 
