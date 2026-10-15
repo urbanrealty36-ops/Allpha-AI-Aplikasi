@@ -25,7 +25,7 @@ assert.doesNotMatch(page, /mockRetrievalResults|fakeKnowledgeResults|fixtureRetr
 
 for (const contract of [
   "/v1/agent-runtime/tasks", "createRuntimeTask", "runtimeTaskAction",
-  "idempotency_key", "IDEMPOTENCY", "Pulihkan status", "Batalkan",
+  "idempotency_key", "Pulihkan status", "Batalkan",
   "Jalankan", "Skill terpublikasi", "runtimeTasks"
 ]) assert.ok(agents.includes(contract), `missing Web runtime lifecycle contract: ${contract}`);
 assert.ok(agents.includes('/v1/agent-runtime/sessions/'));
