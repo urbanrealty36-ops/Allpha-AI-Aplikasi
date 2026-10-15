@@ -190,6 +190,22 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
         return self._receipt(result)
 
 
+
+    async def reconcile_projection(
+        self, *, owner_user_id: str, idempotency_key: str,
+        reason_code: str, actor_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Rebuild derived available balance from immutable ledger entries, audibly."""
+        result = await self._rpc("credit_ledger_reconcile_projection", {
+            "owner_user_id": owner_user_id,
+            "idempotency_key": idempotency_key,
+            "reason_code": reason_code,
+            "actor_id": actor_id,
+        }, require_operation_receipt=False)
+        if not result.get("event_id"):
+            raise CreditLedgerPersistenceError("Supabase did not confirm projection reconciliation")
+        return result
+
     async def reverse(
         self, *, owner_user_id: str, original_entry_id: str, idempotency_key: str,
         credits: int, policy_version: str, policy_approval_reference: str,
