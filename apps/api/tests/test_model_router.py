@@ -18,9 +18,23 @@ def request():
     return EmbeddingRequest(task_id="task-1", idempotency_key="idem-1", trace_id="trace-1", owner_id="owner-1", agent_id="agent-1", source_id="source-1", source_version=1, sensitivity="internal", attempt=1, timeout_ms=5000, chunks=[{"chunk_id":"chunk-1","content_sha256":"a"*64,"text":"example"}])
 
 
-def response(provider_id="router-policy", model_id="selected-model", model_version="version-1", digest=None, usage_units=None, cost_microunits=None):
-    return EmbeddingResponse(task_id="task-1", provider_id=provider_id, model_id=model_id, model_version=model_version, dimensions=2, vectors=[{"chunk_id":"chunk-1","content_sha256":digest or "a"*64,"values":[0.1,0.2]}], trace_id="trace-1", completed_at=datetime.now(timezone.utc), usage_units=usage_units, cost_microunits=cost_microunits)
-
+def response(provider_id="router-policy", model_id="selected-model", model_version="version-1", digest=None, usage_units=None, cost_microunits=None, usage_unit=None, cost_unit=None, pricing_version=None):
+    attributed = usage_units is not None and cost_microunits is not None
+    return EmbeddingResponse(
+        task_id="task-1",
+        provider_id=provider_id,
+        model_id=model_id,
+        model_version=model_version,
+        dimensions=2,
+        vectors=[{"chunk_id": "chunk-1", "content_sha256": digest or "a" * 64, "values": [0.1, 0.2]}],
+        trace_id="trace-1",
+        completed_at=datetime.now(timezone.utc),
+        usage_units=usage_units,
+        usage_unit=(usage_unit or "embedding_input_unit") if attributed else None,
+        cost_microunits=cost_microunits,
+        cost_unit=(cost_unit or "policy_cost_microunit") if attributed else None,
+        pricing_version=(pricing_version or "test-pricing-v1") if attributed else None,
+    )
 
 class FakeRouter:
     def __init__(self, value):
@@ -180,7 +194,7 @@ def test_canonical_router_cost_policy_denies_missing_estimate_before_provider_ca
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": adapter},
-            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_estimates={},
         )
         with pytest.raises(ModelRouterUnavailable):
@@ -195,8 +209,8 @@ def test_canonical_router_cost_policy_rejects_actual_cost_over_reservation():
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": adapter},
-            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
-            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 100, 900)},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 100, 900, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
         )
         with pytest.raises(ModelRouterRejected) as error:
             await router.embed(request())
@@ -210,8 +224,8 @@ def test_canonical_router_cost_policy_requires_matching_route_version():
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": adapter},
-            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
-            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "other-version", 10, 100)},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "other-version", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
         )
         with pytest.raises(ModelRouterUnavailable):
             await router.embed(request())
@@ -235,8 +249,8 @@ def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
         configured = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": FakeAdapter([])},
-            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
-            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100)},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
             metering_sink=Meter(),
         )
@@ -251,8 +265,8 @@ def test_runtime_router_rejects_callable_only_non_durable_metering_sink():
         router = CanonicalModelRouter(
             routes={"internal": EmbeddingRoute("router-policy", "selected-model", "version-1")},
             adapters={"router-policy": FakeAdapter([])},
-            cost_budgets={"internal": CostBudget("internal", 100, 1000)},
-            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100)},
+            cost_budgets={"internal": CostBudget("internal", 100, 1000, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
+            cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100, "embedding_input_unit", "policy_cost_microunit", "test-pricing-v1")},
             cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
             metering_sink=lambda request, response: None,
         )
