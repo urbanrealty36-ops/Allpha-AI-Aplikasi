@@ -130,6 +130,8 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
             "source_event_id": command.source_event_id,
             "policy_version": command.policy_version,
             "actual_credits": command.actual_credits,
+            "actual_usage_units": command.actual_usage_units,
+            "usage_unit": command.usage_unit,
             "release_unused": command.release_unused,
         })
         return self._receipt(result)
