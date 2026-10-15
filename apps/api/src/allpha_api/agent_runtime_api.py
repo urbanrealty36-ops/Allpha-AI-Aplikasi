@@ -345,9 +345,8 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
                     raise AgentRuntimePersistenceError("runtime checkpoint could not be durably committed")
             event_log = list(row.get("event_log") or [])
             if resumed_from_checkpoint:
-                event_log.append(_event("succeeded" if result["state"] == "succeeded" else result["state"], row["trace_id"], "resumed_from_checkpoint"))
-            else:
-                event_log.extend(result["events"])
+                event_log.append({"event": "checkpoint_resumed", "at": _now(), "trace_id": row["trace_id"]})
+            event_log.extend(result["events"])
             completed = await store.finalize_task(owner_id, str(task_id), lease_token, int(row["task_version"]),
                 state=result["state"], output_payload=result, error_code=result.get("error_code"),
                 event_log=event_log)
