@@ -430,3 +430,100 @@ def test_supabase_keyword_repository_rejects_unready_source_even_if_query_adapte
         assert calls[0][2]["agent_knowledge_sources.status"] == "eq.ready"
     asyncio.run(scenario())
 
+
+def test_public_route_traces_resolved_policy_and_consent_versions():
+    from allpha_api.knowledge_policy import (
+        KnowledgePolicySnapshot, VersionedKnowledgePolicyResolver,
+        VersionedKnowledgeRetrievalPolicy,
+    )
+
+    async def fake_current_user(request: Request):
+        return {"id": "owner-a"}
+
+    class Provider:
+        async def resolve(self, *, owner_id, agent_id):
+            return KnowledgePolicySnapshot(
+                policy_version="knowledge-policy.v3",
+                owner_id=owner_id,
+                agent_id=agent_id,
+                allowed_sensitivities=("internal",),
+                knowledge_consent_granted=True,
+                consent_version="knowledge-consent.v2",
+                consent_revoked=False,
+                allowed_purposes=("agent_context_retrieval",),
+                grants_active=True,
+                resolved_at_version="snapshot-42",
+            )
+
+    async def scenario():
+        repo = Repo(hits=[hit(agent_id=str(uuid.UUID(int=101)))])
+        policy = VersionedKnowledgeRetrievalPolicy(VersionedKnowledgePolicyResolver(Provider()))
+        prior = getattr(app.state, "knowledge_retrieval_service", None)
+        app.state.knowledge_retrieval_service = KnowledgeRetrievalService(repo, policy)
+        app.dependency_overrides[current_user] = fake_current_user
+        try:
+            response = TestClient(app).post(
+                f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+                json={"query": "contract details"},
+                headers={"Authorization": "Bearer test", "X-Request-ID": "trace-policy"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+            if prior is None:
+                delattr(app.state, "knowledge_retrieval_service")
+            else:
+                app.state.knowledge_retrieval_service = prior
+        assert response.status_code == 200
+        assert response.json()["policy_version"] == "knowledge-policy.v3"
+        assert response.json()["consent_version"] == "knowledge-consent.v2"
+
+    asyncio.run(scenario())
+
+
+def test_public_route_fails_closed_on_revoked_knowledge_consent_before_search():
+    from allpha_api.knowledge_policy import (
+        KnowledgePolicySnapshot, VersionedKnowledgePolicyResolver,
+        VersionedKnowledgeRetrievalPolicy,
+    )
+
+    async def fake_current_user(request: Request):
+        return {"id": "owner-a"}
+
+    class Provider:
+        async def resolve(self, *, owner_id, agent_id):
+            return KnowledgePolicySnapshot(
+                policy_version="knowledge-policy.v3",
+                owner_id=owner_id,
+                agent_id=agent_id,
+                allowed_sensitivities=("internal",),
+                knowledge_consent_granted=True,
+                consent_version="knowledge-consent.v2",
+                consent_revoked=True,
+                allowed_purposes=("agent_context_retrieval",),
+                grants_active=True,
+                resolved_at_version="snapshot-43",
+            )
+
+    async def scenario():
+        repo = Repo(hits=[hit(agent_id=str(uuid.UUID(int=101)))])
+        policy = VersionedKnowledgeRetrievalPolicy(VersionedKnowledgePolicyResolver(Provider()))
+        prior = getattr(app.state, "knowledge_retrieval_service", None)
+        app.state.knowledge_retrieval_service = KnowledgeRetrievalService(repo, policy)
+        app.dependency_overrides[current_user] = fake_current_user
+        try:
+            response = TestClient(app).post(
+                f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
+                json={"query": "private details"},
+                headers={"Authorization": "Bearer test"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+            if prior is None:
+                delattr(app.state, "knowledge_retrieval_service")
+            else:
+                app.state.knowledge_retrieval_service = prior
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "KNOWLEDGE_RETRIEVAL_UNAVAILABLE"
+        assert repo.search_args is None
+
+    asyncio.run(scenario())
