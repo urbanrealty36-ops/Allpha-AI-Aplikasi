@@ -294,7 +294,7 @@ begin
   update public.credit_balance_projection set available_credits = available_credits - v_credits,
     ledger_entry_count = ledger_entry_count + 1, updated_at = now() where owner_user_id = v_owner;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_res.idempotency_key,
-    'account_id',v_owner,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state);
+    'account_id',v_owner,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version);
 end;
 $$;
 
@@ -396,7 +396,7 @@ begin
     ledger_entry_count=ledger_entry_count+1+(case when v_unused > 0 then 1 else 0 end),updated_at=now()
     where owner_user_id=v_res.owner_user_id;
   return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_key,
-    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','settled');
+    'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','settled','policy_version',v_res.policy_version);
 end;
 $$;
 
@@ -425,7 +425,7 @@ begin
       raise exception 'CREDIT_LEDGER_IDEMPOTENCY_CONFLICT' using errcode = '23505';
     end if;
     return jsonb_build_object('reservation_id',v_res.id,'idempotency_key',v_key,
-      'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state);
+      'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state',v_res.state,'policy_version',v_res.policy_version);
   end if;
   if v_res.state not in ('reserved','pending_reconciliation') or v_policy <> v_res.policy_version then
     raise exception 'CREDIT_RESERVATION_NOT_RELEASABLE' using errcode = '23514';
