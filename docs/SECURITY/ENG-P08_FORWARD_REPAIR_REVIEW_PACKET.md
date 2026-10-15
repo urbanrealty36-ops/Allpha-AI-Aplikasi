@@ -565,7 +565,7 @@ The table below completes current-path coverage for the other 14 ledger versions
 |---|---|---|---|
 | 20261013053438 | 20261013053438_eng_p03_human_identity_preferences_and_consent.sql | e287394084357b981c3037cf0a26074b39b8f61d | 88b99701355349bb4f97dacd5b31c3e9a521abdf |
 | 20261013053502 | 20261013053502_eng_p03_single_source_profile_visibility.sql | 618c890d45a069eb8722561286c80a5e098ed2f3 | ca4820c0beb94e83d935960b44bc237f63e785fb |
-| 20261013054429 | 20261013054429_eng_p04_ai_agent_identity.sql | aab8d556b7cb2927b77caa63c10f160f74a7d816 | 4b? Not independently resolved in this pass; see source history for this file |
+| 20261013054429 | 20261013054429_eng_p04_ai_agent_identity.sql | aab8d556b7cb2927b77caa63c10f160f74a7d816 | 9b3e0d5c0c6cc30409d9ac29fcae30362ebdf236 |
 | 20261013054446 | 20261013054446_eng_p04_agent_ownership_rls_helpers.sql | c02174bf5d9f64434ceff9fff65aef3b54982620 | 605a37b3c00fd3daf84c20db55565aec55053634 |
 | 20261013054513 | 20261013054513_eng_p04_agent_owner_insert_policy.sql | 520b7df40cf16d56416dd1b90ea8b4e44afd8965 | 1ada4a0c0bfa578499c6bb4d6ace7b50dbe06bc1 |
 | 20261013054613 | 20261013054613_eng_p04_agent_creator_rls_fix.sql | 1b729e7f885c9d4f3b1896ba41c584b920cf7845 | 53bd6ef1d0d3721b4fa476a8ae611a4e2b3a2c60 |
@@ -578,4 +578,4 @@ The table below completes current-path coverage for the other 14 ledger versions
 | 20261013234129 | 20261013234129_eng_p04_social_graph_realtime.sql | a7b9b653177d0a3c105f2f37e58a7001d3612ba3 | 6b4f3f27343ec705e2543641b89f979ed94e1acf |
 | 20261014072435 | 20261014072435_eng_p05_agent_contract_reconciliation.sql | b45c440e40674d1beab30065bafe3aefc826d7e1 | 4c886e8519114a5dbd59444429a1f645cd443827 |
 
-Correction/qualification: the current file and blob SHA for 20261013054429 are verified; its latest path-history commit was not fetched in the final batch, so this table intentionally does not invent that commit. Retrieve it before treating the Git history subtask as complete.
+Lineage qualification: all 20 current source paths, blob SHAs, and path-history commits are now mapped. This proves current Git source coverage only; historical SQL checksums from the applied production migrations remain unavailable.
