@@ -171,3 +171,83 @@ def test_public_route_derives_owner_from_authenticated_identity_and_policy():
         assert repo.search_args["owner_id"] == "owner-a"
         assert response.json()["results"][0]["source_id"] == "source-a"
     asyncio.run(scenario())
+
+
+def test_supabase_keyword_repository_pushes_security_filters_into_database_query(monkeypatch):
+    from allpha_api import auth
+    from allpha_api.knowledge_retrieval import SupabaseKeywordKnowledgeRepository
+
+    calls = []
+    async def fake_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        calls.append((method, path, access_token, params))
+        return [{
+            "id": "chunk-a", "source_id": "source-a", "agent_id": "agent-a",
+            "owner_id": "owner-a", "chunk_index": 0, "content": "private text",
+            "source_location": {"kind": "page", "index": 1}, "source_version": 2,
+            "content_sha256": "a" * 64,
+            "agent_knowledge_sources": {
+                "id": "source-a", "source_version": 2, "status": "ready",
+                "sensitivity": "internal",
+            },
+        }]
+    monkeypatch.setattr(auth, "user_db_request", fake_request)
+    async def scenario():
+        repo = SupabaseKeywordKnowledgeRepository(access_token="user-token")
+        hits = await repo.search_keyword(
+            owner_id="owner-a", agent_id="agent-a", query="private phrase",
+            allowed_sensitivities=["internal"], limit=7, trace_id="trace-1",
+        )
+        assert len(hits) == 1 and hits[0].retrieval_method == "keyword"
+        method, path, token, params = calls[0]
+        assert (method, path, token) == ("GET", "agent_knowledge_chunks", "user-token")
+        assert params["owner_id"] == "eq.owner-a"
+        assert params["agent_id"] == "eq.agent-a"
+        assert params["agent_knowledge_sources.status"] == "eq.ready"
+        assert params["agent_knowledge_sources.sensitivity"] == "in.(internal)"
+        assert params["search_vector"] == "fts.simple.private phrase"
+        assert params["limit"] == "7"
+    asyncio.run(scenario())
+
+
+def test_supabase_keyword_repository_rejects_source_version_conflict(monkeypatch):
+    from allpha_api import auth
+    from allpha_api.knowledge_retrieval import (
+        KnowledgeRetrievalUnavailable, SupabaseKeywordKnowledgeRepository,
+    )
+    async def fake_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        return [{
+            "id": "chunk-a", "source_id": "source-a", "agent_id": "agent-a",
+            "owner_id": "owner-a", "chunk_index": 0, "content": "private text",
+            "source_location": {}, "source_version": 1, "content_sha256": "a" * 64,
+            "agent_knowledge_sources": {
+                "id": "source-a", "source_version": 2, "status": "ready",
+                "sensitivity": "internal",
+            },
+        }]
+    monkeypatch.setattr(auth, "user_db_request", fake_request)
+    async def scenario():
+        repo = SupabaseKeywordKnowledgeRepository(access_token="user-token")
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await repo.search_keyword(
+                owner_id="owner-a", agent_id="agent-a", query="private phrase",
+                allowed_sensitivities=["internal"], limit=5, trace_id="trace-1",
+            )
+    asyncio.run(scenario())
+
+
+def test_hybrid_repository_fails_closed_without_approved_vector_adapter():
+    from allpha_api.knowledge_retrieval import (
+        HybridKnowledgeRepository, KnowledgeRetrievalUnavailable,
+        SupabaseKeywordKnowledgeRepository,
+    )
+    async def scenario():
+        repo = HybridKnowledgeRepository(
+            keyword_repository=SupabaseKeywordKnowledgeRepository(access_token="user-token"),
+            vector_search=None,
+        )
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await repo.search_hybrid(
+                owner_id="owner-a", agent_id="agent-a", query="text",
+                allowed_sensitivities=["internal"], limit=5, trace_id="trace-1",
+            )
+    asyncio.run(scenario())
