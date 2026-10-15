@@ -32,13 +32,13 @@ create index if not exists agent_model_usage_metering_agent_created_idx
 
 alter table public.agent_model_usage_metering enable row level security;
 revoke all on table public.agent_model_usage_metering from public, anon, authenticated;
-grant select, insert on table public.agent_model_usage_metering to service_role;
+revoke all on table public.agent_model_usage_metering from service_role;
 
 create or replace function public.record_agent_model_usage_metering(p_record jsonb)
 returns boolean
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare
   v_existing_fingerprint text;
