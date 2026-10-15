@@ -42,6 +42,9 @@ create index if not exists agent_runtime_sessions_owner_activity_idx
 create index if not exists agent_runtime_sessions_agent_idx
   on public.agent_runtime_sessions(agent_id, created_at desc);
 
+create unique index if not exists agent_skills_id_agent_unique_idx
+  on public.agent_skills(id, agent_id);
+
 create table if not exists public.agent_runtime_tasks (
   id uuid primary key default gen_random_uuid(),
   owner_user_id uuid not null references auth.users(id) on delete cascade,
@@ -71,6 +74,8 @@ create table if not exists public.agent_runtime_tasks (
   completed_at timestamptz,
   foreign key (session_id, owner_user_id)
     references public.agent_runtime_sessions(id, owner_user_id) on delete cascade,
+  foreign key (skill_id, agent_id)
+    references public.agent_skills(id, agent_id) on delete restrict,
   unique (owner_user_id, idempotency_key)
 );
 create index if not exists agent_runtime_tasks_owner_created_idx
