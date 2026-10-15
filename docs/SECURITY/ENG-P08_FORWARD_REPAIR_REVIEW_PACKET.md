@@ -497,3 +497,61 @@ The current repository tree was not able to resolve guessed canonical filenames 
 5. Only after this provenance map is reviewed should FR-04 decide between restoring a known contract, a new versioned forward repair, or formally deprecating an obsolete contract.
 
 This finding strengthens the case for a lineage-first, multi-track repair; it does not authorize replaying any of these historical versions.
+
+
+## C. Follow-up evidence — migration lineage and access-contract work (2026-10-15)
+
+This section records the next read-only pass. Git blob SHAs below identify the current main file content, not a checksum of SQL historically executed in Supabase. The commit-history evidence proves when the current path entered/changed in Git; it does not prove that the same bytes were applied to the live database.
+
+### C1. ENG-P02 recorded versions: current source and Git history
+
+| Ledger version | Current main source | Current Git blob SHA | Git history evidence | Disposition |
+|---|---|---|---|---|
+| 20261013052302 | 20261013052302_eng_p02_identity_authorization_baseline.sql | 8d8fc37ce3db8b8ddcd7bd99e8138c295f8cf03b | commit 4b41a5d8f7448297c3a61640d629f57b5da0d318, “add reconstructed baseline migration for fresh databases” | Source reconstructed; historical applied SQL unrecovered. Never replay against live production. |
+| 20261013052409 | 20261013052409_eng_p02_authz_audit_and_org_creation.sql | dba5e0ae2054a19765c4e7a8f70164aa95ade180 | commit 7c49c259a549de10c148896eb926ea2c19c91597, “align migration filename with canonical history” | Current source located; historical applied checksum unavailable; object state drifts (audit/org objects absent). |
+| 20261013052557 | 20261013052557_eng_p02_restrict_security_definer_execution.sql | 33de585f558f8e58166f4d0e3edaadc66699dffd | commit 9765b07a2b9103ac0bf14757993fcc83c2936ff6, “align security migration with canonical history” | Current source located; compare complete function ACL post-state; historical applied checksum unavailable. |
+| 20261013052733 | 20261013052733_eng_p02_move_authz_helpers_to_private_schema.sql | a33af6c2d121f892c13e7bf74192a44e8cf7575a | commit d14777007ac47919110cfb61f9868321db0ecc9d, “align migration filename with canonical history” | Current source located; live helper definitions/dependencies require exact semantic diff; historical applied checksum unavailable. |
+| 20261013052744 | 20261013052744_eng_p02_audit_organization_creation.sql | 3d47f09bdd8cdcb06e78c3aa2a99f5f6819f5a33 | commit 616410b379216fda7af5aa4309a6daa86b4a74e1, “align migration filename with canonical history” | Current source located; function references absent audit_events; historical applied checksum unavailable. |
+| 20261013090730 | 20261013090730_eng_p02_least_privilege_identity_tenant_grants.sql | dd832350634a72529972816258e6ed9b3b351395 | commit 6b551ec00c9ac91f2d6aa32b1be953304f0d8e71, “align migration filename with canonical applied version” | Current source located; live ACL and absent org/audit objects require object-by-object reconciliation; historical applied checksum unavailable. |
+
+**Lineage conclusion:** all six ENG-P02 ledger entries above have a same-version current source file on main. This closes the narrower “current file missing by expected path” question for these six versions, but does not recover the original SQL bytes applied to production. For version 20261013052302, the repository itself explicitly labels the file reconstructed. The other five path-alignment commits also do not establish historical byte identity. Do not label any of these six as historically checksum-verified.
+
+The live ledger has 20 entries and the repository currently has 29 SQL files. The remaining 14 ledger versions still require the same source/blob/history map before declaring lineage complete. Eight unique repository SQL files remain absent from the observed live ledger; the duplicate ENG-P04 file remains a duplicate, not a separate executable unit. No ledger edits or database writes were performed.
+
+### C2. Initial role → object → grant → RLS → RPC → caller matrix
+
+This is a decision-support matrix, not a statement that every caller has been traced or that authorization tests have run. Grant and RLS observations are from the read-only catalog snapshot; route/client caller mapping and positive/negative runtime tests remain open.
+
+| Role / path | Object or capability | Observed grants / policy | API/RPC caller contract | Required positive test | Required negative test | Status |
+|---|---|---|---|---|---|---|
+| anon | agent_ownerships | Broad table ACL observed; RLS policies target authenticated ownership semantics | No anonymous owner-management caller should exist | Authenticated owner can perform only permitted operation through supported path | Anonymous SELECT/INSERT/UPDATE/DELETE denied at SQL/PostgREST boundary | Candidate FR-01; caller inventory and isolated test pending |
+| anon | social_edges | Broad table ACL observed; actor/participant policies exist | Social graph domain via canonical API; Realtime separately exposed and needs authorization review | Authenticated actor can perform allowed edge operation | Anonymous read/write denied; cross-user mutation denied | Candidate FR-01; Realtime subscription authorization open |
+| anon | user_consents | Broad table ACL observed; self policies and false client update/delete policies observed | Existing consent rows cover terms/privacy/product updates only | Authenticated user can record allowed existing consent type | Anonymous/cross-user access denied; knowledge consent cannot be inferred from this table | Candidate FR-01; regression and caller mapping pending |
+| anon | user_interests | Broad table ACL observed; self-scoped RLS policies | Interest management via canonical API/approved user path | Authenticated user manages own interests | Anonymous and cross-user read/write denied | Candidate FR-01; caller mapping pending |
+| anon | user_settings | Broad table ACL observed; self-scoped RLS policies | Settings API/user path must be traced before revocation | Authenticated user manages own settings | Anonymous and cross-user read/write denied | Candidate FR-01; caller mapping pending |
+| anon | ai_agents | No table ACL observed, but anonymous public-active SELECT policy exists | Public discovery contract must be resolved separately; do not grant base-table SELECT by assumption | Only approved public fields/active public Agents discoverable through approved projection/API | Private/draft Agent fields and owner-only data not discoverable | Separate decision; excluded from FR-01 |
+| authenticated | ai_agents + create_ai_agent | SELECT/INSERT/UPDATE table grants; 8-argument invoker RPC; ownership trigger/policies observed | Trace clients and FastAPI routes; ensure owner identity is server-derived | Owner creates/updates own Agent within contract | Foreign owner/Agent ID cannot escalate; private Agent inaccessible to unrelated user | Function/route diff and tests pending |
+| authenticated | profiles, user_settings, user_consents, user_interests | Table ACLs differ by table; RLS self/visibility policies observed | Direct client access must be checked against AGENTS.md §12 and actual API contracts | User reads/updates only allowed self/public projection | Cross-user read/write and hidden profile disclosure denied | Caller map and tests pending |
+| service_role / backend | Application tables and trigger functions | Broad trusted access expected in current inventory; function ACLs vary | Only canonical apps/api and trusted migration/runtime paths | Authorized server operation succeeds with audited identity/context | Client cannot impersonate service role or invoke privileged-only path | Secret/caller inventory and API negative tests pending |
+| PUBLIC, anon, authenticated | public.set_updated_at() | EXECUTE visible to PUBLIC/anon/authenticated; trigger function | No direct RPC caller expected; trigger execution should continue | Table updates still set updated_at via trigger | Direct function RPC invocation denied after FR-03 | Caller search and trigger regression pending |
+| anon, authenticated | Default ACLs for future tables/functions/sequences owned by postgres and supabase_admin | Broad defaults observed | Inspect migration owners and intended public RPCs | Approved new objects receive only required grants | Unintended default exposure absent | FR-02 review and fresh-object test pending |
+
+### C3. FR-01–FR-05 decision register
+
+No reviewer approval is evidenced in the repository materials inspected for this pass. These are proposed dispositions, not approvals.
+
+| Unit | Proposed disposition | Preconditions before executable migration |
+|---|---|---|
+| FR-01 — revoke excess anon grants on owner-scoped tables | Keep narrow scope; preserve authenticated grants and RLS; exclude ai_agents | Complete caller/direct-client/Realtime inventory; positive/negative contract tests; Privacy/Security review; isolated target confirmed |
+| FR-02 — correct default ACLs | Restrict defaults per verified object owner; do not use a blanket global revoke | Identify migration/runtime object owners and required public RPCs; prove fresh-object behavior and service compatibility; reviewer decision |
+| FR-03 — restrict direct execution of set_updated_at() | Revoke client/PUBLIC EXECUTE only if trigger behavior remains intact | Search all RPC callers; trigger regression and direct-RPC denial tests; reviewer decision |
+| FR-04 — missing organization/audit objects | Do not recreate yet. Recover product/domain ownership and provenance; establish whether objects are still required, were removed intentionally, or belong to another approved schema contract | Historical Git/object provenance, dependent functions/triggers/grants, data retention/audit requirements and Data Platform + Security decision |
+| FR-05 — ENG-P06/07/09 dependencies | Keep dependent migrations blocked until source schema and contracts are approved | Verify prerequisite objects, privacy/consent/grants contract, worker/runtime/embedding profile, and migration order; do not activate provider or invent vector dimensions |
+
+### C4. Environment and test timing
+
+The current Supabase branch inventory was empty at the last read-only check. The Railway QA-like service remains an unverified candidate because its effective database target has not been positively established as isolated non-production. Therefore no real tenant-isolation or destructive migration tests are authorized against the canonical production database.
+
+Per AGENTS.md §13, this work can continue during implementation phases with source inspection, catalog reads, static migration checks, unit/contract tests and safe regressions. The consolidated real Supabase/staging acceptance campaign is deferred to ENG-P37 after ENG-P00–ENG-P36 implementation. This timing rule does not authorize claims of live integration or acceptance without evidence.
+
+**Next evidence required:** finish the remaining 14 ledger-version mappings; complete the exact object/function/constraint/index/policy/grant diff; trace direct client/API callers for FR-01–FR-03; record actual Privacy/Security and Data Platform decisions when available; positively verify an already-existing isolated non-production target before any real migration execution.
