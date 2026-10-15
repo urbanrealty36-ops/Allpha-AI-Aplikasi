@@ -367,3 +367,11 @@ ENG-P10 remains `in_progress`, not closed: the operator approval path that suppl
 - Run [#679](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38746597226) on commit `f88a19c3f15e19c94eff877fad2898361660e77b` exposed two **test-fixture regressions**, not a production-code failure: the denial-path test had not stubbed the operator audit dependency (request correctly failed closed with 503), and the high-risk review test did not supply the newly required policy version (request was rejected at input validation before the high-risk scope assertion).
 - Corrected the test setup to stub audit for the denial-path test and provide an explicit policy version in the high-risk review test. The production authorization contract remains: approved capability requires explicit policy version; denied capability cannot set one; high/critical review still requires the extra high-risk scope.
 - These test corrections are committed separately; their CI result must be observed before claiming the fix is verified. ENG-P10 remains `in_progress`.
+
+
+### ENG-P10 CI repair verified — run #680 (2026-10-15)
+
+- Run [#680](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38746797100) on commit `b4d45495e2097e7b2dd37ec794e17a9debfb9486` completed **success**. API `pytest apps/api/tests`, Web `npm test` + `npm run build`, and Native `npm test` + `npm run typecheck` all passed; every job completed successfully.
+- The two fixture failures observed in run #679 are corrected and covered by regression tests. This verifies the source-level implementation and automated suite only; it does not prove an operator can successfully mutate the canonical live database, that the migration is applied, or that the task lifecycle works under real concurrent/crash conditions.
+- **Remaining ENG-P10 implementation review:** inspect event-log ordering and state transitions around claim/terminal persistence, cancellation races, and recovery after unknown execution outcomes. Do not replay unknown side effects automatically. Revisit status only after this source review and the required CI evidence; ENG-P10 stays `in_progress`.
+- **ENG-P37 remains unchanged:** real staging migration execution, concurrency, RLS/grants, owner isolation, and authenticated cross-app E2E are `DEFERRED / NOT VERIFIED`.
