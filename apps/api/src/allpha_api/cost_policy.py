@@ -7,7 +7,7 @@ All estimates and limits must come from an explicitly approved Model Router poli
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Protocol
 
 
 class CostPolicyUnavailable(RuntimeError):
@@ -71,6 +71,13 @@ class CostPolicyApproval:
     def __post_init__(self) -> None:
         if not self.policy_id.strip() or not self.version.strip() or not self.approval_reference.strip():
             raise ValueError("cost policy approval must reference a policy, version and approval record")
+
+
+class CostPolicyApprovalVerifier(Protocol):
+    """Trusted deployment adapter that resolves approval references against an approved registry."""
+
+    def is_approved(self, approval: CostPolicyApproval) -> bool:
+        """Return true only for a verified, active approval; fail closed on errors."""
 
 
 @dataclass(frozen=True)
