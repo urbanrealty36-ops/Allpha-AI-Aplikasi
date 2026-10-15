@@ -6,6 +6,8 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
 
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; error_code?: string | null; sha256: string; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
+type RetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
+type RetrievalResponse = { trace_id: string; results: RetrievalResult[] };
 type Skill = {
   id: string; agent_id: string; slug: string; name: string; description: string;
   category: string; instructions: string; required_permission_scopes: string[];
@@ -34,6 +36,11 @@ export default function AgentStudioPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
+  const [retrievalQuery, setRetrievalQuery] = useState("");
+  const [retrievalResults, setRetrievalResults] = useState<RetrievalResult[]>([]);
+  const [retrievalTraceId, setRetrievalTraceId] = useState("");
+  const [retrievalLoading, setRetrievalLoading] = useState(false);
+  const [retrievalError, setRetrievalError] = useState("");
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
   const [registeredTools, setRegisteredTools] = useState<RegisteredTool[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
@@ -139,6 +146,26 @@ export default function AgentStudioPage() {
       await load(session);
     } catch (cause) { setError(cause instanceof SyntaxError ? "JSON Schema, tests, model requirements, rubric, provenance, dan terms harus berupa JSON valid." : cause instanceof Error ? cause.message : "Skill tidak dapat disimpan."); }
     finally { setSaving(false); }
+  }
+
+  async function retrieveKnowledge() {
+    if (!session || !retrievalQuery.trim() || retrievalLoading) return;
+    setRetrievalLoading(true); setRetrievalError(""); setRetrievalResults([]); setRetrievalTraceId("");
+    try {
+      const response = await fetch(`${apiBase}/v1/agents/${encodeURIComponent(agentId)}/knowledge/retrieve`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ query: retrievalQuery.trim(), limit: 8 }),
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error?.message ?? body?.detail?.message ?? `Retrieval gagal (${response.status}).`);
+      const payload = body as RetrievalResponse;
+      setRetrievalTraceId(typeof payload.trace_id === "string" ? payload.trace_id : "");
+      setRetrievalResults(Array.isArray(payload.results) ? payload.results : []);
+    } catch (cause) {
+      setRetrievalError(cause instanceof Error ? cause.message : "Retrieval tidak dapat dijalankan.");
+    } finally { setRetrievalLoading(false); }
   }
 
   async function uploadKnowledge(event: FormEvent<HTMLFormElement>) {
@@ -261,6 +288,23 @@ export default function AgentStudioPage() {
         <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{source.filename}</h3><p className="mt-1 text-xs text-neutral-500">{(source.size_bytes / 1024).toFixed(1)} KiB · SHA-256 {source.sha256.slice(0, 12)}…</p></div><span className="rounded-full border px-2 py-1 text-xs">{source.status}</span></div>
         <p className="mt-2 text-sm text-neutral-600">Tahap: {source.processing_stage}{source.error_code ? " · " + source.error_code : ""}</p>{source.latest_job && <p className="mt-1 text-xs text-neutral-500">Job: {source.latest_job.status} · {source.latest_job.stage} · {source.latest_job.progress}% · percobaan {source.latest_job.attempt}{source.latest_job.error_code ? " · " + source.latest_job.error_code : ""}</p>}
         <div className="mt-3 flex flex-wrap gap-2">{(source.status === "quarantined" || source.status === "failed") && <button type="button" disabled={saving} onClick={() => void knowledgeAction(source, source.status === "failed" ? "retry" : "process")} className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50">{source.status === "failed" ? "Coba lagi" : "Proses dokumen"}</button>}<button type="button" disabled={saving} onClick={() => { if (window.confirm("Hapus dokumen dan seluruh chunk terkait?")) void knowledgeAction(source, "delete"); }} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs text-red-700 disabled:opacity-50">Hapus</button></div>
+      </article>)}</div>
+    </section>
+    <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
+      <div><h2 className="text-xl font-semibold">Uji retrieval & konteks Agent</h2><p className="mt-1 text-sm text-neutral-600">Mengambil potongan knowledge milik Agent ini melalui API terautentikasi. Ini adalah preview konteks retrieval, bukan respons generatif Agent. Sensitivitas dan akses ditentukan server.</p></div>
+      <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={event => { event.preventDefault(); void retrieveKnowledge(); }}>
+        <label className="grid flex-1 gap-1 text-sm">Pertanyaan / query konteks<textarea value={retrievalQuery} onChange={event => setRetrievalQuery(event.target.value)} maxLength={4000} rows={3} required placeholder="Contoh: temukan kebijakan yang relevan untuk pertanyaan ini" className="rounded-lg border px-3 py-2" /></label>
+        <button type="submit" disabled={retrievalLoading || !session || !retrievalQuery.trim()} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{retrievalLoading ? "Mengambil konteks…" : "Ambil konteks dari API"}</button>
+      </form>
+      {retrievalLoading && <div role="status" className="flex items-center gap-2 rounded-xl border p-3 text-sm"><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900" /> API sedang mencari knowledge yang diizinkan…</div>}
+      {retrievalError && <div role="alert" className="space-y-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900"><p>{retrievalError}</p><p className="text-xs">Jika retrieval belum dikonfigurasi (503), hasil tidak dibuat dari data contoh. Pastikan mode keyword dan policy server disetel secara eksplisit.</p><button type="button" onClick={() => void retrieveKnowledge()} disabled={retrievalLoading || !retrievalQuery.trim()} className="rounded-lg border border-red-400 px-3 py-1.5 font-medium disabled:opacity-50">Coba lagi</button></div>}
+      {!retrievalLoading && !retrievalError && retrievalTraceId && <p role="status" className="text-xs text-neutral-500">Trace ID: <code>{retrievalTraceId}</code> · sumber hasil berasal dari API Allpha.</p>}
+      {!retrievalLoading && !retrievalError && retrievalTraceId && retrievalResults.length === 0 && <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">API mengembalikan 0 hasil untuk query ini.</p>}
+      <div className="space-y-3">{retrievalResults.map((item, index) => <article key={item.chunk_id} className="space-y-2 rounded-xl border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Potongan {index + 1} · {item.source_id} · v{item.source_version}</h3><span className="rounded-full border px-2 py-1 text-xs">{item.retrieval_method} · skor {Number.isFinite(item.score) ? item.score.toFixed(3) : "—"}</span></div>
+        <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
+        <dl className="grid gap-1 text-xs text-neutral-500 sm:grid-cols-2"><div><dt className="inline font-medium">Chunk: </dt><dd className="inline break-all">{item.chunk_id}</dd></div><div><dt className="inline font-medium">Sensitivitas: </dt><dd className="inline">{item.sensitivity}</dd></div><div><dt className="inline font-medium">SHA-256: </dt><dd className="inline break-all">{item.content_sha256}</dd></div><div><dt className="inline font-medium">Lokasi sumber: </dt><dd className="inline break-words">{JSON.stringify(item.source_location)}</dd></div></dl>
+        {(item.provider_id || item.model_id || item.model_version || item.index_generation) && <p className="text-xs text-neutral-500">Indeks: {[item.provider_id, item.model_id, item.model_version, item.index_generation].filter(Boolean).join(" · ")}</p>}
       </article>)}</div>
     </section>
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
