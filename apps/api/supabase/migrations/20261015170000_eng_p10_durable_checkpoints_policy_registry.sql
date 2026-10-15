@@ -196,7 +196,7 @@ begin
    where id = p_task_id;
   return next checkpoint_row;
 end;
-$;
+$$;
 revoke all on function public.append_agent_runtime_checkpoint(uuid, uuid, uuid, integer, bigint, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.append_agent_runtime_checkpoint(uuid, uuid, uuid, integer, bigint, text, text, text, jsonb) to service_role;
 
@@ -208,7 +208,7 @@ returns public.agent_runtime_effect_receipts
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   task_row public.agent_runtime_tasks%rowtype;
   receipt public.agent_runtime_effect_receipts%rowtype;
@@ -238,7 +238,7 @@ begin
     updated_at = now() where id = p_task_id;
   return receipt;
 end;
-$;
+$$;
 revoke all on function public.begin_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text) from public, anon, authenticated;
 grant execute on function public.begin_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text) to service_role;
 
@@ -250,7 +250,7 @@ returns public.agent_runtime_effect_receipts
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   task_row public.agent_runtime_tasks%rowtype;
   receipt public.agent_runtime_effect_receipts%rowtype;
@@ -282,7 +282,7 @@ begin
    where id = p_task_id;
   return receipt;
 end;
-$;
+$$;
 revoke all on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) to service_role;
 
@@ -294,7 +294,7 @@ returns setof public.agent_runtime_tasks
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   if p_terminal_state not in ('succeeded','partially_succeeded','failed','cancelled','timed_out','budget_exhausted') then
     raise exception 'state is not terminal' using errcode = '22023';
@@ -318,7 +318,7 @@ begin
      and t.task_version = p_task_version
   returning t.*;
 end;
-$;
+$$;
 revoke all on function public.finalize_agent_runtime_task(uuid, uuid, uuid, integer, text, jsonb, text, jsonb) from public, anon, authenticated;
 grant execute on function public.finalize_agent_runtime_task(uuid, uuid, uuid, integer, text, jsonb, text, jsonb) to service_role;
 
@@ -329,7 +329,7 @@ returns setof public.agent_runtime_tasks
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   task_row public.agent_runtime_tasks%rowtype;
 begin
@@ -355,7 +355,7 @@ begin
    where t.id = p_task_id and t.owner_user_id = p_owner_user_id
   returning t.*;
 end;
-$;
+$$;
 revoke all on function public.mark_agent_runtime_effect_unknown(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.mark_agent_runtime_effect_unknown(uuid, uuid) to service_role;
 
