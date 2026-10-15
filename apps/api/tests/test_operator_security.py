@@ -420,7 +420,11 @@ def test_denial_cannot_set_runtime_policy_version(monkeypatch):
     async def unexpected_privileged(*args, **kwargs):
         raise AssertionError("Denied review must be rejected before database mutation")
 
+    async def fake_audit(request, **kwargs):
+        return None
+
     monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "write_operator_audit", fake_audit)
     monkeypatch.setattr(security, "privileged_rest_request", unexpected_privileged)
     install_auth("operator")
     try:
@@ -466,7 +470,7 @@ def test_high_risk_capability_review_requires_separate_scope(monkeypatch):
     try:
         response = client.post(
             "/v1/admin/operator/capabilities/00000000-0000-0000-0000-000000000777/review",
-            json={"decision": "approved", "reason": "Reviewed carefully"},
+            json={"decision": "approved", "reason": "Reviewed carefully", "policy_version": "runtime-policy-v1"},
         )
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "HIGH_RISK_REVIEW_SCOPE_REQUIRED"
