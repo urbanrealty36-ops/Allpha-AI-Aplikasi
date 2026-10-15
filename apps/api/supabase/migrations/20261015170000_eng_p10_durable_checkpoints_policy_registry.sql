@@ -285,6 +285,42 @@ $;
 revoke all on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.complete_agent_runtime_effect(uuid, uuid, uuid, integer, text, text, text, jsonb) to service_role;
 
+create or replace function public.finalize_agent_runtime_task(
+  p_task_id uuid, p_owner_user_id uuid, p_lease_token uuid, p_task_version integer,
+  p_terminal_state text, p_output_payload jsonb, p_error_code text, p_event_log jsonb
+)
+returns setof public.agent_runtime_tasks
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if p_terminal_state not in ('succeeded','partially_succeeded','failed','cancelled','timed_out','budget_exhausted') then
+    raise exception 'state is not terminal' using errcode = '22023';
+  end if;
+  return query
+  update public.agent_runtime_tasks t
+     set state = p_terminal_state,
+         output_payload = p_output_payload,
+         error_code = p_error_code,
+         event_log = p_event_log,
+         completed_at = now(),
+         updated_at = now(),
+         execution_lease_token = null,
+         lease_expires_at = null,
+         effect_outcome = case when p_terminal_state = 'succeeded' then 'completed' else coalesce(t.effect_outcome,'unknown') end,
+         task_version = t.task_version + 1
+   where t.id = p_task_id and t.owner_user_id = p_owner_user_id
+     and t.state = 'executing'
+     and t.execution_lease_token = p_lease_token
+     and t.lease_expires_at > now()
+     and t.task_version = p_task_version
+  returning t.*;
+end;
+$;
+revoke all on function public.finalize_agent_runtime_task(uuid, uuid, uuid, integer, text, jsonb, text, jsonb) from public, anon, authenticated;
+grant execute on function public.finalize_agent_runtime_task(uuid, uuid, uuid, integer, text, jsonb, text, jsonb) to service_role;
+
 comment on table public.agent_runtime_policies is
   'Agent-scoped immutable policy versions; only approved active versions can authorize tools.';
 comment on table public.agent_runtime_checkpoints is
