@@ -1,10 +1,24 @@
 # ADR-0005: Canonical Knowledge Consent and Agent Access Grants
 
-- **Status:** Product Owner approved the direction to pursue Option C on 2026-10-15. Read-only canonical Supabase schema audit is BLOCKED by connector permissions; physical schema/provider/migration are NOT approved and must not be implemented until schema evidence is available and Privacy/Security + Data Platform approve the design.
+- **Status:** Product Owner approved the direction to pursue Option C on 2026-10-15. A read-only canonical schema snapshot was successfully obtained on 2026-10-15; the earlier connector-permission blocker below is superseded by the later evidence section. Physical schema/provider/migration remain NOT approved until object-level reconciliation and Privacy/Security + Data Platform review are complete.
 - **Scope:** ENG-P08 knowledge retrieval authorization; dependency for ENG-P09 indexing/publishing and later derived-data deletion.
 - **Decision owner:** Product Owner. Required reviewers: Privacy/Security and Data Platform.
 - **Date:** 2026-10-15
 - **Supersedes:** Nothing. This proposal refines the unresolved storage mapping in ADR-0003; ADR-0003 remains authoritative for fail-closed policy behavior.
+
+## Operational update — read-only audit succeeded (2026-10-15)
+
+This section supersedes the earlier statements in this ADR that the canonical live-schema audit was unavailable due to connector permissions. A corrected binding to the canonical project `dvdziauyvuhcnqhrrvww` allowed read-only catalog queries. The resulting inventory and preliminary migration reconciliation are recorded in [ENG-P08 Canonical Schema Reconciliation](../SECURITY/ENG-P08_CANONICAL_SCHEMA_RECONCILIATION.md).
+
+Confirmed findings from that snapshot:
+- Seven application tables were detected in `public`; all seven have RLS enabled and none has FORCE RLS.
+- Twenty-seven RLS policies were detected in `public`; no policies were detected in `storage` in the captured policy inventory.
+- Broad `anon` table privileges and broad default privileges in `public` were observed and require least-privilege review.
+- The live migration ledger contains 20 entries, while the repository contains 29 SQL migration files; one file is byte-identical to another, and eight unique files are not present in the captured ledger.
+- The live catalogue does not contain several objects referenced by migration SQL whose versions appear in the ledger, including `organizations`, `organization_memberships`, and `audit_events`. The exact cause and original applied SQL cannot be inferred from ledger version/name alone.
+- The `vector` extension is installed, but this does not resolve the approved embedding model/version, vector dimension, index parameters, retrieval evaluation or production pipeline.
+
+**Operational decision:** no SQL was mass-applied and no database write, provider, migration, project or branch was created. Do not replay historical or missing migrations to make the ledger look aligned. First complete object-by-object reconciliation, prepare narrow forward repairs with tested preconditions and recovery paths, obtain required Privacy/Security and Data Platform review, and validate against an already-existing positively identified isolated non-production target. The canonical project is production and must not be used for destructive or cross-tenant tests. ENG-P08 remains `in_progress`; ENG-P09 remains `blocked`.
 
 ## Context and evidence
 
