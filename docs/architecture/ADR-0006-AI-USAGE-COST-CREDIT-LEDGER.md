@@ -87,7 +87,7 @@ Proposed state/flow, subject to approved policy:
 - [ ] API/Data Platform: approve canonical schema, transaction/outbox, uniqueness and projection-reconciliation design.
 - [ ] Security/Privacy: approve trusted ownership, least-privilege grants/RLS, audit and data-minimization controls.
 
-Until the remaining approvals are recorded, only deterministic source-level contracts and tests that do not activate charging are permitted. Do not implement a production credit conversion, durable ledger schema/migration, provider adapter, or runtime settlement activation based on this document.
+Product Owner update (2026-10-15): the detailed Finance/Economy values will be configured in the later Financial phase. This authorizes continued policy-neutral lifecycle orchestration and source/unit/contract tests now, but does not authorize invented defaults or runtime charging. Durable database persistence/migration remains gated on canonical schema inspection and API/Data Platform + Security/Privacy review. Missing runtime policy must fail closed; unknown provider outcomes remain pending reconciliation; partial outcomes must not be charged without explicit capability policy. Do not activate provider execution, charging, or settlement merely because the orchestration contract exists.
 
 
 ## Implementation design proposal — review required before persistence (2026-10-15)
@@ -164,3 +164,11 @@ These are logical names only. Before a migration is authored, inspect existing S
 2. API/Data Platform reviews sections B–D against the live canonical schema and writes the transaction/repair contract; Security/Privacy signs off section E.
 3. Only after these approvals, implement the durable sink, transaction service, approved migration and source/unit/contract tests in ENG-P09. Do not apply migration to production as a test.
 4. ENG-P37 validates real isolated non-production Supabase transaction atomicity, concurrency, RLS/grants, cross-owner negative paths, recovery/reconciliation, and authenticated Web/Native/Super Admin journeys where applicable.
+
+
+## Product Owner execution clarification — 2026-10-15
+
+- Product Owner approves continuing ENG-P09 implementation now and defers concrete financial parameters to the later Financial phase, where they will be entered into the system.
+- This approval covers policy-neutral lifecycle orchestration and source/unit/contract tests; it does not approve numeric tariffs, a credit scale, rounding, quota/expiry, failed/partial-operation charges, refunds/reversals, or creator reward economics.
+- A runtime must require an explicitly approved, versioned policy before reserve/settle. Unknown provider outcomes remain pending reconciliation. Partial settlement requires a separate approved capability rule.
+- Durable persistence/migration must be reconciled against the live canonical Supabase schema and reviewed transaction/RLS/grant boundaries first. No production migration/write or real integration is authorized by this clarification.
