@@ -314,3 +314,11 @@ ENG-P08 review decision update (2026-10-15): Product Owner approval of ADR-0005 
 - Success, partial settlement and definitive-failure release each require the corresponding explicit policy flags in the approved version. Partial outcome is determined against verified actual usage versus the reserved estimate. Creator rewards are deliberately excluded from this AI Credit ledger pending the separate PRD-mandated reward ledger/economics.
 - Added an audited projection-reconciliation RPC that recomputes available balance from immutable ledger deltas and records before/after values, entry count, actor and idempotency fingerprint. The server-side adapter exposes this operation; no public client route is provided.
 - The migration source was statically inspected after edits for duplicate function blocks, dollar-quote balance and required RPC/security declarations. This is not a substitute for PostgreSQL execution. GitHub Actions is running against the latest commit; no pass result is claimed until the run completes.
+
+
+### ENG-P09 verification update — CI result (2026-10-15)
+
+- GitHub Actions run `38735220253` for source commit `d5c62a71d3fe33f5073aff10d1f80c78d83febbd` completed **successfully**: API `pytest apps/api/tests`, Web tests/build, and Native tests/typecheck all passed.
+- This verifies source/unit/contract tests only. The migration has not been executed by PostgreSQL; no live Supabase transaction, RLS/grants, concurrent overspend, or recovery test is claimed.
+- Railway API deployment for the same source commit is still `QUEUED` at the latest status check. Web and Super Admin deployments remain successful and were not changed by this backend-only slice.
+- Current live Supabase has no ENG-P09 tables/functions and no existing non-production branch. Do not apply either migration to production. Next gate is an explicitly authorized isolated non-production Supabase branch, then execute both migrations in order and run transaction/security acceptance.
