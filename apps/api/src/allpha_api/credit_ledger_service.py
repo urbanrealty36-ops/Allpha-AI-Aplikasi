@@ -63,6 +63,8 @@ class ReservationReceipt:
     reserved_credits: int
     state: ReservationState
     policy_version: str | None = None
+    estimated_usage_units: int | None = None
+    usage_unit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +167,15 @@ class CreditLedgerLifecycleService:
             raise CreditLifecycleBlocked("verified positive actual credit charge is required")
         if actual_usage_units is None or actual_usage_units <= 0 or not (usage_unit or "").strip():
             raise CreditLifecycleBlocked("verified actual usage units and unit are required")
+        if reservation.estimated_usage_units is not None:
+            if actual_usage_units > reservation.estimated_usage_units:
+                raise CreditLifecycleBlocked("actual usage exceeds the reserved estimate")
+            if reservation.usage_unit and usage_unit != reservation.usage_unit:
+                raise CreditLifecycleBlocked("actual usage unit does not match the reservation")
+            if outcome == OperationOutcome.PARTIAL and actual_usage_units >= reservation.estimated_usage_units:
+                raise CreditLifecycleBlocked("partial outcome must have fewer verified units than reserved")
+            if outcome == OperationOutcome.SUCCEEDED and actual_usage_units < reservation.estimated_usage_units:
+                raise CreditLifecycleBlocked("successful full outcome does not match verified usage units")
         if actual_credits > reservation.reserved_credits:
             raise CreditLifecycleBlocked("actual charge exceeds reservation; require explicit recovery policy")
         if actual_credits == 0:
