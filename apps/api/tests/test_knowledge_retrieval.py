@@ -417,3 +417,40 @@ def test_keyword_runtime_stays_disabled_without_explicit_mode_or_policy(monkeypa
         "client": ("test", 1), "scheme": "http"}
     monkeypatch.setattr("allpha_api.knowledge_retrieval.os.getenv", lambda key, default="": default)
     assert request_scoped_retrieval_service(StarletteRequest(scope)) is None
+
+def test_retrieval_rejects_cross_agent_result_even_if_adapter_is_buggy():
+    async def scenario():
+        repo = Repo(hits=[hit(agent_id="agent-b")])
+        with pytest.raises(KnowledgeAccessDenied):
+            await KnowledgeRetrievalService(repo, Policy()).retrieve(internal_request())
+    asyncio.run(scenario())
+
+
+def test_supabase_keyword_repository_rejects_unready_source_even_if_query_adapter_returns_it(monkeypatch):
+    from allpha_api import auth
+    from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable, SupabaseKeywordKnowledgeRepository
+
+    calls = []
+    async def fake_request(method, path, access_token, *, params=None, body=None, prefer=None):
+        calls.append((method, path, params))
+        return [{
+            "id": "chunk-unready", "source_id": "source-unready", "agent_id": "agent-a",
+            "owner_id": "owner-a", "chunk_index": 0, "content": "must not leak",
+            "source_location": {}, "source_version": 1, "content_sha256": "d" * 64,
+            "agent_knowledge_sources": {
+                "id": "source-unready", "source_version": 1, "status": "processing",
+                "sensitivity": "internal",
+            },
+        }]
+    monkeypatch.setattr(auth, "user_db_request", fake_request)
+
+    async def scenario():
+        repo = SupabaseKeywordKnowledgeRepository(access_token="user-token")
+        with pytest.raises(KnowledgeRetrievalUnavailable):
+            await repo.search_keyword(
+                owner_id="owner-a", agent_id="agent-a", query="must not leak",
+                allowed_sensitivities=["internal"], limit=5, trace_id="trace-unready",
+            )
+        assert calls[0][2]["agent_knowledge_sources.status"] == "eq.ready"
+    asyncio.run(scenario())
+
