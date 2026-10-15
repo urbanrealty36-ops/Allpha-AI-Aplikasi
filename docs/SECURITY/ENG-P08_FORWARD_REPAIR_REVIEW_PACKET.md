@@ -474,3 +474,26 @@ One general approval does not clear all items. Rejection or unmet conditions blo
 
 ## C. Current execution decision (2026-10-15)
 Proceed with parallel read-only work on Tracks 1–4 and prepare the FR review matrix. Track 5 remains blocked until an existing isolated non-production database is positively verified. See [ENG-P08 Catalog Audit Addendum](ENG-P08_CATALOG_AUDIT_ADDENDUM_20261015.md). No migration is approved for promotion or execution.
+
+
+## D. Additional migration-lineage finding (2026-10-15)
+
+A direct read of `apps/api/supabase/migrations/20261013052302_eng_p02_identity_authorization_baseline.sql` confirms its header explicitly labels it a **reconstructed baseline for fresh databases**, and says the version was already recorded as applied. Its current source includes `CREATE TABLE IF NOT EXISTS` definitions for organization-domain objects, but this is not proof that the same SQL bytes were historically executed in production.
+
+The live Supabase migration ledger separately contains versions/names:
+- `20261013052409` — `eng_p02_authz_audit_and_org_creation`
+- `20261013052557` — `eng_p02_restrict_security_definer_execution`
+- `20261013052733` — `eng_p02_move_authz_helpers_to_private_schema`
+- `20261013052744` — `eng_p02_audit_organization_creation`
+- `20261013090730` — `eng_p02_least_privilege_identity_tenant_grants`
+
+The current repository tree was not able to resolve guessed canonical filenames for the first four versions above, while `20261013090730` is a distinct ledger version referenced in phase history. A filename mismatch or absent source path is not sufficient to conclude those migrations never existed: their original source may be under a different path/name, deleted from current `main`, or available only through Git history/artifacts. Their exact SQL bodies remain **UNRESOLVED PROVENANCE** until commit history/tree evidence or an authoritative schema artifact proves the relationship.
+
+### Required provenance recovery steps
+1. Enumerate the complete migration directory at the current `main` commit and map every live ledger version to an exact source path by version prefix and content hash; do not infer a match from the suffix alone.
+2. Inspect Git history for renamed/deleted migration paths and commits that introduced the reconstructed baseline; preserve the historical blob SHA and commit SHA for each candidate source.
+3. If no historical blob exists, record the source as unrecoverable from repository history. Ask the database/platform owner for an existing authoritative dump, migration artifact or PITR-derived schema evidence; do not create a new database to try to reproduce it.
+4. Compare the recovered source semantics with the current live catalog and reconstructed baseline. Explain which objects/functions/grants each version was expected to create/change, then determine whether current absence is intentional, drift, or loss.
+5. Only after this provenance map is reviewed should FR-04 decide between restoring a known contract, a new versioned forward repair, or formally deprecating an obsolete contract.
+
+This finding strengthens the case for a lineage-first, multi-track repair; it does not authorize replaying any of these historical versions.
