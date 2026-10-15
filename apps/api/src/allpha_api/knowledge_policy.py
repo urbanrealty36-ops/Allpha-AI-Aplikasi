@@ -60,18 +60,42 @@ class VersionedKnowledgePolicyResolver:
             raise KnowledgePolicyUnavailable("canonical knowledge policy provider failed") from exc
         if snapshot is None:
             raise KnowledgePolicyUnavailable("canonical knowledge policy snapshot is unavailable")
+        # Provider output crosses a trust boundary. Validate its runtime shape rather
+        # than assuming type hints guarantee the configured adapter's behavior.
+        if not isinstance(snapshot, KnowledgePolicySnapshot):
+            raise KnowledgePolicyUnavailable("canonical knowledge policy snapshot has an invalid type")
         if (
-            not snapshot.policy_version.strip()
+            not isinstance(snapshot.policy_version, str)
+            or not snapshot.policy_version.strip()
+            or not isinstance(snapshot.consent_version, str)
             or not snapshot.consent_version.strip()
+            or not isinstance(snapshot.resolved_at_version, str)
             or not snapshot.resolved_at_version.strip()
+            or not isinstance(snapshot.owner_id, str)
             or snapshot.owner_id != owner_id
+            or not isinstance(snapshot.agent_id, str)
             or snapshot.agent_id != agent_id
         ):
             raise KnowledgePolicyUnavailable("knowledge policy identity/version is invalid")
+        if (
+            type(snapshot.knowledge_consent_granted) is not bool
+            or type(snapshot.consent_revoked) is not bool
+            or type(snapshot.grants_active) is not bool
+        ):
+            raise KnowledgePolicyUnavailable("knowledge consent or grant state is invalid")
         if not snapshot.knowledge_consent_granted or snapshot.consent_revoked or not snapshot.grants_active:
             raise KnowledgePolicyUnavailable("knowledge consent or access grant is not active")
-        if RETRIEVAL_PURPOSE not in snapshot.allowed_purposes:
+        if (
+            not isinstance(snapshot.allowed_purposes, (tuple, list))
+            or any(not isinstance(value, str) for value in snapshot.allowed_purposes)
+            or RETRIEVAL_PURPOSE not in snapshot.allowed_purposes
+        ):
             raise KnowledgePolicyUnavailable("retrieval purpose is not permitted by policy")
+        if (
+            not isinstance(snapshot.allowed_sensitivities, (tuple, list))
+            or any(not isinstance(value, str) for value in snapshot.allowed_sensitivities)
+        ):
+            raise KnowledgePolicyUnavailable("knowledge sensitivity policy is missing or invalid")
         sensitivities = tuple(dict.fromkeys(snapshot.allowed_sensitivities))
         if not sensitivities or any(value not in SENSITIVITIES for value in sensitivities):
             raise KnowledgePolicyUnavailable("knowledge sensitivity policy is missing or invalid")
