@@ -890,3 +890,122 @@ No FR-01–FR-05 SQL is executable from this packet. Before a reviewed migration
 ### K4. CI evidence boundary
 
 The latest known passing Allpha Smoke workflow referenced in the fixed phase plan is run [38665772680](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/38665772680) on older commit `8620afed12ab8e92b021887b606dff00ef3ae771`. It passed API pytest, Web tests/build, and Native tests/typecheck at that commit. The newly committed policy factory exception tests at `7025f786c2eddec842de191f5ef26b0d0a162911` do **not** yet have an observed GitHub Actions test-run result in the available commit checks; Railway service statuses are deploy checks only. Do not claim these newest tests passed until a test workflow result is visible.
+
+
+## L. Complete API route-to-database authorization matrix (source inventory, 2026-10-15)
+
+**Scope:** all 49 FastAPI routes discovered in `main.py`, `knowledge.py`, `knowledge_retrieval.py`, and `operator_security.py`. Paths from router modules are expanded with their declared prefixes. This is a source-level authorization contract, not a claim that all routes are operational against live schema. `user_db_request` forwards the caller's bearer token to PostgREST; the effective permission is the intersection of role/table/column grants and RLS. A source-level filter is defense in depth, not a substitute for RLS.
+
+| Route | Auth dependency | DB object(s) in handler | Required contract / expected allow and deny |
+|---|---|---|---|
+| `GET /healthz` | Public | indirect/none | Publik tanpa bearer; tidak boleh mengakses objek owner-scoped. Passport hanya boleh mengembalikan proyeksi aman; tabel skills/capabilities saat ini belum tersedia live. |
+| `GET /readyz` | Public | indirect/none | Publik tanpa bearer; tidak boleh mengakses objek owner-scoped. Passport hanya boleh mengembalikan proyeksi aman; tabel skills/capabilities saat ini belum tersedia live. |
+| `GET /v1/system/status` | Public | indirect/none | Publik tanpa bearer; tidak boleh mengakses objek owner-scoped. Passport hanya boleh mengembalikan proyeksi aman; tabel skills/capabilities saat ini belum tersedia live. |
+| `GET /v1/me` | Required | profiles | Bearer user; user.id dari Auth dan filter id=caller; RLS self. Expected deny/no rows untuk cross-user; POST hanya self. |
+| `PATCH /v1/me/profile` | Required | profiles | Bearer user; user.id dari Auth dan filter id=caller; RLS self. Expected deny/no rows untuk cross-user; POST hanya self. |
+| `GET /v1/me/settings` | Required | user_settings | Bearer user; filter user_id=caller; RLS self; anon relation grant berlebih kandidat FR-01. Cross-user denied. |
+| `PATCH /v1/me/settings` | Required | user_settings | Bearer user; filter user_id=caller; RLS self; anon relation grant berlebih kandidat FR-01. Cross-user denied. |
+| `GET /v1/me/consents` | Required | user_consents | Bearer user; user_id selalu dari Auth; append-only consent enum terms/privacy/product updates; RLS self. Tidak boleh digunakan sebagai knowledge consent. |
+| `POST /v1/me/consents` | Required | user_consents | Bearer user; user_id selalu dari Auth; append-only consent enum terms/privacy/product updates; RLS self. Tidak boleh digunakan sebagai knowledge consent. |
+| `POST /v1/me/deactivation-request` | Required | rpc/request_account_deactivation | Bearer user; caller-token RPC; intended function not detected live, so route is GAP/non-operational until function source and deployed contract verified. |
+| `GET /v1/me/social-graph` | Required | social_edges, user_interests | Bearer user; actor/target dari caller/path dan RLS participant/actor/target; self-edge denied; only recipient accepts requested follow; anon grants excess. |
+| `POST /v1/me/social-edges` | Required | social_edges | Bearer user; actor/target dari caller/path dan RLS participant/actor/target; self-edge denied; only recipient accepts requested follow; anon grants excess. |
+| `POST /v1/me/follow-requests/{edge_id}/accept` | Required | social_edges | Bearer user; actor/target dari caller/path dan RLS participant/actor/target; self-edge denied; only recipient accepts requested follow; anon grants excess. |
+| `DELETE /v1/me/follow-requests/{edge_id}` | Required | social_edges | Bearer user; actor/target dari caller/path dan RLS participant/actor/target; self-edge denied; only recipient accepts requested follow; anon grants excess. |
+| `DELETE /v1/me/social-edges/{target_user_id}/{edge_type}` | Required | social_edges | Bearer user; actor/target dari caller/path dan RLS participant/actor/target; self-edge denied; only recipient accepts requested follow; anon grants excess. |
+| `GET /v1/me/interests` | Required | user_interests | Bearer user; user_id=caller; RLS self; anon grants excess. |
+| `PUT /v1/me/interests` | Required | user_interests | Bearer user; user_id=caller; RLS self; anon grants excess. |
+| `DELETE /v1/me/interests/{interest_key}` | Required | user_interests | Bearer user; user_id=caller; RLS self; anon grants excess. |
+| `GET /v1/organizations` | Required | organizations | Bearer user; identitas dari Auth, bukan body. Objek `organizations`/`organization_memberships` tidak ada di live catalog → GAP/NON-OPERATIONAL. Expected deny/503 sampai schema/provenance diselesaikan. |
+| `POST /v1/organizations` | Required | organizations | Bearer user; identitas dari Auth, bukan body. Objek `organizations`/`organization_memberships` tidak ada di live catalog → GAP/NON-OPERATIONAL. Expected deny/503 sampai schema/provenance diselesaikan. |
+| `GET /v1/organizations/{organization_id}/memberships` | Required | organization_memberships, organizations | Bearer user; identitas dari Auth, bukan body. Objek `organizations`/`organization_memberships` tidak ada di live catalog → GAP/NON-OPERATIONAL. Expected deny/503 sampai schema/provenance diselesaikan. |
+| `GET /v1/agents` | Required | agent_ownerships | Bearer user kecuali Passport publik; owner via `agent_ownerships` + RLS. `ai_agents` ACL kontradiksi RPC vs direct insert perlu keputusan; anon Passport jangan diberi SELECT tabel luas. |
+| `POST /v1/agents` | Required | rpc/create_ai_agent | Bearer user kecuali Passport publik; owner via `agent_ownerships` + RLS. `ai_agents` ACL kontradiksi RPC vs direct insert perlu keputusan; anon Passport jangan diberi SELECT tabel luas. |
+| `PATCH /v1/agents/{agent_id}` | Required | agent_ownerships, ai_agents | Bearer user kecuali Passport publik; owner via `agent_ownerships` + RLS. `ai_agents` ACL kontradiksi RPC vs direct insert perlu keputusan; anon Passport jangan diberi SELECT tabel luas. |
+| `GET /v1/agent-passports/{handle}` | Public | ai_agents, agent_skills, agent_capabilities | Publik tanpa bearer; tidak boleh mengakses objek owner-scoped. Passport hanya boleh mengembalikan proyeksi aman; tabel skills/capabilities saat ini belum tersedia live. |
+| `GET /v1/agents/{agent_id}` | Required | agent_ownerships, ai_agents | Bearer user kecuali Passport publik; owner via `agent_ownerships` + RLS. `ai_agents` ACL kontradiksi RPC vs direct insert perlu keputusan; anon Passport jangan diberi SELECT tabel luas. |
+| `GET /v1/tools` | Required | indirect/none | Bearer user kecuali Passport publik; owner via `agent_ownerships` + RLS. `ai_agents` ACL kontradiksi RPC vs direct insert perlu keputusan; anon Passport jangan diberi SELECT tabel luas. |
+| `GET /v1/agents/{agent_id}/skills` | Required | agent_skills | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `POST /v1/agents/{agent_id}/skills` | Required | agent_skills | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `PATCH /v1/agents/{agent_id}/skills/{skill_id}` | Required | agent_skills | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `GET /v1/agents/{agent_id}/skills/{skill_id}/versions` | Required | agent_skills, agent_skill_versions | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `POST /v1/agents/{agent_id}/skills/{skill_id}/execute-tool` | Required | agent_skills | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `GET /v1/agents/{agent_id}/capabilities` | Required | agent_capabilities | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `POST /v1/agents/{agent_id}/capabilities` | Required | agent_capabilities | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `POST /v1/agents/{agent_id}/knowledge/sources` | Required | agent_knowledge_jobs | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `GET /v1/agents/{agent_id}/knowledge/sources` | Required | agent_knowledge_sources, agent_knowledge_jobs | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `PATCH /v1/agents/{agent_id}/knowledge/sources/{source_id}/sensitivity` | Required | indirect/none | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `GET /v1/agents/{agent_id}/knowledge/sources/{source_id}` | Required | agent_knowledge_jobs | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `POST /v1/agents/{agent_id}/knowledge/sources/{source_id}/process` | Required | agent_knowledge_jobs, agent_knowledge_chunks, agent_knowledge_sources | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `POST /v1/agents/{agent_id}/knowledge/sources/{source_id}/retry` | Required | indirect/none | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `DELETE /v1/agents/{agent_id}/knowledge/sources/{source_id}` | Required | agent_knowledge_sources | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `POST /v1/agents/{agent_id}/knowledge/retrieve` | Required | agent_ownerships, agent_knowledge_chunks | Bearer user + owner/Agent check; caller-token/RLS. Objek ENG-P07 belum ada live; retrieval wajib fail-closed bila policy/provider/grant/consent atau repository tidak tersedia. |
+| `GET /v1/admin/operator/access` | Required | indirect/none | Bearer user + grant operator aktif dan scope exact (bukan sekadar login); akses/audit melalui helper PostgREST/service path. Expected deny tanpa grant/scope; objek audit/grants harus diverifikasi sebelum operasional. |
+| `GET /v1/admin/operator/audit` | Required | indirect/none | Bearer user + grant operator aktif dan scope exact (bukan sekadar login); akses/audit melalui helper PostgREST/service path. Expected deny tanpa grant/scope; objek audit/grants harus diverifikasi sebelum operasional. |
+| `GET /v1/admin/operator/grants` | Required | indirect/none | Bearer user + grant operator aktif dan scope exact (bukan sekadar login); akses/audit melalui helper PostgREST/service path. Expected deny tanpa grant/scope; objek audit/grants harus diverifikasi sebelum operasional. |
+| `POST /v1/admin/operator/grants` | Required | indirect/none | Bearer user + grant operator aktif dan scope exact (bukan sekadar login); akses/audit melalui helper PostgREST/service path. Expected deny tanpa grant/scope; objek audit/grants harus diverifikasi sebelum operasional. |
+| `POST /v1/admin/operator/grants/{grant_id}/revoke` | Required | indirect/none | Bearer user + grant operator aktif dan scope exact (bukan sekadar login); akses/audit melalui helper PostgREST/service path. Expected deny tanpa grant/scope; objek audit/grants harus diverifikasi sebelum operasional. |
+| `GET /v1/admin/operator/capabilities` | Required | indirect/none | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+| `POST /v1/admin/operator/capabilities/{capability_id}/review` | Required | indirect/none | Bearer user + `_require_agent_owner`; PostgREST caller token. Objek ENG-P06 belum ada live → GAP/NON-OPERATIONAL; owner nonaktif/tidak cocok harus 404/deny. |
+
+### L1. Global invariants and allow/deny expectations
+
+- **Public:** `GET /healthz`, `GET /readyz`, `GET /v1/system/status`, and `GET /v1/agent-passports/{handle}` are intentionally unauthenticated at route level. Health/status routes must not expose secrets or personal rows. Passport must expose only its approved safe projection; current anon table-level SELECT on `ai_agents` is absent, and no blanket table SELECT may be granted to make the route work.
+- **Authenticated user routes:** `current_user` validates the bearer with Supabase Auth; `user.id` is the trusted principal. Request bodies must not override owner/actor/created_by fields. PostgREST requests use the caller token, so both grants and RLS must permit an operation.
+- **Owner/tenant isolation:** profile/settings/consent/interests are scoped to the authenticated user. Social operations are limited by actor/target role and RLS; self-edge is rejected; only the target can accept/reject a pending follow request. Agent Studio routes require an active owner row before data access.
+- **Operator routes:** authenticated human identity is insufficient; require active operator grant and exact scope. Missing/revoked grant or wrong scope must deny. Never treat service-role capability as proof that a human operator is authorized.
+- **Knowledge routes:** owner/Agent access and knowledge-specific policy are checked before search. Missing provider/snapshot/grant/consent or invalid provenance must fail closed. Generic ToS/privacy consent is not knowledge consent; vector/hybrid retrieval remains disabled without approved adapter.
+- **Absent live objects are hard gaps:** `organizations`, `organization_memberships`, `agent_skills`, `agent_skill_versions`, `agent_capabilities`, `agent_knowledge_sources`, `agent_knowledge_jobs`, `agent_knowledge_chunks`, operator grant/audit objects, and `rpc/request_account_deactivation` were not confirmed in the captured live catalog. Routes that depend on these must be labeled source-only/non-operational; CI or an HTTP route existing does not imply its database contract exists.
+- **RLS + grants:** RLS policies observed do not cancel broad grants. FR-01 targets excess anon privileges on `agent_ownerships`, `social_edges`, `user_consents`, `user_interests`, `user_settings`; preserve `ai_agents` Passport column allowlist. Authenticated direct-write permissions on `ai_agents` and `agent_ownerships` remain a source-intent decision, not auto-revoked by this packet.
+- **Negative expectations:** no bearer → 401 on authenticated routes; invalid/expired bearer → 401; no owner/grant/scope → 404/403 according to endpoint contract; malformed payload → 422; cross-user rows must not be returned or mutated; missing canonical objects/provider → fail closed and surfaced as unavailable, not successful empty business operation.
+- **Test boundary:** these expectations are source-level contracts and existing unit/route tests only. No production cross-user probing. Integrated RLS/grant behavior remains scheduled for ENG-P37 on a positively verified isolated non-production database.
+
+## M. FR-01–FR-05 forward-repair review cards (not executable migrations)
+
+All repairs remain proposals outside `apps/api/supabase/migrations/`. No SQL was applied.
+
+### FR-01 — least-privilege grants on owner-scoped tables
+
+- **Preconditions:** confirm exact project ref and fresh ACL snapshot; map all routes/client callers; decide direct `ai_agents`/`agent_ownerships` insert contract against migrations 20261013055121 and 20261013055143; confirm isolated non-production target and review decision.
+- **Minimal change:** candidate revoke of anon relation privileges only on `agent_ownerships`, `social_edges`, `user_consents`, `user_interests`, `user_settings`. Keep `ai_agents` out of this repair; preserve the intended Passport projection/column ACL. Do not revoke authenticated grants until atomic-RPC vs invoker-RPC intent is decided.
+- **Postconditions:** anon has no table privileges on those owner-scoped tables; approved authenticated owner/recipient workflows retain minimum grants; Passport contract unchanged; RLS remains enabled and all policies are enumerated.
+- **Compatibility:** test sign-in/profile creation, settings/consent, interests, follow/block, agent create/edit and public Passport against the exact role contract.
+- **Recovery:** restore only the minimum prior privilege for a named table/command from saved ACL snapshot; never restore blanket ALL grants. Re-run targeted isolated tests.
+
+### FR-02 — default privileges for future objects
+
+- **Preconditions:** identify actual object-creation roles for each future table/function/sequence; inventory explicitly public RPCs and client-exposed tables; ensure each migration adds explicit grants.
+- **Minimal change:** narrow default ACLs for the verified owner(s), first targeting anon; separately decide whether authenticated defaults should be narrowed. Avoid changing unrelated managed schemas or service_role contracts.
+- **Postconditions:** new objects default to no unintended anon access; explicitly approved API contracts work; `pg_default_acl` reflects reviewed state for every object owner.
+- **Compatibility:** create disposable table/function/sequence only in isolated non-production and test default ACL plus explicit grants; existing objects are not retroactively changed by default ACL changes.
+- **Recovery:** restore exact previous default ACL entries for the affected owner/object type and record before/after snapshots. Do not assume this restores ACLs on existing objects.
+
+### FR-03 — trigger-only `public.set_updated_at()` EXECUTE ACL
+
+- **Preconditions:** inspect all direct RPC/client callers; confirm the function is only invoked by the three intended triggers; save exact function ACL, owner, trigger definitions, and role behavior.
+- **Minimal change:** revoke direct EXECUTE from PUBLIC/anon/authenticated only if the reviewed trigger execution semantics are preserved; do not alter trigger definitions or broadly revoke other functions.
+- **Postconditions:** untrusted roles cannot invoke the trigger function as a public RPC; profiles/user_settings/user_interests updates still advance timestamps through triggers.
+- **Compatibility:** isolated tests for each attached trigger and explicit RPC denial for anon/authenticated; verify trigger invocation semantics under actual table-write roles.
+- **Recovery:** restore only required EXECUTE grant if isolated tests show trigger compatibility requires it; otherwise leave direct RPC unavailable and correct caller tests.
+
+### FR-04 — missing ENG-P02 organization/audit objects and dangling functions
+
+- **Preconditions:** recover original migration artifacts/checksums or trusted backup/catalog evidence; identify intended organization/audit data lifecycle, constraints, policies, grants, and consumers. Current live project has missing `organizations`, `organization_memberships`, and `audit_events`, while functions still reference them.
+- **Minimal change:** do not replay reconstructed ENG-P02 baseline. After provenance and owner approval, choose either a forward repair that restores only proven required objects or a separately reviewed retirement of demonstrably unused dangling functions/triggers.
+- **Postconditions:** every retained function has all dependencies; no intended organization route silently reports success without storage; grants/RLS/audit semantics match approved contract.
+- **Compatibility:** isolated tests for organization creation/list/membership, audit event writes, security-definer identity and cross-tenant denial; source/API contract tests before any promotion.
+- **Recovery:** restore verified schema/functions from trusted source/backup or revert only the narrow forward migration; preserve audit records and never drop live data to make counts match.
+
+### FR-05 — ENG-P06/ENG-P07 schema and knowledge consent/grant contract
+
+- **Preconditions:** Privacy/Security + Data Platform review of ADR-0005 Option C semantics; define canonical knowledge-specific consent, active Agent access grant, revocation, sensitivity, provenance, source lifecycle and storage policies; verify isolated non-production.
+- **Minimal change:** introduce only reviewed, additive schema and grants for missing skill/capability/knowledge/job objects; keep provider/retrieval disabled until physical schema and consent contract exist. Do not reuse `user_consents` for knowledge consent; do not enable vector/hybrid retrieval.
+- **Postconditions:** ownership, consent/grant version and revocation are auditable; access is owner/Agent scoped; jobs are lease-safe; source status/provenance is verifiable; default grants are least-privilege.
+- **Compatibility:** unit/contract tests for consent missing/revoked, wrong owner/Agent, sensitivity denial, provenance mismatch, lease ownership, unready source and storage policy. Full RLS/cross-user integration remains ENG-P37.
+- **Recovery:** disable provider/worker and return to fail-closed behavior; rollback only the additive isolated migration after verifying no data loss; preserve consent/audit history.
+
+### M1. Evidence-based CI result boundary
+
+- The most recent verified GitHub check data available during this review showed three Railway service deployment contexts in `success`; those are not pytest/unit-test results. The GitHub connector's commit-workflow query returned no PR-triggered workflow runs for the inspected commit; that wrapper is PR-only and does not prove that no push workflow exists.
+- The latest *known test workflow* remains Smoke run 38665772680 on older commit `8620afed12ab8e92b021887b606dff00ef3ae771`. It passed API pytest, Web test/build, and Native test/typecheck at that SHA. This is not evidence that policy factory changes committed later passed.
+- Current evidence classification: **latest policy/retrieval test execution not independently verified**. No false green claim; no test suite was rerun locally or against production as part of this documentation change.
