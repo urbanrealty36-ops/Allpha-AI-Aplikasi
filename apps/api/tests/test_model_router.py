@@ -170,7 +170,7 @@ def test_canonical_router_does_not_retry_terminal_provider_rejection():
     asyncio.run(scenario())
 
 
-from allpha_api.cost_policy import CostBudget, CostEstimate
+from allpha_api.cost_policy import CostBudget, CostEstimate, CostPolicyApproval
 from allpha_api.metering_contract import MeteringRecord
 
 
@@ -237,6 +237,7 @@ def test_runtime_router_requires_explicit_cost_policy_and_durable_metering():
             adapters={"router-policy": FakeAdapter([])},
             cost_budgets={"internal": CostBudget("internal", 100, 1000)},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100)},
+            cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
             metering_sink=Meter(),
         )
         configured.require_runtime_ready()
@@ -252,6 +253,7 @@ def test_runtime_router_rejects_callable_only_non_durable_metering_sink():
             adapters={"router-policy": FakeAdapter([])},
             cost_budgets={"internal": CostBudget("internal", 100, 1000)},
             cost_estimates={"internal": CostEstimate("router-policy", "selected-model", "version-1", 10, 100)},
+            cost_policy_approval=CostPolicyApproval("embedding-cost", "v1", "ADR/review-reference"),
             metering_sink=lambda request, response: None,
         )
         with pytest.raises(ModelRouterUnavailable, match="durable idempotent metering"):
