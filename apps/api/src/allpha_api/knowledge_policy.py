@@ -87,7 +87,12 @@ class VersionedKnowledgeRetrievalPolicy:
         self._resolver = resolver
 
     async def allowed_sensitivities(self, *, owner_id: str, agent_id: str) -> list[str]:
-        resolved = await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
+        try:
+            resolved = await self._resolver.resolve(owner_id=owner_id, agent_id=agent_id)
+        except KnowledgePolicyUnavailable as exc:
+            # Translate policy failure into the retrieval API's stable fail-closed error.
+            from allpha_api.knowledge_retrieval import KnowledgeRetrievalUnavailable
+            raise KnowledgeRetrievalUnavailable("knowledge policy is unavailable or revoked") from exc
         return list(resolved.allowed_sensitivities)
 
 def load_policy_resolver_from_environment() -> VersionedKnowledgePolicyResolver | None:
