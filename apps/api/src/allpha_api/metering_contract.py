@@ -35,14 +35,17 @@ class MeteringRecord:
     model_id: str
     model_version: str
     usage_units: int
+    usage_unit: str
     cost_microunits: int
+    cost_unit: str
+    pricing_version: str
     completed_at: str
 
     def __post_init__(self) -> None:
         required = (
             self.idempotency_key, self.task_id, self.trace_id, self.owner_id,
             self.agent_id, self.source_id, self.provider_id, self.model_id,
-            self.model_version, self.completed_at,
+            self.model_version, self.usage_unit, self.cost_unit, self.pricing_version, self.completed_at,
         )
         if any(not value.strip() for value in required):
             raise ValueError("metering record identity and attribution fields are required")
@@ -65,7 +68,10 @@ class MeteringRecord:
             "model_id": self.model_id,
             "model_version": self.model_version,
             "usage_units": self.usage_units,
+            "usage_unit": self.usage_unit,
             "cost_microunits": self.cost_microunits,
+            "cost_unit": self.cost_unit,
+            "pricing_version": self.pricing_version,
             "completed_at": self.completed_at,
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -88,8 +94,8 @@ class IdempotentMeteringSink(Protocol):
 def build_metering_record(request: EmbeddingRequest, response: EmbeddingResponse) -> MeteringRecord:
     if response.task_id != request.task_id or response.trace_id != request.trace_id:
         raise MeteringContractError("metering response task/trace identity mismatch")
-    if response.usage_units is None or response.cost_microunits is None:
-        raise MeteringContractError("actual usage and cost attribution are required for metering")
+    if any(value is None for value in (response.usage_units, response.usage_unit, response.cost_microunits, response.cost_unit, response.pricing_version)):
+        raise MeteringContractError("actual usage and cost attribution, units and pricing version are required for metering")
     try:
         return MeteringRecord(
             idempotency_key=request.idempotency_key,
@@ -104,7 +110,10 @@ def build_metering_record(request: EmbeddingRequest, response: EmbeddingResponse
             model_id=response.model_id,
             model_version=response.model_version,
             usage_units=response.usage_units,
+            usage_unit=response.usage_unit,
             cost_microunits=response.cost_microunits,
+            cost_unit=response.cost_unit,
+            pricing_version=response.pricing_version,
             completed_at=response.completed_at.astimezone(timezone.utc).isoformat(),
         )
     except (AttributeError, TypeError, ValueError) as exc:
