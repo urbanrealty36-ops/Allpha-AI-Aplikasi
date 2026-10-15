@@ -266,6 +266,20 @@ def test_execution_requires_explicit_versioned_approved_capability(monkeypatch):
         app.dependency_overrides.pop(current_user, None)
 
 
+def test_runtime_rejects_policy_digest_mismatch_before_claim(monkeypatch):
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        task = create_task(c, sid).json()["task"]
+        FakeRuntimeStore.policy["policy_digest"] = "0" * 64
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "RUNTIME_POLICY_DIGEST_MISMATCH"
+        assert FakeRuntimeStore.tasks[task["id"]]["state"] == "created"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
 def test_approved_tool_execution_persists_result_and_replay(monkeypatch):
     c = client(monkeypatch)
     try:
