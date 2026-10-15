@@ -173,3 +173,139 @@ async def retrieve_knowledge(
             for hit in hits
         ],
     }
+
+
+class SupabaseKeywordKnowledgeRepository:
+    """User-scoped PostgREST keyword candidate search over the canonical chunk tables.
+
+    Uses the authenticated user's access token so PostgreSQL RLS remains authoritative.
+    This adapter is deliberately keyword-only: it does not pretend to provide hybrid
+    retrieval until an approved physical vector-index generation is configured.
+    """
+    def __init__(self, *, access_token: str):
+        if not access_token or not access_token.strip():
+            raise ValueError("authenticated Supabase access token is required")
+        self._access_token = access_token
+
+    async def authorize_agent(self, *, owner_id: str, agent_id: str) -> bool:
+        from allpha_api.auth import user_db_request
+
+        rows = await user_db_request(
+            "GET", "agent_ownerships", self._access_token,
+            params={
+                "select": "agent_id",
+                "agent_id": f"eq.{agent_id}",
+                "owner_user_id": f"eq.{owner_id}",
+                "status": "eq.active",
+                "limit": "1",
+            },
+        )
+        return bool(rows)
+
+    async def search_keyword(
+        self,
+        *,
+        owner_id: str,
+        agent_id: str,
+        query: str,
+        allowed_sensitivities: list[str],
+        limit: int,
+        trace_id: str,
+    ) -> list[RetrievalHit]:
+        from allpha_api.auth import user_db_request
+
+        # PostgREST applies all filters in the database query. Source status and
+        # sensitivity are joined as an inner relation; no unrestricted search followed
+        # by in-memory filtering is permitted.
+        params = {
+            "select": (
+                "id,source_id,agent_id,owner_id,chunk_index,content,source_location,"
+                "source_version,content_sha256,"
+                "agent_knowledge_sources!inner(id,source_version,status,sensitivity)"
+            ),
+            "owner_id": f"eq.{owner_id}",
+            "agent_id": f"eq.{agent_id}",
+            "agent_knowledge_sources.status": "eq.ready",
+            "agent_knowledge_sources.sensitivity": "in.(" + ",".join(allowed_sensitivities) + ")",
+            "search_vector": "fts.simple." + query,
+            "order": "chunk_index.asc",
+            "limit": str(limit),
+        }
+        rows = await user_db_request(
+            "GET", "agent_knowledge_chunks", self._access_token, params=params
+        )
+        hits: list[RetrievalHit] = []
+        for row in rows or []:
+            source = row.get("agent_knowledge_sources") or {}
+            # Fail closed if the embedded relationship or any invariant is absent.
+            if (
+                row.get("owner_id") != owner_id
+                or row.get("agent_id") != agent_id
+                or source.get("status") != "ready"
+                or source.get("sensitivity") not in allowed_sensitivities
+                or int(source.get("source_version", -1)) != int(row.get("source_version", -2))
+                or not row.get("content_sha256")
+                or not row.get("id")
+                or not row.get("source_id")
+            ):
+                raise KnowledgeRetrievalUnavailable(
+                    "database keyword result violated owner/source/version/sensitivity invariants"
+                )
+            hits.append(RetrievalHit(
+                owner_id=owner_id,
+                agent_id=agent_id,
+                source_id=str(row["source_id"]),
+                source_version=int(row["source_version"]),
+                chunk_id=str(row["id"]),
+                content=str(row.get("content") or ""),
+                content_sha256=str(row["content_sha256"]),
+                source_location=row.get("source_location") or {},
+                sensitivity=str(source["sensitivity"]),
+                retrieval_method="keyword",
+                score=0.0,
+            ))
+        return hits
+
+
+class HybridKnowledgeRepository:
+    """Compose keyword and approved vector adapters without inventing a vector schema."""
+    def __init__(self, *, keyword_repository: SupabaseKeywordKnowledgeRepository, vector_search: Any | None):
+        self._keyword = keyword_repository
+        self._vector_search = vector_search
+
+    async def authorize_agent(self, *, owner_id: str, agent_id: str) -> bool:
+        return await self._keyword.authorize_agent(owner_id=owner_id, agent_id=agent_id)
+
+    async def search_hybrid(
+        self, *, owner_id: str, agent_id: str, query: str,
+        allowed_sensitivities: list[str], limit: int, trace_id: str,
+    ) -> list[RetrievalHit]:
+        if self._vector_search is None:
+            raise KnowledgeRetrievalUnavailable(
+                "approved vector index/search adapter is not configured; hybrid retrieval is unavailable"
+            )
+        keyword_hits = await self._keyword.search_keyword(
+            owner_id=owner_id, agent_id=agent_id, query=query,
+            allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
+        )
+        vector_hits = await self._vector_search.search(
+            owner_id=owner_id, agent_id=agent_id, query=query,
+            allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
+        )
+        merged: dict[tuple[str, int, str], RetrievalHit] = {}
+        for hit in [*keyword_hits, *vector_hits]:
+            key = (hit.source_id, hit.source_version, hit.chunk_id)
+            previous = merged.get(key)
+            method = "hybrid" if previous is not None else hit.retrieval_method
+            merged[key] = RetrievalHit(
+                owner_id=hit.owner_id, agent_id=hit.agent_id, source_id=hit.source_id,
+                source_version=hit.source_version, chunk_id=hit.chunk_id,
+                content=hit.content, content_sha256=hit.content_sha256,
+                source_location=hit.source_location, sensitivity=hit.sensitivity,
+                retrieval_method=method, score=max(hit.score, previous.score if previous else hit.score),
+                provider_id=hit.provider_id, model_id=hit.model_id,
+                model_version=hit.model_version, index_generation=hit.index_generation,
+            )
+        # Do not invent an evaluation-derived rank score; preserve the adapter score
+        # and return bounded candidates. Reranking remains a separately approved step.
+        return list(merged.values())[:limit]
