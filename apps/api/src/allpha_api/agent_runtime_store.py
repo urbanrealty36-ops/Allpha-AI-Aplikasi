@@ -114,6 +114,24 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def append_checkpoint(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
+                                sequence: int, step_key: str, input_fingerprint: str,
+                                checkpoint_hash: str, result_payload: dict[str, Any]) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/append_agent_runtime_checkpoint", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id, "p_lease_token": lease_token,
+            "p_task_version": task_version, "p_sequence": sequence, "p_step_key": step_key,
+            "p_input_fingerprint": input_fingerprint, "p_checkpoint_hash": checkpoint_hash,
+            "p_result_payload": result_payload,
+        })
+        return rows[0] if rows else None
+
+    async def get_latest_checkpoint(self, task_id: str) -> dict[str, Any] | None:
+        rows = await self.request("GET", "agent_runtime_checkpoints", params={
+            "select": "task_id,task_version,sequence,step_key,input_fingerprint,checkpoint_hash,result_payload,created_at",
+            "task_id": f"eq.{task_id}", "order": "sequence.desc", "limit": "1",
+        })
+        return rows[0] if rows else None
+
     async def finalize_task(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
                             *, state: str, output_payload: dict[str, Any] | None,
                             error_code: str | None, event_log: list[dict[str, Any]]) -> dict[str, Any] | None:
