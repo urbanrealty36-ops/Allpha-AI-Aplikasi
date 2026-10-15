@@ -62,6 +62,7 @@ class ReservationReceipt:
     task_id: str
     reserved_credits: int
     state: ReservationState
+    policy_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,10 @@ class CreditLedgerLifecycleService:
         partial_policy_approved: bool = False,
     ) -> ReservationReceipt:
         policy = self._require_policy(policy)
+        if not idempotency_key.strip() or not source_event_id.strip():
+            raise CreditLifecycleBlocked("completion requires idempotency and source event identifiers")
+        if reservation.policy_version and reservation.policy_version != policy.policy_version:
+            raise CreditLifecycleBlocked("completion policy version does not match the reservation")
         if reservation.state in {ReservationState.SETTLED, ReservationState.RELEASED}:
             if reservation.idempotency_key == idempotency_key:
                 return reservation
