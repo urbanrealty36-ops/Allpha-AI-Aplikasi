@@ -579,3 +579,79 @@ The table below completes current-path coverage for the other 14 ledger versions
 | 20261014072435 | 20261014072435_eng_p05_agent_contract_reconciliation.sql | b45c440e40674d1beab30065bafe3aefc826d7e1 | 4c886e8519114a5dbd59444429a1f645cd443827 |
 
 Lineage qualification: all 20 current source paths, blob SHAs, and path-history commits are now mapped. This proves current Git source coverage only; historical SQL checksums from the applied production migrations remain unavailable.
+
+
+## D. Definition diff and caller/API trace — read-only follow-up (2026-10-15)
+
+### D1. Evidence scope
+
+Read-only catalog queries were rerun against canonical Supabase project ref `dvdziauyvuhcnqhrrvww`. Source files were inspected on `main`, including `apps/api/src/allpha_api/main.py`, `apps/api/src/allpha_api/auth.py`, `apps/web/lib/supabase.ts`, Web Agent Studio/Passport pages, Native `apps/client/App.tsx`, Super Admin `apps/super-admin/app/page.tsx`, the relevant API tests and migration files. No SQL DDL, migration, data write, provider setup, or staging test was performed.
+
+### D2. Concrete live ACL discrepancies
+
+The catalog's actual relation ACL strings expose privileges beyond the intended least-privilege contract. The strings below are direct `pg_class.relacl` observations (letters are PostgreSQL ACL codes); the role-by-role decoded inventory remains in section A6.
+
+| Table | Current live relation ACL summary | Source intent / concern | Disposition |
+|---|---|---|---|
+| `agent_ownerships` | `anon=arwdDxtm`; `authenticated=arDxtm` | ENG-P04 source intends ownership links to be created atomically by `create_ai_agent`, with owner-scoped policies. Anonymous all-table privileges and authenticated TRUNCATE/REFERENCES/TRIGGER are outside that contract. | Confirmed ACL drift; FR-01 scope plus separate authenticated excess-privilege repair must be designed. |
+| `ai_agents` | relation ACL includes `authenticated=arwDxtm`; no relation-level anon grant in this ACL snapshot | Migration `20261013055121` explicitly revokes authenticated INSERT/DELETE and grants SELECT/UPDATE; `20261013062523` grants anon SELECT only on a column allowlist. Current authenticated relation ACL includes additional table-level privileges. | Confirmed mismatch with intended relation-level grant contract. Preserve the explicit anonymous column projection; don't grant broad anon SELECT. |
+| `social_edges` | `anon=arwdDxtm`; `authenticated=ardDxtm` | Source migration `20261014130000` proposes revoking anon grants but is absent from ledger. Authenticated UPDATE is not relation-level granted in current ACL; the follow request accept route depends on a reviewed mutation path and must be traced through column grants/RLS. | Confirmed anon ACL drift. Do not apply FR-01 before caller and grant-surface tests. |
+| `user_consents` | `anon=arwdDxtm`; `authenticated=arwdDxtm` | Source RLS includes explicit false UPDATE/DELETE policies for authenticated users, but SQL privileges remain broader than the intended client contract. | Confirmed ACL drift; RLS denial is defense in depth, not a reason to retain excess grants. |
+| `user_interests` | `anon=arwdDxtm`; `authenticated=arwdDxtm` | User-scoped policies are present; owner-only access is intended. | Confirmed ACL drift. |
+| `user_settings` | `anon=arwdDxtm`; `authenticated=arwdDxtm` | User-scoped policies are present; API updates are intended to be limited to a validated schema. | Confirmed ACL drift. |
+| `profiles` | `authenticated=r`; no anon relation ACL in snapshot | Matches the narrow relation-level SELECT model more closely; column-level grants and API field constraints still require complete comparison. | No broad relation-level anon grant observed; do not infer all column ACLs are correct. |
+
+**Important distinction:** table-level relation ACL and column-level ACL are separate. The anonymous Agent Passport migration intentionally grants a limited set of columns on `ai_agents`; that projection must be preserved. The observed public-active RLS policy alone is not authorization; both column/table ACL and RLS must be reconciled together.
+
+### D3. Function definitions and execution ACL
+
+| Function | Live observation | Comparison result / action |
+|---|---|---|
+| `public.create_ai_agent(text,text,text,text,jsonb,text,text,jsonb)` | `SECURITY INVOKER`, empty configured `search_path`, EXECUTE for authenticated/service_role/postgres only; body derives owner from `auth.uid()`, validates input, inserts Agent then active owner row | Semantically aligns with ENG-P05 source contract. The historic six-argument overload is not present in the observed function identity signature inventory. Keep caller identity server/session-derived. |
+| `private.agent_created_by(uuid,uuid)`, `private.has_agent_ownership(uuid,uuid,text)` | SECURITY DEFINER, empty configured `search_path`, owner postgres; definitions use schema-qualified table references and caller UUID argument | Definitions match the current ENG-P04 helper contract at the semantic level; keep EXECUTE tightly scoped and ensure callers only pass the authenticated identity. |
+| `private.require_agent_owner()` | SECURITY DEFINER trigger function, empty configured `search_path`, checks an active owner row before Agent transaction commits | Matches the intended deferred owner invariant at source/behavior-contract level; a live transaction test remains deferred. |
+| `public.audit_organization_created()`, `public.create_organization_owner_membership()`, `private.is_organization_member(uuid)`, `private.is_organization_admin(uuid)` | Functions remain in catalog but reference absent live organization/audit tables | **Dependency drift confirmed.** Do not invoke or recreate their missing tables until provenance and domain ownership are resolved under FR-04. |
+| `public.set_updated_at()` | Non-definer trigger function with empty configured `search_path`; EXECUTE ACL includes PUBLIC, anon and authenticated | Direct RPC execution is unnecessary for a trigger helper. FR-03 remains a candidate; search callers and prove trigger behavior before privilege repair. |
+| `public.handle_new_auth_user()`, `public.enforce_social_edge_policy()` | SECURITY DEFINER trigger functions, empty configured `search_path`; EXECUTE restricted to postgres/service_role in observed ACL | EXECUTE ACL is consistent with trigger-only intent. Trigger behavior has not been exercised against isolated Supabase. |
+
+The catalog captures current function definitions and ACLs. A byte-for-byte historical function-body match cannot be claimed because the original applied migration checksums are unavailable. Definition-level semantic comparison was made against the current source files inspected; exact normalization-based diff artifacts are still not generated for every overload.
+
+### D4. Client → API → data-path trace
+
+The current frontends use Supabase JS for Auth/session lifecycle, while business actions in the inspected paths call the canonical FastAPI API. No direct `.from(table)` or `.rpc()` business query was found in the inspected Web Agent, Passport, Studio, Native App, or Super Admin source. Native's apparent `.from(` matches were `Array.from(...)`, not Supabase table calls. This is a source trace, not a proof that no direct data access exists anywhere outside the inspected tree.
+
+| Client surface | Observed path | Authorization/data contract | Result |
+|---|---|---|---|
+| Web Agent Studio `apps/web/app/agents/page.tsx` | Supabase Auth `getSession/onAuthStateChange`; calls `GET/POST /v1/agents` and `PATCH /v1/agents/{id}` with user bearer token | FastAPI validates user token and calls PostgREST via `user_db_request` using the caller token; RLS remains active | No direct business-table/RPC bypass observed in this file. |
+| Web Agent Passport `apps/web/app/agents/passport/[handle]/page.tsx` | Anonymous `GET /v1/agent-passports/{handle}` | API reads public Agent projection and ENG-P06 skills/capabilities | Base Agent projection has a source/live contract; skills/capability backing tables are absent from live snapshot, so that part is not integration-verified. |
+| Web Agent Studio `apps/web/app/agents/[agentId]/studio/page.tsx` | API calls for skills, versions, capabilities, tools and knowledge sources | All through FastAPI bearer-token requests | Client avoids direct business-table access; several target tables/migrations are not in live ledger/catalog, so real calls are not proven functional. |
+| Native `apps/client/App.tsx` | Supabase Auth sign-up/sign-in/session only; business journeys use FastAPI `fetch(apiBase + path)` | API receives the user access token | No direct business-table/RPC bypass observed; source audit found only Auth SDK use in the inspected file. |
+| Super Admin `apps/super-admin/app/page.tsx` | Supabase Auth REST token/refresh requests; privileged operations call FastAPI | Operator scopes checked in backend; no client-side Supabase business-table call found in this page | No direct business-table/RPC bypass observed in this page; live operator DB behavior remains unverified. |
+| Canonical API `apps/api/src/allpha_api/main.py` | Identity, settings, consents, social graph, interests, organizations, Agents and skills/capabilities routes call `user_db_request` | `apps/api/src/allpha_api/auth.py` forwards the authenticated user's bearer token to PostgREST, rather than silently switching to service-role credentials for these user-scoped routes | Backend path is canonical and RLS remains in the request path. Each route still needs grant/RLS positive/negative regression. |
+
+### D5. High-impact API/schema mismatches surfaced by caller tracing
+
+1. **Organization API vs live schema:** `GET/POST /v1/organizations` and membership routes exist in `main.py`, but `public.organizations` and `public.organization_memberships` are absent from the live catalog snapshot. Those routes cannot be marked live-functional against the current schema. This is a confirmed dependency mismatch, not permission to recreate tables.
+2. **Agent Studio skills/capabilities vs live schema:** FastAPI routes and clients reference `agent_skills`, versions and `agent_capabilities`; those target objects are not present in the captured live inventory and the ENG-P06 migrations are absent from the live ledger. Treat these paths as source-implemented but not live-integrated.
+3. **Knowledge API vs live schema:** source routes/worker exist, but ENG-P07 knowledge tables are not detected live and no configured policy provider is established. Fail-closed retrieval behavior must remain; do not activate the provider based on a guessed schema.
+4. **Social graph:** authenticated RLS policies are owner/participant scoped. The API routes use the caller token. However, the observed table ACL is broader for anon than intended, and the follow-request accept flow needs an exact review of whether its update can satisfy column grants plus the target-only RLS check without granting a broader mutation surface.
+5. **Public Agent Passport:** current source intends a column-limited anonymous projection. Current live column grants and RLS must be tested together; no blanket anon SELECT grant is acceptable.
+
+### D6. FR-01–FR-03 test matrix refinement
+
+| Unit | Positive regression | Negative regression | Additional precondition |
+|---|---|---|---|
+| FR-01 | Authenticated owner can use the supported API journey for each affected domain; public Passport can read only its approved projection | Anonymous owner/consent/settings/social/interest access denied; cross-owner reads/writes denied; private Agent columns remain hidden | Separate anon relation ACL vs column ACL; verify Realtime authorization and social follow-request accept behavior |
+| FR-02 | New table/function/sequence created by each verified migration owner receives only the approved grants | A newly created unreviewed table/function is not implicitly exposed to anon; required canonical RPC remains callable only by approved roles | Test default ACL behavior for both postgres and supabase_admin owners without production writes |
+| FR-03 | Profile/settings/interest updates continue to fire timestamp triggers | Direct PostgREST RPC to `set_updated_at()` is denied to anon/authenticated/PUBLIC as intended | No direct application caller; test trigger invocation through actual table update in isolated environment |
+
+No test in this table has been executed against a real isolated Supabase database. Existing API unit tests cover authentication, payload validation, caller-token forwarding and atomic Agent RPC behavior at source/mock level, but they do not establish live RLS/grant behavior.
+
+### D7. Current conclusion
+
+- Current source path/blob/history map for all 20 ledger versions is complete; historical applied SQL checksums are not recovered.
+- Live ACL drift is confirmed for several tables; the most important issue is not only broad `anon` grants, but also excess relation-level privileges on `authenticated` for `ai_agents` and `agent_ownerships`.
+- The inspected client paths do not show direct business-table/RPC bypass; Auth SDK use is present and business calls go through FastAPI. This is a bounded source audit, not a claim about every possible callsite without a complete generated inventory and CI regression.
+- API route/schema gaps for organizations, ENG-P06 skills/capabilities and ENG-P07 knowledge are confirmed from source-vs-live inventory. Do not resolve by blindly replaying migrations.
+- FR-01–FR-03 are ready for reviewer discussion with better concrete test cases, but are **not approved or executable**. FR-04/FR-05 remain blocked on provenance and product/privacy/data-platform contracts.
+- No database write or migration was performed.
