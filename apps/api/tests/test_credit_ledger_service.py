@@ -122,7 +122,7 @@ def test_partial_settlement_requires_explicit_capability_approval():
 def test_actual_charge_cannot_exceed_reservation_or_be_zero_by_default():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
-    reserved = await service.reserve(command(), policy=policy())
+    reserved = asyncio.run(service.reserve(command(), policy=policy()))
     for actual in (0, 11):
         with pytest.raises(CreditLifecycleBlocked):
             asyncio.run(service.complete(
@@ -131,3 +131,11 @@ def test_actual_charge_cannot_exceed_reservation_or_be_zero_by_default():
                 actual_credits=actual,
             ))
     assert all(call[0] != "settle" for call in store.calls)
+
+
+def test_reservation_requires_matching_policy_version():
+    store = FakeTransactionalStore()
+    service = CreditLedgerLifecycleService(store)
+    with pytest.raises(CreditLifecycleBlocked, match="policy version mismatch"):
+        asyncio.run(service.reserve(command(), policy=policy(policy_version="other")))
+    assert store.calls == []
