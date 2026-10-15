@@ -97,6 +97,9 @@ def client(monkeypatch, *, user_id=OWNER):
 def setup_function():
     FakeRuntimeStore.sessions = {}
     FakeRuntimeStore.tasks = {}
+    FakeRuntimeStore.capability = {"id": "cap-1", "capability_key": "text.normalize",
+                                   "required_permission_scopes": [], "status": "approved",
+                                   "policy_version": "runtime-policy-v1", "updated_at": "2026-10-15T00:00:00Z"}
 
 
 def teardown_function():
@@ -212,5 +215,37 @@ def test_approved_tool_execution_persists_result_and_replay(monkeypatch):
         assert response.json()["task"]["output_payload"]["result"] == {"text": "hello"}
         assert repeated.status_code == 200
         assert repeated.json()["idempotent_replay"] is True
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_recovery_does_not_replay_created_task(monkeypatch):
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        task = create_task(c, sid).json()["task"]
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/recover")
+        assert response.status_code == 200
+        assert response.json()["recovered"] is True
+        assert response.json()["replay_performed"] is False
+        assert response.json()["task"]["state"] == "created"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_recovery_marks_stale_unknown_execution_without_replay(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        task = create_task(c, sid).json()["task"]
+        row = FakeRuntimeStore.tasks[task["id"]]
+        row["state"] = "executing"
+        row["updated_at"] = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/recover")
+        assert response.status_code == 200
+        assert response.json()["replay_performed"] is False
+        assert response.json()["task"]["state"] == "failed"
+        assert response.json()["task"]["error_code"] == "EXECUTION_OUTCOME_UNKNOWN"
     finally:
         app.dependency_overrides.pop(current_user, None)
