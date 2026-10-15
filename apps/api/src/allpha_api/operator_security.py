@@ -5,6 +5,8 @@ requires a live, owner-scoped grant and an exact permission scope.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -53,6 +55,20 @@ class OperatorGrantCreate(BaseModel):
 
 
 class OperatorGrantRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+
+
+class RuntimePolicyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: UUID
+    policy_version: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
+    approved_tool_keys: list[str] = Field(min_length=1, max_length=50)
+    required_permission_scopes: list[str] = Field(default_factory=list, max_length=50)
+    risk_constraints: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuntimePolicyApproval(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str = Field(min_length=8, max_length=500)
 
@@ -387,6 +403,69 @@ async def revoke_operator_grant(
     return {"grant": rows[0], "revoked": True}
 
 
+@router.post("/operator/runtime-policies", status_code=201, name="create_operator_runtime_policy")
+async def create_operator_runtime_policy(
+    payload: RuntimePolicyCreate,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    if len(payload.approved_tool_keys) != len(set(payload.approved_tool_keys)) or len(payload.required_permission_scopes) != len(set(payload.required_permission_scopes)):
+        raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_DUPLICATE_VALUES", "message": "Tool dan scope tidak boleh duplikat."})
+    policy_document = {
+        "policy_version": payload.policy_version,
+        "approved_tool_keys": sorted(payload.approved_tool_keys),
+        "required_permission_scopes": sorted(payload.required_permission_scopes),
+        "risk_constraints": payload.risk_constraints,
+    }
+    try:
+        encoded = json.dumps(policy_document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_INVALID", "message": "Dokumen policy harus JSON valid."}) from exc
+    rows = await privileged_rest_request(
+        "POST", "agent_runtime_policies", params={"select": "id,agent_id,policy_version,policy_digest,status,created_by,created_at"},
+        body={
+            "agent_id": str(payload.agent_id), "policy_version": payload.policy_version,
+            "policy_document": policy_document, "policy_digest": hashlib.sha256(encoded).hexdigest(),
+            "approved_tool_keys": sorted(payload.approved_tool_keys),
+            "required_permission_scopes": sorted(payload.required_permission_scopes),
+            "risk_constraints": payload.risk_constraints, "status": "draft", "created_by": operator["id"],
+        }, prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=503, detail={"code": "RUNTIME_POLICY_PERSISTENCE_UNCONFIRMED", "message": "Pembuatan policy tidak terkonfirmasi."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.create",
+        outcome="allowed", resource_type="agent_runtime_policy", resource_id=rows[0]["id"],
+        metadata={"agent_id": str(payload.agent_id), "policy_version": payload.policy_version})
+    return {"policy": rows[0], "runtime_authorized": False}
+
+
+@router.post("/operator/runtime-policies/{policy_id}/approve", name="approve_operator_runtime_policy")
+async def approve_operator_runtime_policy(
+    policy_id: UUID,
+    payload: RuntimePolicyApproval,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    current = await privileged_rest_request("GET", "agent_runtime_policies", params={
+        "select": "id,agent_id,policy_version,status,policy_digest,approved_tool_keys,required_permission_scopes",
+        "id": f"eq.{policy_id}", "limit": "1",
+    })
+    if not current or current[0].get("status") != "draft":
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_NOT_DRAFT", "message": "Hanya policy draft yang dapat disetujui."})
+    timestamp = datetime.now(timezone.utc).isoformat()
+    rows = await privileged_rest_request("PATCH", "agent_runtime_policies", params={
+        "id": f"eq.{policy_id}", "status": "eq.draft",
+        "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,status,approved_by,approved_at",
+    }, body={"status": "approved", "approved_by": operator["id"], "approved_at": timestamp},
+       prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_APPROVAL_CONFLICT", "message": "Policy berubah selama proses persetujuan."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.approve",
+        outcome="allowed", resource_type="agent_runtime_policy", resource_id=str(policy_id),
+        metadata={"agent_id": rows[0]["agent_id"], "policy_version": rows[0]["policy_version"], "reason": payload.reason})
+    return {"policy": rows[0], "runtime_authorized": False}
+
+
 @router.get("/operator/capabilities", name="list_operator_capability_requests")
 async def list_operator_capability_requests(
     limit: int = 50,
@@ -438,6 +517,20 @@ async def review_operator_capability(
             detail={"code": "CAPABILITY_REQUEST_NOT_FOUND", "message": "Permintaan capability yang masih menunggu tidak ditemukan."},
         )
     capability = current[0]
+    runtime_policy = None
+    if payload.decision == "approved":
+        matches = await privileged_rest_request("GET", "agent_runtime_policies", params={
+            "select": "id,agent_id,policy_version,policy_digest,approved_tool_keys,required_permission_scopes,status",
+            "agent_id": f"eq.{capability['agent_id']}", "policy_version": f"eq.{payload.policy_version}",
+            "status": "eq.approved", "limit": "1",
+        })
+        runtime_policy = matches[0] if matches else None
+        if not runtime_policy:
+            raise HTTPException(status_code=409, detail={"code": "APPROVED_RUNTIME_POLICY_REQUIRED", "message": "Capability hanya dapat disetujui dengan policy runtime aktif yang sudah disetujui untuk Agent yang sama."})
+        if capability["capability_key"] not in (runtime_policy.get("approved_tool_keys") or []):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_TOOL_DENIED", "message": "Tool capability tidak tercantum dalam policy runtime."})
+        if not set(capability.get("required_permission_scopes") or []).issubset(set(runtime_policy.get("required_permission_scopes") or [])):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_SCOPE_DENIED", "message": "Scope capability melampaui policy runtime."})
     risk_level = capability.get("risk_level", "critical")
     if risk_level in ("high", "critical") and "platform:capabilities.review.high_risk" not in operator["scopes"]:
         await write_operator_audit(
@@ -461,7 +554,7 @@ async def review_operator_capability(
         params={
             "id": f"eq.{capability_id}",
             "status": "eq.requested",
-            "select": "id,agent_id,capability_key,description,risk_level,status,policy_version,reviewed_by,reviewed_at,review_reason,updated_at",
+            "select": "id,agent_id,capability_key,description,risk_level,status,policy_version,runtime_policy_id,reviewed_by,reviewed_at,review_reason,updated_at",
         },
         body={
             "status": payload.decision,
@@ -469,6 +562,7 @@ async def review_operator_capability(
             "reviewed_at": timestamp,
             "review_reason": payload.reason,
             "policy_version": payload.policy_version if payload.decision == "approved" else None,
+            "runtime_policy_id": runtime_policy["id"] if runtime_policy else None,
             "updated_at": timestamp,
         },
         prefer="return=representation",
