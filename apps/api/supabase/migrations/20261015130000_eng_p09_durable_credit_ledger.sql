@@ -133,7 +133,7 @@ begin
       and status = 'approved' and (effective_at is null or effective_at <= now())
       and (expires_at is null or expires_at > now()) for share;
   if not found or not coalesce((v_policy_row.configuration->>'allow_grants')::boolean, false)
-    or not coalesce(v_policy_row.configuration->'allowed_grant_types' ? v_type, false) then
+    or not coalesce((v_policy_row.configuration->'allowed_grant_types') ? v_type, false) then
     raise exception 'CREDIT_POLICY_NOT_APPROVED_FOR_GRANT' using errcode = '42501';
   end if;
   insert into public.credit_ledger_accounts(owner_user_id) values (v_owner) on conflict do nothing;
@@ -195,6 +195,10 @@ begin
       and status = 'approved' and (effective_at is null or effective_at <= now())
       and (expires_at is null or expires_at > now()) for share;
   if not found then raise exception 'CREDIT_POLICY_NOT_APPROVED' using errcode = '42501'; end if;
+  if p_command->>'credit_scheme_version' <> v_policy_row.credit_scheme_version
+    or coalesce(p_command->>'entitlement_version','') = '' then
+    raise exception 'CREDIT_RESERVATION_VERSION_MISMATCH' using errcode = '22023';
+  end if;
   v_cap := v_policy_row.configuration->'capabilities'->v_capability;
   if jsonb_typeof(v_cap) <> 'object' or v_cap->>'tariff_version' <> v_tariff
     or v_cap->>'usage_unit' <> v_usage_unit
@@ -280,7 +284,8 @@ begin
     raise exception 'CREDIT_RESERVATION_NOT_SETTLEABLE' using errcode = '23514';
   end if;
   if v_policy <> v_res.policy_version or v_actual > v_res.reserved_credits
-    or v_actual_units is null or v_actual_units <= 0 or coalesce(v_usage_unit,'') = '' then
+    or v_actual_units is null or v_actual_units <= 0 or coalesce(v_usage_unit,'') = ''
+    or coalesce((p_command->>'release_unused')::boolean,false) <> (v_actual < v_res.reserved_credits) then
     raise exception 'CREDIT_SETTLEMENT_POLICY_OR_AMOUNT_MISMATCH' using errcode = '22023';
   end if;
   select * into v_policy_row from public.credit_policy_versions
@@ -378,6 +383,83 @@ begin
 end;
 $$;
 
+
+
+create or replace function public.credit_ledger_reverse(p_command jsonb)
+returns jsonb language plpgsql security definer set search_path = ''
+as $
+declare
+  v_owner uuid := (p_command->>'owner_user_id')::uuid;
+  v_original_id uuid := (p_command->>'original_entry_id')::uuid;
+  v_key text := p_command->>'idempotency_key';
+  v_policy text := p_command->>'policy_version';
+  v_approval text := p_command->>'policy_approval_reference';
+  v_reason text := p_command->>'reason_code';
+  v_credits bigint := (p_command->>'credits')::bigint;
+  v_fp text := encode(extensions.digest(p_command::text,'sha256'),'hex');
+  v_original public.credit_ledger_entries;
+  v_policy_row public.credit_policy_versions;
+  v_existing public.credit_ledger_entries;
+  v_entry public.credit_ledger_entries;
+  v_reversed bigint;
+begin
+  if v_owner is null or v_original_id is null or coalesce(v_key,'') = ''
+    or coalesce(v_reason,'') = '' or v_credits is null or v_credits <= 0 then
+    raise exception 'INVALID_CREDIT_REVERSAL' using errcode = '22023';
+  end if;
+  select * into v_policy_row from public.credit_policy_versions
+    where policy_version=v_policy and approval_reference=v_approval
+      and status='approved' and (effective_at is null or effective_at <= now())
+      and (expires_at is null or expires_at > now()) for share;
+  if not found or not coalesce((v_policy_row.configuration->>'allow_refunds')::boolean,false) then
+    raise exception 'CREDIT_REFUND_POLICY_NOT_APPROVED' using errcode = '42501';
+  end if;
+  insert into public.credit_ledger_accounts(owner_user_id) values(v_owner) on conflict do nothing;
+  perform 1 from public.credit_ledger_accounts where owner_user_id=v_owner for update;
+  select * into v_existing from public.credit_ledger_entries where owner_user_id=v_owner and idempotency_key=v_key;
+  if found then
+    if v_existing.payload_fingerprint <> v_fp or v_existing.entry_type not in ('refund','reversal') then
+      raise exception 'CREDIT_LEDGER_IDEMPOTENCY_CONFLICT' using errcode = '23505';
+    end if;
+    return jsonb_build_object('entry_id',v_existing.id,'idempotent_replay',true);
+  end if;
+  select * into v_original from public.credit_ledger_entries
+    where id=v_original_id and owner_user_id=v_owner for update;
+  if not found or v_original.entry_type <> 'settlement' then
+    raise exception 'CREDIT_REVERSAL_SOURCE_NOT_REVERSIBLE' using errcode = '22023';
+  end if;
+  select coalesce(sum(credits),0) into v_reversed from public.credit_ledger_entries
+    where owner_user_id=v_owner and related_entry_id=v_original.id and entry_type in ('refund','reversal');
+  if v_credits + v_reversed > v_original.credits
+    or v_credits > coalesce((v_policy_row.configuration->>'max_reversal_credits')::bigint,v_original.credits) then
+    raise exception 'CREDIT_REVERSAL_LIMIT_EXCEEDED' using errcode = '23514';
+  end if;
+  insert into public.credit_balance_projection(owner_user_id) values(v_owner) on conflict do nothing;
+  insert into public.credit_ledger_entries(
+    owner_user_id,idempotency_key,entry_type,credits,balance_delta,credit_scheme_version,
+    policy_version,tariff_version,entitlement_version,capability_id,task_id,source_event_id,
+    related_entry_id,payload_fingerprint,metadata
+  ) values (
+    v_owner,v_key,coalesce(nullif(p_command->>'entry_type',''),'reversal'),v_credits,v_credits,
+    v_original.credit_scheme_version,v_policy,v_original.tariff_version,v_original.entitlement_version,
+    v_original.capability_id,v_original.task_id,p_command->>'source_event_id',v_original.id,v_fp,
+    jsonb_build_object('reason_code',v_reason)
+  ) returning * into v_entry;
+  update public.credit_balance_projection set available_credits=available_credits+v_credits,
+    ledger_entry_count=ledger_entry_count+1,updated_at=now() where owner_user_id=v_owner;
+  insert into public.credit_reconciliation_events(
+    owner_user_id,event_type,reason_code,idempotency_key,actor_type,actor_id,
+    details
+  ) values (
+    v_owner,case when v_entry.entry_type='refund' then 'settlement' else 'manual_review' end,
+    v_reason,'reverse:'||v_key,coalesce(p_command->>'actor_type','operator'),
+    nullif(p_command->>'actor_id','')::uuid,
+    jsonb_build_object('original_entry_id',v_original.id,'compensating_entry_id',v_entry.id,'credits',v_credits)
+  );
+  return jsonb_build_object('entry_id',v_entry.id,'idempotent_replay',false);
+end;
+$;
+
 create or replace function public.credit_ledger_mark_pending(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$
@@ -406,10 +488,10 @@ $$;
 
 revoke all on function public.credit_ledger_grant(jsonb), public.credit_ledger_reserve(jsonb),
   public.credit_ledger_settle(jsonb), public.credit_ledger_release(jsonb),
-  public.credit_ledger_mark_pending(jsonb) from public, anon, authenticated;
+  public.credit_ledger_reverse(jsonb), public.credit_ledger_mark_pending(jsonb) from public, anon, authenticated;
 grant execute on function public.credit_ledger_grant(jsonb), public.credit_ledger_reserve(jsonb),
   public.credit_ledger_settle(jsonb), public.credit_ledger_release(jsonb),
-  public.credit_ledger_mark_pending(jsonb) to service_role;
+  public.credit_ledger_reverse(jsonb), public.credit_ledger_mark_pending(jsonb) to service_role;
 
 comment on table public.credit_ledger_entries is 'Append-only AI Credit accounting entries; source of truth for credit movements.';
 comment on table public.credit_balance_projection is 'Derived available balance; updated in the same transaction as ledger entries.';
