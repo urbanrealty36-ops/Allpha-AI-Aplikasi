@@ -35,7 +35,8 @@ def reservation(**changes):
         credit_scheme_version="credits-v1", tariff_version="tariff-v1",
         entitlement_version="entitlement-v1", policy_approval_reference="approval-ref-1",
         policy_version="policy-v1", estimated_usage_units=2,
-        usage_unit="embedding_input_unit",
+        usage_unit="embedding_input_unit", estimated_cost_microunits=100,
+        cost_unit="policy_cost_microunit",
     )
     values.update(changes)
     return CreditReservationCommand(**values)
