@@ -366,48 +366,24 @@ def test_keyword_only_repository_is_explicitly_keyword_not_hybrid(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_public_route_can_use_opt_in_keyword_runtime_with_explicit_policy(monkeypatch):
-    from allpha_api import auth
-    async def fake_current_user(request: Request):
-        request.state.supabase_access_token = "user-token"
-        return {"id": "owner-a"}
-    async def fake_request(method, path, access_token, *, params=None, body=None, prefer=None):
-        if path == "agent_ownerships":
-            return [{"agent_id": str(uuid.UUID(int=101))}]
-        if path == "agent_knowledge_chunks":
-            return [{
-                "id": "chunk-a", "source_id": "source-a", "agent_id": str(uuid.UUID(int=101)),
-                "owner_id": "owner-a", "chunk_index": 0, "content": "owner scoped excerpt",
-                "source_location": {"kind": "page", "index": 1}, "source_version": 1,
-                "content_sha256": "c" * 64,
-                "agent_knowledge_sources": {"id": "source-a", "source_version": 1,
-                    "status": "ready", "sensitivity": "internal"},
-            }]
-        raise AssertionError("unexpected table access: " + path)
-    monkeypatch.setattr(auth, "user_db_request", fake_request)
-    monkeypatch.setattr("allpha_api.knowledge_retrieval.os.getenv",
-        lambda key, default="": {"ALLPHA_KNOWLEDGE_RETRIEVAL_MODE": "keyword",
-            "ALLPHA_KNOWLEDGE_ALLOWED_SENSITIVITIES": "internal"}.get(key, default))
-    app.dependency_overrides[current_user] = fake_current_user
-    prior = getattr(app.state, "knowledge_retrieval_service", None)
-    if hasattr(app.state, "knowledge_retrieval_service"):
-        delattr(app.state, "knowledge_retrieval_service")
-    try:
-        response = TestClient(app).post(
-            f"/v1/agents/{uuid.UUID(int=101)}/knowledge/retrieve",
-            json={"query": "owner scoped", "limit": 4},
-            headers={"Authorization": "Bearer test"},
-        )
-    finally:
-        app.dependency_overrides.clear()
-        if prior is not None:
-            app.state.knowledge_retrieval_service = prior
-    assert response.status_code == 200
-    body = response.json()
-    assert body["results"][0]["retrieval_method"] == "keyword"
-    assert body["results"][0]["sensitivity"] == "internal"
-    assert body["results"][0]["provider_id"] is None
+def test_keyword_runtime_stays_disabled_when_only_sensitivity_allowlist_is_configured(monkeypatch):
+    from starlette.requests import Request as StarletteRequest
+    from allpha_api.knowledge_retrieval import request_scoped_retrieval_service
 
+    scope = {
+        "type": "http", "app": app,
+        "state": {"supabase_access_token": "user-token"},
+        "method": "POST", "path": "/", "headers": [], "query_string": b"",
+        "server": ("test", 80), "client": ("test", 1), "scheme": "http",
+    }
+    monkeypatch.setattr(
+        "allpha_api.knowledge_retrieval.os.getenv",
+        lambda key, default="": {
+            "ALLPHA_KNOWLEDGE_RETRIEVAL_MODE": "keyword",
+            "ALLPHA_KNOWLEDGE_ALLOWED_SENSITIVITIES": "internal",
+        }.get(key, default),
+    )
+    assert request_scoped_retrieval_service(StarletteRequest(scope)) is None
 
 def test_keyword_runtime_stays_disabled_without_explicit_mode_or_policy(monkeypatch):
     from starlette.requests import Request as StarletteRequest
