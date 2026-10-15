@@ -21,7 +21,8 @@ def response(**changes):
         model_version="immutable-v1", dimensions=2,
         vectors=[{"chunk_id": "chunk-1", "content_sha256": "a" * 64, "values": [0.1, 0.2]}],
         trace_id="trace-1", completed_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
-        usage_units=10, cost_microunits=125,
+        usage_units=10, usage_unit="embedding_input_unit", cost_microunits=125,
+        cost_unit="policy_cost_microunit", pricing_version="test-pricing-v1",
     )
     values.update(changes)
     return EmbeddingResponse(**values)
@@ -47,12 +48,15 @@ def test_metering_record_fingerprint_detects_same_key_payload_conflict():
 @pytest.mark.parametrize(
     "changes",
     [
-        {"usage_units": None},
-        {"cost_microunits": None},
         {"task_id": "other-task"},
         {"trace_id": "other-trace"},
     ],
 )
-def test_metering_record_rejects_missing_actuals_or_identity_mismatch(changes):
+def test_metering_record_rejects_identity_mismatch(changes):
     with pytest.raises(MeteringContractError):
         build_metering_record(request(), response(**changes))
+
+
+def test_embedding_response_rejects_partial_usage_cost_unit_attribution():
+    with pytest.raises(ValueError, match="usage and cost attribution"):
+        response(usage_units=None)
