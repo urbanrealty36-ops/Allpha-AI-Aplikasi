@@ -108,7 +108,7 @@ def test_unknown_provider_outcome_is_pending_not_charged_or_released():
 def test_partial_settlement_requires_explicit_capability_approval():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
-    reserved = await service.reserve(command(), policy=policy())
+    reserved = asyncio.run(service.reserve(command(), policy=policy()))
     with pytest.raises(CreditLifecycleBlocked, match="partial settlement requires"):
         asyncio.run(service.complete(
             reservation=reserved, outcome=OperationOutcome.PARTIAL, policy=policy(),
