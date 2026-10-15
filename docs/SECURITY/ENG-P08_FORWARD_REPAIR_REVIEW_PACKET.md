@@ -740,3 +740,94 @@ Required decisions:
 4. Positively prove an already-existing non-production database target (effective DB host/project ref, environment configuration without disclosing secrets, role/credential separation and non-production marker). Railway environment name alone is insufficient.
 5. In that isolated target, test each migration on the approved existing schema; assert allowed operation succeeds, denied operation fails, trigger effects persist, Realtime cannot leak rows, and migration re-run/rollback or forward-recovery behavior is understood.
 6. Update the fixed phase row only when the above evidence exists. Until then ENG-P08 remains `in_progress`, ENG-P09 remains `blocked`, and knowledge retrieval remains fail-closed.
+
+
+## I. Consolidated source-to-live comparison and caller/RLS matrix (2026-10-15)
+
+### I1. Live object inventory — exact current counts
+
+A fresh read-only catalog query returned this inventory for the canonical production database:
+
+| Object set | Live count | Current evidence |
+|---|---:|---|
+| Public application tables | 7 | `profiles`, `user_settings`, `user_consents`, `ai_agents`, `agent_ownerships`, `social_edges`, `user_interests` |
+| Public constraints | 50 | 29 CHECK, 9 FOREIGN KEY, 7 PRIMARY KEY, 4 UNIQUE, 1 deferred constraint trigger |
+| Public indexes | 19 | All index definitions were read from `pg_indexes`; see section C and current source migrations |
+| Public RLS policies | 27 | All seven public tables have RLS enabled; none has FORCE RLS |
+| Storage RLS policies | 0 | `pg_policies` query returned none in `storage`; confirm with Storage API before changing anything |
+| Application functions in `public` + `private` | 14 | Full signatures, function definitions, SECURITY DEFINER mode, `proconfig`, ACL, and body fingerprints were queried |
+| Application triggers in `public` + `private` | 7 | Full trigger definitions and attached function fingerprints were queried |
+| Realtime publication tables | 2 | `social_edges` and `user_interests`, both without publication row filters |
+
+The 50 constraints and 19 index definitions in the current source migrations for the seven live application tables were reviewed against the catalog inventory. The names, key columns, predicate/constraint semantics observed in the live definitions align with the current canonical source for the live tables inspected. This is a **current source-to-live semantic comparison**, not a historical checksum attestation: the original bytes of the production-applied migrations are unavailable, and the first ENG-P02 baseline file explicitly calls itself a reconstruction for fresh setup. No historical applied-SQL checksum identity is claimed.
+
+### I2. Definition differences and provenance are not uniform
+
+| Object family | Source-to-live finding | Historical/provenance status |
+|---|---|---|
+| Seven live table definitions, 50 constraints, 19 indexes | Current core migrations describe the live objects inspected; no key/constraint/index semantic mismatch was identified in this comparison | Exact historical applied bytes are unavailable |
+| `public.create_ai_agent` | Current live eight-argument INVOKER body matches the current eight-argument source contract in ENG-P05; no six-argument overload is live | Migration `20261014072435` is in repo source but not in the previously captured 20-row live ledger; the live body is evidence of current semantics, not proof of which exact historical SQL bytes were applied |
+| `public.set_updated_at()` | Current body is a trigger helper; live EXECUTE ACL contradicts the earlier baseline migration's explicit revoke of PUBLIC/anon/authenticated | Current source and live ACL differ; FR-03 must restore intended trigger-only access after review |
+| `private.is_organization_member(uuid)`, `private.is_organization_admin(uuid)`, `public.create_organization_owner_membership()`, `public.audit_organization_created()` | Functions exist live but depend on absent organization/audit relations | Provenance unresolved; do not drop functions or replay reconstructed baseline automatically |
+| ENG-P06 Agent Studio skills/capabilities and platform operator objects | Routes and migrations exist in source, but the expected live tables were not in the seven-table public inventory | Ledger/object drift; Data Platform must identify whether migration was never applied, was reverted, or another canonical source exists |
+| ENG-P07 knowledge ingestion/full-text and ENG-P09 job leases | Migration files exist in source but their tables were absent from the live inventory; retrieval policy provider remains unconfigured and fail-closed | Not a live feature; don't infer deployment from source presence |
+| `public.audit_events`, `public.organizations`, `public.organization_memberships` | Absent from live public relations despite functions and ledger history that reference them | Requires authoritative provenance/recovery decision before repair |
+
+### I3. Explicit column ACLs, relation ACLs, default ACLs
+
+The corrected distinction is authoritative for this packet:
+- `pg_attribute.attacl` shows explicit column grants on `ai_agents` (the intended limited anonymous Passport projection), `profiles` (self-editable profile insert/update columns), and `social_edges.status` (authenticated follow-request status update).
+- `pg_class.relacl` shows broad table-level grants on user-owned relations, including anonymous rights on `agent_ownerships`, `social_edges`, `user_consents`, `user_interests`, and `user_settings`.
+- `pg_default_acl` shows broad default privileges for `postgres` in `public` across tables, functions and sequences, and broad defaults in other platform-managed schemas/owners. The `supabase_admin` defaults across platform-managed schemas must not be changed as a blanket app repair. FR-02 must scope changes to the correct owner/schema and prove effects on newly created test objects in isolated non-production.
+- Explicitly preserve the anonymous Passport projection unless the reviewed product/API contract changes it. Remove unintended relation-level anonymous access independently of that column allowlist.
+
+### I4. Client-to-API and database caller matrix
+
+A bounded source scan of all client entry files returned no client-side `.from(...)`, `.rpc(...)`, direct `/rest/v1` business-table access, or Realtime channel subscription in the inspected client pages. The client paths observed use Supabase Auth for sign-in/session only and route business operations to FastAPI.
+
+| Caller | Observed business path | Database/RLS implication |
+|---|---|---|
+| `apps/client/App.tsx` | Supabase Auth SDK for session/auth; authenticated fetches to `/v1/agents`, `/v1/agent-passports`, skills/capabilities/tools and knowledge routes | No direct table query found in inspected file; API bearer identity must remain authoritative |
+| `apps/web/app/agents/page.tsx` | FastAPI `/v1/agents`; Supabase Auth session/sign-out only | No direct business-table SDK operation found |
+| `apps/web/app/agents/passport/[handle]/page.tsx` | FastAPI `/v1/agent-passports/{handle}` | Public projection is served through API; verify response shaping against the Passport allowlist |
+| `apps/web/app/agents/[agentId]/studio/page.tsx` | FastAPI skills/capabilities/knowledge endpoints; Auth session only | No direct table query found in inspected file |
+| `apps/super-admin/app/page.tsx` | Auth token/session handling and FastAPI business endpoints in inspected page | Do not infer the entire admin app is free of direct DB access from this one page |
+| `apps/api/src/allpha_api/auth.py:user_db_request` | Uses caller bearer token for PostgREST `/rest/v1/{path}` requests | RLS applies as the authenticated caller; each route's trusted user context, filters, method and allowed columns need route-level review |
+| `apps/api/src/allpha_api/main.py` | Many identity/social/Agent/org/skills/knowledge handlers call `user_db_request` | Caller inventory must include each path/method/filter/body; missing live relations mean some routes cannot be declared integration-ready |
+| Realtime | Publication contains social edges/interests; no client subscription was found in the inspected client pages | Publication is enabled at DB level, but effective access and any other subscriber in the repo remain to be verified; no cross-user test has run |
+
+This is a bounded caller inventory for the listed entry files, not a repository-wide proof that no direct Supabase calls exist. The canonical `main` tree currently exposes 12 TS/TSX/JS/JSX files in the three client app roots; all of those files were identified, and the Auth/business-path scan above covers the files containing the relevant app entry/client patterns. Any new or dynamically loaded client module must be included before closing the audit.
+
+### I5. FR-01–FR-03 test matrix, following AGENTS.md §13
+
+Per the repository's mandatory test sequence, consolidated real Supabase integration, staging acceptance, and cross-user security tests are deferred to ENG-P37. Lightweight implementation-time source/contract tests remain appropriate now. No live positive/negative FR tests have been run because no positively verified isolated existing database target is available.
+
+| Check | Source-level/current-catalog evidence | Positive test | Negative test | Status |
+|---|---|---|---|---|
+| FR-01 relation grants + intended Passport projection | Live relation ACL, explicit `attacl`, RLS policy, current migrations captured; source conflict on direct Agent/ownership INSERT documented | Authenticated allowed operation and Passport projection in isolated DB | Anonymous writes/reads to owner-only relations denied; unauthorized direct Agent/ownership creation denied if atomic-RPC-only contract is approved | DEFERRED to ENG-P37; design decision pending |
+| FR-02 default ACLs | Full `pg_default_acl` owner/schema/object-type matrix captured | New table/function/sequence gets only approved grants | Unapproved roles cannot use new objects | DEFERRED to ENG-P37; scope decision pending |
+| FR-03 trigger helper EXECUTE | `set_updated_at()` ACL/body and three app triggers captured | Updates on profiles/user_interests/user_settings still set timestamp | Direct EXECUTE as anon/authenticated denied | DEFERRED to ENG-P37; reviewer decision pending |
+
+The test cases must run against the reviewed migration in an already-existing, positively verified isolated non-production database; use two test identities for owner/target isolation. Do not execute the test matrix against canonical production.
+
+### I6. Railway target isolation — evidence and remaining proof
+
+The current Railway environment inventory confirms:
+- Project `focused-tranquility`, environment `staging` (`isEphemeral=false`), API service `Allpha-AI-Aplikasi`, branch `main`, one replica, latest deployment SUCCESS.
+- Service config has `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` variable names; the connected Railway integration redacts their values.
+- The service is not attached to a Railway database volume/resource, and no database URL variable is present. That is consistent with a separately hosted Supabase backend but does not identify which project it points to.
+- The Supabase canonical production project is ACTIVE_HEALTHY and currently has no development branches.
+
+**Isolation conclusion: NOT VERIFIED.** The Railway environment name, successful deployment, and variable names are not proof of a non-production Supabase target. Do not expose or paste secrets into the review packet. The remaining safe verification must establish only the effective Supabase project ref/host and credential-role separation (redacted output), confirm it is not `dvdziauyvuhcnqhrrvww`, and verify an explicit non-production marker using an approved operational method.
+
+### I7. Explicit review decisions required — none fabricated
+
+No GitHub issue/review artifact was found in the inspected repository search that records an explicit Privacy/Security or Data Platform decision for FR-01–FR-05. No approval is inferred from the Product Owner's Option C direction.
+
+Required decision record from named reviewers:
+1. **Privacy/Security:** approve or reject FR-01's intended anonymous surface and owner-scoped table grants; decide the privacy/security contract for knowledge consent, per-Agent grants, purpose, revocation and derived-data cleanup under ADR-0005.
+2. **Data Platform:** confirm FR-01–FR-03 grant scope, owner/schema default ACL boundary, trigger-only EXECUTE contract, and forward-repair preconditions/recovery; determine provenance/recovery path for organization/audit and ENG-P06/ENG-P07 objects missing from live.
+3. **Joint decision:** approve or reject the direct Agent/ownership insert contract. The source contains conflicting intent: ENG-P04 migration `20261013055121` says only atomic RPC may create ownership links, but `20261013055143` later grants direct INSERT to authenticated. Do not silently select one interpretation.
+4. **Knowledge source of truth:** choose an authoritative existing consent/grant subsystem or explicitly approve a new reviewed domain contract. The existing `user_consents` enum is only terms of service, privacy policy, and product updates; it is not knowledge-consent storage.
+
+No migration or provider should be activated until those decisions are recorded. Product Owner Option C approval remains direction-only. Until then ENG-P08 stays `in_progress` and ENG-P09 stays `blocked`.
