@@ -204,7 +204,7 @@ def test_supabase_keyword_repository_pushes_security_filters_into_database_query
         assert params["agent_id"] == "eq.agent-a"
         assert params["agent_knowledge_sources.status"] == "eq.ready"
         assert params["agent_knowledge_sources.sensitivity"] == "in.(internal)"
-        assert params["search_vector"] == "fts.simple.private phrase"
+        assert params["search_vector"] == "fts(simple).private phrase"
         assert params["limit"] == "7"
     asyncio.run(scenario())
 
