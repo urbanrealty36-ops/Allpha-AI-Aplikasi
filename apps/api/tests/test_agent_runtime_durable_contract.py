@@ -16,6 +16,7 @@ def test_durable_runtime_contract_has_leased_checkpoints_effect_receipts_and_pol
     assert "create or replace function public.begin_agent_runtime_effect" in sql
     assert "create or replace function public.complete_agent_runtime_effect" in sql
     assert "create or replace function public.finalize_agent_runtime_task" in sql
+    assert "create or replace function public.mark_agent_runtime_effect_unknown" in sql
     assert "execution_lease_token is distinct from p_lease_token" in sql
     assert "task_row.task_version <> p_task_version" in sql
     assert "revoke all on public.agent_runtime_policies, public.agent_runtime_checkpoints" in sql
