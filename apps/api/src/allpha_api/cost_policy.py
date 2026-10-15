@@ -48,6 +48,22 @@ class CostBudget:
 
 
 @dataclass(frozen=True)
+class CostPolicyApproval:
+    """Deployment-supplied reference to an explicitly approved policy decision.
+
+    This is an attestation reference, not a mechanism to self-approve policy. The
+    referenced review/ADR must exist outside this code and be verified by operators.
+    """
+    policy_id: str
+    version: str
+    approval_reference: str
+
+    def __post_init__(self) -> None:
+        if not self.policy_id.strip() or not self.version.strip() or not self.approval_reference.strip():
+            raise ValueError("cost policy approval must reference a policy, version and approval record")
+
+
+@dataclass(frozen=True)
 class CostAuthorization:
     sensitivity: str
     provider_id: str
