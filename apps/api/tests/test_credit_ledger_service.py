@@ -96,7 +96,7 @@ def test_success_settles_actual_amount_and_releases_unused_reservation():
 def test_unknown_provider_outcome_is_pending_not_charged_or_released():
     store = FakeTransactionalStore()
     service = CreditLedgerLifecycleService(store)
-    reserved = await service.reserve(command(), policy=policy())
+    reserved = asyncio.run(service.reserve(command(), policy=policy()))
     result = asyncio.run(service.complete(
         reservation=reserved, outcome=OperationOutcome.UNKNOWN, policy=policy(),
         idempotency_key="finish-key", source_event_id="usage-event-2",
