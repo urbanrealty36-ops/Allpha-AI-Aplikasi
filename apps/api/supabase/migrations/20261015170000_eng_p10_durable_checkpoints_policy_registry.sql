@@ -167,7 +167,7 @@ create or replace function public.append_agent_runtime_checkpoint(
   p_sequence bigint, p_step_key text, p_input_fingerprint text,
   p_checkpoint_hash text, p_result_payload jsonb
 )
-returns public.agent_runtime_checkpoints
+returns setof public.agent_runtime_checkpoints
 language plpgsql
 security definer
 set search_path = ''
@@ -194,9 +194,9 @@ begin
      set checkpoint_seq = p_sequence, checkpoint_hash = p_checkpoint_hash,
          current_step_key = p_step_key, effect_outcome = 'completed', updated_at = now()
    where id = p_task_id;
-  return checkpoint_row;
+  return next checkpoint_row;
 end;
-$$;
+$;
 revoke all on function public.append_agent_runtime_checkpoint(uuid, uuid, uuid, integer, bigint, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.append_agent_runtime_checkpoint(uuid, uuid, uuid, integer, bigint, text, text, text, jsonb) to service_role;
 
