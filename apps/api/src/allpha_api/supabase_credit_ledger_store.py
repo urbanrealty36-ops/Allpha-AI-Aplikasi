@@ -108,6 +108,8 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
                 reserved_credits=int(payload["reserved_credits"]),
                 state=ReservationState(payload["state"]),
                 policy_version=str(payload["policy_version"]) if payload.get("policy_version") is not None else None,
+                estimated_usage_units=int(payload["estimated_usage_units"]) if payload.get("estimated_usage_units") is not None else None,
+                usage_unit=str(payload["usage_unit"]) if payload.get("usage_unit") is not None else None,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise CreditLedgerPersistenceError("Supabase credit ledger returned an invalid reservation receipt") from exc
