@@ -1,25 +1,16 @@
 import pytest
 
 from allpha_api.credit_ledger_contract import (
-    CapabilityTariff,
-    CreditEntryType,
-    CreditLedgerEntry,
-    CreditLedgerError,
-    CreditPolicyUnavailable,
-    CreditReservationCommand,
-    calculate_credit_charge,
+    CapabilityTariff, CreditEntryType, CreditLedgerEntry, CreditLedgerError,
+    CreditPolicyUnavailable, CreditReservationCommand, calculate_credit_charge,
 )
 
 
 def tariff(**changes):
     values = dict(
-        capability_id="embedding",
-        tariff_version="tariff-v1",
-        usage_unit="embedding_input_unit",
-        credits_per_usage_unit=3,
-        credit_scheme_version="credits-v1",
-        policy_approval_reference="approval-ref-1", policy_version="policy-v1",
-        estimated_usage_units=2, usage_unit="embedding_input_unit",
+        capability_id="embedding", tariff_version="tariff-v1",
+        usage_unit="embedding_input_unit", credits_per_usage_unit=3,
+        credit_scheme_version="credits-v1", policy_approval_reference="approval-ref-1",
     )
     values.update(changes)
     return CapabilityTariff(**values)
@@ -27,19 +18,27 @@ def tariff(**changes):
 
 def entry(**changes):
     values = dict(
-        entry_id="entry-1",
-        idempotency_key="ledger-key-1",
-        account_id="account-1",
-        entry_type=CreditEntryType.RESERVATION,
-        credits=12,
-        credit_scheme_version="credits-v1",
-        policy_version="tariff-v1",
-        source_event_id="task-1",
-        capability_id="embedding",
+        entry_id="entry-1", idempotency_key="ledger-key-1", account_id="account-1",
+        entry_type=CreditEntryType.RESERVATION, credits=12,
+        credit_scheme_version="credits-v1", policy_version="tariff-v1",
+        source_event_id="task-1", capability_id="embedding",
         created_at="2026-10-15T00:00:00Z",
     )
     values.update(changes)
     return CreditLedgerEntry(**values)
+
+
+def reservation(**changes):
+    values = dict(
+        idempotency_key="reserve-1", account_id="account-1", task_id="task-1",
+        capability_id="embedding", credits_to_reserve=6,
+        credit_scheme_version="credits-v1", tariff_version="tariff-v1",
+        entitlement_version="entitlement-v1", policy_approval_reference="approval-ref-1",
+        policy_version="policy-v1", estimated_usage_units=2,
+        usage_unit="embedding_input_unit",
+    )
+    values.update(changes)
+    return CreditReservationCommand(**values)
 
 
 def test_capability_tariff_calculates_exact_integer_units_without_cost_conversion():
@@ -84,19 +83,12 @@ def test_reversal_is_a_compensating_entry_not_a_mutation():
     assert original.payload_fingerprint() != reversal.payload_fingerprint()
 
 
-def test_reservation_requires_explicit_versions_and_positive_amount():
-    command = CreditReservationCommand(
-        idempotency_key="reserve-1", account_id="account-1", task_id="task-1",
-        capability_id="embedding", credits_to_reserve=6, credit_scheme_version="credits-v1",
-        tariff_version="tariff-v1", entitlement_version="entitlement-v1",
-        policy_approval_reference="approval-ref-1",
-    )
+def test_reservation_requires_explicit_policy_versions_and_usage():
+    command = reservation()
     assert command.credits_to_reserve == 6
     with pytest.raises(CreditLedgerError):
-        CreditReservationCommand(
-            idempotency_key="reserve-2", account_id="account-1", task_id="task-1",
-            capability_id="embedding", credits_to_reserve=0, credit_scheme_version="credits-v1",
-            tariff_version="tariff-v1", entitlement_version="entitlement-v1",
-            policy_approval_reference="approval-ref-1", policy_version="policy-v1",
-            estimated_usage_units=2, usage_unit="embedding_input_unit",
-        )
+        reservation(credits_to_reserve=0)
+    with pytest.raises(CreditLedgerError):
+        reservation(policy_version=" ")
+    with pytest.raises(CreditLedgerError):
+        reservation(estimated_usage_units=0)
