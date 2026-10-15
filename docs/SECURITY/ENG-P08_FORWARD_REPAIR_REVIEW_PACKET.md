@@ -397,3 +397,80 @@ Policy predicates observed on application tables:
 The storage policy inventory query returned zero policies. This finding is limited to the queried `pg_policies` snapshot and must be confirmed against the Storage control-plane before introducing the ENG-P07 private bucket. Storage schema ACLs and Supabase-managed storage triggers are not equivalent to bucket/object row policies.
 
 **Not yet proven:** exact migration-source equality for every live function body, every index/constraint and policy, full function ownership and column-level grants, publication membership, storage bucket state/policies through the Storage API, and historical DDL/PITR provenance for missing organization/audit objects. Until those are closed, this remains a high-coverage inventory plus preliminary reconciliation, not a completed migration audit.
+
+
+## B. Broader full-repair strategy — parallel evidence tracks, not a single-file queue
+
+The objective is to restore a coherent, least-privilege, reproducible canonical database without replaying historical SQL blindly. Work can proceed in parallel where dependencies permit, while all changes remain read-only until relevant gates pass.
+
+### Track 1 — Establish physical truth and preserve evidence
+1. Capture timestamped, read-only catalog snapshots: tables/views, ordered columns/defaults, constraints and validation state, index definitions/validity, RLS/FORCE RLS, policy expressions, triggers, all function overloads/owners/language/SECURITY DEFINER/search_path/full definitions/ACLs, schema/table/column/default privileges, sequences, extensions, publications, and migration ledger.
+2. Capture Storage buckets/policies via the Supabase Storage API separately from pg_policies; record Realtime publication membership separately from effective subscription authorization.
+3. Store query text, timestamp, project reference, results and limitations in versioned evidence. Redact secrets and personal data; prefer catalog metadata over application rows.
+4. Repeat the normalized snapshot at the end to detect concurrent drift. If snapshots differ, suspend classification for affected objects until explained.
+
+**Output:** repeatable before/after catalog evidence, not a migration.
+
+### Track 2 — Reconstruct source provenance and migration lineage
+1. Build a migration matrix: filename/version, SHA-256, duplicate hash, ledger presence, SQL targets, dependencies, idempotency, destructive behavior, and whether source is original, reconstructed, or forward repair.
+2. Use Git history, commit diffs, pull requests, workflow artifacts and existing authoritative schema/PITR evidence to recover original intent for reconstructed versions. Ledger version/name is not proof of historical SQL bytes.
+3. Assign every expected object one state: MATCH, EXISTS BUT DIFFERS, NOT DETECTED LIVE, DUPLICATE, UNRESOLVED PROVENANCE, or NOT APPLICABLE; cite source file/commit and catalog evidence.
+4. Do not recreate missing organization/audit objects from names alone. Determine whether they were dropped, never deployed, superseded or omitted from source. If evidence is insufficient, design a reviewed reconstruction contract and data/backfill impact before DDL.
+
+**Output:** source-to-physical lineage and explained difference register.
+
+### Track 3 — Least-privilege and API compatibility
+Treat grants as a security workstream separate from missing-schema reconstruction. Calculate effective access from schema USAGE, table/column grants, function EXECUTE, default ACLs, RLS, ownership/BYPASSRLS, API routes and client call sites. Review public RPC exposure and SECURITY DEFINER bodies, not only table grants.
+- FR-01: scope anonymous privilege removal to verified objects; decide explicitly whether anonymous reads are intended; preserve authenticated/service-role contracts only when required.
+- FR-02: evaluate default ACLs per owner and object type. Changes affect future objects; verify deployment owner and approved RPC contracts first.
+- FR-03: search for direct RPC callers before revoking client execution on trigger-only functions; trigger invocation differs from direct EXECUTE.
+- Add positive/negative tests for anon, authenticated owner, another authenticated user, service role and unauthorized RPCs. Mocks alone are not live effective-permission evidence.
+- If broad anon grants are judged unacceptable before the full repair is ready, record a risk-owner decision for a scoped emergency fix. Do not hotfix production as part of this audit without explicit authorization and the official migration path.
+
+**Output:** role/object/API access matrix, threat assessment, tested least-privilege repair.
+
+### Track 4 — Restore missing domains only after dependency review
+Group missing objects by domain and dependency chain:
+1. ENG-P02 organization/membership/audit provenance and baseline integrity.
+2. ENG-P06 Agent skills/capabilities and operator governance/audit dependencies.
+3. ENG-P07 knowledge source/job/chunk tables, full-text index and Storage bucket/policies.
+4. ENG-P08 knowledge-specific consent and per-Agent/resource grants, aligned to ADR-0005 and actual canonical permission/privacy services.
+5. ENG-P09 job leases and embedding/vector activation only after ENG-P08 acceptance and approved embedding/index contracts.
+
+For each group, decide whether to restore expected objects, adapt source to the verified canonical model, or formally deprecate stale migration contracts. Each choice needs a traceable decision, owner, compatibility plan and dependency map. Never substitute general user_consents for knowledge consent, organization membership for Agent grants, or platform operator grants for user knowledge authorization.
+
+**Output:** approved domain-by-domain forward-repair designs with prerequisites.
+
+### Track 5 — Prove migrations without production mutation
+The canonical Supabase project is production. Current branch inventory is empty; the Railway QA-like service is not a valid test target until its database project is positively verified as non-production. No candidate migration can currently be considered execution-validated.
+1. Verify an existing isolated non-production project reference, data provenance, access credentials and deployment target without printing secrets.
+2. Run fresh-install tests from the reviewed baseline and upgrade tests from a representative drift snapshot. If the baseline cannot be recovered, mark fresh-install equivalence blocked rather than fabricate it.
+3. Apply one approved repair at a time through the official migration lifecycle. Record version/hash, command/result, catalog delta, API tests, security negatives, and recovery outcome.
+4. Validate precondition failures, idempotency where required, lock/downtime impact, transaction assumptions, recovery readiness, and post-migration grants/policies/functions.
+5. Run affected API contracts and two-identity tenant-isolation tests using test-only data in the isolated environment.
+6. Re-capture the catalog and compare against the expected target. A non-production pass does not authorize production rollout.
+
+**Output:** reproducible migration proof and post-state diff.
+
+### Track 6 — Review as a decision matrix
+Request separate written Privacy/Security and Data Platform decisions for each relevant FR item: APPROVE, APPROVE WITH CONDITIONS, or REJECT, with reviewer role, date, rationale, conditions and evidence links.
+
+| Item | Privacy/Security decision | Data Platform decision |
+|---|---|---|
+| FR-01 | Anonymous exposure, RLS defense-in-depth, intended public reads | Exact ACL delta and migration mechanism |
+| FR-02 | Risk of future default grants and approved RPC surfaces | Object owners, default ACL semantics, migration role |
+| FR-03 | Whether function exposure creates an authorization bypass | Trigger/direct-execution compatibility |
+| FR-04 | Audit integrity, tenant boundaries, historical data impact | Provenance, dependencies, restoration/reconstruction source |
+| FR-05 | Consent scope, grants, revocation/deletion, trace privacy | Canonical schema/service owner, constraints, indexing, retention and migration |
+
+One general approval does not clear all items. Rejection or unmet conditions block dependent work. Record the approval or formal review link; never infer approval from silence or CI.
+
+### Track 7 — Reconcile outcomes and advance status honestly
+- Update the single fixed phase plan and this review packet; do not create a parallel phase/status board.
+- Keep candidate SQL outside apps/api/supabase/migrations/ until review and isolation gates pass.
+- Keep ENG-P08 in_progress until knowledge policy/consent/grant source is verified, reviewed provider implemented, authorization/revocation tests pass in isolated non-production, and acceptance evidence is recorded.
+- Keep ENG-P09 blocked until ENG-P08 acceptance and embedding/index/runtime decisions are approved.
+- Production rollout requires a separate explicit release decision and the official migration lifecycle.
+
+## C. Current execution decision (2026-10-15)
+Proceed with parallel read-only work on Tracks 1–4 and prepare the FR review matrix. Track 5 remains blocked until an existing isolated non-production database is positively verified. See [ENG-P08 Catalog Audit Addendum](ENG-P08_CATALOG_AUDIT_ADDENDUM_20261015.md). No migration is approved for promotion or execution.
