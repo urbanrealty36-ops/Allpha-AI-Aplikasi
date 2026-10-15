@@ -220,7 +220,14 @@ async def recover_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         if lease_expiry > datetime.now(timezone.utc):
             raise HTTPException(status_code=409, detail={"code": "TASK_STILL_RUNNING", "message": "Lease worker masih aktif; pemulihan ditolak."})
         if row.get("effect_outcome") in {"started", "unknown"}:
-            raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Efek telah dimulai tanpa receipt selesai; replay otomatis dilarang."})
+            failed = await store.mark_unknown_effect(owner_id, str(task_id))
+            if not failed:
+                latest = await store.get_task(owner_id, str(task_id))
+                if not latest or latest["state"] not in {"failed", "cancelled", "timed_out", "succeeded"}:
+                    raise HTTPException(status_code=409, detail={"code": "TASK_STATE_CHANGED", "message": "Task berubah saat menandai outcome tidak diketahui; replay tidak dilakukan."})
+                failed = latest
+            return {"task": failed, "recovered": True, "replay_performed": False,
+                    "error_code": "EXECUTION_OUTCOME_UNKNOWN"}
         return {"task": row, "recovered": True, "replay_performed": False,
                 "resume_available": True, "resume_route": f"/v1/agent-runtime/tasks/{task_id}/execute"}
     except AgentRuntimePersistenceError as exc:
