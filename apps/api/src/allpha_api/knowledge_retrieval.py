@@ -174,7 +174,7 @@ async def retrieve_knowledge(
         raise HTTPException(status_code=403, detail={"code": "KNOWLEDGE_ACCESS_DENIED", "message": "Akses knowledge ditolak."}) from exc
     except KnowledgeRetrievalUnavailable as exc:
         raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_RETRIEVAL_UNAVAILABLE", "message": "Retrieval belum siap atau dependensi tidak tersedia."}) from exc
-    return {
+    response = {
         "trace_id": trace_id,
         "results": [
             {
@@ -195,6 +195,11 @@ async def retrieve_knowledge(
             for hit in hits
         ],
     }
+    resolved_policy = getattr(service.policy, "last_resolved", None)
+    if resolved_policy is not None:
+        response["policy_version"] = resolved_policy.policy_version
+        response["consent_version"] = resolved_policy.consent_version
+    return response
 
 
 class SupabaseKeywordKnowledgeRepository:
