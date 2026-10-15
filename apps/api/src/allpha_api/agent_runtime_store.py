@@ -138,6 +138,26 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def begin_effect(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
+                          step_key: str, idempotency_key: str, input_fingerprint: str) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/begin_agent_runtime_effect", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id, "p_lease_token": lease_token,
+            "p_task_version": task_version, "p_step_key": step_key,
+            "p_idempotency_key": idempotency_key, "p_input_fingerprint": input_fingerprint,
+        })
+        return rows[0] if rows else None
+
+    async def complete_effect(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
+                              step_key: str, idempotency_key: str, input_fingerprint: str,
+                              result_payload: dict[str, Any]) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/complete_agent_runtime_effect", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id, "p_lease_token": lease_token,
+            "p_task_version": task_version, "p_step_key": step_key,
+            "p_idempotency_key": idempotency_key, "p_input_fingerprint": input_fingerprint,
+            "p_result_payload": result_payload,
+        })
+        return rows[0] if rows else None
+
     async def finalize_task(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
                             *, state: str, output_payload: dict[str, Any] | None,
                             error_code: str | None, event_log: list[dict[str, Any]]) -> dict[str, Any] | None:
