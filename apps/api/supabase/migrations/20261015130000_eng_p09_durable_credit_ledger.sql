@@ -106,6 +106,34 @@ revoke all on table public.credit_policy_versions, public.credit_ledger_accounts
 
 -- The API uses service-role credentials only server-side after deriving owner_user_id
 -- from verified Supabase Auth. No client role can call these mutation RPCs or write tables.
+
+create or replace function public.credit_ledger_get_balance(p_owner_user_id uuid)
+returns jsonb language plpgsql security definer set search_path = ''
+as $
+declare
+  v_available bigint;
+  v_reserved bigint;
+  v_count bigint;
+begin
+  if p_owner_user_id is null then
+    raise exception 'CREDIT_ACCOUNT_REQUIRED' using errcode = '22023';
+  end if;
+  select coalesce(available_credits,0), coalesce(ledger_entry_count,0)
+    into v_available,v_count
+    from public.credit_balance_projection where owner_user_id=p_owner_user_id;
+  if not found then v_available := 0; v_count := 0; end if;
+  select coalesce(sum(reserved_credits - settled_credits),0) into v_reserved
+    from public.credit_reservations where owner_user_id=p_owner_user_id
+      and state in ('reserved','pending_reconciliation');
+  return jsonb_build_object(
+    'available_credits',v_available,
+    'reserved_credits',v_reserved,
+    'ledger_entry_count',v_count,
+    'as_of',now()
+  );
+end;
+$;
+
 create or replace function public.credit_ledger_grant(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$
@@ -485,6 +513,9 @@ begin
     'account_id',v_res.owner_user_id,'task_id',v_res.task_id,'reserved_credits',v_res.reserved_credits,'state','pending_reconciliation');
 end;
 $$;
+
+revoke all on function public.credit_ledger_get_balance(uuid) from public, anon, authenticated;
+grant execute on function public.credit_ledger_get_balance(uuid) to service_role;
 
 revoke all on function public.credit_ledger_grant(jsonb), public.credit_ledger_reserve(jsonb),
   public.credit_ledger_settle(jsonb), public.credit_ledger_release(jsonb),
