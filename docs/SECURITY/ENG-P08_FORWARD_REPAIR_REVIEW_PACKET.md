@@ -285,3 +285,115 @@ No repair may be applied until all are true:
 7. The user explicitly authorizes applying the tested migration through the official path.
 
 Current disposition: **no database writes; no migration applied; ENG-P08 remains in_progress; ENG-P09 remains blocked.**
+
+
+## E. Exact live index definitions captured (public)
+
+```sql
+CREATE UNIQUE INDEX agent_ownerships_one_active_owner ON public.agent_ownerships USING btree (agent_id) WHERE ((ownership_role = 'owner'::text) AND (status = 'active'::text));
+CREATE INDEX agent_ownerships_owner_lookup ON public.agent_ownerships USING btree (owner_user_id, status, created_at DESC);
+CREATE UNIQUE INDEX agent_ownerships_pkey ON public.agent_ownerships USING btree (agent_id, owner_user_id);
+CREATE INDEX ai_agents_created_by_idx ON public.ai_agents USING btree (created_by);
+CREATE UNIQUE INDEX ai_agents_handle_key ON public.ai_agents USING btree (handle);
+CREATE UNIQUE INDEX ai_agents_pkey ON public.ai_agents USING btree (id);
+CREATE INDEX ai_agents_public_discovery ON public.ai_agents USING btree (status, visibility, created_at DESC) WHERE ((status = 'active'::text) AND (visibility = 'public'::text));
+CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id);
+CREATE UNIQUE INDEX profiles_username_key ON public.profiles USING btree (username);
+CREATE INDEX social_edges_actor_type_created_idx ON public.social_edges USING btree (actor_user_id, edge_type, created_at DESC);
+CREATE UNIQUE INDEX social_edges_pkey ON public.social_edges USING btree (id);
+CREATE INDEX social_edges_target_type_created_idx ON public.social_edges USING btree (target_user_id, edge_type, created_at DESC);
+CREATE UNIQUE INDEX social_edges_unique ON public.social_edges USING btree (actor_user_id, target_user_id, edge_type);
+CREATE UNIQUE INDEX user_consents_pkey ON public.user_consents USING btree (id);
+CREATE UNIQUE INDEX user_consents_user_id_consent_type_policy_version_key ON public.user_consents USING btree (user_id, consent_type, policy_version);
+CREATE INDEX user_consents_user_recorded_idx ON public.user_consents USING btree (user_id, recorded_at DESC);
+CREATE INDEX user_interests_key_idx ON public.user_interests USING btree (interest_key);
+CREATE UNIQUE INDEX user_interests_pkey ON public.user_interests USING btree (user_id, interest_key);
+CREATE UNIQUE INDEX user_settings_pkey ON public.user_settings USING btree (user_id);
+```
+
+## F. Exact live application constraint definitions captured
+
+The following is the read-only `pg_get_constraintdef` inventory. All listed constraints were reported validated; the ownership trigger constraint is deferred and initially deferred.
+
+| Table | Constraint | Definition |
+|---|---|---|
+| agent_ownerships | agent_ownerships_agent_id_fkey | FOREIGN KEY (agent_id) REFERENCES ai_agents(id) ON DELETE CASCADE |
+| agent_ownerships | agent_ownerships_owner_user_id_fkey | FOREIGN KEY (owner_user_id) REFERENCES auth.users(id) ON DELETE RESTRICT |
+| agent_ownerships | agent_ownerships_ownership_role_check | CHECK (ownership_role = ANY (ARRAY['owner','operator','viewer'])) |
+| agent_ownerships | agent_ownerships_pkey | PRIMARY KEY (agent_id, owner_user_id) |
+| agent_ownerships | agent_ownerships_status_check | CHECK (status = ANY (ARRAY['active','revoked'])) |
+| ai_agents | ai_agents_avatar_url_check | CHECK (avatar_url IS NULL OR char_length(avatar_url) <= 2048) |
+| ai_agents | ai_agents_boundaries_check | CHECK (jsonb_typeof(boundaries) = 'object') |
+| ai_agents | ai_agents_created_by_fkey | FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE RESTRICT |
+| ai_agents | ai_agents_description_check | CHECK (char_length(description) <= 1000) |
+| ai_agents | ai_agents_disclosure_check | CHECK (char_length(disclosure) <= 1000) |
+| ai_agents | ai_agents_display_name_check | CHECK (char_length(display_name) >= 2 AND char_length(display_name) <= 80) |
+| ai_agents | ai_agents_handle_check | CHECK (handle matches ^[a-z0-9_]{3,30}$) |
+| ai_agents | ai_agents_handle_key | UNIQUE (handle) |
+| ai_agents | ai_agents_persona_check | CHECK (jsonb_typeof(persona) = 'object') |
+| ai_agents | ai_agents_pkey | PRIMARY KEY (id) |
+| ai_agents | ai_agents_require_owner | TRIGGER DEFERRABLE INITIALLY DEFERRED |
+| ai_agents | ai_agents_status_check | CHECK (status = ANY (ARRAY['draft','active','archived'])) |
+| ai_agents | ai_agents_visibility_check | CHECK (visibility = ANY (ARRAY['private','public'])) |
+| profiles | profiles_account_status_check | CHECK (account_status = ANY (ARRAY['active','deactivation_requested'])) |
+| profiles | profiles_avatar_url_length | CHECK (avatar_url IS NULL OR char_length(avatar_url) <= 2048) |
+| profiles | profiles_bio_length | CHECK (char_length(bio) <= 500) |
+| profiles | profiles_display_name_length | CHECK (char_length(display_name) <= 80) |
+| profiles | profiles_id_fkey | FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| profiles | profiles_locale_check | CHECK (locale = ANY (ARRAY['id-ID','en-US'])) |
+| profiles | profiles_pkey | PRIMARY KEY (id) |
+| profiles | profiles_username_format | CHECK (username IS NULL OR username matches ^[a-z0-9_]{3,30}$) |
+| profiles | profiles_username_key | UNIQUE (username) |
+| profiles | profiles_visibility_check | CHECK (visibility = ANY (ARRAY['public','private'])) |
+| social_edges | social_edges_actor_user_id_fkey | FOREIGN KEY (actor_user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| social_edges | social_edges_edge_type_check | CHECK (edge_type = ANY (ARRAY['follow','block','mute'])) |
+| social_edges | social_edges_follow_status | CHECK (edge_type = 'follow' OR status = 'active') |
+| social_edges | social_edges_no_self | CHECK (actor_user_id <> target_user_id) |
+| social_edges | social_edges_pkey | PRIMARY KEY (id) |
+| social_edges | social_edges_status_check | CHECK (status = ANY (ARRAY['requested','active'])) |
+| social_edges | social_edges_target_user_id_fkey | FOREIGN KEY (target_user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| social_edges | social_edges_unique | UNIQUE (actor_user_id, target_user_id, edge_type) |
+| user_consents | user_consents_consent_type_check | CHECK (consent_type = ANY (ARRAY['terms_of_service','privacy_policy','product_updates'])) |
+| user_consents | user_consents_pkey | PRIMARY KEY (id) |
+| user_consents | user_consents_policy_version_check | CHECK (char_length(policy_version) >= 1 AND char_length(policy_version) <= 40) |
+| user_consents | user_consents_user_id_consent_type_policy_version_key | UNIQUE (user_id, consent_type, policy_version) |
+| user_consents | user_consents_user_id_fkey | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| user_interests | user_interests_interest_key_check | CHECK (interest_key matches ^[a-z0-9][a-z0-9._-]{0,79}$) |
+| user_interests | user_interests_pkey | PRIMARY KEY (user_id, interest_key) |
+| user_interests | user_interests_preference_check | CHECK (preference = ANY (ARRAY['interested','not_interested'])) |
+| user_interests | user_interests_user_id_fkey | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| user_settings | user_settings_notification_preferences_check | CHECK (jsonb_typeof(notification_preferences) = 'object') |
+| user_settings | user_settings_pkey | PRIMARY KEY (user_id) |
+| user_settings | user_settings_privacy_settings_check | CHECK (jsonb_typeof(privacy_settings) = 'object') |
+| user_settings | user_settings_theme_check | CHECK (theme = ANY (ARRAY['light','dark','system'])) |
+| user_settings | user_settings_user_id_fkey | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+
+This exact live inventory must be compared against each creating/altering migration before declaring any constraint MATCH. The query output includes 50 rows including the deferred trigger constraint; the prior aggregate CHECK/FK/PK/UNIQUE counts are a different grouped summary and must not be used to infer migration equality.
+
+## G. Exact policy predicates and remaining proof boundary
+
+Policy predicates observed on application tables:
+- `agent_ownerships_delete_owner`: `private.has_agent_ownership(agent_id, auth.uid(), 'owner')`.
+- `agent_ownerships_insert_self_owner`: owner equals `auth.uid()`, role owner, status active, and `private.agent_created_by(agent_id, auth.uid())`.
+- `agent_ownerships_select_participant`: owner user equals caller or caller is active owner.
+- `agent_ownerships_update_owner`: caller is active owner, both USING and WITH CHECK.
+- `ai_agents_delete_owner`: caller is active owner of Agent.
+- `ai_agents_insert_creator`: `created_by = auth.uid()`.
+- `ai_agents_select_public_anon`: visibility public and status active (anon policy; anon has no table SELECT grant in captured matrix).
+- `ai_agents_select_public_or_owned`: public active Agent or caller has an ownership row.
+- `ai_agents_update_owner`: caller is active owner in USING and WITH CHECK.
+- `profiles_insert_self`: `id = auth.uid()`.
+- `profiles_select_visible`: visibility public or caller is owner.
+- `profiles_update_self`: caller is owner in USING and WITH CHECK.
+- `social_edges_insert_actor`: actor is caller and target differs from caller.
+- `social_edges_select_participant`: actor is caller, or caller is target of a block, or caller is target of a pending follow request.
+- `social_edges_delete_actor`: actor is caller, or caller is target of a pending follow request.
+- `social_edges_update_follow_request`: only pending follow request addressed to caller can be updated to active follow.
+- `user_consents_insert_self` / `user_consents_select_self`: user ID equals caller.
+- `user_consents_no_client_update` / `user_consents_no_client_delete`: explicit false predicate.
+- `user_interests` SELECT/INSERT/UPDATE/DELETE policies: user ID equals caller.
+- `user_settings` SELECT/INSERT/UPDATE policies: user ID equals caller.
+
+The storage policy inventory query returned zero policies. This finding is limited to the queried `pg_policies` snapshot and must be confirmed against the Storage control-plane before introducing the ENG-P07 private bucket. Storage schema ACLs and Supabase-managed storage triggers are not equivalent to bucket/object row policies.
+
+**Not yet proven:** exact migration-source equality for every live function body, every index/constraint and policy, full function ownership and column-level grants, publication membership, storage bucket state/policies through the Storage API, and historical DDL/PITR provenance for missing organization/audit objects. Until those are closed, this remains a high-coverage inventory plus preliminary reconciliation, not a completed migration audit.
