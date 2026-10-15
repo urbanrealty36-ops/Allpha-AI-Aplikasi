@@ -375,7 +375,7 @@ def test_execute_resumes_from_matching_checkpoint_without_reinvoking_tool(monkey
     finally:
         app.dependency_overrides.pop(current_user, None)
 
-def test_recovery_marks_stale_unknown_execution_without_replay(monkeypatch):
+def test_recovery_refuses_unknown_effect_outcome_without_replay(monkeypatch):
     from datetime import datetime, timedelta, timezone
     c = client(monkeypatch)
     try:
@@ -383,11 +383,14 @@ def test_recovery_marks_stale_unknown_execution_without_replay(monkeypatch):
         task = create_task(c, sid).json()["task"]
         row = FakeRuntimeStore.tasks[task["id"]]
         row["state"] = "executing"
-        row["updated_at"] = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        row["lease_expires_at"] = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        row["effect_outcome"] = "started"
         response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/recover")
-        assert response.status_code == 200
-        assert response.json()["replay_performed"] is False
-        assert response.json()["task"]["state"] == "failed"
-        assert response.json()["task"]["error_code"] == "EXECUTION_OUTCOME_UNKNOWN"
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "EXECUTION_OUTCOME_UNKNOWN"
+        assert response.json()["error"]["code"] != "replay_performed"
+        assert FakeRuntimeStore.tasks[task["id"]]["state"] == "executing"
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
