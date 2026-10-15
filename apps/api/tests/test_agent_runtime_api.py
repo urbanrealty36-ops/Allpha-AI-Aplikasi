@@ -464,6 +464,8 @@ def test_execute_rejects_corrupted_checkpoint_without_tool_replay(monkeypatch):
         response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "RUNTIME_CHECKPOINT_DIGEST_MISMATCH"
+        assert FakeRuntimeStore.tasks[task["id"]]["state"] == "failed"
+        assert FakeRuntimeStore.tasks[task["id"]]["error_code"] == "RUNTIME_CHECKPOINT_DIGEST_MISMATCH"
     finally:
         app.dependency_overrides.pop(current_user, None)
 
