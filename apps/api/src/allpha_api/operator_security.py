@@ -421,6 +421,9 @@ async def create_operator_runtime_policy(
         encoded = json.dumps(policy_document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     except (TypeError, ValueError, UnicodeEncodeError) as exc:
         raise HTTPException(status_code=422, detail={"code": "RUNTIME_POLICY_INVALID", "message": "Dokumen policy harus JSON valid."}) from exc
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.create",
+        outcome="attempted", resource_type="agent_runtime_policy",
+        metadata={"agent_id": str(payload.agent_id), "policy_version": payload.policy_version})
     rows = await privileged_rest_request(
         "POST", "agent_runtime_policies", params={"select": "id,agent_id,policy_version,policy_digest,status,created_by,created_at"},
         body={
@@ -433,9 +436,6 @@ async def create_operator_runtime_policy(
     )
     if not rows:
         raise HTTPException(status_code=503, detail={"code": "RUNTIME_POLICY_PERSISTENCE_UNCONFIRMED", "message": "Pembuatan policy tidak terkonfirmasi."})
-    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.create",
-        outcome="allowed", resource_type="agent_runtime_policy", resource_id=rows[0]["id"],
-        metadata={"agent_id": str(payload.agent_id), "policy_version": payload.policy_version})
     return {"policy": rows[0], "runtime_authorized": False}
 
 
@@ -452,6 +452,9 @@ async def approve_operator_runtime_policy(
     })
     if not current or current[0].get("status") != "draft":
         raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_NOT_DRAFT", "message": "Hanya policy draft yang dapat disetujui."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.approve",
+        outcome="attempted", resource_type="agent_runtime_policy", resource_id=str(policy_id),
+        metadata={"agent_id": current[0]["agent_id"], "policy_version": current[0]["policy_version"], "reason": payload.reason})
     timestamp = datetime.now(timezone.utc).isoformat()
     rows = await privileged_rest_request("PATCH", "agent_runtime_policies", params={
         "id": f"eq.{policy_id}", "status": "eq.draft",
@@ -460,9 +463,6 @@ async def approve_operator_runtime_policy(
        prefer="return=representation")
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_APPROVAL_CONFLICT", "message": "Policy berubah selama proses persetujuan."})
-    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.runtime_policy.approve",
-        outcome="allowed", resource_type="agent_runtime_policy", resource_id=str(policy_id),
-        metadata={"agent_id": rows[0]["agent_id"], "policy_version": rows[0]["policy_version"], "reason": payload.reason})
     return {"policy": rows[0], "runtime_authorized": False}
 
 
