@@ -109,7 +109,7 @@ revoke all on table public.credit_policy_versions, public.credit_ledger_accounts
 
 create or replace function public.credit_ledger_get_balance(p_owner_user_id uuid)
 returns jsonb language plpgsql security definer set search_path = ''
-as $
+as $$
 declare
   v_available bigint;
   v_reserved bigint;
@@ -132,7 +132,7 @@ begin
     'as_of',now()
   );
 end;
-$;
+$$;
 
 create or replace function public.credit_ledger_grant(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
@@ -454,7 +454,7 @@ $$;
 
 create or replace function public.credit_ledger_reverse(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
-as $
+as $$
 declare
   v_owner uuid := (p_command->>'owner_user_id')::uuid;
   v_original_id uuid := (p_command->>'original_entry_id')::uuid;
@@ -529,7 +529,7 @@ begin
   );
   return jsonb_build_object('entry_id',v_entry.id,'idempotent_replay',false);
 end;
-$;
+$$;
 
 create or replace function public.credit_ledger_mark_pending(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
