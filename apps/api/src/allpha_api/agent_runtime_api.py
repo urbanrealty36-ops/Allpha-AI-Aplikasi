@@ -250,22 +250,38 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         agent = await store.get_agent(owner_id, row["agent_id"])
         skill = await store.get_skill(owner_id, row["agent_id"], row["skill_id"])
         capability = await store.get_approved_capability(row["agent_id"], row["tool_key"])
-        if not agent or not skill or not capability:
-            raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_UNAVAILABLE", "message": "Capability dan versi policy yang disetujui wajib tersedia sebelum eksekusi."})
+        if not agent or not skill or not capability or not capability.get("runtime_policy_id"):
+            raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_UNAVAILABLE", "message": "Capability harus terikat ke policy runtime terdaftar dan disetujui."})
+        policy = await store.get_approved_runtime_policy(row["agent_id"], str(capability["runtime_policy_id"]))
+        if not policy or policy.get("policy_version") != capability.get("policy_version"):
+            raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_UNAVAILABLE", "message": "Referensi policy tidak aktif atau tidak cocok dengan Agent."})
+        try:
+            canonical_policy = json.dumps(policy["policy_document"], ensure_ascii=False, sort_keys=True,
+                                          separators=(",", ":"), allow_nan=False).encode("utf-8")
+            actual_digest = hashlib.sha256(canonical_policy).hexdigest()
+        except (KeyError, TypeError, ValueError, UnicodeEncodeError) as exc:
+            raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_INVALID", "message": "Dokumen policy tidak valid."}) from exc
+        if actual_digest != policy.get("policy_digest"):
+            raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_DIGEST_MISMATCH", "message": "Digest policy tidak cocok; eksekusi ditolak."})
+        if row["tool_key"] not in (policy.get("approved_tool_keys") or []):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_TOOL_DENIED", "message": "Tool tidak tercantum dalam policy runtime."})
+        granted_scopes = set(capability.get("required_permission_scopes") or [])
+        policy_scopes = set(policy.get("required_permission_scopes") or [])
+        skill_scopes = set(skill.get("required_permission_scopes") or [])
+        if not granted_scopes.issubset(policy_scopes) or not skill_scopes.issubset(policy_scopes):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_SCOPE_DENIED", "message": "Scope capability atau Skill melampaui policy runtime."})
         if int(agent["version"]) != int(row["agent_version"]) or int(skill["version"]) != int(row["skill_version"]):
             raise HTTPException(status_code=409, detail={"code": "PINNED_VERSION_CHANGED", "message": "Versi Agent atau Skill berubah; buat task baru."})
         if skill.get("status") != "published" or row["tool_key"] not in (skill.get("tool_dependencies") or []):
             raise HTTPException(status_code=403, detail={"code": "SKILL_TOOL_NOT_AUTHORIZED", "message": "Skill atau tool tidak lagi diizinkan."})
-        claim_event = {"event": "execution_claimed", "at": _now(), "trace_id": row["trace_id"]}
-        claimed = await store.update_task(owner_id, str(task_id), {
-            "state": "executing", "policy_version": capability["policy_version"],
-            "event_log": list(row.get("event_log") or []) + [claim_event], "updated_at": _now(),
-        }, expected_state="created")
+        lease_token = str(uuid.uuid4())
+        claimed = await store.claim_task(owner_id, str(task_id), lease_token, lease_seconds=60)
         if not claimed:
             latest = await store.get_task(owner_id, str(task_id))
             if latest and latest["state"] == "succeeded":
                 return {"task": latest, "idempotent_replay": True}
-            raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau state sudah berubah."})
+            raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau lease tidak tersedia."})
+        row = claimed
         limits = skill.get("budget_limits") or {}
         max_runtime = min(30, max(1, int(limits.get("max_runtime_seconds", 30))))
         max_calls = min(5, max(1, int(limits.get("max_tool_calls", 1))))
@@ -285,27 +301,26 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             agent_version=int(agent["version"]), skill_id=str(row["skill_id"]),
             skill_version=int(skill["version"]), skill_published=True,
             policy_approved=True, policy_version=str(capability["policy_version"]),
-            approved_tool_keys=(str(capability["capability_key"]),),
-            granted_scopes=tuple(capability.get("required_permission_scopes") or ()),
+            approved_tool_keys=tuple(policy.get("approved_tool_keys") or ()),
+            granted_scopes=tuple(policy.get("required_permission_scopes") or ()),
         )
         task = AgentTask(envelope)
         try:
             result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
-            completed = await store.update_task(owner_id, str(task_id), {
-                "state": result["state"], "output_payload": result,
-                "event_log": list(row.get("event_log") or []) + [claim_event] + result["events"],
-                "updated_at": _now(), "completed_at": _now(),
-            }, expected_state="executing")
+            completed = await store.finalize_task(owner_id, str(task_id), lease_token, int(row["task_version"]), 
+                state=result["state"], output_payload=result, error_code=None,
+                event_log=list(row.get("event_log") or []) + result["events"])
             if not completed:
                 raise AgentRuntimePersistenceError("task execution result could not be durably committed")
             return {"task": completed, "idempotent_replay": False}
         except (AgentRuntimeBlocked, UnknownToolError) as exc:
-            failed = await store.update_task(owner_id, str(task_id), {
-                "state": task.state.value if task.state.value in {"failed", "timed_out"} else "failed",
-                "error_code": task.error_code or "RUNTIME_BLOCKED",
-                "event_log": list(row.get("event_log") or []) + [claim_event] + task.events + ([_event("failed", row["trace_id"], "runtime_blocked")] if not task.events or task.events[-1].get("state") not in {"failed", "timed_out"} else []),
-                "updated_at": _now(), "completed_at": _now(),
-            }, expected_state="executing")
+            failed_state = task.state.value if task.state.value in {"failed", "timed_out"} else "failed"
+            failed_events = list(row.get("event_log") or []) + task.events
+            if not task.events or task.events[-1].get("state") not in {"failed", "timed_out"}:
+                failed_events.append(_event("failed", row["trace_id"], "runtime_blocked"))
+            failed = await store.finalize_task(owner_id, str(task_id), lease_token, int(row["task_version"]),
+                state=failed_state, output_payload=None, error_code=task.error_code or "RUNTIME_BLOCKED",
+                event_log=failed_events)
             if not failed:
                 raise AgentRuntimePersistenceError("runtime failure state could not be durably committed") from exc
             raise HTTPException(status_code=422, detail={"code": "RUNTIME_EXECUTION_FAILED", "message": "Eksekusi tool ditolak atau gagal; task tercatat gagal."}) from exc
