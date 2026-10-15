@@ -33,7 +33,6 @@ class CreditEntryType(StrEnum):
     RELEASE = "release"
     EXPIRY = "expiry"
     REFUND = "refund"
-    REWARD = "reward"
     REVERSAL = "reversal"
     ADJUSTMENT = "adjustment"
 
