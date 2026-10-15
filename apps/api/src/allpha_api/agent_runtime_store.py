@@ -114,6 +114,12 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def mark_unknown_effect(self, owner_id: str, task_id: str) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/mark_agent_runtime_effect_unknown", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id,
+        })
+        return rows[0] if rows else None
+
     async def append_checkpoint(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
                                 sequence: int, step_key: str, input_fingerprint: str,
                                 checkpoint_hash: str, result_payload: dict[str, Any]) -> dict[str, Any] | None:
