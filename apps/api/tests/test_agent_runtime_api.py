@@ -58,12 +58,22 @@ class FakeRuntimeStore:
         return copy.deepcopy(self.policy) if agent_id == AGENT and policy_id == self.policy["id"] and self.policy["status"] == "approved" else None
 
     async def claim_task(self, owner_id, task_id, lease_token, *, lease_seconds=60):
+        from datetime import datetime, timezone
         row = self.tasks.get(task_id)
         if not row or row["owner_user_id"] != owner_id:
             return None
-        if row["state"] not in {"created", "queued", "retrying"} and not (
-            row["state"] == "executing" and row.get("effect_outcome") not in {"started", "unknown"}
-        ):
+        if row["state"] in {"created", "queued", "retrying"}:
+            pass
+        elif row["state"] == "executing":
+            try:
+                expiry = datetime.fromisoformat(str(row.get("lease_expires_at")).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                return None
+            if expiry.tzinfo is None or expiry > datetime.now(timezone.utc):
+                return None
+            if row.get("effect_outcome") in {"started", "unknown"}:
+                return None
+        else:
             return None
         row.update({"state": "executing", "task_version": row["task_version"] + 1,
                     "execution_lease_token": lease_token, "lease_expires_at": "fake-future",
@@ -386,6 +396,81 @@ def test_execute_resumes_from_matching_checkpoint_without_reinvoking_tool(monkey
         assert FakeRuntimeStore.tasks[task["id"]]["execution_lease_token"] is None
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+def test_expired_lease_can_be_reclaimed_but_stale_worker_cannot_finalize(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    store = FakeRuntimeStore()
+    sid = create_session(client(monkeypatch),)  # HTTP helper below creates the persisted session.
+    # Use the API-created task so the fixture follows the same owner/idempotency contract.
+    c = client(monkeypatch)
+    try:
+        session_id = create_session(c)
+        task = create_task(c, session_id).json()["task"]
+        task_id = task["id"]
+        first = FakeRuntimeStore.tasks[task_id]
+        old_claim = awaitable_not_used = None
+        first.update({"state": "executing", "task_version": 2, "execution_lease_token": "old-lease",
+                      "lease_expires_at": (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(),
+                      "effect_outcome": "none"})
+        stale_finalize = awaitable_not_used
+        # Run the async store methods via the event loop helper used by pytest's TestClient context.
+        import asyncio
+        reclaimed = asyncio.run(store.claim_task(OWNER, task_id, "new-lease"))
+        assert reclaimed is not None
+        assert reclaimed["execution_lease_token"] == "new-lease"
+        assert reclaimed["task_version"] == 3
+        stale = asyncio.run(store.finalize_task(OWNER, task_id, "old-lease", 2, state="succeeded",
+                                                 output_payload={"state": "succeeded"}, error_code=None, event_log=[]))
+        assert stale is None
+        current = asyncio.run(store.finalize_task(OWNER, task_id, "new-lease", 3, state="succeeded",
+                                                   output_payload={"state": "succeeded"}, error_code=None, event_log=[]))
+        assert current is not None and current["state"] == "succeeded"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_active_lease_cannot_be_reclaimed_by_second_worker(monkeypatch):
+    import asyncio
+    c = client(monkeypatch)
+    try:
+        session_id = create_session(c)
+        task = create_task(c, session_id).json()["task"]
+        store = FakeRuntimeStore()
+        first = asyncio.run(store.claim_task(OWNER, task["id"], "worker-one"))
+        second = asyncio.run(store.claim_task(OWNER, task["id"], "worker-two"))
+        assert first is not None
+        assert second is None
+        assert FakeRuntimeStore.tasks[task["id"]]["execution_lease_token"] == "worker-one"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_execute_rejects_corrupted_checkpoint_without_tool_replay(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    c = client(monkeypatch)
+    try:
+        session_id = create_session(c)
+        task = create_task(c, session_id).json()["task"]
+        row = FakeRuntimeStore.tasks[task["id"]]
+        result = {"state": "succeeded", "result": {"text": "safe"},
+                  "events": [{"state": "succeeded", "trace_id": row["trace_id"]}]}
+        row.update({
+            "state": "executing", "task_version": 2,
+            "lease_expires_at": (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat(),
+            "effect_outcome": "completed", "checkpoint_seq": 1,
+            "checkpoint": {"task_id": task["id"], "task_version": 2, "sequence": 1,
+                           "step_key": "tool:text.normalize", "input_fingerprint": row["request_fingerprint"],
+                           "checkpoint_hash": "0" * 64, "result_payload": result},
+        })
+        async def must_not_execute(*args, **kwargs):
+            raise AssertionError("corrupted checkpoint must never replay tool execution")
+        monkeypatch.setattr("allpha_api.agent_runtime_api._runtime.execute_tool", must_not_execute)
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "RUNTIME_CHECKPOINT_DIGEST_MISMATCH"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
 
 def test_recovery_marks_unknown_effect_failed_without_replay(monkeypatch):
     from datetime import datetime, timedelta, timezone
