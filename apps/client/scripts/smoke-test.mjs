@@ -43,6 +43,6 @@ for (const contract of [
   "Jalankan", "Batalkan", "Pulihkan"
 ]) assert.ok(app.includes(contract), `missing Native runtime lifecycle contract: ${contract}`);
 assert.ok(app.includes("loadRuntimeSessionTasks"));
-assert.ok(app.includes("execution tetap membutuhkan policy runtime yang disetujui"));
+assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui"));
 
 console.log("ENG-P01 source and ENG-P10 task lifecycle smoke tests passed.");
