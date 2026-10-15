@@ -59,6 +59,9 @@ create table public.credit_reservations (
   reserved_credits bigint not null check (reserved_credits > 0),
   estimated_usage_units bigint not null check (estimated_usage_units > 0),
   usage_unit text not null check (length(usage_unit) between 1 and 80),
+  estimated_cost_microunits bigint not null check (estimated_cost_microunits >= 0),
+  cost_unit text not null check (length(cost_unit) between 1 and 80),
+  cost_pricing_version text not null check (length(cost_pricing_version) between 1 and 80),
   settled_credits bigint not null default 0 check (settled_credits >= 0),
   credit_scheme_version text not null,
   tariff_version text not null,
@@ -285,14 +288,16 @@ begin
   ) values (
     v_owner,v_key,'reservation',v_credits,-v_credits,v_policy_row.credit_scheme_version,
     v_policy,v_tariff,p_command->>'entitlement_version',v_capability,v_task,v_task,
-    v_fingerprint,'{}'::jsonb
+    v_fingerprint,jsonb_build_object('estimated_cost_microunits',v_estimated_cost,
+      'cost_unit',v_cost_unit,'cost_pricing_version',v_cap->>'cost_pricing_version')
   ) returning * into v_entry;
   insert into public.credit_reservations(
     owner_user_id,reservation_entry_id,idempotency_key,task_id,capability_id,reserved_credits,
-    estimated_usage_units,usage_unit,credit_scheme_version,tariff_version,entitlement_version,
-    policy_version,policy_approval_reference,state
+    estimated_usage_units,usage_unit,estimated_cost_microunits,cost_unit,cost_pricing_version,
+    credit_scheme_version,tariff_version,entitlement_version,policy_version,policy_approval_reference,state
   ) values (
     v_owner,v_entry.id,v_key,v_task,v_capability,v_credits,v_units,v_usage_unit,
+    v_estimated_cost,v_cost_unit,v_cap->>'cost_pricing_version',
     v_policy_row.credit_scheme_version,v_tariff,p_command->>'entitlement_version',v_policy,v_approval,'reserved'
   ) returning * into v_res;
   update public.credit_balance_projection set available_credits = available_credits - v_credits,
@@ -383,11 +388,14 @@ begin
   insert into public.credit_ledger_entries(
     owner_user_id,idempotency_key,entry_type,credits,balance_delta,credit_scheme_version,
     policy_version,tariff_version,entitlement_version,capability_id,task_id,source_event_id,
-    related_entry_id,payload_fingerprint
+    related_entry_id,payload_fingerprint,metadata
   ) values (
     v_res.owner_user_id,v_key,'settlement',v_actual,0,v_res.credit_scheme_version,
     v_policy,v_res.tariff_version,v_res.entitlement_version,v_res.capability_id,v_res.task_id,
-    v_source,v_res.reservation_entry_id,v_fp
+    v_source,v_res.reservation_entry_id,v_fp,
+    jsonb_build_object('actual_usage_units',v_actual_units,'usage_unit',v_usage_unit,
+      'actual_cost_microunits',v_metering.cost_microunits,'cost_unit',v_metering.cost_unit,
+      'cost_pricing_version',v_metering.pricing_version)
   ) returning * into v_entry;
   v_unused := v_res.reserved_credits - v_actual;
   if v_unused > 0 then
