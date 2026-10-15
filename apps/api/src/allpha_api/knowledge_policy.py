@@ -1,0 +1,103 @@
+"""Versioned, fail-closed knowledge access policy contract.
+
+The resolver consumes a snapshot from an explicitly configured canonical policy
+provider. It deliberately does not infer knowledge consent from general ToS/privacy
+consent, nor invent a database schema. No provider is configured by default.
+"""
+from __future__ import annotations
+
+import importlib
+import os
+from dataclasses import dataclass
+from typing import Callable, Protocol
+
+SENSITIVITIES = frozenset({"public", "internal", "confidential", "restricted"})
+RETRIEVAL_PURPOSE = "agent_context_retrieval"
+
+
+class KnowledgePolicyUnavailable(RuntimeError):
+    """Canonical policy facts are missing, invalid, stale, or revoked."""
+
+
+@dataclass(frozen=True)
+class KnowledgePolicySnapshot:
+    policy_version: str
+    owner_id: str
+    agent_id: str
+    allowed_sensitivities: tuple[str, ...]
+    knowledge_consent_granted: bool
+    consent_version: str
+    consent_revoked: bool
+    allowed_purposes: tuple[str, ...]
+    grants_active: bool
+    resolved_at_version: str
+
+
+class KnowledgePolicySnapshotProvider(Protocol):
+    async def resolve(self, *, owner_id: str, agent_id: str) -> KnowledgePolicySnapshot | None:
+        """Resolve authoritative, current policy/consent/grant facts from canonical storage."""
+        ...
+
+
+@dataclass(frozen=True)
+class ResolvedKnowledgePolicy:
+    policy_version: str
+    consent_version: str
+    allowed_sensitivities: tuple[str, ...]
+    purpose: str = RETRIEVAL_PURPOSE
+
+
+class VersionedKnowledgePolicyResolver:
+    """Validate policy facts before retrieval; absence or ambiguity denies access."""
+
+    def __init__(self, provider: KnowledgePolicySnapshotProvider):
+        self._provider = provider
+
+    async def resolve(self, *, owner_id: str, agent_id: str) -> ResolvedKnowledgePolicy:
+        snapshot = await self._provider.resolve(owner_id=owner_id, agent_id=agent_id)
+        if snapshot is None:
+            raise KnowledgePolicyUnavailable("canonical knowledge policy snapshot is unavailable")
+        if (
+            not snapshot.policy_version.strip()
+            or not snapshot.consent_version.strip()
+            or not snapshot.resolved_at_version.strip()
+            or snapshot.owner_id != owner_id
+            or snapshot.agent_id != agent_id
+        ):
+            raise KnowledgePolicyUnavailable("knowledge policy identity/version is invalid")
+        if not snapshot.knowledge_consent_granted or snapshot.consent_revoked or not snapshot.grants_active:
+            raise KnowledgePolicyUnavailable("knowledge consent or access grant is not active")
+        if RETRIEVAL_PURPOSE not in snapshot.allowed_purposes:
+            raise KnowledgePolicyUnavailable("retrieval purpose is not permitted by policy")
+        sensitivities = tuple(dict.fromkeys(snapshot.allowed_sensitivities))
+        if not sensitivities or any(value not in SENSITIVITIES for value in sensitivities):
+            raise KnowledgePolicyUnavailable("knowledge sensitivity policy is missing or invalid")
+        return ResolvedKnowledgePolicy(
+            policy_version=snapshot.policy_version,
+            consent_version=snapshot.consent_version,
+            allowed_sensitivities=sensitivities,
+        )
+
+
+def load_policy_resolver_from_environment() -> VersionedKnowledgePolicyResolver | None:
+    """Load an explicitly configured server-only module:function policy provider.
+
+    No environment allowlist is treated as an authorization policy. The provider must
+    resolve current knowledge-specific consent, revocation, grant and policy version.
+    """
+    spec = os.getenv("ALLPHA_KNOWLEDGE_POLICY_FACTORY", "").strip()
+    if not spec or ":" not in spec:
+        return None
+    module_name, function_name = spec.split(":", 1)
+    if not module_name or not function_name:
+        return None
+    try:
+        factory: Callable[[], KnowledgePolicySnapshotProvider] = getattr(
+            importlib.import_module(module_name), function_name
+        )
+        provider = factory()
+    except (ImportError, AttributeError, TypeError, ValueError):
+        return None
+    if not callable(getattr(provider, "resolve", None)):
+        return None
+    return VersionedKnowledgePolicyResolver(provider)
