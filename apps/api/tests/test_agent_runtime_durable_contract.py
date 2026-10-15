@@ -48,3 +48,26 @@ def test_runtime_rpc_dollar_quoting_is_balanced_and_security_is_restricted():
     assert sql.count("security definer") == 6
     assert "set search_path = ''" in sql
     assert "from public, anon, authenticated" in sql
+
+def test_lease_claim_checkpoint_and_finalize_reject_stale_workers():
+    sql = " ".join(MIGRATION.read_text().lower().split())
+    assert "t.lease_expires_at < now()" in sql
+    assert "coalesce(t.effect_outcome, 'none') not in ('started','unknown')" in sql
+    assert "task_row.execution_lease_token is distinct from p_lease_token" in sql
+    assert "task_row.lease_expires_at <= now()" in sql
+    assert "task_row.task_version <> p_task_version" in sql
+    assert "t.execution_lease_token = p_lease_token" in sql
+    assert "t.lease_expires_at > now()" in sql
+    assert "t.task_version = p_task_version" in sql
+
+
+def test_effect_receipt_rpc_returns_rows_and_restricts_execution():
+    sql = " ".join(MIGRATION.read_text().lower().split())
+    assert "create or replace function public.begin_agent_runtime_effect" in sql
+    assert "returns setof public.agent_runtime_effect_receipts" in sql
+    assert "create or replace function public.complete_agent_runtime_effect" in sql
+    assert "return next receipt" in sql
+    assert "revoke all on function public.begin_agent_runtime_effect" in sql
+    assert "grant execute on function public.begin_agent_runtime_effect" in sql
+    assert "revoke all on function public.complete_agent_runtime_effect" in sql
+    assert "grant execute on function public.complete_agent_runtime_effect" in sql
