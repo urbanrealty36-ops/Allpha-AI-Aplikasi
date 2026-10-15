@@ -238,14 +238,14 @@ begin
       and status = 'approved' and (effective_at is null or effective_at <= now())
       and (expires_at is null or expires_at > now()) for share;
   if not found then raise exception 'CREDIT_POLICY_NOT_APPROVED' using errcode = '42501'; end if;
-  if p_command->>'credit_scheme_version' <> v_policy_row.credit_scheme_version
+  if (p_command->>'credit_scheme_version') <> v_policy_row.credit_scheme_version
     or coalesce(p_command->>'entitlement_version','') = '' then
     raise exception 'CREDIT_RESERVATION_VERSION_MISMATCH' using errcode = '22023';
   end if;
   v_cap := v_policy_row.configuration->'capabilities'->v_capability;
   v_entitlement := v_policy_row.configuration->'entitlements'->(p_command->>'entitlement_version');
-  if jsonb_typeof(v_cap) <> 'object' or v_cap->>'tariff_version' <> v_tariff
-    or v_cap->>'usage_unit' <> v_usage_unit
+  if jsonb_typeof(v_cap) <> 'object' or (v_cap->>'tariff_version') <> v_tariff
+    or (v_cap->>'usage_unit') <> v_usage_unit
     or coalesce((v_cap->>'credits_per_usage_unit')::bigint,0) <= 0 then
     raise exception 'CREDIT_CAPABILITY_TARIFF_UNAVAILABLE' using errcode = '42501';
   end if;
@@ -366,8 +366,8 @@ begin
   if v_metering.usage_units <> v_actual_units or v_metering.usage_unit <> v_usage_unit then
     raise exception 'CREDIT_SETTLEMENT_METERING_USAGE_MISMATCH' using errcode = '22023';
   end if;
-  if v_metering.cost_unit <> v_cap->>'cost_unit'
-    or v_metering.pricing_version <> v_cap->>'cost_pricing_version'
+  if v_metering.cost_unit <> (v_cap->>'cost_unit')
+    or v_metering.pricing_version <> (v_cap->>'cost_pricing_version')
     or not (v_cap ? 'max_cost_microunits')
     or coalesce((v_cap->>'max_cost_microunits')::bigint,-1) < 0
     or v_metering.cost_microunits > (v_cap->>'max_cost_microunits')::bigint then
@@ -375,7 +375,7 @@ begin
   end if;
   if jsonb_typeof(v_cap) <> 'object'
     or v_cap->>'tariff_version' <> v_res.tariff_version
-    or v_cap->>'usage_unit' <> v_usage_unit
+    or (v_cap->>'usage_unit') <> v_usage_unit
 
     or v_usage_unit <> v_res.usage_unit
     or v_actual <> v_actual_units * coalesce((v_cap->>'credits_per_usage_unit')::bigint,0) then
