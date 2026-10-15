@@ -16,6 +16,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.supabase_credit_ledger_store import CreditLedgerPersistenceError, SupabaseCreditLedgerStore
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
 from allpha_api.operator_security import router as operator_security_router
@@ -1014,3 +1015,4 @@ async def request_agent_capability(agent_id: uuid.UUID, payload: AgentCapability
 app.include_router(operator_security_router)
 app.include_router(knowledge_router)
 app.include_router(knowledge_retrieval_router)
+app.include_router(agent_runtime_router)
