@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -6,6 +7,7 @@ from allpha_api.knowledge_policy import (
     KnowledgePolicySnapshot,
     KnowledgePolicyUnavailable,
     VersionedKnowledgePolicyResolver,
+    load_policy_resolver_from_environment,
 )
 
 
@@ -79,6 +81,7 @@ def test_versioned_policy_fails_closed_when_snapshot_is_missing():
             )
     asyncio.run(scenario())
 
+
 def test_versioned_policy_fails_closed_when_provider_raises():
     class BrokenProvider:
         async def resolve(self, *, owner_id, agent_id):
@@ -113,3 +116,35 @@ def test_versioned_policy_fails_closed_on_malformed_provider_snapshot(value):
                 owner_id="owner-a", agent_id="agent-a"
             )
     asyncio.run(scenario())
+
+
+def test_policy_factory_returns_none_when_module_import_fails(monkeypatch):
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_POLICY_FACTORY", "missing_module:build_provider")
+
+    def fail_import(_module_name):
+        raise RuntimeError("synthetic import-time configuration failure")
+
+    monkeypatch.setattr("allpha_api.knowledge_policy.importlib.import_module", fail_import)
+    assert load_policy_resolver_from_environment() is None
+
+
+def test_policy_factory_returns_none_when_provider_factory_raises(monkeypatch):
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_POLICY_FACTORY", "policy_module:build_provider")
+
+    def fail_factory():
+        raise RuntimeError("synthetic provider factory failure")
+
+    monkeypatch.setattr(
+        "allpha_api.knowledge_policy.importlib.import_module",
+        lambda _module_name: SimpleNamespace(build_provider=fail_factory),
+    )
+    assert load_policy_resolver_from_environment() is None
+
+
+def test_policy_factory_returns_none_when_provider_has_no_resolve_method(monkeypatch):
+    monkeypatch.setenv("ALLPHA_KNOWLEDGE_POLICY_FACTORY", "policy_module:build_provider")
+    monkeypatch.setattr(
+        "allpha_api.knowledge_policy.importlib.import_module",
+        lambda _module_name: SimpleNamespace(build_provider=lambda: object()),
+    )
+    assert load_policy_resolver_from_environment() is None
