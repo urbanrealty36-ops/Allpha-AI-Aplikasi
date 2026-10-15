@@ -84,6 +84,7 @@ def test_success_settles_actual_amount_and_releases_unused_reservation():
     result = asyncio.run(service.complete(
         reservation=reserved, outcome=OperationOutcome.SUCCEEDED, policy=policy(),
         idempotency_key="settle-key", source_event_id="usage-event-1", actual_credits=7,
+        actual_usage_units=7, usage_unit="request",
     ))
     assert result.state == ReservationState.SETTLED
     settlement = store.calls[-1][1]
@@ -114,7 +115,7 @@ def test_partial_settlement_requires_explicit_capability_approval():
         asyncio.run(service.complete(
             reservation=reserved, outcome=OperationOutcome.PARTIAL, policy=policy(),
             idempotency_key="partial-key", source_event_id="usage-event-3",
-            actual_credits=4, partial_policy_approved=False,
+            actual_credits=4, actual_usage_units=4, usage_unit="request", partial_policy_approved=False,
         ))
     assert all(call[0] != "settle" for call in store.calls)
 
@@ -128,7 +129,7 @@ def test_actual_charge_cannot_exceed_reservation_or_be_zero_by_default():
             asyncio.run(service.complete(
                 reservation=reserved, outcome=OperationOutcome.SUCCEEDED, policy=policy(),
                 idempotency_key=f"settle-{actual}", source_event_id="usage-event-4",
-                actual_credits=actual,
+                actual_credits=actual, actual_usage_units=actual, usage_unit="request",
             ))
     assert all(call[0] != "settle" for call in store.calls)
 
