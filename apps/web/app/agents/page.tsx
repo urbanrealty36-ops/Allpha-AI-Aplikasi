@@ -91,9 +91,6 @@ export default function AgentsPage() {
     setLoading(true);
     setError("");
     try {
-      const selectedSkill = catalogSkills.find(item => item.key === selectedCatalogSkill);
-      if (!selectedSkill) throw new Error("Pilih satu Skill dari katalog Allpha sebelum membuat Agent.");
-      persona = { ...persona, allpha_skill_key: selectedSkill.key, allpha_skill_catalog_version: "allpha-skill-catalog-v1", character_profile: selectedSkill.character_profile };
       const response = await fetch(apiBase + "/v1/agents", {
         headers: { Authorization: "Bearer " + active.access_token },
         cache: "no-store",
@@ -147,6 +144,9 @@ export default function AgentsPage() {
       } catch (cause) {
         throw new Error(cause instanceof Error ? cause.message : "JSON batas Agent tidak valid.");
       }
+      const selectedSkill = catalogSkills.find(item => item.key === selectedCatalogSkill);
+      if (!selectedSkill) throw new Error("Pilih satu Skill dari katalog Allpha sebelum membuat Agent.");
+      persona = { ...persona, allpha_skill_key: selectedSkill.key, allpha_skill_catalog_version: "allpha-skill-catalog-v1", character_profile: selectedSkill.character_profile };
       const response = await fetch(apiBase + "/v1/agents", {
         method: "POST",
         headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
