@@ -19,6 +19,7 @@ from allpha_api.auth import current_user, user_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.workflow_api import router as workflow_router
 from allpha_api.skill_challenge_api import router as skill_challenge_router
+from allpha_api.skill_challenge_execution_api import router as skill_challenge_execution_router
 from allpha_api.supabase_credit_ledger_store import CreditLedgerPersistenceError, SupabaseCreditLedgerStore
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
 from allpha_api.operator_security import router as operator_security_router
@@ -1080,5 +1081,6 @@ app.include_router(knowledge_retrieval_router)
 app.include_router(agent_runtime_router)
 app.include_router(workflow_router)
 app.include_router(skill_challenge_router)
+app.include_router(skill_challenge_execution_router)
 app.include_router(official_bots_router)
 app.include_router(agency_skill_drafts_router)
