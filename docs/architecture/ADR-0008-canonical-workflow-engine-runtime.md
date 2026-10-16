@@ -1,6 +1,6 @@
 # ADR-0008 — Canonical Durable Workflow Engine Runtime
 
-- **Status:** Proposed — Product Owner decision required before implementation
+- **Status:** Accepted — Option A approved by Product Owner on 2026-10-16
 - **Date:** 2026-10-15
 - **Scope:** ENG-P11 durable workflow orchestration, checkpoint/resume and workflow-run lifecycle
 - **Authority:** Master PRD v3.0 §§18, 25–26.4; AGENTS.md §§0–6; fixed phase plan; ADR-0004 (Model Router and Knowledge Job Runtime); ADR-0007 (Agent Runtime durable task lifecycle)
@@ -61,6 +61,10 @@ Integrate an existing approved workflow engine/runtime if one is demonstrably pr
 
 **Consequences:** remains viable only if the Product Owner identifies an existing canonical engine and provides verifiable repo/deployment/configuration evidence. Do not infer one from the specialized ENG-P07 knowledge worker or ENG-P10 Agent Runtime.
 
+## Decision
+
+**Accepted: Option A — PostgreSQL-backed canonical Workflow Engine.** The Product Owner approved Option A on 2026-10-16. Implementation is authorized in the canonical `apps/api` backend with source-only migrations; no production migration or live staging mutation is authorized by this approval.
+
 ## Recommendation / approval request
 
 Approve **Option A** as the canonical Workflow Engine implementation for ENG-P11, subject to these boundaries:
@@ -69,7 +73,7 @@ Approve **Option A** as the canonical Workflow Engine implementation for ENG-P11
 - ENG-P07 knowledge worker remains specialized and must not become the general workflow runner.
 - Do not add a broker, external workflow service, or separate database in this ADR.
 - Do not apply migrations to canonical production. Real SQL/concurrency/RLS/grants and authenticated cross-app acceptance stay in ENG-P37 on an explicitly approved isolated non-production target.
-- Build the first implementation slice only after the Product Owner approves this decision.
+- Build the first implementation slice after approval. Approval was received on 2026-10-16; source implementation may proceed under the boundaries above.
 
 ## Rollback and compatibility
 
