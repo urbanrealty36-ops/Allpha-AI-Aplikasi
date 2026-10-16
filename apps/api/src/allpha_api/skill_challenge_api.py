@@ -179,9 +179,13 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             "version": f"eq.{skill['version']}", "limit": "1",
         })
         version_row = version_rows[0] if version_rows else None
-        snapshot = (version_row or {}).get("snapshot") or skill
-        if int(snapshot.get("version") or 0) != int(skill.get("version") or 0):
-            raise HTTPException(status_code=409, detail={"code": "SKILL_VERSION_SNAPSHOT_MISMATCH", "message": "Snapshot Skill tidak cocok dengan versi aktif."})
+        if not version_row or not isinstance(version_row.get("snapshot"), dict):
+            raise HTTPException(status_code=409, detail={"code": "SKILL_VERSION_SNAPSHOT_MISSING", "message": "Snapshot versi Skill tidak tersedia; challenge tidak diterbitkan."})
+        snapshot = version_row["snapshot"]
+        if (int(snapshot.get("version") or 0) != int(skill.get("version") or 0)
+                or str(snapshot.get("id")) != str(skill["id"])
+                or str(snapshot.get("agent_id")) != str(agent["id"])):
+            raise HTTPException(status_code=409, detail={"code": "SKILL_VERSION_SNAPSHOT_MISMATCH", "message": "Snapshot Skill tidak cocok dengan identitas dan versi aktif."})
         tests = snapshot.get("tests")
         if not isinstance(tests, list) or not tests:
             raise HTTPException(status_code=422, detail={"code": "CHALLENGE_TEST_SET_MISSING", "message": "Skill belum memiliki evaluation set yang dapat dijalankan."})
@@ -260,8 +264,27 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
             raise HTTPException(status_code=410, detail={"code": "CHALLENGE_NONCE_EXPIRED", "message": "Challenge telah kedaluwarsa; buat run baru."})
         if hashlib.sha256(payload.nonce.encode()).hexdigest() != row.get("nonce_hash"):
             raise HTTPException(status_code=403, detail={"code": "CHALLENGE_NONCE_INVALID", "message": "Nonce challenge tidak valid."})
-        rubric_snapshot = row.get("skill_snapshot", {}).get("evaluation_rubric")
+        skill_snapshot = row.get("skill_snapshot")
+        agent_snapshot = row.get("agent_snapshot")
+        if (not isinstance(skill_snapshot, dict) or str(skill_snapshot.get("id")) != str(row["skill_id"])
+                or int(skill_snapshot.get("version") or 0) != int(row["skill_version"])
+                or not isinstance(agent_snapshot, dict) or str(agent_snapshot.get("id")) != str(row["agent_id"])
+                or int(agent_snapshot.get("version") or 0) != int(row["agent_version"])):
+            raise HTTPException(status_code=409, detail={"code": "CHALLENGE_SNAPSHOT_MISMATCH", "message": "Snapshot Agent/Skill tidak cocok dengan versi yang dipatok."})
+        pinned_case = next((item for item in skill_snapshot.get("tests", []) if isinstance(item, dict) and item.get("key") == row["challenge_key"]), None)
+        if not isinstance(pinned_case, dict):
+            raise HTTPException(status_code=409, detail={"code": "CHALLENGE_EVALUATION_SET_MISMATCH", "message": "Test case tidak ditemukan pada snapshot yang dipatok."})
+        pinned_input = pinned_case.get("input", pinned_case.get("inputs"))
+        pinned_expected = pinned_case.get("expected_output", pinned_case.get("expected"))
+        pinned_evaluation_set = {"version": int(row["evaluation_set_version"]), "test_key": row["challenge_key"], "test_case": pinned_case}
+        if (_digest(pinned_evaluation_set) != row["evaluation_set_digest"]
+                or pinned_input != row["challenge_input"] or pinned_expected != row["expected_output"]):
+            raise HTTPException(status_code=409, detail={"code": "CHALLENGE_EVALUATION_SET_DIGEST_MISMATCH", "message": "Digest evaluation set tidak cocok; evaluasi ditolak."})
+        rubric_snapshot = skill_snapshot.get("evaluation_rubric")
         rubric = EvaluationRubric.model_validate(rubric_snapshot)
+        if (rubric.digest() != row["rubric_digest"] or rubric.rubric_key != row["rubric_key"]
+                or rubric.version != int(row["rubric_version"]) or row["evaluator_version"] != EVALUATOR_VERSION):
+            raise HTTPException(status_code=409, detail={"code": "CHALLENGE_RUBRIC_DIGEST_MISMATCH", "message": "Versi atau digest rubrik/evaluator tidak cocok."})
         # The system derives task_success from the pinned expected output; the client cannot submit scores/signals.
         task_success = 1.0 if _canonical(submission) == _canonical(row["expected_output"]) else 0.0
         signals = {"task_success": CriterionSignal(score=task_success, evaluator_source="system")}
