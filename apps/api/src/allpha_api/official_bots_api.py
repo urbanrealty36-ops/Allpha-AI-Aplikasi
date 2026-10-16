@@ -63,11 +63,15 @@ router = APIRouter(prefix="/v1/admin/official-bots", tags=["official-agent-bots"
 _FIELDS = (
     "id,skill_key,display_name,category_key,category_label,skill_description,"
     "character_archetype_key,character_asset_key,asset_validation_status,agent_id,"
-    "runtime_policy_id,skill_version_id,skill_version_number,skill_version_digest,"
-    "status,autonomy_mode,isolation_reason,created_by,approved_by,"
+    "runtime_policy_id,status,autonomy_mode,isolation_reason,created_by,approved_by,"
     "approved_at,activated_by,activated_at,stopped_by,stopped_at,last_action,metadata,"
     "created_at,updated_at"
 )
+_RUNTIME_FIELDS = _FIELDS.replace(
+    "runtime_policy_id,status",
+    "runtime_policy_id,skill_version_id,skill_version_number,skill_version_digest,status",
+)
+_PIN_FIELDS = "skill_version_id,skill_version_number,skill_version_digest"
 
 
 class ProvisionPayload(BaseModel):
@@ -284,6 +288,19 @@ async def link_official_bot_runtime(
             "message": "Provision identitas platform-owned melalui layanan kanonis terlebih dahulu; tautan Agent bebas tidak diizinkan.",
         })
 
+    try:
+        # Schema readiness is checked before any roster mutation. This preserves list/
+        # provision operations while the version-pin migration is still source-only.
+        await privileged_rest_request(
+            "GET", "official_agent_bots",
+            params={"select": _PIN_FIELDS, "limit": "1"},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "OFFICIAL_BOT_SKILL_VERSION_SCHEMA_NOT_READY",
+            "message": "Migration immutable Skill version pin belum tersedia pada database; runtime linking ditahan tanpa mengubah roster.",
+        }) from exc
+
     version_rows = await privileged_rest_request(
         "GET", "agent_skill_versions",
         params={
@@ -360,7 +377,7 @@ async def link_official_bot_runtime(
         })
     updated = await privileged_rest_request(
         "PATCH", "official_agent_bots",
-        params={"id": f"eq.{bot_id}", "status": f"eq.{bot['status']}", "select": _FIELDS},
+        params={"id": f"eq.{bot_id}", "status": f"eq.{bot['status']}", "select": _RUNTIME_FIELDS},
         body={
             "agent_id": str(payload.agent_id), "runtime_policy_id": str(payload.runtime_policy_id),
             "skill_version_id": str(pinned_skill_version["id"]),
@@ -400,6 +417,18 @@ async def official_bot_lifecycle_action(
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "OFFICIAL_BOT_NOT_FOUND", "message": "Roster bot tidak ditemukan."})
     bot = rows[0]
+    try:
+        pin_rows = await privileged_rest_request(
+            "GET", "official_agent_bots",
+            params={"select": _PIN_FIELDS, "id": f"eq.{bot_id}", "limit": "1"},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "OFFICIAL_BOT_SKILL_VERSION_SCHEMA_NOT_READY",
+            "message": "Migration immutable Skill version pin belum tersedia; aktivasi ditahan secara fail-closed.",
+        }) from exc
+    if pin_rows:
+        bot.update(pin_rows[0])
     now = datetime.now(timezone.utc).isoformat()
     now_fields: dict[str, Any] = {
         "updated_at": now,
