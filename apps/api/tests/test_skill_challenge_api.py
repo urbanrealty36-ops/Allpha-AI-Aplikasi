@@ -121,7 +121,11 @@ class FakeChallengeStore:
                 return []
             return []
         if method == "GET" and path == "agent_skills":
-            return [dict(self.skill)] if params.get("id") == f"eq.{self.skill_id}" and params.get("agent_id") == f"eq.{self.agent_id}" else []
+            if params.get("agent_id") != f"eq.{self.agent_id}":
+                return []
+            if params.get("id") and params.get("id") != f"eq.{self.skill_id}":
+                return []
+            return [dict(self.skill)]
         if method == "GET" and path == "ai_agents":
             return [dict(self.agent)] if params.get("id") == f"eq.{self.agent_id}" else []
         if method == "GET" and path == "agent_skill_versions":
@@ -198,4 +202,32 @@ def test_submit_challenge_persists_repeatable_evidence_and_rejects_conflicting_r
                 user={"id": store.owner_id},
             )
         assert error.value.status_code == 409
+    asyncio.run(scenario())
+
+
+def test_challenge_catalog_hides_expected_outputs_and_hidden_case_keys(monkeypatch):
+    async def scenario():
+        store = FakeChallengeStore()
+        monkeypatch.setattr(challenge_api, "_store", lambda: store)
+        result = await challenge_api.challenge_catalog(UUID(store.agent_id), user={"id": store.owner_id})
+        assert len(result["items"]) == 1
+        skill = result["items"][0]
+        assert skill["hidden_challenges_available"] is True
+        assert [case["key"] for case in skill["tests"]] == ["visible_case"]
+        assert "expected_output" not in json.dumps(result)
+        assert "hidden_case" not in json.dumps(result)
+    asyncio.run(scenario())
+
+
+def test_challenge_issue_rejects_non_owner(monkeypatch):
+    async def scenario():
+        store = FakeChallengeStore()
+        monkeypatch.setattr(challenge_api, "_store", lambda: store)
+        with pytest.raises(HTTPException) as error:
+            await challenge_api.issue_challenge(
+                ChallengeIssue(agent_id=UUID(store.agent_id), skill_id=UUID(store.skill_id),
+                    test_key="visible_case", idempotency_key="non-owner-attempt-01"),
+                request=None, user={"id": "00000000-0000-0000-0000-000000000099"},
+            )
+        assert error.value.status_code == 404
     asyncio.run(scenario())
