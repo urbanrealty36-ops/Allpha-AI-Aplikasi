@@ -7,6 +7,7 @@ canonical Agent identity, approved runtime policy, and verified 3D asset are lin
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from typing import Any, Literal
 from uuid import UUID
 
@@ -131,6 +132,76 @@ async def provision_official_bot_roster(
         "created_or_existing": len(rows),
         "runtime_activation": "not_performed",
         "message": "Roster kandidat disiapkan; belum membuat Agent identity atau menjalankan bot.",
+    }
+
+
+@router.post("/{bot_id}/provision-identity", status_code=201, name="provision_official_bot_identity")
+async def provision_official_bot_identity(
+    bot_id: UUID,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    """Create a draft platform-owned Agent via the canonical identity tables/RPC."""
+    configured_owner = os.getenv("ALLPHA_PLATFORM_OWNER_USER_ID", "").strip()
+    try:
+        platform_owner_id = UUID(configured_owner)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PLATFORM_AGENT_OWNER_NOT_CONFIGURED",
+                "message": "Identitas pemilik sistem belum dikonfigurasi sebagai UUID akun platform khusus.",
+            },
+        ) from exc
+
+    rows = await privileged_rest_request(
+        "GET", "official_agent_bots",
+        params={"select": "id,skill_key,status,agent_id,metadata", "id": f"eq.{bot_id}", "limit": "1"},
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "OFFICIAL_BOT_NOT_FOUND", "message": "Roster bot tidak ditemukan."})
+    bot = rows[0]
+    replay = bool(bot.get("agent_id"))
+    if not replay and bot.get("status") not in {"draft", "pending_approval"}:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "OFFICIAL_BOT_STATE_NOT_PROVISIONABLE", "message": "Identitas hanya dapat dibuat untuk kandidat draft atau pending approval."},
+        )
+
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="official_bots.identity.provision.request",
+        outcome="allowed", resource_type="official_agent_bot", resource_id=str(bot_id),
+        metadata={"skill_key": bot["skill_key"], "platform_owner_configured": True},
+    )
+    result = await privileged_rest_request(
+        "POST", "rpc/provision_official_agent_identity",
+        body={
+            "p_bot_id": str(bot_id),
+            "p_platform_owner_user_id": str(platform_owner_id),
+        },
+    )
+    agent = result[0] if isinstance(result, list) and result else result
+    if not isinstance(agent, dict) or not agent.get("id"):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OFFICIAL_BOT_IDENTITY_UNCONFIRMED", "message": "Backend tidak mengonfirmasi identitas Agent kanonis."},
+        )
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="official_bots.identity.provision.complete",
+        outcome="allowed", resource_type="official_agent_bot", resource_id=str(bot_id),
+        metadata={
+            "agent_id": str(agent["id"]),
+            "platform_owner_user_id": str(platform_owner_id),
+            "idempotent_replay": replay,
+            "agent_status": agent.get("status"),
+        },
+    )
+    return {
+        "bot_id": str(bot_id),
+        "agent": agent,
+        "ownership": {"owner_user_id": str(platform_owner_id), "owner_type": "platform", "role": "owner"},
+        "idempotent_replay": replay,
+        "runtime_activation": "not_performed",
     }
 
 
