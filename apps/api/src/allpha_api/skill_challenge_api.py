@@ -328,12 +328,13 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
                 raise HTTPException(status_code=409, detail={"code": "RUNTIME_OUTPUT_EVIDENCE_MISMATCH", "message": "Output tidak cocok dengan bukti eksekusi server."})
         task_success = 1.0 if _canonical(submission) == _canonical(row["expected_output"]) else 0.0
         signals = {"task_success": CriterionSignal(score=task_success, evaluator_source="system")}
+        rubric_keys = {criterion.key for criterion in rubric.criteria}
         if isinstance(runtime_evidence, dict):
             latency, latency_budget = runtime_evidence.get("latency_ms"), runtime_evidence.get("latency_budget_ms")
             cost, cost_budget = runtime_evidence.get("cost_microunits"), runtime_evidence.get("cost_budget_microunits")
-            if isinstance(latency, int) and isinstance(latency_budget, int) and latency_budget > 0:
+            if "latency_budget" in rubric_keys and isinstance(latency, int) and isinstance(latency_budget, int) and latency_budget > 0:
                 signals["latency_budget"] = CriterionSignal(score=1.0 if latency <= latency_budget else 0.0, evaluator_source="system")
-            if isinstance(cost, int) and isinstance(cost_budget, int) and cost_budget >= 0:
+            if "cost_budget" in rubric_keys and isinstance(cost, int) and isinstance(cost_budget, int) and cost_budget >= 0:
                 signals["cost_budget"] = CriterionSignal(score=1.0 if cost <= cost_budget else 0.0, evaluator_source="system")
         result = evaluate_submission(rubric, signals)
         repeat_since = (_now() - timedelta(seconds=REPEATED_SUBMISSION_WINDOW_SECONDS)).isoformat()
