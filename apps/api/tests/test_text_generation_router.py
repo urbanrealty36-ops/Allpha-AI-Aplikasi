@@ -50,9 +50,7 @@ class MemorySink:
 def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10):
     adapter = adapter or FakeAdapter(cost=cost)
     return CanonicalTextGenerationRouter(
-        routes={"private": {"provider-a": None}} if False else (
-            {"private": TextGenerationRoute("provider-a", "model-a", "version-a")} if route else {}
-        ),
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")} if route else {},
         adapters={"provider-a": adapter},
         policies={
             "private": TextGenerationPolicy(
@@ -122,15 +120,9 @@ async def test_text_generation_rejects_cost_over_approved_policy():
 
 @pytest.mark.asyncio
 async def test_text_generation_rejects_unapproved_policy():
-    router = CanonicalTextGenerationRouter(
-        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
-        adapters={"provider-a": FakeAdapter()},
-        policies={"private": TextGenerationPolicy(
+    with pytest.raises(ValueError, match="must be approved"):
+        TextGenerationPolicy(
             policy_id="policy-test", policy_version="v1", approved=False,
             max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
             cost_unit="approved-unit", pricing_version="pricing-v1",
-        )} if False else {},
-        metering_sink=MemorySink(),
-    )
-    with pytest.raises(TextGenerationRouterUnavailable):
-        await router.generate(request())
+        )
