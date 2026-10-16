@@ -45,7 +45,7 @@ assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "idempotency_key",
-  "nonce", "evidence_digest", "evaluation_result", "expected output tidak dikirim ke browser",
+  "nonce", "evidence_digest", "evaluation_result", "Expected output tidak dikirim ke browser.",
   "reward finansial tidak diterbitkan", "Authorization: \"Bearer \" + session.access_token"
 ]) assert.ok(challenges.includes(contract), `missing Skill Challenge Web contract: ${contract}`);
 assert.doesNotMatch(challenges, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
