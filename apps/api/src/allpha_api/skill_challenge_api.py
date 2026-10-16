@@ -78,6 +78,8 @@ def _public_run(row: dict[str, Any]) -> dict[str, Any]:
             "rubric_key", "rubric_version", "rubric_digest", "evaluator_version",
             "challenge_input", "status", "evaluation_result", "evidence_digest", "repeated_submission",
             "runtime_output", "runtime_evidence", "runtime_evidence_digest", "runtime_executed_at",
+            "previous_version_comparison", "release_decision", "release_decision_reason",
+            "release_decided_by", "release_decided_at",
             "submitted_at", "completed_at", "created_at", "updated_at",
         )
     }
