@@ -48,6 +48,8 @@ type CapabilityRequest = {
 type OfficialBot = { id: string; skill_key: string; display_name: string; category_key: string; category_label: string; skill_description: string; character_archetype_key: string; character_asset_key?: string | null; asset_validation_status: "unverified" | "verified" | "rejected"; agent_id?: string | null; runtime_policy_id?: string | null; status: "draft" | "pending_approval" | "approved" | "active" | "stopped" | "isolated" | "blocked"; autonomy_mode: "disabled" | "supervised" | "bounded"; isolation_reason?: string | null };
 type AgencySkillDraft = { skill_id: string; version_key: string; name?: string; category?: string; description?: string; status: "draft"; immutable: boolean; executable: boolean; content_sha256: string; review: { review_status: string; manual_security_review: string; security_flags?: string[] }; character_profile: { asset_key?: string | null; asset_status?: string } };
 type AgencySkillDraftDetail = AgencySkillDraft & { source_instructions_markdown: string; adapted_instructions: string; provenance: { commit: string; path: string; source_url: string; license: string } };
+type AgencyReconciliationCandidate = { allpha_source_id: string; allpha_name?: string; similarity: number; shared_terms: string[]; agency_only_terms: string[]; allpha_only_terms: string[]; difference_summary: string; merge_decision: "none" };
+type AgencyReconciliationRow = { agency_source_id: string; agency_name?: string; agency_description?: string; agency_category?: string; candidate_strength: string; canonical_identity_merge: false; candidates: AgencyReconciliationCandidate[] };
 type Grant = {
   id: string;
   user_id: string;
@@ -169,7 +171,11 @@ export default function OperationsPage() {
   const [agencyDraftImportStatus, setAgencyDraftImportStatus] = useState("not_loaded");
   const [agencyDraftDetail, setAgencyDraftDetail] = useState<AgencySkillDraftDetail | null>(null);
   const [agencyDraftsBusy, setAgencyDraftsBusy] = useState(false);
-  const [agencyReconciliationSummary, setAgencyReconciliationSummary] = useState<{ candidate_count?: number; status?: string } | null>(null);
+  const [agencyReconciliationSummary, setAgencyReconciliationSummary] = useState<{ candidate_count?: number; strong_candidate_count?: number; weak_candidate_count?: number; no_textual_overlap_count?: number; status?: string } | null>(null);
+  const [agencyReconciliationRows, setAgencyReconciliationRows] = useState<AgencyReconciliationRow[]>([]);
+  const [agencyReconciliationTotal, setAgencyReconciliationTotal] = useState(0);
+  const [agencyReconciliationOffset, setAgencyReconciliationOffset] = useState(0);
+  const [agencyReconciliationQuery, setAgencyReconciliationQuery] = useState("");
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [targetUser, setTargetUser] = useState("");
   const [selectedScopes, setSelectedScopes] = useState<OperatorScope[]>([]);
@@ -245,7 +251,10 @@ export default function OperationsPage() {
       const draftsBody = await responseBody<{ items: AgencySkillDraft[]; total: number; import_status: string }>(draftsResponse);
       setAgencyDrafts(draftsBody.items ?? []); setAgencyDraftsTotal(draftsBody.total ?? 0); setAgencyDraftImportStatus(draftsBody.import_status ?? "unknown");
       const reconciliationResponse = await adminFetch("/v1/admin/skill-drafts/agency-agents/reconciliation/summary", activeSession, setSession);
-      setAgencyReconciliationSummary(await responseBody<{ candidate_count?: number; status?: string }>(reconciliationResponse));
+      setAgencyReconciliationSummary(await responseBody<{ candidate_count?: number; strong_candidate_count?: number; weak_candidate_count?: number; no_textual_overlap_count?: number; status?: string }>(reconciliationResponse));
+      const reconciliationItemsResponse = await adminFetch("/v1/admin/skill-drafts/agency-agents/reconciliation/items?limit=50&offset=0", activeSession, setSession);
+      const reconciliationItems = await responseBody<{ items: AgencyReconciliationRow[]; total: number }>(reconciliationItemsResponse);
+      setAgencyReconciliationRows(reconciliationItems.items ?? []); setAgencyReconciliationTotal(reconciliationItems.total ?? 0); setAgencyReconciliationOffset(0);
     } else { setAgencyDrafts([]); setAgencyDraftsTotal(0); setAgencyDraftImportStatus("restricted"); setAgencyReconciliationSummary(null); }
     if (access.operator.scopes.includes("platform:operations.read")) {
       const botResponse = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
@@ -272,6 +281,19 @@ export default function OperationsPage() {
     });
     return () => { cancelled = true; };
   }, [session?.access_token]);
+
+  async function refreshAgencyReconciliation(offset = agencyReconciliationOffset, query = agencyReconciliationQuery) {
+    if (!session) return;
+    setAgencyDraftsBusy(true); setError("");
+    try {
+      const params = new URLSearchParams({ limit: "50", offset: String(offset) });
+      if (query.trim()) params.set("q", query.trim());
+      const response = await adminFetch("/v1/admin/skill-drafts/agency-agents/reconciliation/items?" + params.toString(), session, setSession);
+      const body = await responseBody<{ items: AgencyReconciliationRow[]; total: number }>(response);
+      setAgencyReconciliationRows(body.items ?? []); setAgencyReconciliationTotal(body.total ?? 0); setAgencyReconciliationOffset(offset);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Rekonsiliasi katalog tidak dapat dimuat."); }
+    finally { setAgencyDraftsBusy(false); }
+  }
 
   async function viewAgencySkillDraft(skillId: string) {
     if (!session) return;
@@ -525,10 +547,16 @@ export default function OperationsPage() {
       </section>}
       {session && canReview && <section className="panel" id="agency-skill-drafts">
         <header className="panelHead"><div><h2>Agency Skill drafts</h2><p>Instruksi sumber dipatok, checksum diverifikasi, tetapi tetap draft non-executable sampai tinjauan manual dan policy/tool binding selesai.</p></div><span className="pill warning">{agencyDraftImportStatus.toUpperCase()}</span></header>
-        <div className="summary"><article><label>Draft terimpor</label><strong>{agencyDraftsTotal} <span>/ 282</span></strong><small>Versi immutable</small></article><article><label>Rekonsiliasi kandidat</label><strong>{agencyReconciliationSummary?.candidate_count ?? "—"}</strong><small>{agencyReconciliationSummary?.status || "Belum tersedia"}</small></article><article><label>Eksekusi diizinkan</label><strong>0</strong><small>Semua draft non-executable</small></article></div>
+        <div className="summary"><article><label>Draft terimpor</label><strong>{agencyDraftsTotal} <span>/ 282</span></strong><small>Versi immutable</small></article><article><label>Pasangan kandidat</label><strong>{agencyReconciliationSummary?.candidate_count ?? "—"}</strong><small>{agencyReconciliationSummary?.status || "Belum tersedia"}</small></article><article><label>Strong / weak / no overlap</label><strong>{agencyReconciliationSummary ? `${agencyReconciliationSummary.strong_candidate_count ?? 0} / ${agencyReconciliationSummary.weak_candidate_count ?? 0} / ${agencyReconciliationSummary.no_textual_overlap_count ?? 0}` : "—"}</strong><small>Heuristik teks, bukan keputusan merge</small></article><article><label>Eksekusi diizinkan</label><strong>0</strong><small>Semua draft non-executable</small></article></div>
         <div className="tableWrap"><table><thead><tr><th>Skill / sumber</th><th>Checksum SHA-256</th><th>Review</th><th>Aksi</th></tr></thead><tbody>
           {agencyDrafts.map((draft) => <tr key={draft.skill_id}><td><strong>{draft.name || draft.skill_id}</strong><br/><code>{draft.skill_id}</code><br/><small>{draft.category || "—"} · {draft.version_key}</small></td><td><code>{draft.content_sha256.slice(0, 16)}…</code></td><td><span className="pill warning">{draft.review.review_status}</span><br/><small>Manual: {draft.review.manual_security_review}</small></td><td><button className="secondaryButton" disabled={agencyDraftsBusy} onClick={() => void viewAgencySkillDraft(draft.skill_id)}>Lihat instruksi</button></td></tr>)}
           {!agencyDrafts.length && <tr><td colSpan={4} className="emptyCell">Draft belum tersedia. Workflow impor harus berhasil sebelum isi instruksi muncul.</td></tr>}
+        </tbody></table></div>
+        <header className="panelHead"><div><h3>Rekonsiliasi kapabilitas 282 × 500</h3><p>Kesamaan berbasis token nama/deskripsi/kategori; istilah khusus masing-masing sumber ditampilkan. ID sumber dipertahankan dan tidak ada penggabungan otomatis.</p></div></header>
+        <div className="panelActions"><input aria-label="Cari kandidat rekonsiliasi" value={agencyReconciliationQuery} onChange={event => setAgencyReconciliationQuery(event.target.value)} placeholder="Cari Agency / Allpha source ID" maxLength={120}/><button className="secondaryButton" disabled={agencyDraftsBusy} onClick={() => void refreshAgencyReconciliation(0, agencyReconciliationQuery)}>Cari</button><span className="muted">Baris {agencyReconciliationOffset + 1}–{Math.min(agencyReconciliationOffset + agencyReconciliationRows.length, agencyReconciliationTotal)} dari {agencyReconciliationTotal}</span><button className="secondaryButton" disabled={agencyDraftsBusy || agencyReconciliationOffset === 0} onClick={() => void refreshAgencyReconciliation(Math.max(0, agencyReconciliationOffset - 50))}>Sebelumnya</button><button className="secondaryButton" disabled={agencyDraftsBusy || agencyReconciliationOffset + agencyReconciliationRows.length >= agencyReconciliationTotal} onClick={() => void refreshAgencyReconciliation(agencyReconciliationOffset + 50)}>Berikutnya</button></div>
+        <div className="tableWrap"><table><thead><tr><th>Agency source</th><th>Kandidat Allpha</th><th>Kesamaan & perbedaan</th><th>Keputusan</th></tr></thead><tbody>
+          {agencyReconciliationRows.map(row => <tr key={row.agency_source_id}><td><strong>{row.agency_name || row.agency_source_id}</strong><br/><code>{row.agency_source_id}</code><br/><small>{row.agency_category} · {row.candidate_strength}</small><p>{row.agency_description}</p></td><td>{row.candidates.map(candidate => <div key={candidate.allpha_source_id} style={{marginBottom:12}}><strong>{candidate.allpha_name || candidate.allpha_source_id}</strong><br/><code>{candidate.allpha_source_id}</code><br/><small>Skor heuristik: {Math.round(candidate.similarity * 100)}%</small></div>)}{!row.candidates.length && <span className="muted">Tidak ada overlap tekstual</span>}</td><td>{row.candidates.map(candidate => <div key={candidate.allpha_source_id} style={{marginBottom:12}}><small>Shared: {candidate.shared_terms.join(", ") || "—"}</small><br/><small>Perbedaan: {candidate.difference_summary}</small></div>)}</td><td><span className="pill warning">NO AUTO-MERGE</span></td></tr>)}
+          {!agencyReconciliationRows.length && <tr><td colSpan={4} className="emptyCell">Kandidat rekonsiliasi belum tersedia.</td></tr>}
         </tbody></table></div>
         {agencyDraftDetail && <article className="probe"><div className="probeText"><b>{agencyDraftDetail.name} · {agencyDraftDetail.version_key}</b><p>License: {agencyDraftDetail.provenance.license} · Commit: <code>{agencyDraftDetail.provenance.commit.slice(0, 12)}</code></p><p>Source: <a href={agencyDraftDetail.provenance.source_url} target="_blank" rel="noreferrer">{agencyDraftDetail.provenance.path}</a></p><p>Flags otomatis: {(agencyDraftDetail.review.security_flags || []).join(", ") || "Tidak ada pola terdeteksi; ini bukan jaminan bebas risiko."}</p><p>Checksum: <code>{agencyDraftDetail.content_sha256}</code></p><details><summary>Instruksi adaptasi Allpha</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.adapted_instructions}</pre></details><details><summary>Instruksi sumber asli</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.source_instructions_markdown}</pre></details></div><button className="secondaryButton" onClick={() => setAgencyDraftDetail(null)}>Tutup</button></article>}
       </section>}
