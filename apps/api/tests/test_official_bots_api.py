@@ -395,3 +395,54 @@ def test_runtime_link_rejects_agent_identity_not_provisioned_for_roster(monkeypa
 
     assert caught.value.status_code == 409
     assert caught.value.detail["code"] == "OFFICIAL_BOT_CANONICAL_IDENTITY_REQUIRED"
+
+
+def test_published_skill_version_candidate_is_pinned_by_provenance_and_digest():
+    agent_id = str(uuid4())
+    snapshot = {
+        "id": str(uuid4()),
+        "agent_id": agent_id,
+        "version": 3,
+        "status": "published",
+        "tool_dependencies": ["text.normalize"],
+        "provenance": {"catalog_skill_key": "upstream.web-research-agent"},
+    }
+    rows = [{
+        "id": str(uuid4()),
+        "skill_id": str(uuid4()),
+        "agent_id": agent_id,
+        "version": 3,
+        "snapshot": snapshot,
+    }]
+    result = api._published_version_candidates(
+        rows, agent_id=agent_id, skill_key="upstream.web-research-agent",
+    )
+    assert len(result) == 1
+    assert result[0]["version"] == 3
+    assert len(result[0]["snapshot_digest"]) == 64
+
+
+def test_published_skill_version_candidate_rejects_draft_mismatch_and_ambiguous_skill_ids():
+    agent_id = str(uuid4())
+    base = {
+        "agent_id": agent_id,
+        "version": 2,
+        "tool_dependencies": [],
+        "provenance": {"catalog_skill_key": "upstream.web-research-agent"},
+    }
+    draft = {"id": str(uuid4()), "skill_id": str(uuid4()), "agent_id": agent_id,
+             "version": 2, "snapshot": {**base, "status": "draft"}}
+    wrong_key = {"id": str(uuid4()), "skill_id": str(uuid4()), "agent_id": agent_id,
+                 "version": 2, "snapshot": {**base, "status": "published",
+                 "provenance": {"catalog_skill_key": "another.skill"}}}
+    assert api._published_version_candidates(
+        [draft, wrong_key], agent_id=agent_id, skill_key="upstream.web-research-agent",
+    ) == []
+
+    first = {"id": str(uuid4()), "skill_id": str(uuid4()), "agent_id": agent_id,
+             "version": 2, "snapshot": {**base, "status": "published"}}
+    second = {"id": str(uuid4()), "skill_id": str(uuid4()), "agent_id": agent_id,
+              "version": 1, "snapshot": {**base, "version": 1, "status": "published"}}
+    assert api._published_version_candidates(
+        [first, second], agent_id=agent_id, skill_key="upstream.web-research-agent",
+    ) == []
