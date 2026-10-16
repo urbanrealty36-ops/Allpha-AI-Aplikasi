@@ -474,6 +474,7 @@ export default function OperationsPage() {
       <a className="brand" href="/"><span className="mark">A</span><span><b>ALLPHA</b><small>CONTROL PLANE</small></span></a>
       <p className="navLabel">OPERATIONS</p>
       <a className="nav active" href="#overview">◈ &nbsp; Overview</a>
+      <a className="nav" href="/costs">▤ &nbsp; Model cost CRUD</a>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
       {canReview && <a className="nav" href="#capability-review">◇ &nbsp; Capability review</a>}
@@ -575,7 +576,7 @@ export default function OperationsPage() {
         <footer className="panelFoot"><span>Terakhir diperiksa: {checkedAt || "—"}</span><span>Browser operator → API</span></footer>
       </section>
       <section className="notice"><b>i</b><div><strong>Security boundary aktif</strong><p>Grant pertama harus diberikan melalui kanal administrasi Supabase yang dipercaya. API menolak self-grant dan scope escalation; tindakan istimewa gagal tertutup bila audit tidak tersedia. Migration source-only belum diterapkan ke database.</p></div></section>
-      <footer className="pageFoot">Allpha Universe · ENG-P06 · Status berasal dari respons backend aktual.</footer>
+      <footer className="pageFoot">Allpha Universe · ENG-P34 · Status berasal dari respons backend aktual.</footer>
     </section>
   </main>;
 }
