@@ -102,11 +102,17 @@ def test_stop_action_fails_closed_when_runtime_kill_switch_is_unavailable(monkey
 
 
 def test_activation_never_marks_roster_active_without_runtime_dispatch(monkeypatch):
-    bot_id, agent_id, policy_id = uuid4(), uuid4(), uuid4()
+    bot_id, agent_id, policy_id, version_id, skill_id = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    snapshot = {
+        "id": str(skill_id), "agent_id": str(agent_id), "version": 1, "status": "published",
+        "tool_dependencies": [], "provenance": {"catalog_skill_key": "upstream.web-research-agent"},
+    }
     stored = {
         "id": str(bot_id), "status": "approved", "agent_id": str(agent_id),
         "runtime_policy_id": str(policy_id), "character_asset_key": "theme.asset.character",
         "asset_validation_status": "verified", "skill_key": "upstream.web-research-agent",
+        "skill_version_id": str(version_id), "skill_version_number": 1,
+        "skill_version_digest": api._skill_snapshot_digest(snapshot),
     }
     writes = []
 
@@ -114,8 +120,10 @@ def test_activation_never_marks_roster_active_without_runtime_dispatch(monkeypat
         writes.append((method, table, kwargs))
         if method == "GET" and table == "official_agent_bots":
             return [stored]
+        if method == "GET" and table == "agent_skill_versions":
+            return [{"id": str(version_id), "skill_id": str(skill_id), "agent_id": str(agent_id), "version": 1, "snapshot": snapshot}]
         if method == "GET" and table == "agent_runtime_policies":
-            return [{"id": str(policy_id), "agent_id": str(agent_id), "status": "approved"}]
+            return [{"id": str(policy_id), "agent_id": str(agent_id), "status": "approved", "approved_tool_keys": []}]
         if method == "GET" and table == "ai_agents":
             return [{"id": str(agent_id), "status": "active"}]
         raise AssertionError(f"unexpected persistence operation: {method} {table}")
@@ -337,6 +345,14 @@ def test_runtime_link_rejects_policy_tools_missing_from_canonical_tool_registry(
                 "id": str(bot_id), "status": "draft", "skill_key": skill_key,
                 "agent_id": str(agent_id), "runtime_policy_id": None,
             }]
+        if method == "GET" and table == "agent_skill_versions":
+            snapshot = {
+                "agent_id": str(agent_id), "version": 1, "status": "published",
+                "tool_dependencies": [],
+                "provenance": {"catalog_skill_key": skill_key},
+            }
+            return [{"id": str(uuid4()), "skill_id": str(uuid4()), "agent_id": str(agent_id),
+                     "version": 1, "snapshot": snapshot}]
         if method == "GET" and table == "agent_runtime_policies":
             return [{
                 "id": str(policy_id), "agent_id": str(agent_id), "status": "approved",
