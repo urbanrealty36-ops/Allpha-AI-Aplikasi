@@ -77,6 +77,7 @@ def _public_run(row: dict[str, Any]) -> dict[str, Any]:
             "challenge_key", "evaluation_set_version", "evaluation_set_digest",
             "rubric_key", "rubric_version", "rubric_digest", "evaluator_version",
             "challenge_input", "status", "evaluation_result", "evidence_digest", "repeated_submission",
+            "runtime_output", "runtime_evidence", "runtime_evidence_digest", "runtime_executed_at",
             "submitted_at", "completed_at", "created_at", "updated_at",
         )
     }
@@ -316,9 +317,24 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
         if (rubric.digest() != row["rubric_digest"] or rubric.rubric_key != row["rubric_key"]
                 or rubric.version != int(row["rubric_version"]) or row["evaluator_version"] != EVALUATOR_VERSION):
             raise HTTPException(status_code=409, detail={"code": "CHALLENGE_RUBRIC_DIGEST_MISMATCH", "message": "Versi atau digest rubrik/evaluator tidak cocok."})
-        # The system derives task_success from the pinned expected output; the client cannot submit scores/signals.
+        # A server-generated output is pinned to Model Router evidence. Candidate submissions
+        # remain useful for feedback but cannot award achievements or imply runtime acceptance.
+        runtime_evidence = row.get("runtime_evidence")
+        runtime_output = row.get("runtime_output")
+        if runtime_evidence is not None:
+            if not isinstance(runtime_evidence, dict) or not isinstance(runtime_output, dict):
+                raise HTTPException(status_code=409, detail={"code": "RUNTIME_EVIDENCE_INVALID", "message": "Bukti eksekusi runtime tidak valid."})
+            if _digest(runtime_evidence) != row.get("runtime_evidence_digest") or _canonical(runtime_output) != _canonical(submission):
+                raise HTTPException(status_code=409, detail={"code": "RUNTIME_OUTPUT_EVIDENCE_MISMATCH", "message": "Output tidak cocok dengan bukti eksekusi server."})
         task_success = 1.0 if _canonical(submission) == _canonical(row["expected_output"]) else 0.0
         signals = {"task_success": CriterionSignal(score=task_success, evaluator_source="system")}
+        if isinstance(runtime_evidence, dict):
+            latency, latency_budget = runtime_evidence.get("latency_ms"), runtime_evidence.get("latency_budget_ms")
+            cost, cost_budget = runtime_evidence.get("cost_microunits"), runtime_evidence.get("cost_budget_microunits")
+            if isinstance(latency, int) and isinstance(latency_budget, int) and latency_budget > 0:
+                signals["latency_budget"] = CriterionSignal(score=1.0 if latency <= latency_budget else 0.0, evaluator_source="system")
+            if isinstance(cost, int) and isinstance(cost_budget, int) and cost_budget >= 0:
+                signals["cost_budget"] = CriterionSignal(score=1.0 if cost <= cost_budget else 0.0, evaluator_source="system")
         result = evaluate_submission(rubric, signals)
         repeat_since = (_now() - timedelta(seconds=REPEATED_SUBMISSION_WINDOW_SECONDS)).isoformat()
         repeat_rows = await store.request("GET", "agent_skill_challenge_runs", params={
@@ -333,6 +349,7 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
             "skill_snapshot_digest": _digest(row["skill_snapshot"]),
             "evaluation_set_digest": row["evaluation_set_digest"], "rubric_digest": row["rubric_digest"],
             "submission_fingerprint": fingerprint,
+            "runtime_evidence_digest": row.get("runtime_evidence_digest"),
             "expected_output_digest": _digest(row["expected_output"]), "evaluation": result.model_dump(mode="json"),
         }
         evidence_digest = _digest(evidence)
@@ -366,10 +383,14 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
             final_rows = [latest]
         final = final_rows[0]
         achievement = None
-        if final_status == "passed" and not repeated_submission:
+        if final_status == "passed" and not repeated_submission and isinstance(runtime_evidence, dict):
             achievement = await _award_evidence(store, owner_id, str(run_id), evidence_digest)
+        achievement_blocked_reason = (
+            "repeated_submission_signal" if repeated_submission else
+            "runtime_execution_required" if final_status == "passed" and not isinstance(runtime_evidence, dict) else None
+        )
         return {"run": _public_run(final), "idempotent_replay": False, "achievement": achievement,
-                "achievement_blocked_reason": "repeated_submission_signal" if repeated_submission else None,
+                "achievement_blocked_reason": achievement_blocked_reason,
                 "reward": {"status": "not_issued", "reason": "approved_reward_policy_required"}}
     except HTTPException:
         raise
