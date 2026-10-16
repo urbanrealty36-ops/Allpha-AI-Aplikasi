@@ -40,7 +40,7 @@ def test_step_claim_uses_lease_fencing_and_dependency_success():
     assert "for update of s skip locked" in MIGRATION
     assert "s.lease_expires_at < now()" in MIGRATION
     assert "where parent.status <> 'succeeded'" in MIGRATION
-    assert "s.lease_token is distinct from p_lease_token" in MIGRATION
+    assert "step_row.lease_token is distinct from p_lease_token" in MIGRATION
     assert "step_row.lease_expires_at <= now()" in MIGRATION
 
 
