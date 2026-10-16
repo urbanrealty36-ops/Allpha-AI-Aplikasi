@@ -24,7 +24,7 @@ type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; tit
 type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[] };
 type RuntimeTool = { key: string; name: string; description: string; executable: boolean };
 type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
-type CatalogSkill = { key: string; slug: string; name: string; category: string; category_label: string; description: string; executable: boolean; execution_status: string; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
+type CatalogSkill = { key: string; slug: string; name: string; category: string; category_label: string; description: string; executable: boolean; execution_status: string; catalog_version?: string; source?: { kind?: string; repository?: string; source_url?: string }; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
 type SkillCatalogResponse = { items: CatalogSkill[]; total: number; categories: { key: string; label: string; count: number }[]; catalog_version: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -73,13 +73,19 @@ export default function AgentsPage() {
     let active = true;
     void (async () => {
       try {
-        const pages = await Promise.all([0, 100, 200, 300, 400].map(offset => fetch(apiBase + "/v1/skill-catalog?limit=100&offset=" + offset, { cache: "no-store" }).then(async response => {
-          if (!response.ok) throw new Error(await responseError(response));
-          return await response.json() as SkillCatalogResponse;
-        })));
+        const [pages, agencyPages] = await Promise.all([
+          Promise.all([0, 100, 200, 300, 400].map(offset => fetch(apiBase + "/v1/skill-catalog?limit=100&offset=" + offset, { cache: "no-store" }).then(async response => {
+            if (!response.ok) throw new Error(await responseError(response));
+            return await response.json() as SkillCatalogResponse;
+          }))),
+          Promise.all([0, 100, 200].map(offset => fetch(apiBase + "/v1/skill-catalog/agency-agents?limit=100&offset=" + offset, { cache: "no-store" }).then(async response => {
+            if (!response.ok) throw new Error(await responseError(response));
+            return await response.json() as SkillCatalogResponse;
+          }))),
+        ]);
         if (!active) return;
-        setCatalogSkills(pages.flatMap(page => page.items ?? []));
-        setCatalogCategories(pages[0]?.categories ?? []);
+        setCatalogSkills([...pages.flatMap(page => page.items ?? []), ...agencyPages.flatMap(page => page.items ?? [])]);
+        setCatalogCategories([...(pages[0]?.categories ?? []), ...(agencyPages[0]?.categories ?? [])]);
       } catch (cause) {
         if (active) setCatalogError(cause instanceof Error ? cause.message : "Katalog Skill tidak dapat dimuat.");
       } finally { if (active) setCatalogLoading(false); }
@@ -146,7 +152,7 @@ export default function AgentsPage() {
       }
       const selectedSkill = catalogSkills.find(item => item.key === selectedCatalogSkill);
       if (!selectedSkill) throw new Error("Pilih satu Skill dari katalog Allpha sebelum membuat Agent.");
-      persona = { ...persona, allpha_skill_key: selectedSkill.key, allpha_skill_catalog_version: "allpha-skill-catalog-v1", character_profile: selectedSkill.character_profile };
+      persona = { ...persona, allpha_skill_key: selectedSkill.key, allpha_skill_catalog_version: selectedSkill.catalog_version ?? "allpha-skill-catalog-v1", allpha_skill_source: selectedSkill.source?.kind === "agency_agent_definition_metadata" ? "agency-agents" : "allpha-500", character_profile: selectedSkill.character_profile };
       const response = await fetch(apiBase + "/v1/agents", {
         method: "POST",
         headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
@@ -293,7 +299,7 @@ export default function AgentsPage() {
           <label>Bidang<select value={catalogCategory} onChange={event => setCatalogCategory(event.target.value)}><option value="">Semua bidang ({catalogSkills.length})</option>{catalogCategories.map(item => <option key={item.key} value={item.key}>{item.label} ({item.count})</option>)}</select></label>
           <label>Skill AI Agent<select required value={selectedCatalogSkill} onChange={event => setSelectedCatalogSkill(event.target.value)} disabled={catalogLoading || Boolean(catalogError)}><option value="">{catalogLoading ? "Memuat katalog…" : "Pilih satu Skill"}</option>{catalogSkills.filter(item => (!catalogCategory || item.category === catalogCategory) && (!catalogQuery || (item.name + " " + item.description + " " + item.key).toLowerCase().includes(catalogQuery.toLowerCase()))).map(item => <option key={item.key} value={item.key}>{item.name}</option>)}</select></label>
           {catalogError && <p role="alert" className="form-error">Katalog tidak tersedia: {catalogError}</p>}
-          {(() => { const selected = catalogSkills.find(item => item.key === selectedCatalogSkill); return selected ? <div className="detail-line"><span><strong>{selected.category_label}</strong><small>{selected.description}</small></span><strong>Role 3D: {selected.character_profile.display_role}</strong></div> : <p className="muted">Pilih Skill untuk melihat bidang dan role karakter yang disarankan.</p>; })()}
+          {(() => { const selected = catalogSkills.find(item => item.key === selectedCatalogSkill); return selected ? <div className="detail-line"><span><strong>{selected.category_label}</strong><small>{selected.description}</small></span><strong>Role AI Character: {selected.character_profile.display_role}</strong></div> : <p className="muted">Pilih Skill untuk melihat bidang dan role karakter yang disarankan.</p>; })()}
           <small className="agent-footnote">Profil role dipilih; asset GLB belum otomatis tersedia. Karakter harus dipetakan ke katalog asset 3D kanonis sebelum dirender.</small>
         </section>
         <label>Persona (JSON)<textarea value={personaText} onChange={(e) => setPersonaText(e.target.value)} rows={4} spellCheck={false} required /></label>

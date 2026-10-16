@@ -19,7 +19,7 @@ from allpha_api.operator_security import (
     require_operator_scope,
     write_operator_audit,
 )
-from allpha_api.skill_catalog import SKILL_CATALOG, SKILL_CATALOG_BY_KEY
+from allpha_api.catalog_registry import get_skill_catalog_item, get_skill_catalog_items
 from allpha_api.tool_registry import UnknownToolError, get_tool
 
 router = APIRouter(prefix="/v1/admin/official-bots", tags=["official-agent-bots"])
@@ -35,6 +35,7 @@ _FIELDS = (
 class ProvisionPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
     limit: int = Field(default=500, ge=1, le=500)
+    catalog_source: Literal["allpha-500", "agency-agents"] = "allpha-500"
 
 
 class BotActionPayload(BaseModel):
@@ -83,10 +84,11 @@ async def provision_official_bot_roster(
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="official_bots.roster.provision.request",
         outcome="allowed", resource_type="official_agent_bot_roster",
-        metadata={"requested_count": payload.limit, "catalog_version": "allpha-skill-catalog-v1"},
+        metadata={"requested_count": payload.limit, "catalog_source": payload.catalog_source, "catalog_version": get_skill_catalog_items(payload.catalog_source)[1]},
     )
+    catalog_items, catalog_version = get_skill_catalog_items(payload.catalog_source)
     candidates = []
-    for skill in SKILL_CATALOG[:payload.limit]:
+    for skill in catalog_items[:payload.limit]:
         profile = skill["character_profile"]
         candidates.append({
             "skill_key": skill["key"],
@@ -104,7 +106,8 @@ async def provision_official_bot_roster(
             "created_by": operator["id"],
             "last_action": "roster_provisioned",
             "metadata": {
-                "catalog_version": "allpha-skill-catalog-v1",
+                "catalog_version": catalog_version,
+                "catalog_source": payload.catalog_source,
                 "catalog_execution_status": skill["execution_status"],
                 "source_repository": skill["source"]["repository"],
                 "source_kind": skill["source"]["kind"],
@@ -124,12 +127,14 @@ async def provision_official_bot_roster(
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="official_bots.roster.provision.complete",
         outcome="allowed", resource_type="official_agent_bot_roster",
-        metadata={"catalog_count": len(SKILL_CATALOG), "roster_count_observed": len(rows)},
+        metadata={"catalog_count": len(catalog_items), "catalog_source": payload.catalog_source, "catalog_version": catalog_version, "roster_count_observed": len(rows)},
     )
     return {
         "requested": payload.limit,
         "roster_count_observed": len(rows),
-        "catalog_count": len(SKILL_CATALOG),
+        "catalog_count": len(catalog_items),
+        "catalog_source": payload.catalog_source,
+        "catalog_version": catalog_version,
         "created_or_existing": len(rows),
         "runtime_activation": "not_performed",
         "message": "Roster kandidat disiapkan; belum membuat Agent identity atau menjalankan bot.",
@@ -225,7 +230,7 @@ async def link_official_bot_runtime(
 
     # A roster blueprint is not an executable Skill. Never promote catalog metadata
     # into runtime authority without a canonical published implementation/version.
-    catalog_skill = SKILL_CATALOG_BY_KEY.get(bot["skill_key"])
+    catalog_skill = get_skill_catalog_item(bot["skill_key"])
     if not catalog_skill:
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_SKILL_UNKNOWN", "message": "Skill key tidak ada di katalog kanonis."})
     if not catalog_skill.get("executable") or catalog_skill.get("execution_status") != "implemented":

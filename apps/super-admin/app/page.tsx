@@ -161,6 +161,7 @@ export default function OperationsPage() {
   const [officialBotsTotal, setOfficialBotsTotal] = useState(0);
   const [officialBotsOffset, setOfficialBotsOffset] = useState(0);
   const [officialBotsBusy, setOfficialBotsBusy] = useState(false);
+  const [officialBotCatalogSource, setOfficialBotCatalogSource] = useState<"allpha-500" | "agency-agents">("allpha-500");
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [targetUser, setTargetUser] = useState("");
   const [selectedScopes, setSelectedScopes] = useState<OperatorScope[]>([]);
@@ -285,12 +286,13 @@ export default function OperationsPage() {
 
   async function provisionOfficialBots() {
     if (!session || !canReview) return;
-    if (!window.confirm("Siapkan hingga 500 kandidat Official Bot dari katalog Skill? Ini membuat roster draft saja; tidak mengaktifkan runtime.")) return;
+    const sourceLabel = officialBotCatalogSource === "agency-agents" ? "Agency Agents (metadata-only)" : "Allpha 500 blueprint";
+    if (!window.confirm("Siapkan kandidat Official Bot dari sumber " + sourceLabel + "? Ini membuat roster draft saja; tidak mengaktifkan runtime atau memverifikasi aset GLB.")) return;
     setOfficialBotsBusy(true); setError(""); setNotice("");
     try {
-      const response = await adminFetch("/v1/admin/official-bots/provision", session, setSession, { method: "POST", body: JSON.stringify({ limit: 500 }) });
+      const response = await adminFetch("/v1/admin/official-bots/provision", session, setSession, { method: "POST", body: JSON.stringify({ limit: 500, catalog_source: officialBotCatalogSource }) });
       const body = await responseBody<{ roster_count_observed: number; catalog_count: number; message: string }>(response);
-      setNotice(body.message + " Katalog: " + body.catalog_count + "; roster teramati: " + body.roster_count_observed + ".");
+      setNotice(body.message + " Sumber: " + officialBotCatalogSource + "; katalog: " + body.catalog_count + "; roster teramati: " + body.roster_count_observed + ".");
       setOfficialBotsOffset(0);
       await refreshOfficialBots(session, 0);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Provision roster gagal."); }
@@ -488,8 +490,8 @@ export default function OperationsPage() {
       </section>}
       {session && operator?.scopes.includes("platform:operations.read") && <section className="panel" id="official-bots">
         <header className="panelHead"><div><h2>Official Allpha AI Agents</h2><p>Roster kandidat dari katalog 500 Skills. Identitas, runtime, policy, dan GLB harus ditautkan dan diverifikasi sebelum aktivasi.</p></div><span className="pill warning">SUPERVISED</span></header>
-        <div className="panelActions">{canReview && <button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan 500 kandidat</button>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster: {officialBotsTotal} · Halaman {Math.floor(officialBotsOffset / 50) + 1}</span><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, Math.max(0, officialBotsOffset - 50))} disabled={officialBotsBusy || officialBotsOffset === 0}>Sebelumnya</button><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, officialBotsOffset + 50)} disabled={officialBotsBusy || officialBotsOffset + officialBots.length >= officialBotsTotal}>Berikutnya</button></div>
-        <p className="muted">Provisioning hanya membuat roster draft, bukan 500 Agent identity aktif. Aktivasi ditolak backend sampai Agent identity kanonis, policy runtime approved, dan asset GLB terverifikasi tersedia. Aksi lifecycle diaudit.</p>
+        <div className="panelActions">{canReview && <><label className="muted">Sumber katalog <select value={officialBotCatalogSource} onChange={event => setOfficialBotCatalogSource(event.target.value as "allpha-500" | "agency-agents")} disabled={officialBotsBusy}><option value="allpha-500">Allpha · 500 blueprint</option><option value="agency-agents">Agency Agents · metadata-only</option></select></label><button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan kandidat</button></>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster: {officialBotsTotal} · Halaman {Math.floor(officialBotsOffset / 50) + 1}</span><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, Math.max(0, officialBotsOffset - 50))} disabled={officialBotsBusy || officialBotsOffset === 0}>Sebelumnya</button><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, officialBotsOffset + 50)} disabled={officialBotsBusy || officialBotsOffset + officialBots.length >= officialBotsTotal}>Berikutnya</button></div>
+        <p className="muted">Provisioning hanya membuat roster draft dari sumber katalog yang dipilih, bukan Agent identity aktif. Aktivasi ditolak backend sampai Agent identity kanonis, policy runtime approved, dan asset GLB terverifikasi tersedia. Aksi lifecycle diaudit.</p>
         <div className="officialBotList">{officialBots.map(bot => <article className="probe officialBot" key={bot.id}>
           <div className="probeText"><b>{bot.display_name}</b><code>{bot.skill_key} · {bot.category_label}</code><p>{bot.skill_description}</p><small>Karakter: {bot.character_archetype_key} · Asset: {bot.character_asset_key || "belum ditautkan"} ({bot.asset_validation_status})</small><small>Agent: {bot.agent_id || "belum ditautkan"} · Policy: {bot.runtime_policy_id || "belum ditautkan"}</small></div>
           <span className={"pill " + (bot.status === "active" ? "online" : "warning")}>{bot.status.toUpperCase()}</span>

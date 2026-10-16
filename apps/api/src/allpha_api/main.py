@@ -24,7 +24,9 @@ from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_t
 from allpha_api.operator_security import router as operator_security_router
 from allpha_api.knowledge import router as knowledge_router
 from allpha_api.knowledge_retrieval import router as knowledge_retrieval_router
-from allpha_api.skill_catalog import SKILL_CATALOG_BY_KEY, search_skill_catalog
+from allpha_api.skill_catalog import search_skill_catalog
+from allpha_api.agency_skill_catalog import search_agency_skill_catalog
+from allpha_api.catalog_registry import get_skill_catalog_item, get_skill_catalog_source, get_skill_catalog_version
 from allpha_api.official_bots_api import router as official_bots_router
 
 APP_NAME = "allpha-api"
@@ -182,6 +184,18 @@ async def get_skill_catalog(
     if limit < 1 or limit > 100 or offset < 0 or offset > 100_000:
         raise HTTPException(status_code=422, detail={"code": "SKILL_CATALOG_PAGINATION_INVALID", "message": "Batas pagination katalog tidak valid."})
     return search_skill_catalog(q=q, category=category, limit=limit, offset=offset)
+
+
+@app.get("/v1/skill-catalog/agency-agents", tags=["agent-identity"])
+async def get_agency_skill_catalog(
+    q: str = "", category: str = "", limit: int = 50, offset: int = 0,
+) -> dict[str, Any]:
+    """Return pinned Agency Agent metadata; imported definitions are not executable."""
+    if len(q) > 120 or len(category) > 80:
+        raise HTTPException(status_code=422, detail={"code": "AGENCY_SKILL_CATALOG_QUERY_INVALID", "message": "Filter katalog Agency terlalu panjang."})
+    if limit < 1 or limit > 100 or offset < 0 or offset > 100_000:
+        raise HTTPException(status_code=422, detail={"code": "AGENCY_SKILL_CATALOG_PAGINATION_INVALID", "message": "Batas pagination katalog Agency tidak valid."})
+    return search_agency_skill_catalog(q=q, category=category, limit=limit, offset=offset)
 
 
 @app.get("/v1/credits/balance", tags=["credits"])
@@ -578,11 +592,18 @@ def _validate_catalog_skill_selection(persona: dict[str, Any] | None) -> None:
     if not persona or "allpha_skill_key" not in persona:
         return
     key = persona.get("allpha_skill_key")
-    if not isinstance(key, str) or key not in SKILL_CATALOG_BY_KEY:
+    if not isinstance(key, str):
         raise HTTPException(status_code=422, detail={"code": "AGENT_SKILL_CATALOG_KEY_INVALID", "message": "Skill yang dipilih tidak terdapat pada katalog Allpha."})
-    if persona.get("allpha_skill_catalog_version") != "allpha-skill-catalog-v1":
+    catalog_item = get_skill_catalog_item(key)
+    expected_source = get_skill_catalog_source(key)
+    if catalog_item is None or expected_source is None:
+        raise HTTPException(status_code=422, detail={"code": "AGENT_SKILL_CATALOG_KEY_INVALID", "message": "Skill yang dipilih tidak terdapat pada katalog Allpha."})
+    if persona.get("allpha_skill_catalog_version") != get_skill_catalog_version(key):
         raise HTTPException(status_code=422, detail={"code": "AGENT_SKILL_CATALOG_VERSION_INVALID", "message": "Versi katalog Skill tidak cocok; muat ulang katalog."})
-    expected_profile = SKILL_CATALOG_BY_KEY[key]["character_profile"]
+    declared_source = persona.get("allpha_skill_source")
+    if (expected_source == "agency-agents" and declared_source != expected_source) or (declared_source is not None and declared_source != expected_source):
+        raise HTTPException(status_code=422, detail={"code": "AGENT_SKILL_CATALOG_SOURCE_INVALID", "message": "Sumber katalog Skill tidak cocok dengan key yang dipilih."})
+    expected_profile = catalog_item["character_profile"]
     if persona.get("character_profile") != expected_profile:
         raise HTTPException(status_code=422, detail={"code": "AGENT_CHARACTER_PROFILE_MISMATCH", "message": "Profil karakter harus sesuai dengan Skill yang dipilih."})
 

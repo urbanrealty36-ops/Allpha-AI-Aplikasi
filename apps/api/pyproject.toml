@@ -30,3 +30,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.setuptools.package-data]
+allpha_api = ["agency_agents_catalog.json"]
