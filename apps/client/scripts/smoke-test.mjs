@@ -53,3 +53,8 @@ const challengeContracts = [
   "challengeSubmission", "evidence_digest", "Reward finansial/AI Credits tidak diterbitkan"
 ];
 for (const contract of challengeContracts) assert.ok(app.includes(contract), `missing ENG-P12 Native Skill Challenge contract: ${contract}`);
+
+for (const contract of [
+  "/v1/skill-catalog?limit=100&offset=", "allpha_skill_key", "allpha_skill_catalog_version",
+  "character_profile", "PILIH BIDANG & SKILL AI AGENT", "Pilih satu Skill dari katalog Allpha"
+]) assert.ok(app.includes(contract), `missing Native Agent Identity Skill catalog contract: ${contract}`);
