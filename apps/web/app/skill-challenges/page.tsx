@@ -6,7 +6,7 @@ import Link from "next/link";
 import { getBrowserSupabase } from "../../lib/supabase";
 
 type Agent = { id: string; display_name?: string | null; handle?: string | null; version?: number; status: string };
-type Skill = { id: string; agent_id: string; name: string; slug: string; version: number; status: string; tests?: Array<Record<string, unknown>>; evaluation_rubric?: Record<string, unknown> };
+type Skill = { id: string; agent_id: string; name: string; slug: string; version: number; status: string; tests?: Array<Record<string, unknown>>; evaluation_rubric_available?: boolean };
 type Run = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; evaluation_set_version: number; rubric_version: number; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; created_at: string; completed_at?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -81,7 +81,7 @@ export default function SkillChallengesPage() {
     if (!session || !agentId) { setSkills([]); setSkillId(""); return; }
     let active = true;
     setError("");
-    void request(`/v1/agents/${agentId}/skills`)
+    void request(`/v1/skill-challenges/catalog?agent_id=${encodeURIComponent(agentId)}`)
       .then(result => {
         if (!active) return;
         const next = Array.isArray(result?.items) ? result.items : [];
@@ -143,7 +143,7 @@ export default function SkillChallengesPage() {
           <label>Skill<select value={skillId} onChange={event => setSkillId(event.target.value)} required><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version} · {skill.status}</option>)}</select></label>
           <label>Test case<select value={testKey} onChange={event => setTestKey(event.target.value)} required><option value="">Pilih test case</option>{availableTests.map(item => <option key={String(item.key)} value={String(item.key)}>{String(item.key)}</option>)}</select></label>
           {currentTest && <div className="challenge-input"><strong>Input challenge</strong><pre>{jsonText(currentTest.input ?? currentTest.inputs)}</pre></div>}
-          {selectedSkill && !selectedSkill.evaluation_rubric && <p className="notice notice-warning">Skill ini belum memiliki rubrik evaluasi.</p>}
+          {selectedSkill && !selectedSkill.evaluation_rubric_available && <p className="notice notice-warning">Skill ini belum memiliki rubrik evaluasi.</p>}
           {selectedSkill && availableTests.length === 0 && <p className="notice notice-warning">Skill ini belum memiliki test case dengan key, input, dan expected output object.</p>}
           <button className="button button-primary" disabled={busy || loading || !agentId || !skillId || !testKey || !availableTests.length}>Terbitkan challenge</button>
         </form>
