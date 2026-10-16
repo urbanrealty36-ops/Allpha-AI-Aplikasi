@@ -93,6 +93,8 @@ async def _owned_agent_and_skill(store: AgentRuntimeStore, owner_id: str, agent_
     })
     if not rows or rows[0].get("status") == "archived":
         raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    if rows[0].get("status") != "published":
+        raise HTTPException(status_code=409, detail={"code": "SKILL_NOT_PUBLISHED", "message": "Challenge runtime hanya tersedia untuk Skill versi terpublikasi."})
     agent_rows = await store.request("GET", "ai_agents", params={
         "select": "id,version,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at",
         "id": f"eq.{agent_id}", "limit": "1",
