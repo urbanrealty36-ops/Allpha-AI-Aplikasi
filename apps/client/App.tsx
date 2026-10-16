@@ -621,7 +621,7 @@ function Profile({ session }: { session: Session }) {
         </>}
       </> : tab === "challenges" ? <>
         <Text style={s.kicker}>ENG-P12 · SKILL CHALLENGE</Text><Text style={s.title}>Evaluasi versi Skill</Text>
-        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien.</Text>
+        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien. Pada slice ini pengguna mengirim output kandidat; eksekusi Skill/Agent otomatis belum diaktifkan.</Text>
         <Text style={s.muted}>Agent</Text>
         {agents.map(agent => <Button key={agent.id} title={(challengeAgentId === agent.id ? "✓ " : "") + agent.display_name + " · " + agent.handle} secondary={challengeAgentId !== agent.id} onPress={() => void loadChallengeCatalog(agent.id)}/>)}
         <Text style={s.muted}>Skill</Text>
