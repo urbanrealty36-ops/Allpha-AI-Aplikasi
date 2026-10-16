@@ -24,7 +24,7 @@ from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_t
 from allpha_api.operator_security import router as operator_security_router
 from allpha_api.knowledge import router as knowledge_router
 from allpha_api.knowledge_retrieval import router as knowledge_retrieval_router
-from allpha_api.skill_catalog import search_skill_catalog
+from allpha_api.skill_catalog import SKILL_CATALOG_BY_KEY, search_skill_catalog
 from allpha_api.official_bots_api import router as official_bots_router
 
 APP_NAME = "allpha-api"
@@ -573,6 +573,20 @@ _AGENT_CONFIG_MAX_DEPTH = 8
 _AGENT_CONFIG_MAX_NODES = 256
 
 
+def _validate_catalog_skill_selection(persona: dict[str, Any] | None) -> None:
+    """Validate selected catalog metadata without treating it as runtime authority."""
+    if not persona or "allpha_skill_key" not in persona:
+        return
+    key = persona.get("allpha_skill_key")
+    if not isinstance(key, str) or key not in SKILL_CATALOG_BY_KEY:
+        raise HTTPException(status_code=422, detail={"code": "AGENT_SKILL_CATALOG_KEY_INVALID", "message": "Skill yang dipilih tidak terdapat pada katalog Allpha."})
+    if persona.get("allpha_skill_catalog_version") != "allpha-skill-catalog-v1":
+        raise HTTPException(status_code=422, detail={"code": "AGENT_SKILL_CATALOG_VERSION_INVALID", "message": "Versi katalog Skill tidak cocok; muat ulang katalog."})
+    expected_profile = SKILL_CATALOG_BY_KEY[key]["character_profile"]
+    if persona.get("character_profile") != expected_profile:
+        raise HTTPException(status_code=422, detail={"code": "AGENT_CHARACTER_PROFILE_MISMATCH", "message": "Profil karakter harus sesuai dengan Skill yang dipilih."})
+
+
 def _validate_agent_config(value: dict[str, Any] | None) -> dict[str, Any] | None:
     """Bound user-authored JSON configuration before storing it in Postgres."""
     if value is None:
@@ -673,6 +687,7 @@ async def list_my_agents(request: Request, user: dict[str, Any] = Depends(curren
 @app.post("/v1/agents", status_code=201, tags=["agents"])
 async def create_my_agent(payload: AgentCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     # RPC derives the owner from auth.uid() and creates Agent + ownership atomically.
+    _validate_catalog_skill_selection(payload.persona)
     result = await user_db_request(
         "POST", "rpc/create_ai_agent", request.state.supabase_access_token,
         body={
@@ -691,6 +706,8 @@ async def create_my_agent(payload: AgentCreate, request: Request, user: dict[str
 @app.patch("/v1/agents/{agent_id}", tags=["agents"])
 async def update_my_agent(agent_id: uuid.UUID, payload: AgentUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if "persona" in changes:
+        _validate_catalog_skill_selection(changes["persona"])
     if not changes:
         raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan Agent."})
     token = request.state.supabase_access_token
