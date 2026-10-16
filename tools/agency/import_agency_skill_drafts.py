@@ -144,40 +144,55 @@ def _fetch_record(item: dict[str, Any]) -> dict[str, Any]:
 def _tokens(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-z0-9]+", value.casefold()) if len(token) > 2}
 
-def _similarity(left: dict[str, Any], right: dict[str, Any]) -> float:
+def _comparison(left: dict[str, Any], right: dict[str, Any]) -> tuple[float, list[str], list[str], list[str]]:
     left_text = " ".join(str(left.get(k, "")) for k in ("name", "description", "category", "category_label"))
     right_text = " ".join(str(right.get(k, "")) for k in ("name", "description", "category", "category_label"))
     a, b = _tokens(left_text), _tokens(right_text)
-    return len(a & b) / len(a | b) if a and b else 0.0
+    shared, agency_only, allpha_only = sorted(a & b), sorted(a - b), sorted(b - a)
+    score = len(shared) / len(a | b) if a and b else 0.0
+    return score, shared, agency_only, allpha_only
 
 def build_reconciliation(agency_items: list[dict[str, Any]], allpha_items: list[dict[str, Any]]) -> dict[str, Any]:
     rows = []
     for agency in agency_items:
-        ranked = sorted(
-            ((round(_similarity(agency, candidate), 6), candidate) for candidate in allpha_items),
-            key=lambda pair: (-pair[0], str(pair[1].get("key", ""))),
-        )
+        ranked = []
+        for candidate in allpha_items:
+            score, shared, agency_only, allpha_only = _comparison(agency, candidate)
+            ranked.append((round(score, 6), candidate, shared, agency_only, allpha_only))
+        ranked.sort(key=lambda pair: (-pair[0], str(pair[1].get("key", ""))))
         candidates = [
             {
                 "allpha_source_id": candidate["key"],
                 "allpha_name": candidate.get("name"),
                 "allpha_category": candidate.get("category"),
                 "similarity": score,
+                "shared_terms": shared[:20],
+                "agency_only_terms": agency_only[:20],
+                "allpha_only_terms": allpha_only[:20],
+                "difference_summary": (
+                    "Agency-specific terms: " + (", ".join(agency_only[:8]) or "none") +
+                    "; Allpha-specific terms: " + (", ".join(allpha_only[:8]) or "none")
+                ),
                 "match_basis": "name_description_category_token_jaccard",
                 "merge_decision": "none",
                 "review_status": "candidate_only",
             }
-            for score, candidate in ranked[:3] if score > 0
+            for score, candidate, shared, agency_only, allpha_only in ranked[:3] if score > 0
         ]
+        best_score = candidates[0]["similarity"] if candidates else 0.0
         rows.append({
             "agency_source_id": agency["key"],
             "agency_name": agency.get("name"),
+            "agency_description": agency.get("description"),
+            "agency_category": agency.get("category"),
             "agency_source_path": agency["source"]["path"],
             "agency_source_commit": SOURCE_COMMIT,
+            "candidate_strength": "strong_candidate" if best_score >= 0.25 else "weak_candidate" if best_score > 0 else "no_textual_overlap",
             "candidates": candidates,
             "canonical_identity_merge": False,
             "human_reconciliation": "pending",
         })
+    strengths = [row["candidate_strength"] for row in rows]
     return {
         "schema_version": "allpha.catalog-reconciliation.v1",
         "generated_by": "tools/agency/import_agency_skill_drafts.py",
@@ -186,6 +201,9 @@ def build_reconciliation(agency_items: list[dict[str, Any]], allpha_items: list[
         "agency_count": len(agency_items),
         "allpha_blueprint_count": len(allpha_items),
         "candidate_count": sum(len(row["candidates"]) for row in rows),
+        "strong_candidate_count": strengths.count("strong_candidate"),
+        "weak_candidate_count": strengths.count("weak_candidate"),
+        "no_textual_overlap_count": strengths.count("no_textual_overlap"),
         "matching_method": "transparent token Jaccard over name, description, and category; heuristic only",
         "merge_policy": "Never merge source IDs automatically. Every candidate is advisory and requires evidence-backed review.",
         "items": rows,
