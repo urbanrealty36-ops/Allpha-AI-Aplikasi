@@ -32,4 +32,4 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.setuptools.package-data]
-allpha_api = ["agency_agents_catalog.json"]
+allpha_api = ["agency_agents_catalog.json", "agency_skill_drafts/*.json", "agency_skill_reconciliation_candidates.json"]
