@@ -23,7 +23,7 @@ def test_runnable_run_scan_is_bounded_and_only_selects_poll_fields():
     rows = asyncio.run(store.list_runnable_runs(limit=250))
 
     assert rows[0]["id"] == "run-1"
-    assert observed["url"].endswith("/rest/v1/workflow_runs")
+    assert httpx.URL(observed["url"]).path == "/rest/v1/workflow_runs"
     assert observed["params"]["select"] == "id,owner_user_id,status,updated_at"
     assert observed["params"]["status"] == "in.(queued,running)"
     assert observed["params"]["order"] == "updated_at.asc"
