@@ -26,6 +26,9 @@ from allpha_api.evaluation_engine import (
 router = APIRouter(prefix="/v1/skill-challenges", tags=["skill-challenges"])
 MAX_JSON_BYTES = 32_768
 NONCE_TTL_SECONDS = 900
+CHALLENGE_ISSUE_LIMIT_PER_MINUTE = 10
+REPEATED_SUBMISSION_WINDOW_SECONDS = 600
+REPEATED_SUBMISSION_FLAG_THRESHOLD = 3
 
 
 class ChallengeIssue(BaseModel):
@@ -72,7 +75,7 @@ def _public_run(row: dict[str, Any]) -> dict[str, Any]:
             "id", "agent_id", "skill_id", "agent_version", "skill_version",
             "challenge_key", "evaluation_set_version", "evaluation_set_digest",
             "rubric_key", "rubric_version", "rubric_digest", "evaluator_version",
-            "challenge_input", "status", "evaluation_result", "evidence_digest",
+            "challenge_input", "status", "evaluation_result", "evidence_digest", "repeated_submission",
             "submitted_at", "completed_at", "created_at", "updated_at",
         )
     }
@@ -163,6 +166,12 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
                 raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
             return {"run": _public_run(row), "idempotent_replay": True}
 
+        rate_since = (_now() - timedelta(seconds=60)).isoformat()
+        recent_issues = await store.request("GET", "agent_skill_challenge_runs", params={
+            "select": "id", "owner_user_id": f"eq.{owner_id}", "created_at": f"gte.{rate_since}", "limit": str(CHALLENGE_ISSUE_LIMIT_PER_MINUTE),
+        })
+        if len(recent_issues or []) >= CHALLENGE_ISSUE_LIMIT_PER_MINUTE:
+            raise HTTPException(status_code=429, detail={"code": "CHALLENGE_RATE_LIMITED", "message": "Batas penerbitan challenge per menit tercapai. Coba lagi setelah jeda."})
         agent, skill = await _owned_agent_and_skill(store, owner_id, str(payload.agent_id), str(payload.skill_id))
         version_rows = await store.request("GET", "agent_skill_versions", params={
             "select": "id,skill_id,agent_id,version,snapshot,created_at",
@@ -257,8 +266,16 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
         task_success = 1.0 if _canonical(submission) == _canonical(row["expected_output"]) else 0.0
         signals = {"task_success": CriterionSignal(score=task_success, evaluator_source="system")}
         result = evaluate_submission(rubric, signals)
+        repeat_since = (_now() - timedelta(seconds=REPEATED_SUBMISSION_WINDOW_SECONDS)).isoformat()
+        repeat_rows = await store.request("GET", "agent_skill_challenge_runs", params={
+            "select": "id", "owner_user_id": f"eq.{owner_id}", "id": f"neq.{run_id}",
+            "submission_fingerprint": f"eq.{fingerprint}", "created_at": f"gte.{repeat_since}",
+            "status": "in.(passed,failed)", "limit": str(REPEATED_SUBMISSION_FLAG_THRESHOLD),
+        })
+        repeated_submission = len(repeat_rows or []) >= REPEATED_SUBMISSION_FLAG_THRESHOLD
         evidence = {
-            "run_id": str(run_id), "agent_snapshot_digest": _digest(row["agent_snapshot"]),
+            "run_id": str(run_id), "repeated_submission": repeated_submission,
+            "agent_snapshot_digest": _digest(row["agent_snapshot"]),
             "skill_snapshot_digest": _digest(row["skill_snapshot"]),
             "evaluation_set_digest": row["evaluation_set_digest"], "rubric_digest": row["rubric_digest"],
             "submission_fingerprint": fingerprint,
@@ -285,7 +302,8 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
             "submission_fingerprint": f"eq.{fingerprint}",
         }, body={
             "status": final_status, "evaluation_result": result.model_dump(mode="json"),
-            "evidence_digest": evidence_digest, "completed_at": _now().isoformat(), "updated_at": _now().isoformat(),
+            "evidence_digest": evidence_digest, "repeated_submission": repeated_submission,
+            "completed_at": _now().isoformat(), "updated_at": _now().isoformat(),
         }, prefer="return=representation")
         if not final_rows:
             latest = await _get_run(store, owner_id, str(run_id))
@@ -294,9 +312,11 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
             final_rows = [latest]
         final = final_rows[0]
         achievement = None
-        if final_status == "passed":
+        if final_status == "passed" and not repeated_submission:
             achievement = await _award_evidence(store, owner_id, str(run_id), evidence_digest)
-        return {"run": _public_run(final), "idempotent_replay": False, "achievement": achievement, "reward": {"status": "not_issued", "reason": "approved_reward_policy_required"}}
+        return {"run": _public_run(final), "idempotent_replay": False, "achievement": achievement,
+                "achievement_blocked_reason": "repeated_submission_signal" if repeated_submission else None,
+                "reward": {"status": "not_issued", "reason": "approved_reward_policy_required"}}
     except HTTPException:
         raise
     except AgentRuntimePersistenceError as exc:
