@@ -6,6 +6,7 @@ canonical Agent identity, approved runtime policy, and verified 3D asset are lin
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -191,14 +192,15 @@ async def official_bot_lifecycle_action(
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "OFFICIAL_BOT_NOT_FOUND", "message": "Roster bot tidak ditemukan."})
     bot = rows[0]
+    now = datetime.now(timezone.utc).isoformat()
     now_fields: dict[str, Any] = {
-        "updated_at": "now()",
+        "updated_at": now,
         "last_action": payload.action,
     }
     if payload.action == "approve":
         if bot["status"] not in {"draft", "pending_approval", "stopped"}:
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_TRANSITION_INVALID", "message": "Status bot tidak dapat disetujui dari state saat ini."})
-        now_fields.update({"status": "approved", "approved_by": operator["id"], "approved_at": None, "isolation_reason": None})
+        now_fields.update({"status": "approved", "approved_by": operator["id"], "approved_at": now, "isolation_reason": None})
     elif payload.action == "activate":
         # Do not treat an operator click as proof that the GLB or runtime policy is safe.
         if not bot.get("agent_id") or not bot.get("runtime_policy_id") or not bot.get("character_asset_key") or bot.get("asset_validation_status") != "verified":
@@ -209,19 +211,15 @@ async def official_bot_lifecycle_action(
         )
         if not policy:
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_POLICY_UNVERIFIED", "message": "Runtime policy tidak lagi berstatus approved."})
-        now_fields.update({"status": "active", "autonomy_mode": payload.autonomy_mode, "activated_by": operator["id"], "activated_at": None, "stopped_at": None, "stopped_by": None, "isolation_reason": None})
+        now_fields.update({"status": "active", "autonomy_mode": payload.autonomy_mode, "activated_by": operator["id"], "activated_at": now, "stopped_at": None, "stopped_by": None, "isolation_reason": None})
     elif payload.action == "stop":
-        now_fields.update({"status": "stopped", "stopped_by": operator["id"], "stopped_at": None})
+        now_fields.update({"status": "stopped", "stopped_by": operator["id"], "stopped_at": now})
     elif payload.action == "isolate":
         now_fields.update({"status": "isolated", "isolation_reason": payload.reason})
     else:
         if bot["status"] not in {"stopped", "isolated", "blocked"}:
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_TRANSITION_INVALID", "message": "Hanya bot yang dihentikan/diisolasi/diblokir dapat dikembalikan ke draft."})
         now_fields.update({"status": "draft", "isolation_reason": None, "activated_at": None, "stopped_at": None})
-    if "activated_at" in now_fields:
-        now_fields["activated_at"] = None
-    if "stopped_at" in now_fields:
-        now_fields["stopped_at"] = None
     updated = await privileged_rest_request(
         "PATCH", "official_agent_bots",
         params={"id": f"eq.{bot_id}", "select": _FIELDS},
