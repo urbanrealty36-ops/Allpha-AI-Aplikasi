@@ -119,13 +119,13 @@ export default function SkillChallengesPage() {
     if (!activeRun || !nonce) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const parsed = JSON.parse(submission);
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Jawaban harus berupa JSON object.");
-      const result = await request(`/v1/skill-challenges/runs/${activeRun.id}/submit`, { method: "POST", body: JSON.stringify({ nonce, submission: parsed }) });
+      const result = await request("/v1/skill-challenges/runs/" + activeRun.id + "/execute", {
+        method: "POST", body: JSON.stringify({ nonce })
+      });
       setActiveRun(result.run); setNonce("");
-      setNotice(result.run?.status === "passed" ? "Evaluasi lulus. Bukti achievement tersimpan; reward finansial tidak diterbitkan tanpa kebijakan yang disetujui." : "Evaluasi selesai. Hasil dan bukti tersimpan secara persisten.");
+      setNotice(result.run?.status === "passed" ? "Skill dieksekusi melalui Agent Runtime dan Model Router. Bukti runtime tersimpan; reward finansial tetap mengikuti kebijakan kanonis." : "Eksekusi Skill selesai. Hasil dan bukti runtime tersimpan.");
       await refreshRuns();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Jawaban tidak dapat dievaluasi."); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Eksekusi Skill tidak dapat diselesaikan."); }
     finally { setBusy(false); }
   }
 
