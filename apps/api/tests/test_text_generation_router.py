@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import pytest
 
+from allpha_api.agent_runtime import AgentRuntime, AgentRuntimeBlocked
 from allpha_api.model_router import (
     CanonicalTextGenerationRouter,
     TextGenerationPolicy,
@@ -124,3 +125,32 @@ def test_text_generation_rejects_unapproved_policy():
             max_latency_ms=5000,
             cost_unit="approved-unit", pricing_version="pricing-v1",
         )
+
+
+def test_agent_runtime_executes_pinned_skill_via_model_router():
+    runtime = AgentRuntime()
+    router = make_router()
+    result, evidence = asyncio.run(runtime.execute_skill_generation(
+        requester_id="owner-1", owner_id="owner-1",
+        agent_id="agent-1", agent_version=2, skill_id="skill-1", skill_version=3,
+        skill_published=True, policy_version="v1", router=router, request=request(),
+    ))
+    assert result.output_text == '{"answer":"grounded test output"}'
+    assert evidence.policy_version == "v1"
+
+
+def test_agent_runtime_rejects_owner_or_skill_authority_mismatch():
+    runtime = AgentRuntime()
+    router = make_router()
+    with pytest.raises(AgentRuntimeBlocked, match="owner"):
+        asyncio.run(runtime.execute_skill_generation(
+            requester_id="attacker", owner_id="owner-1",
+            agent_id="agent-1", agent_version=2, skill_id="skill-1", skill_version=3,
+            skill_published=True, policy_version="v1", router=router, request=request(),
+        ))
+    with pytest.raises(AgentRuntimeBlocked, match="published"):
+        asyncio.run(runtime.execute_skill_generation(
+            requester_id="owner-1", owner_id="owner-1",
+            agent_id="agent-1", agent_version=2, skill_id="skill-1", skill_version=3,
+            skill_published=False, policy_version="v1", router=router, request=request(),
+        ))
