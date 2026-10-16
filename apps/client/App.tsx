@@ -7,6 +7,7 @@ import * as SecureStore from "expo-secure-store";
 import * as DocumentPicker from "expo-document-picker";
 import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNativeWorldRenderer";
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
@@ -158,6 +159,7 @@ function Profile({ session }: { session: Session }) {
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
+  const [spatialSceneKey, setSpatialSceneKey] = useState(""); const [spatialActiveKey, setSpatialActiveKey] = useState("");
   const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
   async function apiRequest(path: string, init: RequestInit = {}) {
     const response = await fetch(apiBase + path, {
@@ -703,6 +705,14 @@ function Profile({ session }: { session: Session }) {
       </> : <><Text style={s.muted}>Data Social Graph belum dimuat.</Text><Button title="Muat ulang" onPress={() => void loadSocialGraph()}/></>}
       {!!error && !loading && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       {!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}
+      <View style={[s.card, { padding: 14, borderRadius: 18 }]}>
+        <Text style={s.kicker}>ENG-P23 · SPATIAL RENDERER</Text>
+        <Text style={s.title}>Pratinjau World Scene</Text>
+        <Text style={s.muted}>Masukkan scene key yang telah dipublikasikan. Aplikasi hanya meminta manifest publik dari API; tidak ada aset contoh atau akses database langsung.</Text>
+        <TextInput accessibilityLabel="Scene key publik" value={spatialSceneKey} onChangeText={setSpatialSceneKey} autoCapitalize="none" maxLength={120} style={field} placeholder="scene-key" placeholderTextColor="#8B94AC"/>
+        <Button title="Muat scene dari API" disabled={spatialSceneKey.trim().length < 3} onPress={() => setSpatialActiveKey(spatialSceneKey.trim())}/>
+        {spatialActiveKey.length >= 3 && <CanonicalNativeWorldRenderer sceneKey={spatialActiveKey}/>}
+      </View>
       <Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/>
     </View>
     <Text style={s.footnote}>Data identitas, pengaturan dan privasi dibaca/ditulis melalui API resmi. Tidak ada akses database langsung dari aplikasi.</Text>
