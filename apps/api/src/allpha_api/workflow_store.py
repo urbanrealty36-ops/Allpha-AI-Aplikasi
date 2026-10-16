@@ -115,9 +115,11 @@ class WorkflowStore:
         """List bounded candidate runs for a server-only poller; claim RPC remains authoritative."""
         bounded_limit = max(1, min(int(limit), 100))
         rows = await self.request("GET", "workflow_runs", params={
-            "select": "id,owner_user_id,status,created_at",
+            "select": "id,owner_user_id,status,updated_at",
             "status": "in.(queued,running)",
-            "order": "created_at.asc",
+            # Recently claimed runs move behind older untouched candidates so active leases
+            # do not monopolize the bounded polling window.
+            "order": "updated_at.asc",
             "limit": str(bounded_limit),
         })
         return rows or []
