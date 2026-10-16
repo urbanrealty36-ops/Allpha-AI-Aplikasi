@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
+from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
 from allpha_api.workflow_api import router as workflow_router
 from allpha_api.skill_challenge_api import router as skill_challenge_router
 from allpha_api.skill_challenge_execution_api import router as skill_challenge_execution_router
@@ -40,6 +41,9 @@ app = FastAPI(
     version=APP_VERSION,
     description="Allpha API with Supabase-backed identity and tenant authorization.",
 )
+# Deployment configuration is explicit. Missing credentials, pricing, or policy leaves
+# the runtime unavailable rather than silently selecting a provider/model.
+app.state.text_generation_router = build_text_generation_router_from_environment()
 
 # Browser origins are explicit and configurable. The default includes the canonical
 # production web/admin origins plus local development. Railway should set
