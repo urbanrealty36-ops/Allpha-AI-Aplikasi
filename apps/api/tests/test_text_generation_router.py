@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import pytest
 
 from allpha_api.model_router import (
@@ -81,10 +82,9 @@ def request():
     )
 
 
-@pytest.mark.asyncio
-async def test_text_generation_returns_route_and_usage_bound_evidence():
+def test_text_generation_returns_route_and_usage_bound_evidence():
     router = make_router()
-    response, evidence = await router.generate(request())
+    response, evidence = asyncio.run(router.generate(request()))
     assert response.output_text == '{"answer":"grounded test output"}'
     assert evidence.provider_id == "provider-a"
     assert evidence.model_id == "model-a"
@@ -97,30 +97,26 @@ async def test_text_generation_returns_route_and_usage_bound_evidence():
     assert len(evidence.evidence_sha256) == 64
 
 
-@pytest.mark.asyncio
-async def test_text_generation_fails_closed_without_approved_route_or_metering():
+def test_text_generation_fails_closed_without_approved_route_or_metering():
     with pytest.raises(TextGenerationRouterUnavailable):
-        await make_router(route=False).generate(request())
+        asyncio.run(make_router(route=False).generate(request()))
     with pytest.raises(TextGenerationRouterUnavailable):
-        await make_router(sink=False).generate(request())
+        asyncio.run(make_router(sink=False).generate(request()))
 
 
-@pytest.mark.asyncio
-async def test_text_generation_rejects_provider_model_mismatch():
+def test_text_generation_rejects_provider_model_mismatch():
     router = make_router(FakeAdapter(model_id="unapproved-model"))
     with pytest.raises(TextGenerationRouterRejected, match="identity"):
         await router.generate(request())
 
 
-@pytest.mark.asyncio
-async def test_text_generation_rejects_cost_over_approved_policy():
+def test_text_generation_rejects_cost_over_approved_policy():
     router = make_router(FakeAdapter(cost=11), max_cost=10)
     with pytest.raises(TextGenerationRouterRejected, match="cost"):
         await router.generate(request())
 
 
-@pytest.mark.asyncio
-async def test_text_generation_rejects_unapproved_policy():
+def test_text_generation_rejects_unapproved_policy():
     with pytest.raises(ValueError, match="must be approved"):
         TextGenerationPolicy(
             policy_id="policy-test", policy_version="v1", approved=False,
