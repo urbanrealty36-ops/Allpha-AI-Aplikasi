@@ -78,10 +78,11 @@ def _get(url: str, attempts: int = 4) -> bytes:
     raise RuntimeError(f"Failed to fetch pinned source {url}: {last_error}")
 
 def _safe_source_path(value: str) -> str:
-    path = Path(value)
-    if path.is_absolute() or ".." in path.parts or not value.endswith(".md"):
+    normalized = value.replace("\\", "/")
+    path = Path(normalized)
+    if path.is_absolute() or ".." in path.parts or not normalized.endswith(".md"):
         raise ValueError(f"Unsafe Agency source path: {value!r}")
-    return value.replace("\\", "/")
+    return normalized
 
 def _scan_security(text: str) -> list[str]:
     return [name for name, pattern in SECURITY_PATTERNS if pattern.search(text)]
