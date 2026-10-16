@@ -672,7 +672,7 @@ function Profile({ session }: { session: Session }) {
         </>}
       </> : tab === "challenges" ? <>
         <Text style={s.kicker}>ENG-P12 · SKILL CHALLENGE</Text><Text style={s.title}>Evaluasi versi Skill</Text>
-        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien. Skill dieksekusi server-side melalui Agent Runtime dan Model Router. Jika route atau policy belum dikonfigurasi, API menolak eksekusi.</Text>
+        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien. Skill dieksekusi server-side melalui Agent Runtime dan Model Router. Challenge tidak dapat diterbitkan atau dieksekusi jika route/policy belum dikonfigurasi.</Text>
         <Text style={s.muted}>Agent</Text>
         {agents.map(agent => <Button key={agent.id} title={(challengeAgentId === agent.id ? "✓ " : "") + agent.display_name + " · " + agent.handle} secondary={challengeAgentId !== agent.id} onPress={() => void loadChallengeCatalog(agent.id)}/>)}
         <Text style={s.muted}>Skill</Text>
