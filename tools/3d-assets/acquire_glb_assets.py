@@ -40,7 +40,7 @@ def category(path, repo):
  ]
  for c,pat in rules:
   if re.search(pat,s): return c
- return "district" # provisional fallback, never approval
+ return "unmapped" # unknown assets remain unmapped until evidence-based human/catalog review
 def api_get(url, session):
  for attempt in range(5):
   r=session.get(url,timeout=90)
@@ -109,7 +109,10 @@ def main():
  manifest=[]; hashes={}; total=0
  for i,c in enumerate(unique):
   if len(manifest)>=a.max_assets: break
-  row={**c,"category":category(c.get("path",""),c.get("repo","")),"status":"PENDING","bytes":0,"sha256":"","dedupe_of":"","local_file":"","review":"REVIEW_REQUIRED"}
+  candidate_category=category(c.get("path",""),c.get("repo",""))
+  row={**c,"category":candidate_category,
+       "category_mapping_status":"heuristic_candidate" if candidate_category in CATEGORIES else "unmapped",
+       "status":"PENDING","bytes":0,"sha256":"","dedupe_of":"","local_file":"","review":"REVIEW_REQUIRED"}
   url=c.get("url","")
   try:
    with s.get(url,stream=True,timeout=120,allow_redirects=True) as r:
@@ -149,6 +152,7 @@ def main():
  "failed":sum(x["status"]=="FAILED_DOWNLOAD" for x in manifest),
  "skipped_limits":sum(x["status"].startswith("SKIPPED") for x in manifest),
  "unique_sha256":len(hashes),"downloaded_bytes":total,"errors":errors,
+ "unmapped_candidates":sum(x["category"]=="unmapped" for x in manifest),
  "categories":{c:sum(x["category"]==c for x in manifest) for c in CATEGORIES},
  "important":"This is an acquisition inventory only. Category is heuristic; no asset is approved for production, redistributed or uploaded to Supabase automatically. Check per-file license, GLB validity, dependencies, malware/safety, size/performance, and visual QA."}
  (out/"summary.json").write_text(json.dumps(summary,indent=2,ensure_ascii=False),encoding="utf-8")
