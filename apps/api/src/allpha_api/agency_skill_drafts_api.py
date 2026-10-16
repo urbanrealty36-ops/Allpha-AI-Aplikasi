@@ -93,6 +93,43 @@ async def get_agency_skill_draft_detail(
     }
 
 
+@router.get("/reconciliation/items", name="list_agency_skill_reconciliation_items")
+async def list_agency_skill_reconciliation_items(
+    request: Request,
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=100_000),
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
+) -> dict[str, Any]:
+    document = load_agency_reconciliation()
+    if document is None:
+        return {"items": [], "total": 0, "limit": limit, "offset": offset, "status": "awaiting_import_workflow"}
+    query = q.casefold().strip()
+    rows = [
+        row for row in document["items"]
+        if not query or query in row["agency_source_id"].casefold()
+        or query in str(row.get("agency_name", "")).casefold()
+        or query in str(row.get("agency_category", "")).casefold()
+        or any(query in str(candidate.get("allpha_source_id", "")).casefold()
+               or query in str(candidate.get("allpha_name", "")).casefold()
+               for candidate in row.get("candidates", []))
+    ]
+    page = rows[offset:offset + limit]
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="skill_drafts.agency.reconciliation.list",
+        outcome="allowed", resource_type="agency_skill_reconciliation",
+        metadata={"query_present": bool(query), "limit": limit, "offset": offset, "result_count": len(page)},
+    )
+    return {
+        "items": page,
+        "total": len(rows),
+        "limit": limit,
+        "offset": offset,
+        "status": "candidate_map_available",
+        "merge_policy": document["merge_policy"],
+    }
+
+
 @router.get("/reconciliation/summary", name="get_agency_skill_reconciliation")
 async def get_agency_skill_reconciliation(
     request: Request,
