@@ -130,3 +130,72 @@ def test_retry_limit_forces_terminal_failure(monkeypatch):
     store = FakeStore(claim=claimed, finalize={"status": "failed"})
     result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert result["step_status"] == "failed"
+
+
+def test_claimed_step_persists_output_and_checkpoint_with_same_lease():
+    claimed = step()
+    store = FakeStore(claim=claimed, finalize={
+        "status": "succeeded", "run_status": "running",
+    })
+    captured = {}
+
+    async def finalize(**kwargs):
+        captured.update(kwargs)
+        store.finalize_calls += 1
+        return store.finalized
+
+    store.finalize_step = finalize
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+
+    assert result["step_status"] == "succeeded"
+    assert captured["terminal_state"] == "succeeded"
+    assert captured["output_payload"] == {"value": "Ada"}
+    assert captured["checkpoint"] == {
+        "node_key": "greet", "output": {"value": "Ada"},
+    }
+    assert captured["lease_token"]
+
+
+def test_claim_unknown_outcome_does_not_execute_or_finalize():
+    class ClaimUnknownStore(FakeStore):
+        async def claim_step(self, owner_id, run_id, lease_token, *, lease_seconds=30):
+            raise WorkflowPersistenceError("claim response timed out")
+
+    store = ClaimUnknownStore(claim=step())
+    with pytest.raises(WorkflowOutcomeUnknown, match="claim"):
+        asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+    assert store.finalize_calls == 0
+
+
+def test_cancellation_observed_after_claim_never_finalizes_step():
+    class CancelAfterClaimStore(FakeStore):
+        def __init__(self):
+            super().__init__(claim=step(), latest=run())
+            self.read_count = 0
+
+        async def get_run(self, owner_id, run_id):
+            self.read_count += 1
+            if self.read_count == 1:
+                return run()
+            return run(status="cancelled", cancel_requested=True)
+
+    store = CancelAfterClaimStore()
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+
+    assert result["outcome"] == "terminal"
+    assert result["run_status"] == "cancelled"
+    assert store.finalize_calls == 0
+
+
+def test_completed_step_is_not_reexecuted_when_claim_returns_none():
+    completed = {
+        **step(),
+        "status": "succeeded",
+        "output_payload": {"value": "Ada"},
+        "checkpoint": {"node_key": "greet", "output": {"value": "Ada"}},
+    }
+    store = FakeStore(claim=None, latest=run(steps=[completed]))
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
+
+    assert result["outcome"] == "idle"
+    assert store.finalize_calls == 0

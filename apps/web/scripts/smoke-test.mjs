@@ -32,4 +32,14 @@ assert.ok(agents.includes('/v1/agent-runtime/sessions/'));
 assert.ok(agents.includes('task.state !== "created"'));
 assert.ok(agents.includes('execution outcome') || agents.includes("hasilnya tidak diketahui"));
 
-console.log("ENG-P08 retrieval and ENG-P10 task lifecycle smoke assertions passed.");
+
+const workflows = readFileSync(new URL("../app/workflows/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/workflows/definitions", "/v1/workflows/runs", "Authorization: \"Bearer \" + session.access_token",
+  "createDefinition", "createRun", "inspectRun", "cancelRun", "selectedRun.steps",
+  "selectedRun.events", "JSON.parse(definitionText)", "JSON.parse(inputText)",
+  "worker yang dikonfigurasi secara terpisah", "role=\"alert\"", "Coba lagi"
+]) assert.ok(workflows.includes(contract), `missing Workflow Engine Web contract: ${contract}`);
+assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+
+console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, and ENG-P11 workflow UI smoke assertions passed.");
