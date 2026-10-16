@@ -110,3 +110,26 @@ class WorkflowStore:
         rows = await self.request("POST", "rpc/cancel_workflow_run", body={
             "p_run_id": run_id, "p_owner_user_id": owner_id})
         return rows[0] if rows else None
+
+    async def claim_step(self, owner_id: str, run_id: str, lease_token: str, *, lease_seconds: int = 30) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/claim_workflow_step", body={
+            "p_run_id": run_id, "p_owner_user_id": owner_id,
+            "p_lease_token": lease_token, "p_lease_seconds": lease_seconds,
+        })
+        return rows[0] if rows else None
+
+    async def finalize_step(self, *, owner_id: str, run_id: str, step_id: str, lease_token: str,
+                            terminal_state: str, output_payload: dict[str, Any] | None,
+                            error_code: str | None, checkpoint: dict[str, Any] | None) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/finalize_workflow_step", body={
+            "p_run_id": run_id, "p_owner_user_id": owner_id, "p_step_id": step_id,
+            "p_lease_token": lease_token, "p_terminal_state": terminal_state,
+            "p_output_payload": output_payload, "p_error_code": error_code, "p_checkpoint": checkpoint,
+        })
+        return rows[0] if rows else None
+
+    async def timeout_run(self, owner_id: str, run_id: str) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/timeout_workflow_run", body={
+            "p_run_id": run_id, "p_owner_user_id": owner_id,
+        })
+        return rows[0] if rows else None
