@@ -613,7 +613,7 @@ begin
   return jsonb_build_object('event_id',v_event.id,'idempotent_replay',false,
     'before_available_credits',v_before,'after_available_credits',v_after,'ledger_entry_count',v_count);
 end;
-$;
+$$;
 
 create or replace function public.credit_ledger_mark_pending(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
