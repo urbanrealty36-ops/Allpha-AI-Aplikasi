@@ -71,8 +71,8 @@ begin
   end if;
 
   v_handle := 'allpha_' ||
-    substring(regexp_replace(v_bot.skill_key, '[^a-z0-9_]', '_', 'g') from 1 for 16) ||
-    '_' || substring(md5(v_bot.skill_key) from 1 for 5);
+    pg_catalog.substr(pg_catalog.regexp_replace(v_bot.skill_key, '[^a-z0-9_]', '_', 'g'), 1, 16) ||
+    '_' || pg_catalog.substr(pg_catalog.md5(v_bot.skill_key), 1, 5);
 
   v_persona := pg_catalog.jsonb_build_object(
     'allpha_skill_key', v_bot.skill_key,
