@@ -86,3 +86,11 @@
 .status-passed{background:#e8f5dc;color:#315b28}.status-failed,.status-rejected{background:#fff0ed;color:#8b3027}.status-issued,.status-evaluating{background:#fff8e8;color:#785a1b}
 @media(max-width:780px){.challenge-layout{grid-template-columns:1fr}.page-header{flex-direction:column}.page-shell{padding:22px 16px 44px}.challenge-layout>.panel,.history-panel,.page-shell>.panel{padding:18px}.page-header .button-secondary{width:100%}}
 @media(max-width:460px){.history-row{align-items:flex-start;flex-direction:column}.section-heading{align-items:flex-start;flex-direction:column}.section-heading .button-secondary{width:100%}}
+
+
+.catalog-picker{display:grid;gap:12px;padding:16px;border:1px solid var(--line,#dbe2ea);border-radius:12px;background:var(--panel,#fff);margin:8px 0 14px}
+.catalog-picker .panel-heading{margin:0}
+.catalog-picker .detail-line{align-items:flex-start;gap:16px}
+.catalog-picker .detail-line small{display:block;margin-top:5px;max-width:48ch;line-height:1.5}
+.catalog-picker .agent-footnote{line-height:1.6}
+.catalog-picker .form-error{color:#b42318;font-size:12px}
