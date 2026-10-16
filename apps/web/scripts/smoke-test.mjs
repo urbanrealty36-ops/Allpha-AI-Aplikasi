@@ -47,7 +47,7 @@ const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", impo
 for (const contract of [
   "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "idempotency_key",
   "nonce", "evidence_digest", "evaluation_result", "Expected output tidak dikirim ke browser.",
-  "Jalankan Skill & evaluasi", "/execute", "Model Router", "Authorization: \"Bearer \" + session.access_token"
+  "Jalankan Skill & evaluasi", "/execute", "/comparison", "/release-decision", "Catat keputusan release", "Model Router", "Authorization: \"Bearer \" + session.access_token"
 ]) assert.ok(challenges.includes(contract), `missing Skill Challenge Web contract: ${contract}`);
 assert.doesNotMatch(challenges, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 
