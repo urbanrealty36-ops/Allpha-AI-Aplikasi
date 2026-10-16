@@ -166,12 +166,6 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
                 raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
             return {"run": _public_run(row), "idempotent_replay": True}
 
-        rate_since = (_now() - timedelta(seconds=60)).isoformat()
-        recent_issues = await store.request("GET", "agent_skill_challenge_runs", params={
-            "select": "id", "owner_user_id": f"eq.{owner_id}", "created_at": f"gte.{rate_since}", "limit": str(CHALLENGE_ISSUE_LIMIT_PER_MINUTE),
-        })
-        if len(recent_issues or []) >= CHALLENGE_ISSUE_LIMIT_PER_MINUTE:
-            raise HTTPException(status_code=429, detail={"code": "CHALLENGE_RATE_LIMITED", "message": "Batas penerbitan challenge per menit tercapai. Coba lagi setelah jeda."})
         agent, skill = await _owned_agent_and_skill(store, owner_id, str(payload.agent_id), str(payload.skill_id))
         version_rows = await store.request("GET", "agent_skill_versions", params={
             "select": "id,skill_id,agent_id,version,snapshot,created_at",
@@ -223,6 +217,12 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             "idempotency_key": payload.idempotency_key, "request_fingerprint": fingerprint,
             "status": "issued", "created_at": now.isoformat(), "updated_at": now.isoformat(),
         }
+        rate_result = await store.request("POST", "rpc/reserve_agent_skill_challenge_issue", body={
+            "p_owner_user_id": owner_id, "p_limit": CHALLENGE_ISSUE_LIMIT_PER_MINUTE,
+        })
+        allowed = rate_result is True or rate_result == [True] or (isinstance(rate_result, dict) and rate_result.get("reserve_agent_skill_challenge_issue") is True)
+        if not allowed:
+            raise HTTPException(status_code=429, detail={"code": "CHALLENGE_RATE_LIMITED", "message": "Batas penerbitan challenge per menit tercapai. Coba lagi setelah jeda."})
         rows = await store.request("POST", "agent_skill_challenge_runs", params={"select": "*"}, body=body, prefer="return=representation")
         if not rows:
             # A concurrent duplicate may have committed; reconcile by the unique owner/idempotency key.
