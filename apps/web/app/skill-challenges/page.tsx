@@ -7,7 +7,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 
 type Agent = { id: string; display_name?: string | null; handle?: string | null; version?: number; status: string };
 type Skill = { id: string; agent_id: string; name: string; slug: string; version: number; status: string; tests?: Array<Record<string, unknown>>; hidden_challenges_available?: boolean; evaluation_rubric_available?: boolean };
-type Run = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; evaluation_set_version: number; rubric_version: number; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; created_at: string; completed_at?: string | null };
+type Run = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; evaluation_set_version: number; rubric_version: number; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; runtime_evidence_digest?: string | null; previous_version_comparison?: Record<string, unknown> | null; release_decision?: string | null; release_decision_reason?: string | null; created_at: string; completed_at?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response): Promise<string> {
@@ -28,6 +28,8 @@ export default function SkillChallengesPage() {
   const [testKey, setTestKey] = useState("");
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [nonce, setNonce] = useState("");
+  const [releaseReason, setReleaseReason] = useState("");
+  const [comparison, setComparison] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -129,6 +131,32 @@ export default function SkillChallengesPage() {
     finally { setBusy(false); }
   }
 
+  async function compareVersion() {
+    if (!activeRun) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await request("/v1/skill-challenges/runs/" + activeRun.id + "/comparison");
+      setComparison(result.comparison ?? null);
+      setActiveRun({ ...activeRun, previous_version_comparison: result.comparison ?? null });
+      setNotice("Perbandingan versi tersimpan. Keputusan tetap milik pemilik Agent.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Perbandingan versi gagal."); }
+    finally { setBusy(false); }
+  }
+
+  async function decideRelease(decision: "release" | "hold") {
+    if (!activeRun || releaseReason.trim().length < 8) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await request("/v1/skill-challenges/runs/" + activeRun.id + "/release-decision", {
+        method: "POST", body: JSON.stringify({ decision, reason: releaseReason.trim() })
+      });
+      setActiveRun(result.run);
+      setNotice(decision === "release" ? "Keputusan release tercatat; Skill belum dipublikasikan otomatis." : "Keputusan hold tercatat.");
+      await refreshRuns();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan pemilik gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
   return <main className="page-shell">
     <header className="page-header">
       <div><p className="eyebrow">ALLPHA · AGENT STUDIO</p><h1>Skill Challenge</h1><p className="muted">Uji versi Skill dengan test case yang dipatok, hasil deterministik, dan bukti yang dapat ditelusuri.</p></div>
@@ -159,7 +187,7 @@ export default function SkillChallengesPage() {
           <p className="muted">Output dibuat server-side dari snapshot Skill yang dipatok. Browser tidak mengirim skor atau output kandidat.</p>
           <button className="button button-primary" disabled={busy || !activeRun || !nonce}>{busy ? "Memproses…" : "Jalankan Skill & evaluasi"}</button>
         </form>
-        {activeRun?.evaluation_result && <div className="challenge-result"><h3>Hasil evaluasi</h3><pre>{jsonText(activeRun.evaluation_result)}</pre><p className="muted">Evidence SHA-256: {activeRun.evidence_digest || "belum tersedia"}</p></div>}
+        {activeRun?.evaluation_result && <div className="challenge-result"><h3>Hasil evaluasi</h3><pre>{jsonText(activeRun.evaluation_result)}</pre><p className="muted">Evidence SHA-256: {activeRun.evidence_digest || "belum tersedia"}</p><p className="muted">Runtime evidence: {activeRun.runtime_evidence_digest || "belum tersedia"}</p><button className="button button-secondary" disabled={busy || !activeRun.runtime_evidence_digest} onClick={() => void compareVersion()}>Bandingkan versi sebelumnya</button>{comparison && <pre>{jsonText(comparison)}</pre>}<label>Alasan keputusan pemilik<textarea rows={3} value={releaseReason} onChange={event => setReleaseReason(event.target.value)} minLength={8} placeholder="Alasan release atau hold."/></label><div className="button-row"><button className="button button-primary" disabled={busy || activeRun.status !== "passed" || !comparison || releaseReason.trim().length < 8 || !!activeRun.release_decision} onClick={() => void decideRelease("release")}>Catat keputusan release</button><button className="button button-secondary" disabled={busy || !activeRun.runtime_evidence_digest || releaseReason.trim().length < 8 || !!activeRun.release_decision} onClick={() => void decideRelease("hold")}>Catat keputusan hold</button></div>{activeRun.release_decision && <p className="muted">Keputusan pemilik: {activeRun.release_decision} — {activeRun.release_decision_reason}</p>}</div>}
       </section>
     </div>}
     <section className="panel history-panel">
