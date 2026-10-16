@@ -58,7 +58,7 @@ def _store() -> AgentRuntimeStore:
 
 
 def _storage_error(exc: Exception) -> HTTPException:
-    return HTTPException(status_code=503, detail={"code": "CHALLENGE_STORAGE_UNAVAILABLE", "message": "Status penyimpanan Skill Challenge tidak dapat dipastikan."}) from exc
+    return HTTPException(status_code=503, detail={"code": "CHALLENGE_STORAGE_UNAVAILABLE", "message": "Status penyimpanan Skill Challenge tidak dapat dipastikan."})
 
 
 def _now() -> datetime:
@@ -150,7 +150,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
         evaluation_set = {"version": 1, "test_key": payload.test_key, "test_case": case}
         body = {
             "owner_user_id": owner_id, "agent_id": str(agent["id"]), "skill_id": str(skill["id"]),
-            "agent_version": int(agent.get("version") or 1), "skill_version": int(skill["version"]),
+            "agent_version": int(agent.get("version") or 1), "agent_snapshot": {"id": str(agent["id"]), "version": int(agent.get("version") or 1), "status": agent.get("status")}, "skill_version": int(skill["version"]),
             "skill_version_id": version_row.get("id") if version_row else None,
             "challenge_key": payload.test_key, "evaluation_set_version": 1,
             "evaluation_set_digest": _digest(evaluation_set),
@@ -172,7 +172,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
                 raise HTTPException(status_code=503, detail={"code": "CHALLENGE_CREATE_UNCONFIRMED", "message": "Pembuatan challenge belum dapat dikonfirmasi."})
             if existing[0].get("request_fingerprint") != fingerprint:
                 raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
-            return {"run": _public_run(existing[0]), "nonce": nonce, "nonce_expires_at": body["nonce_expires_at"], "idempotent_replay": True}
+            return {"run": _public_run(existing[0]), "idempotent_replay": True}
         return {"run": _public_run(rows[0]), "nonce": nonce, "nonce_expires_at": body["nonce_expires_at"], "idempotent_replay": False}
     except HTTPException:
         raise
