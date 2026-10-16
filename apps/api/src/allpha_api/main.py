@@ -28,6 +28,7 @@ from allpha_api.skill_catalog import search_skill_catalog
 from allpha_api.agency_skill_catalog import search_agency_skill_catalog
 from allpha_api.catalog_registry import get_skill_catalog_item, get_skill_catalog_source, get_skill_catalog_version
 from allpha_api.official_bots_api import router as official_bots_router
+from allpha_api.agency_skill_drafts_api import router as agency_skill_drafts_router
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -1080,3 +1081,4 @@ app.include_router(agent_runtime_router)
 app.include_router(workflow_router)
 app.include_router(skill_challenge_router)
 app.include_router(official_bots_router)
+app.include_router(agency_skill_drafts_router)
