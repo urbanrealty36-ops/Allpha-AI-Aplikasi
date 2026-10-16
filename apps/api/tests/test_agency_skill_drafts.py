@@ -21,6 +21,8 @@ def test_draft_loader_checks_immutable_source_and_adapted_digests(tmp_path, monk
         "content_sha256": hashlib.sha256(body.encode()).hexdigest(),
         "adapted_content_sha256": hashlib.sha256(adapted.encode()).hexdigest(),
         "provenance": {"commit": module.EXPECTED_SOURCE_COMMIT},
+        "runtime": {"executable": False},
+        "character_profile": {"asset_key": None},
     }
     draft_dir = tmp_path / "drafts"
     draft_dir.mkdir()
@@ -37,14 +39,18 @@ def test_draft_loader_rejects_checksum_tampering(tmp_path, monkeypatch):
     module = importlib.import_module("allpha_api.agency_skill_drafts")
     record = {
         "skill_id": "agency.test.tampered",
+        "version": 1,
+        "version_key": "agency.test.tampered@v1",
         "status": "draft",
         "immutable": True,
         "executable": False,
         "source_instructions_markdown": "changed after import",
-        "adapted_instructions": "adapter",
+        "adapted_instructions": "adapter\nchanged after import",
         "content_sha256": "0" * 64,
-        "adapted_content_sha256": hashlib.sha256(b"adapter").hexdigest(),
+        "adapted_content_sha256": hashlib.sha256(b"adapter\nchanged after import").hexdigest(),
         "provenance": {"commit": module.EXPECTED_SOURCE_COMMIT},
+        "runtime": {"executable": False},
+        "character_profile": {"asset_key": None},
     }
     draft_dir = tmp_path / "drafts"
     draft_dir.mkdir()
