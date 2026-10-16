@@ -159,6 +159,7 @@ export default function OperationsPage() {
   const [capabilities, setCapabilities] = useState<CapabilityRequest[]>([]);
   const [officialBots, setOfficialBots] = useState<OfficialBot[]>([]);
   const [officialBotsTotal, setOfficialBotsTotal] = useState(0);
+  const [officialBotsOffset, setOfficialBotsOffset] = useState(0);
   const [officialBotsBusy, setOfficialBotsBusy] = useState(false);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [targetUser, setTargetUser] = useState("");
@@ -232,8 +233,8 @@ export default function OperationsPage() {
     }
     if (access.operator.scopes.includes("platform:operations.read")) {
       const botResponse = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
-      const botBody = await responseBody<{ items: OfficialBot[] }>(botResponse);
-      setOfficialBots(botBody.items ?? []); setOfficialBotsTotal(botBody.items?.length ?? 0);
+      const botBody = await responseBody<{ items: OfficialBot[]; total?: number }>(botResponse);
+      setOfficialBots(botBody.items ?? []); setOfficialBotsTotal(botBody.total ?? (botBody.items?.length ?? 0)); setOfficialBotsOffset(0);
     } else { setOfficialBots([]); setOfficialBotsTotal(0); }
   };
 
@@ -271,13 +272,13 @@ export default function OperationsPage() {
     }
   }
 
-  async function refreshOfficialBots(activeSession = session) {
+  async function refreshOfficialBots(activeSession = session, offset = officialBotsOffset) {
     if (!activeSession) return;
     setOfficialBotsBusy(true); setError("");
     try {
-      const response = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
-      const body = await responseBody<{ items: OfficialBot[] }>(response);
-      setOfficialBots(body.items ?? []); setOfficialBotsTotal(body.items?.length ?? 0);
+      const response = await adminFetch("/v1/admin/official-bots?limit=50&offset=" + offset, activeSession, setSession);
+      const body = await responseBody<{ items: OfficialBot[]; total?: number }>(response);
+      setOfficialBots(body.items ?? []); setOfficialBotsTotal(body.total ?? (body.items?.length ?? 0)); setOfficialBotsOffset(offset);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Roster Official Bot tidak dapat dimuat."); }
     finally { setOfficialBotsBusy(false); }
   }
@@ -290,7 +291,8 @@ export default function OperationsPage() {
       const response = await adminFetch("/v1/admin/official-bots/provision", session, setSession, { method: "POST", body: JSON.stringify({ limit: 500 }) });
       const body = await responseBody<{ roster_count_observed: number; catalog_count: number; message: string }>(response);
       setNotice(body.message + " Katalog: " + body.catalog_count + "; roster teramati: " + body.roster_count_observed + ".");
-      await refreshOfficialBots();
+      setOfficialBotsOffset(0);
+      await refreshOfficialBots(session, 0);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Provision roster gagal."); }
     finally { setOfficialBotsBusy(false); }
   }
@@ -486,7 +488,7 @@ export default function OperationsPage() {
       </section>}
       {session && operator?.scopes.includes("platform:operations.read") && <section className="panel" id="official-bots">
         <header className="panelHead"><div><h2>Official Allpha AI Agents</h2><p>Roster kandidat dari katalog 500 Skills. Identitas, runtime, policy, dan GLB harus ditautkan dan diverifikasi sebelum aktivasi.</p></div><span className="pill warning">SUPERVISED</span></header>
-        <div className="panelActions">{canReview && <button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan 500 kandidat</button>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster teramati: {officialBotsTotal}</span></div>
+        <div className="panelActions">{canReview && <button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan 500 kandidat</button>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster: {officialBotsTotal} · Halaman {Math.floor(officialBotsOffset / 50) + 1}</span><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, Math.max(0, officialBotsOffset - 50))} disabled={officialBotsBusy || officialBotsOffset === 0}>Sebelumnya</button><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, officialBotsOffset + 50)} disabled={officialBotsBusy || officialBotsOffset + officialBots.length >= officialBotsTotal}>Berikutnya</button></div>
         <p className="muted">Provisioning hanya membuat roster draft, bukan 500 Agent identity aktif. Aktivasi ditolak backend sampai Agent identity kanonis, policy runtime approved, dan asset GLB terverifikasi tersedia. Aksi lifecycle diaudit.</p>
         <div className="officialBotList">{officialBots.map(bot => <article className="probe officialBot" key={bot.id}>
           <div className="probeText"><b>{bot.display_name}</b><code>{bot.skill_key} · {bot.category_label}</code><p>{bot.skill_description}</p><small>Karakter: {bot.character_archetype_key} · Asset: {bot.character_asset_key || "belum ditautkan"} ({bot.asset_validation_status})</small><small>Agent: {bot.agent_id || "belum ditautkan"} · Policy: {bot.runtime_policy_id || "belum ditautkan"}</small></div>
