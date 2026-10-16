@@ -44,7 +44,7 @@ async function readBody<T>(response: Response): Promise<T> {
 }
 const emptyForm = {
   provider_id: "", model_id: "", model_version: "", pricing_version: "", cost_unit: "microunits",
-  input_micro_cost_per_token: "0", output_micro_cost_per_token: "0", max_cost_microunits: "1000000",
+  input_micro_cost_per_token: "", output_micro_cost_per_token: "", max_cost_microunits: "",
   max_prompt_bytes: "16384", max_output_tokens: "1024", max_latency_ms: "30000",
 };
 
