@@ -38,7 +38,7 @@ for (const contract of [
   "/v1/workflows/definitions", "/v1/workflows/runs", "Authorization: \"Bearer \" + session.access_token",
   "createDefinition", "createRun", "inspectRun", "cancelRun", "selectedRun.steps",
   "selectedRun.events", "JSON.parse(definitionText)", "JSON.parse(inputText)",
-  "worker memprosesnya secara terpisah", "role=\"alert\"", "Coba lagi"
+  "worker yang dikonfigurasi secara terpisah", "role=\"alert\"", "Coba lagi"
 ]) assert.ok(workflows.includes(contract), `missing Workflow Engine Web contract: ${contract}`);
 assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 
