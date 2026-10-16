@@ -19,7 +19,7 @@ type AgentCapability = { id: string; capability_key: string; description?: strin
 type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; title: string; status: string; created_at: string; last_activity_at: string };
 type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[] };
 type ChallengeSkill = { id: string; agent_id: string; slug: string; name: string; status: string; version: number; tests?: Record<string, unknown>[]; hidden_challenges_available?: boolean; evaluation_rubric_available?: boolean };
-type ChallengeRun = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; created_at: string };
+type ChallengeRun = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; runtime_evidence_digest?: string | null; previous_version_comparison?: Record<string, unknown> | null; release_decision?: string | null; release_decision_reason?: string | null; created_at: string };
 type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; error_code?: string | null; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
@@ -145,6 +145,8 @@ function Profile({ session }: { session: Session }) {
   const [challengeSkillId, setChallengeSkillId] = useState("");
   const [challengeTestKey, setChallengeTestKey] = useState("");
   const [challengeNonce, setChallengeNonce] = useState("");
+  const [challengeReleaseReason, setChallengeReleaseReason] = useState("");
+  const [challengeComparison, setChallengeComparison] = useState<Record<string, unknown> | null>(null);
   const [challengeRun, setChallengeRun] = useState<ChallengeRun | null>(null);
   const [challengeRuns, setChallengeRuns] = useState<ChallengeRun[]>([]);
   const [challengeBusy, setChallengeBusy] = useState(false);
@@ -268,6 +270,31 @@ function Profile({ session }: { session: Session }) {
       setMessage(body.run.status === "passed" ? "Skill dieksekusi melalui Agent Runtime dan Model Router; bukti runtime tersimpan. Reward finansial mengikuti kebijakan kanonis." : "Eksekusi Skill selesai dan bukti runtime tersimpan.");
       await loadChallengeRuns();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Eksekusi Skill gagal."); }
+    finally { setChallengeBusy(false); }
+  }
+  async function compareNativeChallenge() {
+    if (!challengeRun) return;
+    setChallengeBusy(true); setError(""); setMessage("");
+    try {
+      const body = await apiRequest("/v1/skill-challenges/runs/" + encodeURIComponent(challengeRun.id) + "/comparison") as { comparison?: Record<string, unknown> };
+      setChallengeComparison(body.comparison ?? null);
+      setChallengeRun({ ...challengeRun, previous_version_comparison: body.comparison ?? null });
+      setMessage("Perbandingan versi tersimpan. Keputusan tetap milik pemilik Agent.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Perbandingan versi gagal."); }
+    finally { setChallengeBusy(false); }
+  }
+
+  async function decideNativeChallenge(decision: "release" | "hold") {
+    if (!challengeRun || challengeReleaseReason.trim().length < 8) return;
+    setChallengeBusy(true); setError(""); setMessage("");
+    try {
+      const body = await apiRequest("/v1/skill-challenges/runs/" + encodeURIComponent(challengeRun.id) + "/release-decision", {
+        method: "POST", body: JSON.stringify({ decision, reason: challengeReleaseReason.trim() })
+      }) as { run: ChallengeRun };
+      setChallengeRun(body.run);
+      setMessage(decision === "release" ? "Keputusan release tercatat; Skill belum dipublikasikan otomatis." : "Keputusan hold tercatat.");
+      await loadChallengeRuns();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan pemilik gagal disimpan."); }
     finally { setChallengeBusy(false); }
   }
   useEffect(() => {
@@ -655,7 +682,7 @@ function Profile({ session }: { session: Session }) {
         {challengeSkills.find(skill => skill.id === challengeSkillId)?.hidden_challenges_available && <Button title={challengeTestKey === "__hidden__" ? "✓ Tantangan tersembunyi acak" : "Tantangan tersembunyi acak"} secondary={challengeTestKey !== "__hidden__"} onPress={() => setChallengeTestKey("__hidden__")}/>} 
         {challengeSkillId && !(challengeSkills.find(skill => skill.id === challengeSkillId)?.evaluation_rubric_available) && <Text style={s.warning}>Rubrik evaluasi belum tersedia pada Skill ini.</Text>}
         <Button title={challengeBusy ? "Memproses…" : "Terbitkan challenge"} disabled={challengeBusy || !challengeAgentId || !challengeSkillId || !challengeTestKey} onPress={() => void issueNativeChallenge()}/>
-        {challengeRun && <View style={s.socialRow}><Text style={s.kicker}>RUN {challengeRun.id}</Text><Text style={s.body}>Status: {challengeRun.status} · Agent v{challengeRun.agent_version} · Skill v{challengeRun.skill_version}</Text><Text style={s.muted}>Input challenge: {JSON.stringify(challengeRun.challenge_input)}</Text><Text style={s.muted}>Output dibuat server-side dari snapshot Skill; aplikasi tidak mengirim skor atau output kandidat.</Text><Button title="Jalankan Skill & evaluasi" disabled={challengeBusy || !challengeNonce} onPress={() => void submitNativeChallenge()}/>{challengeRun.evaluation_result && <Text style={s.muted}>Hasil: {JSON.stringify(challengeRun.evaluation_result)}{ "\n" }Evidence SHA-256: {challengeRun.evidence_digest || "belum tersedia"}</Text>}</View>}
+        {challengeRun && <View style={s.socialRow}><Text style={s.kicker}>RUN {challengeRun.id}</Text><Text style={s.body}>Status: {challengeRun.status} · Agent v{challengeRun.agent_version} · Skill v{challengeRun.skill_version}</Text><Text style={s.muted}>Input challenge: {JSON.stringify(challengeRun.challenge_input)}</Text><Text style={s.muted}>Output dibuat server-side dari snapshot Skill; aplikasi tidak mengirim skor atau output kandidat.</Text><Button title="Jalankan Skill & evaluasi" disabled={challengeBusy || !challengeNonce} onPress={() => void submitNativeChallenge()}/>{challengeRun.evaluation_result && <Text style={s.muted}>Hasil: {JSON.stringify(challengeRun.evaluation_result)}{ "\n" }Evidence SHA-256: {challengeRun.evidence_digest || "belum tersedia"}{ "\n" }Runtime evidence: {challengeRun.runtime_evidence_digest || "belum tersedia"}</Text><Button title="Bandingkan versi sebelumnya" secondary disabled={challengeBusy || !challengeRun.runtime_evidence_digest} onPress={() => void compareNativeChallenge()}/>{challengeComparison && <Text style={s.muted}>{JSON.stringify(challengeComparison)}</Text>}<TextInput accessibilityLabel="Alasan keputusan pemilik" value={challengeReleaseReason} onChangeText={setChallengeReleaseReason} style={s.input} placeholder="Alasan release atau hold (min. 8 karakter)" placeholderTextColor="#8B94AC"/><Button title="Catat keputusan release" disabled={challengeBusy || challengeRun.status !== "passed" || !challengeComparison || challengeReleaseReason.trim().length < 8 || !!challengeRun.release_decision} onPress={() => void decideNativeChallenge("release")}/><Button title="Catat keputusan hold" secondary disabled={challengeBusy || !challengeRun.runtime_evidence_digest || challengeReleaseReason.trim().length < 8 || !!challengeRun.release_decision} onPress={() => void decideNativeChallenge("hold")}/>{challengeRun.release_decision && <Text style={s.muted}>Keputusan pemilik: {challengeRun.release_decision} — {challengeRun.release_decision_reason}</Text>}}</View>}
         <Text style={s.kicker}>RIWAYAT ({challengeRuns.length})</Text>
         {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
