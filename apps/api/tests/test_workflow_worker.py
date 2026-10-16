@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import asyncio
 
 import pytest
 
@@ -76,63 +77,56 @@ class FakeStore:
         return self.timeout_result
 
 
-@pytest.mark.asyncio
-async def test_no_claim_returns_idle_without_mutating_state():
+def test_no_claim_returns_idle_without_mutating_state():
     store = FakeStore()
-    result = await process_next_step(store, owner_id="owner", run_id="run-1")
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert result == {"outcome": "idle", "run_status": "running"}
 
 
-@pytest.mark.asyncio
-async def test_finalize_unknown_outcome_is_reconciled_if_checkpoint_was_committed():
+def test_finalize_unknown_outcome_is_reconciled_if_checkpoint_was_committed():
     claimed = step()
     latest = run(steps=[{**claimed, "status": "succeeded", "output_payload": {"value": "Ada"}}])
     store = FakeStore(claim=claimed, finalize=WorkflowPersistenceError("timeout"), latest=latest)
-    result = await process_next_step(store, owner_id="owner", run_id="run-1")
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert result["outcome"] == "reconciled"
     assert result["step_status"] == "succeeded"
     assert store.finalize_calls == 1
 
 
-@pytest.mark.asyncio
-async def test_finalize_unknown_outcome_is_not_replayed_when_not_observable():
+def test_finalize_unknown_outcome_is_not_replayed_when_not_observable():
     claimed = step()
     store = FakeStore(claim=claimed, finalize=WorkflowPersistenceError("timeout"), latest=run(steps=[claimed]))
     with pytest.raises(WorkflowOutcomeUnknown):
-        await process_next_step(store, owner_id="owner", run_id="run-1")
+        asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert store.finalize_calls == 1
 
 
-@pytest.mark.asyncio
-async def test_expired_runtime_requests_atomic_timeout_instead_of_running_node():
+def test_expired_runtime_requests_atomic_timeout_instead_of_running_node():
     store = FakeStore(timeout={"status": "timed_out"})
     store.latest = run(created_at="2026-10-16T00:00:00+00:00", started_at="2026-10-16T00:00:00+00:00", max_runtime_seconds=10)
-    result = await process_next_step(store, owner_id="owner", run_id="run-1", now=datetime(2026, 10, 16, 0, 1, tzinfo=timezone.utc))
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1", now=datetime(2026, 10, 16, 0, 1, tzinfo=timezone.utc)))
     assert result == {"outcome": "terminal", "run_status": "timed_out"}
 
 
-@pytest.mark.asyncio
-async def test_terminal_run_is_never_claimed():
+def test_terminal_run_is_never_claimed():
     store = FakeStore(latest=run(status="cancelled"))
-    result = await process_next_step(store, owner_id="owner", run_id="run-1")
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert result == {"outcome": "terminal", "run_status": "cancelled"}
 
 
-@pytest.mark.asyncio
-async def test_retryable_deterministic_runtime_error_is_bounded_by_attempt_count(monkeypatch):
+def test_retryable_deterministic_runtime_error_is_bounded_by_attempt_count(monkeypatch):
     import allpha_api.workflow_worker as worker
     claimed = step(attempts=1, max_attempts=2)
     monkeypatch.setattr(worker, "evaluate_deterministic_node", lambda *_: (_ for _ in ()).throw(RuntimeError("temporary")))
     store = FakeStore(claim=claimed, finalize={"status": "retrying"})
-    result = await process_next_step(store, owner_id="owner", run_id="run-1")
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert result["step_status"] == "retrying"
 
 
-@pytest.mark.asyncio
-async def test_retry_limit_forces_terminal_failure(monkeypatch):
+def test_retry_limit_forces_terminal_failure(monkeypatch):
     import allpha_api.workflow_worker as worker
     claimed = step(attempts=2, max_attempts=2)
     monkeypatch.setattr(worker, "evaluate_deterministic_node", lambda *_: (_ for _ in ()).throw(RuntimeError("temporary")))
     store = FakeStore(claim=claimed, finalize={"status": "failed"})
-    result = await process_next_step(store, owner_id="owner", run_id="run-1")
+    result = asyncio.run(process_next_step(store, owner_id="owner", run_id="run-1"))
     assert result["step_status"] == "failed"
