@@ -5,7 +5,7 @@ import os
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Response
 
 from allpha_api.spatial_scene_contract import SceneManifestV1
 
@@ -87,9 +87,12 @@ async def _signed_asset_url(client: httpx.AsyncClient, url: str, key: str, bucke
 
 @router.get("/v1/spatial/scenes/{scene_key}/manifest", response_model=SceneManifestV1)
 async def get_published_scene_manifest(
+    response: Response,
     scene_key: str = Path(min_length=3, max_length=120, pattern=r"^[a-z0-9][a-z0-9._-]{2,119}$"),
 ) -> SceneManifestV1:
     """Return only a published scene and published, approved asset versions."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Authorization"
     url, key = _service_config()
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
