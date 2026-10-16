@@ -4,7 +4,7 @@ alter table public.agent_skill_challenge_runs
   add column if not exists previous_version_comparison jsonb,
   add column if not exists release_decision text,
   add column if not exists release_decision_reason text,
-  add column if not exists release_decided_by uuid references auth.users(id) on delete set null,
+  add column if not exists release_decided_by uuid references auth.users(id) on delete restrict,
   add column if not exists release_decided_at timestamptz;
 
 alter table public.agent_skill_challenge_runs
