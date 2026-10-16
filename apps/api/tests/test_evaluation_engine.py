@@ -88,6 +88,22 @@ def test_rejects_unsupported_evaluator_version_and_invalid_evidence_hash():
         CriterionSignal(score=1.0, evidence_ref="trace:abc", evidence_sha256="z" * 64)
 
 
+def test_unavailable_latency_and_cost_signals_fail_closed_without_fabricated_scores():
+    contract = rubric(criteria=(
+        EvaluationCriterion(key="task_success", weight=0.5, required=True, minimum_score=0.8),
+        EvaluationCriterion(key="latency_budget", weight=0.25, required=True, minimum_score=0.8),
+        EvaluationCriterion(key="cost_budget", weight=0.25, required=True, minimum_score=0.8),
+    ), pass_threshold=0.8)
+    result = evaluate_submission(contract, {
+        "task_success": CriterionSignal(score=1.0, evidence_ref="runtime:task-1"),
+    })
+    assert result.passed is False
+    assert result.criterion_results["latency_budget"]["score"] is None
+    assert result.criterion_results["cost_budget"]["score"] is None
+    assert result.criterion_results["latency_budget"]["evaluator_source"] is None
+    assert result.criterion_results["cost_budget"]["evaluator_source"] is None
+
+
 def test_reward_policy_is_not_part_of_evaluator_result():
     result = evaluate_submission(rubric(), {
         "task_success": {"score": 1.0},
