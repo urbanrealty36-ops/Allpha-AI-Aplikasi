@@ -144,6 +144,8 @@ async def link_official_bot_runtime(
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "OFFICIAL_BOT_NOT_FOUND", "message": "Roster bot tidak ditemukan."})
     bot = rows[0]
+    if bot["status"] in {"active", "isolated", "blocked"}:
+        raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_LINK_STATE_INVALID", "message": "Hentikan atau pulihkan bot sebelum mengubah tautan runtime."})
     policy = await privileged_rest_request(
         "GET", "agent_runtime_policies",
         params={
@@ -162,20 +164,23 @@ async def link_official_bot_runtime(
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_AGENT_UNVERIFIED", "message": "Agent identity kanonis belum tersedia."})
     updated = await privileged_rest_request(
         "PATCH", "official_agent_bots",
-        params={"id": f"eq.{bot_id}", "select": _FIELDS},
+        params={"id": f"eq.{bot_id}", "status": f"eq.{bot['status']}", "select": _FIELDS},
         body={
             "agent_id": str(payload.agent_id), "runtime_policy_id": str(payload.runtime_policy_id),
             "character_asset_key": payload.character_asset_key, "asset_validation_status": "unverified",
-            "status": "pending_approval", "last_action": "runtime_links_submitted",
+            "status": "pending_approval", "approved_by": None, "approved_at": None,
+            "updated_at": datetime.now(timezone.utc).isoformat(), "last_action": "runtime_links_submitted",
         },
         prefer="return=representation",
     )
+    if not updated:
+        raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_STATE_CHANGED", "message": "Status roster berubah saat penautan; muat ulang dan coba lagi."})
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="official_bots.runtime_links.submit",
         outcome="allowed", resource_type="official_agent_bot", resource_id=str(bot_id),
         metadata={"agent_id": str(payload.agent_id), "policy_id": str(payload.runtime_policy_id), "asset_validation_status": "unverified"},
     )
-    return {"bot": (updated or [bot])[0], "activation": "blocked_until_asset_validation_and_approval"}
+    return {"bot": updated[0], "activation": "blocked_until_asset_validation_and_approval"}
 
 
 @router.post("/{bot_id}/action", name="official_bot_lifecycle_action")
@@ -230,13 +235,15 @@ async def official_bot_lifecycle_action(
         now_fields.update({"status": "draft", "isolation_reason": None, "activated_at": None, "stopped_at": None})
     updated = await privileged_rest_request(
         "PATCH", "official_agent_bots",
-        params={"id": f"eq.{bot_id}", "select": _FIELDS},
+        params={"id": f"eq.{bot_id}", "status": f"eq.{bot['status']}", "select": _FIELDS},
         body=now_fields,
         prefer="return=representation",
     )
+    if not updated:
+        raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_STATE_CHANGED", "message": "Status roster berubah saat aksi diproses; muat ulang sebelum mencoba lagi."})
     await write_operator_audit(
         request, actor_user_id=operator["id"], action=f"official_bots.{payload.action}",
         outcome="allowed", resource_type="official_agent_bot", resource_id=str(bot_id),
         metadata={"previous_status": bot["status"], "requested_status": now_fields["status"], "reason": payload.reason},
     )
-    return {"bot": (updated or [bot])[0], "runtime_action_dispatched": False}
+    return {"bot": updated[0], "runtime_action_dispatched": False}
