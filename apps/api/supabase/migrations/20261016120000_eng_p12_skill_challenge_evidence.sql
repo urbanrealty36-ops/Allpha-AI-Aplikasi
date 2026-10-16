@@ -115,11 +115,10 @@ comment on table public.agent_skill_challenge_achievement_evidence is
 -- Atomic per-owner issuance rate limit. This is a technical anti-abuse guard,
 -- not an economic tariff or reward policy. API calls it with a bounded limit.
 create table if not exists public.agent_skill_challenge_issue_windows (
-  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  owner_user_id uuid primary key references auth.users(id) on delete cascade,
   window_started_at timestamptz not null,
   issue_count integer not null default 0 check (issue_count >= 0),
-  updated_at timestamptz not null default now(),
-  primary key (owner_user_id, window_started_at)
+  updated_at timestamptz not null default now()
 );
 alter table public.agent_skill_challenge_issue_windows enable row level security;
 revoke all on public.agent_skill_challenge_issue_windows from public, anon, authenticated;
@@ -142,9 +141,19 @@ begin
   end if;
   insert into public.agent_skill_challenge_issue_windows(owner_user_id, window_started_at, issue_count, updated_at)
   values (p_owner_user_id, v_window, 1, now())
-  on conflict (owner_user_id, window_started_at)
-  do update set issue_count = public.agent_skill_challenge_issue_windows.issue_count + 1, updated_at = now()
-  where public.agent_skill_challenge_issue_windows.issue_count < p_limit
+  on conflict (owner_user_id)
+  do update set
+    window_started_at = case
+      when public.agent_skill_challenge_issue_windows.window_started_at < v_window then v_window
+      else public.agent_skill_challenge_issue_windows.window_started_at
+    end,
+    issue_count = case
+      when public.agent_skill_challenge_issue_windows.window_started_at < v_window then 1
+      else public.agent_skill_challenge_issue_windows.issue_count + 1
+    end,
+    updated_at = now()
+  where public.agent_skill_challenge_issue_windows.window_started_at < v_window
+     or public.agent_skill_challenge_issue_windows.issue_count < p_limit
   returning issue_count into v_count;
   return v_count is not null;
 end;
