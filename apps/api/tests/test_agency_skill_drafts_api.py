@@ -94,3 +94,43 @@ def test_reconciliation_summary_does_not_invent_matches(monkeypatch):
         "items": [],
     }
     assert audits[0]["action"] == "skill_drafts.agency.reconciliation.read"
+
+
+def test_reconciliation_items_returns_source_specific_terms_and_never_merges(monkeypatch):
+    audits = []
+    document = {
+        "agency_source_commit": "652b2692f8d8ec2b1f1a38e559073e287dfdc469",
+        "merge_policy": "Never merge automatically",
+        "items": [{
+            "agency_source_id": "agency.engineering.frontend",
+            "agency_name": "Frontend Engineer",
+            "agency_category": "engineering",
+            "candidate_strength": "strong_candidate",
+            "canonical_identity_merge": False,
+            "candidates": [{
+                "allpha_source_id": "software_engineering.generate_tests",
+                "allpha_name": "Software Engineering: Generate validation tests",
+                "similarity": 0.31,
+                "shared_terms": ["engineering"],
+                "agency_only_terms": ["frontend"],
+                "allpha_only_terms": ["validation"],
+                "difference_summary": "Agency-specific terms: frontend; Allpha-specific terms: validation",
+                "merge_decision": "none",
+            }],
+        }],
+    }
+    monkeypatch.setattr(api, "load_agency_reconciliation", lambda: document)
+    async def audit(*args, **kwargs):
+        audits.append(kwargs)
+    monkeypatch.setattr(api, "write_operator_audit", audit)
+    result = asyncio.run(api.list_agency_skill_reconciliation_items(
+        _request(), q="frontend", limit=10, offset=0, operator={"id": str(uuid4())},
+    ))
+    assert result["total"] == 1
+    row = result["items"][0]
+    assert row["agency_source_id"] == "agency.engineering.frontend"
+    assert row["candidates"][0]["allpha_source_id"] == "software_engineering.generate_tests"
+    assert row["candidates"][0]["agency_only_terms"] == ["frontend"]
+    assert row["candidates"][0]["allpha_only_terms"] == ["validation"]
+    assert row["canonical_identity_merge"] is False
+    assert audits[0]["action"] == "skill_drafts.agency.reconciliation.list"
