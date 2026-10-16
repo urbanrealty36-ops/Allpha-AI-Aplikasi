@@ -35,7 +35,7 @@ class ChallengeIssue(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_id: uuid.UUID
     skill_id: uuid.UUID
-    test_key: str = Field(min_length=3, max_length=80, pattern=r"^[a-z][a-z0-9_-]+$")
+    test_key: str | None = Field(default=None, min_length=3, max_length=80, pattern=r"^[a-z][a-z0-9_-]+$")
     idempotency_key: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
@@ -130,8 +130,13 @@ async def challenge_catalog(agent_id: uuid.UUID, user: dict[str, Any] = Depends(
                 continue
             tests = snapshot.get("tests") if isinstance(snapshot.get("tests"), list) else []
             safe_tests = []
+            hidden_available = False
             for case in tests:
                 if not isinstance(case, dict) or not isinstance(case.get("key"), str):
+                    continue
+                is_hidden = case.get("hidden") is True or case.get("visibility") == "hidden"
+                if is_hidden:
+                    hidden_available = True
                     continue
                 challenge_input = case.get("input", case.get("inputs"))
                 if isinstance(challenge_input, dict):
@@ -140,7 +145,8 @@ async def challenge_catalog(agent_id: uuid.UUID, user: dict[str, Any] = Depends(
             items.append({
                 "id": skill["id"], "agent_id": skill["agent_id"], "slug": skill["slug"],
                 "name": skill["name"], "status": skill["status"], "version": skill["version"],
-                "tests": safe_tests, "evaluation_rubric_available": isinstance(rubric, dict) and bool(rubric),
+                "tests": safe_tests, "hidden_challenges_available": hidden_available,
+                "evaluation_rubric_available": isinstance(rubric, dict) and bool(rubric),
             })
         return {"items": items}
     except HTTPException:
@@ -183,9 +189,15 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
         tests = snapshot.get("tests")
         if not isinstance(tests, list) or not tests:
             raise HTTPException(status_code=422, detail={"code": "CHALLENGE_TEST_SET_MISSING", "message": "Skill belum memiliki evaluation set yang dapat dijalankan."})
-        case = next((item for item in tests if isinstance(item, dict) and item.get("key") == payload.test_key), None)
-        if not case:
-            raise HTTPException(status_code=404, detail={"code": "CHALLENGE_TEST_NOT_FOUND", "message": "Test case tidak ditemukan pada versi Skill ini."})
+        hidden_cases = [item for item in tests if isinstance(item, dict) and (item.get("hidden") is True or item.get("visibility") == "hidden")]
+        if payload.test_key is None:
+            if not hidden_cases:
+                raise HTTPException(status_code=422, detail={"code": "HIDDEN_CHALLENGE_UNAVAILABLE", "message": "Skill ini belum memiliki hidden evaluation case."})
+            case = secrets.choice(hidden_cases)
+        else:
+            case = next((item for item in tests if isinstance(item, dict) and item.get("key") == payload.test_key), None)
+            if not case or case.get("hidden") is True or case.get("visibility") == "hidden":
+                raise HTTPException(status_code=404, detail={"code": "CHALLENGE_TEST_NOT_FOUND", "message": "Test case tidak ditemukan pada katalog challenge yang tersedia."})
         challenge_input = case.get("input", case.get("inputs"))
         expected_output = case.get("expected_output", case.get("expected"))
         if not isinstance(challenge_input, dict) or not isinstance(expected_output, dict):
@@ -202,12 +214,13 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             raise HTTPException(status_code=413, detail={"code": "CHALLENGE_PAYLOAD_TOO_LARGE", "message": "Test case melebihi batas ukuran."})
         nonce = secrets.token_urlsafe(32)
         now = _now()
-        evaluation_set = {"version": int(skill["version"]), "test_key": payload.test_key, "test_case": case}
+        challenge_key = str(case["key"])
+        evaluation_set = {"version": int(skill["version"]), "test_key": challenge_key, "test_case": case}
         body = {
             "owner_user_id": owner_id, "agent_id": str(agent["id"]), "skill_id": str(skill["id"]),
             "agent_version": int(agent.get("version") or 1), "agent_snapshot": {"id": str(agent["id"]), "version": int(agent.get("version") or 1), "status": agent.get("status")}, "skill_version": int(skill["version"]),
             "skill_version_id": version_row.get("id") if version_row else None,
-            "challenge_key": payload.test_key, "evaluation_set_version": int(skill["version"]),
+            "challenge_key": challenge_key, "evaluation_set_version": int(skill["version"]),
             "evaluation_set_digest": _digest(evaluation_set),
             "rubric_key": rubric.rubric_key, "rubric_version": rubric.version,
             "rubric_digest": rubric.digest(), "evaluator_version": EVALUATOR_VERSION,
