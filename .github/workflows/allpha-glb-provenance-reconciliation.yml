@@ -1,0 +1,84 @@
+name: Allpha GLB Provenance Reconciliation
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/allpha-glb-provenance-reconciliation.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: allpha-glb-provenance-reconciliation
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout canonical repository
+        uses: actions/checkout@v4
+      - name: Download prior Ladybug audit artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 38914664321 --repo "${GITHUB_REPOSITORY}" --name ladybug-glb-audit-2 --dir ladybug-source
+      - name: Download canonical Khronos models and license evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reconciliation/official reconciliation/evidence
+          base="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models"
+          for name in Avocado BarramundiFish BoomBox ToyCar AntiqueCamera; do
+            curl --fail --location --retry 3 --silent --show-error "$base/$name/glTF-Binary/$name.glb" -o "reconciliation/official/$name.glb"
+            curl --fail --location --retry 3 --silent --show-error "$base/$name/metadata.json" -o "reconciliation/evidence/$name.metadata.json"
+            curl --fail --location --retry 3 --silent --show-error "$base/$name/LICENSE.md" -o "reconciliation/evidence/$name.LICENSE.md"
+          done
+          curl --fail --location --retry 3 --silent --show-error "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/LICENSES/LicenseRef-LegalMark-UX3D.txt" -o reconciliation/evidence/LicenseRef-LegalMark-UX3D.txt
+      - name: Compare hashes, byte sizes, GLB structure and license metadata
+        run: |
+          python - <<'PY'
+          import csv, hashlib, json, struct
+          from pathlib import Path
+          root=Path(".")
+          old=root/"ladybug-source"
+          rows=[]
+          for name in ["Avocado","BarramundiFish","BoomBox","ToyCar","AntiqueCamera","Buggy"]:
+              matches=list((old/"assets").glob(f"*_{name}.glb"))
+              official=root/"reconciliation/official"/f"{name}.glb"
+              if name=="Buggy":
+                  rows.append({"asset":name,"ladybug_file":matches[0].name if matches else "",
+                    "ladybug_sha256":"","official_sha256":"","ladybug_bytes":"","official_bytes":"",
+                    "exact_sha256_match":"no_official_model_in_current_khronos_catalog",
+                    "official_model_license":"not_available","decision":"QUARANTINE_NO_VERIFIED_RIGHTS"})
+                  continue
+              meta=json.loads((root/"reconciliation/evidence"/f"{name}.metadata.json").read_text())
+              license_names=";".join(sorted({str(x.get("spdx") or x.get("license")) for x in meta.get("legal",[])}))
+              official_bytes=official.stat().st_size
+              raw=official.read_bytes()
+              magic,version,length=struct.unpack("<4sII",raw[:12])
+              if magic!=b"glTF" or version!=2 or length!=official_bytes:
+                  raise SystemExit(f"Invalid official GLB header: {name}")
+              local=matches[0] if matches else None
+              local_hash=hashlib.sha256(local.read_bytes()).hexdigest() if local else ""
+              official_hash=hashlib.sha256(raw).hexdigest()
+              rows.append({"asset":name,"ladybug_file":local.name if local else "",
+                "ladybug_sha256":local_hash,"official_sha256":official_hash,
+                "ladybug_bytes":local.stat().st_size if local else "",
+                "official_bytes":official_bytes,
+                "exact_sha256_match":str(bool(local and local_hash==official_hash)).lower(),
+                "official_model_license":license_names,
+                "decision":"QUARANTINE_REPLACE_WITH_CANONICAL_SOURCE" if not local or local_hash!=official_hash else "CANONICAL_HASH_MATCH_REQUIRES_RENDERER_QA"})
+          out=root/"reconciliation/source-reconciliation.csv"
+          with out.open("w",newline="",encoding="utf-8") as f:
+              w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+          print(out.read_text())
+          PY
+      - name: Upload reconciliation evidence and official GLB test fixtures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-provenance-${{ github.run_number }}
+          path: reconciliation/
+          if-no-files-found: error
+          retention-days: 14
