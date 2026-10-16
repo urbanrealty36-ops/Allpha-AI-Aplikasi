@@ -46,3 +46,10 @@ assert.ok(app.includes("loadRuntimeSessionTasks"));
 assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui"));
 
 console.log("ENG-P01 source and ENG-P10 task lifecycle smoke tests passed.");
+
+
+const challengeContracts = [
+  "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "challengeNonce",
+  "challengeSubmission", "evidence_digest", "reward finansial/AI Credits tidak diterbitkan"
+];
+for (const contract of challengeContracts) assert.ok(source.includes(contract), `missing ENG-P12 Native Skill Challenge contract: ${contract}`);
