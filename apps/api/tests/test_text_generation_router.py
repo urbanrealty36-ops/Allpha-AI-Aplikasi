@@ -108,13 +108,13 @@ def test_text_generation_fails_closed_without_approved_route_or_metering():
 def test_text_generation_rejects_provider_model_mismatch():
     router = make_router(FakeAdapter(model_id="unapproved-model"))
     with pytest.raises(TextGenerationRouterRejected, match="identity"):
-        await router.generate(request())
+        asyncio.run(router.generate(request()))
 
 
 def test_text_generation_rejects_cost_over_approved_policy():
     router = make_router(FakeAdapter(cost=11), max_cost=10)
     with pytest.raises(TextGenerationRouterRejected, match="cost"):
-        await router.generate(request())
+        asyncio.run(router.generate(request()))
 
 
 def test_text_generation_rejects_unapproved_policy():
