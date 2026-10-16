@@ -45,6 +45,7 @@ type CapabilityRequest = {
   status: "requested" | "approved" | "denied" | "revoked";
   created_at: string;
 };
+type OfficialBot = { id: string; skill_key: string; display_name: string; category_key: string; category_label: string; skill_description: string; character_archetype_key: string; character_asset_key?: string | null; asset_validation_status: "unverified" | "verified" | "rejected"; agent_id?: string | null; runtime_policy_id?: string | null; status: "draft" | "pending_approval" | "approved" | "active" | "stopped" | "isolated" | "blocked"; autonomy_mode: "disabled" | "supervised" | "bounded"; isolation_reason?: string | null };
 type Grant = {
   id: string;
   user_id: string;
@@ -156,6 +157,9 @@ export default function OperationsPage() {
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [capabilities, setCapabilities] = useState<CapabilityRequest[]>([]);
+  const [officialBots, setOfficialBots] = useState<OfficialBot[]>([]);
+  const [officialBotsTotal, setOfficialBotsTotal] = useState(0);
+  const [officialBotsBusy, setOfficialBotsBusy] = useState(false);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [targetUser, setTargetUser] = useState("");
   const [selectedScopes, setSelectedScopes] = useState<OperatorScope[]>([]);
@@ -168,6 +172,7 @@ export default function OperationsPage() {
   const canReadAudit = Boolean(operator?.scopes.includes("platform:security.audit.read"));
   const canManage = Boolean(operator?.scopes.includes("platform:operators.manage"));
   const canReview = Boolean(operator?.scopes.includes("platform:capabilities.review"));
+  const canControlBots = Boolean(operator?.scopes.includes("platform:capabilities.review.high_risk"));
   const availableGrantScopes = useMemo(
     () => allScopes.filter((scope) => operator?.scopes.includes(scope)),
     [operator],
@@ -225,6 +230,11 @@ export default function OperationsPage() {
     } else {
       setCapabilities([]);
     }
+    if (access.operator.scopes.includes("platform:operations.read")) {
+      const botResponse = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
+      const botBody = await responseBody<{ items: OfficialBot[] }>(botResponse);
+      setOfficialBots(botBody.items ?? []); setOfficialBotsTotal(botBody.items?.length ?? 0);
+    } else { setOfficialBots([]); setOfficialBotsTotal(0); }
   };
 
   useEffect(() => { void refreshProbes(); }, []);
@@ -259,6 +269,45 @@ export default function OperationsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function refreshOfficialBots(activeSession = session) {
+    if (!activeSession) return;
+    setOfficialBotsBusy(true); setError("");
+    try {
+      const response = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
+      const body = await responseBody<{ items: OfficialBot[] }>(response);
+      setOfficialBots(body.items ?? []); setOfficialBotsTotal(body.items?.length ?? 0);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Roster Official Bot tidak dapat dimuat."); }
+    finally { setOfficialBotsBusy(false); }
+  }
+
+  async function provisionOfficialBots() {
+    if (!session || !canReview) return;
+    if (!window.confirm("Siapkan hingga 500 kandidat Official Bot dari katalog Skill? Ini membuat roster draft saja; tidak mengaktifkan runtime.")) return;
+    setOfficialBotsBusy(true); setError(""); setNotice("");
+    try {
+      const response = await adminFetch("/v1/admin/official-bots/provision", session, setSession, { method: "POST", body: JSON.stringify({ limit: 500 }) });
+      const body = await responseBody<{ roster_count_observed: number; catalog_count: number; message: string }>(response);
+      setNotice(body.message + " Katalog: " + body.catalog_count + "; roster teramati: " + body.roster_count_observed + ".");
+      await refreshOfficialBots();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Provision roster gagal."); }
+    finally { setOfficialBotsBusy(false); }
+  }
+
+  async function officialBotAction(bot: OfficialBot, action: "approve" | "activate" | "stop" | "isolate" | "resume_to_draft") {
+    if (!session || !canControlBots) return;
+    const reason = window.prompt("Alasan wajib untuk aksi " + action + " pada " + bot.display_name + " (minimal 8 karakter):", action === "stop" ? "Stop operasional oleh Super Admin" : action === "isolate" ? "Isolasi untuk pemeriksaan keamanan" : "Perubahan lifecycle ditinjau operator");
+    if (!reason || reason.trim().length < 8) return;
+    if (action === "activate" && !window.confirm("Aktivasi hanya berhasil jika Agent identity, runtime policy approved, dan asset GLB sudah diverifikasi backend. Lanjutkan permintaan?")) return;
+    setOfficialBotsBusy(true); setError(""); setNotice("");
+    try {
+      const response = await adminFetch("/v1/admin/official-bots/" + encodeURIComponent(bot.id) + "/action", session, setSession, { method: "POST", body: JSON.stringify({ action, reason: reason.trim(), autonomy_mode: "supervised" }) });
+      const body = await responseBody<{ bot: OfficialBot; runtime_action_dispatched?: boolean }>(response);
+      setNotice("Status roster: " + body.bot.status + ". Runtime action dispatched: " + String(Boolean(body.runtime_action_dispatched)) + ".");
+      await refreshOfficialBots();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Aksi Official Bot ditolak."); }
+    finally { setOfficialBotsBusy(false); }
   }
 
   async function createGrant(event: FormEvent<HTMLFormElement>) {
@@ -412,6 +461,16 @@ export default function OperationsPage() {
           })}
           {!capabilities.length && <p className="emptyCell">Tidak ada permintaan capability yang menunggu review.</p>}
         </div>
+      </section>}
+      {session && operator?.scopes.includes("platform:operations.read") && <section className="panel" id="official-bots">
+        <header className="panelHead"><div><h2>Official Allpha AI Agents</h2><p>Roster kandidat dari katalog 500 Skills. Identitas, runtime, policy, dan GLB harus ditautkan dan diverifikasi sebelum aktivasi.</p></div><span className="pill warning">SUPERVISED</span></header>
+        <div className="panelActions">{canReview && <button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan 500 kandidat</button>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster teramati: {officialBotsTotal}</span></div>
+        <p className="muted">Provisioning hanya membuat roster draft, bukan 500 Agent identity aktif. Aktivasi ditolak backend sampai Agent identity kanonis, policy runtime approved, dan asset GLB terverifikasi tersedia. Aksi lifecycle diaudit.</p>
+        <div className="officialBotList">{officialBots.map(bot => <article className="probe officialBot" key={bot.id}>
+          <div className="probeText"><b>{bot.display_name}</b><code>{bot.skill_key} · {bot.category_label}</code><p>{bot.skill_description}</p><small>Karakter: {bot.character_archetype_key} · Asset: {bot.character_asset_key || "belum ditautkan"} ({bot.asset_validation_status})</small><small>Agent: {bot.agent_id || "belum ditautkan"} · Policy: {bot.runtime_policy_id || "belum ditautkan"}</small></div>
+          <span className={"pill " + (bot.status === "active" ? "online" : "warning")}>{bot.status.toUpperCase()}</span>
+          {canControlBots && <div className="agent-card-actions"><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "approve")}>Approve</button><button disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "activate")}>Aktifkan</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "stopped"} onClick={() => void officialBotAction(bot, "stop")}>Stop</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "isolated"} onClick={() => void officialBotAction(bot, "isolate")}>Isolasi</button><button className="secondaryButton" disabled={officialBotsBusy || !["stopped","isolated","blocked"].includes(bot.status)} onClick={() => void officialBotAction(bot, "resume_to_draft")}>Kembali ke draft</button></div>}
+        </article>)}{!officialBots.length && <p className="emptyCell">Roster belum dimuat atau belum diprovision melalui API.</p>}</div>
       </section>}
       {session && canReadAudit && <section className="panel" id="operator-audit">
         <header className="panelHead"><div><h2>Audit events</h2><p>Event terbaru dari tabel audit khusus operator; token dan payload sensitif tidak ditampilkan.</p></div><span className="pill online">AUDIT READ</span></header>
