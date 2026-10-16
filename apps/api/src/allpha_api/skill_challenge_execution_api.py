@@ -96,7 +96,8 @@ async def execute_skill_challenge(
             generation_request = TextGenerationRequest(
                 task_id=str(run_id), trace_id=trace_id, idempotency_key=str(row["idempotency_key"]),
                 sensitivity="private", prompt=prompt, max_output_tokens=max_output_tokens,
-                timeout_ms=30_000,
+                timeout_ms=30_000, owner_id=owner_id, agent_id=str(row["agent_id"]),
+                source_id=str(row["skill_id"]), source_version=int(row["skill_version"]),
             )
         except (TextGenerationRouterUnavailable, ValueError) as exc:
             raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Tidak ada policy text-generation yang disetujui dan siap dipakai."}) from exc
