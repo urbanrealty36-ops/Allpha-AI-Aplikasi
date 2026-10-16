@@ -328,6 +328,14 @@ async def official_bot_lifecycle_action(
         "updated_at": now,
         "last_action": payload.action,
     }
+    # Roster state is not runtime state. Until a real dispatch and cancellation/kill
+    # contract is wired to the canonical Agent Runtime, never mark a bot active or
+    # claim that stop/isolate has terminated a running worker.
+    if bot["status"] == "active" and payload.action in {"stop", "isolate"}:
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_KILL_SWITCH_UNAVAILABLE",
+            "message": "Bot berstatus active tetapi jalur kill/cancellation runtime belum terhubung; status tidak diubah agar tidak memberi kesan runtime sudah berhenti.",
+        })
     if payload.action == "approve":
         if bot["status"] not in {"draft", "pending_approval", "stopped"}:
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_TRANSITION_INVALID", "message": "Status bot tidak dapat disetujui dari state saat ini."})
@@ -350,6 +358,10 @@ async def official_bot_lifecycle_action(
         )
         if not agent or agent[0].get("status") != "active":
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_AGENT_NOT_ACTIVE", "message": "Agent identity kanonis harus aktif sebelum bot dijalankan."})
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_RUNTIME_DISPATCH_UNAVAILABLE",
+            "message": "Semua prasyarat roster tidak cukup untuk aktivasi. Dispatcher runtime kanonis, Skill version pinning, budget enforcement, dan kill/cancellation belum terhubung; bot tetap approved dan tidak diubah menjadi active.",
+        })
         now_fields.update({"status": "active", "autonomy_mode": payload.autonomy_mode, "activated_by": operator["id"], "activated_at": now, "stopped_at": None, "stopped_by": None, "isolation_reason": None})
     elif payload.action == "stop":
         now_fields.update({"status": "stopped", "stopped_by": operator["id"], "stopped_at": now})
