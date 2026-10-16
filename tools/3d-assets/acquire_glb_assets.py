@@ -2,7 +2,7 @@
 """Acquire and audit GLB assets from the eight explicitly approved public repositories.
 Downloads are written only to the workflow workspace/artifact; nothing is published to production.
 """
-import argparse, csv, hashlib, json, os, re, shutil, time
+import argparse, csv, hashlib, json, os, re, shutil, struct, time
 from pathlib import Path
 from urllib.parse import quote
 import requests
@@ -42,6 +42,33 @@ def category(path, repo):
  for c,pat in rules:
   if re.search(pat,s): return c
  return "unmapped" # unknown assets remain unmapped until evidence-based human/catalog review
+def validate_glb_container(path):
+ """Validate GLB v2 container bounds and parse its first JSON chunk."""
+ size=Path(path).stat().st_size
+ with open(path,"rb") as stream:
+  header=stream.read(12)
+  if len(header)!=12: raise ValueError("truncated GLB header")
+  magic,version,declared_length=struct.unpack("<4sII",header)
+  if magic!=b"glTF": raise ValueError("invalid GLB magic; response may not be a GLB")
+  if version!=2: raise ValueError(f"unsupported GLB version {version}")
+  if declared_length!=size: raise ValueError(f"header length {declared_length} != file size {size}")
+  offset=12; index=0; parsed_json=False
+  while offset<size:
+   chunk_header=stream.read(8)
+   if len(chunk_header)!=8: raise ValueError("truncated GLB chunk header")
+   length,chunk_type=struct.unpack("<I4s",chunk_header); offset+=8
+   if length%4: raise ValueError(f"chunk {index} length is not 4-byte aligned")
+   if offset+length>size: raise ValueError(f"chunk {index} exceeds declared file length")
+   chunk=stream.read(length); offset+=length
+   if len(chunk)!=length: raise ValueError(f"truncated GLB chunk {index}")
+   if index==0:
+    if chunk_type!=b"JSON": raise ValueError("first GLB chunk is not JSON")
+    json.loads(chunk.decode("utf-8").rstrip("\\x00 \\t\\r\\n"))
+    parsed_json=True
+   index+=1
+  if offset!=size: raise ValueError("GLB chunk boundaries do not match file length")
+  if not parsed_json: raise ValueError("GLB has no JSON chunk")
+ return True
 def api_get(url, session):
  for attempt in range(5):
   r=session.get(url,timeout=90)
@@ -135,9 +162,13 @@ def main():
     digest=h.hexdigest(); row["bytes"]=size; row["sha256"]=digest
     if size<12:
      row["status"]="FAILED_INVALID_SMALL_FILE"; tmp.unlink(missing_ok=True)
-    elif digest in hashes:
-     row["status"]="DUPLICATE_SHA256"; row["dedupe_of"]=hashes[digest]; tmp.unlink(missing_ok=True)
     else:
+     try: validate_glb_container(tmp)
+     except (OSError,ValueError,UnicodeError,struct.error,json.JSONDecodeError) as exc:
+      row["status"]="FAILED_INVALID_GLB"; row["error"]=str(exc)[:500]; tmp.unlink(missing_ok=True)
+    if row["status"]=="PENDING" and digest in hashes:
+     row["status"]="DUPLICATE_SHA256"; row["dedupe_of"]=hashes[digest]; tmp.unlink(missing_ok=True)
+    elif row["status"]=="PENDING":
      safe=re.sub(r"[^A-Za-z0-9._-]+","_",Path(c.get("path","asset.glb").split("#")[0]).name)
      dest=files/(digest[:12]+"_"+safe)
      tmp.replace(dest); row["local_file"]=str(dest.relative_to(out)); row["status"]="DOWNLOADED"
@@ -154,7 +185,7 @@ def main():
  summary={"sources":source_stats,"candidate_urls":len(candidates),"unique_urls":len(unique),"processed":len(manifest),
  "downloaded":sum(x["status"]=="DOWNLOADED" for x in manifest),
  "duplicate_hashes":sum(x["status"]=="DUPLICATE_SHA256" for x in manifest),
- "failed":sum(x["status"]=="FAILED_DOWNLOAD" for x in manifest),
+ "failed":sum(x["status"]=="FAILED_DOWNLOAD" for x in manifest),\n "invalid_glb":sum(x["status"]=="FAILED_INVALID_GLB" for x in manifest),
  "skipped_limits":sum(x["status"].startswith("SKIPPED") for x in manifest),
  "unique_sha256":len(hashes),"downloaded_bytes":total,"errors":errors,
  "unmapped_candidates":sum(x["category"]=="unmapped" for x in manifest),
