@@ -24,6 +24,7 @@ from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_t
 from allpha_api.operator_security import router as operator_security_router
 from allpha_api.knowledge import router as knowledge_router
 from allpha_api.knowledge_retrieval import router as knowledge_retrieval_router
+from allpha_api.skill_catalog import search_skill_catalog
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -161,6 +162,25 @@ class OrganizationCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     slug: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
 
+
+
+@app.get("/v1/skill-catalog", tags=["agent-identity"])
+async def get_skill_catalog(
+    q: str = "",
+    category: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Public metadata catalog for Human Agent Identity and operator discovery.
+
+    Catalog entries are non-executable blueprints. Runtime permission is granted
+    only by canonical Agent Runtime policy/capability lifecycle.
+    """
+    if len(q) > 120 or len(category) > 80:
+        raise HTTPException(status_code=422, detail={"code": "SKILL_CATALOG_QUERY_INVALID", "message": "Filter katalog terlalu panjang."})
+    if limit < 1 or limit > 100 or offset < 0 or offset > 100_000:
+        raise HTTPException(status_code=422, detail={"code": "SKILL_CATALOG_PAGINATION_INVALID", "message": "Batas pagination katalog tidak valid."})
+    return search_skill_catalog(q=q, category=category, limit=limit, offset=offset)
 
 
 @app.get("/v1/credits/balance", tags=["credits"])
