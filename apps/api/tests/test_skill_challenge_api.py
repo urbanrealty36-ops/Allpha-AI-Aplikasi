@@ -190,7 +190,8 @@ def test_submit_challenge_persists_repeatable_evidence_and_rejects_conflicting_r
         )
         assert submitted["run"]["status"] == "passed"
         assert submitted["run"]["evidence_digest"]
-        assert submitted["achievement"]["key"] == "skill_challenge_passed"
+        assert submitted["achievement"] is None
+        assert submitted["achievement_blocked_reason"] == "runtime_execution_required"
         replay = await challenge_api.submit_challenge(
             run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "4"}),
             user={"id": store.owner_id},
