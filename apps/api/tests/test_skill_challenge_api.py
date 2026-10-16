@@ -90,7 +90,7 @@ class FakeChallengeStore:
         }
         self.snapshot = {
             "id": self.skill_id, "agent_id": self.agent_id, "version": 2,
-            "name": "Skill Test", "slug": "skill_test", "status": "draft", "created_by": self.owner_id,
+            "name": "Skill Test", "slug": "skill_test", "status": "published", "created_by": self.owner_id,
             "tests": [
                 {"key": "visible_case", "input": {"question": "2+2?"}, "expected_output": {"answer": "4"}},
                 {"key": "hidden_case", "hidden": True, "input": {"question": "3+3?"}, "expected_output": {"answer": "6"}},
