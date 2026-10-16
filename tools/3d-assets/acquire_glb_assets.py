@@ -63,7 +63,7 @@ def validate_glb_container(path):
    if len(chunk)!=length: raise ValueError(f"truncated GLB chunk {index}")
    if index==0:
     if chunk_type!=b"JSON": raise ValueError("first GLB chunk is not JSON")
-    json.loads(chunk.decode("utf-8").rstrip("\\x00 \\t\\r\\n"))
+    json.loads(chunk.decode("utf-8").rstrip(" \\t\\r\\n\\x00"))
     parsed_json=True
    index+=1
   if offset!=size: raise ValueError("GLB chunk boundaries do not match file length")
