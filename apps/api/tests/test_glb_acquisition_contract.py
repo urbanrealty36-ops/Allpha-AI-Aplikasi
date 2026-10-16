@@ -2,7 +2,7 @@ import ast
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 ACQUISITION_SCRIPT = ROOT / "tools" / "3d-assets" / "acquire_glb_assets.py"
 
 
