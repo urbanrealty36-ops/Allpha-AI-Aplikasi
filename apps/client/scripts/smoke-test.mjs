@@ -50,7 +50,7 @@ console.log("ENG-P01 source, ENG-P10 task lifecycle, and ENG-P12 Skill Challenge
 
 const challengeContracts = [
   "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "challengeNonce",
-  "/execute", "Model Router", "evidence_digest"
+  "/execute", "/comparison", "/release-decision", "Catat keputusan release", "Model Router", "evidence_digest"
 ];
 for (const contract of challengeContracts) assert.ok(app.includes(contract), `missing ENG-P12 Native Skill Challenge contract: ${contract}`);
 
