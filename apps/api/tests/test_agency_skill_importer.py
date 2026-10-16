@@ -18,6 +18,7 @@ def test_source_path_rejects_traversal_and_non_markdown():
     assert IMPORTER._safe_source_path("engineering/example.md") == "engineering/example.md"
     try:
         IMPORTER._safe_source_path("../secret.md")
+        IMPORTER._safe_source_path(r"..\secret.md")
     except ValueError:
         pass
     else:
