@@ -24,6 +24,8 @@ type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; tit
 type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[] };
 type RuntimeTool = { key: string; name: string; description: string; executable: boolean };
 type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
+type CatalogSkill = { key: string; slug: string; name: string; category: string; category_label: string; description: string; executable: boolean; execution_status: string; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
+type SkillCatalogResponse = { items: CatalogSkill[]; total: number; categories: { key: string; label: string; count: number }[]; catalog_version: string };
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function responseError(response: Response): Promise<string> {
@@ -50,6 +52,13 @@ export default function AgentsPage() {
   const [disclosure, setDisclosure] = useState("Agent AI; respons dapat dihasilkan oleh model.");
   const [boundariesText, setBoundariesText] = useState('{"requires_owner_approval_for_external_actions":true,"private_owner_data":"owner_only"}');
   const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [catalogSkills, setCatalogSkills] = useState<CatalogSkill[]>([]);
+  const [catalogCategories, setCatalogCategories] = useState<SkillCatalogResponse["categories"]>([]);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState("");
+  const [selectedCatalogSkill, setSelectedCatalogSkill] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
   const [runtimeSessions, setRuntimeSessions] = useState<Record<string, RuntimeSession[]>>({});
   const [runtimeBusyAgent, setRuntimeBusyAgent] = useState<string | null>(null);
   const [runtimeSkills, setRuntimeSkills] = useState<Record<string, RuntimeSkill[]>>({});
@@ -60,10 +69,31 @@ export default function AgentsPage() {
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
   const [runtimeTaskBusy, setRuntimeTaskBusy] = useState<string | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const pages = await Promise.all([0, 100, 200, 300, 400].map(offset => fetch(apiBase + "/v1/skill-catalog?limit=100&offset=" + offset, { cache: "no-store" }).then(async response => {
+          if (!response.ok) throw new Error(await responseError(response));
+          return await response.json() as SkillCatalogResponse;
+        })));
+        if (!active) return;
+        setCatalogSkills(pages.flatMap(page => page.items ?? []));
+        setCatalogCategories(pages[0]?.categories ?? []);
+      } catch (cause) {
+        if (active) setCatalogError(cause instanceof Error ? cause.message : "Katalog Skill tidak dapat dimuat.");
+      } finally { if (active) setCatalogLoading(false); }
+    })();
+    return () => { active = false; };
+  }, []);
+
   const loadAgents = useCallback(async (active: Session) => {
     setLoading(true);
     setError("");
     try {
+      const selectedSkill = catalogSkills.find(item => item.key === selectedCatalogSkill);
+      if (!selectedSkill) throw new Error("Pilih satu Skill dari katalog Allpha sebelum membuat Agent.");
+      persona = { ...persona, allpha_skill_key: selectedSkill.key, allpha_skill_catalog_version: "allpha-skill-catalog-v1", character_profile: selectedSkill.character_profile };
       const response = await fetch(apiBase + "/v1/agents", {
         headers: { Authorization: "Bearer " + active.access_token },
         cache: "no-store",
@@ -257,11 +287,20 @@ export default function AgentsPage() {
         <label>Nama Agent<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} minLength={2} maxLength={80} required placeholder="Contoh: Asisten Riset" /></label>
         <label>Handle Agent<input value={handle} onChange={(e) => setHandle(e.target.value.toLowerCase())} minLength={3} maxLength={30} pattern="[a-z0-9_]{3,30}" required placeholder="asisten_riset" /><small>3–30 karakter, huruf kecil, angka, underscore.</small></label>
         <label>Deskripsi<textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} rows={3} placeholder="Tujuan dan peran Agent." /></label>
+        <section className="catalog-picker" aria-label="Pilih bidang dan Skill Agent">
+          <div className="panel-heading"><span className="section-kicker">SKILL & KARAKTER 3D</span><h3>Pilih satu Skill Agent</h3><p>Katalog 500 blueprint Skill berbasis use case referensi. Pilihan tidak otomatis memberi izin tool atau mengaktifkan runtime.</p></div>
+          <label>Cari Skill<input value={catalogQuery} onChange={event => setCatalogQuery(event.target.value)} placeholder="Contoh: research, data, security" /></label>
+          <label>Bidang<select value={catalogCategory} onChange={event => setCatalogCategory(event.target.value)}><option value="">Semua bidang ({catalogSkills.length})</option>{catalogCategories.map(item => <option key={item.key} value={item.key}>{item.label} ({item.count})</option>)}</select></label>
+          <label>Skill AI Agent<select required value={selectedCatalogSkill} onChange={event => setSelectedCatalogSkill(event.target.value)} disabled={catalogLoading || Boolean(catalogError)}><option value="">{catalogLoading ? "Memuat katalog…" : "Pilih satu Skill"}</option>{catalogSkills.filter(item => (!catalogCategory || item.category === catalogCategory) && (!catalogQuery || (item.name + " " + item.description + " " + item.key).toLowerCase().includes(catalogQuery.toLowerCase()))).map(item => <option key={item.key} value={item.key}>{item.name}</option>)}</select></label>
+          {catalogError && <p role="alert" className="form-error">Katalog tidak tersedia: {catalogError}</p>}
+          {(() => { const selected = catalogSkills.find(item => item.key === selectedCatalogSkill); return selected ? <div className="detail-line"><span><strong>{selected.category_label}</strong><small>{selected.description}</small></span><strong>Role 3D: {selected.character_profile.display_role}</strong></div> : <p className="muted">Pilih Skill untuk melihat bidang dan role karakter yang disarankan.</p>; })()}
+          <small className="agent-footnote">Profil role dipilih; asset GLB belum otomatis tersedia. Karakter harus dipetakan ke katalog asset 3D kanonis sebelum dirender.</small>
+        </section>
         <label>Persona (JSON)<textarea value={personaText} onChange={(e) => setPersonaText(e.target.value)} rows={4} spellCheck={false} required /></label>
         <label>Disclosure publik<textarea value={disclosure} onChange={(e) => setDisclosure(e.target.value)} maxLength={1000} rows={3} placeholder="Jelaskan bahwa pengguna berinteraksi dengan AI." /></label>
         <label>Batas perilaku (JSON)<textarea value={boundariesText} onChange={(e) => setBoundariesText(e.target.value)} rows={4} spellCheck={false} required /></label>
         <label>Visibilitas<select value={visibility} onChange={(e) => setVisibility(e.target.value as "private" | "public")}><option value="private">Privat — hanya pemilik</option><option value="public">Publik — hanya terlihat saat aktif</option></select></label>
-        <button className="button-primary full-width" disabled={saving}>{saving ? "Menyimpan…" : "Buat Agent dan catat pemilik"}</button>
+        <button className="button-primary full-width" disabled={saving || catalogLoading || !selectedCatalogSkill || Boolean(catalogError)}>{saving ? "Menyimpan…" : "Buat Agent dan catat pemilik"}</button>
       </form>
       <section className="agent-list-section"><div className="panel-heading"><span className="section-kicker">PASSPORT & OWNERSHIP</span><h2>Agent Anda</h2><p>Profil Agent berbeda dari profil manusia. Status aktif tidak menjalankan runtime AI dengan sendirinya.</p></div>
         {loading ? <section className="panel loading-panel">Memuat identitas Agent dari API…</section> : agents.length === 0 ? <section className="panel agent-empty"><strong>Belum ada Agent</strong><p className="muted">Buat Agent pertama. Identitas akan tersimpan pada database dan terhubung dengan Human pemiliknya.</p></section> :
