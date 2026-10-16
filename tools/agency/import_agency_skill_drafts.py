@@ -27,6 +27,7 @@ SOURCE_REPOSITORY = "https://github.com/msitarzewski/agency-agents"
 SOURCE_OWNER_REPO = "msitarzewski/agency-agents"
 SOURCE_COMMIT = "652b2692f8d8ec2b1f1a38e559073e287dfdc469"
 LICENSE_PATH = "LICENSE"
+IMPORTER_VERSION = "1.0.1"
 SCHEMA_VERSION = "allpha.skill-draft-catalog.v1"
 CHUNK_SIZE = 40
 USER_AGENT = "Allpha-Agency-Skill-Importer/1.0"
@@ -37,6 +38,7 @@ SECURITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("prompt_override_language", re.compile(r"ignore (all |any )?(previous|prior|system|developer) instructions|disregard (all |any )?(previous|prior|system|developer) instructions|reveal (the )?(system prompt|hidden instructions)|jailbreak", re.I)),
     ("external_network_or_data_exfiltration", re.compile(r"\b(curl|wget|exfiltrat)\b|upload.{0,40}(credential|secret|private)|send.{0,40}(credential|secret|private) to", re.I)),
     ("privileged_access_or_destructive_ops", re.compile(r"\b(sudo|rm -rf|chmod 777|administrator privileges|service.?role|root access|drop database|truncate table)\b", re.I)),
+    ("unsafe_code_execution", re.compile(r"\b(run|execute|eval|exec)\s+(?:arbitrary\s+|untrusted\s+|user-provided\s+)?(?:code|script|shell)\b", re.I)),
 )
 
 ALLPHA_ADAPTER = """ALLPHA CANONICAL SKILL ADAPTER — DRAFT / NOT EXECUTABLE
@@ -179,6 +181,7 @@ def build_reconciliation(agency_items: list[dict[str, Any]], allpha_items: list[
     return {
         "schema_version": "allpha.catalog-reconciliation.v1",
         "generated_by": "tools/agency/import_agency_skill_drafts.py",
+        "importer_version": IMPORTER_VERSION,
         "agency_source_commit": SOURCE_COMMIT,
         "agency_count": len(agency_items),
         "allpha_blueprint_count": len(allpha_items),
