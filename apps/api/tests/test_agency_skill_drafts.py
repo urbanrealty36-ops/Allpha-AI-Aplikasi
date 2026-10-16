@@ -60,3 +60,20 @@ def test_draft_loader_rejects_checksum_tampering(tmp_path, monkeypatch):
         assert "checksum mismatch" in str(exc).lower()
     else:
         raise AssertionError("checksum tampering must fail closed")
+
+
+def test_imported_agency_draft_bundle_has_all_282_pinned_versions():
+    from allpha_api.agency_skill_drafts import load_agency_reconciliation, load_agency_skill_drafts
+
+    records = load_agency_skill_drafts()
+    reconciliation = load_agency_reconciliation()
+    assert len(records) == 282
+    assert len({record["skill_id"] for record in records}) == 282
+    assert all(record["version"] == 1 and record["status"] == "draft" for record in records)
+    assert all(record["immutable"] is True and record["executable"] is False for record in records)
+    assert all(record["provenance"]["commit"] == "652b2692f8d8ec2b1f1a38e559073e287dfdc469" for record in records)
+    assert all(record["content_sha256"] and record["adapted_content_sha256"] for record in records)
+    assert all(record["character_profile"]["asset_key"] is None for record in records)
+    assert reconciliation is not None
+    assert len(reconciliation["items"]) == 282
+    assert all(row["canonical_identity_merge"] is False for row in reconciliation["items"])
