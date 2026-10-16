@@ -103,7 +103,7 @@ export default function SkillChallengesPage() {
   }, [skillId, availableTests.length, testKey, selectedSkill?.hidden_challenges_available]);
 
   async function issueChallenge(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setNonce(""); setActiveRun(null);
+    event.preventDefault(); setBusy(true); setError(""); setNotice(""); setNonce(""); setActiveRun(null); setComparison(null); setReleaseReason("");
     try {
       const result = await request("/v1/skill-challenges/runs", { method: "POST", body: JSON.stringify({
         agent_id: agentId, skill_id: skillId, test_key: testKey === "__hidden__" ? null : testKey, idempotency_key: crypto.randomUUID()
