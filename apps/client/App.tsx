@@ -144,7 +144,6 @@ function Profile({ session }: { session: Session }) {
   const [challengeSkills, setChallengeSkills] = useState<ChallengeSkill[]>([]);
   const [challengeSkillId, setChallengeSkillId] = useState("");
   const [challengeTestKey, setChallengeTestKey] = useState("");
-  const [challengeSubmission, setChallengeSubmission] = useState("{}");
   const [challengeNonce, setChallengeNonce] = useState("");
   const [challengeRun, setChallengeRun] = useState<ChallengeRun | null>(null);
   const [challengeRuns, setChallengeRuns] = useState<ChallengeRun[]>([]);
@@ -252,7 +251,7 @@ function Profile({ session }: { session: Session }) {
         agent_id: challengeAgentId, skill_id: challengeSkillId, test_key: challengeTestKey === "__hidden__" ? null : challengeTestKey,
         idempotency_key: "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12)
       }) }) as { run: ChallengeRun; nonce?: string };
-      setChallengeRun(body.run); setChallengeNonce(body.nonce ?? ""); setChallengeSubmission(JSON.stringify(body.run.challenge_input ?? {}, null, 2));
+      setChallengeRun(body.run); setChallengeNonce(body.nonce ?? "");
       setMessage(body.nonce ? "Challenge diterbitkan. Jalankan Skill melalui runtime sebelum nonce kedaluwarsa." : "Run lama ditemukan tanpa nonce. Terbitkan run baru untuk menghindari replay.");
       await loadChallengeRuns();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Challenge tidak dapat diterbitkan."); }
