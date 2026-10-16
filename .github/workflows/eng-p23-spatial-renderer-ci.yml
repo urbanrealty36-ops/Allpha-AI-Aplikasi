@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -e "apps/api[dev]"
-      - run: pytest apps/api/tests/test_spatial_scene_contract.py apps/api/tests/test_glb_acquisition_structure_validation.py
+      - run: pytest apps/api/tests/test_spatial_scene_contract.py apps/api/tests/test_spatial_manifest_api.py apps/api/tests/test_glb_acquisition_structure_validation.py
 
   web-renderer:
     runs-on: ubuntu-latest
