@@ -12,6 +12,7 @@ from allpha_api.model_router import (
 from allpha_api.text_generation_adapters import (
     OpenAICompatibleTextGenerationAdapter,
     SupabaseTextGenerationMeteringSink,
+    SupabaseActiveModelCostVerifier,
     build_text_generation_router_from_environment,
 )
 
@@ -123,3 +124,55 @@ def test_router_factory_fails_closed_without_deployment_configuration(monkeypatc
     ):
         monkeypatch.delenv(key, raising=False)
     assert build_text_generation_router_from_environment() is None
+
+
+def test_active_model_cost_verifier_accepts_only_matching_effective_active_tariff():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["path"] = req.url.path
+        seen["auth"] = req.headers.get("Authorization")
+        seen["params"] = dict(req.url.params)
+        return httpx.Response(200, json=[{
+            "provider_id": "provider-test",
+            "model_id": "model-test",
+            "model_version": "model-version-1",
+            "pricing_version": "price-v1",
+            "cost_unit": "USD",
+            "input_micro_cost_per_token": 3,
+            "output_micro_cost_per_token": 5,
+            "max_cost_microunits": 100,
+            "status": "active",
+            "effective_at": "2026-10-16T00:00:00+00:00",
+        }])
+
+    verifier = SupabaseActiveModelCostVerifier(
+        supabase_url="https://db.invalid", service_role_key="service-test",
+        provider_id="provider-test", model_id="model-test",
+        model_version="model-version-1", pricing_version="price-v1",
+        cost_unit="USD", input_cost_microunits_per_token=3,
+        output_cost_microunits_per_token=5, max_cost_microunits=100,
+        transport=httpx.MockTransport(handler),
+    )
+    asyncio.run(verifier.verify())
+    assert seen["path"] == "/rest/v1/ai_model_cost_configs"
+    assert seen["auth"] == "Bearer service-test"
+    assert seen["params"]["status"] == "eq.active"
+    assert seen["params"]["limit"] == "2"
+
+
+def test_active_model_cost_verifier_fails_closed_without_an_active_tariff():
+    verifier = SupabaseActiveModelCostVerifier(
+        supabase_url="https://db.invalid", service_role_key="service-test",
+        provider_id="provider-test", model_id="model-test",
+        model_version="model-version-1", pricing_version="price-v1",
+        cost_unit="USD", input_cost_microunits_per_token=3,
+        output_cost_microunits_per_token=5, max_cost_microunits=100,
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=[])),
+    )
+    try:
+        asyncio.run(verifier.verify())
+    except RuntimeError as exc:
+        assert "exactly one effective active tariff" in str(exc)
+    else:
+        raise AssertionError("missing active tariff must block runtime")
