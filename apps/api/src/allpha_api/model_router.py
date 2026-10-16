@@ -151,3 +151,224 @@ async def route_embedding(router: EmbeddingRouter | None, request: EmbeddingRequ
 class EmbeddingRouter(Protocol):
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         """The canonical router contract consumed by feature modules."""
+
+
+# Text-generation capability for Agent/Skill execution. Kept in the canonical
+# Model Router module so domain features cannot create provider-specific bypasses.
+import hashlib
+import json
+import time
+from dataclasses import asdict
+from typing import Any
+
+
+@dataclass(frozen=True)
+class TextGenerationRequest:
+    task_id: str
+    trace_id: str
+    idempotency_key: str
+    sensitivity: str
+    prompt: str
+    max_output_tokens: int
+    timeout_ms: int
+
+    def __post_init__(self) -> None:
+        if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
+            raise ValueError("text generation task, trace and idempotency identifiers are required")
+        if not self.sensitivity.strip():
+            raise ValueError("text generation sensitivity is required")
+        if not self.prompt.strip() or len(self.prompt.encode("utf-8")) > 32_768:
+            raise ValueError("text generation prompt must be non-empty and at most 32 KiB")
+        if not 1 <= self.max_output_tokens <= 16_384:
+            raise ValueError("max_output_tokens must be between 1 and 16384")
+        if not 100 <= self.timeout_ms <= 120_000:
+            raise ValueError("timeout_ms must be between 100 and 120000")
+
+
+@dataclass(frozen=True)
+class TextGenerationResponse:
+    task_id: str
+    trace_id: str
+    provider_id: str
+    model_id: str
+    model_version: str
+    output_text: str
+    input_tokens: int
+    output_tokens: int
+    cost_microunits: int
+    cost_unit: str
+    pricing_version: str
+
+    def __post_init__(self) -> None:
+        if not all(value.strip() for value in (self.task_id, self.trace_id, self.provider_id, self.model_id, self.model_version, self.cost_unit, self.pricing_version)):
+            raise ValueError("generation response identity and cost fields are required")
+        if not self.output_text.strip():
+            raise ValueError("generation response output must not be empty")
+        if min(self.input_tokens, self.output_tokens, self.cost_microunits) < 0:
+            raise ValueError("generation usage and cost must be non-negative")
+
+
+class TextGenerationAdapter(Protocol):
+    async def generate(self, request: TextGenerationRequest, *, model_id: str) -> TextGenerationResponse:
+        """Use server-side credentials and return provider-reported usage/cost metadata."""
+
+
+@dataclass(frozen=True)
+class TextGenerationRoute:
+    provider_id: str
+    model_id: str
+    model_version: str
+    max_attempts: int = 1
+
+    def __post_init__(self) -> None:
+        if not all(value.strip() for value in (self.provider_id, self.model_id, self.model_version)):
+            raise ValueError("text generation route identity fields must be configured")
+        if not 1 <= self.max_attempts <= 3:
+            raise ValueError("text generation max_attempts must be between 1 and 3")
+
+
+@dataclass(frozen=True)
+class TextGenerationPolicy:
+    policy_id: str
+    policy_version: str
+    approved: bool
+    max_prompt_bytes: int
+    max_output_tokens: int
+    max_cost_microunits: int
+    cost_unit: str
+    pricing_version: str
+
+    def __post_init__(self) -> None:
+        if not all(value.strip() for value in (self.policy_id, self.policy_version, self.cost_unit, self.pricing_version)):
+            raise ValueError("text generation policy identity and pricing contract are required")
+        if not self.approved:
+            raise ValueError("text generation policy must be approved")
+        if not 1 <= self.max_prompt_bytes <= 32_768:
+            raise ValueError("max_prompt_bytes must be between 1 and 32768")
+        if not 1 <= self.max_output_tokens <= 16_384 or self.max_cost_microunits < 0:
+            raise ValueError("text generation output and cost bounds are invalid")
+
+
+@dataclass(frozen=True)
+class TextGenerationEvidence:
+    task_id: str
+    trace_id: str
+    idempotency_key: str
+    policy_id: str
+    policy_version: str
+    provider_id: str
+    model_id: str
+    model_version: str
+    prompt_sha256: str
+    output_sha256: str
+    input_tokens: int
+    output_tokens: int
+    cost_microunits: int
+    cost_unit: str
+    pricing_version: str
+    latency_ms: int
+    status: str
+    evidence_sha256: str
+
+
+class TextGenerationMeteringSink(Protocol):
+    async def write_idempotent(self, evidence: TextGenerationEvidence) -> None:
+        """Persist usage with a unique task/idempotency identity; must be durable."""
+
+
+class TextGenerationRouterUnavailable(RuntimeError):
+    """No approved text-generation route, adapter, policy or durable sink is available."""
+
+
+class TextGenerationRouterRejected(RuntimeError):
+    """The provider response violated the canonical text-generation contract."""
+
+
+class CanonicalTextGenerationRouter:
+    """Provider-neutral text-generation path for Agent/Skill execution.
+
+    Route, approved policy and provider adapters are supplied by deployment-owned
+    configuration. This class deliberately chooses no provider, model, tariff or
+    fallback. Runtime use requires an idempotent metering sink.
+    """
+
+    def __init__(
+        self,
+        *,
+        routes: dict[str, TextGenerationRoute],
+        adapters: dict[str, TextGenerationAdapter],
+        policies: dict[str, TextGenerationPolicy],
+        metering_sink: TextGenerationMeteringSink | None,
+        retry_delay_seconds: float = 0.1,
+    ) -> None:
+        self._routes = dict(routes)
+        self._adapters = dict(adapters)
+        self._policies = dict(policies)
+        self._metering_sink = metering_sink
+        self._retry_delay_seconds = max(0.0, min(retry_delay_seconds, 1.0))
+
+    def require_runtime_ready(self, sensitivity: str) -> None:
+        route = self._routes.get(sensitivity)
+        policy = self._policies.get(sensitivity)
+        if route is None or policy is None or not policy.approved:
+            raise TextGenerationRouterUnavailable("no approved text-generation route and policy for this sensitivity")
+        if route.provider_id not in self._adapters:
+            raise TextGenerationRouterUnavailable("registered text-generation provider adapter is missing")
+        if self._metering_sink is None or not callable(getattr(self._metering_sink, "write_idempotent", None)):
+            raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink")
+
+    async def generate(self, request: TextGenerationRequest) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
+        self.require_runtime_ready(request.sensitivity)
+        route = self._routes[request.sensitivity]
+        policy = self._policies[request.sensitivity]
+        if len(request.prompt.encode("utf-8")) > policy.max_prompt_bytes:
+            raise TextGenerationRouterRejected("prompt exceeds approved policy bound")
+        if request.max_output_tokens > policy.max_output_tokens:
+            raise TextGenerationRouterRejected("requested output tokens exceed approved policy bound")
+        adapter = self._adapters[route.provider_id]
+        last_error: Exception | None = None
+        for attempt in range(route.max_attempts):
+            started = time.monotonic()
+            try:
+                response = await asyncio.wait_for(
+                    adapter.generate(request, model_id=route.model_id),
+                    timeout=request.timeout_ms / 1000,
+                )
+                latency_ms = max(0, int((time.monotonic() - started) * 1000))
+                if (response.task_id != request.task_id or response.trace_id != request.trace_id
+                        or response.provider_id != route.provider_id or response.model_id != route.model_id
+                        or response.model_version != route.model_version):
+                    raise TextGenerationRouterRejected("provider response identity does not match the approved route")
+                if response.output_tokens > request.max_output_tokens:
+                    raise TextGenerationRouterRejected("provider output exceeded requested token limit")
+                if response.cost_unit != policy.cost_unit or response.pricing_version != policy.pricing_version:
+                    raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
+                if response.cost_microunits > policy.max_cost_microunits:
+                    raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
+                prompt_hash = hashlib.sha256(request.prompt.encode("utf-8")).hexdigest()
+                output_hash = hashlib.sha256(response.output_text.encode("utf-8")).hexdigest()
+                evidence_payload = {
+                    "task_id": request.task_id, "trace_id": request.trace_id,
+                    "idempotency_key": request.idempotency_key, "policy_id": policy.policy_id,
+                    "policy_version": policy.policy_version, "provider_id": response.provider_id,
+                    "model_id": response.model_id, "model_version": response.model_version,
+                    "prompt_sha256": prompt_hash, "output_sha256": output_hash,
+                    "input_tokens": response.input_tokens, "output_tokens": response.output_tokens,
+                    "cost_microunits": response.cost_microunits, "cost_unit": response.cost_unit,
+                    "pricing_version": response.pricing_version, "latency_ms": latency_ms, "status": "succeeded",
+                }
+                digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+                evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
+                await self._metering_sink.write_idempotent(evidence)  # type: ignore[union-attr]
+                return response, evidence
+            except (TextGenerationRouterRejected, TextGenerationRouterUnavailable):
+                raise
+            except asyncio.TimeoutError as exc:
+                last_error = exc
+            except Exception as exc:
+                last_error = exc
+            if attempt + 1 < route.max_attempts:
+                await asyncio.sleep(self._retry_delay_seconds * (attempt + 1))
+        if isinstance(last_error, asyncio.TimeoutError):
+            raise TextGenerationRouterUnavailable("approved text-generation route timed out") from last_error
+        raise TextGenerationRouterUnavailable("approved text-generation route failed") from last_error
