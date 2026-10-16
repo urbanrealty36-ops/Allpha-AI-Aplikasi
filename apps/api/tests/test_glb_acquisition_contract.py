@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 
 
@@ -14,7 +15,7 @@ def _load_category_function():
             and any(isinstance(target, ast.Name) and target.id == "CATEGORIES" for target in node.targets))
         or (isinstance(node, ast.FunctionDef) and node.name == "category")
     ]
-    namespace = {}
+    namespace = {"re": re}
     exec(compile(ast.Module(body=wanted, type_ignores=[]), str(ACQUISITION_SCRIPT), "exec"), namespace)
     return namespace["category"], namespace["CATEGORIES"]
 
