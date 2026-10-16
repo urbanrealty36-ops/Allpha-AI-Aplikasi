@@ -22,6 +22,7 @@ from allpha_api.agent_runtime_store import AgentRuntimeStore, AgentRuntimePersis
 from allpha_api.evaluation_engine import (
     EVALUATOR_VERSION, CriterionSignal, EvaluationRubric, evaluate_submission,
 )
+from allpha_api.model_router import TextGenerationRouterUnavailable
 
 router = APIRouter(prefix="/v1/skill-challenges", tags=["skill-challenges"])
 MAX_JSON_BYTES = 32_768
@@ -218,6 +219,16 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
 
         if len(_canonical(challenge_input)) > MAX_JSON_BYTES or len(_canonical(expected_output)) > MAX_JSON_BYTES:
             raise HTTPException(status_code=413, detail={"code": "CHALLENGE_PAYLOAD_TOO_LARGE", "message": "Test case melebihi batas ukuran."})
+        model_route_snapshot = None
+        if request is not None:
+            router_instance = getattr(request.app.state, "text_generation_router", None)
+            if router_instance is None or not callable(getattr(router_instance, "route_snapshot_for", None)):
+                raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Challenge runtime memerlukan route text-generation yang dikonfigurasi."})
+            try:
+                model_route_snapshot = router_instance.route_snapshot_for("private")
+            except TextGenerationRouterUnavailable as exc:
+                raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Policy dan metering Model Router belum siap."}) from exc
+
         nonce = secrets.token_urlsafe(32)
         now = _now()
         challenge_key = str(case["key"])
@@ -226,6 +237,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             "owner_user_id": owner_id, "agent_id": str(agent["id"]), "skill_id": str(skill["id"]),
             "agent_version": int(agent.get("version") or 1), "agent_snapshot": {"id": str(agent["id"]), "version": int(agent.get("version") or 1), "status": agent.get("status")}, "skill_version": int(skill["version"]),
             "skill_version_id": version_row.get("id") if version_row else None,
+            "model_route_snapshot": model_route_snapshot,
             "challenge_key": challenge_key, "evaluation_set_version": int(skill["version"]),
             "evaluation_set_digest": _digest(evaluation_set),
             "rubric_key": rubric.rubric_key, "rubric_version": rubric.version,
