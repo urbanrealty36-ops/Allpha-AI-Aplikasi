@@ -25,6 +25,7 @@ from allpha_api.operator_security import router as operator_security_router
 from allpha_api.knowledge import router as knowledge_router
 from allpha_api.knowledge_retrieval import router as knowledge_retrieval_router
 from allpha_api.skill_catalog import search_skill_catalog
+from allpha_api.official_bots_api import router as official_bots_router
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -1040,3 +1041,4 @@ app.include_router(knowledge_retrieval_router)
 app.include_router(agent_runtime_router)
 app.include_router(workflow_router)
 app.include_router(skill_challenge_router)
+app.include_router(official_bots_router)
