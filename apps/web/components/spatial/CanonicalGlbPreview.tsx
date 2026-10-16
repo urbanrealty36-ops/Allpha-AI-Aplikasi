@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Component, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Canvas, useLoader } from "@react-three/fiber";
 import { Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -53,6 +53,8 @@ function Model({ url, onLoaded }: { url: string; onLoaded: () => void }) {
 export function CanonicalGlbPreview({ asset, className, label = "Pratinjau aset 3D Allpha" }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const markLoaded = useCallback(() => setLoaded(true), []);
   const validUrl = /^https:\/\//i.test(asset.asset_url);
   const validDigest = /^[a-f0-9]{64}$/i.test(asset.sha256);
   const validSize = Number.isSafeInteger(asset.byte_size) && asset.byte_size > 0;
@@ -69,16 +71,16 @@ export function CanonicalGlbPreview({ asset, className, label = "Pratinjau aset 
       {error && <div role="alert" style={{ padding: 12 }}>
         <p>Aset 3D gagal dimuat.</p>
         <p>{error}</p>
-        <button type="button" onClick={() => { setError(""); setLoaded(false); }}>Coba lagi</button>
+        <button type="button" onClick={() => { setError(""); setLoaded(false); setRetry((n) => n + 1); }}>Coba lagi</button>
       </div>}
       {!error && <div style={{ height: 320, width: "100%" }}>
-        <RenderErrorBoundary key={asset.asset_url} onError={(cause) => setError(cause.message || "Dekode GLB gagal.")}>
+        <RenderErrorBoundary key={asset.asset_url + ":" + retry} onError={(cause) => setError(cause.message || "Dekode GLB gagal.")}>
           <Canvas camera={{ position: [3, 2, 3], fov: 45 }} dpr={[1, 1.5]}>
             <color attach="background" args={["#f4f5f7"]} />
             <ambientLight intensity={1.6} />
             <directionalLight position={[4, 6, 5]} intensity={2} />
             <Suspense fallback={null}>
-              <Model url={asset.asset_url} onLoaded={() => setLoaded(true)} />
+              <Model url={asset.asset_url} onLoaded={markLoaded} />
             </Suspense>
           </Canvas>
         </RenderErrorBoundary>
