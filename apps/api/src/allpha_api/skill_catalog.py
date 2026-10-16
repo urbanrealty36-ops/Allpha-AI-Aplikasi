@@ -87,18 +87,11 @@ def _slug(value: str) -> str:
 
 def _build_catalog() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    upstream_by_slug = {item[0]: item for item in _UPSTREAM_EXAMPLES}
     for domain_key, domain_name, archetype in _DOMAINS:
         for task_key, task_name, task_description in _TASKS:
             key = f"{domain_key}.{task_key}"
             name = f"{domain_name}: {task_name}"
             description = f"{task_description} Domain focus: {domain_name.lower()}."
-            upstream_example = None
-            # Bind exact examples from upstream to their matching domain/task entries.
-            for example_slug, example_name, example_domain, example_description in _UPSTREAM_EXAMPLES:
-                if example_domain == domain_key and len(rows) < len(_UPSTREAM_EXAMPLES):
-                    upstream_example = (example_slug, example_name, example_description)
-                    break
             rows.append({
                 "key": key,
                 "slug": _slug(key),
