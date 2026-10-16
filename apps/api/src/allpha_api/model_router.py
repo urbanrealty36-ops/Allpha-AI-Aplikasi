@@ -378,7 +378,14 @@ class CanonicalTextGenerationRouter:
                 }
                 digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
                 evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
-                await self._metering_sink.write_idempotent(evidence)  # type: ignore[union-attr]
+                try:
+                    await self._metering_sink.write_idempotent(evidence)  # type: ignore[union-attr]
+                except Exception as exc:
+                    # The provider may already have charged for this generation. Never
+                    # retry the provider call just because durable evidence persistence failed.
+                    raise TextGenerationRouterUnavailable(
+                        "generation completed but durable usage evidence could not be recorded; automatic replay is blocked"
+                    ) from exc
                 return response, evidence
             except (TextGenerationRouterRejected, TextGenerationRouterUnavailable):
                 raise
