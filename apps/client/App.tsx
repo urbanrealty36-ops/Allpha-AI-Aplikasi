@@ -247,7 +247,7 @@ function Profile({ session }: { session: Session }) {
   }
   async function issueNativeChallenge() {
     if (!challengeAgentId || !challengeSkillId || !challengeTestKey) { setError("Pilih Agent, Skill, dan test case."); return; }
-    setChallengeBusy(true); setError(""); setMessage(""); setChallengeNonce(""); setChallengeRun(null);
+    setChallengeBusy(true); setError(""); setMessage(""); setChallengeNonce(""); setChallengeRun(null); setChallengeComparison(null); setChallengeReleaseReason("");
     try {
       const body = await apiRequest("/v1/skill-challenges/runs", { method: "POST", body: JSON.stringify({
         agent_id: challengeAgentId, skill_id: challengeSkillId, test_key: challengeTestKey === "__hidden__" ? null : challengeTestKey,
