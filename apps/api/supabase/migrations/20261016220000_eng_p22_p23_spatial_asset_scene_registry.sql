@@ -30,7 +30,7 @@ create table if not exists public.spatial_asset_versions (
   published_at timestamptz,
   primary key (asset_id, version),
   unique (asset_key, version),
-  check ((status = 'published') = (published_at is not null)),
+  check ((published_at is not null) = (status in ('published','deprecated','retired','revoked'))),
   check (status <> 'published' or (moderation_status = 'approved' and license_evidence <> '{}'::jsonb))
 );
 
@@ -52,7 +52,7 @@ create table if not exists public.spatial_scene_versions (
   published_at timestamptz,
   primary key (scene_id, version),
   unique (scene_key, version),
-  check ((status = 'published') = (published_at is not null))
+  check ((published_at is not null) = (status in ('published','deprecated','revoked')))
 );
 
 create index if not exists spatial_scene_versions_public_lookup
