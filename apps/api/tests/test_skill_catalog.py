@@ -1,3 +1,7 @@
+import pytest
+from fastapi import HTTPException
+
+from allpha_api.main import _validate_catalog_skill_selection
 from allpha_api.skill_catalog import (
     SKILL_CATALOG,
     SKILL_CATALOG_BY_KEY,
@@ -40,3 +44,32 @@ def test_catalog_search_is_case_insensitive_and_returns_no_fabricated_results():
     assert result["total"] >= 1
     assert any(item["slug"] == "web-research-agent" for item in result["items"])
     assert search_skill_catalog(q="not-a-real-skill-identifier")["total"] == 0
+
+def test_agent_persona_selection_is_validated_against_canonical_catalog():
+    skill = SKILL_CATALOG[0]
+    _validate_catalog_skill_selection({
+        "allpha_skill_key": skill["key"],
+        "allpha_skill_catalog_version": "allpha-skill-catalog-v1",
+        "character_profile": skill["character_profile"],
+    })
+
+
+def test_agent_persona_rejects_unknown_catalog_key_and_forged_character_profile():
+    with pytest.raises(HTTPException) as unknown:
+        _validate_catalog_skill_selection({
+            "allpha_skill_key": "not.a.real.skill",
+            "allpha_skill_catalog_version": "allpha-skill-catalog-v1",
+            "character_profile": {},
+        })
+    assert unknown.value.status_code == 422
+    assert unknown.value.detail["code"] == "AGENT_SKILL_CATALOG_KEY_INVALID"
+
+    skill = SKILL_CATALOG[0]
+    with pytest.raises(HTTPException) as forged:
+        _validate_catalog_skill_selection({
+            "allpha_skill_key": skill["key"],
+            "allpha_skill_catalog_version": "allpha-skill-catalog-v1",
+            "character_profile": {"archetype_key": "forged-role", "asset_key": "unverified.glb"},
+        })
+    assert forged.value.status_code == 422
+    assert forged.value.detail["code"] == "AGENT_CHARACTER_PROFILE_MISMATCH"
