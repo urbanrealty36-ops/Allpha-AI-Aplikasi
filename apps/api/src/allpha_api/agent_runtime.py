@@ -15,6 +15,7 @@ from enum import StrEnum
 from typing import Any, Awaitable, Callable
 
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, get_tool
+from allpha_api.model_router import CanonicalTextGenerationRouter, TextGenerationEvidence, TextGenerationRequest, TextGenerationResponse, TextGenerationRouterUnavailable
 
 
 class AgentTaskState(StrEnum):
@@ -237,3 +238,42 @@ class AgentRuntime:
             "persistence": "not_configured",
             "provider_execution": False,
         }
+
+
+    async def execute_skill_generation(
+        self,
+        *,
+        requester_id: str,
+        owner_id: str,
+        agent_id: str,
+        agent_version: int,
+        skill_id: str,
+        skill_version: int,
+        skill_published: bool,
+        policy_version: str,
+        router: CanonicalTextGenerationRouter,
+        request: TextGenerationRequest,
+    ) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
+        """Execute one pinned Skill generation through the canonical Model Router."""
+        if not requester_id or requester_id != owner_id:
+            raise AgentRuntimeBlocked("requester is not the authenticated Agent owner")
+        if not agent_id or agent_version < 1 or not skill_id or skill_version < 1:
+            raise AgentRuntimeBlocked("canonical Agent and Skill identity/version are required")
+        if not skill_published:
+            raise AgentRuntimeBlocked("only a published Skill version can execute")
+        if request.task_id == "" or not request.idempotency_key or not request.trace_id:
+            raise AgentRuntimeBlocked("generation task, trace and idempotency identities are required")
+        try:
+            active_policy_version = router.policy_version_for(request.sensitivity)
+            router.require_runtime_ready(request.sensitivity)
+        except TextGenerationRouterUnavailable as exc:
+            raise AgentRuntimeBlocked("approved Model Router route, policy and metering are required") from exc
+        if not policy_version or policy_version != active_policy_version:
+            raise AgentRuntimeBlocked("pinned Model Router policy version changed")
+        remaining = min(float(request.timeout_ms) / 1000, 30.0)
+        if remaining <= 0:
+            raise AgentRuntimeBlocked("generation deadline has expired")
+        try:
+            return await asyncio.wait_for(router.generate(request), timeout=remaining)
+        except asyncio.TimeoutError as exc:
+            raise AgentRuntimeBlocked("Skill generation exceeded the runtime deadline") from exc
