@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import pytest
+
+from allpha_api.model_router import (
+    CanonicalTextGenerationRouter,
+    TextGenerationPolicy,
+    TextGenerationRequest,
+    TextGenerationResponse,
+    TextGenerationRoute,
+    TextGenerationRouterRejected,
+    TextGenerationRouterUnavailable,
+)
+
+
+class FakeAdapter:
+    def __init__(self, *, model_id: str = "model-a", cost: int = 3):
+        self.model_id = model_id
+        self.cost = cost
+        self.calls = 0
+
+    async def generate(self, request: TextGenerationRequest, *, model_id: str) -> TextGenerationResponse:
+        self.calls += 1
+        return TextGenerationResponse(
+            task_id=request.task_id,
+            trace_id=request.trace_id,
+            provider_id="provider-a",
+            model_id=self.model_id,
+            model_version="version-a",
+            output_text='{"answer":"grounded test output"}',
+            input_tokens=11,
+            output_tokens=7,
+            cost_microunits=self.cost,
+            cost_unit="approved-unit",
+            pricing_version="pricing-v1",
+        )
+
+
+class MemorySink:
+    def __init__(self):
+        self.rows = {}
+
+    async def write_idempotent(self, evidence):
+        existing = self.rows.get(evidence.idempotency_key)
+        if existing and existing.evidence_sha256 != evidence.evidence_sha256:
+            raise ValueError("idempotency conflict")
+        self.rows[evidence.idempotency_key] = evidence
+
+
+def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10):
+    adapter = adapter or FakeAdapter(cost=cost)
+    return CanonicalTextGenerationRouter(
+        routes={"private": {"provider-a": None}} if False else (
+            {"private": TextGenerationRoute("provider-a", "model-a", "version-a")} if route else {}
+        ),
+        adapters={"provider-a": adapter},
+        policies={
+            "private": TextGenerationPolicy(
+                policy_id="policy-test",
+                policy_version="v1",
+                approved=True,
+                max_prompt_bytes=1024,
+                max_output_tokens=100,
+                max_cost_microunits=max_cost,
+                cost_unit="approved-unit",
+                pricing_version="pricing-v1",
+            )
+        } if route else {},
+        metering_sink=MemorySink() if sink else None,
+    )
+
+
+def request():
+    return TextGenerationRequest(
+        task_id="task-1",
+        trace_id="trace-1",
+        idempotency_key="idempotency-1",
+        sensitivity="private",
+        prompt="Use the pinned Skill instructions to answer this test.",
+        max_output_tokens=32,
+        timeout_ms=1000,
+    )
+
+
+@pytest.mark.asyncio
+async def test_text_generation_returns_route_and_usage_bound_evidence():
+    router = make_router()
+    response, evidence = await router.generate(request())
+    assert response.output_text == '{"answer":"grounded test output"}'
+    assert evidence.provider_id == "provider-a"
+    assert evidence.model_id == "model-a"
+    assert evidence.model_version == "version-a"
+    assert evidence.input_tokens == 11
+    assert evidence.output_tokens == 7
+    assert evidence.cost_microunits == 3
+    assert len(evidence.prompt_sha256) == 64
+    assert len(evidence.output_sha256) == 64
+    assert len(evidence.evidence_sha256) == 64
+
+
+@pytest.mark.asyncio
+async def test_text_generation_fails_closed_without_approved_route_or_metering():
+    with pytest.raises(TextGenerationRouterUnavailable):
+        await make_router(route=False).generate(request())
+    with pytest.raises(TextGenerationRouterUnavailable):
+        await make_router(sink=False).generate(request())
+
+
+@pytest.mark.asyncio
+async def test_text_generation_rejects_provider_model_mismatch():
+    router = make_router(FakeAdapter(model_id="unapproved-model"))
+    with pytest.raises(TextGenerationRouterRejected, match="identity"):
+        await router.generate(request())
+
+
+@pytest.mark.asyncio
+async def test_text_generation_rejects_cost_over_approved_policy():
+    router = make_router(FakeAdapter(cost=11), max_cost=10)
+    with pytest.raises(TextGenerationRouterRejected, match="cost"):
+        await router.generate(request())
+
+
+@pytest.mark.asyncio
+async def test_text_generation_rejects_unapproved_policy():
+    router = CanonicalTextGenerationRouter(
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+        adapters={"provider-a": FakeAdapter()},
+        policies={"private": TextGenerationPolicy(
+            policy_id="policy-test", policy_version="v1", approved=False,
+            max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+            cost_unit="approved-unit", pricing_version="pricing-v1",
+        )} if False else {},
+        metering_sink=MemorySink(),
+    )
+    with pytest.raises(TextGenerationRouterUnavailable):
+        await router.generate(request())
