@@ -48,5 +48,6 @@ jobs:
             ladybug-glb-audit/manifest.csv
             ladybug-glb-audit/summary.json
             ladybug-glb-audit/errors.json
+            ladybug-glb-audit/assets/*.glb
           if-no-files-found: warn
           retention-days: 14
