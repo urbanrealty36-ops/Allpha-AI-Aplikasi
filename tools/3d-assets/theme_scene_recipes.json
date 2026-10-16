@@ -1,0 +1,514 @@
+{
+  "schema_version": "1.0.0",
+  "status": "design_mapping_only",
+  "authority": "ALLPHA-MPRD-003",
+  "note": "Declarative scene recipes only. No source GLB is approved, and no recipe is production-ready until asset IDs, licenses, renderer compatibility, performance, and visual QA are evidenced. Unknown assets must remain unmapped; never auto-publish.",
+  "theme_categories": [
+    {
+      "key": "universe",
+      "purpose": "universe root/background",
+      "layout_slots": [
+        "world-root",
+        "background"
+      ],
+      "accepts": [
+        "environment",
+        "skybox",
+        "large-scene"
+      ],
+      "render_policy": "background/low-frequency"
+    },
+    {
+      "key": "galaxy",
+      "purpose": "galaxy overview and navigation",
+      "layout_slots": [
+        "galaxy-canvas",
+        "overview"
+      ],
+      "accepts": [
+        "galaxy",
+        "nebula",
+        "starfield",
+        "planetary-system"
+      ],
+      "render_policy": "LOD and bounded draw calls"
+    },
+    {
+      "key": "world",
+      "purpose": "world/planet environments",
+      "layout_slots": [
+        "world-viewport",
+        "world-preview"
+      ],
+      "accepts": [
+        "terrain",
+        "landscape",
+        "environment",
+        "planet"
+      ],
+      "render_policy": "scene bounds required"
+    },
+    {
+      "key": "orbit",
+      "purpose": "orbit navigation and celestial paths",
+      "layout_slots": [
+        "orbit-overlay",
+        "navigation-path"
+      ],
+      "accepts": [
+        "orbit",
+        "satellite",
+        "space-station"
+      ],
+      "render_policy": "prefer lightweight proxy geometry"
+    },
+    {
+      "key": "capsule",
+      "purpose": "content capsule / entry point",
+      "layout_slots": [
+        "feed-card-3d",
+        "content-entry"
+      ],
+      "accepts": [
+        "pod",
+        "capsule",
+        "container"
+      ],
+      "render_policy": "thumbnail-first; load full GLB on demand"
+    },
+    {
+      "key": "district",
+      "purpose": "city districts",
+      "layout_slots": [
+        "district-map",
+        "district-viewport"
+      ],
+      "accepts": [
+        "building",
+        "street",
+        "road",
+        "street-furniture",
+        "vegetation"
+      ],
+      "render_policy": "compose by modular kit; LOD/culling required"
+    },
+    {
+      "key": "booth",
+      "purpose": "tenant/creator booth and storefront",
+      "layout_slots": [
+        "booth-viewport",
+        "marketplace-booth"
+      ],
+      "accepts": [
+        "kiosk",
+        "shop",
+        "stall",
+        "storefront",
+        "signage"
+      ],
+      "render_policy": "anchored transform and interaction bounds required"
+    },
+    {
+      "key": "content-feed",
+      "purpose": "3D content props for feed/reels",
+      "layout_slots": [
+        "feed-card",
+        "reels-stage"
+      ],
+      "accepts": [
+        "screen",
+        "camera",
+        "phone",
+        "media-prop"
+      ],
+      "render_policy": "load on demand; static preview fallback"
+    },
+    {
+      "key": "agent-character",
+      "purpose": "AI character and avatar base",
+      "layout_slots": [
+        "character-viewer",
+        "agent-profile"
+      ],
+      "accepts": [
+        "rigged-character",
+        "avatar",
+        "robot",
+        "humanoid"
+      ],
+      "render_policy": "skeleton/animation/material validation required"
+    },
+    {
+      "key": "live-stage",
+      "purpose": "live event stage",
+      "layout_slots": [
+        "live-stage",
+        "event-room"
+      ],
+      "accepts": [
+        "stage",
+        "podcast",
+        "presentation",
+        "classroom",
+        "news-studio"
+      ],
+      "render_policy": "stage footprint and camera anchors required"
+    },
+    {
+      "key": "human-live",
+      "purpose": "human live-stream environment and presenter",
+      "layout_slots": [
+        "live-presenter",
+        "stream-scene"
+      ],
+      "accepts": [
+        "presenter",
+        "streaming-props",
+        "camera-rig"
+      ],
+      "render_policy": "do not assume rig or likeness rights"
+    },
+    {
+      "key": "sticker-social",
+      "purpose": "social reactions and decorative elements",
+      "layout_slots": [
+        "reaction-layer",
+        "social-overlay"
+      ],
+      "accepts": [
+        "sticker",
+        "emoji",
+        "icon",
+        "decorative-prop"
+      ],
+      "render_policy": "prefer low-poly or sprite fallback"
+    },
+    {
+      "key": "animation",
+      "purpose": "animation/rig clips and motion components",
+      "layout_slots": [
+        "character-animation",
+        "scene-motion"
+      ],
+      "accepts": [
+        "rig",
+        "skeleton",
+        "animation-clip"
+      ],
+      "render_policy": "verify clip names, skeleton compatibility, licensing"
+    },
+    {
+      "key": "navigation-fx",
+      "purpose": "portals, signs, waypoints and spatial FX",
+      "layout_slots": [
+        "navigation-overlay",
+        "portal-entry"
+      ],
+      "accepts": [
+        "portal",
+        "gate",
+        "sign",
+        "waypoint",
+        "effect"
+      ],
+      "render_policy": "FX budget and reduced-motion fallback"
+    }
+  ],
+  "composite_recipes": [
+    {
+      "key": "district-city",
+      "category": "district",
+      "components": [
+        {
+          "role": "ground-road-grid",
+          "from": [
+            "district"
+          ]
+        },
+        {
+          "role": "building-modules",
+          "from": [
+            "district"
+          ]
+        },
+        {
+          "role": "vegetation-street-furniture",
+          "from": [
+            "district",
+            "world"
+          ]
+        },
+        {
+          "role": "navigation-landmarks",
+          "from": [
+            "navigation-fx"
+          ]
+        },
+        {
+          "role": "district-entry-portal",
+          "from": [
+            "navigation-fx"
+          ]
+        }
+      ],
+      "layout": "district-map + district-viewport",
+      "constraints": [
+        "shared scale/origin",
+        "collision bounds",
+        "draw-call/texture budgets",
+        "license clearance per component"
+      ]
+    },
+    {
+      "key": "creator-booth",
+      "category": "booth",
+      "components": [
+        {
+          "role": "base-storefront",
+          "from": [
+            "booth"
+          ]
+        },
+        {
+          "role": "brand-signage",
+          "from": [
+            "booth",
+            "navigation-fx"
+          ]
+        },
+        {
+          "role": "display-screen",
+          "from": [
+            "content-feed"
+          ]
+        },
+        {
+          "role": "avatar-host",
+          "from": [
+            "agent-character",
+            "human-live"
+          ]
+        }
+      ],
+      "layout": "marketplace-booth",
+      "constraints": [
+        "standard booth footprint",
+        "interaction hotspots declarative only",
+        "no executable scripts in scene"
+      ]
+    },
+    {
+      "key": "ai-character",
+      "category": "agent-character",
+      "components": [
+        {
+          "role": "rigged-character",
+          "from": [
+            "agent-character"
+          ]
+        },
+        {
+          "role": "compatible-animation",
+          "from": [
+            "animation"
+          ]
+        },
+        {
+          "role": "profile-accessory",
+          "from": [
+            "sticker-social",
+            "booth"
+          ]
+        }
+      ],
+      "layout": "character-viewer + agent-profile",
+      "constraints": [
+        "skeleton compatibility",
+        "bounded animation state machine",
+        "identity and asset rights review"
+      ]
+    },
+    {
+      "key": "human-avatar",
+      "category": "agent-character",
+      "components": [
+        {
+          "role": "avatar-base",
+          "from": [
+            "agent-character"
+          ]
+        },
+        {
+          "role": "uniform-and-cosmetics",
+          "from": [
+            "agent-character",
+            "sticker-social"
+          ]
+        },
+        {
+          "role": "idle-and-locomotion",
+          "from": [
+            "animation"
+          ]
+        }
+      ],
+      "layout": "avatar-editor",
+      "constraints": [
+        "no likeness claims without rights",
+        "separate body/skeleton/material compatibility validation"
+      ]
+    },
+    {
+      "key": "live-stage",
+      "category": "live-stage",
+      "components": [
+        {
+          "role": "stage-shell",
+          "from": [
+            "live-stage"
+          ]
+        },
+        {
+          "role": "presenter-or-agent",
+          "from": [
+            "human-live",
+            "agent-character"
+          ]
+        },
+        {
+          "role": "screen-and-lighting-props",
+          "from": [
+            "content-feed",
+            "navigation-fx"
+          ]
+        },
+        {
+          "role": "camera-and-stream-props",
+          "from": [
+            "human-live"
+          ]
+        }
+      ],
+      "layout": "live-stage + event-room",
+      "constraints": [
+        "camera anchors",
+        "safe-stage bounds",
+        "performance budget",
+        "stream controls are API-owned not GLB scripts"
+      ]
+    },
+    {
+      "key": "ads-billboard",
+      "category": "booth",
+      "components": [
+        {
+          "role": "billboard-frame",
+          "from": [
+            "booth",
+            "district"
+          ]
+        },
+        {
+          "role": "screen-surface",
+          "from": [
+            "content-feed"
+          ]
+        },
+        {
+          "role": "district-mount",
+          "from": [
+            "district",
+            "world"
+          ]
+        }
+      ],
+      "layout": "district-map billboard slot",
+      "constraints": [
+        "ad content served separately from GLB",
+        "no baked-in user tracking",
+        "consent/policy controlled by backend",
+        "screen texture update through renderer API"
+      ]
+    },
+    {
+      "key": "universe-navigation",
+      "category": "universe",
+      "components": [
+        {
+          "role": "universe-backdrop",
+          "from": [
+            "universe",
+            "galaxy"
+          ]
+        },
+        {
+          "role": "world-nodes",
+          "from": [
+            "world"
+          ]
+        },
+        {
+          "role": "orbit-links",
+          "from": [
+            "orbit"
+          ]
+        },
+        {
+          "role": "entry-portals",
+          "from": [
+            "navigation-fx"
+          ]
+        }
+      ],
+      "layout": "universe navigator",
+      "constraints": [
+        "bounded scene graph",
+        "lazy-load worlds",
+        "stable asset IDs and versioned manifest"
+      ]
+    },
+    {
+      "key": "social-feed-spatial-card",
+      "category": "capsule",
+      "components": [
+        {
+          "role": "capsule-shell",
+          "from": [
+            "capsule"
+          ]
+        },
+        {
+          "role": "media-prop",
+          "from": [
+            "content-feed"
+          ]
+        },
+        {
+          "role": "reaction-layer",
+          "from": [
+            "sticker-social"
+          ]
+        }
+      ],
+      "layout": "feed-card-3d",
+      "constraints": [
+        "mobile fallback",
+        "reduced motion",
+        "lazy-load GLB"
+      ]
+    }
+  ],
+  "acceptance_requirements": [
+    "stable asset_id and source commit/path",
+    "SHA-256 and GLB v2 parse validation",
+    "per-file license evidence and attribution obligations",
+    "texture/dependency inventory",
+    "scale/origin/pivot and bounds metadata",
+    "renderer compatibility check against project renderer",
+    "mobile memory, triangle, material, texture and draw-call budgets",
+    "accessibility/reduced-motion fallback",
+    "visual QA evidence for desktop and mobile",
+    "explicit moderation/publication state",
+    "never treat heuristic category as approval"
+  ]
+}
