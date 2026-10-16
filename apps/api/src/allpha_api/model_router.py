@@ -328,6 +328,12 @@ class CanonicalTextGenerationRouter:
             raise TextGenerationRouterUnavailable("no approved text-generation policy for this sensitivity")
         return policy.max_output_tokens
 
+    def policy_version_for(self, sensitivity: str) -> str:
+        policy = self._policies.get(sensitivity)
+        if policy is None or not policy.approved:
+            raise TextGenerationRouterUnavailable("no approved text-generation policy for this sensitivity")
+        return policy.policy_version
+
     async def generate(self, request: TextGenerationRequest) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
         self.require_runtime_ready(request.sensitivity)
         route = self._routes[request.sensitivity]
