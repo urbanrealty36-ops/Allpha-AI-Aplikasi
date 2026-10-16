@@ -110,3 +110,44 @@ comment on table public.agent_skill_challenge_runs is
   'Backend-only durable challenge runs pinning Agent/Skill/evaluation/rubric versions and replay-resistant evidence; clients access through FastAPI.';
 comment on table public.agent_skill_challenge_achievement_evidence is
   'Non-monetary achievement evidence derived from completed passing challenge runs. This table is not a reward or credit ledger.';
+
+
+-- Atomic per-owner issuance rate limit. This is a technical anti-abuse guard,
+-- not an economic tariff or reward policy. API calls it with a bounded limit.
+create table if not exists public.agent_skill_challenge_issue_windows (
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  window_started_at timestamptz not null,
+  issue_count integer not null default 0 check (issue_count >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (owner_user_id, window_started_at)
+);
+alter table public.agent_skill_challenge_issue_windows enable row level security;
+revoke all on public.agent_skill_challenge_issue_windows from public, anon, authenticated;
+grant select, insert, update, delete on public.agent_skill_challenge_issue_windows to service_role;
+
+create or replace function public.reserve_agent_skill_challenge_issue(
+  p_owner_user_id uuid,
+  p_limit integer
+) returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_window timestamptz := date_trunc('minute', now());
+  v_count integer;
+begin
+  if p_owner_user_id is null or p_limit < 1 or p_limit > 60 then
+    return false;
+  end if;
+  insert into public.agent_skill_challenge_issue_windows(owner_user_id, window_started_at, issue_count, updated_at)
+  values (p_owner_user_id, v_window, 1, now())
+  on conflict (owner_user_id, window_started_at)
+  do update set issue_count = public.agent_skill_challenge_issue_windows.issue_count + 1, updated_at = now()
+  where public.agent_skill_challenge_issue_windows.issue_count < p_limit
+  returning issue_count into v_count;
+  return v_count is not null;
+end;
+$$;
+revoke all on function public.reserve_agent_skill_challenge_issue(uuid, integer) from public, anon, authenticated;
+grant execute on function public.reserve_agent_skill_challenge_issue(uuid, integer) to service_role;
