@@ -111,6 +111,17 @@ class WorkflowStore:
             "p_run_id": run_id, "p_owner_user_id": owner_id})
         return rows[0] if rows else None
 
+    async def list_runnable_runs(self, *, limit: int = 25) -> list[dict[str, Any]]:
+        """List bounded candidate runs for a server-only poller; claim RPC remains authoritative."""
+        bounded_limit = max(1, min(int(limit), 100))
+        rows = await self.request("GET", "workflow_runs", params={
+            "select": "id,owner_user_id,status,created_at",
+            "status": "in.(queued,running)",
+            "order": "created_at.asc",
+            "limit": str(bounded_limit),
+        })
+        return rows or []
+
     async def claim_step(self, owner_id: str, run_id: str, lease_token: str, *, lease_seconds: int = 30) -> dict[str, Any] | None:
         rows = await self.request("POST", "rpc/claim_workflow_step", body={
             "p_run_id": run_id, "p_owner_user_id": owner_id,
