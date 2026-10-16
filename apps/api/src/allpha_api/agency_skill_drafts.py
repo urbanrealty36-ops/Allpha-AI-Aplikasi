@@ -34,6 +34,14 @@ def load_agency_skill_drafts(*, verify_digests: bool = True) -> tuple[dict[str, 
                 raise RuntimeError(f"Agency Skill draft invariant failed: {record.get('skill_id')}")
             if record.get("provenance", {}).get("commit") != EXPECTED_SOURCE_COMMIT:
                 raise RuntimeError(f"Agency Skill provenance mismatch: {record.get('skill_id')}")
+            if record.get("version_key") != f"{record.get('skill_id')}@v{record.get('version')}":
+                raise RuntimeError(f"Agency Skill version key mismatch: {record.get('skill_id')}")
+            if not record.get("adapted_instructions", "").endswith(record.get("source_instructions_markdown", "")):
+                raise RuntimeError(f"Source instructions are not preserved verbatim: {record.get('skill_id')}")
+            if record.get("runtime", {}).get("executable") is not False:
+                raise RuntimeError(f"Runtime execution must remain disabled: {record.get('skill_id')}")
+            if record.get("character_profile", {}).get("asset_key") is not None:
+                raise RuntimeError(f"Unverified character asset must not be bound: {record.get('skill_id')}")
             if verify_digests:
                 if _digest(record["source_instructions_markdown"]) != record.get("content_sha256"):
                     raise RuntimeError(f"Source checksum mismatch: {record.get('skill_id')}")
