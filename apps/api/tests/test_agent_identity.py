@@ -347,7 +347,7 @@ def test_agent_schema_and_rpc_migration_match_api_contract():
     from pathlib import Path
 
     migrations = Path(__file__).resolve().parents[1] / "supabase" / "migrations"
-    baseline = migrations / "20261013060000_eng_p04_ai_agent_identity.sql"
+    baseline = migrations / "20261013054429_eng_p04_ai_agent_identity.sql"
     forward = migrations / "20261014072435_eng_p05_agent_contract_reconciliation.sql"
     assert baseline.is_file(), "canonical Agent identity baseline migration must be present"
     assert forward.is_file(), "forward Agent contract reconciliation migration must be present"
