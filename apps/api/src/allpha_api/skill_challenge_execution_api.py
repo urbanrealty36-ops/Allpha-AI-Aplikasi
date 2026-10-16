@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
+from allpha_api.agent_runtime import AgentRuntime, AgentRuntimeBlocked
 from allpha_api.model_router import TextGenerationRequest, TextGenerationRouterUnavailable
 from allpha_api.skill_challenge_api import (
     AgentRuntimePersistenceError, ChallengeSubmit, _digest, _get_run, _now,
@@ -19,6 +20,7 @@ from allpha_api.skill_challenge_api import (
 )
 
 router = APIRouter(prefix="/v1/skill-challenges", tags=["skill-challenges"])
+_runtime = AgentRuntime()
 
 
 class ChallengeExecute(BaseModel):
@@ -84,9 +86,16 @@ async def execute_skill_challenge(
         except (TextGenerationRouterUnavailable, ValueError) as exc:
             raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Tidak ada policy text-generation yang disetujui dan siap dipakai."}) from exc
         try:
-            generation, evidence = await router_instance.generate(generation_request)
-        except TextGenerationRouterUnavailable as exc:
-            raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Tidak ada route text-generation yang disetujui dan siap dipakai."}) from exc
+            generation, evidence = await _runtime.execute_skill_generation(
+                requester_id=owner_id, owner_id=owner_id,
+                agent_id=str(row["agent_id"]), agent_version=int(row["agent_version"]),
+                skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
+                skill_published=True,
+                policy_version=router_instance.policy_version_for("private"),
+                router=router_instance, request=generation_request,
+            )
+        except (TextGenerationRouterUnavailable, AgentRuntimeBlocked) as exc:
+            raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Runtime memerlukan Skill versi terpublikasi dan policy Model Router yang disetujui."}) from exc
         try:
             output = json.loads(generation.output_text)
         except (TypeError, ValueError) as exc:
