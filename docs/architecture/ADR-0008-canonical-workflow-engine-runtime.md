@@ -90,3 +90,18 @@ No database or runtime changes are part of this proposal. After approval, use ad
 - Owner-scoped authorization and fail-closed behavior are covered by tests.
 - Unit/contract/regression CI is green before changing source status; real database and cross-app acceptance remains deferred to ENG-P37 until actually executed.
 
+
+
+## Invocation contract review — ENG-P11 source slice (2026-10-16)
+
+The source-level invocation adapter is `apps/api/src/allpha_api/workflow_worker_runner.py::process_runnable_batch`. It is a bounded callable for an approved server-side host, not a deployment or scheduler by itself.
+
+Contract and safety boundaries:
+- Candidate discovery is advisory only; `workflow_store.py::list_runnable_runs` returns a bounded page of queued/running runs ordered by oldest `updated_at`. The database claim RPC and lease token remain the concurrency authority.
+- A batch processes at most one step per candidate and bounds the candidate count (1–100) and lease duration (5–120 seconds).
+- Candidate owner/run identifiers must be present; malformed candidates fail closed. Owner identity comes from the canonical persisted run, never from a client-supplied worker request.
+- `WorkflowOutcomeUnknown` is counted separately and is not retried inside the same batch. A later invocation can reconcile via the canonical durable state/claim path.
+- Only the current deterministic, no-side-effect node kinds are enabled. This adapter does not enable provider calls, arbitrary code, or effectful nodes.
+- Poll discovery and invocation are source-tested with mocked HTTP/store contracts. They do not prove PostgreSQL claim races, lease expiry fencing, database grants/RLS, or live owner isolation.
+
+**Operational host decision: unresolved / intentionally not selected.** No measured throughput, latency/SLO, runtime limits, deployment configuration, or operational evidence has been presented that requires a new worker process/deployment. Per Option A, do not add a cron workflow, queue, broker, scheduler, or new deployment topology by inference. First inspect the existing approved `apps/api` hosting/runtime configuration and document whether a server-managed periodic invocation can be safely hosted there. If evidence shows a separate long-running or scheduled process is required, propose a narrowly scoped follow-up ADR covering trigger cadence, concurrency, graceful shutdown, secrets, monitoring/alerts, scaling, retry/overlap behavior, cost, and rollback; obtain approval before wiring a deployment. Until then the batch adapter is implemented but not operationally scheduled.
