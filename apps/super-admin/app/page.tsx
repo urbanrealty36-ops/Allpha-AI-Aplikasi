@@ -46,6 +46,8 @@ type CapabilityRequest = {
   created_at: string;
 };
 type OfficialBot = { id: string; skill_key: string; display_name: string; category_key: string; category_label: string; skill_description: string; character_archetype_key: string; character_asset_key?: string | null; asset_validation_status: "unverified" | "verified" | "rejected"; agent_id?: string | null; runtime_policy_id?: string | null; status: "draft" | "pending_approval" | "approved" | "active" | "stopped" | "isolated" | "blocked"; autonomy_mode: "disabled" | "supervised" | "bounded"; isolation_reason?: string | null };
+type AgencySkillDraft = { skill_id: string; version_key: string; name?: string; category?: string; description?: string; status: "draft"; immutable: boolean; executable: boolean; content_sha256: string; review: { review_status: string; manual_security_review: string; security_flags?: string[] }; character_profile: { asset_key?: string | null; asset_status?: string } };
+type AgencySkillDraftDetail = AgencySkillDraft & { source_instructions_markdown: string; adapted_instructions: string; provenance: { commit: string; path: string; source_url: string; license: string } };
 type Grant = {
   id: string;
   user_id: string;
@@ -162,6 +164,12 @@ export default function OperationsPage() {
   const [officialBotsOffset, setOfficialBotsOffset] = useState(0);
   const [officialBotsBusy, setOfficialBotsBusy] = useState(false);
   const [officialBotCatalogSource, setOfficialBotCatalogSource] = useState<"allpha-500" | "agency-agents">("allpha-500");
+  const [agencyDrafts, setAgencyDrafts] = useState<AgencySkillDraft[]>([]);
+  const [agencyDraftsTotal, setAgencyDraftsTotal] = useState(0);
+  const [agencyDraftImportStatus, setAgencyDraftImportStatus] = useState("not_loaded");
+  const [agencyDraftDetail, setAgencyDraftDetail] = useState<AgencySkillDraftDetail | null>(null);
+  const [agencyDraftsBusy, setAgencyDraftsBusy] = useState(false);
+  const [agencyReconciliationSummary, setAgencyReconciliationSummary] = useState<{ candidate_count?: number; status?: string } | null>(null);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [targetUser, setTargetUser] = useState("");
   const [selectedScopes, setSelectedScopes] = useState<OperatorScope[]>([]);
@@ -232,6 +240,13 @@ export default function OperationsPage() {
     } else {
       setCapabilities([]);
     }
+    if (access.operator.scopes.includes("platform:capabilities.review")) {
+      const draftsResponse = await adminFetch("/v1/admin/skill-drafts/agency-agents?limit=50&offset=0", activeSession, setSession);
+      const draftsBody = await responseBody<{ items: AgencySkillDraft[]; total: number; import_status: string }>(draftsResponse);
+      setAgencyDrafts(draftsBody.items ?? []); setAgencyDraftsTotal(draftsBody.total ?? 0); setAgencyDraftImportStatus(draftsBody.import_status ?? "unknown");
+      const reconciliationResponse = await adminFetch("/v1/admin/skill-drafts/agency-agents/reconciliation/summary", activeSession, setSession);
+      setAgencyReconciliationSummary(await responseBody<{ candidate_count?: number; status?: string }>(reconciliationResponse));
+    } else { setAgencyDrafts([]); setAgencyDraftsTotal(0); setAgencyDraftImportStatus("restricted"); setAgencyReconciliationSummary(null); }
     if (access.operator.scopes.includes("platform:operations.read")) {
       const botResponse = await adminFetch("/v1/admin/official-bots?limit=50&offset=0", activeSession, setSession);
       const botBody = await responseBody<{ items: OfficialBot[]; total?: number }>(botResponse);
@@ -257,6 +272,16 @@ export default function OperationsPage() {
     });
     return () => { cancelled = true; };
   }, [session?.access_token]);
+
+  async function viewAgencySkillDraft(skillId: string) {
+    if (!session) return;
+    setAgencyDraftsBusy(true); setError(""); setAgencyDraftDetail(null);
+    try {
+      const response = await adminFetch("/v1/admin/skill-drafts/agency-agents/" + encodeURIComponent(skillId), session, setSession);
+      setAgencyDraftDetail(await responseBody<AgencySkillDraftDetail>(response));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Draft Skill tidak dapat dimuat."); }
+    finally { setAgencyDraftsBusy(false); }
+  }
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -498,7 +523,16 @@ export default function OperationsPage() {
           {canControlBots && <div className="agent-card-actions"><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "active"} onClick={() => void linkOfficialBotRuntime(bot)}>Tautkan runtime</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "approve")}>Approve</button><button disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "activate")}>Aktifkan</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "stopped"} onClick={() => void officialBotAction(bot, "stop")}>Stop</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "isolated"} onClick={() => void officialBotAction(bot, "isolate")}>Isolasi</button><button className="secondaryButton" disabled={officialBotsBusy || !["stopped","isolated","blocked"].includes(bot.status)} onClick={() => void officialBotAction(bot, "resume_to_draft")}>Kembali ke draft</button></div>}
         </article>)}{!officialBots.length && <p className="emptyCell">Roster belum dimuat atau belum diprovision melalui API.</p>}</div>
       </section>}
-      {session && canReadAudit && <section className="panel" id="operator-audit">
+      {session && canReview && <section className="panel" id="agency-skill-drafts">
+        <header className="panelHead"><div><h2>Agency Skill drafts</h2><p>Instruksi sumber dipatok, checksum diverifikasi, tetapi tetap draft non-executable sampai tinjauan manual dan policy/tool binding selesai.</p></div><span className="pill warning">{agencyDraftImportStatus.toUpperCase()}</span></header>
+        <div className="summary"><article><label>Draft terimpor</label><strong>{agencyDraftsTotal} <span>/ 282</span></strong><small>Versi immutable</small></article><article><label>Rekonsiliasi kandidat</label><strong>{agencyReconciliationSummary?.candidate_count ?? "—"}</strong><small>{agencyReconciliationSummary?.status || "Belum tersedia"}</small></article><article><label>Eksekusi diizinkan</label><strong>0</strong><small>Semua draft non-executable</small></article></div>
+        <div className="tableWrap"><table><thead><tr><th>Skill / sumber</th><th>Checksum SHA-256</th><th>Review</th><th>Aksi</th></tr></thead><tbody>
+          {agencyDrafts.map((draft) => <tr key={draft.skill_id}><td><strong>{draft.name || draft.skill_id}</strong><br/><code>{draft.skill_id}</code><br/><small>{draft.category || "—"} · {draft.version_key}</small></td><td><code>{draft.content_sha256.slice(0, 16)}…</code></td><td><span className="pill warning">{draft.review.review_status}</span><br/><small>Manual: {draft.review.manual_security_review}</small></td><td><button className="secondaryButton" disabled={agencyDraftsBusy} onClick={() => void viewAgencySkillDraft(draft.skill_id)}>Lihat instruksi</button></td></tr>)}
+          {!agencyDrafts.length && <tr><td colSpan={4} className="emptyCell">Draft belum tersedia. Workflow impor harus berhasil sebelum isi instruksi muncul.</td></tr>}
+        </tbody></table></div>
+        {agencyDraftDetail && <article className="probe"><div className="probeText"><b>{agencyDraftDetail.name} · {agencyDraftDetail.version_key}</b><p>License: {agencyDraftDetail.provenance.license} · Commit: <code>{agencyDraftDetail.provenance.commit.slice(0, 12)}</code></p><p>Source: <a href={agencyDraftDetail.provenance.source_url} target="_blank" rel="noreferrer">{agencyDraftDetail.provenance.path}</a></p><p>Flags otomatis: {(agencyDraftDetail.review.security_flags || []).join(", ") || "Tidak ada pola terdeteksi; ini bukan jaminan bebas risiko."}</p><p>Checksum: <code>{agencyDraftDetail.content_sha256}</code></p><details><summary>Instruksi adaptasi Allpha</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.adapted_instructions}</pre></details><details><summary>Instruksi sumber asli</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{agencyDraftDetail.source_instructions_markdown}</pre></details></div><button className="secondaryButton" onClick={() => setAgencyDraftDetail(null)}>Tutup</button></article>}
+      </section>}
+            {session && canReadAudit && <section className="panel" id="operator-audit">
         <header className="panelHead"><div><h2>Audit events</h2><p>Event terbaru dari tabel audit khusus operator; token dan payload sensitif tidak ditampilkan.</p></div><span className="pill online">AUDIT READ</span></header>
         <div className="tableWrap"><table><thead><tr><th>Waktu</th><th>Aktor</th><th>Aksi</th><th>Resource</th><th>Hasil</th><th>Request ID</th></tr></thead><tbody>
           {audit.map((event) => <tr key={event.id}><td>{new Date(event.created_at).toLocaleString("id-ID")}</td><td><code>{event.actor_user_id || "system"}</code></td><td>{event.action}</td><td>{event.resource_type}{event.resource_id ? " · " + event.resource_id : ""}</td><td><span className={"pill " + (event.outcome === "allowed" ? "online" : "warning")}>{event.outcome}</span></td><td><code>{event.request_id}</code></td></tr>)}
