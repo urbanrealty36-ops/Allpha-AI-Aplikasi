@@ -77,3 +77,6 @@ def test_imported_agency_draft_bundle_has_all_282_pinned_versions():
     assert reconciliation is not None
     assert len(reconciliation["items"]) == 282
     assert all(row["canonical_identity_merge"] is False for row in reconciliation["items"])
+    assert reconciliation["strong_candidate_count"] + reconciliation["weak_candidate_count"] + reconciliation["no_textual_overlap_count"] == 282
+    assert all("candidate_strength" in row for row in reconciliation["items"])
+    assert all({"shared_terms", "agency_only_terms", "allpha_only_terms", "difference_summary"} <= set(candidate) for row in reconciliation["items"] for candidate in row["candidates"])
