@@ -235,6 +235,7 @@ class TextGenerationPolicy:
     max_prompt_bytes: int
     max_output_tokens: int
     max_cost_microunits: int
+    max_latency_ms: int
     cost_unit: str
     pricing_version: str
 
@@ -247,6 +248,8 @@ class TextGenerationPolicy:
             raise ValueError("max_prompt_bytes must be between 1 and 32768")
         if not 1 <= self.max_output_tokens <= 16_384 or self.max_cost_microunits < 0:
             raise ValueError("text generation output and cost bounds are invalid")
+        if not 100 <= self.max_latency_ms <= 120_000:
+            raise ValueError("max_latency_ms must be between 100 and 120000")
 
 
 @dataclass(frozen=True)
@@ -267,6 +270,8 @@ class TextGenerationEvidence:
     cost_unit: str
     pricing_version: str
     latency_ms: int
+    latency_budget_ms: int
+    cost_budget_microunits: int
     status: str
     evidence_sha256: str
 
@@ -317,6 +322,12 @@ class CanonicalTextGenerationRouter:
         if self._metering_sink is None or not callable(getattr(self._metering_sink, "write_idempotent", None)):
             raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink")
 
+    def max_output_tokens_for(self, sensitivity: str) -> int:
+        policy = self._policies.get(sensitivity)
+        if policy is None or not policy.approved:
+            raise TextGenerationRouterUnavailable("no approved text-generation policy for this sensitivity")
+        return policy.max_output_tokens
+
     async def generate(self, request: TextGenerationRequest) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
         self.require_runtime_ready(request.sensitivity)
         route = self._routes[request.sensitivity]
@@ -355,7 +366,9 @@ class CanonicalTextGenerationRouter:
                     "prompt_sha256": prompt_hash, "output_sha256": output_hash,
                     "input_tokens": response.input_tokens, "output_tokens": response.output_tokens,
                     "cost_microunits": response.cost_microunits, "cost_unit": response.cost_unit,
-                    "pricing_version": response.pricing_version, "latency_ms": latency_ms, "status": "succeeded",
+                    "pricing_version": response.pricing_version, "latency_ms": latency_ms,
+                    "latency_budget_ms": policy.max_latency_ms,
+                    "cost_budget_microunits": policy.max_cost_microunits, "status": "succeeded",
                 }
                 digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
                 evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
