@@ -154,3 +154,24 @@ def test_agent_runtime_rejects_owner_or_skill_authority_mismatch():
             agent_id="agent-1", agent_version=2, skill_id="skill-1", skill_version=3,
             skill_published=False, policy_version="v1", router=router, request=request(),
         ))
+
+
+def test_metering_failure_does_not_replay_provider_generation():
+    class BrokenSink:
+        async def write_idempotent(self, evidence):
+            raise RuntimeError("storage unavailable")
+
+    adapter = FakeAdapter()
+    router = CanonicalTextGenerationRouter(
+        routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")},
+        adapters={"provider-a": adapter},
+        policies={"private": TextGenerationPolicy(
+            policy_id="policy-test", policy_version="v1", approved=True,
+            max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+            max_latency_ms=5000, cost_unit="approved-unit", pricing_version="pricing-v1",
+        )},
+        metering_sink=BrokenSink(),
+    )
+    with pytest.raises(TextGenerationRouterUnavailable, match="automatic replay is blocked"):
+        asyncio.run(router.generate(request()))
+    assert adapter.calls == 1
