@@ -60,6 +60,7 @@ def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10):
                 max_prompt_bytes=1024,
                 max_output_tokens=100,
                 max_cost_microunits=max_cost,
+                max_latency_ms=5000,
                 cost_unit="approved-unit",
                 pricing_version="pricing-v1",
             )
@@ -124,5 +125,6 @@ async def test_text_generation_rejects_unapproved_policy():
         TextGenerationPolicy(
             policy_id="policy-test", policy_version="v1", approved=False,
             max_prompt_bytes=1024, max_output_tokens=100, max_cost_microunits=10,
+            max_latency_ms=5000,
             cost_unit="approved-unit", pricing_version="pricing-v1",
         )
