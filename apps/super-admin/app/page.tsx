@@ -295,6 +295,28 @@ export default function OperationsPage() {
     finally { setOfficialBotsBusy(false); }
   }
 
+  async function linkOfficialBotRuntime(bot: OfficialBot) {
+    if (!session || !canControlBots) return;
+    const agentId = window.prompt("UUID Agent identity kanonis untuk " + bot.display_name + ":");
+    if (!agentId) return;
+    const policyId = window.prompt("UUID runtime policy yang sudah berstatus approved:");
+    if (!policyId) return;
+    const assetKey = window.prompt("Key asset GLB dari katalog asset kanonis (bukan nama file bebas):");
+    if (!assetKey || assetKey.trim().length < 3) return;
+    const reason = window.prompt("Alasan penautan runtime (minimal 8 karakter):", "Penautan runtime ditinjau Super Admin");
+    if (!reason || reason.trim().length < 8) return;
+    setOfficialBotsBusy(true); setError(""); setNotice("");
+    try {
+      const response = await adminFetch("/v1/admin/official-bots/" + encodeURIComponent(bot.id) + "/links", session, setSession, {
+        method: "PATCH", body: JSON.stringify({ agent_id: agentId.trim(), runtime_policy_id: policyId.trim(), character_asset_key: assetKey.trim() }),
+      });
+      const body = await responseBody<{ bot: OfficialBot; activation: string }>(response);
+      setNotice("Tautan runtime tersimpan untuk review. Status asset tetap " + body.bot.asset_validation_status + "; aktivasi belum diizinkan.");
+      await refreshOfficialBots();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Penautan runtime gagal."); }
+    finally { setOfficialBotsBusy(false); }
+  }
+
   async function officialBotAction(bot: OfficialBot, action: "approve" | "activate" | "stop" | "isolate" | "resume_to_draft") {
     if (!session || !canControlBots) return;
     const reason = window.prompt("Alasan wajib untuk aksi " + action + " pada " + bot.display_name + " (minimal 8 karakter):", action === "stop" ? "Stop operasional oleh Super Admin" : action === "isolate" ? "Isolasi untuk pemeriksaan keamanan" : "Perubahan lifecycle ditinjau operator");
@@ -469,7 +491,7 @@ export default function OperationsPage() {
         <div className="officialBotList">{officialBots.map(bot => <article className="probe officialBot" key={bot.id}>
           <div className="probeText"><b>{bot.display_name}</b><code>{bot.skill_key} · {bot.category_label}</code><p>{bot.skill_description}</p><small>Karakter: {bot.character_archetype_key} · Asset: {bot.character_asset_key || "belum ditautkan"} ({bot.asset_validation_status})</small><small>Agent: {bot.agent_id || "belum ditautkan"} · Policy: {bot.runtime_policy_id || "belum ditautkan"}</small></div>
           <span className={"pill " + (bot.status === "active" ? "online" : "warning")}>{bot.status.toUpperCase()}</span>
-          {canControlBots && <div className="agent-card-actions"><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "approve")}>Approve</button><button disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "activate")}>Aktifkan</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "stopped"} onClick={() => void officialBotAction(bot, "stop")}>Stop</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "isolated"} onClick={() => void officialBotAction(bot, "isolate")}>Isolasi</button><button className="secondaryButton" disabled={officialBotsBusy || !["stopped","isolated","blocked"].includes(bot.status)} onClick={() => void officialBotAction(bot, "resume_to_draft")}>Kembali ke draft</button></div>}
+          {canControlBots && <div className="agent-card-actions"><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "active"} onClick={() => void linkOfficialBotRuntime(bot)}>Tautkan runtime</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "approve")}>Approve</button><button disabled={officialBotsBusy || bot.status === "active"} onClick={() => void officialBotAction(bot, "activate")}>Aktifkan</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "stopped"} onClick={() => void officialBotAction(bot, "stop")}>Stop</button><button className="secondaryButton" disabled={officialBotsBusy || bot.status === "isolated"} onClick={() => void officialBotAction(bot, "isolate")}>Isolasi</button><button className="secondaryButton" disabled={officialBotsBusy || !["stopped","isolated","blocked"].includes(bot.status)} onClick={() => void officialBotAction(bot, "resume_to_draft")}>Kembali ke draft</button></div>}
         </article>)}{!officialBots.length && <p className="emptyCell">Roster belum dimuat atau belum diprovision melalui API.</p>}</div>
       </section>}
       {session && canReadAudit && <section className="panel" id="operator-audit">
