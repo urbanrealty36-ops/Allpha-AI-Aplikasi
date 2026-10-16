@@ -46,6 +46,7 @@ class OpenAICompatibleTextGenerationAdapter:
         cost_unit: str,
         input_cost_microunits_per_token: int,
         output_cost_microunits_per_token: int,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if not all(v.strip() for v in (base_url, api_key, provider_id, model_version, pricing_version, cost_unit)):
             raise ValueError("text-generation adapter configuration is incomplete")
@@ -59,6 +60,7 @@ class OpenAICompatibleTextGenerationAdapter:
         self._cost_unit = cost_unit
         self._input_rate = input_cost_microunits_per_token
         self._output_rate = output_cost_microunits_per_token
+        self._transport = transport
 
     async def generate(self, request: TextGenerationRequest, *, model_id: str) -> TextGenerationResponse:
         headers = {
@@ -73,7 +75,7 @@ class OpenAICompatibleTextGenerationAdapter:
             "stream": False,
         }
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000))) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000)), transport=self._transport) as client:
                 response = await client.post(self._url, headers=headers, json=body)
                 response.raise_for_status()
                 payload = response.json()
@@ -113,11 +115,12 @@ class OpenAICompatibleTextGenerationAdapter:
 class SupabaseTextGenerationMeteringSink:
     """Persist idempotent generation evidence through the canonical Postgres RPC."""
 
-    def __init__(self, *, supabase_url: str, service_role_key: str) -> None:
+    def __init__(self, *, supabase_url: str, service_role_key: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
         if not supabase_url.strip() or not service_role_key.strip():
             raise ValueError("server-side Supabase URL and service-role key are required")
         self._url = supabase_url.rstrip("/") + "/rest/v1/rpc/record_agent_model_usage_metering"
         self._key = service_role_key
+        self._transport = transport
 
     @classmethod
     def from_environment(cls) -> "SupabaseTextGenerationMeteringSink":
@@ -150,7 +153,7 @@ class SupabaseTextGenerationMeteringSink:
             "payload_fingerprint": evidence.evidence_sha256,
         }
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0), transport=self._transport) as client:
                 response = await client.post(
                     self._url,
                     headers={
