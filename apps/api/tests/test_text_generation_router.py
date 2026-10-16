@@ -49,7 +49,7 @@ class MemorySink:
         self.rows[evidence.idempotency_key] = evidence
 
 
-def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10):
+def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10, preflight=None):
     adapter = adapter or FakeAdapter(cost=cost)
     return CanonicalTextGenerationRouter(
         routes={"private": TextGenerationRoute("provider-a", "model-a", "version-a")} if route else {},
@@ -68,6 +68,7 @@ def make_router(adapter=None, *, route=True, sink=True, cost=3, max_cost=10):
             )
         } if route else {},
         metering_sink=MemorySink() if sink else None,
+        runtime_preflight=preflight,
     )
 
 
@@ -175,3 +176,15 @@ def test_metering_failure_does_not_replay_provider_generation():
     with pytest.raises(TextGenerationRouterUnavailable, match="automatic replay is blocked"):
         asyncio.run(router.generate(request()))
     assert adapter.calls == 1
+
+
+def test_runtime_preflight_blocks_provider_call_when_active_tariff_is_missing():
+    adapter = FakeAdapter()
+
+    async def deny_unverified_tariff(sensitivity, route, policy):
+        raise RuntimeError("no active tariff")
+
+    router = make_router(adapter, preflight=deny_unverified_tariff)
+    with pytest.raises(TextGenerationRouterUnavailable, match="active model-cost configuration"):
+        asyncio.run(router.generate(request()))
+    assert adapter.calls == 0
