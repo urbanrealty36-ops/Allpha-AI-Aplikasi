@@ -7,6 +7,8 @@ canonical Agent identity, approved runtime policy, and verified 3D asset are lin
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+import json
 import os
 from typing import Any, Literal
 from uuid import UUID
@@ -24,11 +26,45 @@ from allpha_api.skill_catalog import SKILL_CATALOG_BY_KEY
 from allpha_api.catalog_registry import get_skill_catalog_items
 from allpha_api.tool_registry import UnknownToolError, get_tool
 
+def _skill_snapshot_digest(snapshot: dict[str, Any]) -> str:
+    canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _published_version_candidates(rows: list[dict[str, Any]], *, agent_id: str, skill_key: str) -> list[dict[str, Any]]:
+    matching = []
+    for row in rows:
+        snapshot = row.get("snapshot")
+        if not isinstance(snapshot, dict):
+            continue
+        provenance = snapshot.get("provenance")
+        if not isinstance(provenance, dict):
+            continue
+        if str(row.get("agent_id")) != agent_id:
+            continue
+        if str(snapshot.get("agent_id")) != agent_id:
+            continue
+        if snapshot.get("status") != "published":
+            continue
+        if provenance.get("catalog_skill_key") != skill_key:
+            continue
+        if snapshot.get("version") != row.get("version"):
+            continue
+        matching.append({**row, "snapshot_digest": _skill_snapshot_digest(snapshot)})
+    # Multiple Skill records for one catalog key are ambiguous; never guess which one
+    # the official bot should execute.
+    skill_ids = {str(row.get("skill_id")) for row in matching}
+    if len(skill_ids) != 1:
+        return []
+    return [max(matching, key=lambda row: int(row.get("version") or 0))] if matching else []
+
+
 router = APIRouter(prefix="/v1/admin/official-bots", tags=["official-agent-bots"])
 _FIELDS = (
     "id,skill_key,display_name,category_key,category_label,skill_description,"
     "character_archetype_key,character_asset_key,asset_validation_status,agent_id,"
-    "runtime_policy_id,status,autonomy_mode,isolation_reason,created_by,approved_by,"
+    "runtime_policy_id,skill_version_id,skill_version_number,skill_version_digest,"
+    "status,autonomy_mode,isolation_reason,created_by,approved_by,"
     "approved_at,activated_by,activated_at,stopped_by,stopped_at,last_action,metadata,"
     "created_at,updated_at"
 )
@@ -248,6 +284,33 @@ async def link_official_bot_runtime(
             "message": "Provision identitas platform-owned melalui layanan kanonis terlebih dahulu; tautan Agent bebas tidak diizinkan.",
         })
 
+    version_rows = await privileged_rest_request(
+        "GET", "agent_skill_versions",
+        params={
+            "select": "id,skill_id,agent_id,version,snapshot,created_at",
+            "agent_id": f"eq.{payload.agent_id}",
+            "order": "version.desc,created_at.desc",
+            "limit": "200",
+        },
+    ) or []
+    version_candidates = _published_version_candidates(
+        version_rows, agent_id=str(payload.agent_id), skill_key=bot["skill_key"],
+    )
+    if len(version_candidates) != 1:
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_PUBLISHED_SKILL_VERSION_REQUIRED",
+            "message": "Tidak ditemukan tepat satu immutable Skill version terbaru berstatus published dengan provenance catalog_skill_key yang cocok. Draft katalog tidak dapat diikat ke runtime.",
+            "skill_key": bot["skill_key"],
+        })
+    pinned_skill_version = version_candidates[0]
+    snapshot = pinned_skill_version["snapshot"]
+    skill_tool_dependencies = snapshot.get("tool_dependencies") or []
+    if not isinstance(skill_tool_dependencies, list) or any(not isinstance(key, str) for key in skill_tool_dependencies):
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_SKILL_TOOL_CONTRACT_INVALID",
+            "message": "Snapshot Skill memiliki kontrak tool dependency yang tidak valid.",
+        })
+
     policy = await privileged_rest_request(
         "GET", "agent_runtime_policies",
         params={
@@ -261,6 +324,13 @@ async def link_official_bot_runtime(
     approved_tools = policy[0].get("approved_tool_keys") or []
     if not approved_tools:
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_POLICY_HAS_NO_TOOLS", "message": "Policy belum menyetujui tool handler yang dapat dieksekusi."})
+    missing_skill_tools = sorted(set(skill_tool_dependencies) - set(approved_tools))
+    if missing_skill_tools:
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_SKILL_TOOLS_NOT_APPROVED",
+            "message": "Runtime policy belum menyetujui semua tool yang dideklarasikan oleh versi Skill yang dipin.",
+            "missing_tool_keys": missing_skill_tools,
+        })
     unknown_tools = []
     for tool_key in approved_tools:
         try:
@@ -293,6 +363,9 @@ async def link_official_bot_runtime(
         params={"id": f"eq.{bot_id}", "status": f"eq.{bot['status']}", "select": _FIELDS},
         body={
             "agent_id": str(payload.agent_id), "runtime_policy_id": str(payload.runtime_policy_id),
+            "skill_version_id": str(pinned_skill_version["id"]),
+            "skill_version_number": int(pinned_skill_version["version"]),
+            "skill_version_digest": pinned_skill_version["snapshot_digest"],
             "character_asset_key": payload.character_asset_key, "asset_validation_status": "unverified",
             "status": "pending_approval", "approved_by": None, "approved_at": None,
             "updated_at": datetime.now(timezone.utc).isoformat(), "last_action": "runtime_links_submitted",
@@ -304,7 +377,11 @@ async def link_official_bot_runtime(
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="official_bots.runtime_links.submit",
         outcome="allowed", resource_type="official_agent_bot", resource_id=str(bot_id),
-        metadata={"agent_id": str(payload.agent_id), "policy_id": str(payload.runtime_policy_id), "asset_validation_status": "unverified"},
+        metadata={"agent_id": str(payload.agent_id), "policy_id": str(payload.runtime_policy_id),
+                  "skill_version_id": str(pinned_skill_version["id"]),
+                  "skill_version_number": int(pinned_skill_version["version"]),
+                  "skill_version_digest": pinned_skill_version["snapshot_digest"],
+                  "asset_validation_status": "unverified"},
     )
     return {"bot": updated[0], "activation": "blocked_until_asset_validation_and_approval"}
 
