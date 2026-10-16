@@ -567,7 +567,7 @@ $$;
 
 create or replace function public.credit_ledger_reconcile_projection(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = ''
-as $
+as $$
 declare
   v_owner uuid := (p_command->>'owner_user_id')::uuid;
   v_key text := p_command->>'idempotency_key';
