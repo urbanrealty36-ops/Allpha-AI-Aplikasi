@@ -234,12 +234,23 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
         rate_result = await store.request("POST", "rpc/reserve_agent_skill_challenge_action", body={
             "p_owner_user_id": owner_id, "p_action_key": "issue", "p_limit": CHALLENGE_ISSUE_LIMIT_PER_MINUTE,
         })
-        allowed = rate_result is True or rate_result == [True] or (isinstance(rate_result, dict) and rate_result.get("reserve_agent_skill_challenge_issue") is True)
+        allowed = rate_result is True or rate_result == [True] or (isinstance(rate_result, dict) and rate_result.get("reserve_agent_skill_challenge_action") is True)
         if not allowed:
             raise HTTPException(status_code=429, detail={"code": "CHALLENGE_RATE_LIMITED", "message": "Batas penerbitan challenge per menit tercapai. Coba lagi setelah jeda."})
-        rows = await store.request("POST", "agent_skill_challenge_runs", params={"select": "*"}, body=body, prefer="return=representation")
+        try:
+            rows = await store.request("POST", "agent_skill_challenge_runs", params={"select": "*"}, body=body, prefer="return=representation")
+        except AgentRuntimePersistenceError:
+            # A uniqueness conflict or uncertain response may follow a committed insert; reconcile before reporting failure.
+            existing = await store.request("GET", "agent_skill_challenge_runs", params={
+                "select": "*", "owner_user_id": f"eq.{owner_id}", "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
+            })
+            if not existing:
+                raise
+            if existing[0].get("request_fingerprint") != fingerprint:
+                raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
+            return {"run": _public_run(existing[0]), "idempotent_replay": True}
         if not rows:
-            # A concurrent duplicate may have committed; reconcile by the unique owner/idempotency key.
+            # An empty representation may follow an uncertain write; reconcile by the unique owner/idempotency key.
             existing = await store.request("GET", "agent_skill_challenge_runs", params={
                 "select": "*", "owner_user_id": f"eq.{owner_id}", "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
             })
