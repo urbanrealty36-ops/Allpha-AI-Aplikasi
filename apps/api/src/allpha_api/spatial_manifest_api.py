@@ -52,6 +52,12 @@ async def _get_rows(client: httpx.AsyncClient, url: str, key: str, table: str, p
 
 
 async def _signed_asset_url(client: httpx.AsyncClient, url: str, key: str, bucket: str, path: str) -> str:
+    allowed_bucket = os.getenv("ALLPHA_SPATIAL_ASSET_BUCKET", "")
+    if not allowed_bucket or bucket != allowed_bucket:
+        raise HTTPException(status_code=503, detail={
+            "code": "SPATIAL_STORAGE_BUCKET_NOT_CONFIGURED",
+            "message": "Bucket aset spasial kanonis belum dikonfigurasi.",
+        })
     if not bucket or not path or path.startswith("/") or ".." in path.split("/"):
         raise HTTPException(status_code=409, detail={
             "code": "SPATIAL_ASSET_STORAGE_REFERENCE_INVALID",
