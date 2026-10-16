@@ -20,6 +20,7 @@ assert.ok(page.includes("retrievalRequestSequence.current"));
 assert.ok(page.includes("}, [agentId]);"));
 assert.ok(page.includes("requestSequence !== retrievalRequestSequence.current"));
 assert.ok(page.includes("preview konteks retrieval, bukan respons generatif Agent"));
+assert.ok(page.includes('href="/skill-challenges"'), "Agent Studio must link to Skill Challenge");
 assert.doesNotMatch(page, /mockRetrievalResults|fakeKnowledgeResults|fixtureRetrieval/);
 
 
@@ -42,4 +43,12 @@ for (const contract of [
 ]) assert.ok(workflows.includes(contract), `missing Workflow Engine Web contract: ${contract}`);
 assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 
-console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, and ENG-P11 workflow UI smoke assertions passed.");
+const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "idempotency_key",
+  "nonce", "evidence_digest", "evaluation_result", "Expected output tidak dikirim ke browser.",
+  "reward finansial tidak diterbitkan", "Authorization: \"Bearer \" + session.access_token"
+]) assert.ok(challenges.includes(contract), `missing Skill Challenge Web contract: ${contract}`);
+assert.doesNotMatch(challenges, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+
+console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, and ENG-P12 Skill Challenge UI smoke assertions passed.");

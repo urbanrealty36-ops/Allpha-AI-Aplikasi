@@ -16,6 +16,8 @@ type AgentSkill = { id: string; slug: string; name: string; description?: string
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
 type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; title: string; status: string; created_at: string; last_activity_at: string };
 type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[] };
+type ChallengeSkill = { id: string; agent_id: string; slug: string; name: string; status: string; version: number; tests?: Record<string, unknown>[]; hidden_challenges_available?: boolean; evaluation_rubric_available?: boolean };
+type ChallengeRun = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; created_at: string };
 type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; error_code?: string | null; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
@@ -97,7 +99,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentHandle, setAgentHandle] = useState("");
@@ -132,6 +134,15 @@ function Profile({ session }: { session: Session }) {
   const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
   const [runtimeTaskBusy, setRuntimeTaskBusy] = useState<string | null>(null);
+  const [challengeAgentId, setChallengeAgentId] = useState("");
+  const [challengeSkills, setChallengeSkills] = useState<ChallengeSkill[]>([]);
+  const [challengeSkillId, setChallengeSkillId] = useState("");
+  const [challengeTestKey, setChallengeTestKey] = useState("");
+  const [challengeSubmission, setChallengeSubmission] = useState("{}");
+  const [challengeNonce, setChallengeNonce] = useState("");
+  const [challengeRun, setChallengeRun] = useState<ChallengeRun | null>(null);
+  const [challengeRuns, setChallengeRuns] = useState<ChallengeRun[]>([]);
+  const [challengeBusy, setChallengeBusy] = useState(false);
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
@@ -215,6 +226,46 @@ function Profile({ session }: { session: Session }) {
       setMessage(action === "execute" ? "Permintaan eksekusi diproses oleh API." : action === "cancel" ? "Permintaan pembatalan diproses oleh API." : "Status dipulihkan tanpa replay otomatis.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi task gagal."); }
     finally { setRuntimeTaskBusy(null); }
+  }
+  async function loadChallengeCatalog(agentId: string) {
+    setChallengeAgentId(agentId); setChallengeSkillId(""); setChallengeTestKey(""); setChallengeRun(null); setChallengeNonce("");
+    try {
+      const body = await apiRequest("/v1/skill-challenges/catalog?agent_id=" + encodeURIComponent(agentId)) as { items?: ChallengeSkill[] };
+      setChallengeSkills(body.items ?? []);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Skill challenge tidak dapat dimuat."); }
+  }
+  async function loadChallengeRuns() {
+    const body = await apiRequest("/v1/skill-challenges/runs?limit=50") as { items?: ChallengeRun[] };
+    setChallengeRuns(body.items ?? []);
+  }
+  async function issueNativeChallenge() {
+    if (!challengeAgentId || !challengeSkillId || !challengeTestKey) { setError("Pilih Agent, Skill, dan test case."); return; }
+    setChallengeBusy(true); setError(""); setMessage(""); setChallengeNonce(""); setChallengeRun(null);
+    try {
+      const body = await apiRequest("/v1/skill-challenges/runs", { method: "POST", body: JSON.stringify({
+        agent_id: challengeAgentId, skill_id: challengeSkillId, test_key: challengeTestKey === "__hidden__" ? null : challengeTestKey,
+        idempotency_key: "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12)
+      }) }) as { run: ChallengeRun; nonce?: string };
+      setChallengeRun(body.run); setChallengeNonce(body.nonce ?? ""); setChallengeSubmission(JSON.stringify(body.run.challenge_input ?? {}, null, 2));
+      setMessage(body.nonce ? "Challenge diterbitkan. Isi output JSON lalu kirim sebelum nonce kedaluwarsa." : "Run lama ditemukan tanpa nonce. Terbitkan run baru untuk menghindari replay.");
+      await loadChallengeRuns();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Challenge tidak dapat diterbitkan."); }
+    finally { setChallengeBusy(false); }
+  }
+  async function submitNativeChallenge() {
+    if (!challengeRun || !challengeNonce) return;
+    setChallengeBusy(true); setError(""); setMessage("");
+    try {
+      const parsed: unknown = JSON.parse(challengeSubmission);
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Jawaban harus berupa object JSON.");
+      const body = await apiRequest("/v1/skill-challenges/runs/" + encodeURIComponent(challengeRun.id) + "/submit", {
+        method: "POST", body: JSON.stringify({ nonce: challengeNonce, submission: parsed })
+      }) as { run: ChallengeRun; achievement?: { key: string; status: string } | null; reward?: { status: string; reason: string } };
+      setChallengeRun(body.run); setChallengeNonce("");
+      setMessage(body.run.status === "passed" ? "Lulus. Bukti achievement tersimpan; reward tidak diterbitkan tanpa kebijakan yang disetujui." : "Evaluasi tersimpan. Periksa status dan bukti hasil.");
+      await loadChallengeRuns();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Evaluasi challenge gagal."); }
+    finally { setChallengeBusy(false); }
   }
   useEffect(() => {
     let active = true; setLoading(true); setError("");
@@ -487,7 +538,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -568,6 +619,22 @@ function Profile({ session }: { session: Session }) {
         </View>)}
       </View><Text style={s.kicker}>SKILLS ({studioSkills.length})</Text>{studioSkills.map(skill => <View key={skill.id} style={s.socialRow}><Text style={s.body}>{skill.name} · {skill.slug} · v{skill.version}</Text><Text style={s.muted}>{skill.status} · scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</Text></View>)}<TextInput accessibilityLabel="Capability key" value={studioCapabilityKey} onChangeText={setStudioCapabilityKey} autoCapitalize="none" style={field} placeholder="calendar.read" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Deskripsi capability" value={studioCapabilityDescription} onChangeText={setStudioCapabilityDescription} style={field} placeholder="Tujuan capability" placeholderTextColor="#8B94AC"/><Button title={busy ? "Menyimpan…" : "Ajukan capability"} secondary disabled={busy || studioCapabilityKey.trim().length < 3} onPress={() => void requestStudioCapability()}/><Text style={s.kicker}>CAPABILITIES ({studioCapabilities.length})</Text>{studioCapabilities.map(cap => <View key={cap.id} style={s.socialRow}><Text style={s.body}>{cap.capability_key} · {cap.status}</Text><Text style={s.muted}>Risiko: {cap.risk_level} · bukan izin runtime</Text></View>)}<Button title="Tutup Agent Studio" secondary onPress={() => { retrievalRequestSequence.current += 1; setStudioAgentId(null); setRetrievalQuery(""); setRetrievalResults([]); setRetrievalTraceId(""); setRetrievalError(""); }}/></View>}
         </>}
+      </> : tab === "challenges" ? <>
+        <Text style={s.kicker}>ENG-P12 · SKILL CHALLENGE</Text><Text style={s.title}>Evaluasi versi Skill</Text>
+        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien. Pada slice ini pengguna mengirim output kandidat; eksekusi Skill/Agent otomatis belum diaktifkan.</Text>
+        <Text style={s.muted}>Agent</Text>
+        {agents.map(agent => <Button key={agent.id} title={(challengeAgentId === agent.id ? "✓ " : "") + agent.display_name + " · " + agent.handle} secondary={challengeAgentId !== agent.id} onPress={() => void loadChallengeCatalog(agent.id)}/>)}
+        <Text style={s.muted}>Skill</Text>
+        {challengeSkills.map(skill => <Button key={skill.id} title={(challengeSkillId === skill.id ? "✓ " : "") + skill.name + " · v" + skill.version + " · " + skill.status} secondary={challengeSkillId !== skill.id} onPress={() => { setChallengeSkillId(skill.id); setChallengeTestKey(""); setChallengeRun(null); setChallengeNonce(""); }}/>)}
+        <Text style={s.muted}>Test case</Text>
+        {(challengeSkills.find(skill => skill.id === challengeSkillId)?.tests ?? []).filter(item => typeof item.key === "string").map(item => <Button key={String(item.key)} title={(challengeTestKey === item.key ? "✓ " : "") + String(item.key)} secondary={challengeTestKey !== item.key} onPress={() => setChallengeTestKey(String(item.key))}/>)}
+        {challengeSkills.find(skill => skill.id === challengeSkillId)?.hidden_challenges_available && <Button title={challengeTestKey === "__hidden__" ? "✓ Tantangan tersembunyi acak" : "Tantangan tersembunyi acak"} secondary={challengeTestKey !== "__hidden__"} onPress={() => setChallengeTestKey("__hidden__")}/>} 
+        {challengeSkillId && !(challengeSkills.find(skill => skill.id === challengeSkillId)?.evaluation_rubric_available) && <Text style={s.warning}>Rubrik evaluasi belum tersedia pada Skill ini.</Text>}
+        <Button title={challengeBusy ? "Memproses…" : "Terbitkan challenge"} disabled={challengeBusy || !challengeAgentId || !challengeSkillId || !challengeTestKey} onPress={() => void issueNativeChallenge()}/>
+        {challengeRun && <View style={s.socialRow}><Text style={s.kicker}>RUN {challengeRun.id}</Text><Text style={s.body}>Status: {challengeRun.status} · Agent v{challengeRun.agent_version} · Skill v{challengeRun.skill_version}</Text><Text style={s.muted}>Input challenge: {JSON.stringify(challengeRun.challenge_input)}</Text><TextInput accessibilityLabel="Jawaban output JSON challenge" multiline value={challengeSubmission} onChangeText={setChallengeSubmission} autoCapitalize="none" style={[s.input, { minHeight: 130, textAlignVertical: "top" }]} placeholder="Output JSON" placeholderTextColor="#8B94AC"/><Button title="Kirim evaluasi" disabled={challengeBusy || !challengeNonce} onPress={() => void submitNativeChallenge()}/>{challengeRun.evaluation_result && <Text style={s.muted}>Hasil: {JSON.stringify(challengeRun.evaluation_result)}{ "\n" }Evidence SHA-256: {challengeRun.evidence_digest || "belum tersedia"}</Text>}</View>}
+        <Text style={s.kicker}>RIWAYAT ({challengeRuns.length})</Text>
+        {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
+        <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
         <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>

@@ -54,3 +54,35 @@
 .workflow-events li{padding-left:3px;line-height:1.6}
 .workflow-events small{display:block}
 @media(max-width:800px){.identity-shell{padding:0 18px}.workspace-grid{grid-template-columns:1fr;gap:0}.workspace-heading{align-items:flex-start;flex-direction:column;padding:32px 0 22px}.workspace-panel{padding:18px}.identity-topbar{gap:10px}.account-menu{gap:8px;flex-wrap:wrap;justify-content:flex-end}.signed-in{max-width:160px}.run-row{align-items:flex-start}.button-danger{padding:9px 10px}}
+
+
+/* ENG-P12 — Skill Challenge, reproducible evaluation, evidence */
+.page-shell{max-width:1180px;margin:0 auto;padding:32px 24px 64px}
+.page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin:10px 0 28px}
+.page-header h1{font-size:clamp(34px,5vw,52px);letter-spacing:-.06em;line-height:1.05;margin:8px 0 12px}
+.page-header p{max-width:680px}
+.eyebrow{font-size:10px;font-weight:800;letter-spacing:.16em;color:var(--muted)}
+.button-secondary{display:inline-flex;justify-content:center;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:11px 14px;font-size:12px;font-weight:800}
+.challenge-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.challenge-layout>.panel,.history-panel,.page-shell>.panel{padding:24px;margin-bottom:20px;min-width:0}
+.page-shell h2{margin:0 0 10px;font-size:21px;letter-spacing:-.035em}
+.page-shell h3{margin:18px 0 8px;font-size:15px}
+.stack-form{display:grid;gap:6px}
+.stack-form label{margin:12px 0}
+.stack-form textarea{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+.challenge-input,.challenge-result{padding:14px;border:1px solid var(--line);border-radius:10px;background:#f8faf7;min-width:0}
+.challenge-input pre,.challenge-result pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font-size:11px;line-height:1.65}
+.run-meta{display:grid;gap:7px;margin:14px 0;padding:12px;background:var(--soft);border-radius:8px;font-size:11px;color:var(--muted)}
+.notice-error{background:#fff0ed;border:1px solid #f2d3ce;color:#8b3027;margin:12px 0}
+.notice-success{background:#eef8e8;border:1px solid #d4e9ca;color:#285a2d;margin:12px 0}
+.notice-warning{background:#fff8e8;border:1px solid #ead9ad;color:#785a1b;margin:12px 0}
+.section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.challenge-history{display:grid;gap:8px}
+.history-row{display:flex;justify-content:space-between;align-items:center;gap:14px;width:100%;text-align:left;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+.history-row>span:first-child{display:grid;gap:5px;min-width:0}
+.history-row strong{font-size:13px;overflow-wrap:anywhere}
+.history-row small{font-size:10px;color:var(--muted);line-height:1.6}
+.status-pill{padding:6px 8px;border-radius:6px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;background:var(--soft)}
+.status-passed{background:#e8f5dc;color:#315b28}.status-failed,.status-rejected{background:#fff0ed;color:#8b3027}.status-issued,.status-evaluating{background:#fff8e8;color:#785a1b}
+@media(max-width:780px){.challenge-layout{grid-template-columns:1fr}.page-header{flex-direction:column}.page-shell{padding:22px 16px 44px}.challenge-layout>.panel,.history-panel,.page-shell>.panel{padding:18px}.page-header .button-secondary{width:100%}}
+@media(max-width:460px){.history-row{align-items:flex-start;flex-direction:column}.section-heading{align-items:flex-start;flex-direction:column}.section-heading .button-secondary{width:100%}}
