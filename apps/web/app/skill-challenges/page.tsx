@@ -137,7 +137,7 @@ export default function SkillChallengesPage() {
     {session && <div className="challenge-layout">
       <section className="panel">
         <h2>Terbitkan challenge</h2>
-        <p className="muted">Challenge hanya memakai test case dari snapshot Skill yang tersimpan. Expected output tidak dikirim ke browser.</p>
+        <p className="muted">Challenge hanya memakai test case dari snapshot Skill yang tersimpan. Expected output tidak dikirim ke browser. Pada slice ini pengguna mengirimkan output kandidat; eksekusi Skill/Agent otomatis belum diaktifkan.</p>
         <form onSubmit={issueChallenge} className="stack-form">
           <label>Agent<select value={agentId} onChange={event => setAgentId(event.target.value)} required><option value="">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.display_name || agent.handle || agent.id} · v{agent.version ?? "—"}</option>)}</select></label>
           <label>Skill<select value={skillId} onChange={event => setSkillId(event.target.value)} required><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version} · {skill.status}</option>)}</select></label>
