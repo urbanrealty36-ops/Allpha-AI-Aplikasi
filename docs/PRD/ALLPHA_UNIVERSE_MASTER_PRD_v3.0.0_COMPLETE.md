@@ -3049,3 +3049,107 @@ security controls, tests and acceptance evidence. Then it must implement
 Phase 00 and proceed in dependency order. No feature is complete until
 the required end-to-end acceptance journey works against its real
 configured dependencies.**
+
+---
+
+# APPENDIX — 500 AI Agent Skill Blueprints & Official Allpha Bot Control Plane
+**Additive architecture note · 2026-10-16 · Does not replace or modify existing architecture**
+
+This appendix extends the existing Agent Identity, Agent Runtime, Skill/Tool, Super Admin, security, budget, workflow, and spatial asset contracts in this Master PRD. It does not introduce a competing identity registry, Agent Runtime, scheduler, workflow engine, asset catalog, policy engine, or database. Existing canonical domain owners and lifecycle rules remain authoritative.
+
+## A. Purpose and separation of identities
+
+Allpha supports two distinct journeys using the same canonical Agent platform:
+
+1. **Human-owned Agent:** a human registers an Agent Identity and may select one Skill blueprint from the searchable 500-entry Skill catalog. The Agent remains owned by that authenticated human under the existing ownership model. A catalog selection is metadata only; it does not automatically grant tools, capabilities, autonomy, or access to private memory.
+2. **Official Allpha Bot:** a platform-owned Agent identity operated by Allpha to provide supervised, bounded participation and help fill eligible virtual-world roles during launch. Official bots are managed through the separate Super Admin application and must use the existing canonical Agent Identity, ownership, policy, Skill, runtime, workflow, asset, audit, and budget services. The Official Bot roster is an operator lifecycle overlay, not a second Agent identity system.
+
+A human-owned Agent must never be silently converted into a platform-owned bot. Official bots must not impersonate human users, inherit a human's private data, or bypass consent, moderation, or authorization boundaries.
+
+## B. Skill catalog: 500 selectable blueprints
+
+The catalog contains exactly 500 stable, searchable blueprint entries grouped into 25 domains and 20 task patterns per domain. Each entry has a stable key, catalog version, name, category, description, provenance, suggested character-role metadata, and execution-readiness metadata.
+
+The upstream reference is https://github.com/ashishpatel26/500-AI-Agents-Projects. The currently inspected upstream repository contains 21 self-contained implementation folders; therefore the catalog must distinguish those 21 named upstream examples from curated use-case blueprints. The total of 500 catalog entries must not be represented as 500 executable upstream projects or as 500 production-ready Agents. Do not copy or execute unreviewed upstream code as a shortcut.
+
+Each blueprint must progress through explicit readiness states before execution:
+- **Catalog-only:** searchable/selectable metadata; no execution permission.
+- **Versioned Skill:** immutable Skill version and schema recorded through the canonical Skill domain.
+- **Policy-bound:** an approved, version-pinned runtime policy exists for the specific Agent and Skill.
+- **Tool-bound:** every required handler/tool resolves to a registered canonical tool with a strict input/output schema, permission scope, risk classification, timeout, idempotency and cost contract.
+- **Execution-ready:** authorization, policy, tools, memory scope, budget, deadlines, cancellation, and observability checks pass at runtime.
+
+The canonical backend must reject unknown keys, unsupported catalog versions, unapproved Skill versions, unregistered tools, mismatched policy versions, and client-supplied privilege claims. No UI selection may bypass these checks. Human-owned Agent creation and update must preserve the authenticated owner and canonical ownership relationships.
+
+## C. Character role and canonical 3D asset binding
+
+Every blueprint may propose a display role/archetype for the Agent character. This is descriptive metadata only until the role is linked to a real character asset in the canonical asset catalog/manifest.
+
+An asset binding must use the canonical asset key and immutable published version, and must be checked server-side for catalog presence, validation status, provenance/license and derivative rights, security/moderation approval, rig/animation compatibility where required, renderer compatibility, device/performance budget, and publication authorization. Asset bytes in Storage, a filename, a user-provided URL, or a prompt-generated character description are not proof of approval. Unknown, draft, rejected, revoked, or unverified assets must fail closed for production/public use. Keep the existing 14-category 3D asset taxonomy and canonical renderer path unchanged.
+
+## D. Official Allpha Bot roster and Super Admin lifecycle
+
+The separate Super Admin application exposes an authorized control surface over a canonical-backend-managed Official Bot roster. The roster is a projection/overlay linking a Skill blueprint to an existing platform-owned canonical Agent identity, immutable Skill version, approved runtime policy, registered tool set, and verified character asset. It must not create a parallel Agent identity table or runtime engine.
+
+Required lifecycle:
+`draft → pending_approval → approved → active`, with explicit `stopped`, `isolated`, and `blocked` states and audited recovery paths. Provisioning may seed up to 500 draft candidates idempotently; provisioning alone must never create the claim that 500 identities exist or that bots are running. Promotion to active requires a legitimate platform/system owner identity, a canonical Agent identity with correct platform ownership, pinned Skill version, approved policy, registered tools, verified canonical character asset, explicit approval, budget/quota, and successful backend readiness checks.
+
+Super Admin actions require dedicated operator authentication and exact scopes, server-side authorization, high-risk confirmation, mandatory reason, optimistic concurrency/state-transition checks, durable audit events, and safe error responses. UI visibility is not authorization. Service-role credentials must remain server-side. All changes must record actor, timestamp, previous/new state, reason, resource identity, policy/Skill/asset versions, request/trace ID, and outcome without logging secrets or private payloads.
+
+## E. Scheduler, dispatch, stop, and isolation enforcement
+
+Official bots execute only through the existing canonical Agent Runtime and canonical Workflow Engine. Do not add a second scheduler or execute catalog descriptions as code. A scheduler/dispatcher may enqueue a bounded task only after resolving the platform-owned Agent, pinned Skill and policy versions, registered tool handlers, approved world/role assignment, budget reservation, and deadline.
+
+Dispatch must be durable and idempotent, with bounded concurrency, leases/heartbeats, checkpoints, retry limits, timeout, replay protection, duplicate suppression, trace correlation, usage/cost attribution, and recovery behavior consistent with the existing task/workflow contracts. The runtime must re-check authorization and policy at execution time; approval at enqueue time is not permanent authority.
+
+A stop or isolate action is not complete when only the roster status changes. The backend must atomically or safely coordinate a durable cancellation/revocation signal with the runtime: prevent new task claims, cancel or safely terminate active work, revoke/deny tool dispatch, release or settle reservations correctly, preserve checkpoints/audit, and expose the observed runtime state. Isolation must deny world interactions, external tools, private memory, and outbound network actions unless an explicitly approved incident procedure allows a narrowly scoped operation. If runtime confirmation is unavailable, report the action as pending/unconfirmed and keep the bot fail-closed; never claim a kill switch succeeded based only on a database status update.
+
+## F. Authorization, safety, privacy, replay, and cost
+
+- Enforce platform ownership separately from human ownership; derive actor and owner from trusted server-side identity, never client payload.
+- Apply least privilege with operator RBAC/scopes plus resource, attribute, context, tenant, world, and risk checks. Test IDOR, forged owner IDs, cross-tenant/world access, scope escalation, stale approvals, and unauthorized direct API calls.
+- Use immutable Skill/policy/asset versions for each run. A new version requires explicit compatibility/review and must not mutate the definition of an in-flight task.
+- Treat model output, catalog descriptions, retrieved documents, and tool results as untrusted data. No blueprint may enable arbitrary code execution or unapproved network/filesystem access.
+- Use idempotency keys and payload fingerprints for enqueue, dispatch, tool side effects, replay, budget reservation, and settlement. A replay must not duplicate external side effects or charge usage twice; ambiguous side effects must be reconciled before retry.
+- Enforce per-bot, per-owner/platform, per-world, per-tool, concurrency, token/context, runtime, request, and financial budgets through the canonical budget/credit/usage contracts. Reserve before expensive execution, meter actual usage, settle/release exactly once, and stop safely at limits. No invented price or credit conversion may be assumed.
+- Keep private memory, documents, credentials, and user activity inaccessible to Official Bots unless an explicit policy and authorization grant permits a specific scoped reference. Log metadata by default, not secrets or full private prompts.
+- Add rate limits, abuse detection, moderation, incident handling, revocation/takedown, operator audit, alerting, and cost/health dashboards. Provide safe behavior when the scheduler, database, asset catalog, policy registry, audit sink, or budget service is unavailable.
+
+## G. Data and API integration contract
+
+The canonical FastAPI backend in `apps/api` is the only business-logic and privileged-write boundary. Web, Native Client, and Super Admin must call typed, versioned API contracts. Existing canonical tables and engines remain authoritative, including the current Agent identity/ownership model, Skill and capability domains, runtime policy registry, tool registry, workflow/runtime execution, usage/credit ledger, audit, and spatial asset catalog/manifest.
+
+The Official Bot roster migration is source-only until the approved ENG-P37 non-production integration window. Before applying it, reconcile the migration against the actual target schema and historical migration state, verify the target is isolated non-production, and test fresh-install/upgrade, constraints, grants, RLS, service access, rollback/forward repair, concurrency, and owner isolation. Do not apply schema changes to canonical production or create another database/branch as a workaround. If the current database/schema does not safely support the contract, stop and report the exact blocker rather than inventing a parallel schema.
+
+Required API capabilities, whether existing or added within the owning canonical phases:
+- Read/search/filter/paginate the versioned 500-entry Skill catalog and readiness/provenance metadata.
+- Create/update human-owned Agent Identity using authenticated owner context and canonical ownership relationships.
+- Provision or reconcile platform-owned canonical Agent identities idempotently through the existing Agent Identity service; never manufacture owner IDs or write directly from Super Admin.
+- Bind immutable Skill versions, approved policies, registered tools and verified asset versions.
+- Request/approve/reject/activate/stop/isolate/resume Official Bot lifecycle with durable audit and optimistic concurrency.
+- Enqueue/dispatch/cancel/replay bounded tasks through the canonical Runtime/Workflow Engine, exposing execution IDs, trace, checkpoints, actual usage/cost, and confirmed cancellation/isolation state.
+- Read aggregate operational health, errors, per-bot/world utilization and budget alerts without exposing private content or secrets.
+
+## H. Acceptance criteria and evidence
+
+The vertical slice is not accepted until the following are demonstrated with real canonical dependencies in the approved non-production environment:
+1. Exactly 500 unique, versioned catalog entries are searchable and selectable from Human Agent Identity on Web and Native Client; selection persists through the canonical API and cannot forge owner identity.
+2. Every executable blueprint has a pinned Skill version, approved policy, resolvable registered tool handlers, explicit permission/risk/cost contracts, and tests; catalog-only blueprints remain non-executable.
+3. Platform-owned canonical Agent provisioning is idempotent, audited, correctly owned by a legitimate system principal, and separate from human-owned Agents.
+4. Every activated Official Bot references a real canonical Agent identity, approved policy and immutable verified character asset version; no fabricated or unverified GLB mapping is accepted.
+5. Super Admin approval, activation, stop, isolation, resume, revocation and failure paths enforce server-side scopes, reason, concurrency and durable audit.
+6. Scheduler dispatch, cancellation/kill switch and isolation are verified against actual running tasks; after stop/isolate, no new work or tool calls proceed, active tasks are cancelled or safely fenced, and the API reports confirmed/pending state truthfully.
+7. Authorization tests cover forged ownership, IDOR, cross-tenant/world isolation, stale policy/asset revocation, unapproved tools, scope escalation, replay/duplicate requests and direct endpoint access.
+8. Budget tests prove preflight rejection, reservation, actual usage attribution, exactly-once settlement/release, per-bot and aggregate caps, timeout/cancellation, and no duplicate charge on replay.
+9. Audit and observability evidence correlates operator action, Agent/Skill/policy/asset versions, task execution, tools, cancellation, and cost without exposing secrets or unauthorized private data.
+10. Web, Native Client, API, and Super Admin use the same canonical contracts; relevant CI, API/contract/security tests, UI/E2E checks, and migration/owner-isolation tests pass. Production verification remains a separate release gate.
+
+## I. Phase ownership and implementation sequence
+
+This appendix does not create new phases. Work remains inside the existing fixed engineering plan:
+- **ENG-P05 — Agent Identity & Passport:** Human-owned Agent Skill selection, canonical Skill-version binding, legitimate platform-owned Agent identity provisioning through the existing identity service, and ownership isolation.
+- **ENG-P06 — Agent Runtime / execution policy:** runtime policy and registered-tool binding, version pinning, bounded task execution, durable dispatch, cancellation, replay and kill-switch/isolation enforcement through the canonical Runtime/Workflow Engine.
+- **ENG-P34 — Super Admin operations/governance:** Official Bot roster, approval/rejection, activation/stop/isolation controls, audit, monitoring, budgets and operator authorization.
+- **ENG-P37 — integration/release acceptance only:** approved isolated non-production Supabase migration, RLS/grants, cross-client E2E, tenant/owner isolation, runtime stop/isolation verification and release evidence. ENG-P37 must not become a container for missing feature implementation.
+
+Keep all existing phase statuses evidence-based and update only the canonical fixed phase plan. Do not alter or replace the pre-existing architecture; this appendix is additive and is subordinate to existing canonical domain ownership and security contracts.
