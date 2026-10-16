@@ -159,7 +159,7 @@ import hashlib
 import json
 import time
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 
 @dataclass(frozen=True)
@@ -319,12 +319,14 @@ class CanonicalTextGenerationRouter:
         policies: dict[str, TextGenerationPolicy],
         metering_sink: TextGenerationMeteringSink | None,
         retry_delay_seconds: float = 0.1,
+        runtime_preflight: Callable[[str, TextGenerationRoute, TextGenerationPolicy], Awaitable[None]] | None = None,
     ) -> None:
         self._routes = dict(routes)
         self._adapters = dict(adapters)
         self._policies = dict(policies)
         self._metering_sink = metering_sink
         self._retry_delay_seconds = max(0.0, min(retry_delay_seconds, 1.0))
+        self._runtime_preflight = runtime_preflight
 
     def require_runtime_ready(self, sensitivity: str) -> None:
         route = self._routes.get(sensitivity)
@@ -367,6 +369,18 @@ class CanonicalTextGenerationRouter:
         self.require_runtime_ready(request.sensitivity)
         route = self._routes[request.sensitivity]
         policy = self._policies[request.sensitivity]
+        # Production factories may verify the operator-managed active tariff in the
+        # canonical Supabase registry before each billable provider call. Static
+        # model-policy approval and active tariff are separate gates.
+        if self._runtime_preflight is not None:
+            try:
+                await self._runtime_preflight(request.sensitivity, route, policy)
+            except TextGenerationRouterUnavailable:
+                raise
+            except Exception as exc:
+                raise TextGenerationRouterUnavailable(
+                    "active model-cost configuration could not be verified; provider execution is blocked"
+                ) from exc
         if len(request.prompt.encode("utf-8")) > policy.max_prompt_bytes:
             raise TextGenerationRouterRejected("prompt exceeds approved policy bound")
         if request.max_output_tokens > policy.max_output_tokens:
