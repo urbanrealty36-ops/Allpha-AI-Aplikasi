@@ -362,7 +362,6 @@ async def official_bot_lifecycle_action(
             "code": "OFFICIAL_BOT_RUNTIME_DISPATCH_UNAVAILABLE",
             "message": "Semua prasyarat roster tidak cukup untuk aktivasi. Dispatcher runtime kanonis, Skill version pinning, budget enforcement, dan kill/cancellation belum terhubung; bot tetap approved dan tidak diubah menjadi active.",
         })
-        now_fields.update({"status": "active", "autonomy_mode": payload.autonomy_mode, "activated_by": operator["id"], "activated_at": now, "stopped_at": None, "stopped_by": None, "isolation_reason": None})
     elif payload.action == "stop":
         now_fields.update({"status": "stopped", "stopped_by": operator["id"], "stopped_at": now})
     elif payload.action == "isolate":
