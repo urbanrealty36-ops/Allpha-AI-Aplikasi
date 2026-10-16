@@ -256,3 +256,113 @@ def test_platform_agent_identity_provisioning_rejects_malformed_owner_uuid(monke
 
     assert caught.value.status_code == 503
     assert caught.value.detail["code"] == "PLATFORM_AGENT_OWNER_NOT_CONFIGURED"
+
+
+def test_runtime_link_rejects_catalog_only_skill_before_any_policy_or_asset_binding(monkeypatch):
+    bot_id, agent_id, policy_id = uuid4(), uuid4(), uuid4()
+    calls = []
+
+    async def fake_store(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET" and table == "official_agent_bots":
+            return [{
+                "id": str(bot_id), "status": "draft", "skill_key": "research.answer",
+                "agent_id": str(agent_id), "runtime_policy_id": None,
+            }]
+        raise AssertionError("catalog-only Skill must be rejected before policy/agent reads")
+
+    async def fake_audit(*args, **kwargs):
+        raise AssertionError("rejected catalog blueprint must not be audited as linked")
+
+    monkeypatch.setattr(api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.link_official_bot_runtime(
+            bot_id,
+            api.BotLinkPayload(agent_id=agent_id, runtime_policy_id=policy_id, character_asset_key="user-supplied-key"),
+            _request(),
+            {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+
+    assert caught.value.status_code == 409
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_SKILL_NOT_EXECUTABLE"
+    assert not any(table == "agent_runtime_policies" for _, table, _ in calls)
+    assert not any(method == "PATCH" for method, _, _ in calls)
+
+
+def test_runtime_link_rejects_policy_tools_missing_from_canonical_tool_registry(monkeypatch):
+    bot_id, agent_id, policy_id = uuid4(), uuid4(), uuid4()
+    actor_id = str(uuid4())
+    calls = []
+    skill_key = "upstream.web-research-agent"
+
+    monkeypatch.setitem(api.SKILL_CATALOG_BY_KEY, skill_key, {
+        "key": skill_key, "executable": True, "execution_status": "implemented",
+    })
+
+    async def fake_store(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET" and table == "official_agent_bots":
+            return [{
+                "id": str(bot_id), "status": "draft", "skill_key": skill_key,
+                "agent_id": str(agent_id), "runtime_policy_id": None,
+            }]
+        if method == "GET" and table == "agent_runtime_policies":
+            return [{
+                "id": str(policy_id), "agent_id": str(agent_id), "status": "approved",
+                "approved_tool_keys": ["web.search.not_registered"],
+            }]
+        raise AssertionError(f"unexpected store call: {method} {table}")
+
+    async def fake_audit(*args, **kwargs):
+        raise AssertionError("unknown tool binding must be rejected before audit/write")
+
+    monkeypatch.setattr(api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.link_official_bot_runtime(
+            bot_id,
+            api.BotLinkPayload(agent_id=agent_id, runtime_policy_id=policy_id, character_asset_key="user-supplied-key"),
+            _request(),
+            {"id": actor_id, "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+
+    assert caught.value.status_code == 409
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_POLICY_TOOL_NOT_REGISTERED"
+    assert caught.value.detail["unknown_tool_keys"] == ["web.search.not_registered"]
+    assert not any(method == "PATCH" for method, _, _ in calls)
+
+
+def test_runtime_link_rejects_agent_identity_not_provisioned_for_roster(monkeypatch):
+    bot_id, agent_id, other_agent_id, policy_id = uuid4(), uuid4(), uuid4(), uuid4()
+    skill_key = "upstream.web-research-agent"
+    monkeypatch.setitem(api.SKILL_CATALOG_BY_KEY, skill_key, {
+        "key": skill_key, "executable": True, "execution_status": "implemented",
+    })
+
+    async def fake_store(method, table, **kwargs):
+        if method == "GET" and table == "official_agent_bots":
+            return [{
+                "id": str(bot_id), "status": "draft", "skill_key": skill_key,
+                "agent_id": str(agent_id), "runtime_policy_id": None,
+            }]
+        raise AssertionError("must reject mismatched identity before policy query")
+
+    async def fake_audit(*args, **kwargs):
+        raise AssertionError("identity mismatch must not write")
+
+    monkeypatch.setattr(api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.link_official_bot_runtime(
+            bot_id,
+            api.BotLinkPayload(agent_id=other_agent_id, runtime_policy_id=policy_id, character_asset_key="user-supplied-key"),
+            _request(),
+            {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+
+    assert caught.value.status_code == 409
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_CANONICAL_IDENTITY_REQUIRED"
