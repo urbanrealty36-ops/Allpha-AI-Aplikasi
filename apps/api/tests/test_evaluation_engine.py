@@ -85,7 +85,7 @@ def test_rejects_unsupported_evaluator_version_and_invalid_evidence_hash():
     with pytest.raises(ValidationError, match="unsupported evaluator version"):
         rubric(evaluator_version="latest")
     with pytest.raises(ValidationError, match="SHA-256"):
-        CriterionSignal(score=1.0, evidence_ref="trace:abc", evidence_sha256="not-a-digest")
+        CriterionSignal(score=1.0, evidence_ref="trace:abc", evidence_sha256="z" * 64)
 
 
 def test_reward_policy_is_not_part_of_evaluator_result():
