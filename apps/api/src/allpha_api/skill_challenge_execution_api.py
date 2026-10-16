@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from datetime import datetime
 from dataclasses import asdict
 from typing import Any
 
@@ -42,7 +43,7 @@ async def execute_skill_challenge(
             return {"run": _public_run(row), "idempotent_replay": True}
         if row.get("status") != "issued":
             raise HTTPException(status_code=409, detail={"code": "CHALLENGE_NOT_EXECUTABLE", "message": "Challenge tidak berada pada status yang dapat dieksekusi."})
-        if _now() >= __import__("datetime").datetime.fromisoformat(row["nonce_expires_at"].replace("Z", "+00:00")):
+        if _now() >= datetime.fromisoformat(row["nonce_expires_at"].replace("Z", "+00:00")):
             raise HTTPException(status_code=410, detail={"code": "CHALLENGE_NONCE_EXPIRED", "message": "Challenge telah kedaluwarsa; buat run baru."})
         if hashlib.sha256(payload.nonce.encode()).hexdigest() != row.get("nonce_hash"):
             raise HTTPException(status_code=403, detail={"code": "CHALLENGE_NONCE_INVALID", "message": "Nonce challenge tidak valid."})
@@ -73,12 +74,15 @@ async def execute_skill_challenge(
         if len(prompt.encode("utf-8")) > 32_768:
             raise HTTPException(status_code=413, detail={"code": "CHALLENGE_PROMPT_TOO_LARGE", "message": "Instruksi dan input melebihi batas prompt."})
         trace_id = request.headers.get("x-request-id") or str(uuid.uuid4())
-        generation_request = TextGenerationRequest(
-            task_id=str(run_id), trace_id=trace_id, idempotency_key=str(row["idempotency_key"]),
-            sensitivity="private", prompt=prompt,
-            max_output_tokens=min(1024, router_instance.max_output_tokens_for("private")),
-            timeout_ms=30_000,
-        )
+        try:
+            max_output_tokens = min(1024, router_instance.max_output_tokens_for("private"))
+            generation_request = TextGenerationRequest(
+                task_id=str(run_id), trace_id=trace_id, idempotency_key=str(row["idempotency_key"]),
+                sensitivity="private", prompt=prompt, max_output_tokens=max_output_tokens,
+                timeout_ms=30_000,
+            )
+        except (TextGenerationRouterUnavailable, ValueError) as exc:
+            raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Tidak ada policy text-generation yang disetujui dan siap dipakai."}) from exc
         try:
             generation, evidence = await router_instance.generate(generation_request)
         except TextGenerationRouterUnavailable as exc:
