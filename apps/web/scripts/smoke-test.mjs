@@ -20,6 +20,7 @@ assert.ok(page.includes("retrievalRequestSequence.current"));
 assert.ok(page.includes("}, [agentId]);"));
 assert.ok(page.includes("requestSequence !== retrievalRequestSequence.current"));
 assert.ok(page.includes("preview konteks retrieval, bukan respons generatif Agent"));
+assert.ok(page.includes('href="/skill-challenges"'), "Agent Studio must link to Skill Challenge");
 assert.doesNotMatch(page, /mockRetrievalResults|fakeKnowledgeResults|fixtureRetrieval/);
 
 
