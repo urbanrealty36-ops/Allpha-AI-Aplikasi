@@ -1,0 +1,71 @@
+name: Import pinned Agency Skill drafts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/agency/import_agency_skill_drafts.py"
+      - "apps/api/src/allpha_api/agency_agents_catalog.json"
+      - "apps/api/src/allpha_api/skill_catalog.py"
+      - ".github/workflows/import-agency-skill-drafts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agency-skill-draft-import-main
+  cancel-in-progress: false
+
+jobs:
+  import-drafts:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Import pinned prompt bodies and build reconciliation candidates
+        run: python tools/agency/import_agency_skill_drafts.py
+
+      - name: Verify generated draft manifests
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("apps/api/src/allpha_api")
+          chunks = sorted((root / "agency_skill_drafts").glob("agency_skill_drafts_*.json"))
+          records = [record for chunk in chunks for record in json.loads(chunk.read_text())["records"]]
+          reconciliation = json.loads((root / "agency_skill_reconciliation_candidates.json").read_text())
+          assert len(records) == 282, f"expected 282 imported prompt bodies, got {len(records)}"
+          assert len({r["skill_id"] for r in records}) == 282, "duplicate Agency source IDs"
+          assert all(r["status"] == "draft" and r["immutable"] and not r["executable"] for r in records)
+          assert all(r["content_sha256"] and r["adapted_content_sha256"] for r in records)
+          assert all(r["provenance"]["commit"] == "652b2692f8d8ec2b1f1a38e559073e287dfdc469" for r in records)
+          assert len(reconciliation["items"]) == 282
+          assert all(row["canonical_identity_merge"] is False for row in reconciliation["items"])
+          print(f"verified {len(records)} immutable draft records across {len(chunks)} chunks")
+          PY
+
+      - name: Commit generated immutable drafts to canonical main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/allpha_api/agency_skill_drafts \
+            apps/api/src/allpha_api/agency_skill_reconciliation_candidates.json \
+            docs/licenses/AGENCY-AGENTS-MIT-LICENSE.txt
+          if git diff --cached --quiet; then
+            echo "Generated draft catalog is already current."
+          else
+            git commit -m "data(eng-p06): import 282 pinned Agency Skill drafts and reconciliation candidates"
+            git push origin HEAD:main
+          fi
