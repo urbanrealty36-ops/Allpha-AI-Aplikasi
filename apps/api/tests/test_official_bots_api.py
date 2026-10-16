@@ -73,37 +73,66 @@ def test_activation_fails_closed_when_agent_policy_or_verified_asset_is_missing(
     assert not any(method == "PATCH" for method, _, _ in calls)
 
 
-def test_stop_action_is_audited_and_marks_roster_stopped(monkeypatch):
+def test_stop_action_fails_closed_when_runtime_kill_switch_is_unavailable(monkeypatch):
     bot_id = uuid4()
-    actor_id = str(uuid4())
     stored = {
         "id": str(bot_id), "status": "active", "agent_id": str(uuid4()),
         "runtime_policy_id": str(uuid4()), "character_asset_key": "theme.asset.character",
         "asset_validation_status": "verified", "skill_key": "research.answer",
     }
     writes = []
-    audits = []
 
     async def fake_store(method, table, **kwargs):
         writes.append((method, table, kwargs))
-        if method == "GET":
-            return [stored]
-        return [{**stored, "status": "stopped", **kwargs.get("body", {})}]
+        return [stored]
 
     async def fake_audit(*args, **kwargs):
-        audits.append(kwargs)
+        raise AssertionError("must not claim a stop without a runtime kill switch")
 
     monkeypatch.setattr(api, "privileged_rest_request", fake_store)
     monkeypatch.setattr(api, "write_operator_audit", fake_audit)
-    result = asyncio.run(api.official_bot_lifecycle_action(
-        bot_id, api.BotActionPayload(action="stop", reason="stop by operator"),
-        _request(), {"id": actor_id, "scopes": ["platform:capabilities.review.high_risk"]},
-    ))
-    assert result["bot"]["status"] == "stopped"
-    assert result["runtime_action_dispatched"] is False
-    assert any(method == "PATCH" for method, _, _ in writes)
-    assert audits and audits[-1]["action"] == "official_bots.stop"
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.official_bot_lifecycle_action(
+            bot_id, api.BotActionPayload(action="stop", reason="stop by operator"),
+            _request(), {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+    assert caught.value.status_code == 409
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_KILL_SWITCH_UNAVAILABLE"
+    assert not any(method == "PATCH" for method, _, _ in writes)
 
+
+def test_activation_never_marks_roster_active_without_runtime_dispatch(monkeypatch):
+    bot_id, agent_id, policy_id = uuid4(), uuid4(), uuid4()
+    stored = {
+        "id": str(bot_id), "status": "approved", "agent_id": str(agent_id),
+        "runtime_policy_id": str(policy_id), "character_asset_key": "theme.asset.character",
+        "asset_validation_status": "verified", "skill_key": "upstream.web-research-agent",
+    }
+    writes = []
+
+    async def fake_store(method, table, **kwargs):
+        writes.append((method, table, kwargs))
+        if method == "GET" and table == "official_agent_bots":
+            return [stored]
+        if method == "GET" and table == "agent_runtime_policies":
+            return [{"id": str(policy_id), "agent_id": str(agent_id), "status": "approved"}]
+        if method == "GET" and table == "ai_agents":
+            return [{"id": str(agent_id), "status": "active"}]
+        raise AssertionError(f"unexpected persistence operation: {method} {table}")
+
+    async def fake_audit(*args, **kwargs):
+        raise AssertionError("runtime dispatch failure must not be recorded as activation success")
+
+    monkeypatch.setattr(api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.official_bot_lifecycle_action(
+            bot_id, api.BotActionPayload(action="activate", reason="activate after prerequisites"),
+            _request(), {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+    assert caught.value.status_code == 409
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_RUNTIME_DISPATCH_UNAVAILABLE"
+    assert not any(method == "PATCH" for method, _, _ in writes)
 
 
 def test_platform_agent_identity_provisioning_uses_canonical_rpc_and_is_idempotent(monkeypatch):
