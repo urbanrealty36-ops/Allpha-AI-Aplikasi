@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
 
@@ -278,7 +279,7 @@ export default function AgentStudioPage() {
   return <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
     <header className="flex flex-wrap items-end justify-between gap-3 border-b pb-5">
       <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Allpha · Agent Studio</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Skills & Capabilities</h1><p className="mt-2 max-w-2xl text-sm text-neutral-600">Kelola prosedur reusable, versi, dependensi tool, dan permintaan kemampuan Agent. Otorisasi selalu diputuskan ulang saat runtime.</p></div>
-      <button className="rounded-xl border px-4 py-2 text-sm font-medium" onClick={() => session && void load(session)} disabled={loading}>{loading ? "Memuat…" : "Muat ulang"}</button>
+      <div className="flex flex-wrap gap-2"><Link href="/skill-challenges" className="rounded-xl border px-4 py-2 text-sm font-medium">Skill Challenge</Link><button className="rounded-xl border px-4 py-2 text-sm font-medium" onClick={() => session && void load(session)} disabled={loading}>{loading ? "Memuat…" : "Muat ulang"}</button></div>
     </header>
     {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
     {notice && <div role="status" className="rounded-xl border p-3 text-sm">{notice}</div>}
