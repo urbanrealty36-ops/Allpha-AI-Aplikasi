@@ -41,6 +41,10 @@ create index if not exists official_agent_bots_status_category_idx
   on public.official_agent_bots(status, category_key, updated_at desc);
 create index if not exists official_agent_bots_agent_id_idx
   on public.official_agent_bots(agent_id) where agent_id is not null;
+create unique index if not exists official_agent_bots_agent_id_unique
+  on public.official_agent_bots(agent_id) where agent_id is not null;
+create unique index if not exists official_agent_bots_character_asset_unique
+  on public.official_agent_bots(character_asset_key) where character_asset_key is not null;
 
 alter table public.official_agent_bots enable row level security;
 revoke all on public.official_agent_bots from anon, authenticated, public;
