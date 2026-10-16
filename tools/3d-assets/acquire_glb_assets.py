@@ -9,13 +9,13 @@ import requests
 
 SOURCES = [
  {"repo":"rostock/3DModels","ref":"main","license_hint":"CC0-1.0","mode":"tree"},
- {"repo":"ToxSam/os3a-gallery","ref":"main","license_hint":"CATALOG_ONLY","mode":"catalog"},
+ {"repo":"ToxSam/os3a-gallery","ref":"main","license_hint":"Gallery metadata only; per-asset source license required","mode":"tree"},
  {"repo":"SpectraStudios/SourceCityToolkit_glb","ref":"main","license_hint":"CC0 with texture exceptions; review","mode":"tree"},
  {"repo":"c-frame/valid-avatars-glb","ref":"main","license_hint":"MIT; likeness/underlying rights review","mode":"tree"},
  {"repo":"KhronosGroupArchives/glTF-Sample-Models","ref":"master","license_hint":"Per-model license; review required","mode":"tree"},
  {"repo":"ramjigeddam/3d","ref":"master","license_hint":"UNKNOWN — quarantine pending license","mode":"tree"},
  {"repo":"ToxSam/open-source-3D-assets","ref":"main","license_hint":"Registry metadata only; verify each collection/source","mode":"catalog"},
- {"repo":"ladybug-tools/3d-models","ref":"main","license_hint":"Per-model license; review required","mode":"tree"},
+ {"repo":"ladybug-tools/3d-models","ref":"master","license_hint":"Per-model license; review required","mode":"tree"},
 ]
 CATEGORIES = [
  "universe","galaxy","world","orbit","capsule","district","booth","content-feed",
