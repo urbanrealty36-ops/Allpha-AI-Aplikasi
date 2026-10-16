@@ -26,7 +26,6 @@ export default function SkillChallengesPage() {
   const [agentId, setAgentId] = useState("");
   const [skillId, setSkillId] = useState("");
   const [testKey, setTestKey] = useState("");
-  const [submission, setSubmission] = useState("{}");
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [nonce, setNonce] = useState("");
   const [busy, setBusy] = useState(false);
@@ -109,7 +108,6 @@ export default function SkillChallengesPage() {
       }) });
       const run = result?.run as Run;
       setActiveRun(run); setNonce(result?.nonce ?? "");
-      setSubmission(jsonText(run?.challenge_input ?? {}));
       setNotice(result?.nonce ? "Challenge diterbitkan. Jalankan Skill sebelum nonce kedaluwarsa." : "Challenge sudah ada dari permintaan sebelumnya. Untuk menghindari replay, terbitkan challenge baru jika nonce tidak tersedia.");
       await refreshRuns();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Challenge tidak dapat diterbitkan."); }
@@ -166,7 +164,7 @@ export default function SkillChallengesPage() {
     </div>}
     <section className="panel history-panel">
       <div className="section-heading"><h2>Riwayat challenge</h2><button className="button button-secondary" disabled={busy} onClick={() => void refreshRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat gagal dimuat."))}>Muat ulang</button></div>
-      {loading ? <p className="muted">Memuat data dari API…</p> : runs.length === 0 ? <p className="muted">Belum ada challenge run tersimpan.</p> : <div className="challenge-history">{runs.map(run => <button key={run.id} className="history-row" onClick={() => { setActiveRun(run); setNonce(""); setSubmission(jsonText(run.challenge_input)); }}>
+      {loading ? <p className="muted">Memuat data dari API…</p> : runs.length === 0 ? <p className="muted">Belum ada challenge run tersimpan.</p> : <div className="challenge-history">{runs.map(run => <button key={run.id} className="history-row" onClick={() => { setActiveRun(run); setNonce(""); }}>
         <span><strong>{run.challenge_key}</strong><small>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString("id-ID")}</small></span>
         <span className={"status-pill status-" + run.status}>{run.status}</span>
       </button>)}</div>}
