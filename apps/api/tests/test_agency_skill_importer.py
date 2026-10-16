@@ -52,6 +52,11 @@ def test_reconciliation_preserves_both_source_ids_without_merging():
     assert row["canonical_identity_merge"] is False
     assert row["human_reconciliation"] == "pending"
     assert row["candidates"][0]["merge_decision"] == "none"
+    assert "shared_terms" in row["candidates"][0]
+    assert "agency_only_terms" in row["candidates"][0]
+    assert "allpha_only_terms" in row["candidates"][0]
+    assert "difference_summary" in row["candidates"][0]
+    assert result["strong_candidate_count"] + result["weak_candidate_count"] + result["no_textual_overlap_count"] == 1
 
 
 def test_allpha_adapter_is_fail_closed_and_non_executable():
