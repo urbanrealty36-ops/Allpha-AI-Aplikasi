@@ -82,8 +82,9 @@ def catalog_assets(source, session):
 def main():
  p=argparse.ArgumentParser()
  p.add_argument("--out",default="allpha-glb-acquisition")
- p.add_argument("--max-assets",type=int,default=int(os.getenv("MAX_ASSETS","1200")))
- p.add_argument("--max-bytes",type=int,default=int(os.getenv("MAX_BYTES","3000000000")))
+ # GitHub push events may expose an empty input variable; empty means use the safe default.
+ p.add_argument("--max-assets",type=int,default=int(os.getenv("MAX_ASSETS") or "1200"))
+ p.add_argument("--max-bytes",type=int,default=int(os.getenv("MAX_BYTES") or "3000000000"))
  a=p.parse_args()
  out=Path(a.out); files=out/"assets"; files.mkdir(parents=True,exist_ok=True)
  s=requests.Session(); s.headers.update({"Accept":"application/vnd.github+json","User-Agent":"Allpha-GLB-Audit/1.0"})
