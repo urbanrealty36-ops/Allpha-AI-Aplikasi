@@ -108,5 +108,4 @@ async def get_agency_skill_reconciliation(
         return {"status": "awaiting_import_workflow", "agency_count": 282, "allpha_blueprint_count": 500, "items": []}
     return {key: value for key, value in document.items() if key != "items"} | {
         "status": "candidate_map_available",
-        "items": document["items"],
     }
