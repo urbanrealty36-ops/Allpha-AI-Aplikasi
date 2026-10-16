@@ -1,4 +1,4 @@
-import React, { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { Component, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Canvas, useLoader } from "@react-three/fiber/native";
 import { Box3, Group, Vector3 } from "three";
@@ -53,6 +53,7 @@ export function CanonicalNativeGlbPreview({ asset, style }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const markLoaded = useCallback(() => setLoaded(true), []);
   const allowed = asset.publication_status === "approved" || asset.publication_status === "published";
   const valid = /^https:\/\//i.test(asset.asset_url)
     && /^[a-f0-9]{64}$/i.test(asset.sha256)
@@ -81,7 +82,7 @@ export function CanonicalNativeGlbPreview({ asset, style }: Props) {
               <ambientLight intensity={1.6} />
               <directionalLight position={[4, 6, 5]} intensity={2} />
               <Suspense fallback={null}>
-                <Model url={asset.asset_url} onLoaded={() => setLoaded(true)} />
+                <Model url={asset.asset_url} onLoaded={markLoaded} />
               </Suspense>
             </Canvas>
           </RenderErrorBoundary>
