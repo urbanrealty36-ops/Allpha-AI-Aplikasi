@@ -266,7 +266,7 @@ def test_runtime_link_rejects_catalog_only_skill_before_any_policy_or_asset_bind
         calls.append((method, table, kwargs))
         if method == "GET" and table == "official_agent_bots":
             return [{
-                "id": str(bot_id), "status": "draft", "skill_key": "research.answer",
+                "id": str(bot_id), "status": "draft", "skill_key": "food.answer",
                 "agent_id": str(agent_id), "runtime_policy_id": None,
             }]
         raise AssertionError("catalog-only Skill must be rejected before policy/agent reads")
