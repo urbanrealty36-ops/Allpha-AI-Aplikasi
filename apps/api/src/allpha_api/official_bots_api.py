@@ -20,6 +20,7 @@ from allpha_api.operator_security import (
     write_operator_audit,
 )
 from allpha_api.skill_catalog import SKILL_CATALOG, SKILL_CATALOG_BY_KEY
+from allpha_api.tool_registry import UnknownToolError, get_tool
 
 router = APIRouter(prefix="/v1/admin/official-bots", tags=["official-agent-bots"])
 _FIELDS = (
@@ -221,6 +222,25 @@ async def link_official_bot_runtime(
     bot = rows[0]
     if bot["status"] in {"active", "isolated", "blocked"}:
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_LINK_STATE_INVALID", "message": "Hentikan atau pulihkan bot sebelum mengubah tautan runtime."})
+
+    # A roster blueprint is not an executable Skill. Never promote catalog metadata
+    # into runtime authority without a canonical published implementation/version.
+    catalog_skill = SKILL_CATALOG_BY_KEY.get(bot["skill_key"])
+    if not catalog_skill:
+        raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_SKILL_UNKNOWN", "message": "Skill key tidak ada di katalog kanonis."})
+    if not catalog_skill.get("executable") or catalog_skill.get("execution_status") != "implemented":
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_SKILL_NOT_EXECUTABLE",
+            "message": "Skill ini masih blueprint katalog; implementasi dan versi Skill kanonis harus tersedia sebelum binding runtime.",
+            "skill_key": bot["skill_key"],
+            "execution_status": catalog_skill.get("execution_status", "unknown"),
+        })
+    if not bot.get("agent_id") or str(bot["agent_id"]) != str(payload.agent_id):
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_CANONICAL_IDENTITY_REQUIRED",
+            "message": "Provision identitas platform-owned melalui layanan kanonis terlebih dahulu; tautan Agent bebas tidak diizinkan.",
+        })
+
     policy = await privileged_rest_request(
         "GET", "agent_runtime_policies",
         params={
@@ -231,12 +251,36 @@ async def link_official_bot_runtime(
     )
     if not policy:
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_POLICY_UNVERIFIED", "message": "Runtime policy kanonis belum ditemukan dalam status approved untuk Agent ini."})
+    approved_tools = policy[0].get("approved_tool_keys") or []
+    if not approved_tools:
+        raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_POLICY_HAS_NO_TOOLS", "message": "Policy belum menyetujui tool handler yang dapat dieksekusi."})
+    unknown_tools = []
+    for tool_key in approved_tools:
+        try:
+            get_tool(tool_key)
+        except UnknownToolError:
+            unknown_tools.append(tool_key)
+    if unknown_tools:
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_POLICY_TOOL_NOT_REGISTERED",
+            "message": "Policy mencantumkan tool yang tidak terdaftar pada canonical Tool Registry.",
+            "unknown_tool_keys": sorted(unknown_tools),
+        })
     agent = await privileged_rest_request(
         "GET", "ai_agents",
-        params={"select": "id,version,status", "id": f"eq.{payload.agent_id}", "limit": "1"},
+        params={"select": "id,version,status,persona", "id": f"eq.{payload.agent_id}", "limit": "1"},
     )
     if not agent:
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_AGENT_UNVERIFIED", "message": "Agent identity kanonis belum tersedia."})
+    persona = agent[0].get("persona") or {}
+    persona_skill_key = persona.get("allpha_skill_key") if isinstance(persona, dict) else None
+    if persona_skill_key != bot["skill_key"]:
+        raise HTTPException(status_code=409, detail={
+            "code": "OFFICIAL_BOT_AGENT_SKILL_MISMATCH",
+            "message": "Persona Agent tidak menunjuk Skill blueprint roster yang sama.",
+            "expected_skill_key": bot["skill_key"],
+            "actual_skill_key": persona_skill_key,
+        })
     updated = await privileged_rest_request(
         "PATCH", "official_agent_bots",
         params={"id": f"eq.{bot_id}", "status": f"eq.{bot['status']}", "select": _FIELDS},
