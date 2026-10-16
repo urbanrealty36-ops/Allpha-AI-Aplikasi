@@ -30,6 +30,8 @@ _ALLOWED_CRITERIA = {
     "prompt_injection_resilience",
     "workflow_determinism",
     "safety",
+    "latency_budget",
+    "cost_budget",
 }
 _SLUG = re.compile(r"^[a-z][a-z0-9_-]{2,59}$")
 
