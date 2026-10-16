@@ -92,9 +92,14 @@ export default function SkillChallengesPage() {
   }, [agentId, request, session]);
 
   const selectedSkill = skills.find(skill => skill.id === skillId);
-  const availableTests = (selectedSkill?.tests ?? []).filter(item => item && typeof item.key === "string" && typeof (item.input ?? item.inputs) === "object" && typeof (item.expected_output ?? item.expected) === "object");
+  const availableTests = (selectedSkill?.tests ?? []).filter(item => item && typeof item.key === "string" && (item.input ?? item.inputs) !== null && typeof (item.input ?? item.inputs) === "object");
   const currentTest = availableTests.find(item => item.key === testKey);
-  useEffect(() => { if (availableTests.length && !availableTests.some(item => item.key === testKey)) setTestKey(availableTests.length ? String(availableTests[0].key) : (selectedSkill?.hidden_challenges_available ? "__hidden__" : "")); }, [skillId, availableTests.length, testKey, selectedSkill?.hidden_challenges_available]);
+  useEffect(() => {
+    if (testKey === "__hidden__" && selectedSkill?.hidden_challenges_available) return;
+    if (availableTests.some(item => item.key === testKey)) return;
+    if (availableTests.length) setTestKey(String(availableTests[0].key));
+    else setTestKey(selectedSkill?.hidden_challenges_available ? "__hidden__" : "");
+  }, [skillId, availableTests.length, testKey, selectedSkill?.hidden_challenges_available]);
 
   async function issueChallenge(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice(""); setNonce(""); setActiveRun(null);
