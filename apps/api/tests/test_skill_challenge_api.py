@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -150,49 +151,51 @@ class FakeChallengeStore:
         raise AssertionError(f"Unexpected fake store request: {method} {path} {params}")
 
 
-@pytest.mark.asyncio
-async def test_issue_hidden_challenge_pins_versions_and_never_returns_expected_output(monkeypatch):
-    store = FakeChallengeStore()
-    monkeypatch.setattr(challenge_api, "_store", lambda: store)
-    result = await challenge_api.issue_challenge(
-        ChallengeIssue(agent_id=UUID(store.agent_id), skill_id=UUID(store.skill_id),
-            test_key=None, idempotency_key="hidden-challenge-issue-01"),
-        request=None, user={"id": store.owner_id},
-    )
-    assert result["run"]["challenge_key"] == "hidden_case"
-    assert result["run"]["agent_version"] == 4
-    assert result["run"]["skill_version"] == 2
-    assert result["run"]["evaluation_set_version"] == 2
-    assert result["nonce"]
-    assert "expected_output" not in result["run"]
-    assert "skill_snapshot" not in result["run"]
+def test_issue_hidden_challenge_pins_versions_and_never_returns_expected_output(monkeypatch):
+    async def scenario():
+        store = FakeChallengeStore()
+        monkeypatch.setattr(challenge_api, "_store", lambda: store)
+        result = await challenge_api.issue_challenge(
+            ChallengeIssue(agent_id=UUID(store.agent_id), skill_id=UUID(store.skill_id),
+                test_key=None, idempotency_key="hidden-challenge-issue-01"),
+            request=None, user={"id": store.owner_id},
+        )
+        assert result["run"]["challenge_key"] == "hidden_case"
+        assert result["run"]["agent_version"] == 4
+        assert result["run"]["skill_version"] == 2
+        assert result["run"]["evaluation_set_version"] == 2
+        assert result["nonce"]
+        assert "expected_output" not in result["run"]
+        assert "skill_snapshot" not in result["run"]
+    asyncio.run(scenario())
 
 
-@pytest.mark.asyncio
-async def test_submit_challenge_persists_repeatable_evidence_and_rejects_conflicting_replay(monkeypatch):
-    store = FakeChallengeStore()
-    monkeypatch.setattr(challenge_api, "_store", lambda: store)
-    issued = await challenge_api.issue_challenge(
-        ChallengeIssue(agent_id=UUID(store.agent_id), skill_id=UUID(store.skill_id),
-            test_key="visible_case", idempotency_key="visible-challenge-issue-01"),
-        request=None, user={"id": store.owner_id},
-    )
-    run_id = UUID(issued["run"]["id"])
-    submitted = await challenge_api.submit_challenge(
-        run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "4"}),
-        user={"id": store.owner_id},
-    )
-    assert submitted["run"]["status"] == "passed"
-    assert submitted["run"]["evidence_digest"]
-    assert submitted["achievement"]["key"] == "skill_challenge_passed"
-    replay = await challenge_api.submit_challenge(
-        run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "4"}),
-        user={"id": store.owner_id},
-    )
-    assert replay["idempotent_replay"] is True
-    with pytest.raises(HTTPException) as error:
-        await challenge_api.submit_challenge(
-            run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "different"}),
+def test_submit_challenge_persists_repeatable_evidence_and_rejects_conflicting_replay(monkeypatch):
+    async def scenario():
+        store = FakeChallengeStore()
+        monkeypatch.setattr(challenge_api, "_store", lambda: store)
+        issued = await challenge_api.issue_challenge(
+            ChallengeIssue(agent_id=UUID(store.agent_id), skill_id=UUID(store.skill_id),
+                test_key="visible_case", idempotency_key="visible-challenge-issue-01"),
+            request=None, user={"id": store.owner_id},
+        )
+        run_id = UUID(issued["run"]["id"])
+        submitted = await challenge_api.submit_challenge(
+            run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "4"}),
             user={"id": store.owner_id},
         )
-    assert error.value.status_code == 409
+        assert submitted["run"]["status"] == "passed"
+        assert submitted["run"]["evidence_digest"]
+        assert submitted["achievement"]["key"] == "skill_challenge_passed"
+        replay = await challenge_api.submit_challenge(
+            run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "4"}),
+            user={"id": store.owner_id},
+        )
+        assert replay["idempotent_replay"] is True
+        with pytest.raises(HTTPException) as error:
+            await challenge_api.submit_challenge(
+                run_id, ChallengeSubmit(nonce=issued["nonce"], submission={"answer": "different"}),
+                user={"id": store.owner_id},
+            )
+        assert error.value.status_code == 409
+    asyncio.run(scenario())
