@@ -172,6 +172,78 @@ class SupabaseTextGenerationMeteringSink:
             raise RuntimeError("usage metering RPC did not confirm idempotent persistence")
 
 
+class SupabaseActiveModelCostVerifier:
+    """Require the active operator-managed tariff to match the approved deployment route.
+
+    The database tariff is authoritative for whether a configured route may run. The
+    independently approved model policy remains deployment-owned; activating a tariff
+    alone never grants model execution permission.
+    """
+
+    def __init__(
+        self, *, supabase_url: str, service_role_key: str, provider_id: str,
+        model_id: str, model_version: str, pricing_version: str, cost_unit: str,
+        input_cost_microunits_per_token: int, output_cost_microunits_per_token: int,
+        max_cost_microunits: int, transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        required = (supabase_url, service_role_key, provider_id, model_id, model_version, pricing_version, cost_unit)
+        if not all(value.strip() for value in required):
+            raise ValueError("active model-cost verifier configuration is incomplete")
+        self._url = supabase_url.rstrip("/") + "/rest/v1/ai_model_cost_configs"
+        self._key = service_role_key
+        self._expected = {
+            "provider_id": provider_id,
+            "model_id": model_id,
+            "model_version": model_version,
+            "pricing_version": pricing_version,
+            "cost_unit": cost_unit,
+            "input_micro_cost_per_token": input_cost_microunits_per_token,
+            "output_micro_cost_per_token": output_cost_microunits_per_token,
+            "max_cost_microunits": max_cost_microunits,
+        }
+        self._transport = transport
+
+    async def verify(self) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        params = {
+            "select": ",".join((*self._expected.keys(), "status", "effective_at")),
+            "provider_id": "eq." + str(self._expected["provider_id"]),
+            "model_id": "eq." + str(self._expected["model_id"]),
+            "model_version": "eq." + str(self._expected["model_version"]),
+            "pricing_version": "eq." + str(self._expected["pricing_version"]),
+            "status": "eq.active",
+            "effective_at": "lte." + now,
+            "limit": "2",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0), transport=self._transport) as client:
+                response = await client.get(
+                    self._url,
+                    params=params,
+                    headers={
+                        "apikey": self._key,
+                        "Authorization": "Bearer " + self._key,
+                        "Accept": "application/json",
+                    },
+                )
+                response.raise_for_status()
+                rows = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError("active model-cost registry is unavailable") from exc
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise RuntimeError("exactly one effective active tariff is required")
+        row = rows[0]
+        if not isinstance(row, dict) or row.get("status") != "active":
+            raise RuntimeError("active tariff state is invalid")
+        for field, expected in self._expected.items():
+            actual = row.get(field)
+            if isinstance(expected, int):
+                if isinstance(actual, bool) or not isinstance(actual, int) or actual != expected:
+                    raise RuntimeError("active tariff does not match the approved deployment configuration")
+            elif actual != expected:
+                raise RuntimeError("active tariff does not match the approved deployment configuration")
+
+
 def build_text_generation_router_from_environment() -> CanonicalTextGenerationRouter | None:
     """Return a live router only when explicit provider, policy, pricing and DB config exist."""
     required = (
@@ -230,11 +302,34 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
             cost_unit=cost_unit,
             pricing_version=pricing_version,
         )
+        tariff_verifier = SupabaseActiveModelCostVerifier(
+            supabase_url=os.environ["SUPABASE_URL"],
+            service_role_key=os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+            provider_id=provider_id,
+            model_id=model_id,
+            model_version=model_version,
+            pricing_version=pricing_version,
+            cost_unit=cost_unit,
+            input_cost_microunits_per_token=input_rate,
+            output_cost_microunits_per_token=output_rate,
+            max_cost_microunits=max_cost,
+        )
+
+        async def verify_active_tariff(sensitivity, selected_route, selected_policy):
+            if sensitivity != "private":
+                raise RuntimeError("no active tariff verifier is configured for this sensitivity")
+            if (selected_route.provider_id, selected_route.model_id, selected_route.model_version) != (provider_id, model_id, model_version):
+                raise RuntimeError("selected model route differs from the verified tariff")
+            if (selected_policy.cost_unit, selected_policy.pricing_version, selected_policy.max_cost_microunits) != (cost_unit, pricing_version, max_cost):
+                raise RuntimeError("selected model policy differs from the verified tariff")
+            await tariff_verifier.verify()
+
         router = CanonicalTextGenerationRouter(
             routes={"private": TextGenerationRoute(provider_id, model_id, model_version, max_attempts=1)},
             adapters={provider_id: adapter},
             policies={"private": policy},
             metering_sink=SupabaseTextGenerationMeteringSink.from_environment(),
+            runtime_preflight=verify_active_tariff,
         )
         router.require_runtime_ready("private")
         return router
