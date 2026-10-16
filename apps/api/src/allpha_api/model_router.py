@@ -171,6 +171,10 @@ class TextGenerationRequest:
     prompt: str
     max_output_tokens: int
     timeout_ms: int
+    owner_id: str | None = None
+    agent_id: str | None = None
+    source_id: str | None = None
+    source_version: int = 1
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
@@ -183,6 +187,11 @@ class TextGenerationRequest:
             raise ValueError("max_output_tokens must be between 1 and 16384")
         if not 100 <= self.timeout_ms <= 120_000:
             raise ValueError("timeout_ms must be between 100 and 120000")
+        context = (self.owner_id, self.agent_id, self.source_id)
+        if any(value is not None for value in context) and not all(isinstance(value, str) and value.strip() for value in context):
+            raise ValueError("generation owner, agent and source context must be supplied together")
+        if self.source_version < 1:
+            raise ValueError("source_version must be positive")
 
 
 @dataclass(frozen=True)
@@ -273,6 +282,11 @@ class TextGenerationEvidence:
     latency_budget_ms: int
     cost_budget_microunits: int
     status: str
+    owner_id: str | None
+    agent_id: str | None
+    source_id: str | None
+    source_version: int
+    sensitivity: str
     evidence_sha256: str
 
 
@@ -390,6 +404,9 @@ class CanonicalTextGenerationRouter:
                     "pricing_version": response.pricing_version, "latency_ms": latency_ms,
                     "latency_budget_ms": policy.max_latency_ms,
                     "cost_budget_microunits": policy.max_cost_microunits, "status": "succeeded",
+                    "owner_id": request.owner_id, "agent_id": request.agent_id,
+                    "source_id": request.source_id, "source_version": request.source_version,
+                    "sensitivity": request.sensitivity,
                 }
                 digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
                 evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
