@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Acquire and audit GLB assets from the seven explicitly approved public repositories.
+"""Acquire and audit GLB assets from the eight explicitly approved public repositories.
 Downloads are written only to the workflow workspace/artifact; nothing is published to production.
 """
 import argparse, csv, hashlib, json, os, re, shutil, time
@@ -15,6 +15,7 @@ SOURCES = [
  {"repo":"KhronosGroupArchives/glTF-Sample-Models","ref":"master","license_hint":"Per-model license; review required","mode":"tree"},
  {"repo":"ramjigeddam/3d","ref":"master","license_hint":"UNKNOWN — quarantine pending license","mode":"tree"},
  {"repo":"ToxSam/open-source-3D-assets","ref":"main","license_hint":"Registry metadata only; verify each collection/source","mode":"catalog"},
+ {"repo":"ladybug-tools/3d-models","ref":"main","license_hint":"Per-model license; review required","mode":"tree"},
 ]
 CATEGORIES = [
  "universe","galaxy","world","orbit","capsule","district","booth","content-feed",
