@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 
-from allpha_api.skill_challenge_api import _canonical, _digest, _public_run, ChallengeIssue, ChallengeSubmit
+from allpha_api.skill_challenge_api import (
+    CHALLENGE_ISSUE_LIMIT_PER_MINUTE, CHALLENGE_SUBMIT_LIMIT_PER_MINUTE,
+    _canonical, _digest, _public_run, ChallengeIssue, ChallengeSubmit,
+)
 
 
 def test_canonical_digest_is_deterministic_and_key_order_independent():
@@ -42,3 +45,19 @@ def test_digest_uses_sha256_hex():
 def test_json_canonicalization_rejects_nan():
     with pytest.raises(ValueError):
         _canonical({"score": float("nan")})
+
+
+def test_challenge_rate_limits_are_bounded_and_submission_limit_is_defined():
+    assert 1 <= CHALLENGE_ISSUE_LIMIT_PER_MINUTE <= 60
+    assert 1 <= CHALLENGE_SUBMIT_LIMIT_PER_MINUTE <= 60
+    assert CHALLENGE_SUBMIT_LIMIT_PER_MINUTE >= CHALLENGE_ISSUE_LIMIT_PER_MINUTE
+
+
+def test_challenge_issue_supports_server_selected_hidden_case():
+    payload = ChallengeIssue.model_validate({
+        "agent_id": "00000000-0000-0000-0000-000000000001",
+        "skill_id": "00000000-0000-0000-0000-000000000002",
+        "test_key": None,
+        "idempotency_key": "hidden-case-idempotency-01",
+    })
+    assert payload.test_key is None
