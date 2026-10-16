@@ -27,6 +27,7 @@ router = APIRouter(prefix="/v1/skill-challenges", tags=["skill-challenges"])
 MAX_JSON_BYTES = 32_768
 NONCE_TTL_SECONDS = 900
 CHALLENGE_ISSUE_LIMIT_PER_MINUTE = 10
+CHALLENGE_SUBMIT_LIMIT_PER_MINUTE = 20
 REPEATED_SUBMISSION_WINDOW_SECONDS = 600
 REPEATED_SUBMISSION_FLAG_THRESHOLD = 3
 
@@ -230,8 +231,8 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             "idempotency_key": payload.idempotency_key, "request_fingerprint": fingerprint,
             "status": "issued", "created_at": now.isoformat(), "updated_at": now.isoformat(),
         }
-        rate_result = await store.request("POST", "rpc/reserve_agent_skill_challenge_issue", body={
-            "p_owner_user_id": owner_id, "p_limit": CHALLENGE_ISSUE_LIMIT_PER_MINUTE,
+        rate_result = await store.request("POST", "rpc/reserve_agent_skill_challenge_action", body={
+            "p_owner_user_id": owner_id, "p_action_key": "issue", "p_limit": CHALLENGE_ISSUE_LIMIT_PER_MINUTE,
         })
         allowed = rate_result is True or rate_result == [True] or (isinstance(rate_result, dict) and rate_result.get("reserve_agent_skill_challenge_issue") is True)
         if not allowed:
@@ -277,6 +278,12 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
             raise HTTPException(status_code=410, detail={"code": "CHALLENGE_NONCE_EXPIRED", "message": "Challenge telah kedaluwarsa; buat run baru."})
         if hashlib.sha256(payload.nonce.encode()).hexdigest() != row.get("nonce_hash"):
             raise HTTPException(status_code=403, detail={"code": "CHALLENGE_NONCE_INVALID", "message": "Nonce challenge tidak valid."})
+        submit_rate = await store.request("POST", "rpc/reserve_agent_skill_challenge_action", body={
+            "p_owner_user_id": owner_id, "p_action_key": "submit", "p_limit": CHALLENGE_SUBMIT_LIMIT_PER_MINUTE,
+        })
+        submit_allowed = submit_rate is True or submit_rate == [True] or (isinstance(submit_rate, dict) and submit_rate.get("reserve_agent_skill_challenge_action") is True)
+        if not submit_allowed:
+            raise HTTPException(status_code=429, detail={"code": "CHALLENGE_SUBMIT_RATE_LIMITED", "message": "Batas pengiriman challenge per menit tercapai. Coba lagi setelah jeda."})
         skill_snapshot = row.get("skill_snapshot")
         agent_snapshot = row.get("agent_snapshot")
         if (not isinstance(skill_snapshot, dict) or str(skill_snapshot.get("id")) != str(row["skill_id"])
