@@ -64,7 +64,11 @@ async def list_official_bots(
             raise HTTPException(status_code=422, detail={"code": "OFFICIAL_BOT_STATUS_INVALID", "message": "Filter status tidak valid."})
         params["status"] = f"eq.{status}"
     rows = await privileged_rest_request("GET", "official_agent_bots", params=params)
-    return {"items": rows or [], "limit": limit, "offset": offset, "source": "canonical_api_roster"}
+    count_params = {"select": "id", "limit": "500"}
+    if status:
+        count_params["status"] = f"eq.{status}"
+    count_rows = await privileged_rest_request("GET", "official_agent_bots", params=count_params)
+    return {"items": rows or [], "total": len(count_rows or []), "limit": limit, "offset": offset, "source": "canonical_api_roster"}
 
 
 @router.post("/provision", status_code=201, name="provision_official_bot_roster")
