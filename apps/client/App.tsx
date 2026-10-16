@@ -261,15 +261,13 @@ function Profile({ session }: { session: Session }) {
     if (!challengeRun || !challengeNonce) return;
     setChallengeBusy(true); setError(""); setMessage("");
     try {
-      const parsed: unknown = JSON.parse(challengeSubmission);
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Jawaban harus berupa object JSON.");
-      const body = await apiRequest("/v1/skill-challenges/runs/" + encodeURIComponent(challengeRun.id) + "/submit", {
-        method: "POST", body: JSON.stringify({ nonce: challengeNonce, submission: parsed })
+      const body = await apiRequest("/v1/skill-challenges/runs/" + encodeURIComponent(challengeRun.id) + "/execute", {
+        method: "POST", body: JSON.stringify({ nonce: challengeNonce })
       }) as { run: ChallengeRun; achievement?: { key: string; status: string } | null; reward?: { status: string; reason: string } };
       setChallengeRun(body.run); setChallengeNonce("");
-      setMessage(body.run.status === "passed" ? "Lulus. Bukti achievement tersimpan; reward tidak diterbitkan tanpa kebijakan yang disetujui." : "Evaluasi tersimpan. Periksa status dan bukti hasil.");
+      setMessage(body.run.status === "passed" ? "Skill dieksekusi melalui Agent Runtime dan Model Router; bukti runtime tersimpan. Reward finansial mengikuti kebijakan kanonis." : "Eksekusi Skill selesai dan bukti runtime tersimpan.");
       await loadChallengeRuns();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Evaluasi challenge gagal."); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Eksekusi Skill gagal."); }
     finally { setChallengeBusy(false); }
   }
   useEffect(() => {
