@@ -51,4 +51,15 @@ for (const contract of [
 ]) assert.ok(challenges.includes(contract), `missing Skill Challenge Web contract: ${contract}`);
 assert.doesNotMatch(challenges, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 
-console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, and ENG-P12 Skill Challenge UI smoke assertions passed.");
+for (const contract of [
+  "/v1/skill-catalog?limit=100&offset=", "allpha_skill_key", "allpha_skill_catalog_version",
+  "character_profile", "Pilih satu Skill", "catalogSkills", "asset GLB belum otomatis tersedia"
+]) assert.ok(agents.includes(contract), `missing Agent Identity Skill catalog contract: ${contract}`);
+const superAdmin = readFileSync(new URL("../../super-admin/app/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/admin/official-bots", "/v1/admin/official-bots/provision", "Siapkan 500 kandidat",
+  "officialBotAction", "Aktifkan", "Stop", "Isolasi", "asset_validation_status"
+]) assert.ok(superAdmin.includes(contract), `missing Super Admin Official Bot control contract: ${contract}`);
+assert.doesNotMatch(superAdmin, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+
+console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, Agent Skill catalog, and Official Bot control smoke assertions passed.");
