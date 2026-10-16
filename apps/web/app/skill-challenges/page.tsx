@@ -110,7 +110,7 @@ export default function SkillChallengesPage() {
       const run = result?.run as Run;
       setActiveRun(run); setNonce(result?.nonce ?? "");
       setSubmission(jsonText(run?.challenge_input ?? {}));
-      setNotice(result?.nonce ? "Challenge diterbitkan. Kirim jawaban sebelum nonce kedaluwarsa." : "Challenge sudah ada dari permintaan sebelumnya. Untuk menghindari replay, terbitkan challenge baru jika nonce tidak tersedia.");
+      setNotice(result?.nonce ? "Challenge diterbitkan. Jalankan Skill sebelum nonce kedaluwarsa." : "Challenge sudah ada dari permintaan sebelumnya. Untuk menghindari replay, terbitkan challenge baru jika nonce tidak tersedia.");
       await refreshRuns();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Challenge tidak dapat diterbitkan."); }
     finally { setBusy(false); }
@@ -142,7 +142,7 @@ export default function SkillChallengesPage() {
     {session && <div className="challenge-layout">
       <section className="panel">
         <h2>Terbitkan challenge</h2>
-        <p className="muted">Challenge hanya memakai test case dari snapshot Skill yang tersimpan. Expected output tidak dikirim ke browser. Pada slice ini pengguna mengirimkan output kandidat; eksekusi Skill/Agent otomatis belum diaktifkan.</p>
+        <p className="muted">Challenge hanya memakai test case dari snapshot Skill yang tersimpan. Expected output tidak dikirim ke browser. Skill dijalankan oleh Agent Runtime melalui Model Router yang dikonfigurasi; output dan bukti runtime dinilai oleh evaluator. Jika route/model policy belum dikonfigurasi, API menolak eksekusi.</p>
         <form onSubmit={issueChallenge} className="stack-form">
           <label>Agent<select value={agentId} onChange={event => setAgentId(event.target.value)} required><option value="">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.display_name || agent.handle || agent.id} · v{agent.version ?? "—"}</option>)}</select></label>
           <label>Skill<select value={skillId} onChange={event => setSkillId(event.target.value)} required><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version} · {skill.status}</option>)}</select></label>
@@ -158,8 +158,8 @@ export default function SkillChallengesPage() {
         {!activeRun && <p className="muted">Terbitkan challenge terlebih dahulu untuk membuka sesi jawaban.</p>}
         {activeRun && <div className="run-meta"><span>Status: <strong>{activeRun.status}</strong></span><span>Agent v{activeRun.agent_version} · Skill v{activeRun.skill_version}</span><span>Rubrik v{activeRun.rubric_version}</span></div>}
         <form onSubmit={submitAnswer} className="stack-form">
-          <label>Output JSON<textarea rows={10} value={submission} onChange={event => setSubmission(event.target.value)} spellCheck={false} required /></label>
-          <button className="button button-primary" disabled={busy || !activeRun || !nonce}>{busy ? "Memproses…" : "Kirim untuk evaluasi"}</button>
+          <p className="muted">Output dibuat server-side dari snapshot Skill yang dipatok. Browser tidak mengirim skor atau output kandidat.</p>
+          <button className="button button-primary" disabled={busy || !activeRun || !nonce}>{busy ? "Memproses…" : "Jalankan Skill & evaluasi"}</button>
         </form>
         {activeRun?.evaluation_result && <div className="challenge-result"><h3>Hasil evaluasi</h3><pre>{jsonText(activeRun.evaluation_result)}</pre><p className="muted">Evidence SHA-256: {activeRun.evidence_digest || "belum tersedia"}</p></div>}
       </section>
