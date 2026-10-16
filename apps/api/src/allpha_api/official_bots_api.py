@@ -421,14 +421,57 @@ async def official_bot_lifecycle_action(
         # Do not treat an operator click as proof that the GLB or runtime policy is safe.
         if bot["status"] != "approved":
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_APPROVAL_REQUIRED", "message": "Bot harus berstatus approved sebelum aktivasi."})
-        if not bot.get("agent_id") or not bot.get("runtime_policy_id") or not bot.get("character_asset_key") or bot.get("asset_validation_status") != "verified":
+        if (not bot.get("agent_id") or not bot.get("runtime_policy_id")
+                or not bot.get("character_asset_key") or bot.get("asset_validation_status") != "verified"):
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_ACTIVATION_BLOCKED", "message": "Aktivasi ditolak: Agent identity, approved runtime policy, dan asset GLB yang diverifikasi backend wajib tersedia."})
+        if not bot.get("skill_version_id") or not bot.get("skill_version_number") or not bot.get("skill_version_digest"):
+            raise HTTPException(status_code=409, detail={
+                "code": "OFFICIAL_BOT_PINNED_SKILL_VERSION_REQUIRED",
+                "message": "Aktivasi memerlukan immutable Skill version ID, nomor versi, dan digest yang sudah dipin saat review.",
+            })
         policy = await privileged_rest_request(
             "GET", "agent_runtime_policies",
-            params={"select": "id,agent_id,status", "id": f"eq.{bot['runtime_policy_id']}", "agent_id": f"eq.{bot['agent_id']}", "status": "eq.approved", "limit": "1"},
+            params={"select": "id,agent_id,status,approved_tool_keys", "id": f"eq.{bot['runtime_policy_id']}", "agent_id": f"eq.{bot['agent_id']}", "status": "eq.approved", "limit": "1"},
         )
         if not policy:
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_POLICY_UNVERIFIED", "message": "Runtime policy tidak lagi berstatus approved."})
+        pinned_rows = await privileged_rest_request(
+            "GET", "agent_skill_versions",
+            params={"select": "id,skill_id,agent_id,version,snapshot", "id": f"eq.{bot['skill_version_id']}", "agent_id": f"eq.{bot['agent_id']}", "limit": "1"},
+        ) or []
+        if len(pinned_rows) != 1:
+            raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_PINNED_SKILL_VERSION_MISSING", "message": "Immutable Skill version yang dipin tidak ditemukan untuk Agent ini."})
+        pinned = pinned_rows[0]
+        snapshot = pinned.get("snapshot")
+        provenance = snapshot.get("provenance") if isinstance(snapshot, dict) else None
+        if (not isinstance(snapshot, dict)
+                or snapshot.get("status") != "published"
+                or str(snapshot.get("agent_id")) != str(bot["agent_id"])
+                or snapshot.get("version") != pinned.get("version")
+                or int(pinned.get("version") or 0) != int(bot["skill_version_number"])
+                or _skill_snapshot_digest(snapshot) != bot["skill_version_digest"]
+                or not isinstance(provenance, dict)
+                or provenance.get("catalog_skill_key") != bot["skill_key"]):
+            raise HTTPException(status_code=409, detail={
+                "code": "OFFICIAL_BOT_PINNED_SKILL_VERSION_INVALID",
+                "message": "Digest, status, Agent, nomor versi, atau provenance Skill tidak cocok dengan versi yang direview.",
+            })
+        approved_tools = policy[0].get("approved_tool_keys") or []
+        skill_tools = snapshot.get("tool_dependencies") or []
+        if not isinstance(skill_tools, list) or not set(skill_tools).issubset(set(approved_tools)):
+            raise HTTPException(status_code=409, detail={
+                "code": "OFFICIAL_BOT_SKILL_TOOLS_NOT_APPROVED",
+                "message": "Runtime policy tidak lagi menyetujui seluruh tool pada immutable Skill version yang dipin.",
+            })
+        for tool_key in skill_tools:
+            try:
+                get_tool(tool_key)
+            except UnknownToolError as exc:
+                raise HTTPException(status_code=409, detail={
+                    "code": "OFFICIAL_BOT_SKILL_TOOL_NOT_REGISTERED",
+                    "message": "Immutable Skill version mereferensikan tool yang tidak terdaftar.",
+                    "tool_key": tool_key,
+                }) from exc
         agent = await privileged_rest_request(
             "GET", "ai_agents",
             params={"select": "id,status", "id": f"eq.{bot['agent_id']}", "limit": "1"},
