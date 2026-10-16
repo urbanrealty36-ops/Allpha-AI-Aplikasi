@@ -67,5 +67,7 @@ jobs:
             echo "Generated draft catalog is already current."
           else
             git commit -m "data(eng-p06): import 282 pinned Agency Skill drafts and reconciliation candidates"
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
