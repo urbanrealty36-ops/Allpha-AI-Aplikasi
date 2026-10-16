@@ -6,7 +6,7 @@ import Link from "next/link";
 import { getBrowserSupabase } from "../../lib/supabase";
 
 type Agent = { id: string; display_name?: string | null; handle?: string | null; version?: number; status: string };
-type Skill = { id: string; agent_id: string; name: string; slug: string; version: number; status: string; tests?: Array<Record<string, unknown>>; evaluation_rubric_available?: boolean };
+type Skill = { id: string; agent_id: string; name: string; slug: string; version: number; status: string; tests?: Array<Record<string, unknown>>; hidden_challenges_available?: boolean; evaluation_rubric_available?: boolean };
 type Run = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; evaluation_set_version: number; rubric_version: number; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; created_at: string; completed_at?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -94,13 +94,13 @@ export default function SkillChallengesPage() {
   const selectedSkill = skills.find(skill => skill.id === skillId);
   const availableTests = (selectedSkill?.tests ?? []).filter(item => item && typeof item.key === "string" && typeof (item.input ?? item.inputs) === "object" && typeof (item.expected_output ?? item.expected) === "object");
   const currentTest = availableTests.find(item => item.key === testKey);
-  useEffect(() => { if (availableTests.length && !availableTests.some(item => item.key === testKey)) setTestKey(String(availableTests[0].key)); }, [skillId, availableTests.length, testKey]);
+  useEffect(() => { if (availableTests.length && !availableTests.some(item => item.key === testKey)) setTestKey(availableTests.length ? String(availableTests[0].key) : (selectedSkill?.hidden_challenges_available ? "__hidden__" : "")); }, [skillId, availableTests.length, testKey, selectedSkill?.hidden_challenges_available]);
 
   async function issueChallenge(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice(""); setNonce(""); setActiveRun(null);
     try {
       const result = await request("/v1/skill-challenges/runs", { method: "POST", body: JSON.stringify({
-        agent_id: agentId, skill_id: skillId, test_key: testKey, idempotency_key: crypto.randomUUID()
+        agent_id: agentId, skill_id: skillId, test_key: testKey === "__hidden__" ? null : testKey, idempotency_key: crypto.randomUUID()
       }) });
       const run = result?.run as Run;
       setActiveRun(run); setNonce(result?.nonce ?? "");
@@ -141,11 +141,11 @@ export default function SkillChallengesPage() {
         <form onSubmit={issueChallenge} className="stack-form">
           <label>Agent<select value={agentId} onChange={event => setAgentId(event.target.value)} required><option value="">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.display_name || agent.handle || agent.id} · v{agent.version ?? "—"}</option>)}</select></label>
           <label>Skill<select value={skillId} onChange={event => setSkillId(event.target.value)} required><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version} · {skill.status}</option>)}</select></label>
-          <label>Test case<select value={testKey} onChange={event => setTestKey(event.target.value)} required><option value="">Pilih test case</option>{availableTests.map(item => <option key={String(item.key)} value={String(item.key)}>{String(item.key)}</option>)}</select></label>
+          <label>Test case<select value={testKey} onChange={event => setTestKey(event.target.value)} required><option value="">Pilih test case</option>{availableTests.map(item => <option key={String(item.key)} value={String(item.key)}>{String(item.key)}</option>)}{selectedSkill?.hidden_challenges_available && <option value="__hidden__">Tantangan tersembunyi acak</option>}</select></label>
           {currentTest && <div className="challenge-input"><strong>Input challenge</strong><pre>{jsonText(currentTest.input ?? currentTest.inputs)}</pre></div>}
           {selectedSkill && !selectedSkill.evaluation_rubric_available && <p className="notice notice-warning">Skill ini belum memiliki rubrik evaluasi.</p>}
-          {selectedSkill && availableTests.length === 0 && <p className="notice notice-warning">Skill ini belum memiliki test case dengan key, input, dan expected output object.</p>}
-          <button className="button button-primary" disabled={busy || loading || !agentId || !skillId || !testKey || !availableTests.length}>Terbitkan challenge</button>
+          {selectedSkill && availableTests.length === 0 && !selectedSkill.hidden_challenges_available && <p className="notice notice-warning">Skill ini belum memiliki test case dengan key, input, dan expected output object.</p>}
+          <button className="button button-primary" disabled={busy || loading || !agentId || !skillId || !testKey || (!availableTests.length && !selectedSkill?.hidden_challenges_available)}>Terbitkan challenge</button>
         </form>
       </section>
       <section className="panel">
