@@ -253,7 +253,7 @@ function Profile({ session }: { session: Session }) {
         idempotency_key: "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12)
       }) }) as { run: ChallengeRun; nonce?: string };
       setChallengeRun(body.run); setChallengeNonce(body.nonce ?? ""); setChallengeSubmission(JSON.stringify(body.run.challenge_input ?? {}, null, 2));
-      setMessage(body.nonce ? "Challenge diterbitkan. Isi output JSON lalu kirim sebelum nonce kedaluwarsa." : "Run lama ditemukan tanpa nonce. Terbitkan run baru untuk menghindari replay.");
+      setMessage(body.nonce ? "Challenge diterbitkan. Jalankan Skill melalui runtime sebelum nonce kedaluwarsa." : "Run lama ditemukan tanpa nonce. Terbitkan run baru untuk menghindari replay.");
       await loadChallengeRuns();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Challenge tidak dapat diterbitkan."); }
     finally { setChallengeBusy(false); }
@@ -648,7 +648,7 @@ function Profile({ session }: { session: Session }) {
         </>}
       </> : tab === "challenges" ? <>
         <Text style={s.kicker}>ENG-P12 · SKILL CHALLENGE</Text><Text style={s.title}>Evaluasi versi Skill</Text>
-        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien. Pada slice ini pengguna mengirim output kandidat; eksekusi Skill/Agent otomatis belum diaktifkan.</Text>
+        <Text style={s.muted}>Challenge memakai snapshot Agent/Skill dan rubrik yang dipatok server. Jawaban dinilai oleh evaluator deterministik; tidak ada skor atau reward yang dapat ditentukan oleh klien. Skill dieksekusi server-side melalui Agent Runtime dan Model Router. Jika route atau policy belum dikonfigurasi, API menolak eksekusi.</Text>
         <Text style={s.muted}>Agent</Text>
         {agents.map(agent => <Button key={agent.id} title={(challengeAgentId === agent.id ? "✓ " : "") + agent.display_name + " · " + agent.handle} secondary={challengeAgentId !== agent.id} onPress={() => void loadChallengeCatalog(agent.id)}/>)}
         <Text style={s.muted}>Skill</Text>
@@ -658,7 +658,7 @@ function Profile({ session }: { session: Session }) {
         {challengeSkills.find(skill => skill.id === challengeSkillId)?.hidden_challenges_available && <Button title={challengeTestKey === "__hidden__" ? "✓ Tantangan tersembunyi acak" : "Tantangan tersembunyi acak"} secondary={challengeTestKey !== "__hidden__"} onPress={() => setChallengeTestKey("__hidden__")}/>} 
         {challengeSkillId && !(challengeSkills.find(skill => skill.id === challengeSkillId)?.evaluation_rubric_available) && <Text style={s.warning}>Rubrik evaluasi belum tersedia pada Skill ini.</Text>}
         <Button title={challengeBusy ? "Memproses…" : "Terbitkan challenge"} disabled={challengeBusy || !challengeAgentId || !challengeSkillId || !challengeTestKey} onPress={() => void issueNativeChallenge()}/>
-        {challengeRun && <View style={s.socialRow}><Text style={s.kicker}>RUN {challengeRun.id}</Text><Text style={s.body}>Status: {challengeRun.status} · Agent v{challengeRun.agent_version} · Skill v{challengeRun.skill_version}</Text><Text style={s.muted}>Input challenge: {JSON.stringify(challengeRun.challenge_input)}</Text><TextInput accessibilityLabel="Jawaban output JSON challenge" multiline value={challengeSubmission} onChangeText={setChallengeSubmission} autoCapitalize="none" style={[s.input, { minHeight: 130, textAlignVertical: "top" }]} placeholder="Output JSON" placeholderTextColor="#8B94AC"/><Button title="Kirim evaluasi" disabled={challengeBusy || !challengeNonce} onPress={() => void submitNativeChallenge()}/>{challengeRun.evaluation_result && <Text style={s.muted}>Hasil: {JSON.stringify(challengeRun.evaluation_result)}{ "\n" }Evidence SHA-256: {challengeRun.evidence_digest || "belum tersedia"}</Text>}</View>}
+        {challengeRun && <View style={s.socialRow}><Text style={s.kicker}>RUN {challengeRun.id}</Text><Text style={s.body}>Status: {challengeRun.status} · Agent v{challengeRun.agent_version} · Skill v{challengeRun.skill_version}</Text><Text style={s.muted}>Input challenge: {JSON.stringify(challengeRun.challenge_input)}</Text><Text style={s.muted}>Output dibuat server-side dari snapshot Skill; aplikasi tidak mengirim skor atau output kandidat.</Text><Button title="Jalankan Skill & evaluasi" disabled={challengeBusy || !challengeNonce} onPress={() => void submitNativeChallenge()}/>{challengeRun.evaluation_result && <Text style={s.muted}>Hasil: {JSON.stringify(challengeRun.evaluation_result)}{ "\n" }Evidence SHA-256: {challengeRun.evidence_digest || "belum tersedia"}</Text>}</View>}
         <Text style={s.kicker}>RIWAYAT ({challengeRuns.length})</Text>
         {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
