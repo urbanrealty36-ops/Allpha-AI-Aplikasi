@@ -203,6 +203,8 @@ async def official_bot_lifecycle_action(
         now_fields.update({"status": "approved", "approved_by": operator["id"], "approved_at": now, "isolation_reason": None})
     elif payload.action == "activate":
         # Do not treat an operator click as proof that the GLB or runtime policy is safe.
+        if bot["status"] != "approved":
+            raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_APPROVAL_REQUIRED", "message": "Bot harus berstatus approved sebelum aktivasi."})
         if not bot.get("agent_id") or not bot.get("runtime_policy_id") or not bot.get("character_asset_key") or bot.get("asset_validation_status") != "verified":
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_ACTIVATION_BLOCKED", "message": "Aktivasi ditolak: Agent identity, approved runtime policy, dan asset GLB yang diverifikasi backend wajib tersedia."})
         policy = await privileged_rest_request(
@@ -211,6 +213,12 @@ async def official_bot_lifecycle_action(
         )
         if not policy:
             raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_POLICY_UNVERIFIED", "message": "Runtime policy tidak lagi berstatus approved."})
+        agent = await privileged_rest_request(
+            "GET", "ai_agents",
+            params={"select": "id,status", "id": f"eq.{bot['agent_id']}", "limit": "1"},
+        )
+        if not agent or agent[0].get("status") != "active":
+            raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_AGENT_NOT_ACTIVE", "message": "Agent identity kanonis harus aktif sebelum bot dijalankan."})
         now_fields.update({"status": "active", "autonomy_mode": payload.autonomy_mode, "activated_by": operator["id"], "activated_at": now, "stopped_at": None, "stopped_by": None, "isolation_reason": None})
     elif payload.action == "stop":
         now_fields.update({"status": "stopped", "stopped_by": operator["id"], "stopped_at": now})
