@@ -95,3 +95,9 @@ def test_reward_policy_is_not_part_of_evaluator_result():
     })
     assert "reward_amount" not in result.model_dump()
     assert "ledger_entry_id" not in result.model_dump()
+
+def test_rejects_non_finite_scores():
+    with pytest.raises(ValidationError):
+        CriterionSignal(score=float("nan"))
+    with pytest.raises(ValidationError):
+        CriterionSignal(score=float("inf"))
