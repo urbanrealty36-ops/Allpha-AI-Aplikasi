@@ -194,3 +194,65 @@ def test_platform_identity_migration_is_service_role_only_and_uses_canonical_tab
     assert "for update" in migration
     assert "grant execute on function public.provision_official_agent_identity(uuid, uuid) to service_role" in migration
     assert "from public, anon, authenticated" in migration
+
+
+def test_platform_agent_identity_replay_uses_existing_canonical_agent(monkeypatch):
+    bot_id = uuid4()
+    owner_id = uuid4()
+    agent_id = uuid4()
+    calls = []
+    audits = []
+
+    async def fake_store(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if method == "GET" and table == "official_agent_bots":
+            return [{
+                "id": str(bot_id), "skill_key": "research.answer", "status": "draft",
+                "agent_id": str(agent_id), "metadata": {"catalog_version": "allpha-skill-catalog-v1"},
+            }]
+        if method == "POST" and table == "rpc/provision_official_agent_identity":
+            return [{
+                "id": str(agent_id), "created_by": str(owner_id), "status": "draft",
+                "persona": {"allpha_skill_key": "research.answer"},
+            }]
+        raise AssertionError(f"unexpected canonical store request: {method} {table}")
+
+    async def fake_audit(*args, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setenv("ALLPHA_PLATFORM_OWNER_USER_ID", str(owner_id))
+    monkeypatch.setattr(api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+
+    result = asyncio.run(api.provision_official_bot_identity(
+        bot_id, _request(),
+        {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+    ))
+
+    assert result["agent"]["id"] == str(agent_id)
+    assert result["idempotent_replay"] is True
+    assert result["runtime_activation"] == "not_performed"
+    # The API still delegates ownership/idempotency verification to the canonical RPC.
+    assert len([call for call in calls if call[1] == "rpc/provision_official_agent_identity"]) == 1
+    assert [event["action"] for event in audits] == [
+        "official_bots.identity.provision.request",
+        "official_bots.identity.provision.complete",
+    ]
+
+
+def test_platform_agent_identity_provisioning_rejects_malformed_owner_uuid(monkeypatch):
+    monkeypatch.setenv("ALLPHA_PLATFORM_OWNER_USER_ID", "not-a-uuid")
+
+    async def forbidden_store(*args, **kwargs):
+        raise AssertionError("must not call identity storage with malformed owner configuration")
+
+    monkeypatch.setattr(api, "privileged_rest_request", forbidden_store)
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.provision_official_bot_identity(
+            uuid4(), _request(),
+            {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+
+    assert caught.value.status_code == 503
+    assert caught.value.detail["code"] == "PLATFORM_AGENT_OWNER_NOT_CONFIGURED"
