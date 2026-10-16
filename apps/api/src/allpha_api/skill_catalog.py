@@ -157,7 +157,7 @@ def _build_catalog() -> list[dict[str, Any]]:
 SKILL_CATALOG = tuple(_build_catalog())
 SKILL_CATALOG_BY_KEY = {item["key"]: item for item in SKILL_CATALOG}
 SKILL_CATALOG_CATEGORIES = tuple(
-    {"key": key, "label": label, "count": 20}
+    {"key": key, "label": label, "count": sum(1 for item in SKILL_CATALOG if item["category"] == key)}
     for key, label, _ in _DOMAINS
 )
 
