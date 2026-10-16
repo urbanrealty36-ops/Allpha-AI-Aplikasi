@@ -1,0 +1,67 @@
+name: ENG-P23 Spatial Renderer CI
+
+on:
+  push:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "apps/client/**"
+      - "docs/architecture/ADR-0008-canonical-spatial-renderer.md"
+      - ".github/workflows/eng-p23-spatial-renderer-ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "apps/client/**"
+      - "docs/architecture/ADR-0008-canonical-spatial-renderer.md"
+      - ".github/workflows/eng-p23-spatial-renderer-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eng-p23-spatial-renderer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e "apps/api[dev]"
+      - run: pytest apps/api/tests/test_spatial_scene_contract.py apps/api/tests/test_glb_acquisition_structure_validation.py
+
+  web-renderer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+
+  native-renderer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - run: npx expo export --platform android
+      - run: npx expo export --platform ios
