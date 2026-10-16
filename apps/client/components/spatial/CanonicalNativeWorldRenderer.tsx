@@ -2,7 +2,7 @@ import React, { Component, Suspense, useCallback, useEffect, useMemo, useState, 
 import { Pressable, Text, View } from "react-native";
 import { Canvas, useLoader } from "@react-three/fiber/native";
 import { Group } from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const CATEGORY_KEYS = [
   "universe", "galaxy", "world", "orbit", "capsule", "district", "booth",
