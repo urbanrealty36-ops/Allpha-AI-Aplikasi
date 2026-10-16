@@ -65,6 +65,15 @@ async def execute_skill_challenge(
         router_instance = getattr(request.app.state, "text_generation_router", None)
         if router_instance is None or not callable(getattr(router_instance, "generate", None)):
             raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Model Router text-generation belum dikonfigurasi oleh deployment."})
+        pinned_route = row.get("model_route_snapshot")
+        if not isinstance(pinned_route, dict):
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ROUTE_NOT_PINNED", "message": "Terbitkan challenge baru setelah route Model Router dikonfigurasi."})
+        try:
+            active_route = router_instance.route_snapshot_for("private")
+        except TextGenerationRouterUnavailable as exc:
+            raise HTTPException(status_code=503, detail={"code": "TEXT_GENERATION_ROUTE_UNAVAILABLE", "message": "Route dan policy Model Router belum siap."}) from exc
+        if _digest(active_route) != _digest(pinned_route):
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ROUTE_SNAPSHOT_MISMATCH", "message": "Route atau policy Model Router berubah setelah challenge diterbitkan."})
         instructions = skill_snapshot.get("instructions")
         if not isinstance(instructions, str) or not instructions.strip():
             raise HTTPException(status_code=422, detail={"code": "SKILL_INSTRUCTIONS_MISSING", "message": "Versi Skill tidak memiliki instruksi eksekusi yang valid."})
