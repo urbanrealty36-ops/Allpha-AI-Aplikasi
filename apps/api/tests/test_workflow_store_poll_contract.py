@@ -12,7 +12,7 @@ def test_runnable_run_scan_is_bounded_and_only_selects_poll_fields():
         observed["url"] = str(request.url)
         observed["params"] = dict(request.url.params)
         return httpx.Response(200, json=[
-            {"id": "run-1", "owner_user_id": "owner-1", "status": "queued"},
+            {"id": "run-1", "owner_user_id": "owner-1", "status": "queued", "updated_at": "2026-10-16T00:00:00Z"},
         ])
 
     store = WorkflowStore(
@@ -24,9 +24,9 @@ def test_runnable_run_scan_is_bounded_and_only_selects_poll_fields():
 
     assert rows[0]["id"] == "run-1"
     assert observed["url"].endswith("/rest/v1/workflow_runs")
-    assert observed["params"]["select"] == "id,owner_user_id,status,created_at"
+    assert observed["params"]["select"] == "id,owner_user_id,status,updated_at"
     assert observed["params"]["status"] == "in.(queued,running)"
-    assert observed["params"]["order"] == "created_at.asc"
+    assert observed["params"]["order"] == "updated_at.asc"
     assert observed["params"]["limit"] == "100"
 
 
