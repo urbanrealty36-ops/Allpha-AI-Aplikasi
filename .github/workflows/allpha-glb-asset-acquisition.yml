@@ -1,9 +1,7 @@
 name: Allpha GLB Asset Acquisition Audit
+# Acquisition downloads up to the configured multi-GB limit. Keep it manual so
+# ordinary source edits cannot unexpectedly re-download a large external collection.
 on:
-  push:
-    paths:
-      - '.github/workflows/allpha-glb-asset-acquisition.yml'
-      - 'tools/3d-assets/acquire_glb_assets.py'
   workflow_dispatch:
     inputs:
       max_assets:
