@@ -88,7 +88,13 @@ async def _owned_agent_and_skill(store: AgentRuntimeStore, owner_id: str, agent_
     })
     if not rows or rows[0].get("status") == "archived":
         raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
-    return agent, rows[0]
+    agent_rows = await store.request("GET", "ai_agents", params={
+        "select": "id,version,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at",
+        "id": f"eq.{agent_id}", "limit": "1",
+    })
+    if not agent_rows:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    return agent_rows[0], rows[0]
 
 
 async def _get_run(store: AgentRuntimeStore, owner_id: str, run_id: str) -> dict[str, Any] | None:
@@ -98,6 +104,48 @@ async def _get_run(store: AgentRuntimeStore, owner_id: str, run_id: str) -> dict
     return rows[0] if rows else None
 
 
+@router.get("/catalog")
+async def challenge_catalog(agent_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Return safe challenge prompts without expected outputs or private rubric contents."""
+    store, owner_id = _store(), str(user["id"])
+    try:
+        agent = await store.get_agent(owner_id, str(agent_id))
+        if not agent or agent.get("status") == "archived":
+            raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+        skills = await store.request("GET", "agent_skills", params={
+            "select": "id,agent_id,slug,name,status,version", "agent_id": f"eq.{agent_id}",
+            "status": "neq.archived", "order": "updated_at.desc", "limit": "100",
+        })
+        items = []
+        for skill in skills or []:
+            snapshots = await store.request("GET", "agent_skill_versions", params={
+                "select": "version,snapshot", "skill_id": f"eq.{skill['id']}",
+                "agent_id": f"eq.{agent_id}", "version": f"eq.{skill['version']}", "limit": "1",
+            })
+            snapshot = snapshots[0].get("snapshot") if snapshots else None
+            if not isinstance(snapshot, dict):
+                continue
+            tests = snapshot.get("tests") if isinstance(snapshot.get("tests"), list) else []
+            safe_tests = []
+            for case in tests:
+                if not isinstance(case, dict) or not isinstance(case.get("key"), str):
+                    continue
+                challenge_input = case.get("input", case.get("inputs"))
+                if isinstance(challenge_input, dict):
+                    safe_tests.append({"key": case["key"], "input": challenge_input})
+            rubric = snapshot.get("evaluation_rubric")
+            items.append({
+                "id": skill["id"], "agent_id": skill["agent_id"], "slug": skill["slug"],
+                "name": skill["name"], "status": skill["status"], "version": skill["version"],
+                "tests": safe_tests, "evaluation_rubric_available": isinstance(rubric, dict) and bool(rubric),
+            })
+        return {"items": items}
+    except HTTPException:
+        raise
+    except AgentRuntimePersistenceError as exc:
+        raise _storage_error(exc) from exc
+
+
 @router.post("/runs", status_code=201)
 async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     store, owner_id = _store(), str(user["id"])
@@ -105,7 +153,6 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
         existing = await store.request("GET", "agent_skill_challenge_runs", params={
             "select": "*", "owner_user_id": f"eq.{owner_id}", "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
         })
-        agent, skill = await _owned_agent_and_skill(store, owner_id, str(payload.agent_id), str(payload.skill_id))
         fingerprint = _digest({
             "agent_id": str(payload.agent_id), "skill_id": str(payload.skill_id),
             "test_key": payload.test_key,
@@ -116,6 +163,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
                 raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
             return {"run": _public_run(row), "idempotent_replay": True}
 
+        agent, skill = await _owned_agent_and_skill(store, owner_id, str(payload.agent_id), str(payload.skill_id))
         version_rows = await store.request("GET", "agent_skill_versions", params={
             "select": "id,skill_id,agent_id,version,snapshot,created_at",
             "skill_id": f"eq.{skill['id']}", "agent_id": f"eq.{agent['id']}",
@@ -147,12 +195,12 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             raise HTTPException(status_code=413, detail={"code": "CHALLENGE_PAYLOAD_TOO_LARGE", "message": "Test case melebihi batas ukuran."})
         nonce = secrets.token_urlsafe(32)
         now = _now()
-        evaluation_set = {"version": 1, "test_key": payload.test_key, "test_case": case}
+        evaluation_set = {"version": int(skill["version"]), "test_key": payload.test_key, "test_case": case}
         body = {
             "owner_user_id": owner_id, "agent_id": str(agent["id"]), "skill_id": str(skill["id"]),
             "agent_version": int(agent.get("version") or 1), "agent_snapshot": {"id": str(agent["id"]), "version": int(agent.get("version") or 1), "status": agent.get("status")}, "skill_version": int(skill["version"]),
             "skill_version_id": version_row.get("id") if version_row else None,
-            "challenge_key": payload.test_key, "evaluation_set_version": 1,
+            "challenge_key": payload.test_key, "evaluation_set_version": int(skill["version"]),
             "evaluation_set_digest": _digest(evaluation_set),
             "rubric_key": rubric.rubric_key, "rubric_version": rubric.version,
             "rubric_digest": rubric.digest(), "evaluator_version": EVALUATOR_VERSION,
@@ -210,7 +258,10 @@ async def submit_challenge(run_id: uuid.UUID, payload: ChallengeSubmit, user: di
         signals = {"task_success": CriterionSignal(score=task_success, evaluator_source="system")}
         result = evaluate_submission(rubric, signals)
         evidence = {
-            "run_id": str(run_id), "submission_fingerprint": fingerprint,
+            "run_id": str(run_id), "agent_snapshot_digest": _digest(row["agent_snapshot"]),
+            "skill_snapshot_digest": _digest(row["skill_snapshot"]),
+            "evaluation_set_digest": row["evaluation_set_digest"], "rubric_digest": row["rubric_digest"],
+            "submission_fingerprint": fingerprint,
             "expected_output_digest": _digest(row["expected_output"]), "evaluation": result.model_dump(mode="json"),
         }
         evidence_digest = _digest(evidence)
