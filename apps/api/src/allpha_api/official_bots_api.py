@@ -19,7 +19,9 @@ from allpha_api.operator_security import (
     require_operator_scope,
     write_operator_audit,
 )
-from allpha_api.catalog_registry import get_skill_catalog_item, get_skill_catalog_items
+from allpha_api.agency_skill_catalog import AGENCY_SKILL_CATALOG_BY_KEY
+from allpha_api.skill_catalog import SKILL_CATALOG_BY_KEY
+from allpha_api.catalog_registry import get_skill_catalog_items
 from allpha_api.tool_registry import UnknownToolError, get_tool
 
 router = APIRouter(prefix="/v1/admin/official-bots", tags=["official-agent-bots"])
@@ -230,7 +232,7 @@ async def link_official_bot_runtime(
 
     # A roster blueprint is not an executable Skill. Never promote catalog metadata
     # into runtime authority without a canonical published implementation/version.
-    catalog_skill = get_skill_catalog_item(bot["skill_key"])
+    catalog_skill = SKILL_CATALOG_BY_KEY.get(bot["skill_key"]) or AGENCY_SKILL_CATALOG_BY_KEY.get(bot["skill_key"])
     if not catalog_skill:
         raise HTTPException(status_code=409, detail={"code": "OFFICIAL_BOT_SKILL_UNKNOWN", "message": "Skill key tidak ada di katalog kanonis."})
     if not catalog_skill.get("executable") or catalog_skill.get("execution_status") != "implemented":

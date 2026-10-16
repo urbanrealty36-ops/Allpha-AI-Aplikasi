@@ -57,7 +57,7 @@ for (const contract of [
 ]) assert.ok(agents.includes(contract), `missing Agent Identity Skill catalog contract: ${contract}`);
 const superAdmin = readFileSync(new URL("../../super-admin/app/page.tsx", import.meta.url), "utf8");
 for (const contract of [
-  "/v1/admin/official-bots", "/v1/admin/official-bots/provision", "Siapkan 500 kandidat",
+  "/v1/admin/official-bots", "/v1/admin/official-bots/provision", "Siapkan kandidat", "Agency Agents · metadata-only", "catalog_source",
   "officialBotAction", "Aktifkan", "Stop", "Isolasi", "asset_validation_status"
 ]) assert.ok(superAdmin.includes(contract), `missing Super Admin Official Bot control contract: ${contract}`);
 assert.doesNotMatch(superAdmin, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
