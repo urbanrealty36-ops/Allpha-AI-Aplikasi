@@ -22,6 +22,30 @@ def test_provision_limit_is_bounded_to_500():
         api.ProvisionPayload(limit=501)
 
 
+def test_activation_requires_operator_approved_roster_state(monkeypatch):
+    bot_id = uuid4()
+
+    async def fake_store(method, table, **kwargs):
+        return [{
+            "id": str(bot_id), "status": "draft", "agent_id": str(uuid4()),
+            "runtime_policy_id": str(uuid4()), "character_asset_key": "theme.asset.character",
+            "asset_validation_status": "verified", "skill_key": "research.answer",
+        }]
+
+    async def fake_audit(*args, **kwargs):
+        raise AssertionError("draft roster cannot be activated")
+
+    monkeypatch.setattr(api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.official_bot_lifecycle_action(
+            bot_id, api.BotActionPayload(action="activate", reason="activate test reason"),
+            _request(), {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+    assert caught.value.status_code == 409
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_APPROVAL_REQUIRED"
+
+
 def test_activation_fails_closed_when_agent_policy_or_verified_asset_is_missing(monkeypatch):
     bot_id = uuid4()
     calls = []
