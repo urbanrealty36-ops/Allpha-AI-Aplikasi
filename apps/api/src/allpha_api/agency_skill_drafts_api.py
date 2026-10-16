@@ -36,11 +36,11 @@ def _summary(record: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("", name="list_agency_skill_drafts")
 async def list_agency_skill_drafts(
+    request: Request,
     q: str = Query(default="", max_length=120),
     category: str = Query(default="", max_length=80),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=100_000),
-    request: Request = None,  # type: ignore[assignment]
     operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review")),
 ) -> dict[str, Any]:
     records = load_agency_skill_drafts()
@@ -70,7 +70,7 @@ async def list_agency_skill_drafts(
     }
 
 
-@router.get("/{skill_id:path}", name="get_agency_skill_draft")
+@router.get("/{skill_id}", name="get_agency_skill_draft")
 async def get_agency_skill_draft_detail(
     skill_id: str,
     request: Request,
