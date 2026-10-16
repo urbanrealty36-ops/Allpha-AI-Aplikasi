@@ -17,6 +17,7 @@ create table if not exists public.agent_skill_challenge_runs (
   rubric_version integer not null check (rubric_version > 0),
   rubric_digest text not null check (rubric_digest ~ '^[a-f0-9]{64}$'),
   evaluator_version text not null check (char_length(evaluator_version) between 1 and 80),
+  agent_snapshot jsonb not null check (jsonb_typeof(agent_snapshot) = 'object'),
   skill_snapshot jsonb not null check (jsonb_typeof(skill_snapshot) = 'object'),
   challenge_input jsonb not null check (jsonb_typeof(challenge_input) = 'object'),
   expected_output jsonb not null check (jsonb_typeof(expected_output) = 'object'),
