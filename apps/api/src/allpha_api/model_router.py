@@ -390,11 +390,16 @@ class CanonicalTextGenerationRouter:
             except (TextGenerationRouterRejected, TextGenerationRouterUnavailable):
                 raise
             except asyncio.TimeoutError as exc:
-                last_error = exc
+                # A timed-out generation may have completed remotely. Without an adapter-
+                # verified idempotent replay contract, never issue a second billable call.
+                raise TextGenerationRouterUnavailable(
+                    "text-generation outcome is unknown after timeout; automatic replay is blocked"
+                ) from exc
             except Exception as exc:
-                last_error = exc
-            if attempt + 1 < route.max_attempts:
-                await asyncio.sleep(self._retry_delay_seconds * (attempt + 1))
-        if isinstance(last_error, asyncio.TimeoutError):
-            raise TextGenerationRouterUnavailable("approved text-generation route timed out") from last_error
-        raise TextGenerationRouterUnavailable("approved text-generation route failed") from last_error
+                # The adapter must classify failures before adding any safe retry strategy.
+                raise TextGenerationRouterUnavailable(
+                    "text-generation provider outcome is unknown; automatic replay is blocked"
+                ) from exc
+        if last_error is not None:
+            raise TextGenerationRouterUnavailable("approved text-generation route failed") from last_error
+        raise TextGenerationRouterUnavailable("approved text-generation route failed without a response")
