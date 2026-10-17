@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Path, Response
 
 from allpha_api.spatial_scene_contract import SceneManifestV1
+from allpha_api.spatial_test_auth import is_authorized_spatial_test_request
 
 router = APIRouter(tags=["spatial-renderer"])
 _SIGNED_URL_TTL_SECONDS = 300
@@ -91,6 +92,7 @@ async def get_test_only_scene_manifest(
     response: Response,
     scene_key: str = Path(min_length=3, max_length=120, pattern=r"^[a-z0-9][a-z0-9._-]{2,119}$"),
     test_key: str | None = Header(default=None, alias="X-Allpha-Spatial-Test-Key"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict:
     """Return an isolated TEST_ONLY scene only to callers holding a dedicated test secret.
 
@@ -99,8 +101,7 @@ async def get_test_only_scene_manifest(
     """
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Vary"] = "X-Allpha-Spatial-Test-Key"
-    expected = os.getenv("ALLPHA_SPATIAL_TEST_ACCESS_KEY", "")
-    if len(expected) < 32 or not test_key or not secrets.compare_digest(test_key, expected):
+    if not is_authorized_spatial_test_request(test_key, authorization):
         raise HTTPException(status_code=404, detail={
             "code": "SPATIAL_TEST_SCENE_NOT_FOUND",
             "message": "Scene pengujian tidak ditemukan.",
