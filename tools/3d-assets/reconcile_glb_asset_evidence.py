@@ -198,6 +198,33 @@ def main() -> int:
             "source_url": row.get("source_url") or row.get("url", ""),
             "source_license_claim": row.get("license", ""),
             "source_review_status": row.get("review", ""),
+            # Record where the repository-level license/texture exception evidence
+            # can be inspected. These links are evidence pointers, not per-file legal
+            # clearance; unknown derivative/likeness/texture rights stay on hold.
+            "source_license_evidence_url": {
+                "rostock/3DModels": "https://github.com/rostock/3DModels/blob/main/LICENSE",
+                "c-frame/valid-avatars-glb": "https://github.com/c-frame/valid-avatars-glb/blob/main/LICENSE",
+                "ramjigeddam/3d": "https://github.com/ramjigeddam/3d",
+                "SpectraStudios/SourceCityToolkit_glb": "https://github.com/SpectraStudios/SourceCityToolkit_glb/blob/main/LICENSE",
+            }.get(row.get("repo", ""), ""),
+            "source_texture_rights_evidence_url": {
+                "rostock/3DModels": "https://github.com/rostock/3DModels/blob/main/README.md",
+                "c-frame/valid-avatars-glb": "https://github.com/c-frame/valid-avatars-glb/blob/main/README.md",
+                "ramjigeddam/3d": "https://github.com/ramjigeddam/3d",
+                "SpectraStudios/SourceCityToolkit_glb": "https://github.com/SpectraStudios/SourceCityToolkit_glb/blob/main/README.md",
+            }.get(row.get("repo", ""), ""),
+            "license_scope_assessment": {
+                "rostock/3DModels": "REPOSITORY_LEVEL_CC0_CLAIM_ONLY_PER_FILE_CONTENT_AND_THIRD_PARTY_RIGHTS_REVIEW_REQUIRED",
+                "c-frame/valid-avatars-glb": "REPOSITORY_MIT_CLAIM_ONLY_LIKENESS_AND_DERIVATIVE_RIGHTS_UNVERIFIED",
+                "ramjigeddam/3d": "NO_REPOSITORY_LICENSE_OR_PERMISSION_EVIDENCE_FOUND",
+                "SpectraStudios/SourceCityToolkit_glb": "CC0_CLAIM_WITH_README_TEXTURE_EXCEPTIONS_PER_IMAGE_PROVENANCE_REQUIRED",
+            }.get(row.get("repo", ""), "LICENSE_SCOPE_UNKNOWN"),
+            "distribution_derivative_rights_status": {
+                "rostock/3DModels": "UNVERIFIED_PER_FILE_AND_THIRD_PARTY_CONTENT",
+                "c-frame/valid-avatars-glb": "UNVERIFIED_LIKENESS_ATTRIBUTION_AND_DERIVATIVE_SCOPE",
+                "ramjigeddam/3d": "NO_VERIFIED_DISTRIBUTION_OR_DERIVATIVE_PERMISSION",
+                "SpectraStudios/SourceCityToolkit_glb": "UNVERIFIED_TEXTURE_EXCEPTIONS_AND_DERIVATIVE_SCOPE",
+            }.get(row.get("repo", ""), "UNVERIFIED"),
             "rights_review_status": (
                 "QUARANTINE_REQUIRED" if str(row.get("review", "")).upper().startswith("QUARANTINE")
                 else "PER_FILE_RIGHTS_REVIEW_REQUIRED"
