@@ -175,8 +175,17 @@ async def ingest_test_only_glb(
             "version": "eq.1", "limit": "1",
         })
         if scene:
-            if scene[0].get("status") != "test_only" or not isinstance(scene[0].get("objects"), list):
+            objects = scene[0].get("objects")
+            if scene[0].get("status") != "test_only" or not isinstance(objects, list):
                 raise _error(409, "SPATIAL_SCENE_INGEST_CONFLICT", "scene_key versi 1 sudah dipakai oleh scene lain.")
+            same_asset = any(
+                isinstance(item, dict)
+                and item.get("asset_id") == asset_id
+                and item.get("asset_version") == 1
+                for item in objects
+            )
+            if not same_asset:
+                raise _error(409, "SPATIAL_SCENE_INGEST_CONFLICT", "scene_key sudah menunjuk aset TEST_ONLY yang berbeda.")
             scene_id = scene[0]["scene_id"]
         else:
             await _insert(client, url, key, "spatial_scene_versions", {
