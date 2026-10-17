@@ -3,6 +3,7 @@ import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-nat
 import { Canvas, useLoader } from "@react-three/fiber/native";
 import { Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
 
 const CATEGORY_KEYS = [
   "universe", "galaxy", "world", "orbit", "capsule", "district", "booth",
@@ -31,7 +32,7 @@ class RenderErrorBoundary extends Component<{ children: ReactNode; onError: (err
 }
 
 function Model({ url, onLoaded }: { url: string; onLoaded: () => void }) {
-  const gltf = useLoader(GLTFLoader, url);
+  const gltf = useLoader(GLTFLoader, url, configureAllphaGLTFLoader);
   const model = useMemo(() => {
     const root = new Group();
     const copy = gltf.scene.clone(true);
