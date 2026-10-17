@@ -19,8 +19,7 @@ def _jwk_client() -> PyJWKClient:
     return PyJWKClient(f"{ISSUER}/.well-known/jwks", cache_jwk_set=True, lifespan=300)
 
 
-def verify_spatial_ingest_oidc(token: str) -> dict[str, Any]:
-    """Verify signature and constrain the token to the canonical production workflow."""
+def _verify_github_oidc(token: str, allowed_workflows: set[str], allowed_events: set[str]) -> dict[str, Any]:
     signing_key = _jwk_client().get_signing_key_from_jwt(token)
     claims = jwt.decode(
         token,
@@ -34,11 +33,32 @@ def verify_spatial_ingest_oidc(token: str) -> dict[str, Any]:
         raise jwt.InvalidTokenError("repository is not authorized")
     if claims.get("ref") != REF:
         raise jwt.InvalidTokenError("ref is not authorized")
-    if claims.get("workflow_ref") != WORKFLOW_REF:
+    if claims.get("workflow_ref") not in allowed_workflows:
         raise jwt.InvalidTokenError("workflow is not authorized")
-    if claims.get("event_name") not in {"push", "workflow_dispatch"}:
+    if claims.get("event_name") not in allowed_events:
         raise jwt.InvalidTokenError("event is not authorized")
     return claims
+
+
+def verify_spatial_ingest_oidc(token: str) -> dict[str, Any]:
+    """Only the production ingestion workflow may mutate the private spatial catalog."""
+    return _verify_github_oidc(
+        token,
+        {f"{REPOSITORY}/.github/workflows/eng-p22-production-spatial-ingest.yml@{REF}"},
+        {"push", "workflow_dispatch"},
+    )
+
+
+def verify_spatial_renderer_oidc(token: str) -> dict[str, Any]:
+    """The ingest workflow and the device acceptance workflow may read TEST_ONLY manifests."""
+    return _verify_github_oidc(
+        token,
+        {
+            f"{REPOSITORY}/.github/workflows/eng-p22-production-spatial-ingest.yml@{REF}",
+            f"{REPOSITORY}/.github/workflows/eng-p23-avatar-glb-regression.yml@{REF}",
+        },
+        {"push", "workflow_dispatch", "workflow_run"},
+    )
 
 
 def is_authorized_spatial_test_request(test_key: str | None, authorization: str | None) -> bool:
@@ -55,7 +75,7 @@ def is_authorized_spatial_test_request(test_key: str | None, authorization: str 
     if not token or len(token) > 16384:
         return False
     try:
-        verify_spatial_ingest_oidc(token)
+        verify_spatial_renderer_oidc(token)
         return True
     except Exception:
         return False
