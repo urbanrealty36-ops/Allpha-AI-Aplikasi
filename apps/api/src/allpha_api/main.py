@@ -33,6 +33,7 @@ from allpha_api.official_bots_api import router as official_bots_router
 from allpha_api.model_costs_api import router as model_costs_router
 from allpha_api.agency_skill_drafts_api import router as agency_skill_drafts_router
 from allpha_api.spatial_manifest_api import router as spatial_manifest_router
+from allpha_api.spatial_ingest_api import router as spatial_ingest_router
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -1092,3 +1093,4 @@ app.include_router(official_bots_router)
 app.include_router(model_costs_router)
 app.include_router(agency_skill_drafts_router)
 app.include_router(spatial_manifest_router)
+app.include_router(spatial_ingest_router)
