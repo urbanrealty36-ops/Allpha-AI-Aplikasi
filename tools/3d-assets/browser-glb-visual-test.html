@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Allpha GLB Visual Regression</title>
+<style>html,body{margin:0;background:#f4f5f7;color:#172033;font:14px system-ui}#stage{width:512px;height:512px;margin:12px auto;background:#e9edf2}canvas{display:block}pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px}</style>
+<script type="importmap">{"imports":{"three":"/apps/web/node_modules/three/build/three.module.js"}}</script>
+</head>
+<body>
+<div id="stage"></div><pre id="result">loading</pre>
+<script type="module">
+import * as THREE from "/apps/web/node_modules/three/build/three.module.js";
+import { GLTFLoader } from "/apps/web/node_modules/three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "/apps/web/node_modules/three/examples/jsm/libs/meshopt_decoder.module.js";
+
+const report = {status:"running", asset:new URLSearchParams(location.search).get("asset")};
+document.querySelector("#result").textContent = JSON.stringify(report);
+try {
+  await MeshoptDecoder.ready;
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:"low-power"});
+  renderer.setSize(512,512,false);
+  renderer.setPixelRatio(1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.querySelector("#stage").appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xe9edf2);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x596273,2.2));
+  const key = new THREE.DirectionalLight(0xffffff,3);
+  key.position.set(4,8,6); scene.add(key);
+  const response = await fetch(report.asset);
+  if (!response.ok) throw new Error("asset fetch failed: HTTP "+response.status);
+  const bytes = await response.arrayBuffer();
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const gltf = await new Promise((resolve,reject)=>loader.parse(bytes,"",resolve,reject));
+  scene.add(gltf.scene);
+  const box = new THREE.Box3().setFromObject(gltf.scene);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  if (!Number.isFinite(size.x+size.y+size.z) || Math.max(size.x,size.y,size.z)<=0) throw new Error("invalid/empty scene bounds");
+  const maxDim = Math.max(size.x,size.y,size.z);
+  const camera = new THREE.PerspectiveCamera(35,1,Math.max(maxDim/10000,0.001),maxDim*100);
+  camera.position.set(center.x+maxDim*1.8,center.y+maxDim*1.1,center.z+maxDim*2.2);
+  camera.lookAt(center);
+  camera.updateProjectionMatrix();
+  const meshes=[], skinned=[], textures=new Set();
+  gltf.scene.traverse(node=>{
+    if(node.isMesh){meshes.push(node); if(node.isSkinnedMesh) skinned.push(node);}
+    const mats=Array.isArray(node.material)?node.material:(node.material?[node.material]:[]);
+    for(const mat of mats) for(const value of Object.values(mat)) if(value?.isTexture) textures.add(value);
+  });
+  if(!meshes.length) throw new Error("GLTFLoader returned no mesh nodes");
+  const imageDetails=[];
+  for(const texture of textures){
+    const image=texture.image;
+    if(!image) throw new Error("texture has no decoded image: "+texture.name);
+    if(typeof image.decode==="function") await image.decode();
+    const width=image.width||image.naturalWidth||image.videoWidth||0;
+    const height=image.height||image.naturalHeight||image.videoHeight||0;
+    if(width<=0||height<=0) throw new Error("texture image has invalid dimensions: "+texture.name);
+    imageDetails.push({name:texture.name||"",width,height});
+  }
+  renderer.render(scene,camera);
+  const gl=renderer.getContext();
+  const glError=gl.getError();
+  if(glError!==gl.NO_ERROR) throw new Error("WebGL error after render: "+glError);
+  const reportOut={
+    status:"passed",asset:report.asset,bytes:bytes.byteLength,meshNodes:meshes.length,
+    skinnedMeshNodes:skinned.length,animationClips:gltf.animations.length,
+    sceneBounds:{x:size.x,y:size.y,z:size.z},textureObjects:textures.size,
+    decodedTextureImages:imageDetails.length,textureImages:imageDetails,
+    drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,
+    webglVersion:gl.getParameter(gl.VERSION),renderer:gl.getParameter(gl.RENDERER),
+    caveat:"Browser GLTFLoader, decoded material textures and one software/hardware WebGL frame; device performance acceptance is separate."
+  };
+  window.__spatialTestResult=reportOut;
+  document.querySelector("#result").textContent=JSON.stringify(reportOut,null,2);
+  window.__spatialTestRenderer=renderer;
+} catch(error) {
+  window.__spatialTestResult={status:"failed",asset:report.asset,error:String(error?.stack||error)};
+  document.querySelector("#result").textContent=JSON.stringify(window.__spatialTestResult,null,2);
+}
+</script>
+</body>
+</html>
