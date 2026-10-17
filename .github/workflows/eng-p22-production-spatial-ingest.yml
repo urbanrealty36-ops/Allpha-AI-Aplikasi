@@ -1,0 +1,274 @@
+name: ENG-P22 Production Private GLB Ingest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/eng-p22-production-spatial-ingest.yml"
+      - "apps/api/src/allpha_api/spatial_ingest_api.py"
+      - "apps/api/src/allpha_api/spatial_test_auth.py"
+      - "apps/api/src/allpha_api/spatial_manifest_api.py"
+      - "apps/api/supabase/migrations/20261017134000_eng_p22_spatial_ingest_receipts.sql"
+      - "apps/api/pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Completed GLB acquisition workflow run containing four shards"
+        required: true
+        default: "39002086145"
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: eng-p22-production-private-ingest-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Ingest shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: ["01", "02", "03", "04"]
+    env:
+      SOURCE_RUN_ID: ${{ github.event.inputs.source_run_id || '39002086145' }}
+      SHARD: ${{ matrix.shard }}
+      ALLPHA_SPATIAL_API_BASE_URL: https://api.allpha.web.id
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download this acquisition shard
+        uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-${{ matrix.shard }}
+          path: .artifacts/acquired/shard-${{ matrix.shard }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Download canonical acquisition manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-reconciliation
+          path: .artifacts/acquired/reconciliation
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Verify source bytes and build evidence-based ingest batch
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, hashlib, json, os
+          from pathlib import Path
+
+          root = Path.cwd()
+          shard = os.environ["SHARD"]
+          source_run_id = os.environ["SOURCE_RUN_ID"]
+          manifest = root / ".artifacts/acquired/reconciliation/manifest.csv"
+          shard_root = root / f".artifacts/acquired/shard-{shard}"
+          if not manifest.exists():
+              raise SystemExit(f"missing canonical acquisition manifest: {manifest}")
+
+          def category_for(row):
+              repo, path = row["repo"], row["path"]
+              parts = path.split("/")
+              basename = parts[-1].lower()
+              if repo == "c-frame/valid-avatars-glb":
+                  return "agent-character"
+              if repo == "rostock/3DModels":
+                  folder = parts[0] if parts else ""
+                  if folder in {"Ampeln", "Verkehrszeichen"}:
+                      return "navigation-fx"
+                  if folder in {"Beleuchtung_Lampen", "Werbeanlagen"}:
+                      return "district"
+                  return None
+              if repo == "SpectraStudios/SourceCityToolkit_glb":
+                  if "market" in basename:
+                      return "booth"
+                  if "apartment" in basename or "intersection" in basename:
+                      return "district"
+                  return None
+              if repo == "ramjigeddam/3d":
+                  if "house" in basename:
+                      return "district"
+                  if "rig" in basename or "animation" in basename:
+                      return "animation"
+                  if any(token in basename for token in ("character", "fox", "photon", "knight", "predator", "soldier", "wolf", "boy", "robot")):
+                      return "agent-character"
+              return None
+
+          rows = []
+          seen = set()
+          with manifest.open(encoding="utf-8-sig", newline="") as stream:
+              for row in csv.DictReader(stream):
+                  if row.get("status") != "DOWNLOADED":
+                      continue
+                  digest = row.get("sha256", "").lower()
+                  if not digest or digest in seen:
+                      continue
+                  local_file = row.get("local_file", "")
+                  path = shard_root / local_file
+                  if not path.is_file():
+                      continue
+                  actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+                  actual_bytes = path.stat().st_size
+                  if actual_hash != digest or actual_bytes != int(row.get("bytes") or row.get("size_hint") or 0):
+                      raise SystemExit(f"source integrity mismatch: {local_file}")
+                  seen.add(digest)
+                  category = category_for(row)
+                  stem = Path(local_file).name
+                  display_name = Path(stem).stem
+                  rows.append({
+                      "file_path": str(path.resolve()),
+                      "asset_key": "glb-" + digest[:40],
+                      "scene_key": "test-glb-" + digest[:40],
+                      "display_name": display_name[:160] if len(display_name) >= 2 else "GLB " + digest[:12],
+                      "category": category,
+                      "source_url": row["url"],
+                      "source_repo": row["repo"],
+                      "source_path": row["path"],
+                      "license": row.get("license") or "unknown",
+                      "review": row.get("review") or "unreviewed",
+                      "expected_sha256": digest,
+                      "expected_bytes": actual_bytes,
+                  })
+          out = root / ".artifacts/acquired/ingest-batch.json"
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+          print(json.dumps({
+              "source_run_id": source_run_id,
+              "shard": shard,
+              "files_verified": len(rows),
+              "mapped_category_candidates": sum(1 for row in rows if row["category"]),
+              "unmapped_private_only": sum(1 for row in rows if not row["category"]),
+              "manifest": str(manifest),
+          }, indent=2))
+          if not rows:
+              raise SystemExit(f"shard {shard} has no verified source GLBs")
+          PY
+
+      - name: Upload private TEST_ONLY GLBs and verify signed downloads
+        id: ingest
+        uses: actions/github-script@v7
+        timeout-minutes: 165
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const crypto = require('crypto');
+            const base = process.env.ALLPHA_SPATIAL_API_BASE_URL;
+            const rows = JSON.parse(fs.readFileSync('.artifacts/acquired/ingest-batch.json', 'utf8'));
+            const results = [];
+            let verifiedSignedDownload = false;
+            let token = '';
+            for (let i = 0; i < rows.length; i++) {
+              const item = rows[i];
+              if (i % 15 === 0) token = await core.getIDToken('allpha-spatial-ingest');
+              const bytes = fs.readFileSync(item.file_path);
+              const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+              if (digest !== item.expected_sha256 || bytes.length !== item.expected_bytes) {
+                throw new Error('Local GLB integrity changed after prepare: ' + item.file_path);
+              }
+              const metadata = {
+                asset_key: item.asset_key,
+                scene_key: item.scene_key,
+                display_name: item.display_name,
+                category: item.category || 'unmapped',
+                source_url: item.source_url,
+                source_repo: item.source_repo,
+                source_path: item.source_path,
+                license: item.license,
+                review: item.review,
+                world_id: 'eng-p22-test-universe',
+                entity_id: 'asset-' + item.expected_sha256.slice(0, 24)
+              };
+              const form = new FormData();
+              form.append('file', new Blob([bytes], { type: 'model/gltf-binary' }), path.basename(item.file_path));
+              form.append('metadata', JSON.stringify(metadata));
+              let response, payload;
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                  response = await fetch(base + '/v1/spatial/test/assets/ingest', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: form
+                  });
+                  payload = await response.json();
+                  if (response.ok) break;
+                  if (response.status === 401 || response.status === 403) {
+                    token = await core.getIDToken('allpha-spatial-ingest');
+                  }
+                  if (response.status < 500 && response.status !== 401 && response.status !== 403) {
+                    throw new Error('API rejected ' + item.asset_key + ': ' + JSON.stringify(payload));
+                  }
+                } catch (err) {
+                  if (attempt === 3) throw err;
+                }
+                if (attempt === 3 && (!response || !response.ok)) {
+                  throw new Error('Ingest failed for ' + item.asset_key + ': ' + JSON.stringify(payload));
+                }
+                await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                token = await core.getIDToken('allpha-spatial-ingest');
+              }
+              if (!response || !response.ok) throw new Error('Ingest failed: ' + JSON.stringify(payload));
+              if (payload.sha256 !== item.expected_sha256 || Number(payload.byte_size) !== item.expected_bytes) {
+                throw new Error('API hash/size mismatch for ' + item.asset_key + ': ' + JSON.stringify(payload));
+              }
+              const mapped = Boolean(item.category);
+              if (mapped && !verifiedSignedDownload) {
+                token = await core.getIDToken('allpha-spatial-ingest');
+                const manifestResponse = await fetch(base + '/v1/spatial/test/scenes/' + item.scene_key + '/manifest', {
+                  headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
+                  cache: 'no-store'
+                });
+                const manifest = await manifestResponse.json();
+                if (!manifestResponse.ok) throw new Error('TEST_ONLY manifest failed: ' + JSON.stringify(manifest));
+                const object = (manifest.objects || [])[0];
+                if (!object || object.sha256 !== item.expected_sha256 || Number(object.byte_size) !== item.expected_bytes || object.publication_status !== 'test_only') {
+                  throw new Error('Manifest contract mismatch: ' + JSON.stringify(object));
+                }
+                const download = await fetch(object.asset_url, { cache: 'no-store' });
+                if (!download.ok) throw new Error('Signed GLB download failed with HTTP ' + download.status);
+                const downloaded = Buffer.from(await download.arrayBuffer());
+                const downloadedHash = crypto.createHash('sha256').update(downloaded).digest('hex');
+                if (downloadedHash !== item.expected_sha256 || downloaded.length !== item.expected_bytes) {
+                  throw new Error('Signed URL content hash/size mismatch for ' + item.asset_key);
+                }
+                verifiedSignedDownload = true;
+                results.push({ asset_key: item.asset_key, status: payload.lifecycle, category: item.category, sha256: downloadedHash, bytes: downloaded.length, signed_download: 'PASS', scene_key: item.scene_key });
+              } else {
+                results.push({ asset_key: item.asset_key, status: payload.lifecycle, category: item.category || 'unmapped', sha256: item.expected_sha256, bytes: item.expected_bytes, signed_download: 'not_selected' });
+              }
+              if ((i + 1) % 25 === 0) core.info('Shard ' + process.env.SHARD + ': ingested ' + (i + 1) + '/' + rows.length);
+            }
+            const report = {
+              source_run_id: process.env.SOURCE_RUN_ID,
+              shard: process.env.SHARD,
+              total: results.length,
+              registered_test_only: results.filter(x => x.status === 'test_only').length,
+              private_unmapped: results.filter(x => x.status === 'quarantined').length,
+              signed_download_verified: verifiedSignedDownload,
+              results
+            };
+            fs.mkdirSync('.artifacts/acquired/results', { recursive: true });
+            fs.writeFileSync('.artifacts/acquired/results/ingest-shard-' + process.env.SHARD + '.json', JSON.stringify(report, null, 2));
+            core.setOutput('count', String(results.length));
+            core.setOutput('signed_download', String(verifiedSignedDownload));
+            core.info(JSON.stringify({ shard: report.shard, total: report.total, registered_test_only: report.registered_test_only, private_unmapped: report.private_unmapped, signed_download_verified: report.signed_download_verified }, null, 2));
+
+      - name: Upload ingest and signed-download evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p22-private-ingest-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: .artifacts/acquired/results/ingest-shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
