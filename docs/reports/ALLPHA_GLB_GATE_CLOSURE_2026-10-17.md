@@ -53,3 +53,21 @@ The evidence bundle contains `human-approval-packet.json` with the required sign
 Local evidence bundle SHA-256: `8137f186e560bf733ae8891637e5e03c0a341b077cf6edfb07218d1dca7d4b7f`.
 
 No asset was uploaded, registered, approved, or published.
+
+
+## Per-file fail-closed disposition refresh — run 39022262843
+
+- Reconciliation workflow: [39022262843](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39022262843). Artifact: [eng-p22-glb-evidence-39022262843](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39022262843/artifacts/12096857305).
+- Every one of the 933 manifest rows now has an explicit disposition, queue, reason and provisionality marker in `manifest-audit.csv` / `manifest-audit.json`. This includes 927 physical GLBs and 6 duplicate/non-physical manifest references.
+- Disposition totals: 262 `QUARANTINE_SOURCE_RIGHTS_OR_SAFETY_REVIEW`; 665 `HOLD_UNMAPPED_RIGHTS_AND_RENDERER_REVIEW`; 6 `NON_PHYSICAL_OR_DEDUPLICATED_REFERENCE`. All physical assets remain `NOT_APPROVED`; approved assets = 0. This completes the *initial fail-closed disposition assignment*, not the human/legal/visual/category review or publication approval.
+- Integrity remains 927/927 valid containers, zero hash/size mismatch, zero missing/ambiguous files. Embedded texture byte fingerprinting resolved 1,639 payloads, with 1,234 unique hashes and zero unresolved payloads. Fingerprints do not prove rights or source attribution.
+
+## ENG-P23 run 39020863350 failure and retry
+
+- [Run 39020863350](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39020863350): acquired-avatar regression passed, but Android's emulator took approximately 526 seconds to report boot complete, then the emulator-runner action failed on `adb shell input keyevent 82` with exit code 224 / broken pipe. The React Native build/runtime test never started, and no Android evidence artifact was produced. This is a confirmed emulator-runner failure, not a confirmed asset/rendering defect.
+- [Commit ed0f740](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/ed0f7402945b7026508e95ee80f6d59f2fa72d72) changes the Android CI image to API 34 / Pixel 2 and disables the failing animation-disable command; concurrency group was bumped so the prior run is not cancelled. Retry [39022292743](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39022292743) must be inspected for runtime PASS marker, log and screenshot before acceptance.
+- API smoke failure on the owner-release-decision conflict test was also confirmed. [Commit da3e521](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/da3e521a7a52cd00f9f1f8338f145736c4f888e7) moves immutable decision replay/conflict checks before current release gates. The fix remains unverified until its next CI run completes.
+
+## Current gate decision
+
+ENG-P22 remains `in_progress`: provisional dispositions are assigned, but per-file rights/likeness, texture source, category mapping, visual/moderation and renderer release gates are not cleared. ENG-P23 remains `in_progress`: actual Android and iOS runtime artifacts/screenshots with PASS markers are still required. ENG-P24 remains `not_started`; no asset was approved, registered, uploaded or published, and no Supabase mutation was performed.
