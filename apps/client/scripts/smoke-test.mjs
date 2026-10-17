@@ -47,6 +47,19 @@ assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui
 
 console.log("ENG-P01 source, ENG-P10 task lifecycle, and ENG-P12 Skill Challenge smoke tests passed.");
 
+const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
+assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
+assert.ok(meshoptHelper.includes("loader.setMeshoptDecoder(MeshoptDecoder)"), "Native GLTF loader must register MeshoptDecoder");
+for (const [file, loadCall] of [
+  ["../components/spatial/CanonicalNativeGlbPreview.tsx", "useLoader(GLTFLoader, url, configureAllphaGLTFLoader)"],
+  ["../components/spatial/CanonicalNativeWorldRenderer.tsx", "useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader)"]
+]) {
+  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  assert.ok(source.includes("configureAllphaGLTFLoader"), `missing Meshopt loader configuration in ${file}`);
+  assert.ok(source.includes(loadCall), `GLTFLoader call is not configured for Meshopt in ${file}`);
+}
+
+
 
 const challengeContracts = [
   "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "challengeNonce",
