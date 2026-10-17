@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Evidence-only reconciliation of acquired GLBs. Never approves or publishes assets."""
 from __future__ import annotations
-import argparse, csv, hashlib, json, struct
+import argparse, base64, csv, hashlib, json, struct
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -80,7 +80,7 @@ def fallback_findings(doc: dict[str, Any]) -> list[str]:
         findings.extend(f"buffer_{index}:{reason}" for reason in sorted(set(reasons)))
     return findings
 
-def inspect_json(doc: dict[str, Any]) -> dict[str, Any]:
+def inspect_json(doc: dict[str, Any], binary: bytes) -> dict[str, Any]:
     images = doc.get("images", [])
     textures = doc.get("textures", [])
     materials = doc.get("materials", [])
@@ -89,20 +89,53 @@ def inspect_json(doc: dict[str, Any]) -> dict[str, Any]:
     image_kinds = Counter()
     mime_types = Counter()
     external_uris = []
-    for image in images:
+    image_payload_evidence = []
+    views = doc.get("bufferViews", [])
+    buffers = doc.get("buffers", [])
+    for image_index, image in enumerate(images):
         if not isinstance(image, dict):
             image_kinds["invalid"] += 1
+            image_payload_evidence.append({"image_index": image_index, "status": "invalid_image_record"})
             continue
         uri = image.get("uri")
-        if uri is None:
-            image_kinds["bufferView_embedded" if isinstance(image.get("bufferView"), int) else "missing_source"] += 1
+        payload = None
+        evidence = {"image_index": image_index, "mime_type": image.get("mimeType") or "unspecified"}
+        if uri is None and isinstance(image.get("bufferView"), int):
+            image_kinds["bufferView_embedded"] += 1
+            view_index = image["bufferView"]
+            if 0 <= view_index < len(views):
+                view = views[view_index]
+                buffer_index = view.get("buffer", 0)
+                start, length = int(view.get("byteOffset", 0)), int(view.get("byteLength", 0))
+                if buffer_index == 0 and start >= 0 and length > 0 and start + length <= len(binary):
+                    payload = binary[start:start + length]
+                    evidence.update({"source": "glb_bin_bufferView", "buffer_view_index": view_index, "byte_length": length})
+                else:
+                    evidence.update({"source": "bufferView", "buffer_index": buffer_index, "status": "payload_not_resolved_from_glb_bin"})
+            else:
+                evidence.update({"source": "bufferView", "status": "bufferView_index_out_of_range"})
+        elif uri is None:
+            image_kinds["missing_source"] += 1
+            evidence.update({"source": "missing", "status": "missing_image_source"})
         elif isinstance(uri, str) and uri.startswith("data:"):
             image_kinds["data_uri_embedded"] += 1
+            try:
+                header, data = uri.split(",", 1)
+                payload = base64.b64decode(data) if ";base64" in header.lower() else __import__("urllib.parse", fromlist=["unquote_to_bytes"]).unquote_to_bytes(data)
+                evidence.update({"source": "data_uri", "byte_length": len(payload)})
+            except Exception as exc:
+                evidence.update({"source": "data_uri", "status": "data_uri_decode_error:" + str(exc)})
         elif isinstance(uri, str):
             image_kinds["external_uri"] += 1
             external_uris.append(uri)
+            evidence.update({"source": "external_uri", "uri": uri, "status": "external_payload_not_downloaded"})
         else:
             image_kinds["invalid"] += 1
+            evidence.update({"source": "invalid", "status": "invalid_image_uri"})
+        if payload is not None:
+            evidence["payload_sha256"] = hashlib.sha256(payload).hexdigest()
+            evidence["status"] = "embedded_payload_hashed"
+        image_payload_evidence.append(evidence)
         mime_types[str(image.get("mimeType") or "unspecified")] += 1
     texture_extension_sources = Counter()
     for texture in textures:
@@ -132,6 +165,9 @@ def inspect_json(doc: dict[str, Any]) -> dict[str, Any]:
         "image_mime_types": json.dumps(dict(sorted(mime_types.items())), sort_keys=True),
         "external_image_uri_count": len(external_uris),
         "external_image_uris": json.dumps(external_uris, ensure_ascii=False),
+        "image_payload_evidence": json.dumps(image_payload_evidence, ensure_ascii=False),
+        "embedded_image_payload_count": sum(1 for item in image_payload_evidence if item.get("payload_sha256")),
+        "unresolved_image_payload_count": sum(1 for item in image_payload_evidence if not item.get("payload_sha256")),
         "texture_extension_sources": json.dumps(dict(sorted(texture_extension_sources.items())), sort_keys=True),
         "skin_count": len(doc.get("skins", [])),
         "animation_clip_count": len(doc.get("animations", [])),
@@ -176,7 +212,7 @@ def main() -> int:
             result["glb_version"] = meta["glb_version"]
             result["chunk_count"] = meta["chunk_count"]
             result["json_valid"] = meta["json_valid"]
-            result.update(inspect_json(doc))
+            result.update(inspect_json(doc, binary))
             expected_hash = row.get("sha256", "").lower()
             expected_size = row.get("bytes", "")
             integrity = []
@@ -231,6 +267,10 @@ def main() -> int:
         "meshopt_fallback_not_applicable": sum(1 for r in results if r.get("fallback_status") == "not_applicable"),
         "assets_with_images": sum(1 for r in results if int(r.get("image_count") or 0) > 0),
         "assets_with_external_image_uris": sum(1 for r in results if int(r.get("external_image_uri_count") or 0) > 0),
+        "embedded_image_payloads_hashed": sum(int(r.get("embedded_image_payload_count") or 0) for r in results),
+        "unresolved_image_payloads": sum(int(r.get("unresolved_image_payload_count") or 0) for r in results),
+        "unique_embedded_image_sha256": len({item.get("payload_sha256") for r in results for item in json.loads(r.get("image_payload_evidence") or "[]") if item.get("payload_sha256")}),
+        "assets_with_unresolved_image_payloads": sum(1 for r in results if int(r.get("unresolved_image_payload_count") or 0) > 0),
         "assets_with_skins": sum(1 for r in results if int(r.get("skin_count") or 0) > 0),
         "assets_with_animation_clips": sum(1 for r in results if int(r.get("animation_clip_count") or 0) > 0),
         "all_publication_statuses": sorted(set(r.get("publication_status", "") for r in results)),
