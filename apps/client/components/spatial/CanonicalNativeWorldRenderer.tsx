@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { Canvas, useLoader } from "@react-three/fiber/native";
 import { Group } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
 
 const CATEGORY_KEYS = [
   "universe", "galaxy", "world", "orbit", "capsule", "district", "booth",
@@ -50,7 +51,7 @@ function validateManifest(value: unknown): SceneManifest {
 }
 
 function SceneObjectModel({ object, onLoaded }: { object: SceneObject; onLoaded: (id: string) => void }) {
-  const gltf = useLoader(GLTFLoader, object.asset_url);
+  const gltf = useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader);
   const model = useMemo(() => {
     const copy = new Group();
     copy.add(gltf.scene.clone(true));
