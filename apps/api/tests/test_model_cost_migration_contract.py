@@ -2,8 +2,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CANONICAL = ROOT / "supabase" / "migrations" / "20261016200000_eng_p12_model_cost_admin.sql"
-MISPLACED = ROOT / "migrations" / "20261016200000_eng_p12_model_cost_admin.sql"
+CANONICAL = ROOT / "supabase" / "migrations" / "20261017125436_eng_p12_model_cost_admin.sql"
+MISPLACED = ROOT / "migrations" / "20261017125436_eng_p12_model_cost_admin.sql"
 
 
 def test_model_cost_migration_uses_the_canonical_supabase_migration_directory():
