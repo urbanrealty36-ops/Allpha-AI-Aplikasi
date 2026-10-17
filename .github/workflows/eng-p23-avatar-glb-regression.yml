@@ -26,7 +26,7 @@ permissions:
 
 concurrency:
   group: eng-p23-avatar-glb-regression-v6-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   acquired-avatar-regression:
@@ -332,7 +332,7 @@ jobs:
             for i in $(seq 1 120); do
               logs="$(adb logcat -d -s ReactNativeJS:V ReactNative:V AndroidRuntime:E 2>/dev/null || true)"
               if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then echo "$logs" > .artifacts/device-fixture/results/android/logcat.txt; passed=1; break; fi
-              if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:FAIL"; then echo "$logs" > .artifacts/device-fixture/results/android/logcat.txt; cat .artifacts/device-fixture/results/android/logcat.txt; exit 1; fi
+              if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:"; then echo "$logs" > .artifacts/device-fixture/results/android/logcat.txt; adb shell screencap -p /sdcard/allpha-spatial-failure.png || true; adb pull /sdcard/allpha-spatial-failure.png .artifacts/device-fixture/results/android/failure.png || true; cat .artifacts/device-fixture/results/android/logcat.txt; exit 1; fi
               sleep 3
             done
             if [ "$passed" -ne 1 ]; then adb logcat -d > .artifacts/device-fixture/results/android/logcat.txt; echo "Native renderer did not report PASS"; exit 1; fi
@@ -442,9 +442,9 @@ jobs:
           (cd apps/client && ./node_modules/.bin/expo run:ios --configuration Release --device "$UDID")
           passed=0
           for i in $(seq 1 120); do
-            logs="$(xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'eventMessage CONTAINS "SPATIAL_DEVICE_TEST_RESULT"' 2>/dev/null || true)"
+            logs="$(xcrun simctl spawn "$UDID" log show --last 2m --style compact 2>/dev/null || true)"
             if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then echo "$logs" > .artifacts/device-fixture/results/ios/simulator.log; passed=1; break; fi
-            if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:FAIL"; then echo "$logs" > .artifacts/device-fixture/results/ios/simulator.log; cat .artifacts/device-fixture/results/ios/simulator.log; exit 1; fi
+            if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:"; then echo "$logs" > .artifacts/device-fixture/results/ios/simulator.log; xcrun simctl io "$UDID" screenshot .artifacts/device-fixture/results/ios/failure.png || true; cat .artifacts/device-fixture/results/ios/simulator.log; exit 1; fi
             sleep 3
           done
           if [ "$passed" -ne 1 ]; then echo "iOS renderer did not report PASS"; xcrun simctl spawn "$UDID" log show --last 5m --style compact > .artifacts/device-fixture/results/ios/simulator.log; exit 1; fi
