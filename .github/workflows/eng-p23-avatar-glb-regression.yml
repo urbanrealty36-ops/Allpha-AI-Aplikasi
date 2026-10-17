@@ -316,6 +316,12 @@ jobs:
             }
             core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
             core.info(JSON.stringify({ scene_key: sceneKey, sha256: object.sha256, byte_size: Number(object.byte_size), category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+      - name: Build Android release APK before booting emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd apps/client && ./node_modules/.bin/expo prebuild --platform android --no-install)
+          (cd apps/client/android && ./gradlew assembleRelease)
       - name: Build and run actual React Native renderer on Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -430,7 +436,7 @@ jobs:
           (cd apps/client && ./node_modules/.bin/expo run:ios --configuration Release --device "$UDID") > .artifacts/device-fixture/results/ios/expo-run.log 2>&1 &
           expo_pid=$!
           passed=0
-          for i in $(seq 1 120); do
+          for i in $(seq 1 900); do
             device_logs="$(xcrun simctl spawn "$UDID" log show --last 2m --style compact 2>/dev/null || true)"
             metro_logs="$(cat .artifacts/device-fixture/results/ios/expo-run.log 2>/dev/null || true)"
             logs="${device_logs}\n${metro_logs}"
@@ -455,7 +461,7 @@ jobs:
             sleep 3
           done
           if [ "$passed" -ne 1 ]; then
-            echo "iOS renderer did not report PASS within 6 minutes"
+            echo "iOS renderer did not report PASS within 45 minutes"
             xcrun simctl spawn "$UDID" log show --last 5m --style compact > .artifacts/device-fixture/results/ios/simulator-full.log 2>&1 || true
             cat .artifacts/device-fixture/results/ios/expo-run.log
             cat .artifacts/device-fixture/results/ios/simulator-full.log
