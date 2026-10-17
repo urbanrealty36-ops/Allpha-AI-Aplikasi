@@ -12,7 +12,7 @@ from allpha_api.workflow_worker import (
 def run(**overrides):
     body = {
         "id": "run-1", "status": "running", "created_at": "2026-10-16T23:00:00+00:00",
-        "started_at": "2026-10-16T23:00:00+00:00", "max_runtime_seconds": 120,
+        "started_at": "2026-10-16T23:00:00+00:00", "max_runtime_seconds": None,
         "input_payload": {"name": "Ada"}, "steps": [],
     }
     body.update(overrides)
