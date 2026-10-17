@@ -143,9 +143,9 @@ def main():
     # embedded GLB container and actual meshopt bufferViews. Never silently
     # accept an HTML response or an incomplete candidate as the fixture.
     for record, url, lic in sorted(candidates, key=lambda x: (len(str(x[0])), x[1])):
+        candidate_path = out / "avatar-candidate.glb"
         try:
             r = requests.get(url, timeout=120); r.raise_for_status()
-            candidate_path = out / "avatar-candidate.glb"
             candidate_path.write_bytes(r.content)
             structure = validate_glb(candidate_path)
             if "EXT_texture_webp" not in structure["extensions_used"] and "EXT_texture_webp" not in structure["extensions_required"]:
