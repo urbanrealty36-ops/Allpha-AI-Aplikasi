@@ -39,12 +39,64 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def analyze_meshopt_fallback_buffers(document: dict[str, Any]) -> tuple[list[int], list[dict[str, Any]]]:
+    """Classify URI-less nonzero buffers using the EXT_meshopt_compression fallback contract.
+
+    A URI-less nonzero buffer is valid when it is explicitly marked as a fallback,
+    the extension is required, every base bufferView reference is compressed, no
+    compressed extension references the fallback itself, and the declared length
+    covers every referenced fallback view.
+    """
+    buffers = document.get("buffers", [])
+    views = document.get("bufferViews", [])
+    required = set(document.get("extensionsRequired", []))
+    valid: list[int] = []
+    invalid: list[dict[str, Any]] = []
+    for index, buffer in enumerate(buffers):
+        if index == 0 or not isinstance(buffer, dict) or buffer.get("uri"):
+            continue
+        refs = [(view_index, view) for view_index, view in enumerate(views)
+                if isinstance(view, dict) and view.get("buffer", 0) == index]
+        compressed_source_refs = [
+            view_index for view_index, view in enumerate(views)
+            if isinstance(view, dict)
+            and isinstance(view.get("extensions"), dict)
+            and isinstance(view["extensions"].get("EXT_meshopt_compression"), dict)
+            and view["extensions"]["EXT_meshopt_compression"].get("buffer") == index
+        ]
+        reasons: list[str] = []
+        fallback = buffer.get("extensions", {}).get("EXT_meshopt_compression", {}).get("fallback") is True
+        if not fallback:
+            reasons.append("fallback_flag_missing")
+        if "EXT_meshopt_compression" not in required:
+            reasons.append("meshopt_extension_not_required")
+        if not refs:
+            reasons.append("fallback_buffer_unreferenced")
+        if any(not isinstance(view.get("extensions"), dict)
+               or not isinstance(view["extensions"].get("EXT_meshopt_compression"), dict)
+               for _, view in refs):
+            reasons.append("fallback_view_without_meshopt_extension")
+        if compressed_source_refs:
+            reasons.append("fallback_used_as_compressed_source")
+        max_end = max((view.get("byteOffset", 0) + view.get("byteLength", 0)
+                       for _, view in refs
+                       if isinstance(view.get("byteOffset", 0), int)
+                       and isinstance(view.get("byteLength", 0), int)), default=0)
+        if not isinstance(buffer.get("byteLength"), int) or buffer["byteLength"] < max_end:
+            reasons.append("fallback_byte_length_too_short")
+        if reasons:
+            invalid.append({"index": index, "reasons": reasons})
+        else:
+            valid.append(index)
+    return valid, invalid
+
+
 def inspect_glb(path: Path) -> dict[str, Any]:
     result: dict[str, Any] = {
         "glb_valid": False, "glb_error": None, "glb_version": None,
         "gltf_json_valid": False, "gltf_json_error": None,
         "buffer_count": 0, "buffer_views_count": 0, "meshopt_buffer_views": 0,
-        "meshopt_source_buffer_indices": [], "buffers_missing_uri_nonzero": [],
+        "meshopt_source_buffer_indices": [], "buffers_missing_uri_nonzero": [], "valid_meshopt_fallback_buffers": [], "invalid_meshopt_fallback_buffers": [],
         "base_buffer_indices_out_of_range": [], "skin_count": 0, "animation_count": 0,
         "mesh_count": 0, "material_count": 0, "texture_count": 0, "image_count": 0,
         "external_image_uri_count": 0, "extensions_used": [],
@@ -139,8 +191,11 @@ def inspect_glb(path: Path) -> dict[str, Any]:
                 1 for image in document.get("images", []) if isinstance(image, dict)
                 and isinstance(image.get("uri"), str) and not image["uri"].startswith("data:")
             )
-            if result["buffers_missing_uri_nonzero"]:
-                result["compatibility_findings"].append("nonzero_buffer_missing_uri")
+            valid_fallbacks, invalid_fallbacks = analyze_meshopt_fallback_buffers(document)
+            result["valid_meshopt_fallback_buffers"] = valid_fallbacks
+            result["invalid_meshopt_fallback_buffers"] = invalid_fallbacks
+            if invalid_fallbacks:
+                result["compatibility_findings"].append("invalid_meshopt_fallback_buffer")
             if result["base_buffer_indices_out_of_range"]:
                 result["compatibility_findings"].append("bufferView_base_buffer_index_out_of_range")
             if bin_chunk_count > 1:
