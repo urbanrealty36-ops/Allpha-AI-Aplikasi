@@ -1,0 +1,75 @@
+name: ENG-P22 GLB Evidence Reconciliation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Retained GLB acquisition run ID"
+        required: true
+        default: "39002086145"
+  push:
+    paths:
+      - ".github/workflows/eng-p22-glb-evidence-reconciliation.yml"
+      - "tools/3d-assets/reconcile_glb_asset_evidence.py"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: eng-p22-glb-evidence-reconciliation-${ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_RUN_ID: ${ inputs.source_run_id || '39002086145' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-01
+          path: .artifacts/acquired/shard-01
+          github-token: ${ secrets.GITHUB_TOKEN }}
+          repository: ${ github.repository }}
+          run-id: ${ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-02
+          path: .artifacts/acquired/shard-02
+          github-token: ${ secrets.GITHUB_TOKEN }}
+          repository: ${ github.repository }}
+          run-id: ${ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-03
+          path: .artifacts/acquired/shard-03
+          github-token: ${ secrets.GITHUB_TOKEN }}
+          repository: ${ github.repository }}
+          run-id: ${ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-04
+          path: .artifacts/acquired/shard-04
+          github-token: ${ secrets.GITHUB_TOKEN }}
+          repository: ${ github.repository }}
+          run-id: ${ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-reconciliation
+          path: .artifacts/acquired/reconciliation
+          github-token: ${ secrets.GITHUB_TOKEN }}
+          repository: ${ github.repository }}
+          run-id: ${ env.SOURCE_RUN_ID }}
+      - name: Reconcile all 927 physical GLBs and source manifest
+        run: python3 tools/3d-assets/reconcile_glb_asset_evidence.py
+      - name: Upload per-file rights, texture and capability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p22-glb-evidence-${ github.run_id }}
+          path: .artifacts/acquired/evidence-reconciliation/
+          if-no-files-found: error
+          retention-days: 30
