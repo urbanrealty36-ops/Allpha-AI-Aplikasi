@@ -63,3 +63,16 @@ for (const contract of [
 assert.doesNotMatch(superAdmin, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 
 console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, Agent Skill catalog, and Official Bot control smoke assertions passed.");
+
+const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
+assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Web GLTF loader must import MeshoptDecoder");
+assert.ok(meshoptHelper.includes("loader.setMeshoptDecoder(MeshoptDecoder)"), "Web GLTF loader must register MeshoptDecoder");
+for (const [file, loadCall] of [
+  ["../components/spatial/CanonicalGlbPreview.tsx", "useLoader(GLTFLoader, url, configureAllphaGLTFLoader)"],
+  ["../components/spatial/CanonicalWorldRenderer.tsx", "useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader)"]
+]) {
+  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  assert.ok(source.includes("configureAllphaGLTFLoader"), `missing Meshopt loader configuration in ${file}`);
+  assert.ok(source.includes(loadCall), `GLTFLoader call is not configured for Meshopt in ${file}`);
+}
+
