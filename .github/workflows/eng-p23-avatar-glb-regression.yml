@@ -324,10 +324,10 @@ jobs:
             set -eu
             mkdir -p .artifacts/device-fixture/results/android
             adb logcat -c
-            # Pass the project directory explicitly: the emulator-runner shell can
-            # resolve npx from the repository root, where no package.json exists.
-            ./apps/client/node_modules/.bin/expo prebuild --platform android --no-install --project-dir apps/client
-            ./apps/client/node_modules/.bin/expo run:android --variant release --project-dir apps/client
+            # Run the repository-local Expo CLI from the actual native app root.
+            # This CLI version does not accept --project-dir on prebuild/run commands.
+            (cd apps/client && ./node_modules/.bin/expo prebuild --platform android --no-install)
+            (cd apps/client && ./node_modules/.bin/expo run:android --variant release)
             passed=0
             for i in $(seq 1 120); do
               logs="$(adb logcat -d -s ReactNativeJS:V ReactNative:V AndroidRuntime:E 2>/dev/null || true)"
@@ -436,9 +436,10 @@ jobs:
           xcrun simctl boot "$UDID" 2>/dev/null || true
           xcrun simctl bootstatus "$UDID" -b
           open -a Simulator --args -CurrentDeviceUDID "$UDID"
-          # Keep Expo's project root explicit so Metro and native prebuild use apps/client.
-          ./apps/client/node_modules/.bin/expo prebuild --platform ios --no-install --project-dir apps/client
-          ./apps/client/node_modules/.bin/expo run:ios --configuration Release --device "$UDID" --project-dir apps/client
+          # Run the repository-local Expo CLI from the actual native app root.
+          # This CLI version does not accept --project-dir on prebuild/run commands.
+          (cd apps/client && ./node_modules/.bin/expo prebuild --platform ios --no-install)
+          (cd apps/client && ./node_modules/.bin/expo run:ios --configuration Release --device "$UDID")
           passed=0
           for i in $(seq 1 120); do
             logs="$(xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'eventMessage CONTAINS "SPATIAL_DEVICE_TEST_RESULT"' 2>/dev/null || true)"
