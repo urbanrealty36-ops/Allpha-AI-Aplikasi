@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
-import { findInvalidMeshoptFallbackBuffers } from "../../tools/3d-assets/meshopt-fallback-compat.mjs";
+import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/meshopt-fallback-compat.mjs";
 
 const file = process.argv[2];
 if (!file) throw new Error("Usage: node scripts/spatial-glb-regression.mjs <fixture.glb>");
