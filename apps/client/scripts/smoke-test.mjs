@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { readFileSync, existsSync } from "node:fs";
 const app=readFileSync(new URL("../App.tsx",import.meta.url),"utf8");
 const cfg=JSON.parse(readFileSync(new URL("../app.json",import.meta.url),"utf8"));
@@ -50,6 +51,8 @@ console.log("ENG-P01 source, ENG-P10 task lifecycle, and ENG-P12 Skill Challenge
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
 assert.ok(meshoptHelper.includes("loader.setMeshoptDecoder(MeshoptDecoder)"), "Native GLTF loader must register MeshoptDecoder");
+await MeshoptDecoder.ready;
+assert.equal(typeof MeshoptDecoder.decodeGltfBuffer, "function", "Meshopt decoder must initialize before GLB parsing");
 for (const [file, loadCall] of [
   ["../components/spatial/CanonicalNativeGlbPreview.tsx", "useLoader(GLTFLoader, url, configureAllphaGLTFLoader)"],
   ["../components/spatial/CanonicalNativeWorldRenderer.tsx", "useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader)"]
