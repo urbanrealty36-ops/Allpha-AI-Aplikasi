@@ -313,7 +313,7 @@ jobs:
           summary={"shards":len(reports),"unique_glb_ingested":total,"registered_test_only":mapped,
                    "private_unmapped":unmapped,"shards_with_signed_download_proof":signed}
           print(json.dumps(summary,indent=2))
-          Path(".artifacts/ingest-evidence/summary.json").write_text(json.dumps(summary,indent=2)+"\\n")
+          Path(".artifacts/ingest-evidence/summary.json").write_text(json.dumps(summary,indent=2)+"\n")
           if total != 927:
               raise SystemExit(f"expected 927 unique GLBs; got {total}")
           if mapped + unmapped != total:
