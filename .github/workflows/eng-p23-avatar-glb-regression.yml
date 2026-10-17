@@ -38,7 +38,8 @@ jobs:
           python tools/3d-assets/verify_avatar_fixture.py --out-dir .artifacts/avatar-fixture
           SHA="$(python -c "import json; print(json.load(open('.artifacts/avatar-fixture/fixture-report.json'))['sha256'])")"
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
-      - name: Upload original fixture, catalog license evidence, and structural report
+      - name: Upload fixture acquisition diagnostics (including failures)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eng-p23-avatar-fixture-${{ github.run_id }}
