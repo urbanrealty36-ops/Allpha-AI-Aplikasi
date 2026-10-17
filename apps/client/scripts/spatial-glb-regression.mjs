@@ -27,6 +27,14 @@ while (offset < raw.length) {
 }
 if (!json || !bin) throw new Error("fixture requires JSON and BIN chunks");
 const declaredExts = [...(json.extensionsUsed ?? []), ...(json.extensionsRequired ?? [])];
+const buffers = json.buffers ?? [];
+const unresolvedBaseBuffers = [...new Set((json.bufferViews ?? [])
+  .map((bufferView) => bufferView.buffer ?? 0)
+  .filter((index) => !Number.isInteger(index) || index < 0 || index >= buffers.length
+    || (index > 0 && !buffers[index]?.uri)))];
+if (unresolvedBaseBuffers.length) {
+  throw new Error(`base buffer(s) ${unresolvedBaseBuffers.join(", ")} are missing resolvable URI data; Meshopt byte decoding alone cannot prove GLTFLoader compatibility`);
+}
 if (!declaredExts.includes("EXT_meshopt_compression")) throw new Error("EXT_meshopt_compression is absent");
 if (!declaredExts.includes("EXT_texture_webp")) throw new Error("EXT_texture_webp is absent");
 
