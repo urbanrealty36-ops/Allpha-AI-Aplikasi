@@ -38,7 +38,7 @@ export default function SpatialRendererDeviceHarness(){
   const [status,setStatus]=useState("RUNNING");
   const [details,setDetails]=useState("");
   const loaded=useCallback((value:string)=>{setStatus("PASS");setDetails(value);},[]);
-  const fail=useCallback((error:Error)=>{const message=error?.message||String(error);const diagnostic=[message,error?.stack].filter(Boolean).join("\\n");setStatus("FAIL");setDetails(diagnostic);console.error("SPATIAL_DEVICE_TEST_RESULT:FAIL "+diagnostic);},[]);
+  const fail=useCallback((error:Error)=>{const message=error?.message||String(error);const diagnostic=[message,error?.stack].filter(Boolean).join("\n");setStatus("FAIL");setDetails(diagnostic);console.error("SPATIAL_DEVICE_TEST_RESULT:FAIL "+diagnostic);},[]);
   return <SafeAreaView style={{flex:1,backgroundColor:"#f4f5f7",padding:16}}>
     <Text style={{fontSize:22,fontWeight:"700",color:"#172033"}}>Allpha Spatial Device Regression</Text>
     <Text style={{marginTop:8,color:"#334155"}}>Test-only acquired avatar. Not a production publication.</Text>
