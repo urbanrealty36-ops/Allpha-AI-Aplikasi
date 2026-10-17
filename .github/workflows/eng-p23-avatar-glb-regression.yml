@@ -25,7 +25,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: eng-p23-avatar-glb-regression-v2-${{ github.ref }}
+  group: eng-p23-avatar-glb-regression-v3-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -313,13 +313,13 @@ jobs:
         env:
           EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL: http://10.0.2.2:8765/.artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           emulator-boot-timeout: 900
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
+          disable-animations: false
           script: |
             set -eu
             mkdir -p .artifacts/device-fixture/results/android
