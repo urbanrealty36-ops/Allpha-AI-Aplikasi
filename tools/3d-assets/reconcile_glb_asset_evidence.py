@@ -234,6 +234,8 @@ def main() -> int:
                 reasons.append("canonical_category_mapping_pending")
             if int(result.get("image_count", 0)) > 0:
                 reasons.append("image_texture_provenance_visual_review_pending")
+            if int(result.get("unresolved_image_payload_count", 0)) > 0:
+                reasons.append("embedded_image_payload_hash_unresolved")
             if int(result.get("external_image_uri_count", 0)) > 0:
                 reasons.append("external_image_uri_resolution_and_rights_pending")
             if row.get("category") in {"agent-character", "human-live", "animation"} and int(result.get("animation_clip_count", 0)) == 0:
