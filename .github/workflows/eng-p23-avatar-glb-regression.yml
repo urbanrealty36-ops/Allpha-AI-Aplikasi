@@ -21,6 +21,7 @@ on:
       - "tools/3d-assets/browser-glb-visual-test.html"
       - "apps/client/scripts/spatial-glb-regression.mjs"
       - "apps/client/SpatialRendererDeviceHarness.tsx"
+      - "tools/3d-assets/run-spatial-device-android.sh"
       - "tools/3d-assets/meshopt-fallback-compat.mjs"
 
 permissions:
