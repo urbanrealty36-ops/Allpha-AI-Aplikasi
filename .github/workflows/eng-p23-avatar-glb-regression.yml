@@ -25,7 +25,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: eng-p23-avatar-glb-regression-v6-${{ github.ref }}
+  # Isolate each device acceptance attempt so evidence runs cannot collide.
+  group: eng-p23-avatar-glb-regression-v7-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
