@@ -14,6 +14,7 @@ on:
       - "apps/web/lib/spatial/configureAllphaGLTFLoader.ts"
       - "apps/client/lib/spatial/configureAllphaGLTFLoader.ts"
       - "apps/web/scripts/spatial-glb-regression.mjs"
+      - "apps/web/scripts/spatial-gltfloader-parse.mjs"
       - "apps/client/scripts/spatial-glb-regression.mjs"
       - "tools/3d-assets/meshopt-fallback-compat.mjs"
 
@@ -181,6 +182,34 @@ jobs:
       - name: Install Web dependencies
         working-directory: apps/web
         run: npm ci
+      - name: Parse real acquired avatar geometry through Three GLTFLoader
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .artifacts/acquired/results/gltfloader-parse
+          failed=0
+          while IFS= read -r file; do
+            name="$(basename "$file" .glb)"
+            if (cd apps/web && node scripts/spatial-gltfloader-parse.mjs "$file") > ".artifacts/acquired/results/gltfloader-parse/$name.log" 2>&1; then
+              cp "apps/web/.artifacts/gltfloader-parse/$name.json" ".artifacts/acquired/results/gltfloader-parse/$name.json"
+            else
+              failed=$((failed + 1))
+              printf '{"asset":"%s","status":"failed","log":"%s.log"}\n' "$name" "$name" > ".artifacts/acquired/results/gltfloader-parse/$name.failure.json"
+            fi
+          done < .artifacts/acquired/avatar-files.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          base=Path(".artifacts/acquired/results/gltfloader-parse")
+          reports=[p for p in base.glob("*.json") if not p.name.endswith(".failure.json")]
+          failures=list(base.glob("*.failure.json"))
+          parsed=sum(int(json.loads(p.read_text()).get("meshCount",0)) for p in reports)
+          skinned=sum(int(json.loads(p.read_text()).get("skinnedMeshCount",0)) for p in reports)
+          summary={"test":"Three.js GLTFLoader parse of actual acquired avatar GLBs","passed_assets":len(reports),"failed_assets":len(failures),"parsed_mesh_nodes":parsed,"assets_with_skinned_mesh":skinned,"scope":"geometry/skin parse after stripping materials/images only in memory; not texture decode, GPU render, or device acceptance"}
+          (base/"summary.json").write_text(json.dumps(summary,indent=2))
+          print(json.dumps(summary,indent=2))
+          if failures: raise SystemExit(1)
+          PY
       - name: Run Web Meshopt decoder on all acquired avatar GLBs
         shell: bash
         run: |
