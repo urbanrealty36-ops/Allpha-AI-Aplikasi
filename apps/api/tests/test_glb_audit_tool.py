@@ -16,7 +16,7 @@ SPEC.loader.exec_module(AUDIT)
 def write_glb(path: Path, document: dict) -> None:
     payload = json.dumps(document, separators=(",", ":")).encode("utf-8")
     payload += b" " * ((-len(payload)) % 4)
-    binary = b"\\x00" * 4
+    binary = b"\x00" * 4
     chunks = struct.pack("<II", len(payload), 0x4E4F534A) + payload
     chunks += struct.pack("<II", len(binary), 0x004E4942) + binary
     total_length = 12 + len(chunks)
