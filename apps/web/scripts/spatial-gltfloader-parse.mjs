@@ -20,8 +20,8 @@ while (offset < raw.length) {
   if (len % 4 || end > raw.length) throw new Error("invalid GLB chunk bounds");
   if (kind === "JSON") {
     if (json) throw new Error("duplicate JSON chunk");
-    json = JSON.parse(raw.toString("utf8", start, end).replace(/[\\u0000 \\t\\r\\n]+$/u, ""));
-  } else if (kind === "BIN\\u0000") {
+    json = JSON.parse(raw.toString("utf8", start, end).replace(/[\u0000 \t\r\n]+$/u, ""));
+  } else if (kind === "BIN\u0000") {
     bin = raw.subarray(start, end);
   }
   offset = end;
@@ -54,7 +54,7 @@ jsonHeader.writeUInt32LE(paddedJson.length, 0);
 jsonHeader.write("JSON", 4, 4, "ascii");
 const binHeader = Buffer.alloc(8);
 binHeader.writeUInt32LE(binChunk.length, 0);
-binHeader.write("BIN\\0", 4, 4, "ascii");
+binHeader.write("BIN\0", 4, 4, "ascii");
 const chunks = Buffer.concat([jsonHeader, paddedJson, binHeader, binChunk]);
 const header = Buffer.alloc(12);
 header.write("glTF", 0, 4, "ascii");
