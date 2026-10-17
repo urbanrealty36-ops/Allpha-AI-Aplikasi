@@ -14,6 +14,8 @@ on:
       - "apps/client/lib/spatial/configureAllphaGLTFLoader.ts"
       - "apps/web/scripts/spatial-glb-regression.mjs"
       - "apps/web/scripts/spatial-gltfloader-parse.mjs"
+      - "apps/web/scripts/spatial-browser-visual-regression.mjs"
+      - "tools/3d-assets/browser-glb-visual-test.html"
       - "apps/client/scripts/spatial-glb-regression.mjs"
       - "tools/3d-assets/meshopt-fallback-compat.mjs"
 
@@ -104,7 +106,13 @@ jobs:
       - name: Install Web dependencies
         working-directory: apps/web
         run: npm ci
+      - name: Install Playwright and Chromium for real texture/WebGL regression
+        working-directory: apps/web
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
       - name: Parse real acquired avatar geometry through Three GLTFLoader
+        continue-on-error: true
         shell: bash
         run: |
           set +e
@@ -132,7 +140,11 @@ jobs:
           print(json.dumps(summary,indent=2))
           if failures: raise SystemExit(1)
           PY
+      - name: Run all acquired avatars through browser texture decode and WebGL frame
+        continue-on-error: true
+        run: node apps/web/scripts/spatial-browser-visual-regression.mjs .artifacts/acquired/avatar-files.txt .artifacts/acquired/results/browser-visual
       - name: Run Web Meshopt decoder on all acquired avatar GLBs
+        continue-on-error: true
         shell: bash
         run: |
           set +e
@@ -164,6 +176,7 @@ jobs:
         working-directory: apps/client
         run: npm ci
       - name: Run Native Meshopt decoder on all acquired avatar GLBs
+        continue-on-error: true
         shell: bash
         run: |
           set +e
@@ -189,6 +202,33 @@ jobs:
           (base/"summary.json").write_text(json.dumps(summary,indent=2))
           print(json.dumps(summary,indent=2))
           if failures: raise SystemExit(1)
+          PY
+      - name: Enforce actual-asset regression acceptance gate
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          root=Path(".artifacts/acquired/results")
+          expected=["gltfloader-parse/summary.json","browser-visual/summary.json","web/summary.json","native/summary.json"]
+          failures=[]
+          for rel in expected:
+              p=root/rel
+              if not p.exists():
+                  failures.append({"test":rel,"error":"summary missing"})
+                  continue
+              data=json.loads(p.read_text())
+              count=data.get("failed_assets")
+              if count is None:
+                  count=data.get("failed",0)
+              print(json.dumps({"test":rel,"summary":data},indent=2))
+              if count != 0:
+                  failures.append({"test":rel,"failed_assets":count})
+          if failures:
+              print(json.dumps({"acceptance":"FAIL","failures":failures},indent=2))
+              sys.exit(1)
+          print(json.dumps({"acceptance":"PASS","scope":"232 actual avatars: GLTFLoader geometry/skin, browser texture/WebGL, Web decoder, Native decoder. Physical Android/iOS performance remains separate."},indent=2))
           PY
       - name: Upload actual acquired avatar regression evidence
         if: always()
