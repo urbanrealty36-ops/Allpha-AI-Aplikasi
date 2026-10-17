@@ -137,17 +137,35 @@ def main():
             candidates.append((record, url, lic))
     if not candidates:
         raise SystemExit("No model with explicit per-model MIT metadata and character/rigged identity found in catalog; refusing to guess a license.")
-    record, url, lic = sorted(candidates, key=lambda x: (len(str(x[0])), x[1]))[0]
-    r = requests.get(url, timeout=120); r.raise_for_status()
-    glb_path = out / "avatar.glb"; glb_path.write_bytes(r.content)
-    structure = validate_glb(glb_path)
-    if "EXT_texture_webp" not in structure["extensions_used"] and "EXT_texture_webp" not in structure["extensions_required"]:
-        raise ValueError("catalog candidate did not contain the expected EXT_texture_webp metadata; fixture needs manual review")
+    selected = None
+    candidate_errors = []
+    # Try small, explicitly MIT-licensed character entries until one has a valid
+    # embedded GLB container and actual meshopt bufferViews. Never silently
+    # accept an HTML response or an incomplete candidate as the fixture.
+    for record, url, lic in sorted(candidates, key=lambda x: (len(str(x[0])), x[1])):
+        try:
+            r = requests.get(url, timeout=120); r.raise_for_status()
+            candidate_path = out / "avatar-candidate.glb"
+            candidate_path.write_bytes(r.content)
+            structure = validate_glb(candidate_path)
+            if "EXT_texture_webp" not in structure["extensions_used"] and "EXT_texture_webp" not in structure["extensions_required"]:
+                raise ValueError("EXT_texture_webp metadata absent")
+            selected = (record, url, lic, candidate_path, structure)
+            break
+        except Exception as exc:
+            candidate_errors.append({"url": url, "error": str(exc), "bytes": candidate_path.stat().st_size if candidate_path.exists() else 0})
+    if selected is None:
+        (out / "candidate-errors.json").write_text(json.dumps(candidate_errors, indent=2), encoding="utf-8")
+        raise SystemExit("No candidate passed GLB/container/meshopt checks; see candidate-errors.json.")
+    record, url, lic, candidate_path, structure = selected
+    glb_path = out / "avatar.glb"
+    candidate_path.replace(glb_path)
     license_record = {
         "catalog_url": args.catalog_url, "source_model_url": url,
         "model_name": record.get("name") or record.get("title") or record.get("text") or "unnamed",
         "model_license_metadata": lic, "catalog_entry": record,
-        "license_scope_note": "Per-model catalog metadata captured; retain this evidence with the fixture. A repository-wide license is not substituted for per-model metadata."
+        "license_scope_note": "Per-model catalog metadata captured; retain this evidence with the fixture. A repository-wide license is not substituted for per-model metadata.",
+        "candidate_failures_before_selection": candidate_errors
     }
     (out / "license-metadata.json").write_text(json.dumps(license_record, ensure_ascii=False, indent=2), encoding="utf-8")
     report = {**structure, **{k:v for k,v in license_record.items() if k != "catalog_entry"},
