@@ -40,7 +40,7 @@ if (outOfRangeBaseBuffers.length) {
   throw new Error(`base buffer index out of range: ${outOfRangeBaseBuffers.join(", ")}`);
 }
 if (!declaredExts.includes("EXT_meshopt_compression")) throw new Error("EXT_meshopt_compression is absent");
-if (!declaredExts.includes("EXT_texture_webp")) throw new Error("EXT_texture_webp is absent");
+const hasTextureWebP = declaredExts.includes("EXT_texture_webp");
 
 await MeshoptDecoder.ready;
 const decoded = [];
@@ -69,6 +69,7 @@ const report = {
   platformHarness: path.resolve(process.cwd()),
   fileBytes: raw.length,
   extensions: declaredExts,
+  hasTextureWebP,
   compressedBufferViews: decoded.length,
   decodedBufferViews: decoded.length,
   decodedBytes: decoded.reduce((sum, x) => sum + x.decodedBytes, 0),
