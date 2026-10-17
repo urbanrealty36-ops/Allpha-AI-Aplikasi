@@ -10,12 +10,12 @@ for i in $(seq 1 120); do
   device_logs="$(adb logcat -d -s ReactNativeJS:V ReactNative:V AndroidRuntime:E 2>/dev/null || true)"
   metro_logs="$(cat .artifacts/device-fixture/results/android/expo-run.log 2>/dev/null || true)"
   logs="${device_logs}\n${metro_logs}"
-  if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then
+  if [[ "$logs" == *"SPATIAL_DEVICE_TEST_RESULT:PASS"* ]]; then
     printf "%s\n%s\n" "$device_logs" "$metro_logs" > .artifacts/device-fixture/results/android/logcat.txt
     passed=1
     break
   fi
-  if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:|SPATIAL_DEVICE_BOUNDARY_ERROR"; then
+  if grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:|SPATIAL_DEVICE_BOUNDARY_ERROR" <<< "$logs"; then
     echo "$device_logs" > .artifacts/device-fixture/results/android/logcat.txt
     adb logcat -d > .artifacts/device-fixture/results/android/logcat-full.txt || true
     adb shell screencap -p /sdcard/allpha-spatial-failure.png || true
