@@ -213,6 +213,15 @@ def main() -> int:
                 "ramjigeddam/3d": "https://github.com/ramjigeddam/3d",
                 "SpectraStudios/SourceCityToolkit_glb": "https://github.com/SpectraStudios/SourceCityToolkit_glb/blob/main/README.md",
             }.get(row.get("repo", ""), ""),
+            "upstream_source_evidence_url": {
+                "c-frame/valid-avatars-glb": "https://github.com/xrtlab/Validated-Avatar-Library-for-Inclusion-and-Diversity---VALID",
+            }.get(row.get("repo", ""), ""),
+            "upstream_license_evidence_url": {
+                "c-frame/valid-avatars-glb": "https://github.com/xrtlab/Validated-Avatar-Library-for-Inclusion-and-Diversity---VALID/blob/main/LICENSE",
+            }.get(row.get("repo", ""), ""),
+            "upstream_source_scope_assessment": {
+                "c-frame/valid-avatars-glb": "UPSTREAM_VALID_AVATAR_LIBRARY_IDENTIFIED; MIT_LICENSE_PRESENT_UPSTREAM_AND_IN_CONVERSION_REPOSITORY; PER_ASSET_DISTRIBUTION_DERIVATIVE_AND_LIKENESS_REVIEW_STILL_REQUIRED",
+            }.get(row.get("repo", ""), "NO_UPSTREAM_SOURCE_LINK_RECORDED"),
             "license_scope_assessment": {
                 "rostock/3DModels": "REPOSITORY_LEVEL_CC0_CLAIM_ONLY_PER_FILE_CONTENT_AND_THIRD_PARTY_RIGHTS_REVIEW_REQUIRED",
                 "c-frame/valid-avatars-glb": "REPOSITORY_MIT_CLAIM_ONLY_LIKENESS_AND_DERIVATIVE_RIGHTS_UNVERIFIED",
