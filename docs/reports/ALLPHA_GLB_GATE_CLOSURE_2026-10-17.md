@@ -128,3 +128,10 @@ Inspection of the downloaded source manifest found that canonical download links
 - [Commit 935a4eb](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/935a4ebe080ffb31085f1611323105232b65442e) adds upstream source/license evidence fields for the avatar conversion. Reconciliation run [39026460210](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39026460210) is queued for the refreshed matrix.
 
 **Decision unchanged:** all assets remain `NOT_APPROVED`; ENG-P22 and ENG-P23 remain `in_progress`; ENG-P24 remains `not_started`. No Supabase writes, registrations, approvals, or publications were performed.
+
+
+## Upstream evidence matrix verified — run 39026460210
+
+- [Run 39026460210](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39026460210) succeeded. Artifact [12098941661](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39026460210/artifacts/12098941661) was inspected: 933 manifest rows, 66 columns; repository license and texture evidence URLs are populated for all rows; upstream VALID source/license evidence URLs are populated for 234 c-frame manifest rows, and 699 other rows explicitly record that no upstream source link is recorded.
+- Technical counts and fail-closed dispositions remain unchanged: 927 valid physical GLBs, 0 integrity mismatches, 1,639 embedded image hashes / 1,234 unique / 0 unresolved; 241 skinned assets; 8 assets with animation clips; 262 quarantine, 665 hold, 6 nonphysical/deduplicated references; 0 approved assets.
+- [Run 39024893640](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39024893640) remains `in_progress` at latest poll. The acquired-avatar regression is complete and passed; Android and iOS device jobs remain active with no final artifacts. Device acceptance is pending.
