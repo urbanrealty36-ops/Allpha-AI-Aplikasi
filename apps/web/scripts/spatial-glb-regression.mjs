@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { findInvalidMeshoptFallbackBuffers } from "../../tools/3d-assets/meshopt-fallback-compat.mjs";
 
 const file = process.argv[2];
 if (!file) throw new Error("Usage: node scripts/spatial-glb-regression.mjs <fixture.glb>");
@@ -28,12 +29,15 @@ while (offset < raw.length) {
 if (!json || !bin) throw new Error("fixture requires JSON and BIN chunks");
 const declaredExts = [...(json.extensionsUsed ?? []), ...(json.extensionsRequired ?? [])];
 const buffers = json.buffers ?? [];
-const unresolvedBaseBuffers = [...new Set((json.bufferViews ?? [])
+const invalidFallbackBuffers = findInvalidMeshoptFallbackBuffers(json);
+if (invalidFallbackBuffers.length) {
+  throw new Error(`invalid Meshopt fallback buffer contract: ${JSON.stringify(invalidFallbackBuffers)}`);
+}
+const outOfRangeBaseBuffers = [...new Set((json.bufferViews ?? [])
   .map((bufferView) => bufferView.buffer ?? 0)
-  .filter((index) => !Number.isInteger(index) || index < 0 || index >= buffers.length
-    || (index > 0 && !buffers[index]?.uri)))];
-if (unresolvedBaseBuffers.length) {
-  throw new Error(`base buffer(s) ${unresolvedBaseBuffers.join(", ")} are missing resolvable URI data; Meshopt byte decoding alone cannot prove GLTFLoader compatibility`);
+  .filter((index) => !Number.isInteger(index) || index < 0 || index >= buffers.length))];
+if (outOfRangeBaseBuffers.length) {
+  throw new Error(`base buffer index out of range: ${outOfRangeBaseBuffers.join(", ")}`);
 }
 if (!declaredExts.includes("EXT_meshopt_compression")) throw new Error("EXT_meshopt_compression is absent");
 if (!declaredExts.includes("EXT_texture_webp")) throw new Error("EXT_texture_webp is absent");
