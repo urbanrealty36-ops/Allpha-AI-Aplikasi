@@ -314,8 +314,17 @@ jobs:
                 object.category !== 'agent-character' || !object.asset_url?.startsWith('https://')) {
               throw new Error('TEST_ONLY manifest did not match the pinned quarantined fixture contract');
             }
+            // Independently download the short-lived signed URL and verify exact bytes
+            // before either native renderer is allowed to use the fixture.
+            const bytesResponse = await fetch(object.asset_url, { cache: 'no-store' });
+            if (!bytesResponse.ok) throw new Error('Signed asset download failed with HTTP ' + bytesResponse.status);
+            const bytes = Buffer.from(await bytesResponse.arrayBuffer());
+            const actualSha256 = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+            if (actualSha256 !== object.sha256 || bytes.length !== Number(object.byte_size)) {
+              throw new Error('Signed asset byte verification failed: sha256=' + actualSha256 + ', bytes=' + bytes.length);
+            }
             core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
-            core.info(JSON.stringify({ scene_key: sceneKey, sha256: object.sha256, byte_size: Number(object.byte_size), category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+            core.info(JSON.stringify({ scene_key: sceneKey, expected_sha256: object.sha256, actual_sha256: actualSha256, expected_byte_size: Number(object.byte_size), actual_byte_size: bytes.length, byte_verification: 'PASS', category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
       - name: Build Android release APK before booting emulator
         shell: bash
         run: |
@@ -402,8 +411,17 @@ jobs:
                 object.category !== 'agent-character' || !object.asset_url?.startsWith('https://')) {
               throw new Error('TEST_ONLY manifest did not match the pinned quarantined fixture contract');
             }
+            // Independently download the short-lived signed URL and verify exact bytes
+            // before either native renderer is allowed to use the fixture.
+            const bytesResponse = await fetch(object.asset_url, { cache: 'no-store' });
+            if (!bytesResponse.ok) throw new Error('Signed asset download failed with HTTP ' + bytesResponse.status);
+            const bytes = Buffer.from(await bytesResponse.arrayBuffer());
+            const actualSha256 = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+            if (actualSha256 !== object.sha256 || bytes.length !== Number(object.byte_size)) {
+              throw new Error('Signed asset byte verification failed: sha256=' + actualSha256 + ', bytes=' + bytes.length);
+            }
             core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
-            core.info(JSON.stringify({ scene_key: sceneKey, sha256: object.sha256, byte_size: Number(object.byte_size), category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+            core.info(JSON.stringify({ scene_key: sceneKey, expected_sha256: object.sha256, actual_sha256: actualSha256, expected_byte_size: Number(object.byte_size), actual_byte_size: bytes.length, byte_verification: 'PASS', category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
       - name: Prepare isolated test app
         shell: bash
         run: |
