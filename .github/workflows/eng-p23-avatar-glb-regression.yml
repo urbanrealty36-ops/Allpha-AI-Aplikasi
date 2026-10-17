@@ -327,15 +327,43 @@ jobs:
             # Run the repository-local Expo CLI from the actual native app root.
             # This CLI version does not accept --project-dir on prebuild/run commands.
             (cd apps/client && ./node_modules/.bin/expo prebuild --platform android --no-install)
-            (cd apps/client && ./node_modules/.bin/expo run:android --variant release)
+            # Keep Metro/Expo stdout and device logcat as separate, retained evidence streams.
+            (cd apps/client && ./node_modules/.bin/expo run:android --variant release) > .artifacts/device-fixture/results/android/expo-run.log 2>&1 &
+            expo_pid=$!
             passed=0
             for i in $(seq 1 120); do
-              logs="$(adb logcat -d -s ReactNativeJS:V ReactNative:V AndroidRuntime:E 2>/dev/null || true)"
-              if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then echo "$logs" > .artifacts/device-fixture/results/android/logcat.txt; passed=1; break; fi
-              if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:"; then echo "$logs" > .artifacts/device-fixture/results/android/logcat.txt; adb shell screencap -p /sdcard/allpha-spatial-failure.png || true; adb pull /sdcard/allpha-spatial-failure.png .artifacts/device-fixture/results/android/failure.png || true; cat .artifacts/device-fixture/results/android/logcat.txt; exit 1; fi
+              device_logs="$(adb logcat -d -s ReactNativeJS:V ReactNative:V AndroidRuntime:E 2>/dev/null || true)"
+              metro_logs="$(cat .artifacts/device-fixture/results/android/expo-run.log 2>/dev/null || true)"
+              logs="$device_logs
+$metro_logs"
+              if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then
+                echo "$device_logs" > .artifacts/device-fixture/results/android/logcat.txt
+                passed=1
+                break
+              fi
+              if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:|SPATIAL_DEVICE_BOUNDARY_ERROR"; then
+                echo "$device_logs" > .artifacts/device-fixture/results/android/logcat.txt
+                adb logcat -d > .artifacts/device-fixture/results/android/logcat-full.txt || true
+                adb shell screencap -p /sdcard/allpha-spatial-failure.png || true
+                adb pull /sdcard/allpha-spatial-failure.png .artifacts/device-fixture/results/android/failure.png || true
+                cat .artifacts/device-fixture/results/android/expo-run.log
+                cat .artifacts/device-fixture/results/android/logcat-full.txt
+                exit 1
+              fi
+              if ! kill -0 "$expo_pid" 2>/dev/null; then
+                echo "Expo process exited before renderer PASS"
+                cat .artifacts/device-fixture/results/android/expo-run.log
+                adb logcat -d > .artifacts/device-fixture/results/android/logcat-full.txt
+                exit 1
+              fi
               sleep 3
             done
-            if [ "$passed" -ne 1 ]; then adb logcat -d > .artifacts/device-fixture/results/android/logcat.txt; echo "Native renderer did not report PASS"; exit 1; fi
+            if [ "$passed" -ne 1 ]; then
+              adb logcat -d > .artifacts/device-fixture/results/android/logcat-full.txt
+              echo "Native renderer did not report PASS within 6 minutes"
+              cat .artifacts/device-fixture/results/android/expo-run.log
+              exit 1
+            fi
             adb shell screencap -p /sdcard/allpha-spatial-render.png
             adb pull /sdcard/allpha-spatial-render.png .artifacts/device-fixture/results/android/render.png
             python3 - <<'PY'
@@ -439,15 +467,42 @@ jobs:
           # Run the repository-local Expo CLI from the actual native app root.
           # This CLI version does not accept --project-dir on prebuild/run commands.
           (cd apps/client && ./node_modules/.bin/expo prebuild --platform ios --no-install)
-          (cd apps/client && ./node_modules/.bin/expo run:ios --configuration Release --device "$UDID")
+          # Expo/Metro runtime exceptions are emitted on the runner process, not reliably in simctl logs.
+          (cd apps/client && ./node_modules/.bin/expo run:ios --configuration Release --device "$UDID") > .artifacts/device-fixture/results/ios/expo-run.log 2>&1 &
+          expo_pid=$!
           passed=0
           for i in $(seq 1 120); do
-            logs="$(xcrun simctl spawn "$UDID" log show --last 2m --style compact 2>/dev/null || true)"
-            if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then echo "$logs" > .artifacts/device-fixture/results/ios/simulator.log; passed=1; break; fi
-            if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:"; then echo "$logs" > .artifacts/device-fixture/results/ios/simulator.log; xcrun simctl io "$UDID" screenshot .artifacts/device-fixture/results/ios/failure.png || true; cat .artifacts/device-fixture/results/ios/simulator.log; exit 1; fi
+            device_logs="$(xcrun simctl spawn "$UDID" log show --last 2m --style compact 2>/dev/null || true)"
+            metro_logs="$(cat .artifacts/device-fixture/results/ios/expo-run.log 2>/dev/null || true)"
+            logs="$device_logs
+$metro_logs"
+            if echo "$logs" | grep -q "SPATIAL_DEVICE_TEST_RESULT:PASS"; then
+              echo "$device_logs" > .artifacts/device-fixture/results/ios/simulator.log
+              passed=1
+              break
+            fi
+            if echo "$logs" | grep -Eqi "SPATIAL_DEVICE_TEST_RESULT:FAIL|Could not load|Cannot read property .* of undefined|TypeError:|SPATIAL_DEVICE_BOUNDARY_ERROR"; then
+              echo "$device_logs" > .artifacts/device-fixture/results/ios/simulator.log
+              xcrun simctl spawn "$UDID" log show --last 5m --style compact > .artifacts/device-fixture/results/ios/simulator-full.log 2>&1 || true
+              xcrun simctl io "$UDID" screenshot .artifacts/device-fixture/results/ios/failure.png || true
+              cat .artifacts/device-fixture/results/ios/expo-run.log
+              cat .artifacts/device-fixture/results/ios/simulator-full.log
+              exit 1
+            fi
+            if ! kill -0 "$expo_pid" 2>/dev/null; then
+              echo "Expo process exited before renderer PASS"
+              cat .artifacts/device-fixture/results/ios/expo-run.log
+              exit 1
+            fi
             sleep 3
           done
-          if [ "$passed" -ne 1 ]; then echo "iOS renderer did not report PASS"; xcrun simctl spawn "$UDID" log show --last 5m --style compact > .artifacts/device-fixture/results/ios/simulator.log; exit 1; fi
+          if [ "$passed" -ne 1 ]; then
+            echo "iOS renderer did not report PASS within 6 minutes"
+            xcrun simctl spawn "$UDID" log show --last 5m --style compact > .artifacts/device-fixture/results/ios/simulator-full.log 2>&1 || true
+            cat .artifacts/device-fixture/results/ios/expo-run.log
+            cat .artifacts/device-fixture/results/ios/simulator-full.log
+            exit 1
+          fi
           xcrun simctl io "$UDID" screenshot .artifacts/device-fixture/results/ios/render.png
           python3 - <<'PY'
           import json, struct
