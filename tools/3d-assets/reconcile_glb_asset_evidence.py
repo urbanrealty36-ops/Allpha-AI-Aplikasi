@@ -188,7 +188,29 @@ def main() -> int:
     results = []
     seen_paths = set()
     for row in rows:
-        result: dict[str, Any] = {**row}
+        # Normalize acquisition manifest provenance into explicit, stable audit fields.
+        # The source manifest calls the canonical download URL "url"; preserve it as
+        # source_url instead of leaving the downstream evidence field blank.
+        result: dict[str, Any] = {
+            **row,
+            "source_repository": row.get("repo", ""),
+            "source_path": row.get("path", ""),
+            "source_url": row.get("source_url") or row.get("url", ""),
+            "source_license_claim": row.get("license", ""),
+            "source_review_status": row.get("review", ""),
+            "rights_review_status": (
+                "QUARANTINE_REQUIRED" if str(row.get("review", "")).upper().startswith("QUARANTINE")
+                else "PER_FILE_RIGHTS_REVIEW_REQUIRED"
+            ),
+            "category_review_status": (
+                "VERIFIED" if row.get("category_mapping_status") == "verified"
+                else "UNMAPPED_REQUIRES_REVIEW" if row.get("category_mapping_status") == "unmapped"
+                else "HEURISTIC_CANDIDATE_REQUIRES_REVIEW"
+            ),
+            "texture_rights_review_status": "PENDING_EMBEDDED_TEXTURE_PROVENANCE",
+            "visual_review_status": "PENDING_HUMAN_VISUAL_REVIEW",
+            "renderer_device_review_status": "PENDING_RENDERER_AND_DEVICE_ACCEPTANCE",
+        }
         result.update({"actual_bytes": "", "actual_sha256": "", "container_status": "not_checked",
                        "fallback_status": "not_checked", "rights_disposition": "HOLD",
                        "publication_status": "NOT_APPROVED"})
