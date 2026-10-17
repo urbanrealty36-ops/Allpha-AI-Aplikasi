@@ -100,10 +100,16 @@ class DecisionStore:
             raise AssertionError(f"Unexpected GET filters: {params}")
 
         if method == "PATCH":
-            if (
+            same_run = (
                 params.get("id") == f"eq.{self.current['id']}"
                 and params.get("owner_user_id") == f"eq.{self.current['owner_user_id']}"
                 and params.get("runtime_evidence_digest") == f"eq.{self.current.get('runtime_evidence_digest')}"
+            )
+            if same_run and "previous_version_comparison" in (body or {}):
+                self.current.update(body or {})
+                return [dict(self.current)]
+            if (
+                same_run
                 and params.get("release_decision") == "is.null"
                 and self.current.get("release_decision") is None
             ):
