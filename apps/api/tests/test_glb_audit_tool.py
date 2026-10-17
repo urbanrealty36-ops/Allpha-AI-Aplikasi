@@ -52,7 +52,7 @@ def test_audit_parses_json_and_reports_capabilities(tmp_path: Path) -> None:
     assert result["compatibility_findings"] == []
 
 
-def test_audit_flags_unresolved_nonzero_base_buffer_without_rejecting_container(tmp_path: Path) -> None:
+def test_audit_accepts_spec_conformant_meshopt_fallback_buffer(tmp_path: Path) -> None:
     path = tmp_path / "unresolved-fallback-buffer.glb"
     write_glb(
         path,
@@ -89,4 +89,45 @@ def test_audit_flags_unresolved_nonzero_base_buffer_without_rejecting_container(
     assert result["gltf_json_valid"] is True
     assert result["buffers_missing_uri_nonzero"] == [1]
     assert result["meshopt_source_buffer_indices"] == [0]
-    assert "nonzero_buffer_missing_uri" in result["compatibility_findings"]
+    assert result["valid_meshopt_fallback_buffers"] == [1]
+    assert result["invalid_meshopt_fallback_buffers"] == []
+    assert "invalid_meshopt_fallback_buffer" not in result["compatibility_findings"]
+
+
+
+def test_audit_flags_nonzero_uri_less_buffer_without_fallback_contract(tmp_path: Path) -> None:
+    path = tmp_path / "invalid-fallback-buffer.glb"
+    write_glb(
+        path,
+        {
+            "asset": {"version": "2.0"},
+            "buffers": [
+                {"byteLength": 4},
+                {"byteLength": 16},
+            ],
+            "bufferViews": [
+                {
+                    "buffer": 1,
+                    "byteLength": 16,
+                    "extensions": {
+                        "EXT_meshopt_compression": {
+                            "buffer": 0,
+                            "byteOffset": 0,
+                            "byteLength": 4,
+                            "byteStride": 4,
+                            "count": 1,
+                            "mode": "ATTRIBUTES",
+                        }
+                    },
+                }
+            ],
+            "extensionsUsed": ["EXT_meshopt_compression"],
+            "extensionsRequired": ["EXT_meshopt_compression"],
+        },
+    )
+    result = AUDIT.inspect_glb(path)
+    assert result["glb_valid"] is True
+    assert result["invalid_meshopt_fallback_buffers"] == [
+        {"index": 1, "reasons": ["fallback_flag_missing"]}
+    ]
+    assert "invalid_meshopt_fallback_buffer" in result["compatibility_findings"]
