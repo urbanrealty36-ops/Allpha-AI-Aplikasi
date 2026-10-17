@@ -189,7 +189,7 @@ jobs:
           failed=0
           while IFS= read -r file; do
             name="$(basename "$file" .glb)"
-            if (cd apps/web && node scripts/spatial-glb-regression.mjs "$GITHUB_WORKSPACE/$file") > ".artifacts/acquired/results/web/$name.log" 2>&1; then
+            if (cd apps/web && node scripts/spatial-glb-regression.mjs "$file") > ".artifacts/acquired/results/web/$name.log" 2>&1; then
               cp apps/web/.artifacts/spatial-regression.json ".artifacts/acquired/results/web/$name.json"
             else
               failed=$((failed + 1))
@@ -220,7 +220,7 @@ jobs:
           failed=0
           while IFS= read -r file; do
             name="$(basename "$file" .glb)"
-            if (cd apps/client && node scripts/spatial-glb-regression.mjs "$GITHUB_WORKSPACE/$file") > ".artifacts/acquired/results/native/$name.log" 2>&1; then
+            if (cd apps/client && node scripts/spatial-glb-regression.mjs "$file") > ".artifacts/acquired/results/native/$name.log" 2>&1; then
               cp apps/client/.artifacts/spatial-regression.json ".artifacts/acquired/results/native/$name.json"
             else
               failed=$((failed + 1))
