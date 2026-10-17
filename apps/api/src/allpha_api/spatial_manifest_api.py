@@ -53,7 +53,7 @@ async def _get_rows(client: httpx.AsyncClient, url: str, key: str, table: str, p
     return rows
 
 
-async def _signed_asset_url(client: httpx.AsyncClient, url: str, key: str, bucket: str, path: str) -> str:
+async def _signed_asset_url(client: httpx.AsyncClient, url: str, key: str, bucket: str, path: str, expires_in: int = _SIGNED_URL_TTL_SECONDS) -> str:
     allowed_bucket = os.getenv("ALLPHA_SPATIAL_ASSET_BUCKET", "")
     if not allowed_bucket or bucket != allowed_bucket:
         raise HTTPException(status_code=503, detail={
@@ -69,7 +69,7 @@ async def _signed_asset_url(client: httpx.AsyncClient, url: str, key: str, bucke
     response = await client.post(
         endpoint,
         headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"expiresIn": _SIGNED_URL_TTL_SECONDS},
+        json={"expiresIn": expires_in},
     )
     if response.status_code >= 400:
         raise HTTPException(status_code=503, detail={
@@ -155,7 +155,8 @@ async def get_test_only_scene_manifest(
                     })
                 asset = assets[0]
                 signed_url = await _signed_asset_url(
-                    client, url, key, asset.get("storage_bucket", ""), asset.get("storage_path", "")
+                    client, url, key, asset.get("storage_bucket", ""), asset.get("storage_path", ""),
+                    expires_in=1800,
                 )
                 objects.append({
                     "entity_id": placement.get("entity_id"),
