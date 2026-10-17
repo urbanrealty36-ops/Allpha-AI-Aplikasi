@@ -15,7 +15,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 
-from allpha_api.spatial_test_auth import is_authorized_spatial_test_request
+from allpha_api.spatial_test_auth import is_authorized_spatial_ingest_request
 
 router = APIRouter(tags=["spatial-ingest"])
 MAX_BYTES = 536_870_912
@@ -97,7 +97,7 @@ async def ingest_test_only_glb(
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict:
     """Upload a verified GLB into private storage; register only evidence-mapped TEST_ONLY assets."""
-    if not is_authorized_spatial_test_request(test_key, authorization):
+    if not is_authorized_spatial_ingest_request(test_key, authorization):
         raise _error(404, "SPATIAL_TEST_INGEST_NOT_FOUND", "Endpoint ingest pengujian tidak ditemukan.")
 
     try:
