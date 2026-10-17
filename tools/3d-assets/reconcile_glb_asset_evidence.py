@@ -171,10 +171,12 @@ def main() -> int:
         path = matches[0]
         try:
             doc, binary, meta = parse_glb(path)
-            result.update(meta)
-            result.update(inspect_json(doc))
             result["actual_bytes"] = meta["bytes"]
             result["actual_sha256"] = meta["sha256"]
+            result["glb_version"] = meta["glb_version"]
+            result["chunk_count"] = meta["chunk_count"]
+            result["json_valid"] = meta["json_valid"]
+            result.update(inspect_json(doc))
             expected_hash = row.get("sha256", "").lower()
             expected_size = row.get("bytes", "")
             integrity = []
@@ -184,7 +186,9 @@ def main() -> int:
                 integrity.append("byte_size_mismatch")
             result["container_status"] = "valid" if not integrity else "integrity_mismatch"
             fallback = result["meshopt_fallback_findings"]
-            result["fallback_status"] = "valid" if not fallback else "invalid"
+            fallback_candidate = any(i > 0 and isinstance(buffer, dict) and not buffer.get("uri")
+                for i, buffer in enumerate(doc.get("buffers", [])))
+            result["fallback_status"] = ("invalid" if fallback else "valid") if fallback_candidate else "not_applicable"
             reasons = list(integrity)
             if row.get("review", "").upper().startswith("QUARANTINE"):
                 reasons.append("source_manifest_quarantine")
@@ -224,6 +228,7 @@ def main() -> int:
         "missing_or_ambiguous_files": sum(1 for r in results if r.get("container_status") == "missing_or_ambiguous_file"),
         "meshopt_fallback_valid": sum(1 for r in results if r.get("fallback_status") == "valid"),
         "meshopt_fallback_invalid": sum(1 for r in results if r.get("fallback_status") == "invalid"),
+        "meshopt_fallback_not_applicable": sum(1 for r in results if r.get("fallback_status") == "not_applicable"),
         "assets_with_images": sum(1 for r in results if int(r.get("image_count") or 0) > 0),
         "assets_with_external_image_uris": sum(1 for r in results if int(r.get("external_image_uri_count") or 0) > 0),
         "assets_with_skins": sum(1 for r in results if int(r.get("skin_count") or 0) > 0),
