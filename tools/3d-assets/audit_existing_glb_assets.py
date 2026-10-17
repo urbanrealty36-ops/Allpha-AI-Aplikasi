@@ -87,7 +87,7 @@ def inspect_glb(path: Path) -> dict[str, Any]:
                     if document is not None:
                         raise ValueError("duplicate JSON chunk")
                     try:
-                        parsed = json.loads(payload.decode("utf-8").rstrip(" \\t\\r\\n\\x00"))
+                        parsed = json.loads(payload.decode("utf-8").rstrip(" \t\r\n\x00"))
                         if not isinstance(parsed, dict):
                             raise ValueError("JSON root must be an object")
                         document = parsed
