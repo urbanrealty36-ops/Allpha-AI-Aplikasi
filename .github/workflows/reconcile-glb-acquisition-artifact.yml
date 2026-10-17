@@ -1,0 +1,153 @@
+name: Reconcile GLB Acquisition Artifact
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Source acquisition run ID"
+        required: true
+        default: "38908521488"
+      source_artifact_name:
+        description: "Source artifact name"
+        required: true
+        default: "allpha-glb-acquisition-4"
+  push:
+    paths:
+      - ".github/workflows/reconcile-glb-acquisition-artifact.yml"
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: reconcile-glb-acquisition-artifact
+  cancel-in-progress: false
+jobs:
+  split-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Download original acquisition artifact from its run
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact_name || 'allpha-glb-acquisition-4' }}
+          run-id: ${{ inputs.source_run_id || '38908521488' }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: source-artifact
+      - name: Extract original bundle and split actual files into bounded shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f source-artifact/allpha-glb-acquisition.zip
+          mkdir -p extracted shards audit
+          unzip -q source-artifact/allpha-glb-acquisition.zip -d extracted
+          python - <<'PY'
+          import csv, json, shutil
+          from pathlib import Path
+
+          root = Path("extracted")
+          out = Path("shards")
+          audit = Path("audit")
+          manifest_path = root / "manifest.csv"
+          summary_path = root / "summary.json"
+          errors_path = root / "errors.json"
+          for p in (manifest_path, summary_path, errors_path):
+              if not p.exists():
+                  raise SystemExit(f"Required source file missing: {p}")
+          with manifest_path.open(newline="", encoding="utf-8") as f:
+              rows = list(csv.DictReader(f))
+          assets_dir = root / "assets"
+          actual = {str(p.relative_to(root)): p for p in assets_dir.rglob("*") if p.is_file()}
+          expected = {r.get("local_file", "") for r in rows if r.get("status") == "DOWNLOADED" and r.get("local_file")}
+          missing = sorted(expected - set(actual))
+          if missing:
+              raise SystemExit(f"Manifest references {len(missing)} missing downloaded files; first: {missing[:5]}")
+          unexpected = sorted(set(actual) - expected)
+          # Preserve all actual files, even if manifest status is inconsistent, so reconciliation can report them.
+          files = sorted(actual.items(), key=lambda kv: (-kv[1].stat().st_size, kv[0]))
+          shard_limit = 220_000_000
+          shards = []
+          for rel, src in files:
+              size = src.stat().st_size
+              if not shards or shards[-1]["bytes"] + size > shard_limit:
+                  shards.append({"bytes": 0, "files": []})
+              shards[-1]["files"].append((rel, src))
+              shards[-1]["bytes"] += size
+          if len(shards) > 4:
+              raise SystemExit(f"Expected at most 4 shards under configured limits; got {len(shards)}")
+          for i, shard in enumerate(shards, 1):
+              name = f"shard-{i:02d}"
+              dest = out / name
+              (dest / "assets").mkdir(parents=True, exist_ok=True)
+              rels = set()
+              for rel, src in shard["files"]:
+                  target = dest / rel
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(src, target)
+                  rels.add(rel)
+              shard_rows = [r for r in rows if r.get("local_file", "") in rels]
+              with (dest / "manifest.csv").open("w", newline="", encoding="utf-8") as f:
+                  fields = sorted({k for row in shard_rows for k in row})
+                  writer = csv.DictWriter(f, fieldnames=fields)
+                  writer.writeheader()
+                  writer.writerows(shard_rows)
+              (dest / "shard-summary.json").write_text(json.dumps({
+                  "shard": name, "files_copied": len(shard["files"]),
+                  "bytes": shard["bytes"], "manifest_rows": len(shard_rows),
+                  "shard_limit_bytes": shard_limit
+              }, indent=2), encoding="utf-8")
+          shutil.copy2(manifest_path, audit / "manifest.csv")
+          shutil.copy2(summary_path, audit / "summary.json")
+          shutil.copy2(errors_path, audit / "errors.json")
+          reconciliation = {
+              "source_run_id": "38908521488",
+              "manifest_rows": len(rows),
+              "manifest_downloaded_rows": sum(r.get("status") == "DOWNLOADED" for r in rows),
+              "expected_downloaded_paths": len(expected),
+              "actual_files_extracted": len(actual),
+              "missing_manifest_files": missing,
+              "actual_files_not_referenced_as_downloaded": unexpected,
+              "shards": [{"name": f"shard-{i:02d}", "files": len(s["files"]), "bytes": s["bytes"]} for i, s in enumerate(shards, 1)],
+              "note": "Shard splitting preserves source manifest statuses. This is not yet a fresh independent validation of GLB headers, hashes, or license evidence."
+          }
+          (audit / "extraction-reconciliation.json").write_text(json.dumps(reconciliation, indent=2), encoding="utf-8")
+          print(json.dumps(reconciliation, indent=2))
+          if missing:
+              raise SystemExit("Missing manifest files found; investigate before acceptance.")
+          PY
+      - name: Upload shard 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-01
+          path: shards/shard-01/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload shard 02
+        if: hashFiles('shards/shard-02/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-02
+          path: shards/shard-02/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload shard 03
+        if: hashFiles('shards/shard-03/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-03
+          path: shards/shard-03/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload shard 04
+        if: hashFiles('shards/shard-04/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-04
+          path: shards/shard-04/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload audit manifests and extraction reconciliation
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-glb-acquisition-reconciliation
+          path: audit/
+          if-no-files-found: error
+          retention-days: 14
