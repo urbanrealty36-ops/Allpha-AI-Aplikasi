@@ -75,8 +75,12 @@ gltf.scene.traverse((node) => {
 });
 const skinnedMeshes = meshes.filter((node) => node.isSkinnedMesh);
 const skeletonBones = new Set(skinnedMeshes.flatMap((node) => node.skeleton?.bones ?? []));
+const positionAttributeCount = meshes.reduce((sum, node) => sum + (node.geometry.attributes.position?.count ?? 0), 0);
+const geometryIndexCount = meshes.reduce((sum, node) => sum + (node.geometry.index?.count ?? 0), 0);
 if (!meshes.length) throw new Error("GLTFLoader parsed no mesh nodes");
 if (!skinnedMeshes.length) throw new Error("GLTFLoader parsed no skinned meshes in avatar fixture");
+if (!positionAttributeCount) throw new Error("GLTFLoader parsed no POSITION geometry attributes");
+if (!skeletonBones.size) throw new Error("GLTFLoader parsed no skeleton bones");
 const report = {
   asset: path.basename(file),
   originalBytes: raw.length,
@@ -87,7 +91,8 @@ const report = {
   skeletonBoneCount: skeletonBones.size,
   animationClipCount: gltf.animations.length,
   geometryAttributeNames: [...new Set(meshes.flatMap((node) => Object.keys(node.geometry.attributes)))].sort(),
-  geometryIndexCount: meshes.reduce((sum, node) => sum + (node.geometry.index?.count ?? 0), 0),
+  positionAttributeCount,
+  geometryIndexCount,
   textureMaterialHandling: "stripped from in-memory test copy; not accepted as texture/render proof",
   sourceBytesMutated: false
 };
