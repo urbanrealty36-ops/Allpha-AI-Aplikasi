@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/meshopt-fallback-compat.mjs";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { readFileSync } from "node:fs";
 
@@ -79,3 +80,26 @@ for (const [file, loadCall] of [
   assert.ok(source.includes(loadCall), `GLTFLoader call is not configured for Meshopt in ${file}`);
 }
 
+
+
+const validMeshoptFallback = {
+  extensionsRequired: ["EXT_meshopt_compression"],
+  buffers: [
+    { byteLength: 8 },
+    { byteLength: 16, extensions: { EXT_meshopt_compression: { fallback: true } } }
+  ],
+  bufferViews: [{
+    buffer: 1,
+    byteLength: 16,
+    extensions: { EXT_meshopt_compression: {
+      buffer: 0, byteOffset: 0, byteLength: 8, byteStride: 4, count: 4, mode: "ATTRIBUTES"
+    } }
+  }]
+};
+assert.deepEqual(findInvalidMeshoptFallbackBuffers(validMeshoptFallback), [],
+  "spec-conformant URI-less Meshopt fallback buffer must not be misclassified as malformed");
+const invalidMeshoptFallback = structuredClone(validMeshoptFallback);
+delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fallback;
+assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
+  { index: 1, reasons: ["fallback_flag_missing"] }
+], "URI-less nonzero buffer without fallback marker must be rejected");
