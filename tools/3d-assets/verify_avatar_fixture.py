@@ -52,7 +52,7 @@ def validate_glb(path):
             if document is not None:
                 raise ValueError("multiple JSON chunks")
             document = json.loads(payload.decode("utf-8").rstrip(" \t\r\n\x00"))
-        elif kind == b"BIN ":
+        elif kind == b"BIN\\x00":
             bin_chunks.append({"start": start, "length": length, "data": payload})
         offset = end
     if offset != len(raw) or document is None:
