@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/eng-p22-production-spatial-ingest.yml"
       - "apps/api/src/allpha_api/spatial_ingest_api.py"
       - "apps/api/src/allpha_api/spatial_test_auth.py"
       - "apps/api/src/allpha_api/spatial_manifest_api.py"
