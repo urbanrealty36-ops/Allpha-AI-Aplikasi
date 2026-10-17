@@ -47,14 +47,14 @@ const decoded = [];
 for (const [index, bufferView] of (json.bufferViews ?? []).entries()) {
   const ext = bufferView.extensions?.EXT_meshopt_compression;
   if (!ext) continue;
-  if (ext.buffer !== 0) throw new Error(\`bufferView \${index}: only embedded GLB buffer 0 is supported by fixture regression\`);
+  if (ext.buffer !== 0) throw new Error(`bufferView ${index}: only embedded GLB buffer 0 is supported by fixture regression`);
   const start = Number(ext.byteOffset ?? 0), end = start + Number(ext.byteLength);
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end > bin.length || end <= start) {
-    throw new Error(\`bufferView \${index}: compressed byte range out of bounds\`);
+    throw new Error(`bufferView ${index}: compressed byte range out of bounds`);
   }
   const count = Number(ext.count), stride = Number(ext.byteStride);
   if (!Number.isSafeInteger(count) || !Number.isSafeInteger(stride) || count <= 0 || stride <= 0) {
-    throw new Error(\`bufferView \${index}: invalid count/stride\`);
+    throw new Error(`bufferView ${index}: invalid count/stride`);
   }
   const mode = ext.mode;
   const filter = ext.filter ?? "NONE";
