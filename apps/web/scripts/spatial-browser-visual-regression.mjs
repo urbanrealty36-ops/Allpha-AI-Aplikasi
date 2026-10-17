@@ -28,11 +28,15 @@ try {
     const context=await browser.newContext({viewport:{width:540,height:560},deviceScaleFactor:1});
     const page=await context.newPage();
     const errors=[];
-    page.on("pageerror",e=>errors.push(String(e)));
+    page.on("pageerror",e=>{
+      const message=String(e);
+      errors.push(message);
+      page.evaluate((text)=>{window.__spatialTestResult={status:"failed",error:text};},message).catch(()=>{});
+    });
     const url="http://127.0.0.1:8765/tools/3d-assets/browser-glb-visual-test.html?asset="+encodeURIComponent("/"+rel);
     try {
       await page.goto(url,{waitUntil:"load",timeout:30000});
-      await page.waitForFunction(()=>window.__spatialTestResult?.status==="passed"||window.__spatialTestResult?.status==="failed",{timeout:45000});
+      await page.waitForFunction(()=>window.__spatialTestResult?.status==="passed"||window.__spatialTestResult?.status==="failed",null,{timeout:10000});
       const result=await page.evaluate(()=>window.__spatialTestResult);
       rows.push({index:i+1,file:path.basename(absolute),...result,pageErrors:errors});
       if(result.status==="passed" && (i%screenshotEvery===0 || i===files.length-1)){
