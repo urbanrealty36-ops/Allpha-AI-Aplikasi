@@ -13,6 +13,7 @@ dependencies = [
   "httpx>=0.27,<1.0",
   "python-multipart>=0.0.9,<1.0",
   "pypdf>=5.0,<7.0",
+  "PyJWT[crypto]>=2.10,<3.0",
 ]
 
 [project.optional-dependencies]
