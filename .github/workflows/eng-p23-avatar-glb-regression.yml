@@ -2,6 +2,11 @@ name: ENG-P23 Avatar GLB Regression
 
 on:
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "GitHub Actions run ID containing the retained GLB acquisition shards"
+        required: true
+        default: "39002086145"
   push:
     paths:
       - ".github/workflows/eng-p23-avatar-glb-regression.yml"
@@ -10,9 +15,11 @@ on:
       - "apps/client/lib/spatial/configureAllphaGLTFLoader.ts"
       - "apps/web/scripts/spatial-glb-regression.mjs"
       - "apps/client/scripts/spatial-glb-regression.mjs"
+      - "tools/3d-assets/meshopt-fallback-compat.mjs"
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: eng-p23-avatar-glb-regression-${{ github.ref }}
@@ -93,4 +100,150 @@ jobs:
             apps/web/.artifacts/spatial-regression.json
             apps/client/.artifacts/spatial-regression.json
           if-no-files-found: warn
+          retention-days: 30
+
+
+  acquired-avatar-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_RUN_ID: ${{ inputs.source_run_id || '39002086145' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download actual acquisition shards from the source run
+        uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-01
+          path: .artifacts/acquired/shard-01
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-02
+          path: .artifacts/acquired/shard-02
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-03
+          path: .artifacts/acquired/shard-03
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-shard-04
+          path: .artifacts/acquired/shard-04
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: allpha-glb-acquisition-reconciliation
+          path: .artifacts/acquired/reconciliation
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Resolve actual avatar files from source manifest
+        id: avatar-files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, json, os
+          from pathlib import Path
+          root = Path.cwd()
+          manifest = root / ".artifacts/acquired/reconciliation/manifest.csv"
+          if not manifest.exists():
+              raise SystemExit(f"missing acquisition manifest: {manifest}")
+          files = []
+          with manifest.open(encoding="utf-8-sig", newline="") as stream:
+              for row in csv.DictReader(stream):
+                  if row.get("repo") != "c-frame/valid-avatars-glb" or row.get("status") != "DOWNLOADED":
+                      continue
+                  rel = row.get("local_file", "")
+                  candidates = list((root / ".artifacts/acquired").glob(f"shard-*/{rel}"))
+                  if len(candidates) == 1:
+                      files.append(str(candidates[0].resolve()))
+          files = sorted(set(files))
+          if len(files) != 232:
+              raise SystemExit(f"expected 232 physical acquired avatar GLBs, found {len(files)}")
+          out = root / ".artifacts/acquired/avatar-files.txt"
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text("\n".join(files) + "\n", encoding="utf-8")
+          print(json.dumps({"source_run_id": os.environ["SOURCE_RUN_ID"], "actual_avatar_files": len(files), "manifest": str(manifest)}, indent=2))
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Run Web Meshopt decoder on all acquired avatar GLBs
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .artifacts/acquired/results/web
+          failed=0
+          while IFS= read -r file; do
+            name="$(basename "$file" .glb)"
+            if (cd apps/web && node scripts/spatial-glb-regression.mjs "$GITHUB_WORKSPACE/$file") > ".artifacts/acquired/results/web/$name.log" 2>&1; then
+              cp apps/web/.artifacts/spatial-regression.json ".artifacts/acquired/results/web/$name.json"
+            else
+              failed=$((failed + 1))
+              printf '{"asset":"%s","status":"failed","log":"%s.log"}\n' "$name" "$name" > ".artifacts/acquired/results/web/$name.failure.json"
+            fi
+          done < .artifacts/acquired/avatar-files.txt
+          echo "web_failures=$failed" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          base=Path(".artifacts/acquired/results/web")
+          reports=list(base.glob("*.json"))
+          failures=list(base.glob("*.failure.json"))
+          decoded=sum(int(json.loads(p.read_text()).get("decodedBufferViews",0)) for p in reports if not p.name.endswith(".failure.json"))
+          summary={"platform":"web-node-meshopt-decoder","passed_assets":len(reports)-len(failures),"failed_assets":len(failures),"decoded_buffer_views":decoded,"scope":"decoder only; not GLTFLoader parse, texture decode, GPU render, or device acceptance"}
+          (base/"summary.json").write_text(json.dumps(summary,indent=2))
+          print(json.dumps(summary,indent=2))
+          if failures: raise SystemExit(1)
+          PY
+      - name: Install Native dependencies
+        working-directory: apps/client
+        run: npm ci
+      - name: Run Native Meshopt decoder on all acquired avatar GLBs
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .artifacts/acquired/results/native
+          failed=0
+          while IFS= read -r file; do
+            name="$(basename "$file" .glb)"
+            if (cd apps/client && node scripts/spatial-glb-regression.mjs "$GITHUB_WORKSPACE/$file") > ".artifacts/acquired/results/native/$name.log" 2>&1; then
+              cp apps/client/.artifacts/spatial-regression.json ".artifacts/acquired/results/native/$name.json"
+            else
+              failed=$((failed + 1))
+              printf '{"asset":"%s","status":"failed","log":"%s.log"}\n' "$name" "$name" > ".artifacts/acquired/results/native/$name.failure.json"
+            fi
+          done < .artifacts/acquired/avatar-files.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          base=Path(".artifacts/acquired/results/native")
+          reports=list(base.glob("*.json"))
+          failures=list(base.glob("*.failure.json"))
+          decoded=sum(int(json.loads(p.read_text()).get("decodedBufferViews",0)) for p in reports if not p.name.endswith(".failure.json"))
+          summary={"platform":"native-node-meshopt-decoder","passed_assets":len(reports)-len(failures),"failed_assets":len(failures),"decoded_buffer_views":decoded,"scope":"decoder only; not GLTFLoader parse, texture decode, GPU render, or device acceptance"}
+          (base/"summary.json").write_text(json.dumps(summary,indent=2))
+          print(json.dumps(summary,indent=2))
+          if failures: raise SystemExit(1)
+          PY
+      - name: Upload actual acquired avatar regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p23-acquired-avatar-regression-${{ github.run_id }}
+          path: .artifacts/acquired/results/
+          if-no-files-found: error
           retention-days: 30
