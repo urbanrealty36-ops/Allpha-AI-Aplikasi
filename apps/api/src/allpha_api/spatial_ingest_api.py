@@ -118,9 +118,9 @@ async def ingest_test_only_glb(
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "asset_key tidak valid.")
     if not isinstance(scene_key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,120}", scene_key):
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "scene_key tidak valid.")
-    if category in ("", "unmapped"):
+    if category in ("", "unmapped") or category is None:
         category = None
-    if category is not None and category not in CATEGORIES:
+    if category is not None and (not isinstance(category, str) or category not in CATEGORIES):
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "category bukan salah satu dari 14 kategori kanonis.")
     if not isinstance(source_url, str) or not source_url.startswith(("https://", "http://")) or len(source_url) > 2048:
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "source_url harus berupa URL HTTP(S).")
