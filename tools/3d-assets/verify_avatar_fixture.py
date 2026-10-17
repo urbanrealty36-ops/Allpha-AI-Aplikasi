@@ -142,7 +142,7 @@ def main():
     # Try small, explicitly MIT-licensed character entries until one has a valid
     # embedded GLB container and actual meshopt bufferViews. Never silently
     # accept an HTML response or an incomplete candidate as the fixture.
-    for record, url, lic in sorted(candidates, key=lambda x: (len(str(x[0])), x[1])):
+    for record, url, lic in sorted(candidates, key=lambda x: (len(str(x[0])), x[1]))[:12]:
         candidate_path = out / "avatar-candidate.glb"
         try:
             r = requests.get(url, timeout=120); r.raise_for_status()
@@ -156,6 +156,7 @@ def main():
             candidate_errors.append({"url": url, "error": str(exc), "bytes": candidate_path.stat().st_size if candidate_path.exists() else 0})
     if selected is None:
         (out / "candidate-errors.json").write_text(json.dumps(candidate_errors, indent=2), encoding="utf-8")
+        print(json.dumps({"candidate_count": len(candidates), "attempted": len(candidate_errors), "errors": candidate_errors}, ensure_ascii=False, indent=2), file=sys.stderr)
         raise SystemExit("No candidate passed GLB/container/meshopt checks; see candidate-errors.json.")
     record, url, lic, candidate_path, structure = selected
     glb_path = out / "avatar.glb"
