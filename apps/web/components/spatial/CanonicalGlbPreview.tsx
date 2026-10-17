@@ -4,6 +4,7 @@ import { Component, Suspense, useCallback, useEffect, useMemo, useState, type Re
 import { Canvas, useLoader } from "@react-three/fiber";
 import { Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
 
 export const ALLPHA_ASSET_CATEGORIES = [
   "universe", "galaxy", "world", "orbit", "capsule", "district", "booth",
@@ -32,7 +33,7 @@ class RenderErrorBoundary extends Component<{ children: ReactNode; onError: (err
 }
 
 function Model({ url, onLoaded }: { url: string; onLoaded: () => void }) {
-  const gltf = useLoader(GLTFLoader, url);
+  const gltf = useLoader(GLTFLoader, url, configureAllphaGLTFLoader);
   const model = useMemo(() => {
     const root = new Group();
     const copy = gltf.scene.clone(true);
