@@ -89,3 +89,9 @@ ENG-P22 remains `in_progress`: provisional dispositions are assigned, but per-fi
 ## Per-file source provenance normalization
 
 Inspection of the downloaded source manifest found that canonical download links are stored under `url`, while the evidence report's `source_url` was blank. [Commit d7d407a](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/d7d407a011c8e32fc329a72cb405d767cc1947dc) now normalizes `source_url`, repository, source path, claimed license, source review state, and per-file rights/category/texture/visual/renderer review status. Reconciliation [39023923471](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39023923471) is running. This is an evidence-report correction only; no legal review is inferred and all assets remain unapproved.
+
+
+## ENG-P22 source URL normalization verified — run 39023923471
+
+- Run [39023923471](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39023923471) succeeded; artifact [12097593609](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39023923471/artifacts/12097593609). The audit CSV now includes canonical source URL, repository, path and license claim on all 933 manifest rows (0 blank source URLs). The 927 physical GLBs remain 927/927 valid with zero integrity mismatches; embedded image payload fingerprints: 1,639, unresolved 0.
+- The report still records 668 `UNMAPPED_REQUIRES_REVIEW`, 265 `HEURISTIC_CANDIDATE_REQUIRES_REVIEW`, 262 `QUARANTINE_REQUIRED`, 671 `PER_FILE_RIGHTS_REVIEW_REQUIRED` (includes the 6 non-physical rows), 665 physical hold rows and 0 approved assets. The fields expose per-file review requirements, but do not certify legal rights, texture provenance, category suitability, or visual approval.
