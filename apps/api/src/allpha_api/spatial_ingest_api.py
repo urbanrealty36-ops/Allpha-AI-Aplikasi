@@ -15,6 +15,8 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 
+from allpha_api.spatial_test_auth import is_authorized_spatial_test_request
+
 router = APIRouter(tags=["spatial-ingest"])
 MAX_BYTES = 536_870_912
 CATEGORIES = {
@@ -92,10 +94,10 @@ async def ingest_test_only_glb(
     file: UploadFile = File(...),
     metadata: str = Form(...),
     test_key: str | None = Header(default=None, alias="X-Allpha-Spatial-Test-Key"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> dict:
-    """Upload one verified GLB to private Storage and register an isolated TEST_ONLY scene."""
-    expected = os.getenv("ALLPHA_SPATIAL_TEST_ACCESS_KEY", "")
-    if len(expected) < 32 or not test_key or not secrets.compare_digest(test_key, expected):
+    """Upload a verified GLB into private storage; register only evidence-mapped TEST_ONLY assets."""
+    if not is_authorized_spatial_test_request(test_key, authorization):
         raise _error(404, "SPATIAL_TEST_INGEST_NOT_FOUND", "Endpoint ingest pengujian tidak ditemukan.")
 
     try:
@@ -116,7 +118,9 @@ async def ingest_test_only_glb(
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "asset_key tidak valid.")
     if not isinstance(scene_key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,120}", scene_key):
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "scene_key tidak valid.")
-    if category not in CATEGORIES:
+    if category in ("", "unmapped"):
+        category = None
+    if category is not None and category not in CATEGORIES:
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "category bukan salah satu dari 14 kategori kanonis.")
     if not isinstance(source_url, str) or not source_url.startswith(("https://", "http://")) or len(source_url) > 2048:
         raise _error(422, "SPATIAL_INGEST_METADATA_INVALID", "source_url harus berupa URL HTTP(S).")
@@ -135,7 +139,7 @@ async def ingest_test_only_glb(
     url, key, bucket = _config()
     if bucket != bucket_config:
         raise _error(503, "SPATIAL_STORAGE_BUCKET_NOT_CONFIGURED", "Bucket spasial tidak cocok dengan konfigurasi kanonis.")
-    object_path = f"test-only/{asset_key}/{digest}.glb"
+    object_path = f"test-only/{asset_key}/{digest}.glb" if category else f"test-only-unmapped/{asset_key}/{digest}.glb"
     headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "model/gltf-binary", "x-upsert": "true"}
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -157,10 +161,39 @@ async def ingest_test_only_glb(
             )
             if upload.status_code >= 400:
                 raise _error(503, "SPATIAL_STORAGE_UPLOAD_FAILED", "Upload ke private Storage gagal.")
+            receipt_body = {
+                "asset_key": asset_key, "display_name": display_name, "source_url": source_url,
+                "source_repo": source_repo, "source_path": source_path,
+                "source_license_claim": str(meta.get("license") or "unknown")[:256],
+                "review_state": str(meta.get("review") or "unreviewed")[:256],
+                "category_candidate": category,
+                "category_mapping_status": "mapped" if category else "unmapped",
+                "sha256": digest, "byte_size": len(data), "storage_bucket": bucket,
+                "storage_path": object_path,
+                "lifecycle_status": "test_only" if category else "quarantined",
+            }
+            receipt = await client.post(
+                f"{url}/rest/v1/spatial_asset_ingest_receipts?on_conflict=asset_key",
+                headers={"apikey": key, "Authorization": f"Bearer {key}",
+                         "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=representation"},
+                json=receipt_body,
+            )
+            if receipt.status_code >= 400:
+                raise _error(503, "SPATIAL_INGEST_RECEIPT_FAILED", "Bukti provenance ingest tidak dapat dicatat.")
+            if not category:
+                return {
+                    "lifecycle": "quarantined", "registry_status": "unmapped",
+                    "storage_bucket": bucket, "storage_path": object_path,
+                    "sha256": digest, "byte_size": len(data),
+                    "source_repo": source_repo, "source_path": source_path,
+                    "rights_status": "unverified", "moderation_status": "pending",
+                }
             await _insert(client, url, key, "spatial_asset_versions", {
                 "asset_id": asset_id, "version": 1, "asset_key": asset_key,
                 "display_name": display_name, "category": category, "source_url": source_url,
                 "provenance": {"source_repository": source_repo, "source_path": source_path,
+                               "source_license_claim": str(meta.get("license") or "unknown"),
+                               "source_review_state": str(meta.get("review") or "unreviewed"),
                                "ingest_mode": "trusted_test_only", "sha256": digest},
                 "license_evidence": {"status": "unverified", "note": "TEST_ONLY; no public rights approval"},
                 "sha256": digest, "byte_size": len(data), "mime_type": "model/gltf-binary",
