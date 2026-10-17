@@ -28,7 +28,7 @@ function Model({url,onLoaded,onError}:{url:string;onLoaded:(value:string)=>void;
       onError(new Error("GLTFLoader produced no valid skinned avatar geometry"));
       return;
     }
-    const result={assetUrl:url,meshNodes,skinnedMeshNodes,textureReferences,animationClips:gltf.animations.length,bounds:{x:size.x,y:size.y,z:size.z}};
+    const parsedUrl=new URL(url);\n    const result={assetOrigin:parsedUrl.origin,assetPath:parsedUrl.pathname,meshNodes,skinnedMeshNodes,textureReferences,animationClips:gltf.animations.length,bounds:{x:size.x,y:size.y,z:size.z}};
     console.log("SPATIAL_DEVICE_TEST_RESULT:PASS "+JSON.stringify(result));
     onLoaded(JSON.stringify(result));
   },[gltf,onLoaded,onError,url]);
