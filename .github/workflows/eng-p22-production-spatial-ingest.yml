@@ -226,12 +226,21 @@ jobs:
               const mapped = Boolean(item.category);
               if (mapped && !verifiedSignedDownload) {
                 token = await core.getIDToken('allpha-spatial-ingest');
-                const manifestResponse = await fetch(base + '/v1/spatial/test/scenes/' + item.scene_key + '/manifest', {
-                  headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
-                  cache: 'no-store'
-                });
-                const manifest = await manifestResponse.json();
-                if (!manifestResponse.ok) throw new Error('TEST_ONLY manifest failed: ' + JSON.stringify(manifest));
+                let manifestResponse, manifest;
+                for (let manifestAttempt = 1; manifestAttempt <= 18; manifestAttempt++) {
+                  token = await core.getIDToken('allpha-spatial-ingest');
+                  manifestResponse = await fetch(base + '/v1/spatial/test/scenes/' + item.scene_key + '/manifest', {
+                    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
+                    cache: 'no-store'
+                  });
+                  manifest = await manifestResponse.json();
+                  if (manifestResponse.ok) break;
+                  if (manifestResponse.status !== 404 && manifestResponse.status < 500) {
+                    throw new Error('TEST_ONLY manifest rejected: ' + JSON.stringify(manifest));
+                  }
+                  if (manifestAttempt < 18) await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+                if (!manifestResponse || !manifestResponse.ok) throw new Error('TEST_ONLY manifest failed after deployment/auth retry: ' + JSON.stringify(manifest));
                 const object = (manifest.objects || [])[0];
                 if (!object || object.sha256 !== item.expected_sha256 || Number(object.byte_size) !== item.expected_bytes || object.publication_status !== 'test_only') {
                   throw new Error('Manifest contract mismatch: ' + JSON.stringify(object));
@@ -270,5 +279,52 @@ jobs:
         with:
           name: eng-p22-private-ingest-shard-${{ matrix.shard }}-${{ github.run_id }}
           path: .artifacts/acquired/results/ingest-shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  verify-batch:
+    name: Verify full private ingest batch
+    needs: ingest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download per-shard ingest evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: eng-p22-private-ingest-shard-*-${{ github.run_id }}
+          path: .artifacts/ingest-evidence
+          merge-multiple: true
+      - name: Enforce ingest completeness and signed-download evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files=sorted(Path(".artifacts/ingest-evidence").glob("ingest-shard-*.json"))
+          if len(files) != 4:
+              raise SystemExit(f"expected 4 shard reports, found {len(files)}")
+          reports=[json.loads(p.read_text()) for p in files]
+          total=sum(int(r.get("total",0)) for r in reports)
+          mapped=sum(int(r.get("registered_test_only",0)) for r in reports)
+          unmapped=sum(int(r.get("private_unmapped",0)) for r in reports)
+          signed=sum(bool(r.get("signed_download_verified")) for r in reports)
+          summary={"shards":len(reports),"unique_glb_ingested":total,"registered_test_only":mapped,
+                   "private_unmapped":unmapped,"shards_with_signed_download_proof":signed}
+          print(json.dumps(summary,indent=2))
+          Path(".artifacts/ingest-evidence/summary.json").write_text(json.dumps(summary,indent=2)+"\\n")
+          if total != 927:
+              raise SystemExit(f"expected 927 unique GLBs; got {total}")
+          if mapped + unmapped != total:
+              raise SystemExit("mapped + unmapped count does not equal total")
+          if signed < 1:
+              raise SystemExit("no successful signed-URL download/hash/size proof")
+          PY
+      - name: Upload batch acceptance summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p22-private-ingest-summary-${{ github.run_id }}
+          path: .artifacts/ingest-evidence/summary.json
           if-no-files-found: error
           retention-days: 30
