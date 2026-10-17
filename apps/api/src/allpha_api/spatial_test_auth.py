@@ -79,3 +79,22 @@ def is_authorized_spatial_test_request(test_key: str | None, authorization: str 
         return True
     except Exception:
         return False
+def is_authorized_spatial_ingest_request(test_key: str | None, authorization: str | None) -> bool:
+    """Mutating ingestion is restricted to the pinned ENG-P22 workflow or dedicated secret."""
+    import os
+    import secrets
+
+    expected = os.getenv("ALLPHA_SPATIAL_TEST_ACCESS_KEY", "")
+    if len(expected) >= 32 and test_key and secrets.compare_digest(test_key, expected):
+        return True
+    if not authorization or not authorization.startswith("Bearer "):
+        return False
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token or len(token) > 16384:
+        return False
+    try:
+        verify_spatial_ingest_oidc(token)
+        return True
+    except Exception:
+        return False
+
