@@ -249,6 +249,38 @@ def main() -> int:
             result["hold_reasons"] = "glb_parse_or_integrity_error:" + str(exc)
         results.append(result)
         seen_paths.add(local_file)
+    # Assign an explicit, fail-closed per-row disposition. This is a review
+    # disposition only: it does not approve, register, upload, or publish assets.
+    disposition_counts: Counter[str] = Counter()
+    for result in results:
+        physical = result.get("status") == "DOWNLOADED" and bool(result.get("local_file"))
+        if not physical:
+            disposition = "NON_PHYSICAL_OR_DEDUPLICATED_REFERENCE"
+            queue = "SOURCE_MANIFEST_RECONCILIATION"
+            reason = "manifest row does not represent a unique physical download"
+        elif result.get("container_status") in {"invalid", "integrity_mismatch", "missing_or_ambiguous_file"}:
+            disposition = "QUARANTINE_TECHNICAL_FAILURE"
+            queue = "TECHNICAL_REPAIR_AND_REAUDIT"
+            reason = result.get("hold_reasons") or result.get("container_status")
+        elif str(result.get("review", "")).upper().startswith("QUARANTINE"):
+            disposition = "QUARANTINE_SOURCE_RIGHTS_OR_SAFETY_REVIEW"
+            queue = "PROVENANCE_LICENSE_LIKENESS_AND_MODERATION"
+            reason = result.get("hold_reasons") or "source manifest marks the asset quarantined"
+        elif result.get("category_mapping_status") != "verified":
+            disposition = "HOLD_UNMAPPED_RIGHTS_AND_RENDERER_REVIEW"
+            queue = "CATEGORY_PROVENANCE_TEXTURE_VISUAL_AND_RENDERER_REVIEW"
+            reason = result.get("hold_reasons") or "canonical category mapping is not verified"
+        else:
+            disposition = "HOLD_RIGHTS_TEXTURE_AND_RENDERER_REVIEW"
+            queue = "PER_FILE_RIGHTS_TEXTURE_VISUAL_AND_DEVICE_REVIEW"
+            reason = result.get("hold_reasons") or "all required release gates are not evidenced"
+        result["asset_disposition"] = disposition
+        result["disposition_queue"] = queue
+        result["disposition_reason"] = reason
+        result["disposition_finality"] = "PROVISIONAL_FAIL_CLOSED_PENDING_REQUIRED_EVIDENCE"
+        result["publication_status"] = "NOT_APPROVED"
+        disposition_counts[disposition] += 1
+
     out.mkdir(parents=True, exist_ok=True)
     fields = list(dict.fromkeys(key for row in results for key in row.keys()))
     with (out / "manifest-audit.csv").open("w", encoding="utf-8", newline="") as stream:
@@ -276,8 +308,11 @@ def main() -> int:
         "assets_with_skins": sum(1 for r in results if int(r.get("skin_count") or 0) > 0),
         "assets_with_animation_clips": sum(1 for r in results if int(r.get("animation_clip_count") or 0) > 0),
         "all_publication_statuses": sorted(set(r.get("publication_status", "") for r in results)),
+        "per_file_disposition_counts": dict(sorted(disposition_counts.items())),
+        "rows_with_explicit_disposition": sum(1 for r in results if r.get("asset_disposition")),
+        "disposition_is_provisional": True,
         "approved_assets": 0,
-        "policy": "Evidence reconciliation only. This tool never approves, registers, uploads, or publishes assets.",
+        "policy": "Every manifest row receives a fail-closed disposition and review queue. This is not human/legal clearance and never approves, registers, uploads, or publishes assets.",
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
