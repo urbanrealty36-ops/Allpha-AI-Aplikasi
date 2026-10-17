@@ -4,6 +4,7 @@ import { Component, Suspense, useCallback, useEffect, useMemo, useState, type Re
 import { Canvas, useLoader } from "@react-three/fiber";
 import { Group } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
 import { ALLPHA_ASSET_CATEGORIES, type AllphaAssetCategory } from "./CanonicalGlbPreview";
 
 type SceneObject = {
@@ -58,7 +59,7 @@ function validateManifest(value: unknown): SceneManifest {
 }
 
 function SceneObjectModel({ object, onLoaded }: { object: SceneObject; onLoaded: (id: string) => void }) {
-  const gltf = useLoader(GLTFLoader, object.asset_url);
+  const gltf = useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader);
   const model = useMemo(() => {
     const copy = new Group();
     copy.add(gltf.scene.clone(true));
