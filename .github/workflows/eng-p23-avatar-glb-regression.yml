@@ -1,0 +1,103 @@
+name: ENG-P23 Avatar GLB Regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/eng-p23-avatar-glb-regression.yml"
+      - "tools/3d-assets/verify_avatar_fixture.py"
+      - "apps/web/lib/spatial/configureAllphaGLTFLoader.ts"
+      - "apps/client/lib/spatial/configureAllphaGLTFLoader.ts"
+      - "apps/web/scripts/spatial-glb-regression.mjs"
+      - "apps/client/scripts/spatial-glb-regression.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eng-p23-avatar-glb-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixture-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      sha256: ${{ steps.fixture.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Acquire one pinned avatar fixture and upstream license
+        id: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/avatar-fixture
+          BASE="https://raw.githubusercontent.com/c-frame/valid-avatars-glb/c539a28"
+          curl --fail --location --retry 3 "$BASE/avatars/AIAN/AIAN_M_1_Casual.glb" -o .artifacts/avatar-fixture/avatar.glb
+          curl --fail --location --retry 3 "$BASE/LICENSE" -o .artifacts/avatar-fixture/LICENSE
+          curl --fail --location --retry 3 "$BASE/README.md" -o .artifacts/avatar-fixture/UPSTREAM-README.md
+          python tools/3d-assets/verify_avatar_fixture.py \
+            --glb .artifacts/avatar-fixture/avatar.glb \
+            --license .artifacts/avatar-fixture/LICENSE \
+            --readme .artifacts/avatar-fixture/UPSTREAM-README.md \
+            --source-url "https://github.com/c-frame/valid-avatars-glb/blob/c539a28/avatars/AIAN/AIAN_M_1_Casual.glb" \
+            --out .artifacts/avatar-fixture/fixture-report.json
+          SHA="$(python -c "import json; print(json.load(open('.artifacts/avatar-fixture/fixture-report.json'))['sha256'])")"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+      - name: Upload fixture, source license, and structural report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p23-avatar-fixture-${{ github.run_id }}
+          path: .artifacts/avatar-fixture/
+          if-no-files-found: error
+          retention-days: 30
+
+  web-native-regression:
+    needs: fixture-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: eng-p23-avatar-fixture-${{ github.run_id }}
+          path: .artifacts/avatar-fixture
+      - name: Verify fixture bytes remain identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ needs.fixture-integrity.outputs.sha256 }}  .artifacts/avatar-fixture/avatar.glb" | sha256sum --check
+      - name: Web regression and build
+        working-directory: apps/web
+        run: |
+          npm ci
+          node scripts/spatial-glb-regression.mjs ../../.artifacts/avatar-fixture/avatar.glb
+          npm test
+          npm run typecheck
+          npm run build
+      - name: Native regression and platform exports
+        working-directory: apps/client
+        run: |
+          npm ci
+          node scripts/spatial-glb-regression.mjs ../../.artifacts/avatar-fixture/avatar.glb
+          npm test
+          npm run typecheck
+          npx expo export --platform android
+          npx expo export --platform ios
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p23-avatar-regression-evidence-${{ github.run_id }}
+          path: |
+            .artifacts/avatar-fixture/fixture-report.json
+            apps/web/.artifacts/spatial-regression.json
+            apps/client/.artifacts/spatial-regression.json
+          if-no-files-found: warn
+          retention-days: 30
