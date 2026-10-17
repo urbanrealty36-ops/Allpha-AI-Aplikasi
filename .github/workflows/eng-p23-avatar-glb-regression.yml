@@ -25,7 +25,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: eng-p23-avatar-glb-regression-v3-${{ github.ref }}
+  group: eng-p23-avatar-glb-regression-v4-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -326,7 +326,7 @@ jobs:
             adb logcat -c
             cd apps/client
             npx expo prebuild --platform android --no-install
-            npx expo run:android --variant release --no-bundler
+            npx expo run:android --variant release
             cd ../..
             passed=0
             for i in $(seq 1 120); do
@@ -338,6 +338,21 @@ jobs:
             if [ "$passed" -ne 1 ]; then adb logcat -d > .artifacts/device-fixture/results/android/logcat.txt; echo "Native renderer did not report PASS"; exit 1; fi
             adb shell screencap -p /sdcard/allpha-spatial-render.png
             adb pull /sdcard/allpha-spatial-render.png .artifacts/device-fixture/results/android/render.png
+            python3 - <<'PY'
+            import json, struct
+            from pathlib import Path
+            root=Path(".artifacts/device-fixture/results/android")
+            log=(root/"logcat.txt").read_text(errors="replace")
+            image=(root/"render.png").read_bytes()
+            if "SPATIAL_DEVICE_TEST_RESULT:PASS" not in log:
+                raise SystemExit("Android PASS marker missing from retained log")
+            if len(image)<1024 or image[:8]!=b"\\x89PNG\\r\\n\\x1a\\n" or image[12:16]!=b"IHDR":
+                raise SystemExit("Android screenshot is missing, too small, or not a valid PNG")
+            width,height=struct.unpack(">II",image[16:24])
+            if width<320 or height<320:
+                raise SystemExit(f"Android screenshot dimensions too small: {width}x{height}")
+            print(json.dumps({"platform":"android-emulator","runtime":"PASS","screenshot":"PASS","width":width,"height":height,"bytes":len(image)}))
+            PY
       - name: Upload Android device regression evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -423,7 +438,7 @@ jobs:
           open -a Simulator --args -CurrentDeviceUDID "$UDID"
           cd apps/client
           npx expo prebuild --platform ios --no-install
-          npx expo run:ios --configuration Release --device "$UDID" --no-bundler
+          npx expo run:ios --configuration Release --device "$UDID"
           cd ../..
           passed=0
           for i in $(seq 1 120); do
@@ -434,6 +449,21 @@ jobs:
           done
           if [ "$passed" -ne 1 ]; then echo "iOS renderer did not report PASS"; xcrun simctl spawn "$UDID" log show --last 5m --style compact > .artifacts/device-fixture/results/ios/simulator.log; exit 1; fi
           xcrun simctl io "$UDID" screenshot .artifacts/device-fixture/results/ios/render.png
+          python3 - <<'PY'
+          import json, struct
+          from pathlib import Path
+          root=Path(".artifacts/device-fixture/results/ios")
+          log=(root/"simulator.log").read_text(errors="replace")
+          image=(root/"render.png").read_bytes()
+          if "SPATIAL_DEVICE_TEST_RESULT:PASS" not in log:
+              raise SystemExit("iOS PASS marker missing from retained simulator log")
+          if len(image)<1024 or image[:8]!=b"\\x89PNG\\r\\n\\x1a\\n" or image[12:16]!=b"IHDR":
+              raise SystemExit("iOS screenshot is missing, too small, or not a valid PNG")
+          width,height=struct.unpack(">II",image[16:24])
+          if width<320 or height<320:
+              raise SystemExit(f"iOS screenshot dimensions too small: {width}x{height}")
+          print(json.dumps({"platform":"ios-simulator","runtime":"PASS","screenshot":"PASS","width":width,"height":height,"bytes":len(image)}))
+          PY
       - name: Upload iOS simulator regression evidence
         if: always()
         uses: actions/upload-artifact@v4
