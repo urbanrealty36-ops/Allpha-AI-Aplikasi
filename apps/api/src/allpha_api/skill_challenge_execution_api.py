@@ -209,15 +209,17 @@ async def record_owner_release_decision(
         current = await _get_run(store, owner_id, str(run_id))
         if not current:
             raise HTTPException(status_code=404, detail={"code": "CHALLENGE_RUN_NOT_FOUND", "message": "Challenge run tidak ditemukan."})
-        if current.get("status") not in {"passed", "failed"} or not current.get("runtime_evidence_digest"):
-            raise HTTPException(status_code=409, detail={"code": "RUNTIME_EVIDENCE_REQUIRED", "message": "Keputusan rilis memerlukan evaluasi dan bukti runtime."})
-        if payload.decision == "release" and (current.get("status") != "passed" or not isinstance(current.get("previous_version_comparison"), dict)):
-            raise HTTPException(status_code=409, detail={"code": "RELEASE_GATES_NOT_MET", "message": "Keputusan release memerlukan hasil lulus dan perbandingan versi sebelumnya."})
+        # A persisted owner decision is immutable: resolve replay/conflict before
+        # re-evaluating release gates, which may differ after the original decision.
         existing = current.get("release_decision")
         if existing:
             if existing == payload.decision and current.get("release_decision_reason") == payload.reason:
                 return {"run": _public_run(current), "idempotent_replay": True, "publication_performed": False}
             raise HTTPException(status_code=409, detail={"code": "RELEASE_DECISION_ALREADY_RECORDED", "message": "Keputusan pemilik sudah tercatat dan tidak dapat ditimpa."})
+        if current.get("status") not in {"passed", "failed"} or not current.get("runtime_evidence_digest"):
+            raise HTTPException(status_code=409, detail={"code": "RUNTIME_EVIDENCE_REQUIRED", "message": "Keputusan rilis memerlukan evaluasi dan bukti runtime."})
+        if payload.decision == "release" and (current.get("status") != "passed" or not isinstance(current.get("previous_version_comparison"), dict)):
+            raise HTTPException(status_code=409, detail={"code": "RELEASE_GATES_NOT_MET", "message": "Keputusan release memerlukan hasil lulus dan perbandingan versi sebelumnya."})
         body = {
             "release_decision": payload.decision, "release_decision_reason": payload.reason,
             "release_decided_by": owner_id, "release_decided_at": _now().isoformat(),
