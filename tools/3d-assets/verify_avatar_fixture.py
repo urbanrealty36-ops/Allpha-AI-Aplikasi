@@ -67,10 +67,31 @@ def validate_glb(path):
     binary = bin_chunks[0]["data"] if bin_chunks else b""
     for i, buffer in enumerate(buffers):
         if buffer.get("uri") is None:
-            if i != 0 or not binary:
-                raise ValueError(f"buffer {i} has no URI but no matching GLB BIN payload")
-            if buffer.get("byteLength", 0) > len(binary):
-                raise ValueError(f"buffer {i} byteLength exceeds BIN chunk")
+            if i == 0:
+                if not binary:
+                    raise ValueError("buffer 0 has no URI but no matching GLB BIN payload")
+                if buffer.get("byteLength", 0) > len(binary):
+                    raise ValueError("buffer 0 byteLength exceeds BIN chunk")
+            else:
+                # EXT_meshopt_compression permits a URI-less fallback placeholder only
+                # when the extension is required and all base views use compressed data.
+                fallback = buffer.get("extensions", {}).get("EXT_meshopt_compression", {}).get("fallback") is True
+                if not fallback:
+                    raise ValueError(f"buffer {i} has no URI and is not a declared Meshopt fallback buffer")
+                if "EXT_meshopt_compression" not in ext_required:
+                    raise ValueError(f"buffer {i} fallback requires EXT_meshopt_compression")
+                refs = [(view_index, view) for view_index, view in enumerate(document.get("bufferViews", []))
+                        if view.get("buffer", 0) == i]
+                if not refs:
+                    raise ValueError(f"buffer {i} fallback is not referenced by any bufferView")
+                if any(not view.get("extensions", {}).get("EXT_meshopt_compression") for _, view in refs):
+                    raise ValueError(f"buffer {i} fallback is referenced by an uncompressed bufferView")
+                if any(view.get("extensions", {}).get("EXT_meshopt_compression", {}).get("buffer") == i
+                       for view in document.get("bufferViews", [])):
+                    raise ValueError(f"buffer {i} fallback is used as a compressed source buffer")
+                max_end = max(int(view.get("byteOffset", 0)) + int(view.get("byteLength", 0)) for _, view in refs)
+                if not isinstance(buffer.get("byteLength"), int) or buffer["byteLength"] < max_end:
+                    raise ValueError(f"buffer {i} fallback byteLength is shorter than referenced bufferViews")
         elif buffer["uri"].startswith("data:"):
             import base64
             header, data = buffer["uri"].split(",", 1)
