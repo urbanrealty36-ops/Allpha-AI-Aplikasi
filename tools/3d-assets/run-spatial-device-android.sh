@@ -9,14 +9,37 @@ if [ ! -f "$apk" ]; then
   echo "Prebuilt release APK is missing: $apk"
   exit 1
 fi
+wait_for_android_boot() {
+  adb wait-for-device
+  for _ in $(seq 1 90); do
+    if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+      adb shell getprop ro.build.version.sdk
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Android emulator did not finish booting within 180 seconds"
+  adb logcat -d > .artifacts/device-fixture/results/android/logcat-full.txt || true
+  return 1
+}
 installed=0
 for attempt in 1 2 3; do
-  adb wait-for-device
-  if adb install -r -d --user 0 "$apk"; then installed=1; break; fi
-  echo "APK install attempt $attempt failed; restarting adb server and waiting for emulator"
+  wait_for_android_boot
+  echo "Installing release APK (attempt $attempt/3)"
+  if adb install -r -d --user 0 "$apk"; then
+    installed=1
+    break
+  fi
+  echo "APK install attempt $attempt failed; collecting diagnostics and restarting adb"
+  adb logcat -d > ".artifacts/device-fixture/results/android/install-attempt-$attempt-logcat.txt" || true
   adb kill-server || true
   adb start-server
-  sleep 5
+  if [ "$attempt" -lt 3 ]; then
+    # The previous failure was an emulator package-service Broken pipe. Reboot
+    # the emulator itself between retries instead of only restarting the adb host.
+    adb reboot || true
+    sleep 5
+  fi
 done
 if [ "$installed" -ne 1 ]; then
   adb logcat -d > .artifacts/device-fixture/results/android/logcat-full.txt || true
