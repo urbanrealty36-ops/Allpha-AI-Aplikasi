@@ -106,3 +106,14 @@ Inspection of the downloaded source manifest found that canonical download links
 - All 927 physical GLBs remain `NOT_APPROVED`. The 668 category-unmapped rows and 265 heuristic candidates still require canonical human mapping; texture provenance and human visual/moderation review remain pending; renderer/device acceptance remains pending. No asset was registered, uploaded, approved or published, and no Supabase write occurred.
 
 **Gate decision:** ENG-P22 `in_progress`; ENG-P23 `in_progress`; ENG-P24 `not_started`.
+
+
+## ENG-P22 evidence matrix artifact verified — run 39025011242
+
+- [ENG-P22 run 39025011242](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39025011242) succeeded; artifact [12098018030](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39025011242/artifacts/12098018030) inspected from the downloaded ZIP. The CSV contains 933 rows / 63 columns. All rows have non-empty `source_license_evidence_url` and `source_texture_rights_evidence_url`, with explicit license-scope and distribution/derivative-rights assessments.
+- Source evidence was checked at repository-root level: rostock/3DModels contains LICENSE/README; c-frame/valid-avatars-glb contains LICENSE/README/avatars.json; ramjigeddam/3d root listing contains no license-like file; SpectraStudios/SourceCityToolkit_glb contains LICENSE/README. This establishes the location of source evidence only, not that each model and embedded image is legally redistributable or derivative-permitted.
+- Audit counts: 927 physical GLBs valid, 0 integrity mismatch, 232 valid Meshopt fallback patterns, 1,639 embedded image hashes / 1,234 unique / 0 unresolved, 241 assets with skins, 8 with animation clips. Disposition remains 262 quarantine + 665 hold + 6 duplicate/nonphysical references. All 933 rows are `NOT_APPROVED`; approved assets = 0.
+- Remaining per-file acceptance gaps: license and derivative rights need asset-specific review; c-frame likeness/attribution unresolved; 219 city textures need per-image source/rights mapping; all 933 visual reviews are pending; 668 categories unmapped and 265 heuristic-only; renderer/device acceptance is pending. No candidate was promoted based on a repository license URL.
+- ENG-P23 retry [39024893640](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/39024893640) remained in progress at this checkpoint. The previous run's `--project-dir` failure is corrected by commit [93c13d3](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/93c13d33e2022215ede1bbea04cd5a90fc97d750); acceptance still requires the actual final Android/iOS logs, PASS markers, and validated screenshots.
+
+**Decision unchanged:** ENG-P22 `in_progress`; ENG-P23 `in_progress`; ENG-P24 `not_started`. No Supabase writes or asset lifecycle mutations were made.
