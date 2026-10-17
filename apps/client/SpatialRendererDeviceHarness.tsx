@@ -10,7 +10,7 @@ const assetUrl = process.env.EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL || "";
 class TestBoundary extends Component<{children: ReactNode; onError: (error: Error) => void},{failed:boolean}> {
   state={failed:false};
   static getDerivedStateFromError(){return {failed:true};}
-  componentDidCatch(error:Error){this.props.onError(error);}
+  componentDidCatch(error:Error){console.error("SPATIAL_DEVICE_BOUNDARY_ERROR", error?.stack || error?.message || String(error));this.props.onError(error);}
   render(){return this.state.failed?null:this.props.children;}
 }
 function Model({url,onLoaded,onError}:{url:string;onLoaded:(value:string)=>void;onError:(error:Error)=>void}) {
@@ -38,7 +38,7 @@ export default function SpatialRendererDeviceHarness(){
   const [status,setStatus]=useState("RUNNING");
   const [details,setDetails]=useState("");
   const loaded=useCallback((value:string)=>{setStatus("PASS");setDetails(value);},[]);
-  const fail=useCallback((error:Error)=>{const message=error.message||String(error);setStatus("FAIL");setDetails(message);console.log("SPATIAL_DEVICE_TEST_RESULT:FAIL "+message);},[]);
+  const fail=useCallback((error:Error)=>{const message=error?.message||String(error);const diagnostic=[message,error?.stack].filter(Boolean).join("\\n");setStatus("FAIL");setDetails(diagnostic);console.error("SPATIAL_DEVICE_TEST_RESULT:FAIL "+diagnostic);},[]);
   return <SafeAreaView style={{flex:1,backgroundColor:"#f4f5f7",padding:16}}>
     <Text style={{fontSize:22,fontWeight:"700",color:"#172033"}}>Allpha Spatial Device Regression</Text>
     <Text style={{marginTop:8,color:"#334155"}}>Test-only acquired avatar. Not a production publication.</Text>
