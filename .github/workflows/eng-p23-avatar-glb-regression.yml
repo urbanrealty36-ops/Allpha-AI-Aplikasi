@@ -393,6 +393,16 @@ jobs:
         run: |
           set -euo pipefail
           cp apps/client/SpatialRendererDeviceHarness.tsx apps/client/App.tsx
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("apps/client/app.json")
+          d=json.loads(p.read_text())
+          ios=d.setdefault("expo",{}).setdefault("ios",{})
+          info=ios.setdefault("infoPlist",{})
+          info.setdefault("NSAppTransportSecurity",{})["NSAllowsArbitraryLoads"]=True
+          p.write_text(json.dumps(d,indent=2)+"\n")
+          PY
           nohup python3 -m http.server 8765 --bind 0.0.0.0 >/tmp/allpha-spatial-device-http.log 2>&1 &
           echo $! >/tmp/allpha-spatial-device-http.pid
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/.artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb -o /dev/null && exit 0; sleep 1; done
