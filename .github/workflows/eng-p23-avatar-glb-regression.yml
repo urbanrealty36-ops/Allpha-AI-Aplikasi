@@ -7,6 +7,9 @@ on:
         description: "GitHub Actions run ID containing the retained GLB acquisition shards"
         required: true
         default: "39002086145"
+  workflow_run:
+    workflows: ["ENG-P22 Production Private GLB Ingest"]
+    types: [completed]
   push:
     paths:
       - ".github/workflows/eng-p23-avatar-glb-regression.yml"
@@ -23,6 +26,7 @@ on:
 permissions:
   contents: read
   actions: read
+  id-token: write
 
 concurrency:
   # Isolate each device acceptance attempt so evidence runs cannot collide.
@@ -243,6 +247,7 @@ jobs:
 
 
   android-emulator-render:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -291,7 +296,27 @@ jobs:
       - name: Install Native dependencies
         working-directory: apps/client
         run: npm ci
-      - name: Prepare isolated test app and host fixture server
+      - name: Fetch TEST_ONLY signed asset URL from canonical production manifest
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('allpha-spatial-ingest');
+            const sceneKey = 'test-glb-0f734592f79df5772dfabad3361b12d29f7a911f';
+            const response = await fetch('https://api.allpha.web.id/v1/spatial/test/scenes/' + sceneKey + '/manifest', {
+              headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
+              cache: 'no-store'
+            });
+            const manifest = await response.json();
+            if (!response.ok) throw new Error('TEST_ONLY manifest unavailable; HTTP ' + response.status + ', code ' + (manifest.error?.code || 'unknown'));
+            const object = (manifest.objects || [])[0];
+            if (!object || object.sha256 !== '0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320' ||
+                Number(object.byte_size) !== 2084112 || object.publication_status !== 'test_only' ||
+                object.category !== 'agent-character' || !object.asset_url?.startsWith('https://')) {
+              throw new Error('TEST_ONLY manifest did not match the pinned quarantined fixture contract');
+            }
+            core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
+            core.info(JSON.stringify({ scene_key: sceneKey, sha256: object.sha256, byte_size: Number(object.byte_size), category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+      - name: Prepare isolated test app
         shell: bash
         run: |
           set -euo pipefail
@@ -301,18 +326,11 @@ jobs:
           from pathlib import Path
           p=Path("apps/client/app.json")
           d=json.loads(p.read_text())
-          d.setdefault("expo",{}).setdefault("android",{})["usesCleartextTraffic"]=True
+          d.setdefault("expo",{}).setdefault("android",{})["usesCleartextTraffic"]=False
           p.write_text(json.dumps(d,indent=2)+"\n")
           PY
-          nohup python3 -m http.server 8765 --bind 0.0.0.0 >/tmp/allpha-spatial-device-http.log 2>&1 &
-          echo $! >/tmp/allpha-spatial-device-http.pid
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/.artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb -o /dev/null && exit 0; sleep 1; done
-          cat /tmp/allpha-spatial-device-http.log
-          exit 1
       - name: Build and run actual React Native renderer on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL: http://10.0.2.2:8765/.artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb
         with:
           api-level: 34
           target: google_apis
@@ -391,6 +409,7 @@ jobs:
           retention-days: 30
 
   ios-simulator-render:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -432,7 +451,27 @@ jobs:
       - name: Install Native dependencies
         working-directory: apps/client
         run: npm ci
-      - name: Prepare isolated test app and host fixture server
+      - name: Fetch TEST_ONLY signed asset URL from canonical production manifest
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('allpha-spatial-ingest');
+            const sceneKey = 'test-glb-0f734592f79df5772dfabad3361b12d29f7a911f';
+            const response = await fetch('https://api.allpha.web.id/v1/spatial/test/scenes/' + sceneKey + '/manifest', {
+              headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
+              cache: 'no-store'
+            });
+            const manifest = await response.json();
+            if (!response.ok) throw new Error('TEST_ONLY manifest unavailable; HTTP ' + response.status + ', code ' + (manifest.error?.code || 'unknown'));
+            const object = (manifest.objects || [])[0];
+            if (!object || object.sha256 !== '0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320' ||
+                Number(object.byte_size) !== 2084112 || object.publication_status !== 'test_only' ||
+                object.category !== 'agent-character' || !object.asset_url?.startsWith('https://')) {
+              throw new Error('TEST_ONLY manifest did not match the pinned quarantined fixture contract');
+            }
+            core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
+            core.info(JSON.stringify({ scene_key: sceneKey, sha256: object.sha256, byte_size: Number(object.byte_size), category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+      - name: Prepare isolated test app
         shell: bash
         run: |
           set -euo pipefail
@@ -444,17 +483,10 @@ jobs:
           d=json.loads(p.read_text())
           ios=d.setdefault("expo",{}).setdefault("ios",{})
           info=ios.setdefault("infoPlist",{})
-          info.setdefault("NSAppTransportSecurity",{})["NSAllowsArbitraryLoads"]=True
+          info.setdefault("NSAppTransportSecurity",{})["NSAllowsArbitraryLoads"]=False
           p.write_text(json.dumps(d,indent=2)+"\n")
           PY
-          nohup python3 -m http.server 8765 --bind 0.0.0.0 >/tmp/allpha-spatial-device-http.log 2>&1 &
-          echo $! >/tmp/allpha-spatial-device-http.pid
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/.artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb -o /dev/null && exit 0; sleep 1; done
-          cat /tmp/allpha-spatial-device-http.log
-          exit 1
       - name: Build and run actual React Native renderer on iOS Simulator
-        env:
-          EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL: http://127.0.0.1:8765/.artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb
         shell: bash
         run: |
           set -euo pipefail
