@@ -177,7 +177,7 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         raise
     await _server_db("PATCH", "content_items", params={"id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}"}, body={
         "status": "draft", "content_type": "video" if media_type.startswith("video/") else "image",
-        "updated_at": "now()",
+        
     }, prefer="return=minimal")
     return {"item": rows[0]}
 
