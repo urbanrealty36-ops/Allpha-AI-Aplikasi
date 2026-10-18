@@ -133,8 +133,14 @@ async def update_content(content_id: uuid.UUID, payload: ContentUpdate, request:
     existing = await _owner_content(content_id, str(user["id"]))
     if existing["status"] not in ("draft", "failed"):
         raise HTTPException(409, detail={"code": "CONTENT_NOT_EDITABLE", "message": "Konten hanya dapat diedit saat draft atau gagal."})
-    rows = await _server_db("PATCH", "content_items", params={"id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "select": CONTENT_FIELDS}, body={
-        "body": payload.body.strip(), "visibility": payload.visibility, "version": existing["version"] + 1, "status": "draft",
+    rows = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        # Compare-and-set the lifecycle state to prevent a concurrent submit/review
+        # from being overwritten by a stale draft edit.
+        "status": "in.(draft,failed)", "select": CONTENT_FIELDS,
+    }, body={
+        "body": payload.body.strip(), "visibility": payload.visibility, "version": existing["version"] + 1,
+        "status": "draft", "moderation_status": "not_submitted", "error_code": None,
     }, prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "CONTENT_UPDATE_CONFLICT", "message": "Konten tidak berubah atau sudah tidak dapat diedit."})
@@ -208,24 +214,42 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
 
 
 @router.get("/{content_id}/preview")
+async def _signed_media_preview_url(storage_path: str, *, expires_in: int = 300) -> str:
+    """Issue a short-lived URL for a private object; never make the bucket public."""
+    base, key = _config()
+    object_path = quote(f"content-media/{storage_path}", safe="/")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=3)) as client:
+            response = await client.post(
+                f"{base}/storage/v1/object/sign/{object_path}",
+                headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"expiresIn": expires_in},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={"code": "CONTENT_PREVIEW_UNAVAILABLE", "message": "Pratinjau media belum tersedia."}) from exc
+    if response.status_code >= 400:
+        raise HTTPException(503, detail={"code": "CONTENT_PREVIEW_UNAVAILABLE", "message": "Pratinjau media belum tersedia."})
+    signed = response.json().get("signedURL") or response.json().get("signedUrl")
+    if not isinstance(signed, str) or not signed:
+        raise HTTPException(503, detail={"code": "CONTENT_PREVIEW_INVALID", "message": "Penyimpanan tidak mengembalikan URL pratinjau yang valid."})
+    if signed.startswith(("https://", "http://")):
+        return signed
+    if signed.startswith("/storage/v1/"):
+        return f"{base}{signed}"
+    if signed.startswith("/"):
+        return f"{base}/storage/v1{signed}"
+    return f"{base}/storage/v1/{signed.lstrip('/')}"
+
+
+@router.get("/{content_id}/preview")
 async def preview_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "order": "created_at.asc",
     })
     previews = []
-    base, key = _config()
     for item in media or []:
-        path = quote(f"content-media/{item['storage_path']}", safe="/")
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=3)) as client:
-                response = await client.post(f"{base}/storage/v1/object/sign/{path}", headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}, json={"expiresIn": 300})
-        except httpx.HTTPError as exc:
-            raise HTTPException(503, detail={"code": "CONTENT_PREVIEW_UNAVAILABLE", "message": "Pratinjau media belum tersedia."}) from exc
-        if response.status_code >= 400:
-            raise HTTPException(503, detail={"code": "CONTENT_PREVIEW_UNAVAILABLE", "message": "Pratinjau media belum tersedia."})
-        signed = response.json().get("signedURL") or response.json().get("signedUrl")
-        previews.append({**item, "preview_url": f"{base}/storage/v1{signed}" if signed and signed.startswith("/") else f"{base}/storage/v1/{signed}" if signed else None})
+        previews.append({**item, "preview_url": await _signed_media_preview_url(item["storage_path"])})
     return {"item": content, "media": previews, "preview_expires_in": 300}
 
 
@@ -264,7 +288,25 @@ async def public_content_feed(request: Request, limit: int = 20) -> dict[str, An
         "select": CONTENT_FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
         "visibility": "eq.public", "order": "published_at.desc", "limit": str(limit),
     })
-    return {"items": rows or []}
+    items = rows or []
+    if not items:
+        return {"items": [], "media_preview_expires_in": 300}
+    content_ids = [str(item["id"]) for item in items]
+    media = await _server_db("GET", "content_media", params={
+        "select": MEDIA_FIELDS, "content_id": f"in.({','.join(content_ids)})",
+        "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(250, limit * 5)),
+    })
+    media_by_content: dict[str, list[dict[str, Any]]] = {}
+    for row in media or []:
+        # The parent list above is already restricted to published, approved,
+        # public items; only those IDs are eligible for signed media URLs.
+        media_by_content.setdefault(str(row["content_id"]), []).append({
+            **row, "preview_url": await _signed_media_preview_url(row["storage_path"]),
+        })
+    return {
+        "items": [{**item, "media": media_by_content.get(str(item["id"]), [])} for item in items],
+        "media_preview_expires_in": 300,
+    }
 
 
 @router.get("/admin/review-queue", tags=["content-moderation"])
