@@ -233,85 +233,96 @@ async def healthz() -> dict[str, str]:
 
 @app.get("/readyz", tags=["system"])
 async def readyz() -> JSONResponse:
-    """Fail closed unless the canonical Supabase Auth and PostgREST APIs respond."""
+    """Probe Auth and PostgREST independently; never hide one failure behind the other."""
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
     if not supabase_url or not publishable_key:
-        dependencies = {
-            "database": "not_configured",
-            "authentication": "not_configured",
-            "object_storage": "not_configured",
-            "ai_gateway": "not_configured",
-        }
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "not_ready",
-                "service": APP_NAME,
-                "version": APP_VERSION,
-                "dependencies": dependencies,
+        return JSONResponse(status_code=503, content={
+            "status": "not_ready", "service": APP_NAME, "version": APP_VERSION,
+            "dependencies": {
+                "authentication": {"status": "not_configured"},
+                "database": {"status": "not_configured"},
+                "object_storage": {"status": "not_checked"},
+                "ai_gateway": {"status": "not_checked"},
             },
-        )
+        })
 
-    headers = {"apikey": publishable_key}
-    auth_status = "unavailable"
-    database_status = "unavailable"
-    try:
-        # Bound probe time so readiness checks cannot tie up workers indefinitely.
-        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
-            auth_response = await client.get(f"{supabase_url}/auth/v1/health", headers=headers)
-            database_response = await client.get(f"{supabase_url}/rest/v1/", headers=headers)
-        auth_status = "reachable" if auth_response.status_code == 200 else "unavailable"
-        database_status = "reachable" if database_response.status_code == 200 else "unavailable"
-    except httpx.HTTPError:
-        # Do not leak upstream URLs, response bodies, or credentials from readiness.
-        pass
+    async def probe(url: str) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=1.0)) as client:
+                response = await client.get(url, headers={"apikey": publishable_key})
+            return {
+                "status": "reachable" if response.status_code == 200 else "unavailable",
+                "http_status": response.status_code,
+            }
+        except httpx.TimeoutException:
+            return {"status": "timeout"}
+        except httpx.HTTPError:
+            return {"status": "unavailable"}
 
-    ready = auth_status == "reachable" and database_status == "reachable"
-    dependencies = {
-        "database": database_status,
-        "authentication": auth_status,
-        "object_storage": "not_configured",
-        "ai_gateway": "not_configured",
-    }
+    # Independent calls are deliberate: failure/timeout of Auth must not skip PostgREST.
+    auth_result, database_result = await asyncio.gather(
+        probe(f"{supabase_url}/auth/v1/health"),
+        probe(f"{supabase_url}/rest/v1/"),
+    )
+    ready = auth_result["status"] == "reachable" and database_result["status"] == "reachable"
     return JSONResponse(
         status_code=200 if ready else 503,
         content={
             "status": "ready" if ready else "not_ready",
             "service": APP_NAME,
             "version": APP_VERSION,
-            "dependencies": dependencies,
+            "dependencies": {
+                "authentication": auth_result,
+                "database": database_result,
+                "object_storage": {"status": "not_checked"},
+                "ai_gateway": {"status": "not_checked"},
+            },
         },
     )
 
 
 @app.get("/v1/system/runtime-preflight", tags=["system"])
 async def runtime_preflight(request: Request, user: dict[str, Any] = Depends(current_user)) -> JSONResponse:
-    """Authenticated, non-billable readiness probe for policy, tariff, limits and durable metering."""
+    """Authenticated, non-billable readiness probe with safe failure categories."""
     router_instance = getattr(request.app.state, "text_generation_router", None)
     if router_instance is None or not callable(getattr(router_instance, "preflight", None)):
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready", "dependencies": {
+        return JSONResponse(status_code=503, content={
+            "status": "not_ready",
+            "failure_category": "provider_route",
+            "dependencies": {
                 "provider_route": "not_configured",
-                "runtime_policy": "unverified",
-                "active_tariff": "unverified",
-                "metering_sink": "unverified",
-            }},
-        )
+                "runtime_policy": "not_checked",
+                "active_tariff": "not_checked",
+                "metering_sink": "not_checked",
+            },
+        })
     try:
         result = await router_instance.preflight("private")
         return JSONResponse(status_code=200, content=result)
-    except TextGenerationRouterUnavailable:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "not_ready", "dependencies": {
-                "provider_route": "configured",
-                "runtime_policy": "unverified",
-                "active_tariff": "unverified",
-                "metering_sink": "configured",
-            }},
-        )
+    except TextGenerationRouterUnavailable as exc:
+        category = getattr(exc, "category", "runtime_policy")
+        allowed = {"provider_route", "runtime_policy", "active_tariff", "metering_sink", "runtime_unavailable"}
+        if category not in allowed:
+            category = "runtime_unavailable"
+        dependencies = {
+            "provider_route": "configured",
+            "runtime_policy": "not_verified",
+            "active_tariff": "not_verified",
+            "metering_sink": "configured",
+        }
+        if category in ("provider_route", "metering_sink"):
+            dependencies[category] = "not_ready"
+        elif category == "runtime_policy":
+            dependencies["runtime_policy"] = "not_verified"
+        elif category == "active_tariff":
+            dependencies["active_tariff"] = "not_verified"
+        return JSONResponse(status_code=503, content={
+            "status": "not_ready",
+            "failure_category": category,
+            "dependencies": dependencies,
+            "request_id": getattr(request.state, "request_id", "unknown"),
+        })
 
 
 @app.get("/v1/system/status", tags=["system"])
