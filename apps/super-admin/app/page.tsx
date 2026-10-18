@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type OperatorScope =
   | "platform:operations.read"
@@ -219,7 +220,7 @@ export default function OperationsPage() {
     setBusy(false);
   };
 
-  const loadOperatorData = async (activeSession: AuthSession) => {
+  const loadOperatorData = useCallback(async (activeSession: AuthSession) => {
     setError("");
     setNotice("");
     const accessResponse = await adminFetch("/v1/admin/operator/access", activeSession, setSession);
@@ -261,7 +262,7 @@ export default function OperationsPage() {
       const botBody = await responseBody<{ items: OfficialBot[]; total?: number }>(botResponse);
       setOfficialBots(botBody.items ?? []); setOfficialBotsTotal(botBody.total ?? (botBody.items?.length ?? 0)); setOfficialBotsOffset(0);
     } else { setOfficialBots([]); setOfficialBotsTotal(0); }
-  };
+  }, []);
 
   useEffect(() => { void refreshProbes(); }, []);
   useEffect(() => {
@@ -280,7 +281,7 @@ export default function OperationsPage() {
       }
     });
     return () => { cancelled = true; };
-  }, [session?.access_token]);
+  }, [session?.access_token, loadOperatorData]);
 
   async function refreshAgencyReconciliation(offset = agencyReconciliationOffset, query = agencyReconciliationQuery) {
     if (!session) return;
@@ -550,10 +551,10 @@ export default function OperationsPage() {
 
   return <main className="shell">
     <aside className="sidebar">
-      <a className="brand" href="/"><span className="mark">A</span><span><b>ALLPHA</b><small>CONTROL PLANE</small></span></a>
+      <Link className="brand" href="/"><span className="mark">A</span><span><b>ALLPHA</b><small>CONTROL PLANE</small></span></Link>
       <p className="navLabel">OPERATIONS</p>
       <a className="nav active" href="#overview">◈ &nbsp; Overview</a>
-      <a className="nav" href="/costs">▤ &nbsp; Model cost CRUD</a>
+      <Link className="nav" href="/costs">▤ &nbsp; Model cost CRUD</Link>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
       {canReview && <a className="nav" href="#capability-review">◇ &nbsp; Capability review</a>}
