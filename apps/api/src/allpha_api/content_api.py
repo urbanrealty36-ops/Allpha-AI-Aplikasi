@@ -87,9 +87,7 @@ async def _owner_content(content_id: uuid.UUID, user_id: str) -> dict[str, Any]:
 
 async def _storage(method: str, path: str, *, data: bytes | None = None, media_type: str | None = None) -> httpx.Response:
     base, key = _config()
-    headers = {"apikey": key}
-    if os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
-        headers["Authorization"] = f"Bearer {key}"
+    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
     if media_type:
         headers["Content-Type"] = media_type
     try:
@@ -185,11 +183,28 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         except HTTPException:
             pass
         raise
-    await _server_db("PATCH", "content_items", params={"id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}"}, body={
-        "status": "draft", "content_type": "video" if media_type.startswith("video/") else "image",
-        
-    }, prefer="return=minimal")
-    return {"item": rows[0]}
+    try:
+        updated = await _server_db("PATCH", "content_items", params={
+            "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+            "status": "in.(draft,failed)", "select": CONTENT_FIELDS,
+        }, body={
+            "status": "draft", "content_type": "video" if media_type.startswith("video/") else "image",
+            "version": int(content.get("version") or 1) + 1,
+        }, prefer="return=representation")
+        if not updated:
+            raise HTTPException(409, detail={"code": "CONTENT_UPLOAD_CONFLICT", "message": "Draft berubah saat media diunggah; silakan muat ulang dan coba lagi."})
+    except HTTPException:
+        # Keep the object store and metadata consistent if the parent draft changed or failed to update.
+        try:
+            await _server_db("DELETE", "content_media", params={"id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}"})
+        except HTTPException:
+            pass
+        try:
+            await _storage("DELETE", f"content-media/{storage_path}")
+        except HTTPException:
+            pass
+        raise
+    return {"item": rows[0], "content": updated[0]}
 
 
 @router.get("/{content_id}/preview")
