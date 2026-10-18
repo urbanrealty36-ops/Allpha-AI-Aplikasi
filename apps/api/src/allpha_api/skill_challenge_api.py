@@ -86,7 +86,7 @@ def _public_run(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _owned_agent_and_skill(store: AgentRuntimeStore, owner_id: str, agent_id: str, skill_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+async def _owned_agent_and_skill(store: AgentRuntimeStore, owner_id: str, agent_id: str, skill_id: str, *, allow_draft: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
     agent = await store.get_agent(owner_id, agent_id)
     if not agent or agent.get("status") == "archived":
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
@@ -96,8 +96,9 @@ async def _owned_agent_and_skill(store: AgentRuntimeStore, owner_id: str, agent_
     })
     if not rows or rows[0].get("status") == "archived":
         raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
-    if rows[0].get("status") != "published":
-        raise HTTPException(status_code=409, detail={"code": "SKILL_NOT_PUBLISHED", "message": "Challenge runtime hanya tersedia untuk Skill versi terpublikasi."})
+    skill_status = rows[0].get("status")
+    if skill_status != "published" and not (allow_draft and skill_status == "draft"):
+        raise HTTPException(status_code=409, detail={"code": "SKILL_NOT_PUBLISHED", "message": "Challenge runtime memerlukan Skill published; draft hanya tersedia melalui jalur draft terisolasi."})
     agent_rows = await store.request("GET", "ai_agents", params={
         "select": "id,version,handle,display_name,description,avatar_url,persona,disclosure,boundaries,visibility,status,created_by,created_at,updated_at",
         "id": f"eq.{agent_id}", "limit": "1",
@@ -163,15 +164,19 @@ async def challenge_catalog(agent_id: uuid.UUID, user: dict[str, Any] = Depends(
 
 
 @router.post("/runs", status_code=201)
+@router.post("/draft-runs", status_code=201)
 async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     store, owner_id = _store(), str(user["id"])
+    # The separate path is an owner-only draft test lane. It never publishes a Skill
+    # or activates a Bot; draft runs remain ordinary, expiring challenge evidence.
+    draft_mode = request.url.path.endswith("/draft-runs")
     try:
         existing = await store.request("GET", "agent_skill_challenge_runs", params={
             "select": "*", "owner_user_id": f"eq.{owner_id}", "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
         })
         fingerprint = _digest({
             "agent_id": str(payload.agent_id), "skill_id": str(payload.skill_id),
-            "test_key": payload.test_key,
+            "test_key": payload.test_key, "draft_mode": draft_mode,
         })
         if existing:
             row = existing[0]
@@ -179,7 +184,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
                 raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
             return {"run": _public_run(row), "idempotent_replay": True}
 
-        agent, skill = await _owned_agent_and_skill(store, owner_id, str(payload.agent_id), str(payload.skill_id))
+        agent, skill = await _owned_agent_and_skill(store, owner_id, str(payload.agent_id), str(payload.skill_id), allow_draft=draft_mode)
         version_rows = await store.request("GET", "agent_skill_versions", params={
             "select": "id,skill_id,agent_id,version,snapshot,created_at",
             "skill_id": f"eq.{skill['id']}", "agent_id": f"eq.{agent['id']}",
@@ -235,7 +240,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
         evaluation_set = {"version": int(skill["version"]), "test_key": challenge_key, "test_case": case}
         body = {
             "owner_user_id": owner_id, "agent_id": str(agent["id"]), "skill_id": str(skill["id"]),
-            "agent_version": int(agent.get("version") or 1), "agent_snapshot": {"id": str(agent["id"]), "version": int(agent.get("version") or 1), "status": agent.get("status")}, "skill_version": int(skill["version"]),
+            "agent_version": int(agent.get("version") or 1), "agent_snapshot": {"id": str(agent["id"]), "version": int(agent.get("version") or 1), "status": agent.get("status"), "draft_mode": draft_mode}, "skill_version": int(skill["version"]),
             "skill_version_id": version_row.get("id") if version_row else None,
             "model_route_snapshot": model_route_snapshot,
             "challenge_key": challenge_key, "evaluation_set_version": int(skill["version"]),
@@ -276,7 +281,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
             if existing[0].get("request_fingerprint") != fingerprint:
                 raise HTTPException(status_code=409, detail={"code": "CHALLENGE_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah dipakai untuk challenge berbeda."})
             return {"run": _public_run(existing[0]), "idempotent_replay": True}
-        return {"run": _public_run(rows[0]), "nonce": nonce, "nonce_expires_at": body["nonce_expires_at"], "idempotent_replay": False}
+        return {"run": _public_run(rows[0]), "nonce": nonce, "nonce_expires_at": body["nonce_expires_at"], "idempotent_replay": False, "draft_mode": draft_mode, "publication_performed": False}
     except HTTPException:
         raise
     except AgentRuntimePersistenceError as exc:
