@@ -68,8 +68,8 @@ assert.doesNotMatch(superAdmin, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 const contentStudio = readFileSync(new URL("../app/content-studio/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/content/mine", "/v1/content", "/media", "/preview", "/publish", "/retry",
-  "Authorization", "session.access_token", "FormData", "preview_url", "Coba lagi",
-  "Konten masuk antrean moderasi"
+  "Authorization", "session.access_token", "FormData", "preview_url", "visibility", "content_type",
+  "Konten dikirim untuk ditinjau."
 ]) assert.ok(contentStudio.includes(contract), `missing ENG-P13 Web content contract: ${contract}`);
 assert.doesNotMatch(contentStudio, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
