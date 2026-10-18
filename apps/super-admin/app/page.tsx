@@ -8,7 +8,8 @@ type OperatorScope =
   | "platform:security.audit.read"
   | "platform:capabilities.review"
   | "platform:capabilities.review.high_risk"
-  | "platform:operators.manage";
+  | "platform:operators.manage"
+  | "platform:content.moderate";
 type AuthSession = {
   access_token: string;
   refresh_token: string;
@@ -73,6 +74,7 @@ const allScopes: OperatorScope[] = [
   "platform:capabilities.review",
   "platform:capabilities.review.high_risk",
   "platform:operators.manage",
+  "platform:content.moderate",
 ];
 
 function sessionFrom(payload: AuthPayload): AuthSession {
