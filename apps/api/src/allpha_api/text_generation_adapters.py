@@ -21,6 +21,7 @@ from allpha_api.model_router import (
     TextGenerationRequest,
     TextGenerationResponse,
     TextGenerationRoute,
+    TextGenerationRouterUnavailable,
 )
 
 
@@ -380,8 +381,20 @@ def build_text_generation_router_from_environment() -> CanonicalTextGenerationRo
                 raise RuntimeError("selected model route differs from the verified tariff")
             if (selected_policy.cost_unit, selected_policy.pricing_version, selected_policy.max_cost_microunits) != (cost_unit, pricing_version, max_cost):
                 raise RuntimeError("selected model policy differs from the verified tariff")
-            await runtime_policy_verifier.verify()
-            await tariff_verifier.verify()
+            try:
+                await runtime_policy_verifier.verify()
+            except Exception as exc:
+                raise TextGenerationRouterUnavailable(
+                    "approved runtime policy verification failed",
+                    category="runtime_policy",
+                ) from exc
+            try:
+                await tariff_verifier.verify()
+            except Exception as exc:
+                raise TextGenerationRouterUnavailable(
+                    "active model tariff verification failed",
+                    category="active_tariff",
+                ) from exc
 
         router = CanonicalTextGenerationRouter(
             routes={"private": TextGenerationRoute(provider_id, model_id, model_version, max_attempts=1)},
