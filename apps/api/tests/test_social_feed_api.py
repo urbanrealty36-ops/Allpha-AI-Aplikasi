@@ -119,6 +119,63 @@ def test_reaction_refuses_non_public_content(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatch):
+    owner_id = "eng-p14-followed"
+    content_id = "00000000-0000-0000-0000-000000000011"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": owner_id, "body": "followers-only", "content_type": "text",
+               "visibility": "followers", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "content_items":
+            return [content]
+        if table == "social_edges" and params.get("actor_user_id") == "eq.eng-p14-viewer":
+            return [{"target_user_id": owner_id, "edge_type": "follow", "status": "active"}]
+        if table == "social_edges":
+            return []
+        if method == "POST" and table == "content_reactions":
+            return [{"content_id": content_id, "actor_user_id": "eng-p14-viewer", "reaction": "like"}]
+        raise AssertionError(f"unexpected {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
+        assert response.status_code == 200, response.text
+        assert response.json()["reaction"]["reaction"] == "like"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_blocked_creator_content_cannot_receive_interactions(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000012"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": "eng-p14-blocked", "body": "public-but-blocked", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "content_items":
+            return [content]
+        if table == "social_edges" and params.get("actor_user_id") == "eq.eng-p14-viewer":
+            return [{"target_user_id": "eng-p14-blocked", "edge_type": "block", "status": "active"}]
+        if table == "social_edges":
+            return []
+        raise AssertionError(f"interaction write should not occur: {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_feed_requires_authentication():
     response = TestClient(app).get("/v1/feed")
     assert response.status_code == 401
