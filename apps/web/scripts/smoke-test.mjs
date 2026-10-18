@@ -64,7 +64,31 @@ for (const contract of [
 ]) assert.ok(superAdmin.includes(contract), `missing Super Admin Official Bot control contract: ${contract}`);
 assert.doesNotMatch(superAdmin, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 
-console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, Agent Skill catalog, and Official Bot control smoke assertions passed.");
+// ENG-P13 Creator Studio + moderation contracts: authenticated API only; no mocked business records.
+const contentStudio = readFileSync(new URL("../app/content-studio/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/content/mine", "/v1/content", "/media", "/preview", "/publish", "/retry",
+  "Authorization", "session.access_token", "FormData", "preview_url", "Coba lagi",
+  "Konten masuk antrean moderasi"
+]) assert.ok(contentStudio.includes(contract), `missing ENG-P13 Web content contract: ${contract}`);
+assert.doesNotMatch(contentStudio, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
+
+const moderation = readFileSync(new URL("../../super-admin/app/content-moderation/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/content/admin/review-queue", "/v1/content/admin/", "expected_version",
+  "Authorization", "access_token", "preview_url", "approve", "reject", "reason"
+]) assert.ok(moderation.includes(contract), `missing ENG-P13 moderation contract: ${contract}`);
+assert.doesNotMatch(moderation, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockModerationQueue/);
+
+const nativeContent = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/content/mine", "/v1/content", "/media", "/preview", "/publish", "/retry",
+  "Authorization", "session.access_token", "DocumentPicker", "FormData",
+  "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
+]) assert.ok(nativeContent.includes(contract), `missing ENG-P13 Native content contract: ${contract}`);
+assert.doesNotMatch(nativeContent, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
+
+console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, ENG-P13 content/moderation, Agent Skill catalog, and Official Bot control smoke assertions passed.");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Web GLTF loader must import MeshoptDecoder");

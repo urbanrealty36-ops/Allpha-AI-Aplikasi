@@ -16,14 +16,15 @@ def test_content_media_moderation_publish_journey_isolated(monkeypatch):
     """Exercise create -> upload -> preview -> submit -> approve -> public feed."""
     client = TestClient(app)
     owner_id = "eng-p13-test-owner"
+    active_owner_id = {"value": owner_id}
     content_rows: dict[str, dict] = {}
     media_rows: dict[str, dict] = {}
     storage_operations: list[tuple[str, str]] = []
 
     async def fake_user(request: Request):
         request.state.supabase_access_token = "isolated-test-token"
-        request.state.user_id = owner_id
-        return {"id": owner_id, "email": "eng-p13@example.invalid"}
+        request.state.user_id = active_owner_id["value"]
+        return {"id": active_owner_id["value"], "email": "eng-p13@example.invalid"}
 
     def matches(row, params):
         for key, value in params.items():
@@ -152,5 +153,27 @@ def test_content_media_moderation_publish_journey_isolated(monkeypatch):
         assert visible[0]["media"][0]["id"] == media_id
         assert visible[0]["media"][0]["preview_url"].startswith("https://storage.example.test/private-signed/")
         assert feed.json()["media_preview_expires_in"] == 300
+
+        # Owner isolation uses an isolated fixture identity, never a real account.
+        active_owner_id["value"] = "eng-p13-foreign-owner"
+        foreign_preview = client.get(f"/v1/content/{content_id}/preview")
+        assert foreign_preview.status_code == 404
+        foreign_publish = client.post(f"/v1/content/{content_id}/publish")
+        assert foreign_publish.status_code == 404
+        active_owner_id["value"] = owner_id
+
+        failed = client.post("/v1/content", json={
+            "body": "Isolated retry contract",
+            "visibility": "private",
+            "content_type": "text",
+        })
+        assert failed.status_code == 201, failed.text
+        failed_id = failed.json()["item"]["id"]
+        content_rows[failed_id]["status"] = "failed"
+        content_rows[failed_id]["moderation_status"] = "failed"
+        retried = client.post(f"/v1/content/{failed_id}/retry")
+        assert retried.status_code == 200, retried.text
+        assert retried.json()["item"]["status"] == "draft"
+        assert retried.json()["item"]["moderation_status"] == "not_submitted"
     finally:
         app.dependency_overrides.clear()

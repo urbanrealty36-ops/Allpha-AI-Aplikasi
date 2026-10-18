@@ -47,7 +47,13 @@ for (const contract of [
 assert.ok(app.includes("loadRuntimeSessionTasks"));
 assert.ok(app.includes("Eksekusi tetap membutuhkan policy runtime yang disetujui"));
 
-console.log("ENG-P01 source, ENG-P10 task lifecycle, and ENG-P12 Skill Challenge smoke tests passed.");
+for (const contract of [
+  "/v1/content/mine", "/v1/content", "/media", "/preview", "/publish", "/retry",
+  "createNativeContentDraft", "submitNativeContent", "retryNativeContent", "previewNativeContent",
+  "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
+]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
+
+console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, and ENG-P13 content pipeline smoke tests passed.");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
