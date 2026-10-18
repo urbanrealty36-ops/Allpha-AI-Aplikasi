@@ -90,8 +90,8 @@ assert.doesNotMatch(nativeContent, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockC
 
 const feedPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
 for (const contract of [
-  "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report",
-  "personalization_enabled", "ranking_mode", "next_cursor", "Laporkan", "Personalisasi feed aktif", "reportReasons", "misinformation"
+  "/v1/feed?", "/v1/feed/preferences", "/v1/feed/item/", "/reaction", "/save", "/comments", "/report", "/share",
+  "personalization_enabled", "ranking_mode", "next_cursor", "Laporkan", "Bagikan", "reportReasons", "misinformation", "navigator.clipboard", "content"
 ]) assert.ok(feedPage.includes(contract), `missing ENG-P14 Web feed contract: ${contract}`);
 assert.doesNotMatch(feedPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockFeedItems|fakeFeed/);
 
