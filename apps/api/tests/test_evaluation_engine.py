@@ -117,3 +117,80 @@ def test_rejects_non_finite_scores():
         CriterionSignal(score=float("nan"))
     with pytest.raises(ValidationError):
         CriterionSignal(score=float("inf"))
+
+
+def test_rubric_accepts_legacy_min_score_alias_and_normalizes_canonical_digest():
+    legacy = {
+        "rubric_key": "pdf_qa_quality",
+        "version": 1,
+        "criteria": [
+            {"key": "task_success", "weight": 0.3, "required": True, "min_score": 0.8},
+            {"key": "factuality", "weight": 0.7, "required": True, "min_score": 0.8},
+        ],
+        "pass_threshold": 0.8,
+        "evaluator_version": EVALUATOR_VERSION,
+    }
+    canonical = {
+        **legacy,
+        "criteria": [
+            {"key": "task_success", "weight": 0.3, "required": True, "minimum_score": 0.8},
+            {"key": "factuality", "weight": 0.7, "required": True, "minimum_score": 0.8},
+        ],
+    }
+    parsed_legacy = EvaluationRubric.model_validate(legacy)
+    parsed_canonical = EvaluationRubric.model_validate(canonical)
+    assert parsed_legacy == parsed_canonical
+    assert parsed_legacy.digest() == parsed_canonical.digest()
+    assert parsed_legacy.criteria[0].minimum_score == 0.8
+
+
+def test_rubric_rejects_unknown_fields_even_with_legacy_alias():
+    legacy = {
+        "rubric_key": "pdf_qa_quality",
+        "version": 1,
+        "criteria": [
+            {"key": "task_success", "weight": 0.3, "required": True, "min_score": 0.8, "unexpected": True},
+            {"key": "factuality", "weight": 0.7, "required": True, "min_score": 0.8},
+        ],
+        "pass_threshold": 0.8,
+        "evaluator_version": EVALUATOR_VERSION,
+    }
+    with pytest.raises(ValidationError):
+        EvaluationRubric.model_validate(legacy)
+
+
+def test_rubric_rejects_invalid_weights_and_unsupported_evaluator_with_legacy_alias():
+    base = {
+        "rubric_key": "pdf_qa_quality",
+        "version": 1,
+        "criteria": [
+            {"key": "task_success", "weight": 0.3, "required": True, "min_score": 0.8},
+            {"key": "factuality", "weight": 0.7, "required": True, "min_score": 0.8},
+        ],
+        "pass_threshold": 0.8,
+        "evaluator_version": EVALUATOR_VERSION,
+    }
+    invalid_weight = {**base, "criteria": [
+        {"key": "task_success", "weight": 0.2, "required": True, "min_score": 0.8},
+        {"key": "factuality", "weight": 0.7, "required": True, "min_score": 0.8},
+    ]}
+    with pytest.raises(ValidationError):
+        EvaluationRubric.model_validate(invalid_weight)
+    unsupported = {**base, "evaluator_version": "untrusted-evaluator-v99"}
+    with pytest.raises(ValidationError):
+        EvaluationRubric.model_validate(unsupported)
+
+
+def test_rubric_rejects_both_legacy_and_canonical_threshold_fields():
+    rubric_data = {
+        "rubric_key": "pdf_qa_quality",
+        "version": 1,
+        "criteria": [
+            {"key": "task_success", "weight": 0.3, "required": True, "min_score": 0.8, "minimum_score": 0.8},
+            {"key": "factuality", "weight": 0.7, "required": True, "minimum_score": 0.8},
+        ],
+        "pass_threshold": 0.8,
+        "evaluator_version": EVALUATOR_VERSION,
+    }
+    with pytest.raises(ValidationError):
+        EvaluationRubric.model_validate(rubric_data)
