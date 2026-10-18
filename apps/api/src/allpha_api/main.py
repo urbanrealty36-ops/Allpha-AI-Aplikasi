@@ -1037,6 +1037,8 @@ async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: 
     )
     if not current:
         raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    if current[0].get("status") != "draft":
+        raise HTTPException(status_code=409, detail={"code": "SKILL_CONTENT_IMMUTABLE", "message": "Skill yang published/archived tidak dapat diubah; buat draft versi baru dan tinjau ulang sebelum publikasi."})
     changes["version"] = int(current[0].get("version") or 1) + 1
     rows = await user_db_request(
         "PATCH", "agent_skills", token,
