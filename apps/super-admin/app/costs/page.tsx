@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 type Session = { access_token: string; refresh_token: string; expires_at: number; user: { id: string; email?: string } };
@@ -167,7 +167,7 @@ export default function ModelCostsPage() {
       <h2>Aktivasi & arsip</h2><label style={{display:"grid",gap:6,maxWidth:600}}>Alasan aktivasi/arsip (min. 8 karakter)<input value={reason} onChange={event=>setReason(event.target.value)} minLength={8} maxLength={500} style={{padding:10}} placeholder="Contoh: tarif vendor terverifikasi untuk periode peluncuran" /></label>
       <div style={{overflowX:"auto",marginTop:16}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr>{["Provider / Model","Versi","Tarif input/output","Batas","Status","Policy","Aksi"].map(label=><th key={label} style={{textAlign:"left",padding:10,borderBottom:"1px solid #eaecf0"}}>{label}</th>)}</tr></thead><tbody>
         {items.map(item=><tr key={item.id}>{[
-          <><strong key="provider">{item.provider_id}</strong><br/>{item.model_id}<br/><small key="model-version">{item.model_version}</small></>,
+          <Fragment key="provider"><strong>{item.provider_id}</strong><br/>{item.model_id}<br/><small>{item.model_version}</small></Fragment>,
           item.pricing_version,
           <>↑ {item.input_micro_cost_per_token} / ↓ {item.output_micro_cost_per_token}<br/><small>{item.cost_unit} per token</small></>,
           <>{item.max_cost_microunits} {item.cost_unit}<br/><small>{item.max_output_tokens} output tokens · {item.max_latency_ms} ms</small></>,
