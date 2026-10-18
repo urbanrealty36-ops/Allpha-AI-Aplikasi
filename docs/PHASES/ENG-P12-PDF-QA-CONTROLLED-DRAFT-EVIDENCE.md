@@ -46,3 +46,9 @@ Therefore this draft is registered and snapshotted, but no real provider challen
 ## Acceptance status
 
 ENG-P12 remains **in progress**. This record documents the actual database state and the next execution contract; it is not a claim that the live provider challenge has passed.
+
+## Railway provider configuration recheck (2026-10-18)
+
+The Railway production API service `Allpha-AI-Aplikasi` already has these provider connection variables configured by name: `ALLPHA_TEXTGEN_API_KEY`, `ALLPHA_TEXTGEN_BASE_URL`, `ALLPHA_TEXTGEN_PROVIDER_ID`, `ALLPHA_TEXTGEN_MODEL_ID`, `ALLPHA_TEXTGEN_MODEL_VERSION`, and `ALLPHA_TEXTGEN_POLICY_APPROVED`. The connected Railway OAuth session redacts values, so credentials and exact provider/model values were not exposed or copied into source control.
+
+The missing variable names observed on the same service are `ALLPHA_TEXTGEN_POLICY_ID`, `ALLPHA_TEXTGEN_POLICY_VERSION`, `ALLPHA_TEXTGEN_PRICING_VERSION`, `ALLPHA_TEXTGEN_COST_UNIT`, `ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN`, `ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN`, and `ALLPHA_TEXTGEN_MAX_COST_MICROUNITS` (also optional explicit caps `ALLPHA_TEXTGEN_MAX_PROMPT_BYTES`, `ALLPHA_TEXTGEN_MAX_OUTPUT_TOKENS`, `ALLPHA_TEXTGEN_MAX_LATENCY_MS`). Supabase currently has zero active/draft model-cost rows and zero runtime-policy rows. Thus provider connectivity is configured; cost registry and separately approved runtime policy are not yet configured. Keep the router fail-closed until those records are created through authorized operator workflows and verified.
