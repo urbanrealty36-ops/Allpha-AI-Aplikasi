@@ -81,7 +81,14 @@ jobs:
       - run: npm run typecheck && npm test && npm run build
         working-directory: apps/super-admin
       - name: Build Super Admin container image
-        run: docker build --file apps/super-admin/Dockerfile --tag allpha-super-admin:ci apps/super-admin
+        # These non-routable public config values are compile-only CI inputs; never deployed to Production.
+        run: >-
+          docker build
+          --build-arg NEXT_PUBLIC_SUPABASE_URL=https://ci.invalid.supabase.co
+          --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_build_only
+          --file apps/super-admin/Dockerfile
+          --tag allpha-super-admin:ci
+          apps/super-admin
 
   native-android-build:
     name: Native Android prebuild and debug APK
