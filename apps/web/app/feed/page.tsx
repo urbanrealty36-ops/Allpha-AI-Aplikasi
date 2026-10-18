@@ -30,6 +30,7 @@ export default function FeedPage() {
   const [comments, setComments] = useState<Record<string, FeedComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentsOpen, setCommentsOpen] = useState<Record<string, boolean>>({});
+  const [reportReasons, setReportReasons] = useState<Record<string, "spam" | "harassment" | "privacy" | "misinformation" | "other">>({});
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
@@ -135,7 +136,7 @@ export default function FeedPage() {
   async function report(item: FeedItem) {
     setBusyKey(item.id); setError(""); setNotice("");
     try {
-      await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: "other", details: "Dilaporkan dari feed." }) });
+      await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: reportReasons[item.id] ?? "other" }) });
       setNotice("Laporan diterima untuk ditinjau.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Laporan gagal dikirim."); }
     finally { setBusyKey(""); }
@@ -168,7 +169,7 @@ export default function FeedPage() {
         {!loading && items.length === 0 && <section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><h2 className="font-semibold">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan muncul setelah disetujui melalui moderasi.</p></section>}
         <div className="space-y-4">
           {items.map(item => <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">Creator · {item.owner_id.slice(0, 8)}</p><time className="mt-1 block text-xs text-slate-500">{new Date(item.published_at ?? item.created_at).toLocaleString()}</time></div><button className="text-xs text-slate-500 hover:text-red-600" onClick={() => void report(item)} disabled={busyKey === item.id}>Laporkan</button></div>
+            <div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">Creator · {item.owner_id.slice(0, 8)}</p><time className="mt-1 block text-xs text-slate-500">{new Date(item.published_at ?? item.created_at).toLocaleString()}</time></div><div className="flex items-center gap-2"><select aria-label="Alasan laporan konten" className="max-w-40 rounded-lg border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600" value={reportReasons[item.id] ?? "other"} onChange={e => setReportReasons(current => ({ ...current, [item.id]: e.target.value as "spam" | "harassment" | "privacy" | "misinformation" | "other" }))}><option value="spam">Spam</option><option value="harassment">Pelecehan</option><option value="privacy">Privasi</option><option value="misinformation">Misinformasi</option><option value="other">Lainnya</option></select><button className="text-xs text-slate-500 hover:text-red-600" onClick={() => void report(item)} disabled={busyKey === item.id}>Laporkan</button></div></div>
             {item.body && <p className="whitespace-pre-wrap break-words text-sm leading-6">{item.body}</p>}
             {item.media?.map(media => media.preview_url && (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline className="mt-3 max-h-[480px] w-full rounded-xl bg-black" /> : <img key={media.id} src={media.preview_url} alt={media.filename} className="mt-3 max-h-[480px] w-full rounded-xl object-contain" />))}
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
