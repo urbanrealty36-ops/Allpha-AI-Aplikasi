@@ -52,3 +52,15 @@ ENG-P12 remains **in progress**. This record documents the actual database state
 The Railway production API service `Allpha-AI-Aplikasi` already has these provider connection variables configured by name: `ALLPHA_TEXTGEN_API_KEY`, `ALLPHA_TEXTGEN_BASE_URL`, `ALLPHA_TEXTGEN_PROVIDER_ID`, `ALLPHA_TEXTGEN_MODEL_ID`, `ALLPHA_TEXTGEN_MODEL_VERSION`, and `ALLPHA_TEXTGEN_POLICY_APPROVED`. The connected Railway OAuth session redacts values, so credentials and exact provider/model values were not exposed or copied into source control.
 
 The missing variable names observed on the same service are `ALLPHA_TEXTGEN_POLICY_ID`, `ALLPHA_TEXTGEN_POLICY_VERSION`, `ALLPHA_TEXTGEN_PRICING_VERSION`, `ALLPHA_TEXTGEN_COST_UNIT`, `ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN`, `ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN`, and `ALLPHA_TEXTGEN_MAX_COST_MICROUNITS` (also optional explicit caps `ALLPHA_TEXTGEN_MAX_PROMPT_BYTES`, `ALLPHA_TEXTGEN_MAX_OUTPUT_TOKENS`, `ALLPHA_TEXTGEN_MAX_LATENCY_MS`). Supabase currently has zero active/draft model-cost rows and zero runtime-policy rows. Thus provider connectivity is configured; cost registry and separately approved runtime policy are not yet configured. Keep the router fail-closed until those records are created through authorized operator workflows and verified.
+
+## Full execution preflight recheck (2026-10-18)
+
+Latest read-only production checks:
+- `ai_model_cost_configs`: the `nvidia-nim / qwen/qwen2.5-coder-32b-instruct` row exists as `draft`, pricing version `test-only-nim-v1`, input 1 and output 2 microunits/token, cap 5000 microunits, prompt 16384 bytes, output 128 tokens, latency 15000 ms; `policy_approved=false`.
+- `agent_runtime_policies`: 0 rows.
+- `agent_model_usage_metering`: 0 rows.
+- Function `public.record_agent_model_usage_metering(jsonb)` exists. Its definition inserts by idempotency key, accepts same-fingerprint replay, and raises `METERING_IDEMPOTENCY_CONFLICT` when the same key is reused with a different fingerprint.
+- Railway API production has the provider connection variable names, but is missing `ALLPHA_TEXTGEN_POLICY_ID`, `ALLPHA_TEXTGEN_POLICY_VERSION`, `ALLPHA_TEXTGEN_PRICING_VERSION`, `ALLPHA_TEXTGEN_COST_UNIT`, `ALLPHA_TEXTGEN_INPUT_MICRO_COST_PER_TOKEN`, `ALLPHA_TEXTGEN_OUTPUT_MICRO_COST_PER_TOKEN`, and `ALLPHA_TEXTGEN_MAX_COST_MICROUNITS`. Values remain redacted by the connected OAuth session.
+- No real challenge was run in this preflight. Do not mark runtime, provider output, metering, evaluation, security E2E, comparison, or owner decision as passed.
+
+Next: create a draft runtime policy using the canonical authorized policy workflow, have the authorized reviewer approve it, complete the required Railway configuration using the existing provider/model identity and matching test tariff, verify durable metering, then execute the pinned v1 challenge through the actual provider. Keep Skill publication and rewards separate.
