@@ -27,6 +27,10 @@ class ReportCreate(BaseModel):
     reason: Literal["spam", "harassment", "privacy", "misinformation", "other"]
     details: str | None = Field(default=None, max_length=1000)
 
+class ShareCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    share_target: Literal["copy_link", "native_share", "external"] = "copy_link"
+
 class PreferencesWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     personalization_enabled: bool
@@ -133,7 +137,8 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000"})
     saves = await _server_db("GET", "content_saves", params={"select": "content_id,actor_user_id", "content_id": in_ids, "limit": "5000"})
-    likes: dict[str, int] = {}; comment_counts: dict[str, int] = {}; save_counts: dict[str, int] = {}
+    shares = await _server_db("GET", "content_shares", params={"select": "content_id", "content_id": in_ids, "limit": "5000"})
+    likes: dict[str, int] = {}; comment_counts: dict[str, int] = {}; save_counts: dict[str, int] = {}; share_counts: dict[str, int] = {}
     viewer_reactions: dict[str, str] = {}; viewer_saves: set[str] = set()
     for row in reactions or []:
         cid = str(row["content_id"]); likes[cid] = likes.get(cid, 0) + 1
@@ -143,17 +148,19 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     for row in saves or []:
         cid = str(row["content_id"]); save_counts[cid] = save_counts.get(cid, 0) + 1
         if str(row.get("actor_user_id")) == owner: viewer_saves.add(cid)
+    for row in shares or []:
+        cid = str(row["content_id"]); share_counts[cid] = share_counts.get(cid, 0) + 1
     ranked = []
     for row in candidates:
         cid = str(row["id"])
-        like_count, comment_count, save_count = likes.get(cid, 0), comment_counts.get(cid, 0), save_counts.get(cid, 0)
+        like_count, comment_count, save_count, share_count = likes.get(cid, 0), comment_counts.get(cid, 0), save_counts.get(cid, 0), share_counts.get(cid, 0)
         followed_creator = str(row.get("owner_id")) in followed
         body_tokens = set(re.findall(r"[a-z0-9]+", str(row.get("body") or "").casefold()))
         interest_matches = sum(
             1 for key in interest_keys
             if (terms := set(re.findall(r"[a-z0-9]+", key))) and terms.issubset(body_tokens)
         )
-        engagement_total = like_count + 2 * comment_count + 2 * save_count
+        engagement_total = like_count + 2 * comment_count + 2 * save_count + share_count
         signals = ["recency"]
         if followed_creator:
             signals.append("followed_creator")
@@ -164,7 +171,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         # Version 1 is lexicographic, not a fabricated weighted score: followed creator,
         # explicit user-interest match count, observed engagement, then publish time.
         rank_key = (int(followed_creator), interest_matches, engagement_total, _published(row), str(row["id"]))
-        ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count},
+        ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count, "shares": share_count},
                        "viewer_reaction": viewer_reactions.get(cid), "saved": cid in viewer_saves,
                        "ranking_signals": signals, "_rank": rank_key})
     ranked.sort(key=(lambda r: r["_rank"]) if effective_mode == "for_you"
@@ -232,7 +239,16 @@ async def list_comments(content_id: uuid.UUID, limit: int = Query(default=30, ge
     await _visible_content(content_id, str(user["id"]))
     rows = await _server_db("GET", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at",
         "content_id": f"eq.{content_id}", "status": "eq.visible", "order": "created_at.asc", "limit": str(limit)})
-    return {"items": rows or []}
+    items = rows or []
+    if items:
+        mention_rows = await _server_db("GET", "content_mentions", params={
+            "select": "comment_id,mentioned_user_id", "comment_id": f"in.({','.join(str(x['id']) for x in items)})", "limit": str(min(500, len(items) * 20)),
+        })
+        mentions_by_comment: dict[str, list[str]] = {}
+        for mention in mention_rows or []:
+            mentions_by_comment.setdefault(str(mention["comment_id"]), []).append(str(mention["mentioned_user_id"]))
+        items = [{**item, "mentions": mentions_by_comment.get(str(item["id"]), [])} for item in items]
+    return {"items": items}
 
 @router.post("/v1/feed/{content_id}/comments", status_code=201)
 async def create_comment(content_id: uuid.UUID, payload: CommentCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
@@ -241,13 +257,49 @@ async def create_comment(content_id: uuid.UUID, payload: CommentCreate, user: di
     rows = await _server_db("POST", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at"},
         body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "body": body, "status": "visible"}, prefer="return=representation")
     if not rows: raise HTTPException(409, detail={"code": "COMMENT_NOT_RECORDED", "message": "Komentar tidak dapat disimpan."})
-    return {"comment": rows[0]}
+    mentions = await _server_db("GET", "content_mentions", params={"select": "mentioned_user_id", "comment_id": f"eq.{rows[0]['id']}", "limit": "100"})
+    return {"comment": rows[0], "mentions": mentions or []}
 
 @router.delete("/v1/feed/comments/{comment_id}")
 async def delete_comment(comment_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _server_db("DELETE", "content_comments", params={"id": f"eq.{comment_id}", "actor_user_id": f"eq.{user['id']}", "select": "id"}, prefer="return=representation")
     if not rows: raise HTTPException(404, detail={"code": "COMMENT_NOT_FOUND", "message": "Komentar tidak ditemukan atau bukan milik Anda."})
     return {"removed": True}
+
+@router.post("/v1/feed/{content_id}/share", status_code=201)
+async def share_content(content_id: uuid.UUID, payload: ShareCreate,
+                        user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _visible_content(content_id, str(user["id"]))
+    rows = await _server_db("POST", "content_shares", params={"select": "id,content_id,actor_user_id,share_target,created_at"},
+        body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "share_target": payload.share_target},
+        prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "SHARE_NOT_RECORDED", "message": "Aktivitas berbagi tidak dapat dicatat."})
+    return {"share": rows[0], "share_url": "https://allpha.web.id/feed?content=" + str(content_id)}
+
+@router.get("/v1/feed/item/{content_id}")
+async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner = str(user["id"])
+    item = await _visible_content(content_id, owner)
+    cid = str(content_id)
+    reactions = await _server_db("GET", "content_reactions", params={"select": "actor_user_id,reaction", "content_id": f"eq.{cid}", "limit": "5000"})
+    comments = await _server_db("GET", "content_comments", params={"select": "id", "content_id": f"eq.{cid}", "status": "eq.visible", "limit": "5000"})
+    saves = await _server_db("GET", "content_saves", params={"select": "actor_user_id", "content_id": f"eq.{cid}", "limit": "5000"})
+    shares = await _server_db("GET", "content_shares", params={"select": "id", "content_id": f"eq.{cid}", "limit": "5000"})
+    media = await _server_db("GET", "content_media", params={"select": MEDIA_FIELDS, "content_id": f"eq.{cid}",
+        "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": "50"})
+    media_items = []
+    for row in media or []:
+        media_item = {key: value for key, value in row.items() if key != "storage_path"}
+        media_item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+        media_items.append(media_item)
+    viewer_reaction = next((str(row.get("reaction") or "like") for row in reactions or [] if str(row.get("actor_user_id")) == owner), None)
+    item["engagement"] = {"likes": len(reactions or []), "comments": len(comments or []), "saves": len(saves or []), "shares": len(shares or [])}
+    item["viewer_reaction"] = viewer_reaction
+    item["saved"] = any(str(row.get("actor_user_id")) == owner for row in saves or [])
+    item["media"] = media_items
+    item["ranking_signals"] = ["shared_link"]
+    return {"item": item}
 
 @router.post("/v1/feed/{content_id}/report", status_code=201)
 async def report_content(content_id: uuid.UUID, payload: ReportCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
