@@ -88,7 +88,21 @@ for (const contract of [
 ]) assert.ok(nativeContent.includes(contract), `missing ENG-P13 Native content contract: ${contract}`);
 assert.doesNotMatch(nativeContent, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
-console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, ENG-P13 content/moderation, Agent Skill catalog, and Official Bot control smoke assertions passed.");
+const feedPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report",
+  "personalization_enabled", "ranking_mode", "next_cursor", "Laporkan", "Personalisasi feed aktif"
+]) assert.ok(feedPage.includes(contract), `missing ENG-P14 Web feed contract: ${contract}`);
+assert.doesNotMatch(feedPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockFeedItems|fakeFeed/);
+
+const reportsPage = readFileSync(new URL("../../super-admin/app/content-reports/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/admin/content-reports", "/v1/admin/content-reports/", "platform:content.moderate",
+  "dismiss", "hide_content", "Alasan keputusan", "Authorization"
+]) assert.ok(reportsPage.includes(contract), `missing ENG-P14 Super Admin reports contract: ${contract}`);
+assert.doesNotMatch(reportsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockReports/);
+
+console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, ENG-P13 content/moderation, ENG-P14 feed/reports, Agent Skill catalog, and Official Bot control smoke assertions passed.");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Web GLTF loader must import MeshoptDecoder");
