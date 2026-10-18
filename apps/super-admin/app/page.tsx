@@ -209,12 +209,12 @@ export default function OperationsPage() {
     const results = await Promise.all(paths.map(async (path, i) => {
       try {
         const response = await fetch(apiBase + path, { cache: "no-store", headers: { Accept: "application/json" } });
-        const body = await response.json() as { status?: string; service?: string; version?: string; environment?: string; dependencies?: Record<string, string>; capabilities?: Record<string, boolean> };
+        const body = await response.json() as { status?: string; service?: string; version?: string; environment?: string; dependencies?: Record<string, string | { status?: string; http_status?: number }>; capabilities?: Record<string, boolean> };
         if (!response.ok) return { label: labels[i], path, status: "offline" as const, detail: "HTTP " + response.status };
         if (path === "/healthz") return { label: labels[i], path, status: body.status === "ok" ? "online" as const : "warning" as const, detail: body.service || "Respons diterima" };
         if (path === "/readyz") {
-          const missing = ["database", "authentication"].filter((key) => body.dependencies?.[key] !== "reachable");
-          return { label: labels[i], path, status: body.status === "ready" && !missing.length ? "online" as const : "warning" as const, detail: missing.length ? "Dependensi inti belum terjangkau: " + missing.join(", ") : "Auth dan database terjangkau" };
+          const missing = ["database", "authentication"].filter((key) => { const value = body.dependencies?.[key]; return (typeof value === "string" ? value : value?.status) !== "reachable"; });
+          return { label: labels[i], path, status: body.status === "ready" && !missing.length ? "online" as const : "warning" as const, detail: missing.length ? "Dependensi inti belum terjangkau: " + missing.map((key) => { const value = body.dependencies?.[key]; const status = typeof value === "string" ? value : value?.status || "unknown"; const http = typeof value === "object" && value ? value.http_status : undefined; return key + "=" + status + (http ? " (HTTP " + http + ")" : ""); }).join(", ") : "Auth dan database terjangkau" };
         }
         const missing = Object.entries(body.capabilities || {}).filter(([, value]) => value === false).map(([key]) => key);
         return { label: labels[i], path, status: missing.length ? "warning" as const : "online" as const, detail: "Versi " + (body.version || "—") + " · " + (body.environment || "environment tidak dilaporkan") + (missing.length ? " · belum tersedia: " + missing.join(", ") : "") };
