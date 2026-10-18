@@ -122,9 +122,9 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     for row in saves or []:
         cid = str(row["content_id"]); save_counts[cid] = save_counts.get(cid, 0) + 1
         if str(row.get("actor_user_id")) == owner: viewer_saves.add(cid)
-    now = _now(); ranked = []
+    ranked = []
     for row in candidates:
-        cid = str(row["id"]); age = max(0.0, (now - _published(row)).total_seconds() / 3600)
+        cid = str(row["id"]); age = max(0.0, (as_of - _published(row)).total_seconds() / 3600)
         like_count, comment_count, save_count = likes.get(cid, 0), comment_counts.get(cid, 0), save_counts.get(cid, 0)
         followed_creator = str(row.get("owner_id")) in followed
         freshness = max(0.0, 1.0 - age / (24 * 7))
