@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { NavigationContainer, useNavigation, type NavigationProp } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -11,7 +11,7 @@ import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNati
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
-type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number }; viewer_reaction?: string | null; saved?: boolean };
+type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
 
 
@@ -227,6 +227,17 @@ function Profile({ session }: { session: Session }) {
       else { await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: reportReason }) }); setMessage("Laporan dikirim untuk ditinjau."); }
       if (action !== "report") await loadNativeFeed(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Interaksi feed gagal."); }
+    finally { setFeedBusy(false); }
+  }
+  async function shareNativeContent(item: NativeFeedItem) {
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
+        method: "POST", body: JSON.stringify({ share_target: "native_share" }),
+      }) as { share_url: string };
+      await Share.share({ message: result.share_url, url: result.share_url });
+      setMessage("Tautan berbagi disiapkan.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Berbagi konten gagal."); }
     finally { setFeedBusy(false); }
   }
   function chooseNativeReportReason(item: NativeFeedItem) {
@@ -856,6 +867,7 @@ function Profile({ session }: { session: Session }) {
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "like")}/>
             <Button title={(item.saved ? "Tersimpan" : "Simpan") + " · " + (item.engagement?.saves ?? 0)} secondary={!!item.saved} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "save")}/>
+            <Button title={"Bagikan · " + (item.engagement?.shares ?? 0)} secondary disabled={feedBusy} onPress={() => void shareNativeContent(item)}/>
             <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => chooseNativeReportReason(item)}/>
             <Button title={feedCommentsOpen[item.id] ? "Tutup komentar" : "Lihat komentar"} secondary disabled={feedBusy} onPress={() => void toggleNativeComments(item)}/>
           </View>
