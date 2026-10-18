@@ -74,14 +74,28 @@ export default function ContentStudioPage() {
         body: body.trim(), visibility, content_type: file ? (file.type.startsWith("video/") ? "video" : "image") : "text"
       }) });
       const id = created.item.id as string;
+      setSelected(id);
+      await refresh();
       if (file) {
         const data = new FormData(); data.append("file", file);
         await request(`/v1/content/${id}/media`, { method: "POST", body: data });
       }
-      setBody(""); setFile(null); setSelected(id);
+      setBody(""); setFile(null);
       setNotice(file ? "Draft tersimpan dan media berhasil diunggah." : "Draft konten berhasil disimpan.");
       await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Draft gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
+  async function uploadToSelectedDraft() {
+    if (!selected || !file) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const data = new FormData(); data.append("file", file);
+      await request(`/v1/content/${selected}/media`, { method: "POST", body: data });
+      setFile(null); setNotice("Media berhasil diunggah ke draft.");
+      await refresh(); await showPreview(selected);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unggah gagal. Draft tetap tersimpan dan dapat dicoba lagi."); }
     finally { setBusy(false); }
   }
 
@@ -127,7 +141,8 @@ export default function ContentStudioPage() {
             <label className="block text-sm font-medium">Visibilitas<select value={visibility} onChange={event => setVisibility(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600"><option value="public">Publik (setelah moderasi)</option><option value="followers">Pengikut</option><option value="private">Pribadi</option></select></label>
             <label className="block text-sm font-medium">Gambar atau video <span className="font-normal text-slate-500">JPG, PNG, WebP hingga 10 MB; MP4/WebM hingga 50 MB</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={event => setFile(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 dark:file:bg-slate-800" /></label>
             {file ? <p className="text-xs text-slate-500">Dipilih: {file.name} · {(file.size / (1024 * 1024)).toFixed(2)} MB</p> : null}
-            <button disabled={busy || !session || (!body.trim() && !file)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Memproses…" : "Simpan draft"}</button>
+            {selected && file ? <button type="button" onClick={() => void uploadToSelectedDraft()} disabled={busy} className="mr-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold dark:border-slate-600">Unggah ke draft terpilih</button> : null}
+            <button disabled={busy || !session || (!body.trim() && !file)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Memproses…" : "Simpan draft baru"}</button>
           </form>
         </section>
         <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
