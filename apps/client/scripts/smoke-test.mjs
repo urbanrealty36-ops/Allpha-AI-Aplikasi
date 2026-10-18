@@ -55,8 +55,8 @@ for (const contract of [
 
 for (const contract of [
   "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report",
-  "loadNativeFeed", "saveNativeFeedPreferences", "nativeFeedAction", "submitNativeFeedComment",
-  "Personalisasi: aktif", "Laporkan"
+  "loadNativeFeed", "saveNativeFeedPreferences", "nativeFeedAction", "submitNativeFeedComment", "toggleNativeComments", "chooseNativeReportReason",
+  "Personalisasi: aktif", "Laporkan", "misinformation"
 ]) assert.ok(app.includes(contract), `missing ENG-P14 Native feed contract: ${contract}`);
 
 console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed smoke tests passed.");
