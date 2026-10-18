@@ -9,7 +9,7 @@ type FeedMedia = { id: string; filename: string; media_type: string; preview_url
 type FeedItem = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
   published_at?: string | null; created_at: string; media?: FeedMedia[];
-  engagement?: { likes: number; comments: number; saves: number };
+  engagement?: { likes: number; comments: number; saves: number; shares?: number };
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
 type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
@@ -51,6 +51,11 @@ export default function FeedPage() {
     if (!session) return;
     setLoading(true); setError("");
     try {
+      const sharedContentId = reset && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("content") : null;
+      if (sharedContentId) {
+        const direct = await request("/v1/feed/item/" + encodeURIComponent(sharedContentId)) as { item: FeedItem };
+        setItems([direct.item]); setCursor(null); return;
+      }
       const params = new URLSearchParams({ mode, limit: "20" });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/feed?" + params.toString()) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
@@ -142,6 +147,22 @@ export default function FeedPage() {
     finally { setBusyKey(""); }
   }
 
+  async function share(item: FeedItem) {
+    setBusyKey(item.id); setError(""); setNotice("");
+    try {
+      const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
+        method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
+      }) as { share_url: string };
+      try {
+        await navigator.clipboard.writeText(data.share_url);
+        setNotice("Tautan konten disalin.");
+      } catch {
+        setNotice("Tautan untuk dibagikan: " + data.share_url);
+      }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Tautan berbagi gagal dibuat."); }
+    finally { setBusyKey(""); }
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav className="mb-6 flex items-center justify-between gap-3">
@@ -176,6 +197,7 @@ export default function FeedPage() {
               <button className={"rounded-full border px-3 py-2 text-sm " + (item.viewer_reaction ? "border-blue-500 text-blue-600" : "border-slate-300 dark:border-slate-600")} onClick={() => void toggleReaction(item)} disabled={busyKey === item.id}>♥ {item.engagement?.likes ?? 0}</button>
               <button className={"rounded-full border px-3 py-2 text-sm " + (item.saved ? "border-blue-500 text-blue-600" : "border-slate-300 dark:border-slate-600")} onClick={() => void toggleSave(item)} disabled={busyKey === item.id}>{item.saved ? "Tersimpan" : "Simpan"} · {item.engagement?.saves ?? 0}</button>
               <button className="rounded-full border border-slate-300 px-3 py-2 text-sm dark:border-slate-600" onClick={() => void openComments(item)}>{commentsOpen[item.id] ? "Tutup komentar" : "Komentar"} · {item.engagement?.comments ?? 0}</button>
+              <button className="rounded-full border border-slate-300 px-3 py-2 text-sm dark:border-slate-600" onClick={() => void share(item)} disabled={busyKey === item.id}>Bagikan · {item.engagement?.shares ?? 0}</button>
             </div>
             {commentsOpen[item.id] && <div className="mt-3 space-y-3">
               {(comments[item.id] ?? []).map(comment => <div key={comment.id} className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><p className="mb-1 text-xs text-slate-500">{comment.actor_user_id.slice(0, 8)} · {new Date(comment.created_at).toLocaleString()}</p><p className="whitespace-pre-wrap">{comment.body}</p></div>)}
