@@ -57,7 +57,8 @@ export default function ModelCostsPage() {
   const [items, setItems] = useState<CostConfig[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
+  const [activationReason, setActivationReason] = useState("");
+  const [archiveReason, setArchiveReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -98,29 +99,29 @@ export default function ModelCostsPage() {
         : await apiFetch("/v1/admin/model-costs", session, { method: "POST", body: JSON.stringify(payload) });
       await readBody(response);
       setNotice(editing ? "Draft tarif diperbarui." : "Draft tarif dibuat. Nilai biaya yang dimasukkan adalah konfigurasi operator, bukan tarif vendor yang diverifikasi otomatis.");
-      setForm(emptyForm); setEditing(null); setReason(""); await refresh(session);
+      setForm(emptyForm); setEditing(null); setActivationReason(""); setArchiveReason(""); await refresh(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Simpan konfigurasi gagal."); }
     finally { setBusy(false); }
   }
   async function activate(item: CostConfig) {
     if (!session || !operator?.scopes.includes("platform:capabilities.review.high_risk")) return;
-    if (reason.trim().length < 8) { setError("Alasan aktivasi minimal 8 karakter."); return; }
+    if (activationReason.trim().length < 8) { setError("Alasan aktivasi minimal 8 karakter."); return; }
     if (!window.confirm("Aktifkan versi tarif " + item.pricing_version + " untuk " + item.provider_id + " / " + item.model_id + "? Aktivasi tarif tidak menyetujui policy model atau mengaktifkan runtime.")) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const body = await readBody<{ message: string }>(await apiFetch("/v1/admin/model-costs/" + encodeURIComponent(item.id) + "/activate", session, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) }));
-      setNotice(body.message); setReason(""); await refresh(session);
+      const body = await readBody<{ message: string }>(await apiFetch("/v1/admin/model-costs/" + encodeURIComponent(item.id) + "/activate", session, { method: "POST", body: JSON.stringify({ reason: activationReason.trim() }) }));
+      setNotice(body.message); setActivationReason(""); await refresh(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Aktivasi tarif gagal."); }
     finally { setBusy(false); }
   }
   async function archive(item: CostConfig) {
     if (!session || !operator?.scopes.includes("platform:capabilities.review.high_risk")) return;
-    if (reason.trim().length < 8) { setError("Alasan arsip minimal 8 karakter."); return; }
+    if (archiveReason.trim().length < 8) { setError("Alasan arsip minimal 8 karakter."); return; }
     if (!window.confirm("Arsipkan konfigurasi " + item.pricing_version + "?")) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await readBody(await apiFetch("/v1/admin/model-costs/" + encodeURIComponent(item.id) + "/archive", session, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) }));
-      setNotice("Konfigurasi diarsipkan."); setReason(""); await refresh(session);
+      await readBody(await apiFetch("/v1/admin/model-costs/" + encodeURIComponent(item.id) + "/archive", session, { method: "POST", body: JSON.stringify({ reason: archiveReason.trim() }) }));
+      setNotice("Konfigurasi diarsipkan."); setArchiveReason(""); await refresh(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Arsip gagal."); }
     finally { setBusy(false); }
   }
@@ -164,7 +165,11 @@ export default function ModelCostsPage() {
       </form> : <p>Scope platform:capabilities.review diperlukan untuk mengubah konfigurasi.</p>}
     </section>}
     {session && operator && <section style={{border:"1px solid #eaecf0",borderRadius:12,padding:18,marginBottom:18}}>
-      <h2>Aktivasi & arsip</h2><label style={{display:"grid",gap:6,maxWidth:600}}>Alasan aktivasi/arsip (min. 8 karakter)<input value={reason} onChange={event=>setReason(event.target.value)} minLength={8} maxLength={500} style={{padding:10}} placeholder="Contoh: tarif vendor terverifikasi untuk periode peluncuran" /></label>
+      <h2>Aktivasi & arsip</h2>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginTop:12}}>
+        <label style={{display:"grid",gap:6,maxWidth:600,color:"#344054",fontSize:14,fontWeight:600}}>Alasan aktivasi tarif (min. 8 karakter)<input value={activationReason} onChange={event=>setActivationReason(event.target.value)} minLength={8} maxLength={500} style={{padding:12,border:"1px solid #98a2b3",borderRadius:8,background:"#fff",color:"#101828",fontSize:14,width:"100%",boxSizing:"border-box"}} placeholder="Contoh: pengujian PDF QA terisolasi" /><small style={{fontWeight:400,color:"#667085"}}>Dipakai hanya untuk tombol Aktifkan tarif.</small></label>
+        <label style={{display:"grid",gap:6,maxWidth:600,color:"#344054",fontSize:14,fontWeight:600}}>Alasan arsip tarif (min. 8 karakter)<input value={archiveReason} onChange={event=>setArchiveReason(event.target.value)} minLength={8} maxLength={500} style={{padding:12,border:"1px solid #98a2b3",borderRadius:8,background:"#fff",color:"#101828",fontSize:14,width:"100%",boxSizing:"border-box"}} placeholder="Contoh: menutup draft yang tidak digunakan" /><small style={{fontWeight:400,color:"#667085"}}>Dipakai hanya untuk tombol Arsipkan.</small></label>
+      </div>
       <div style={{overflowX:"auto",marginTop:16}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr>{["Provider / Model","Versi","Tarif input/output","Batas","Status","Policy","Aksi"].map(label=><th key={label} style={{textAlign:"left",padding:10,borderBottom:"1px solid #eaecf0"}}>{label}</th>)}</tr></thead><tbody>
         {items.map(item=><tr key={item.id}>{[
           <Fragment key="provider"><strong>{item.provider_id}</strong><br/>{item.model_id}<br/><small>{item.model_version}</small></Fragment>,
@@ -175,8 +180,8 @@ export default function ModelCostsPage() {
           item.policy_approved ? "APPROVED" : "NOT APPROVED",
           <div key="actions" style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {item.status==="draft" && canWrite && <button disabled={busy} onClick={()=>edit(item)}>Edit</button>}
-            {item.status==="draft" && canActivate && <button disabled={busy || reason.trim().length<8} onClick={()=>void activate(item)}>Aktifkan tarif</button>}
-            {item.status!=="archived" && canActivate && <button disabled={busy || reason.trim().length<8} onClick={()=>void archive(item)}>Arsipkan</button>}
+            {item.status==="draft" && canActivate && <button disabled={busy || activationReason.trim().length<8} onClick={()=>void activate(item)}>Aktifkan tarif</button>}
+            {item.status!=="archived" && canActivate && <button disabled={busy || archiveReason.trim().length<8} onClick={()=>void archive(item)}>Arsipkan</button>}
           </div>
         ].map((cell,index)=><td key={index} style={{padding:10,borderBottom:"1px solid #f2f4f7",verticalAlign:"top"}}>{cell}</td>)}</tr>)}
         {!items.length && <tr><td colSpan={7} style={{padding:16,color:"#667085"}}>Belum ada konfigurasi biaya. Tidak ada tarif vendor yang diisi otomatis.</td></tr>}
