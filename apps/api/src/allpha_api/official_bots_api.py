@@ -114,7 +114,7 @@ async def list_official_bots(
             raise HTTPException(status_code=422, detail={"code": "OFFICIAL_BOT_STATUS_INVALID", "message": "Filter status tidak valid."})
         params["status"] = f"eq.{status}"
     rows = await privileged_rest_request("GET", "official_agent_bots", params=params)
-    count_params = {"select": "id", "limit": "500"}
+    count_params = {"select": "id", "limit": "1000"}
     if status:
         count_params["status"] = f"eq.{status}"
     count_rows = await privileged_rest_request("GET", "official_agent_bots", params=count_params)
