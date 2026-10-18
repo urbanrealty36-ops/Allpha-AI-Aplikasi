@@ -190,6 +190,10 @@ export default function OperationsPage() {
     request_id?: string;
   } | null>(null);
   const [runtimePreflightBusy, setRuntimePreflightBusy] = useState(false);
+  const [challengeAgentId, setChallengeAgentId] = useState("5c7185b5-ae9e-464d-9e81-792f0945ad7a");
+  const [challengeSkillId, setChallengeSkillId] = useState("4142d870-196e-4036-a093-a575f7e91ff4");
+  const [challengeBusy, setChallengeBusy] = useState(false);
+  const [challengeResults, setChallengeResults] = useState<Array<{key:string; status:string; httpStatus?:number; runId?:string; evidenceDigest?:string; idempotentReplay?:boolean; message?:string}>>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const online = probes.filter((probe) => probe.status === "online").length;
@@ -581,8 +585,61 @@ export default function OperationsPage() {
     }
   }
 
+  async function runRuntimeChallenges() {
+    if (!session || runtimePreflight?.httpStatus !== 200 || runtimePreflight.status !== "ready") {
+      setError("Tiga challenge hanya dapat dijalankan setelah runtime preflight terautentikasi berstatus HTTP 200 dan ready.");
+      return;
+    }
+    if (!/^[0-9a-f-]{36}$/i.test(challengeAgentId) || !/^[0-9a-f-]{36}$/i.test(challengeSkillId)) {
+      setError("Agent ID dan Skill ID harus UUID valid.");
+      return;
+    }
+    if (!window.confirm("Jalankan 3 panggilan NVIDIA NIM nyata melalui Agent Runtime? Ini dapat menimbulkan biaya sesuai tarif aktif. Tidak ada bypass policy atau batas biaya.")) return;
+    setChallengeBusy(true); setChallengeResults([]); setError(""); setNotice("");
+    const keys = ["answer_grounded_fact", "insufficient_evidence", "prompt_injection_resilience"];
+    const results: Array<{key:string; status:string; httpStatus?:number; runId?:string; evidenceDigest?:string; idempotentReplay?:boolean; message?:string}> = [];
+    try {
+      for (const testKey of keys) {
+        setNotice("Menjalankan challenge " + (results.length + 1) + "/3: " + testKey + "…");
+        try {
+          const issueResponse = await adminFetch("/v1/skill-challenges/draft-runs", session, setSession, {
+            method: "POST",
+            body: JSON.stringify({
+              agent_id: challengeAgentId.trim(),
+              skill_id: challengeSkillId.trim(),
+              test_key: testKey,
+              idempotency_key: "eng-p12-" + testKey + "-" + crypto.randomUUID(),
+            }),
+          });
+          const issued = await responseBody<{run:{id:string}; nonce:string; draft_mode?:boolean; publication_performed?:boolean}>(issueResponse);
+          const executeResponse = await adminFetch("/v1/skill-challenges/runs/" + encodeURIComponent(issued.run.id) + "/execute", session, setSession, {
+            method: "POST",
+            body: JSON.stringify({nonce: issued.nonce}),
+          });
+          const executed = await responseBody<{run?:{id?:string; status?:string; evidence_digest?:string; runtime_evidence_digest?:string}; idempotent_replay?:boolean}>(executeResponse);
+          results.push({
+            key:testKey, status:executed.run?.status || "completed",
+            httpStatus:executeResponse.status, runId:executed.run?.id || issued.run.id,
+            evidenceDigest:executed.run?.runtime_evidence_digest || executed.run?.evidence_digest,
+            idempotentReplay:executed.idempotent_replay,
+            message:"Draft-only execution; no publication or release decision.",
+          });
+        } catch (cause) {
+          results.push({key:testKey,status:"failed",message:cause instanceof Error ? cause.message : "Challenge gagal; outcome perlu direkonsiliasi sebelum retry."});
+          setChallengeResults([...results]);
+          break;
+        }
+        setChallengeResults([...results]);
+      }
+      const succeeded = results.filter(item => item.status !== "failed").length;
+      setNotice("Challenge selesai diproses: " + succeeded + "/3 request berhasil. Periksa digest dan metering Supabase sebelum acceptance.");
+    } finally {
+      setChallengeBusy(false);
+    }
+  }
+
   function logout() {
-    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setRuntimePreflight(null); setError(""); setNotice("");
+    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setRuntimePreflight(null); setChallengeResults([]); setError(""); setNotice("");
   }
 
   return <main className="shell">
@@ -635,6 +692,9 @@ export default function OperationsPage() {
           </tbody></table></div>
           {runtimePreflight.route && <details><summary>Snapshot rute dan batas runtime</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(runtimePreflight.route, null, 2)}</pre></details>}
         </>}
+        <div className="panelActions"><label>Agent ID<input value={challengeAgentId} onChange={event => setChallengeAgentId(event.target.value)} disabled={challengeBusy} /></label><label>Skill ID<input value={challengeSkillId} onChange={event => setChallengeSkillId(event.target.value)} disabled={challengeBusy} /></label><button onClick={() => void runRuntimeChallenges()} disabled={challengeBusy || runtimePreflight?.httpStatus !== 200 || runtimePreflight.status !== "ready"}>{challengeBusy ? "Menjalankan challenge…" : "Jalankan 3 challenge NVIDIA NIM"}</button></div>
+        <p className="muted">Kasus: answer_grounded_fact · insufficient_evidence · prompt_injection_resilience. Eksekusi hanya melalui API resmi, draft-only, menggunakan owner sesi aktif, nonce, snapshot, batas biaya, dan metering. Tombol tetap terkunci sampai preflight sukses.</p>
+        {challengeResults.length > 0 && <div className="tableWrap"><table><thead><tr><th>Test case</th><th>Status</th><th>Run ID</th><th>Evidence digest</th><th>Replay</th></tr></thead><tbody>{challengeResults.map(result => <tr key={result.key}><td>{result.key}</td><td><span className={"pill " + (result.status === "failed" ? "warning" : "online")}>{result.status}{result.httpStatus ? " · HTTP " + result.httpStatus : ""}</span>{result.message && <small>{result.message}</small>}</td><td><code>{result.runId || "—"}</code></td><td><code>{result.evidenceDigest || "belum tersedia"}</code></td><td>{result.idempotentReplay === undefined ? "—" : String(result.idempotentReplay)}</td></tr>)}</tbody></table></div>}
       </section>}
       {session && canManage && <section className="panel" id="operator-grants">
         <header className="panelHead"><div><h2>Operator grants</h2><p>Grant dan pencabutan memakai endpoint backend dan dicatat oleh trigger audit database.</p></div><span className="pill online">MANAGE SCOPE</span></header>
