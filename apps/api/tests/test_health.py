@@ -19,8 +19,8 @@ def test_readiness_fails_closed_when_core_dependencies_are_unconfigured(monkeypa
     assert response.status_code == 503
     body = response.json()
     assert body["status"] == "not_ready"
-    assert body["dependencies"]["database"] == "not_configured"
-    assert body["dependencies"]["authentication"] == "not_configured"
+    assert body["dependencies"]["database"]["status"] == "not_configured"
+    assert body["dependencies"]["authentication"]["status"] == "not_configured"
     assert body["dependencies"]["object_storage"] == "not_configured"
     assert body["dependencies"]["ai_gateway"] == "not_configured"
 
@@ -51,8 +51,8 @@ def test_readiness_passes_when_core_supabase_configuration_exists(monkeypatch) -
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert body["dependencies"]["database"] == "reachable"
-    assert body["dependencies"]["authentication"] == "reachable"
+    assert body["dependencies"]["database"]["status"] == "reachable"
+    assert body["dependencies"]["authentication"]["status"] == "reachable"
 
 
 def test_request_id_is_preserved() -> None:
