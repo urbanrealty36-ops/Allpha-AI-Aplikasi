@@ -41,7 +41,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         {"id": "00000000-0000-0000-0000-000000000001", "owner_id": followed_owner, "body": "followed",
          "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
          "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": (now-timedelta(days=1)).isoformat()},
-        {"id": "00000000-0000-0000-0000-000000000002", "owner_id": fresh_owner, "body": "fresh",
+        {"id": "00000000-0000-0000-0000-000000000002", "owner_id": fresh_owner, "body": "AI fresh",
          "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
          "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
         {"id": "00000000-0000-0000-0000-000000000003", "owner_id": hidden_owner, "body": "hidden",
@@ -54,7 +54,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         if table == "feed_preferences":
             return []
         if table == "user_interests":
-            return []
+            return [{"interest_key": "ai"}]
         if table == "content_items":
             return content_rows
         if table == "social_edges":
@@ -82,6 +82,8 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         assert len(payload["items"]) == 2
         assert payload["items"][0]["owner_id"] == followed_owner
         assert "followed_creator" in payload["items"][0]["ranking_signals"]
+        fresh_item = next(item for item in payload["items"] if item["owner_id"] == fresh_owner)
+        assert "explicit_interest_match" in fresh_item["ranking_signals"]
         assert hidden_owner not in {item["owner_id"] for item in payload["items"]}
     finally:
         app.dependency_overrides.clear()
