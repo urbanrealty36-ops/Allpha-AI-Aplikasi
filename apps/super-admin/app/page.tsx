@@ -346,6 +346,85 @@ export default function OperationsPage() {
     finally { setOfficialBotsBusy(false); }
   }
 
+  async function provisionAllOfficialBots() {
+    if (!session || !canReview) return;
+    if (!window.confirm("Provision 500 Allpha blueprint + 282 Agency metadata menjadi roster draft? Ini tidak membuat Skill executable, tidak memverifikasi/mempublikasikan GLB, dan tidak mengaktifkan runtime.")) return;
+    setOfficialBotsBusy(true); setError(""); setNotice("");
+    try {
+      const sources: Array<"allpha-500" | "agency-agents"> = ["allpha-500", "agency-agents"];
+      const results: string[] = [];
+      for (const source of sources) {
+        setNotice("Menyiapkan roster kandidat: " + source + "…");
+        const response = await adminFetch("/v1/admin/official-bots/provision", session, setSession, {
+          method: "POST",
+          body: JSON.stringify({ limit: 500, catalog_source: source }),
+        });
+        const body = await responseBody<{ roster_count_observed: number; catalog_count: number; catalog_source: string; message: string }>(response);
+        results.push(source + ": katalog " + body.catalog_count + ", roster teramati " + body.roster_count_observed);
+      }
+      setNotice("Provision roster selesai. " + results.join(" · ") + ". Semua kandidat tetap draft; runtime tidak diaktifkan.");
+      await refreshOfficialBots(session, 0);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Provision kedua katalog gagal.");
+    } finally {
+      setOfficialBotsBusy(false);
+    }
+  }
+
+  async function provisionOfficialBotIdentities() {
+    if (!session || !canControlBots) return;
+    if (!window.confirm("Buat identitas Agent kanonis untuk semua kandidat draft yang belum memiliki identity? Batch maksimal 50, bisa dilanjutkan ulang, dan tidak mengaktifkan Agent/Bot. Pastikan platform owner UUID telah dikonfigurasi di API.")) return;
+    setOfficialBotsBusy(true); setError(""); setNotice("");
+    let all: OfficialBot[] = [];
+    let offset = 0;
+    let total = 0;
+    try {
+      do {
+        const response = await adminFetch("/v1/admin/official-bots?limit=100&offset=" + offset, session, setSession);
+        const body = await responseBody<{ items: OfficialBot[]; total?: number }>(response);
+        const page = body.items ?? [];
+        all = all.concat(page);
+        total = body.total ?? all.length;
+        if (!page.length) break;
+        offset += page.length;
+      } while (offset < total && offset < 2000);
+
+      const pending = all.filter(bot => !bot.agent_id && (bot.status === "draft" || bot.status === "pending_approval"));
+      if (!pending.length) {
+        setNotice("Tidak ada roster draft yang membutuhkan Agent identity. Total roster terbaca: " + all.length + ".");
+        return;
+      }
+
+      let succeeded = 0;
+      let failed = 0;
+      const failureDetails: string[] = [];
+      for (let index = 0; index < pending.length; index += 50) {
+        const batch = pending.slice(index, index + 50);
+        setNotice("Provision Agent identity " + Math.min(index + batch.length, pending.length) + "/" + pending.length + "…");
+        const response = await adminFetch("/v1/admin/official-bots/provision-identities", session, setSession, {
+          method: "POST",
+          body: JSON.stringify({ bot_ids: batch.map(bot => bot.id) }),
+        });
+        const body = await responseBody<{ requested: number; succeeded: number; failed: number; items: Array<{ bot_id: string; status: string; code?: string }> }>(response);
+        succeeded += body.succeeded ?? 0;
+        failed += body.failed ?? 0;
+        for (const item of body.items ?? []) {
+          if (item.status === "failed" && failureDetails.length < 8) {
+            failureDetails.push(item.bot_id + " (" + (item.code || "unknown") + ")");
+          }
+        }
+      }
+
+      setNotice("Provision identity selesai: " + succeeded + " berhasil/already linked, " + failed + " gagal dari " + pending.length + " kandidat. Runtime activation: tidak dilakukan." +
+        (failureDetails.length ? " Contoh gagal: " + failureDetails.join(", ") : ""));
+      await refreshOfficialBots(session, 0);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Provision identity batch gagal. Jalankan ulang untuk melanjutkan; RPC identitas dirancang idempoten.");
+    } finally {
+      setOfficialBotsBusy(false);
+    }
+  }
+
   async function linkOfficialBotRuntime(bot: OfficialBot) {
     if (!session || !canControlBots) return;
     const agentId = window.prompt("UUID Agent identity kanonis untuk " + bot.display_name + ":");
@@ -538,7 +617,7 @@ export default function OperationsPage() {
       </section>}
       {session && operator?.scopes.includes("platform:operations.read") && <section className="panel" id="official-bots">
         <header className="panelHead"><div><h2>Official Allpha AI Agents</h2><p>Roster kandidat dari katalog 500 Skills. Identitas, runtime, policy, dan GLB harus ditautkan dan diverifikasi sebelum aktivasi.</p></div><span className="pill warning">SUPERVISED</span></header>
-        <div className="panelActions">{canReview && <><label className="muted">Sumber katalog <select value={officialBotCatalogSource} onChange={event => setOfficialBotCatalogSource(event.target.value as "allpha-500" | "agency-agents")} disabled={officialBotsBusy}><option value="allpha-500">Allpha · 500 blueprint</option><option value="agency-agents">Agency Agents · metadata-only</option></select></label><button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan kandidat</button></>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster: {officialBotsTotal} · Halaman {Math.floor(officialBotsOffset / 50) + 1}</span><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, Math.max(0, officialBotsOffset - 50))} disabled={officialBotsBusy || officialBotsOffset === 0}>Sebelumnya</button><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, officialBotsOffset + 50)} disabled={officialBotsBusy || officialBotsOffset + officialBots.length >= officialBotsTotal}>Berikutnya</button></div>
+        <div className="panelActions">{canReview && <><label className="muted">Sumber katalog <select value={officialBotCatalogSource} onChange={event => setOfficialBotCatalogSource(event.target.value as "allpha-500" | "agency-agents")} disabled={officialBotsBusy}><option value="allpha-500">Allpha · 500 blueprint</option><option value="agency-agents">Agency Agents · metadata-only</option></select></label><button onClick={() => void provisionOfficialBots()} disabled={officialBotsBusy}>Siapkan kandidat</button><button className="secondaryButton" onClick={() => void provisionAllOfficialBots()} disabled={officialBotsBusy}>Siapkan 500 + 282</button></>}{canControlBots && <button onClick={() => void provisionOfficialBotIdentities()} disabled={officialBotsBusy || !officialBotsTotal}>Provision Agent identities</button>}<button className="secondaryButton" onClick={() => void refreshOfficialBots()} disabled={officialBotsBusy}>{officialBotsBusy ? "Memuat…" : "Refresh roster"}</button><span className="muted">Roster: {officialBotsTotal} · Halaman {Math.floor(officialBotsOffset / 50) + 1}</span><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, Math.max(0, officialBotsOffset - 50))} disabled={officialBotsBusy || officialBotsOffset === 0}>Sebelumnya</button><button className="secondaryButton" onClick={() => void refreshOfficialBots(session, officialBotsOffset + 50)} disabled={officialBotsBusy || officialBotsOffset + officialBots.length >= officialBotsTotal}>Berikutnya</button></div>
         <p className="muted">Provisioning hanya membuat roster draft. Aktivasi dinonaktifkan sampai Skill version kanonis, Agent identity, policy/tool/budget binding, GLB terverifikasi, dispatcher runtime, dan kill/cancellation benar-benar tersedia. Stop/isolate tidak boleh ditampilkan sebagai kill switch sebelum dispatch runtime terhubung.</p>
         <div className="officialBotList">{officialBots.map(bot => <article className="probe officialBot" key={bot.id}>
           <div className="probeText"><b>{bot.display_name}</b><code>{bot.skill_key} · {bot.category_label}</code><p>{bot.skill_description}</p><small>Karakter: {bot.character_archetype_key} · Asset: {bot.character_asset_key || "belum ditautkan"} ({bot.asset_validation_status})</small><small>Agent: {bot.agent_id || "belum ditautkan"} · Policy: {bot.runtime_policy_id || "belum ditautkan"}</small></div>
