@@ -20,7 +20,7 @@ def test_content_media_moderation_publish_journey_isolated(monkeypatch):
     media_rows: dict[str, dict] = {}
     storage_operations: list[tuple[str, str]] = []
 
-    async def fake_user(request):
+    async def fake_user(request: Request):
         request.state.supabase_access_token = "isolated-test-token"
         request.state.user_id = owner_id
         return {"id": owner_id, "email": "eng-p13@example.invalid"}
