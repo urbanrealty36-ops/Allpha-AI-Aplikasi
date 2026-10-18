@@ -54,8 +54,8 @@ for (const contract of [
 ]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
 
 for (const contract of [
-  "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report",
-  "loadNativeFeed", "saveNativeFeedPreferences", "nativeFeedAction", "submitNativeFeedComment", "toggleNativeComments", "chooseNativeReportReason",
+  "/v1/feed?", "/v1/feed/preferences", "/v1/feed/item/", "/reaction", "/save", "/comments", "/report", "/share",
+  "loadNativeFeed", "saveNativeFeedPreferences", "nativeFeedAction", "submitNativeFeedComment", "toggleNativeComments", "chooseNativeReportReason", "shareNativeContent", "Share.share",
   "Personalisasi: aktif", "Laporkan", "misinformation"
 ]) assert.ok(app.includes(contract), `missing ENG-P14 Native feed contract: ${contract}`);
 
