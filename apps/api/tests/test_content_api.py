@@ -213,3 +213,88 @@ def test_preview_signing_uses_secret_key_fallback_for_authorization(monkeypatch)
     assert captured["apikey"] == "secret-key-test-only"
     assert captured["Authorization"] == "Bearer secret-key-test-only"
     assert response.json()["media"][0]["preview_url"] == "https://supabase.example/storage/v1/object/sign/content-media/private-token"
+
+
+def test_content_update_uses_lifecycle_compare_and_set(monkeypatch):
+    calls = []
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "owner_id": "owner-a", "status": "draft", "version": 3}
+
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        return []
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.patch(f"/v1/content/{CONTENT_ID}", json={"body": "Edited", "visibility": "public"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert calls[0][2]["params"]["status"] == "in.(draft,failed)"
+    assert calls[0][2]["body"]["moderation_status"] == "not_submitted"
+
+
+def test_public_feed_attaches_short_lived_media_preview_only_to_approved_public_content(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000401"
+    media_id = "00000000-0000-0000-0000-000000000402"
+    calls = []
+
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if table == "content_items":
+            return [{
+                "id": content_id, "owner_id": "owner-a", "body": "Published",
+                "content_type": "image", "visibility": "public", "status": "published",
+                "moderation_status": "approved", "version": 2,
+            }]
+        if table == "content_media":
+            return [{
+                "id": media_id, "content_id": content_id, "owner_id": "owner-a",
+                "storage_path": "owner-a/" + content_id + "/" + media_id + "-photo.jpg",
+                "filename": "photo.jpg", "media_type": "image/jpeg", "size_bytes": 128,
+                "sha256": "a" * 64, "status": "uploaded",
+            }]
+        return []
+
+    async def fake_signed(path, *, expires_in=300):
+        assert path.startswith("owner-a/" + content_id + "/")
+        assert expires_in == 300
+        return "https://storage.example/signed/private-object"
+
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_signed_media_preview_url", fake_signed)
+    response = client.get("/v1/content/feed/public")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["media"][0]["preview_url"] == "https://storage.example/signed/private-object"
+    assert body["media_preview_expires_in"] == 300
+    assert calls[0][2]["params"]["status"] == "eq.published"
+    assert calls[0][2]["params"]["moderation_status"] == "eq.approved"
+    assert calls[0][2]["params"]["visibility"] == "eq.public"
+    assert calls[1][2]["params"]["content_id"] == "in.(" + content_id + ")"
+
+
+def test_signed_preview_preserves_absolute_signed_urls(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"signedURL": "https://storage.example/object/sign/private?token=abc"}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return None
+        async def post(self, *args, **kwargs): return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "server-secret-test")
+    monkeypatch.setattr(content_api.httpx, "AsyncClient", FakeClient)
+
+    import asyncio
+    result = asyncio.run(content_api._signed_media_preview_url("owner-a/item/photo.jpg"))
+    assert result == "https://storage.example/object/sign/private?token=abc"
