@@ -219,15 +219,25 @@ function Profile({ session }: { session: Session }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi feed gagal disimpan."); }
     finally { setFeedBusy(false); }
   }
-  async function nativeFeedAction(item: NativeFeedItem, action: "like" | "save" | "report") {
+  async function nativeFeedAction(item: NativeFeedItem, action: "like" | "save" | "report", reportReason: "spam" | "harassment" | "privacy" | "misinformation" | "other" = "other") {
     setFeedBusy(true); setError(""); setMessage("");
     try {
       if (action === "like") await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/reaction", { method: item.viewer_reaction ? "DELETE" : "PUT", body: item.viewer_reaction ? undefined : JSON.stringify({ reaction: "like" }) });
       else if (action === "save") await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/save", { method: item.saved ? "DELETE" : "PUT" });
-      else { await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: "other", details: "Dilaporkan dari Native Client." }) }); setMessage("Laporan dikirim untuk ditinjau."); }
+      else { await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: reportReason }) }); setMessage("Laporan dikirim untuk ditinjau."); }
       if (action !== "report") await loadNativeFeed(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Interaksi feed gagal."); }
     finally { setFeedBusy(false); }
+  }
+  function chooseNativeReportReason(item: NativeFeedItem) {
+    Alert.alert("Laporkan konten", "Pilih alasan laporan", [
+      { text: "Spam", onPress: () => void nativeFeedAction(item, "report", "spam") },
+      { text: "Pelecehan", onPress: () => void nativeFeedAction(item, "report", "harassment") },
+      { text: "Privasi", onPress: () => void nativeFeedAction(item, "report", "privacy") },
+      { text: "Misinformasi", onPress: () => void nativeFeedAction(item, "report", "misinformation") },
+      { text: "Lainnya", onPress: () => void nativeFeedAction(item, "report", "other") },
+      { text: "Batal", style: "cancel" },
+    ]);
   }
   async function submitNativeFeedComment(item: NativeFeedItem) {
     const body = (feedCommentDrafts[item.id] || "").trim(); if (!body) return;
@@ -846,7 +856,7 @@ function Profile({ session }: { session: Session }) {
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "like")}/>
             <Button title={(item.saved ? "Tersimpan" : "Simpan") + " · " + (item.engagement?.saves ?? 0)} secondary={!!item.saved} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "save")}/>
-            <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => void nativeFeedAction(item, "report")}/>
+            <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => chooseNativeReportReason(item)}/>
             <Button title={feedCommentsOpen[item.id] ? "Tutup komentar" : "Lihat komentar"} secondary disabled={feedBusy} onPress={() => void toggleNativeComments(item)}/>
           </View>
           {feedCommentsOpen[item.id] && (feedComments[item.id] ?? []).map(comment => <View key={comment.id} style={s.socialRow}>
