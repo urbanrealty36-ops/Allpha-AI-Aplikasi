@@ -27,11 +27,15 @@ def test_content_routes_require_authentication():
     assert client.post(f"/v1/content/{CONTENT_ID}/publish").status_code == 401
 
 
-def test_content_schema_rejects_client_owned_lifecycle_fields():
-    response = client.post("/v1/content", json={
-        "body": "Hello", "owner_id": "attacker", "status": "published", "moderation_status": "approved"
-    }, headers={"Authorization": "Bearer test"})
-    assert response.status_code == 401  # auth is checked before any mutation
+def test_content_schema_rejects_client_owned_lifecycle_fields(monkeypatch):
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post("/v1/content", json={
+            "body": "Hello", "owner_id": "attacker", "status": "published", "moderation_status": "approved"
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
 
 
 def test_content_creation_uses_server_owner_and_draft_state(monkeypatch):
