@@ -219,7 +219,7 @@ async def preview_content(content_id: uuid.UUID, request: Request, user: dict[st
         path = quote(f"content-media/{item['storage_path']}", safe="/")
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=3)) as client:
-                response = await client.post(f"{base}/storage/v1/object/sign/{path}", headers={"apikey": key, **({"Authorization": f"Bearer {key}"} if os.getenv("SUPABASE_SERVICE_ROLE_KEY") else {}), "Content-Type": "application/json"}, json={"expiresIn": 300})
+                response = await client.post(f"{base}/storage/v1/object/sign/{path}", headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}, json={"expiresIn": 300})
         except httpx.HTTPError as exc:
             raise HTTPException(503, detail={"code": "CONTENT_PREVIEW_UNAVAILABLE", "message": "Pratinjau media belum tersedia."}) from exc
         if response.status_code >= 400:
