@@ -61,3 +61,38 @@ def test_model_cost_activation_is_not_a_policy_approval_contract():
     # and explicit deployment gate; the tariff payload has no approval mutation.
     assert "policy_approved" not in ModelCostUpdate.model_fields
     assert "status" not in ModelCostUpdate.model_fields
+
+
+
+def test_published_skill_content_update_is_rejected_before_database_write(monkeypatch):
+    import asyncio
+    from uuid import UUID
+    from fastapi import HTTPException
+    from allpha_api import main as api_main
+
+    calls = []
+    async def owner_check(*args, **kwargs):
+        return "owner-session"
+    async def db_request(method, table, token, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if method == "GET":
+            return [{"id": str(UUID("44444444-4444-4444-8444-444444444444")),
+                     "agent_id": str(UUID("22222222-2222-4222-8222-222222222222")),
+                     "status": "published", "version": 4}]
+        return []
+    monkeypatch.setattr(api_main, "_require_agent_owner", owner_check)
+    monkeypatch.setattr(api_main, "user_db_request", db_request)
+
+    async def invoke():
+        return await api_main.update_agent_skill(
+            UUID("22222222-2222-4222-8222-222222222222"),
+            UUID("44444444-4444-4444-8444-444444444444"),
+            api_main.AgentSkillUpdate(name="Changed name"),
+            object(),
+            {"id": "11111111-1111-4111-8111-111111111111"},
+        )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(invoke())
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "SKILL_CONTENT_IMMUTABLE"
+    assert len(calls) == 1 and calls[0][0] == "GET"
