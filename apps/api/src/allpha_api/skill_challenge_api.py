@@ -169,7 +169,7 @@ async def issue_challenge(payload: ChallengeIssue, request: Request, user: dict[
     store, owner_id = _store(), str(user["id"])
     # The separate path is an owner-only draft test lane. It never publishes a Skill
     # or activates a Bot; draft runs remain ordinary, expiring challenge evidence.
-    draft_mode = request.url.path.endswith("/draft-runs")
+    draft_mode = bool(request is not None and getattr(getattr(request, "url", None), "path", "").endswith("/draft-runs"))
     try:
         existing = await store.request("GET", "agent_skill_challenge_runs", params={
             "select": "*", "owner_user_id": f"eq.{owner_id}", "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
