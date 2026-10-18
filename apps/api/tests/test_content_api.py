@@ -90,7 +90,7 @@ def test_upload_rejects_unsupported_mime_before_storage(monkeypatch):
 
 
 def test_migration_keeps_media_private_and_public_feed_approved_only():
-    path = Path(__file__).parents[1] / "supabase/migrations/20261018130000_eng_p13_content_media_pipeline.sql"
+    path = Path(__file__).parents[1] / "supabase/migrations/20261018153035_eng_p13_content_media_pipeline.sql"
     sql = path.read_text(encoding="utf-8").lower()
     assert "create table if not exists public.content_items" in sql
     assert "create table if not exists public.content_media" in sql
