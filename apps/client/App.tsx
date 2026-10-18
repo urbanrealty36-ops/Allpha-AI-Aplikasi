@@ -222,6 +222,17 @@ function Profile({ session }: { session: Session }) {
     catch (cause) { setError(cause instanceof Error ? cause.message : "Pengiriman konten gagal."); }
     finally { setContentBusy(false); }
   }
+  async function retryNativeContent(item: NativeContentItem) {
+    setContentBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/content/" + encodeURIComponent(item.id) + "/retry", { method: "POST" }) as { message?: string };
+      setMessage(result.message || "Draft dipulihkan; periksa kembali sebelum mengirim.");
+      const data = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] };
+      setContentItems(data.items ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pemulihan draft gagal.");
+    } finally { setContentBusy(false); }
+  }
   async function previewNativeContent(item: NativeContentItem) {
     setContentBusy(true); setError(""); setMessage("");
     try {
@@ -758,7 +769,7 @@ function Profile({ session }: { session: Session }) {
         {contentFile && <Text style={s.muted}>{contentFile.mimeType} · {contentFile.size ? (contentFile.size / 1048576).toFixed(2) + " MB" : "ukuran tidak diketahui"}</Text>}
         <Button title={contentBusy ? "Memproses…" : "Simpan draft"} disabled={contentBusy || (!contentBody.trim() && !contentFile)} onPress={() => void createNativeContentDraft()}/>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.kicker}>KONTEN SAYA ({contentItems.length})</Text><Button title="Muat ulang" secondary disabled={contentBusy} onPress={() => void loadMyContent()}/></View>
-        {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}</View></View>)}
+        {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{item.status === "failed" && <Button title="Pulihkan draft" secondary disabled={contentBusy} onPress={() => void retryNativeContent(item)}/ >}{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}</View></View>)}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
         <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
