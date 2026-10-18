@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { NavigationContainer, useNavigation, type NavigationProp } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -10,6 +10,8 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNativeWorldRenderer";
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
+type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
+type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
 type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
 type CatalogSkill = { key: string; name: string; category: string; category_label: string; description: string; catalog_version?: string; source?: { kind?: string; repository?: string; source_url?: string }; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
 type SkillCatalogResponse = { items: CatalogSkill[]; categories: { key: string; label: string; count: number }[] };
@@ -102,9 +104,14 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
+  const [contentBody, setContentBody] = useState("");
+  const [contentVisibility, setContentVisibility] = useState<"public" | "followers" | "private">("public");
+  const [contentFile, setContentFile] = useState<NativeContentFile | null>(null);
+  const [contentBusy, setContentBusy] = useState(false);
   const [agentHandle, setAgentHandle] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
@@ -169,6 +176,60 @@ function Profile({ session }: { session: Session }) {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
     return body;
+  }
+  async function loadMyContent() {
+    setContentBusy(true); setError(""); setMessage("");
+    try { const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Konten tidak dapat dimuat."); }
+    finally { setContentBusy(false); }
+  }
+  async function chooseContentMedia() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"], copyToCacheDirectory: true, multiple: false });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const allowed = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"];
+      if (!asset.mimeType || !allowed.includes(asset.mimeType)) throw new Error("Format media harus JPG, PNG, WebP, MP4, atau WebM.");
+      const max = asset.mimeType.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (asset.size && asset.size > max) throw new Error("Ukuran file melampaui batas format media.");
+      setContentFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, size: asset.size });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemilihan media gagal."); }
+  }
+  async function createNativeContentDraft() {
+    if (!contentBody.trim() && !contentFile) { setError("Isi teks atau pilih media terlebih dahulu."); return; }
+    setContentBusy(true); setError(""); setMessage("");
+    try {
+      const contentType = contentFile ? (contentFile.mimeType?.startsWith("video/") ? "video" : "image") : "text";
+      const created = await apiRequest("/v1/content", { method: "POST", body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility, content_type: contentType }) }) as { item: NativeContentItem };
+      setContentItems(current => [created.item, ...current.filter(item => item.id !== created.item.id)]);
+      if (contentFile) {
+        const form = new FormData();
+        form.append("file", { uri: contentFile.uri, name: contentFile.name, type: contentFile.mimeType } as unknown as Blob);
+        const response = await fetch(apiBase + "/v1/content/" + encodeURIComponent(created.item.id) + "/media", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" }, body: form });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result?.error?.message || result?.detail?.message || "Unggah media gagal. Draft tetap tersimpan.");
+      }
+      setContentBody(""); setContentFile(null); setMessage("Draft konten tersimpan melalui FastAPI.");
+      const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Draft gagal disimpan.");
+      try { const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); } catch {}
+    } finally { setContentBusy(false); }
+  }
+  async function submitNativeContent(item: NativeContentItem) {
+    setContentBusy(true); setError(""); setMessage("");
+    try { const result = await apiRequest("/v1/content/" + encodeURIComponent(item.id) + "/publish", { method: "POST" }) as { message?: string }; setMessage(result.message || "Konten dikirim untuk moderasi."); const data = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(data.items ?? []); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Pengiriman konten gagal."); }
+    finally { setContentBusy(false); }
+  }
+  async function previewNativeContent(item: NativeContentItem) {
+    setContentBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/content/" + encodeURIComponent(item.id) + "/preview") as { media?: { preview_url?: string | null }[] };
+      const url = result.media?.find(media => media.preview_url)?.preview_url;
+      if (url) await Linking.openURL(url); else setMessage(item.body || "Konten ini belum memiliki media untuk pratinjau.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pratinjau gagal dimuat."); }
+    finally { setContentBusy(false); }
   }
   async function loadRuntimeCatalog(agentId: string) {
     const [skillsBody, toolsBody] = await Promise.all([
@@ -587,7 +648,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -688,6 +749,16 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.kicker}>RIWAYAT ({challengeRuns.length})</Text>
         {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
+      </>  : tab === "content" ? <>
+        <Text style={s.kicker}>ENG-P13 · CREATOR STUDIO</Text><Text style={s.title}>Buat konten</Text>
+        <Text style={s.muted}>Draft teks atau media disimpan melalui API. Konten publik baru tayang setelah moderasi.</Text>
+        <TextInput accessibilityLabel="Isi konten" value={contentBody} onChangeText={setContentBody} multiline maxLength={10000} style={[s.input, { minHeight: 110, textAlignVertical: "top", paddingTop: 12 }]} placeholder="Apa yang ingin kamu bagikan?" placeholderTextColor="#8B94AC"/>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={contentVisibility === "public" ? "✓ Publik" : "Publik"} secondary={contentVisibility !== "public"} onPress={() => setContentVisibility("public")}/><Button title={contentVisibility === "followers" ? "✓ Pengikut" : "Pengikut"} secondary={contentVisibility !== "followers"} onPress={() => setContentVisibility("followers")}/><Button title={contentVisibility === "private" ? "✓ Pribadi" : "Pribadi"} secondary={contentVisibility !== "private"} onPress={() => setContentVisibility("private")}/></View>
+        <Button title={contentFile ? "Media: " + contentFile.name : "Pilih gambar/video"} secondary onPress={() => void chooseContentMedia()}/>
+        {contentFile && <Text style={s.muted}>{contentFile.mimeType} · {contentFile.size ? (contentFile.size / 1048576).toFixed(2) + " MB" : "ukuran tidak diketahui"}</Text>}
+        <Button title={contentBusy ? "Memproses…" : "Simpan draft"} disabled={contentBusy || (!contentBody.trim() && !contentFile)} onPress={() => void createNativeContentDraft()}/>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.kicker}>KONTEN SAYA ({contentItems.length})</Text><Button title="Muat ulang" secondary disabled={contentBusy} onPress={() => void loadMyContent()}/></View>
+        {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}</View></View>)}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
         <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
