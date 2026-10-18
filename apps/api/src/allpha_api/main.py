@@ -1048,7 +1048,6 @@ async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: 
     return {"skill": rows[0]}
 
 
-@app.get("/v1/agents/{agent_id}/skills/{skill_id}/versions", tags=["agent-studio"])
 @app.post("/v1/admin/agents/{agent_id}/skills/{skill_id}/publish", tags=["agent-studio-governance"])
 async def publish_agent_skill(
     agent_id: uuid.UUID,
@@ -1101,6 +1100,7 @@ async def publish_agent_skill(
             "snapshot_digest": digest, "reviewed_by": operator["id"], "publication_authorized": True}
 
 
+@app.get("/v1/agents/{agent_id}/skills/{skill_id}/versions", tags=["agent-studio"])
 async def list_agent_skill_versions(
     agent_id: uuid.UUID,
     skill_id: uuid.UUID,
