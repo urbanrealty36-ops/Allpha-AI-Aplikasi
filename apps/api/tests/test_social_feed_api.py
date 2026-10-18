@@ -47,6 +47,9 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         {"id": "00000000-0000-0000-0000-000000000003", "owner_id": hidden_owner, "body": "hidden",
          "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
          "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+        {"id": "00000000-0000-0000-0000-000000000004", "owner_id": "eng-p14-not-interested", "body": "Crypto news",
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
     ]
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
@@ -54,7 +57,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         if table == "feed_preferences":
             return []
         if table == "user_interests":
-            return [{"interest_key": "ai"}]
+            return [{"interest_key": "ai", "preference": "interested"}, {"interest_key": "crypto", "preference": "not_interested"}]
         if table == "content_items":
             return content_rows
         if table == "social_edges":
@@ -85,6 +88,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         fresh_item = next(item for item in payload["items"] if item["owner_id"] == fresh_owner)
         assert "explicit_interest_match" in fresh_item["ranking_signals"]
         assert hidden_owner not in {item["owner_id"] for item in payload["items"]}
+        assert "eng-p14-not-interested" not in {item["owner_id"] for item in payload["items"]}
     finally:
         app.dependency_overrides.clear()
 
