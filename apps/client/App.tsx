@@ -11,6 +11,8 @@ import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNati
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
+type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number }; viewer_reaction?: string | null; saved?: boolean };
+
 type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
 type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
 type CatalogSkill = { key: string; name: string; category: string; category_label: string; description: string; catalog_version?: string; source?: { kind?: string; repository?: string; source_url?: string }; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
@@ -104,7 +106,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -112,6 +114,12 @@ function Profile({ session }: { session: Session }) {
   const [contentVisibility, setContentVisibility] = useState<"public" | "followers" | "private">("public");
   const [contentFile, setContentFile] = useState<NativeContentFile | null>(null);
   const [contentBusy, setContentBusy] = useState(false);
+  const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
+  const [feedBusy, setFeedBusy] = useState(false);
+  const [feedCursor, setFeedCursor] = useState<string | null>(null);
+  const [feedMode, setFeedMode] = useState<"for_you" | "recent">("for_you");
+  const [feedPersonalization, setFeedPersonalization] = useState(true);
+  const [feedCommentDrafts, setFeedCommentDrafts] = useState<Record<string, string>>({});
   const [agentHandle, setAgentHandle] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
@@ -182,6 +190,50 @@ function Profile({ session }: { session: Session }) {
     try { const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Konten tidak dapat dimuat."); }
     finally { setContentBusy(false); }
+  }
+
+  async function loadNativeFeed(reset = true) {
+    setFeedBusy(true); setError("");
+    try {
+      const params = new URLSearchParams({ mode: feedMode, limit: "10" });
+      if (!reset && feedCursor) params.set("cursor", feedCursor);
+      const result = await apiRequest("/v1/feed?" + params.toString()) as { items?: NativeFeedItem[]; next_cursor?: string | null; mode?: "for_you" | "recent"; personalization_enabled?: boolean };
+      setFeedItems(current => reset ? (result.items ?? []) : [...current, ...(result.items ?? [])]);
+      setFeedCursor(result.next_cursor ?? null);
+      if (result.mode) setFeedMode(result.mode);
+      if (typeof result.personalization_enabled === "boolean") setFeedPersonalization(result.personalization_enabled);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat."); }
+    finally { setFeedBusy(false); }
+  }
+  async function saveNativeFeedPreferences(enabled: boolean, mode: "for_you" | "recent") {
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/feed/preferences", { method: "PUT", body: JSON.stringify({ personalization_enabled: enabled, ranking_mode: mode }) });
+      setFeedPersonalization(enabled); setFeedMode(mode); setMessage("Preferensi feed disimpan.");
+      const result = await apiRequest("/v1/feed?mode=" + mode + "&limit=10") as { items?: NativeFeedItem[]; next_cursor?: string | null };
+      setFeedItems(result.items ?? []); setFeedCursor(result.next_cursor ?? null);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi feed gagal disimpan."); }
+    finally { setFeedBusy(false); }
+  }
+  async function nativeFeedAction(item: NativeFeedItem, action: "like" | "save" | "report") {
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      if (action === "like") await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/reaction", { method: item.viewer_reaction ? "DELETE" : "PUT", body: item.viewer_reaction ? undefined : JSON.stringify({ reaction: "like" }) });
+      else if (action === "save") await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/save", { method: item.saved ? "DELETE" : "PUT" });
+      else { await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: "other", details: "Dilaporkan dari Native Client." }) }); setMessage("Laporan dikirim untuk ditinjau."); }
+      if (action !== "report") await loadNativeFeed(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Interaksi feed gagal."); }
+    finally { setFeedBusy(false); }
+  }
+  async function submitNativeFeedComment(item: NativeFeedItem) {
+    const body = (feedCommentDrafts[item.id] || "").trim(); if (!body) return;
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { method: "POST", body: JSON.stringify({ body }) });
+      setFeedCommentDrafts(current => ({ ...current, [item.id]: "" })); setMessage("Komentar dikirim.");
+      await loadNativeFeed(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar gagal dikirim."); }
+    finally { setFeedBusy(false); }
   }
   async function chooseContentMedia() {
     try {
@@ -659,7 +711,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -760,7 +812,32 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.kicker}>RIWAYAT ({challengeRuns.length})</Text>
         {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
-      </>  : tab === "content" ? <>
+      </> : tab === "feed" ? <>
+        <Text style={s.kicker}>ENG-P14 · SOCIAL FEED</Text><Text style={s.title}>Feed sosial</Text>
+        <Text style={s.muted}>Konten publik yang telah disetujui. Ranking menghormati relasi follow, block, mute, dan preferensi Anda.</Text>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <Button title={feedMode === "for_you" ? "✓ Untuk Anda" : "Untuk Anda"} secondary={feedMode !== "for_you"} disabled={feedBusy} onPress={() => void saveNativeFeedPreferences(feedPersonalization, "for_you")}/>
+          <Button title={feedMode === "recent" ? "✓ Terbaru" : "Terbaru"} secondary={feedMode !== "recent"} disabled={feedBusy} onPress={() => void saveNativeFeedPreferences(feedPersonalization, "recent")}/>
+          <Button title={feedPersonalization ? "Personalisasi: aktif" : "Personalisasi: mati"} secondary={!feedPersonalization} disabled={feedBusy} onPress={() => void saveNativeFeedPreferences(!feedPersonalization, feedMode)}/>
+          <Button title="Muat ulang" secondary disabled={feedBusy} onPress={() => void loadNativeFeed(true)}/>
+        </View>
+        {feedBusy && <View accessibilityRole="progressbar" style={{ paddingVertical: 10, alignItems: "center" }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat feed…</Text></View>}
+        {!feedBusy && feedItems.length === 0 && <Text style={s.muted}>Belum ada konten publik yang disetujui.</Text>}
+        {feedItems.map(item => <View key={item.id} style={s.socialRow}>
+          <Text style={s.muted}>Creator {item.owner_id.slice(0, 8)} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text>
+          {!!item.body && <Text style={s.body}>{item.body}</Text>}
+          {item.media?.map(media => media.preview_url ? <Button key={media.id} title={"Buka " + media.filename} secondary onPress={() => void Linking.openURL(media.preview_url!)}/> : null)}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "like")}/>
+            <Button title={(item.saved ? "Tersimpan" : "Simpan") + " · " + (item.engagement?.saves ?? 0)} secondary={!!item.saved} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "save")}/>
+            <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => void nativeFeedAction(item, "report")}/>
+          </View>
+          <TextInput accessibilityLabel="Tulis komentar feed" value={feedCommentDrafts[item.id] || ""} onChangeText={value => setFeedCommentDrafts(current => ({ ...current, [item.id]: value }))} maxLength={2000} style={field} placeholder="Tulis komentar…" placeholderTextColor="#8B94AC"/>
+          <Button title="Kirim komentar" disabled={feedBusy || !(feedCommentDrafts[item.id] || "").trim()} onPress={() => void submitNativeFeedComment(item)}/>
+          <Text style={s.muted}>{item.engagement?.comments ?? 0} komentar · sinyal ranking: terbaru, follow, engagement</Text>
+        </View>)}
+        {feedCursor && <Button title="Muat feed berikutnya" secondary disabled={feedBusy} onPress={() => void loadNativeFeed(false)}/>}
+      </> : tab === "content" ? <>
         <Text style={s.kicker}>ENG-P13 · CREATOR STUDIO</Text><Text style={s.title}>Buat konten</Text>
         <Text style={s.muted}>Draft teks atau media disimpan melalui API. Konten publik baru tayang setelah moderasi.</Text>
         <TextInput accessibilityLabel="Isi konten" value={contentBody} onChangeText={setContentBody} multiline maxLength={10000} style={[s.input, { minHeight: 110, textAlignVertical: "top", paddingTop: 12 }]} placeholder="Apa yang ingin kamu bagikan?" placeholderTextColor="#8B94AC"/>
