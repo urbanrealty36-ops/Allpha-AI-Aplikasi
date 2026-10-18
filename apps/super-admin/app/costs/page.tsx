@@ -140,7 +140,7 @@ export default function ModelCostsPage() {
 
   return <main style={{maxWidth:1200,margin:"0 auto",padding:"24px 18px",color:"#101828",fontFamily:"Arial, sans-serif"}}>
     <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap",marginBottom:20}}>
-      <div><Link href="/" style={{color:"#475467"}}>← Super Admin</Link><p style={{fontSize:12,letterSpacing:1.2,color:"#667085",marginBottom:6}}>ALLPHA / GOVERNANCE / COST OPERATIONS</p><h1 style={{fontSize:30,margin:"0 0 8px"}}>Konfigurasi biaya model AI</h1><p style={{color:"#475467",margin:0}}>CRUD tarif, versi harga, batas penggunaan dan aktivasi tarif lewat backend.</p></div>
+      <div><Link href="/" style={{color:"#475467"}}>← Super Admin</Link><span style={{marginLeft:12}}><Link href="/runtime-policies" style={{color:"#175cd3"}}>Runtime Policy Approval →</Link></span><p style={{fontSize:12,letterSpacing:1.2,color:"#667085",marginBottom:6}}>ALLPHA / GOVERNANCE / COST OPERATIONS</p><h1 style={{fontSize:30,margin:"0 0 8px"}}>Konfigurasi biaya model AI</h1><p style={{color:"#475467",margin:0}}>CRUD tarif, versi harga, batas penggunaan dan aktivasi tarif lewat backend.</p></div>
       {session && <button onClick={() => {setSession(null);setOperator(null);setItems([]);}} style={{padding:"10px 14px"}}>Logout</button>}
     </header>
     <section style={{border:"1px solid #eaecf0",borderRadius:12,padding:18,marginBottom:18,background:"#fff"}}>
