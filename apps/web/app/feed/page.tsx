@@ -56,6 +56,7 @@ export default function FeedPage() {
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
       if (typeof data.personalization_enabled === "boolean") setPersonalizationEnabled(data.personalization_enabled);
+      if (data.mode === "for_you" || data.mode === "recent") setMode(data.mode);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, [mode, request, session]);
