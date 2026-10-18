@@ -22,7 +22,7 @@ def test_readiness_fails_closed_when_core_dependencies_are_unconfigured(monkeypa
     assert body["dependencies"]["database"]["status"] == "not_configured"
     assert body["dependencies"]["authentication"]["status"] == "not_configured"
     assert body["dependencies"]["object_storage"]["status"] == "not_checked"
-    assert body["dependencies"]["ai_gateway"] == "not_configured"
+    assert body["dependencies"]["ai_gateway"]["status"] == "not_checked"
 
 
 def test_readiness_passes_when_core_supabase_configuration_exists(monkeypatch) -> None:
