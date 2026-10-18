@@ -42,6 +42,18 @@ class EvaluationContractError(ValueError):
 
 class EvaluationCriterion(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_min_score(cls, value: Any) -> Any:
+        """Accept the one documented legacy alias without relaxing strict validation."""
+        if not isinstance(value, dict) or "min_score" not in value:
+            return value
+        if "minimum_score" in value:
+            raise ValueError("use only one of min_score or minimum_score")
+        normalized = dict(value)
+        normalized["minimum_score"] = normalized.pop("min_score")
+        return normalized
+
     key: str = Field(min_length=3, max_length=60)
     weight: float = Field(gt=0, le=1)
     required: bool = True
