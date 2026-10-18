@@ -53,7 +53,13 @@ for (const contract of [
   "Draft konten tersimpan melalui FastAPI", "Konten dikirim untuk moderasi"
 ]) assert.ok(app.includes(contract), `missing ENG-P13 Native content pipeline contract: ${contract}`);
 
-console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, and ENG-P13 content pipeline smoke tests passed.");
+for (const contract of [
+  "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report",
+  "loadNativeFeed", "saveNativeFeedPreferences", "nativeFeedAction", "submitNativeFeedComment",
+  "Personalisasi: aktif", "Laporkan"
+]) assert.ok(app.includes(contract), `missing ENG-P14 Native feed contract: ${contract}`);
+
+console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed smoke tests passed.");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
