@@ -96,7 +96,7 @@ def test_ready_returns_ready_only_when_auth_and_postgrest_respond(monkeypatch):
     assert payload["dependencies"]["authentication"]["status"] == "reachable"
     assert payload["dependencies"]["database"]["status"] == "reachable"
     assert payload["dependencies"]["object_storage"]["status"] == "not_checked"
-    assert payload["dependencies"]["ai_gateway"] == "not_configured"
+    assert payload["dependencies"]["ai_gateway"]["status"] == "not_checked"
 
 
 def test_profile_payload_rejects_authority_fields():
