@@ -1,6 +1,6 @@
 """ENG-P14 social feed, interactions and user controls."""
 from __future__ import annotations
-import base64, json, math, uuid
+import base64, json, re, uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -110,6 +110,12 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     candidates = rows or []
     followed, hidden = await _edges(owner)
     candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and (r.get("visibility") != "followers" or str(r.get("owner_id")) in followed)]
+    interest_keys: list[str] = []
+    if effective_mode == "for_you" and personalization_enabled:
+        interest_rows = await _server_db("GET", "user_interests", params={
+            "select": "interest_key", "user_id": f"eq.{owner}", "preference": "eq.interested", "limit": "500",
+        })
+        interest_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or []) if row.get("interest_key")]
     ids = [str(r["id"]) for r in candidates]
     if not ids:
         return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
@@ -129,17 +135,29 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         if str(row.get("actor_user_id")) == owner: viewer_saves.add(cid)
     ranked = []
     for row in candidates:
-        cid = str(row["id"]); age = max(0.0, (as_of - _published(row)).total_seconds() / 3600)
+        cid = str(row["id"])
         like_count, comment_count, save_count = likes.get(cid, 0), comment_counts.get(cid, 0), save_counts.get(cid, 0)
         followed_creator = str(row.get("owner_id")) in followed
-        freshness = max(0.0, 1.0 - age / (24 * 7))
-        engagement = min(0.20, math.log1p(like_count + 2 * comment_count + 2 * save_count) * 0.035)
-        score = freshness * 0.45 + (0.35 if followed_creator else 0) + engagement
-        signals = ["freshness"] + (["followed_creator"] if followed_creator else []) + (["engagement"] if like_count + comment_count + save_count else [])
+        body_tokens = set(re.findall(r"[a-z0-9]+", str(row.get("body") or "").casefold()))
+        interest_matches = sum(
+            1 for key in interest_keys
+            if (terms := set(re.findall(r"[a-z0-9]+", key))) and terms.issubset(body_tokens)
+        )
+        engagement_total = like_count + 2 * comment_count + 2 * save_count
+        signals = ["recency"]
+        if followed_creator:
+            signals.append("followed_creator")
+        if interest_matches:
+            signals.append("explicit_interest_match")
+        if engagement_total:
+            signals.append("engagement")
+        # Version 1 is lexicographic, not a fabricated weighted score: followed creator,
+        # explicit user-interest match count, observed engagement, then publish time.
+        rank_key = (int(followed_creator), interest_matches, engagement_total, _published(row), str(row["id"]))
         ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count},
                        "viewer_reaction": viewer_reactions.get(cid), "saved": cid in viewer_saves,
-                       "ranking_signals": signals, "_rank": score})
-    ranked.sort(key=(lambda r: (r["_rank"], _published(r), str(r["id"]))) if effective_mode == "for_you"
+                       "ranking_signals": signals, "_rank": rank_key})
+    ranked.sort(key=(lambda r: r["_rank"]) if effective_mode == "for_you"
                 else (lambda r: (_published(r), str(r["id"]))), reverse=True)
     # Apply creator diversity before offset pagination so page boundaries remain stable.
     diverse: list[dict[str, Any]] = []
