@@ -281,7 +281,7 @@ export default function OperationsPage() {
       }
     });
     return () => { cancelled = true; };
-  }, [session?.access_token, loadOperatorData]);
+  }, [session, loadOperatorData]);
 
   async function refreshAgencyReconciliation(offset = agencyReconciliationOffset, query = agencyReconciliationQuery) {
     if (!session) return;
