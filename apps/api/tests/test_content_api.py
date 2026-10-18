@@ -298,3 +298,45 @@ def test_signed_preview_preserves_absolute_signed_urls(monkeypatch):
     import asyncio
     result = asyncio.run(content_api._signed_media_preview_url("owner-a/item/photo.jpg"))
     assert result == "https://storage.example/object/sign/private?token=abc"
+
+
+def test_operator_review_queue_includes_short_lived_private_media_previews(monkeypatch):
+    import asyncio
+    content_id = "00000000-0000-0000-0000-000000000501"
+    media_id = "00000000-0000-0000-0000-000000000502"
+    calls = []
+
+    async def fake_db(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if table == "content_items":
+            return [{
+                "id": content_id, "owner_id": "owner-a", "body": "Review this",
+                "content_type": "image", "visibility": "public", "status": "review",
+                "moderation_status": "pending", "version": 4,
+            }]
+        if table == "content_media":
+            return [{
+                "id": media_id, "content_id": content_id, "owner_id": "owner-a",
+                "storage_path": "owner-a/" + content_id + "/" + media_id + "-photo.jpg",
+                "filename": "photo.jpg", "media_type": "image/jpeg", "size_bytes": 128,
+                "sha256": "b" * 64, "status": "uploaded",
+            }]
+        return []
+
+    async def fake_signed(path, *, expires_in=300):
+        assert path.startswith("owner-a/" + content_id + "/")
+        return "https://storage.example/moderator-preview"
+
+    async def fake_audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_signed_media_preview_url", fake_signed)
+    monkeypatch.setattr(content_api, "write_operator_audit", fake_audit)
+    request = Request({"type": "http", "method": "GET", "path": "/v1/content/admin/review-queue", "headers": [], "query_string": b""})
+    result = asyncio.run(content_api.content_review_queue(request, limit=50, operator={"id": "operator-1"}))
+
+    assert result["items"][0]["media"][0]["preview_url"] == "https://storage.example/moderator-preview"
+    assert result["media_preview_expires_in"] == 300
+    assert calls[0][2]["params"]["status"] == "eq.review"
+    assert calls[1][2]["params"]["content_id"] == "in.(" + content_id + ")"
