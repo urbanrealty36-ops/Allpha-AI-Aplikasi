@@ -21,7 +21,7 @@ def test_readiness_fails_closed_when_core_dependencies_are_unconfigured(monkeypa
     assert body["status"] == "not_ready"
     assert body["dependencies"]["database"]["status"] == "not_configured"
     assert body["dependencies"]["authentication"]["status"] == "not_configured"
-    assert body["dependencies"]["object_storage"] == "not_configured"
+    assert body["dependencies"]["object_storage"]["status"] == "not_checked"
     assert body["dependencies"]["ai_gateway"] == "not_configured"
 
 
