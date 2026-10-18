@@ -66,10 +66,10 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     if not rows:
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     item = rows[0]
-    if item.get("visibility") == "followers":
-        followed, hidden = await _edges(viewer_id)
-        if str(item.get("owner_id")) not in followed or str(item.get("owner_id")) in hidden:
-            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    followed, hidden = await _edges(viewer_id)
+    owner_id = str(item.get("owner_id"))
+    if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed):
+        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     return item
 
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
@@ -182,33 +182,33 @@ async def set_reaction(content_id: uuid.UUID, payload: ReactionWrite, user: dict
 
 @router.delete("/v1/feed/{content_id}/reaction")
 async def remove_reaction(content_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _public_content(content_id)
+    await _visible_content(content_id, str(user["id"]))
     rows = await _server_db("DELETE", "content_reactions", params={"content_id": f"eq.{content_id}", "actor_user_id": f"eq.{user['id']}", "select": "id"}, prefer="return=representation")
     return {"removed": bool(rows)}
 
 @router.put("/v1/feed/{content_id}/save")
 async def save_content(content_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _public_content(content_id)
+    await _visible_content(content_id, str(user["id"]))
     rows = await _server_db("POST", "content_saves", params={"on_conflict": "content_id,actor_user_id", "select": "content_id,actor_user_id,created_at"},
         body={"content_id": str(content_id), "actor_user_id": str(user["id"])}, prefer="resolution=ignore-duplicates,return=representation")
     return {"saved": True, "item": rows[0] if rows else None}
 
 @router.delete("/v1/feed/{content_id}/save")
 async def unsave_content(content_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _public_content(content_id)
+    await _visible_content(content_id, str(user["id"]))
     rows = await _server_db("DELETE", "content_saves", params={"content_id": f"eq.{content_id}", "actor_user_id": f"eq.{user['id']}", "select": "id"}, prefer="return=representation")
     return {"saved": False, "removed": bool(rows)}
 
 @router.get("/v1/feed/{content_id}/comments")
 async def list_comments(content_id: uuid.UUID, limit: int = Query(default=30, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _public_content(content_id)
+    await _visible_content(content_id, str(user["id"]))
     rows = await _server_db("GET", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at",
         "content_id": f"eq.{content_id}", "status": "eq.visible", "order": "created_at.asc", "limit": str(limit)})
     return {"items": rows or []}
 
 @router.post("/v1/feed/{content_id}/comments", status_code=201)
 async def create_comment(content_id: uuid.UUID, payload: CommentCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    content = await _public_content(content_id); body = payload.body.strip()
+    content = await _visible_content(content_id, str(user["id"])); body = payload.body.strip()
     if not body: raise HTTPException(422, detail={"code": "COMMENT_EMPTY", "message": "Komentar tidak boleh kosong."})
     rows = await _server_db("POST", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at"},
         body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "body": body, "status": "visible"}, prefer="return=representation")
@@ -223,7 +223,7 @@ async def delete_comment(comment_id: uuid.UUID, user: dict[str, Any] = Depends(c
 
 @router.post("/v1/feed/{content_id}/report", status_code=201)
 async def report_content(content_id: uuid.UUID, payload: ReportCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _public_content(content_id)
+    await _visible_content(content_id, str(user["id"]))
     existing = await _server_db("GET", "content_reports", params={"select": "id", "content_id": f"eq.{content_id}",
         "reporter_user_id": f"eq.{user['id']}", "status": "eq.pending", "limit": "1"})
     if existing: raise HTTPException(409, detail={"code": "REPORT_ALREADY_PENDING", "message": "Laporan konten ini masih menunggu peninjauan."})
@@ -266,7 +266,7 @@ async def review_content_report(report_id: uuid.UUID, payload: ReportReview, req
         resource_type="content_report", resource_id=str(report_id), metadata={"decision": payload.decision, "reason": payload.reason, "content_id": str(report["content_id"])})
     if payload.decision == "hide_content":
         content_rows = await _server_db("GET", "content_items", params={"select": FIELDS, "id": f"eq.{report['content_id']}",
-            "status": "eq.published", "moderation_status": "eq.approved", "visibility": "eq.public", "limit": "1"})
+            "status": "eq.published", "moderation_status": "eq.approved", "visibility": "in.(public,followers)", "limit": "1"})
         if content_rows:
             item = content_rows[0]
             changed = await _server_db("PATCH", "content_items", params={"id": f"eq.{item['id']}", "version": f"eq.{item['version']}",
