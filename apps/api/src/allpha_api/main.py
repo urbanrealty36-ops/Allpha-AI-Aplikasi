@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
+from allpha_api.model_router import TextGenerationRouterUnavailable
 from allpha_api.workflow_api import router as workflow_router
 from allpha_api.skill_challenge_api import router as skill_challenge_router
 from allpha_api.skill_challenge_execution_api import router as skill_challenge_execution_router
@@ -282,6 +283,35 @@ async def readyz() -> JSONResponse:
             "dependencies": dependencies,
         },
     )
+
+
+@app.get("/v1/system/runtime-preflight", tags=["system"])
+async def runtime_preflight(request: Request, user: dict[str, Any] = Depends(current_user)) -> JSONResponse:
+    """Authenticated, non-billable readiness probe for policy, tariff, limits and durable metering."""
+    router_instance = getattr(request.app.state, "text_generation_router", None)
+    if router_instance is None or not callable(getattr(router_instance, "preflight", None)):
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "dependencies": {
+                "provider_route": "not_configured",
+                "runtime_policy": "unverified",
+                "active_tariff": "unverified",
+                "metering_sink": "unverified",
+            }},
+        )
+    try:
+        result = await router_instance.preflight("private")
+        return JSONResponse(status_code=200, content=result)
+    except TextGenerationRouterUnavailable:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "dependencies": {
+                "provider_route": "configured",
+                "runtime_policy": "unverified",
+                "active_tariff": "unverified",
+                "metering_sink": "configured",
+            }},
+        )
 
 
 @app.get("/v1/system/status", tags=["system"])
