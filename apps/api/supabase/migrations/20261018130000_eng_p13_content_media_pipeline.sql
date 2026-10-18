@@ -51,3 +51,18 @@ create policy content_media_storage_owner_select on storage.objects for select t
  bucket_id='content-media' and (storage.foldername(name))[1]=(select auth.uid())::text
  and exists(select 1 from public.content_media m where m.owner_id=(select auth.uid()) and m.storage_path=storage.objects.name)
 );
+
+create or replace function public.content_items_touch_updated_at()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+revoke all on function public.content_items_touch_updated_at() from public, anon, authenticated;
+drop trigger if exists content_items_touch_updated_at on public.content_items;
+create trigger content_items_touch_updated_at before update on public.content_items
+for each row execute function public.content_items_touch_updated_at();
