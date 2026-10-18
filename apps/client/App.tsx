@@ -210,8 +210,8 @@ function Profile({ session }: { session: Session }) {
     try {
       await apiRequest("/v1/feed/preferences", { method: "PUT", body: JSON.stringify({ personalization_enabled: enabled, ranking_mode: mode }) });
       setFeedPersonalization(enabled); setFeedMode(mode); setMessage("Preferensi feed disimpan.");
-      const result = await apiRequest("/v1/feed?mode=" + mode + "&limit=10") as { items?: NativeFeedItem[]; next_cursor?: string | null };
-      setFeedItems(result.items ?? []); setFeedCursor(result.next_cursor ?? null);
+      const result = await apiRequest("/v1/feed?mode=" + mode + "&limit=10") as { items?: NativeFeedItem[]; next_cursor?: string | null; mode?: "for_you" | "recent" };
+      setFeedItems(result.items ?? []); setFeedCursor(result.next_cursor ?? null); if (result.mode) setFeedMode(result.mode);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi feed gagal disimpan."); }
     finally { setFeedBusy(false); }
   }
