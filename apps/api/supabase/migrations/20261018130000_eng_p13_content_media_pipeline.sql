@@ -13,7 +13,8 @@ create table if not exists public.content_items (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   published_at timestamptz,
-  constraint content_publish_requires_approval check (status <> 'published' or moderation_status = 'approved')
+  constraint content_publish_requires_approval check (status <> 'published' or moderation_status = 'approved'),
+  constraint content_items_id_owner_unique unique (id, owner_id)
 );
 create index if not exists content_items_owner_updated_idx on public.content_items(owner_id, updated_at desc);
 create index if not exists content_items_public_feed_idx on public.content_items(published_at desc) where status='published' and moderation_status='approved' and visibility='public';
@@ -31,7 +32,6 @@ create table if not exists public.content_media (
   created_at timestamptz not null default now(),
   constraint content_media_owner_consistency foreign key (content_id, owner_id) references public.content_items(id, owner_id) on delete cascade
 );
-create unique index if not exists content_items_id_owner_unique on public.content_items(id, owner_id);
 create index if not exists content_media_owner_content_idx on public.content_media(owner_id, content_id, created_at);
 alter table public.content_items enable row level security;
 alter table public.content_media enable row level security;
