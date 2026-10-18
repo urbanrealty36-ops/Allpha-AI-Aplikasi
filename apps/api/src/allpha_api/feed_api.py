@@ -136,6 +136,16 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
                        "ranking_signals": signals, "_rank": score})
     ranked.sort(key=(lambda r: (r["_rank"], _published(r), str(r["id"]))) if effective_mode == "for_you"
                 else (lambda r: (_published(r), str(r["id"]))), reverse=True)
+    # Apply creator diversity before offset pagination so page boundaries remain stable.
+    diverse: list[dict[str, Any]] = []
+    creator_counts: dict[str, int] = {}
+    for row in ranked:
+        creator_id = str(row.get("owner_id"))
+        if creator_counts.get(creator_id, 0) >= 3:
+            continue
+        creator_counts[creator_id] = creator_counts.get(creator_id, 0) + 1
+        diverse.append(row)
+    ranked = diverse
     page = ranked[offset:offset + limit]
     selected = [str(r["id"]) for r in page]
     media_by_id: dict[str, list[dict[str, Any]]] = {}
