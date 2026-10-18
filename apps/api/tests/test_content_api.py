@@ -98,3 +98,68 @@ def test_migration_keeps_media_private_and_public_feed_approved_only():
     assert "values ('content-media','content-media',false" in sql
     assert "revoke all on public.content_items, public.content_media from anon, public, authenticated" in sql
     assert "unique (id, owner_id)" in sql
+
+
+def test_upload_parent_update_failure_cleans_storage_and_metadata(monkeypatch):
+    storage_calls = []
+    db_calls = []
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "status": "draft", "body": "", "version": 1}
+
+    async def fake_storage(method, path, **kwargs):
+        storage_calls.append((method, path))
+
+    async def fake_db(method, table, **kwargs):
+        db_calls.append((method, table, kwargs))
+        if method == "POST" and table == "content_media":
+            return [{"id": "media-1", **kwargs["body"]}]
+        if method == "PATCH" and table == "content_items":
+            raise content_api.HTTPException(status_code=409, detail={"code": "CONTENT_UPLOAD_CONFLICT"})
+        return None
+
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_storage", fake_storage)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.post(
+            f"/v1/content/{CONTENT_ID}/media",
+            files={"file": ("photo.jpg", bytes.fromhex("ffd8ff") + b"test", "image/jpeg")},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert ("POST", "content-media/" + next(call[1].split("content-media/", 1)[1] for call in storage_calls if call[0] == "POST")) in storage_calls
+    assert storage_calls[-1][0] == "DELETE"
+    assert any(method == "DELETE" and table == "content_media" for method, table, _ in db_calls)
+
+
+def test_storage_uses_bearer_auth_even_with_secret_key_fallback(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def request(self, method, url, **kwargs):
+            captured.update(kwargs.get("headers", {}))
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "secret-key-test-only")
+    monkeypatch.setattr(content_api.httpx, "AsyncClient", FakeClient)
+
+    import asyncio
+    asyncio.run(content_api._storage("DELETE", "content-media/owner/path"))
+
+    assert captured["apikey"] == "secret-key-test-only"
+    assert captured["Authorization"] == "Bearer secret-key-test-only"
