@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+from datetime import datetime, timezone
 import json
 import re
 import os
@@ -25,7 +27,7 @@ from allpha_api.skill_challenge_api import router as skill_challenge_router
 from allpha_api.skill_challenge_execution_api import router as skill_challenge_execution_router
 from allpha_api.supabase_credit_ledger_store import CreditLedgerPersistenceError, SupabaseCreditLedgerStore
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, execute_tool, list_tools, validate_tool_dependencies
-from allpha_api.operator_security import router as operator_security_router
+from allpha_api.operator_security import (router as operator_security_router, privileged_rest_request, require_operator_scope, write_operator_audit)
 from allpha_api.knowledge import router as knowledge_router
 from allpha_api.knowledge_retrieval import router as knowledge_retrieval_router
 from allpha_api.skill_catalog import search_skill_catalog
@@ -919,7 +921,7 @@ class AgentSkillUpdate(BaseModel):
     provenance: dict[str, Any] | None = None
     changelog: str | None = Field(default=None, max_length=2000)
     publication_terms: dict[str, Any] | None = None
-    status: Literal["draft", "published", "archived"] | None = None
+    # Status transitions are only available through the reviewed governance route.
 
     @field_validator("inputs_schema", "outputs_schema", "constraints", "model_requirements", "budget_limits", "evaluation_rubric", "provenance", "publication_terms")
     @classmethod
@@ -947,6 +949,13 @@ class AgentSkillUpdate(BaseModel):
             for item in value:
                 _validate_agent_config(item)
         return value
+
+
+class AgentSkillPublicationReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    snapshot_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    reason: str = Field(min_length=8, max_length=500)
 
 
 class AgentToolExecutionRequest(BaseModel):
@@ -1040,6 +1049,58 @@ async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: 
 
 
 @app.get("/v1/agents/{agent_id}/skills/{skill_id}/versions", tags=["agent-studio"])
+@app.post("/v1/admin/agents/{agent_id}/skills/{skill_id}/publish", tags=["agent-studio-governance"])
+async def publish_agent_skill(
+    agent_id: uuid.UUID,
+    skill_id: uuid.UUID,
+    payload: AgentSkillPublicationReview,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    """Publish only after an explicit, audited operator review of an immutable version."""
+    current = await privileged_rest_request("GET", "agent_skills", params={
+        "select": _SKILL_FIELDS, "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "limit": "1"})
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    skill = current[0]
+    if skill.get("status") != "draft":
+        raise HTTPException(status_code=409, detail={"code": "SKILL_NOT_DRAFT", "message": "Hanya Skill draft yang dapat dipublikasikan."})
+    if int(skill.get("version") or 0) != payload.expected_version:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_VERSION_CHANGED", "message": "Versi berubah; tinjau snapshot terbaru."})
+    snapshots = await privileged_rest_request("GET", "agent_skill_versions", params={
+        "select": "id,skill_id,agent_id,version,snapshot", "skill_id": f"eq.{skill_id}",
+        "agent_id": f"eq.{agent_id}", "version": f"eq.{payload.expected_version}", "limit": "1"})
+    if not snapshots or not isinstance(snapshots[0].get("snapshot"), dict):
+        raise HTTPException(status_code=409, detail={"code": "SKILL_SNAPSHOT_MISSING", "message": "Snapshot immutable tidak tersedia."})
+    snapshot = snapshots[0]["snapshot"]
+    encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()
+    if digest != payload.snapshot_digest:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_SNAPSHOT_DIGEST_MISMATCH", "message": "Digest snapshot tidak cocok."})
+    if snapshot.get("id") != str(skill_id) or snapshot.get("agent_id") != str(agent_id) or int(snapshot.get("version") or 0) != payload.expected_version:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_SNAPSHOT_IDENTITY_MISMATCH", "message": "Identitas snapshot tidak cocok."})
+    if not isinstance(snapshot.get("tests"), list) or not snapshot["tests"]:
+        raise HTTPException(status_code=422, detail={"code": "SKILL_REVIEW_TESTS_REQUIRED", "message": "Evaluation tests wajib tersedia."})
+    if not isinstance(snapshot.get("evaluation_rubric"), dict) or not snapshot["evaluation_rubric"]:
+        raise HTTPException(status_code=422, detail={"code": "SKILL_REVIEW_RUBRIC_REQUIRED", "message": "Rubrik evaluasi wajib tersedia."})
+    if not isinstance(snapshot.get("publication_terms"), dict) or not snapshot["publication_terms"]:
+        raise HTTPException(status_code=422, detail={"code": "SKILL_PUBLICATION_TERMS_REQUIRED", "message": "Ketentuan publikasi wajib tersedia."})
+    audit = {"agent_id": str(agent_id), "version": payload.expected_version, "snapshot_digest": digest, "reason": payload.reason}
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.skill.publish",
+        outcome="attempted", resource_type="agent_skill", resource_id=str(skill_id), metadata=audit)
+    rows = await privileged_rest_request("PATCH", "agent_skills", params={
+        "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "status": "eq.draft",
+        "version": f"eq.{payload.expected_version}", "select": _SKILL_FIELDS},
+        body={"status": "published", "updated_at": datetime.now(timezone.utc).isoformat()},
+        prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_PUBLICATION_CONFLICT", "message": "Skill berubah saat review; publikasi ditolak."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="agent.skill.publish",
+        outcome="allowed", resource_type="agent_skill", resource_id=str(skill_id), metadata=audit)
+    return {"skill": rows[0], "published_version": payload.expected_version,
+            "snapshot_digest": digest, "reviewed_by": operator["id"], "publication_authorized": True}
+
+
 async def list_agent_skill_versions(
     agent_id: uuid.UUID,
     skill_id: uuid.UUID,
