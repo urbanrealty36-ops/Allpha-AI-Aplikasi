@@ -60,7 +60,7 @@ def test_ready_requires_live_supabase_auth_and_postgrest(monkeypatch):
     payload = response.json()
     assert payload["status"] == "not_ready"
     assert payload["dependencies"]["authentication"]["status"] == "reachable"
-    assert payload["dependencies"]["database"] == "unavailable"
+    assert payload["dependencies"]["database"]["status"] == "unavailable"
     assert "staging-example" not in response.text
     assert "sb_publishable_test_only" not in response.text
 
@@ -95,7 +95,7 @@ def test_ready_returns_ready_only_when_auth_and_postgrest_respond(monkeypatch):
     assert payload["status"] == "ready"
     assert payload["dependencies"]["authentication"]["status"] == "reachable"
     assert payload["dependencies"]["database"]["status"] == "reachable"
-    assert payload["dependencies"]["object_storage"] == "not_configured"
+    assert payload["dependencies"]["object_storage"]["status"] == "not_checked"
     assert payload["dependencies"]["ai_gateway"] == "not_configured"
 
 
