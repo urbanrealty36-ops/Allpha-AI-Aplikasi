@@ -176,3 +176,48 @@ def test_active_model_cost_verifier_fails_closed_without_an_active_tariff():
         assert "exactly one effective active tariff" in str(exc)
     else:
         raise AssertionError("missing active tariff must block runtime")
+
+
+def test_approved_runtime_policy_verifier_requires_exact_approved_registry_row():
+    import pytest
+    from allpha_api.text_generation_adapters import SupabaseApprovedRuntimePolicyVerifier
+
+    observed = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        observed["path"] = req.url.path
+        observed["params"] = dict(req.url.params)
+        return httpx.Response(200, json=[{
+            "id": "policy-1",
+            "policy_version": "v1",
+            "status": "approved",
+            "policy_digest": "a" * 64,
+            "approved_at": "2026-10-18T05:50:56Z",
+        }])
+
+    verifier = SupabaseApprovedRuntimePolicyVerifier(
+        supabase_url="https://db.invalid",
+        service_role_key="service-test",
+        policy_id="policy-1",
+        policy_version="v1",
+        transport=httpx.MockTransport(handler),
+    )
+    asyncio.run(verifier.verify())
+    assert observed["path"] == "/rest/v1/agent_runtime_policies"
+    assert observed["params"]["id"] == "eq.policy-1"
+    assert observed["params"]["policy_version"] == "eq.v1"
+    assert observed["params"]["status"] == "eq.approved"
+
+
+def test_approved_runtime_policy_verifier_fails_closed_when_policy_not_approved():
+    from allpha_api.text_generation_adapters import SupabaseApprovedRuntimePolicyVerifier
+
+    verifier = SupabaseApprovedRuntimePolicyVerifier(
+        supabase_url="https://db.invalid",
+        service_role_key="service-test",
+        policy_id="policy-1",
+        policy_version="v1",
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=[])),
+    )
+    with pytest.raises(RuntimeError, match="exactly one matching approved runtime policy"):
+        asyncio.run(verifier.verify())
