@@ -320,9 +320,25 @@ async def content_review_queue(
         "select": CONTENT_FIELDS, "status": "eq.review", "moderation_status": "eq.pending",
         "order": "updated_at.asc", "limit": str(limit),
     })
+    items = rows or []
+    media_by_content: dict[str, list[dict[str, Any]]] = {}
+    if items:
+        content_ids = [str(item["id"]) for item in items]
+        media_rows = await _server_db("GET", "content_media", params={
+            "select": MEDIA_FIELDS, "content_id": f"in.({','.join(content_ids)})",
+            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, limit * 10)),
+        })
+        for media in media_rows or []:
+            media_by_content.setdefault(str(media["content_id"]), []).append({
+                **media, "preview_url": await _signed_media_preview_url(media["storage_path"]),
+            })
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.review_queue.read",
-        outcome="allowed", resource_type="content_queue", resource_id="pending", metadata={"count": len(rows or [])})
-    return {"items": rows or []}
+        outcome="allowed", resource_type="content_queue", resource_id="pending",
+        metadata={"count": len(items), "media_count": sum(len(v) for v in media_by_content.values())})
+    return {
+        "items": [{**item, "media": media_by_content.get(str(item["id"]), [])} for item in items],
+        "media_preview_expires_in": 300,
+    }
 
 
 @router.post("/admin/{content_id}/review", tags=["content-moderation"])
