@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / "supabase" / "migrations" / "20261019100000_eng_p14_social_feed_interactions.sql"
+MIGRATION = ROOT / "supabase" / "migrations" / "20261018171421_eng_p14_social_feed_interactions.sql"
 
 
 def test_social_feed_migration_is_in_the_canonical_migration_directory():
