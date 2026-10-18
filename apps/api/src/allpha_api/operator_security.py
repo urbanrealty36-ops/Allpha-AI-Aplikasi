@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -17,6 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/admin", tags=["platform-operations"])
 OperatorScope = Literal[
@@ -144,6 +147,29 @@ async def write_operator_audit(
             detail={"code": "OPERATOR_AUDIT_UNAVAILABLE", "message": "Audit istimewa tidak dapat disimpan; operasi ditolak."},
         ) from exc
     if response.status_code not in (200, 201, 204):
+        # Log only provider status and a bounded, allow-listed error code.
+        # Never log request headers, credentials, or audit metadata.
+        error_code = "unknown"
+        try:
+            error_payload = response.json()
+            if isinstance(error_payload, dict):
+                candidate = error_payload.get("code") or error_payload.get("error")
+                if isinstance(candidate, str) and candidate and len(candidate) <= 80:
+                    error_code = candidate
+                details = error_payload.get("message") or error_payload.get("details")
+                if isinstance(details, str) and details and len(details) <= 180:
+                    logger.warning(
+                        "operator_audit_postgrest_rejected status=%s code=%s detail=%s",
+                        response.status_code,
+                        error_code,
+                        details.replace("\\n", " ")[:180],
+                    )
+                else:
+                    logger.warning("operator_audit_postgrest_rejected status=%s code=%s", response.status_code, error_code)
+            else:
+                logger.warning("operator_audit_postgrest_rejected status=%s code=%s", response.status_code, error_code)
+        except (ValueError, TypeError):
+            logger.warning("operator_audit_postgrest_rejected status=%s code=%s", response.status_code, error_code)
         raise HTTPException(
             status_code=503,
             detail={"code": "OPERATOR_AUDIT_UNAVAILABLE", "message": "Audit istimewa tidak dapat disimpan; operasi ditolak."},
