@@ -94,6 +94,11 @@ class BotLinkPayload(BaseModel):
     character_asset_key: str = Field(min_length=3, max_length=180)
 
 
+class ProvisionIdentityBatchPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bot_ids: list[UUID] = Field(min_length=1, max_length=50)
+
+
 @router.get("", name="list_official_bots")
 async def list_official_bots(
     limit: int = 100,
@@ -164,7 +169,7 @@ async def provision_official_bot_roster(
     )
     rows = await privileged_rest_request(
         "GET", "official_agent_bots",
-        params={"select": "id,skill_key,status", "order": "skill_key.asc", "limit": "500"},
+        params={"select": "id,skill_key,status", "order": "skill_key.asc", "limit": "1000"},
     ) or []
     await write_operator_audit(
         request, actor_user_id=operator["id"], action="official_bots.roster.provision.complete",
@@ -249,6 +254,81 @@ async def provision_official_bot_identity(
         "agent": agent,
         "ownership": {"owner_user_id": str(platform_owner_id), "owner_type": "platform", "role": "owner"},
         "idempotent_replay": replay,
+        "runtime_activation": "not_performed",
+    }
+
+
+@router.post("/provision-identities", status_code=200, name="provision_official_bot_identities")
+async def provision_official_bot_identities(
+    payload: ProvisionIdentityBatchPayload,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:capabilities.review.high_risk")),
+) -> dict[str, Any]:
+    """Provision up to 50 platform-owned Agent identities through the canonical identity RPC.
+
+    The batch is resumable and reports each result. It never publishes Skills, verifies
+    GLBs, approves runtime policies, or activates a bot.
+    """
+    unique_ids = list(dict.fromkeys(payload.bot_ids))
+    if len(unique_ids) != len(payload.bot_ids):
+        raise HTTPException(status_code=422, detail={
+            "code": "OFFICIAL_BOT_IDENTITY_BATCH_DUPLICATE_IDS",
+            "message": "Batch berisi bot ID duplikat; kirim setiap ID satu kali.",
+        })
+
+    try:
+        UUID(os.getenv("ALLPHA_PLATFORM_OWNER_USER_ID", "").strip())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": "PLATFORM_AGENT_OWNER_NOT_CONFIGURED",
+            "message": "Identitas pemilik sistem belum dikonfigurasi sebagai UUID akun platform khusus.",
+        }) from exc
+
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="official_bots.identity.batch.request",
+        outcome="allowed", resource_type="official_agent_bot_roster",
+        metadata={"requested_count": len(payload.bot_ids)},
+    )
+    items: list[dict[str, Any]] = []
+    for bot_id in payload.bot_ids:
+        try:
+            result = await provision_official_bot_identity(bot_id, request, operator)
+            agent = result.get("agent") if isinstance(result, dict) else None
+            items.append({
+                "bot_id": str(bot_id),
+                "status": "already_linked" if result.get("idempotent_replay") else "provisioned",
+                "agent_id": str(agent["id"]) if isinstance(agent, dict) and agent.get("id") else None,
+                "runtime_activation": "not_performed",
+            })
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            items.append({
+                "bot_id": str(bot_id),
+                "status": "failed",
+                "code": str(detail.get("code") or "IDENTITY_PROVISION_FAILED"),
+                "http_status": exc.status_code,
+            })
+        except Exception:
+            # Do not leak PostgREST/RPC errors, payloads, or secrets to the caller.
+            items.append({
+                "bot_id": str(bot_id),
+                "status": "failed",
+                "code": "IDENTITY_PROVISION_UNCONFIRMED",
+                "http_status": 503,
+            })
+
+    succeeded = sum(1 for item in items if item["status"] in {"provisioned", "already_linked"})
+    failed = len(items) - succeeded
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="official_bots.identity.batch.complete",
+        outcome="allowed" if failed == 0 else "error", resource_type="official_agent_bot_roster",
+        metadata={"requested_count": len(items), "succeeded_count": succeeded, "failed_count": failed},
+    )
+    return {
+        "requested": len(items),
+        "succeeded": succeeded,
+        "failed": failed,
+        "items": items,
         "runtime_activation": "not_performed",
     }
 
