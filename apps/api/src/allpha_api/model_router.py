@@ -298,6 +298,10 @@ class TextGenerationMeteringSink(Protocol):
 class TextGenerationRouterUnavailable(RuntimeError):
     """No approved text-generation route, adapter, policy or durable sink is available."""
 
+    def __init__(self, message: str, *, category: str = "runtime_unavailable") -> None:
+        self.category = category
+        super().__init__(message)
+
 
 class TextGenerationRouterRejected(RuntimeError):
     """The provider response violated the canonical text-generation contract."""
@@ -332,11 +336,11 @@ class CanonicalTextGenerationRouter:
         route = self._routes.get(sensitivity)
         policy = self._policies.get(sensitivity)
         if route is None or policy is None or not policy.approved:
-            raise TextGenerationRouterUnavailable("no approved text-generation route and policy for this sensitivity")
+            raise TextGenerationRouterUnavailable("no approved text-generation route and policy for this sensitivity", category="runtime_policy")
         if route.provider_id not in self._adapters:
-            raise TextGenerationRouterUnavailable("registered text-generation provider adapter is missing")
+            raise TextGenerationRouterUnavailable("registered text-generation provider adapter is missing", category="provider_route")
         if self._metering_sink is None or not callable(getattr(self._metering_sink, "write_idempotent", None)):
-            raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink")
+            raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink", category="metering_sink")
 
     async def preflight(self, sensitivity: str) -> dict[str, Any]:
         """Verify configured route, approved runtime policy, active tariff and metering before generation."""
@@ -344,12 +348,15 @@ class CanonicalTextGenerationRouter:
         route = self._routes[sensitivity]
         policy = self._policies[sensitivity]
         if self._runtime_preflight is None:
-            raise TextGenerationRouterUnavailable("runtime policy and active tariff verifier are not configured")
+            raise TextGenerationRouterUnavailable("runtime policy and active tariff verifier are not configured", category="runtime_policy")
         try:
             await self._runtime_preflight(sensitivity, route, policy)
+        except TextGenerationRouterUnavailable:
+            raise
         except Exception as exc:
             raise TextGenerationRouterUnavailable(
-                "approved runtime policy or active tariff could not be verified"
+                "approved runtime policy or active tariff could not be verified",
+                category=getattr(exc, "category", "runtime_policy"),
             ) from exc
         return {
             "status": "ready",
