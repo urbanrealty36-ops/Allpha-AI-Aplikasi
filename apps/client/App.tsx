@@ -12,6 +12,8 @@ import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNati
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number }; viewer_reaction?: string | null; saved?: boolean };
+type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
+
 
 type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
 type AgentIdentity = { id: string; handle: string; display_name: string; description?: string; visibility: "private" | "public"; status: "draft" | "active" | "archived"; ownership?: { owner_user_id: string; role: "owner"; status: "active" } };
@@ -120,6 +122,8 @@ function Profile({ session }: { session: Session }) {
   const [feedMode, setFeedMode] = useState<"for_you" | "recent">("for_you");
   const [feedPersonalization, setFeedPersonalization] = useState(true);
   const [feedCommentDrafts, setFeedCommentDrafts] = useState<Record<string, string>>({});
+  const [feedComments, setFeedComments] = useState<Record<string, NativeFeedComment[]>>({});
+  const [feedCommentsOpen, setFeedCommentsOpen] = useState<Record<string, boolean>>({});
   const [agentHandle, setAgentHandle] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
@@ -233,6 +237,18 @@ function Profile({ session }: { session: Session }) {
       setFeedCommentDrafts(current => ({ ...current, [item.id]: "" })); setMessage("Komentar dikirim.");
       await loadNativeFeed(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar gagal dikirim."); }
+    finally { setFeedBusy(false); }
+  }
+
+  async function toggleNativeComments(item: NativeFeedItem) {
+    const opening = !feedCommentsOpen[item.id];
+    setFeedCommentsOpen(current => ({ ...current, [item.id]: opening }));
+    if (!opening || feedComments[item.id]) return;
+    setFeedBusy(true); setError("");
+    try {
+      const result = await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/comments") as { items?: NativeFeedComment[] };
+      setFeedComments(current => ({ ...current, [item.id]: result.items ?? [] }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar tidak dapat dimuat."); }
     finally { setFeedBusy(false); }
   }
   async function chooseContentMedia() {
@@ -831,7 +847,12 @@ function Profile({ session }: { session: Session }) {
             <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "like")}/>
             <Button title={(item.saved ? "Tersimpan" : "Simpan") + " · " + (item.engagement?.saves ?? 0)} secondary={!!item.saved} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "save")}/>
             <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => void nativeFeedAction(item, "report")}/>
+            <Button title={feedCommentsOpen[item.id] ? "Tutup komentar" : "Lihat komentar"} secondary disabled={feedBusy} onPress={() => void toggleNativeComments(item)}/>
           </View>
+          {feedCommentsOpen[item.id] && (feedComments[item.id] ?? []).map(comment => <View key={comment.id} style={s.socialRow}>
+            <Text style={s.muted}>{comment.actor_user_id.slice(0, 8)} · {new Date(comment.created_at).toLocaleString()}</Text>
+            <Text style={s.body}>{comment.body}</Text>
+          </View>)}
           <TextInput accessibilityLabel="Tulis komentar feed" value={feedCommentDrafts[item.id] || ""} onChangeText={value => setFeedCommentDrafts(current => ({ ...current, [item.id]: value }))} maxLength={2000} style={field} placeholder="Tulis komentar…" placeholderTextColor="#8B94AC"/>
           <Button title="Kirim komentar" disabled={feedBusy || !(feedCommentDrafts[item.id] || "").trim()} onPress={() => void submitNativeFeedComment(item)}/>
           <Text style={s.muted}>{item.engagement?.comments ?? 0} komentar · sinyal ranking: terbaru, follow, engagement</Text>
