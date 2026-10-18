@@ -373,6 +373,84 @@ def test_official_identity_batch_is_bounded_to_fifty_ids():
         api.ProvisionIdentityBatchPayload(bot_ids=[uuid4() for _ in range(51)])
 
 
+def test_official_identity_batch_rejects_duplicate_ids_before_side_effects(monkeypatch):
+    bot_id = uuid4()
+    monkeypatch.setenv("ALLPHA_PLATFORM_OWNER_USER_ID", str(uuid4()))
+
+    async def forbidden_audit(*args, **kwargs):
+        raise AssertionError("duplicate IDs must be rejected before audit or provisioning")
+
+    async def forbidden_provision(*args, **kwargs):
+        raise AssertionError("duplicate IDs must be rejected before provisioning")
+
+    monkeypatch.setattr(api, "write_operator_audit", forbidden_audit)
+    monkeypatch.setattr(api, "provision_official_bot_identity", forbidden_provision)
+    payload = api.ProvisionIdentityBatchPayload(bot_ids=[bot_id, bot_id])
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(api.provision_official_bot_identities(
+            payload, _request(),
+            {"id": str(uuid4()), "scopes": ["platform:capabilities.review.high_risk"]},
+        ))
+
+    assert caught.value.status_code == 422
+    assert caught.value.detail["code"] == "OFFICIAL_BOT_IDENTITY_BATCH_DUPLICATE_IDS"
+
+
+def test_official_identity_batch_reports_partial_failures_and_is_resumable(monkeypatch):
+    actor_id = str(uuid4())
+    successful_bot_id, failed_bot_id = uuid4(), uuid4()
+    audits = []
+    calls = []
+
+    async def fake_audit(*args, **kwargs):
+        audits.append(kwargs)
+
+    async def fake_provision(bot_id, request, operator):
+        calls.append(str(bot_id))
+        if bot_id == failed_bot_id:
+            raise HTTPException(status_code=409, detail={
+                "code": "OFFICIAL_BOT_STATE_NOT_PROVISIONABLE",
+                "message": "Bot tidak berada pada state yang dapat diprovision.",
+            })
+        return {
+            "bot_id": str(bot_id),
+            "agent": {"id": str(uuid4()), "status": "draft"},
+            "idempotent_replay": False,
+            "runtime_activation": "not_performed",
+        }
+
+    monkeypatch.setenv("ALLPHA_PLATFORM_OWNER_USER_ID", str(uuid4()))
+    monkeypatch.setattr(api, "write_operator_audit", fake_audit)
+    monkeypatch.setattr(api, "provision_official_bot_identity", fake_provision)
+    payload = api.ProvisionIdentityBatchPayload(bot_ids=[successful_bot_id, failed_bot_id])
+
+    result = asyncio.run(api.provision_official_bot_identities(
+        payload, _request(),
+        {"id": actor_id, "scopes": ["platform:capabilities.review.high_risk"]},
+    ))
+
+    assert result["requested"] == 2
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert result["runtime_activation"] == "not_performed"
+    assert result["items"][0]["status"] == "provisioned"
+    assert result["items"][1]["status"] == "failed"
+    assert result["items"][1]["code"] == "OFFICIAL_BOT_STATE_NOT_PROVISIONABLE"
+    assert calls == [str(successful_bot_id), str(failed_bot_id)]
+    assert [event["action"] for event in audits] == [
+        "official_bots.identity.batch.request",
+        "official_bots.identity.batch.complete",
+    ]
+
+
+def test_official_identity_batch_is_bounded_to_fifty_ids():
+    ids = [uuid4() for _ in range(50)]
+    assert len(api.ProvisionIdentityBatchPayload(bot_ids=ids).bot_ids) == 50
+    with pytest.raises(ValueError):
+        api.ProvisionIdentityBatchPayload(bot_ids=[uuid4() for _ in range(51)])
+
+
 def test_runtime_link_rejects_catalog_only_skill_before_any_policy_or_asset_binding(monkeypatch):
     bot_id, agent_id, policy_id = uuid4(), uuid4(), uuid4()
     calls = []
