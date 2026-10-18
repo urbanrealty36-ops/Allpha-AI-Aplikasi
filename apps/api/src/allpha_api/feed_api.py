@@ -111,11 +111,21 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     followed, hidden = await _edges(owner)
     candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and (r.get("visibility") != "followers" or str(r.get("owner_id")) in followed)]
     interest_keys: list[str] = []
+    not_interested_keys: list[str] = []
     if effective_mode == "for_you" and personalization_enabled:
         interest_rows = await _server_db("GET", "user_interests", params={
-            "select": "interest_key", "user_id": f"eq.{owner}", "preference": "eq.interested", "limit": "500",
+            "select": "interest_key,preference", "user_id": f"eq.{owner}", "limit": "500",
         })
-        interest_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or []) if row.get("interest_key")]
+        interest_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
+                         if row.get("interest_key") and row.get("preference") == "interested"]
+        not_interested_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
+                               if row.get("interest_key") and row.get("preference") == "not_interested"]
+    if not_interested_keys:
+        def matches_interest(body: str, key: str) -> bool:
+            terms = set(re.findall(r"[a-z0-9]+", key))
+            tokens = set(re.findall(r"[a-z0-9]+", body.casefold()))
+            return bool(terms) and terms.issubset(tokens)
+        candidates = [row for row in candidates if not any(matches_interest(str(row.get("body") or ""), key) for key in not_interested_keys)]
     ids = [str(r["id"]) for r in candidates]
     if not ids:
         return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
