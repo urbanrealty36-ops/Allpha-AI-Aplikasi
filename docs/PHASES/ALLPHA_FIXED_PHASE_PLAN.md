@@ -673,3 +673,13 @@ Migration filename reconciliation addendum (2026-10-17): source filenames were a
 - **Tests added:** `apps/api/tests/test_runtime_diagnostics.py` covers independent Auth/PostgREST probe behavior, sanitized active-tariff failure classification, and missing-router reporting. These tests are source-added and **not yet counted as passing** until the relevant CI test job finishes successfully.
 - **Validation boundary:** no authenticated request from the owner's browser has been observed by the agent, no real NVIDIA NIM challenge was run, and no new usage metering row was confirmed. Production runtime preflight, provider execution, idempotency/fingerprint conflicts and owner isolation remain **NOT VERIFIED**. Do not set `ai_model_cost_configs.policy_approved` directly or bypass policy gates.
 - **Next action:** verify latest API/Super Admin deployments and CI; run the new authenticated preflight from the logged-in Super Admin screen; repair only the exact dependency category returned; then run the three approved challenge cases through the canonical challenge API and verify durable Supabase evidence. ENG-P12 remains `in_progress`.
+
+
+## ENG-P12 rubric compatibility repair — 2026-10-18
+
+- **Root cause verified against live Supabase:** the draft pdf-qa-agent rubric uses legacy criterion field min_score; the strict EvaluationCriterion contract expects minimum_score. Its weights sum to 1.0 and its evaluator version is allpha-evaluator-v1; the unsupported field name causes validation to fail before challenge execution.
+- **API=CHANGE:** added a narrow, deterministic input normalization for the legacy alias min_score → minimum_score. Supplying both names remains invalid; strict extra-field rejection, allowed criteria, weights, evaluator version, digest pinning and challenge lifecycle remain intact.
+- **Tests=CHANGE:** regression cases cover legacy/canonical digest equivalence, unknown-field rejection, invalid weights, unsupported evaluator version, and ambiguous dual-field rejection. Test execution is not yet verified.
+- **Web=NOT AFFECTED; Native Client=NOT AFFECTED; Super Admin=NOT AFFECTED by this contract-only API change.
+- **Status:** ENG-P12 remains in_progress. No Skill status change, publication, provider inference, or live challenge replay is claimed by this code change.
+- **Next:** verify test CI; deploy API; have the owner run the three draft-only challenges using the authenticated Super Admin session; then verify persisted runtime output, usage metering, evidence digests, idempotent replay/fingerprint conflict and owner isolation from live records.
