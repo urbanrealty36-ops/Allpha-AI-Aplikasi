@@ -338,6 +338,27 @@ class CanonicalTextGenerationRouter:
         if self._metering_sink is None or not callable(getattr(self._metering_sink, "write_idempotent", None)):
             raise TextGenerationRouterUnavailable("runtime requires a durable idempotent text-generation metering sink")
 
+    async def preflight(self, sensitivity: str) -> dict[str, Any]:
+        """Verify configured route, approved runtime policy, active tariff and metering before generation."""
+        self.require_runtime_ready(sensitivity)
+        route = self._routes[sensitivity]
+        policy = self._policies[sensitivity]
+        if self._runtime_preflight is None:
+            raise TextGenerationRouterUnavailable("runtime policy and active tariff verifier are not configured")
+        try:
+            await self._runtime_preflight(sensitivity, route, policy)
+        except Exception as exc:
+            raise TextGenerationRouterUnavailable(
+                "approved runtime policy or active tariff could not be verified"
+            ) from exc
+        return {
+            "status": "ready",
+            "route": self.route_snapshot_for(sensitivity),
+            "metering_sink": "configured",
+            "runtime_policy": "approved",
+            "active_tariff": "verified",
+        }
+
     def max_output_tokens_for(self, sensitivity: str) -> int:
         policy = self._policies.get(sensitivity)
         if policy is None or not policy.approved:
