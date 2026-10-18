@@ -232,3 +232,36 @@ def test_challenge_issue_rejects_non_owner(monkeypatch):
             )
         assert error.value.status_code == 404
     asyncio.run(scenario())
+
+
+def test_owner_scoped_draft_skill_is_allowed_only_on_explicit_draft_lane():
+    import asyncio
+    from fastapi import HTTPException
+    from allpha_api.skill_challenge_api import _owned_agent_and_skill
+
+    class Store:
+        async def get_agent(self, owner_id, agent_id):
+            assert owner_id == "owner-1"
+            assert agent_id == "agent-1"
+            return {"id": "agent-1", "version": 1, "status": "draft"}
+
+        async def request(self, method, path, params=None, body=None, prefer=None):
+            if path == "agent_skills":
+                return [{"id": "skill-1", "agent_id": "agent-1", "status": "draft", "version": 1}]
+            if path == "ai_agents":
+                return [{"id": "agent-1", "version": 1, "status": "draft"}]
+            raise AssertionError(f"unexpected request {method} {path}")
+
+    async def scenario():
+        with pytest.raises(HTTPException) as denied:
+            await _owned_agent_and_skill(Store(), "owner-1", "agent-1", "skill-1")
+        assert denied.value.status_code == 409
+        assert denied.value.detail["code"] == "SKILL_NOT_PUBLISHED"
+
+        agent, skill = await _owned_agent_and_skill(
+            Store(), "owner-1", "agent-1", "skill-1", allow_draft=True
+        )
+        assert agent["status"] == "draft"
+        assert skill["status"] == "draft"
+
+    asyncio.run(scenario())
