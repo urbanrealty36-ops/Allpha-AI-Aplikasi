@@ -91,14 +91,14 @@ assert.doesNotMatch(nativeContent, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockC
 const feedPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/feed?", "/v1/feed/preferences", "/reaction", "/save", "/comments", "/report",
-  "personalization_enabled", "ranking_mode", "next_cursor", "Laporkan", "Personalisasi feed aktif"
+  "personalization_enabled", "ranking_mode", "next_cursor", "Laporkan", "Personalisasi feed aktif", "reportReasons", "misinformation"
 ]) assert.ok(feedPage.includes(contract), `missing ENG-P14 Web feed contract: ${contract}`);
 assert.doesNotMatch(feedPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockFeedItems|fakeFeed/);
 
 const reportsPage = readFileSync(new URL("../../super-admin/app/content-reports/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/admin/content-reports", "/v1/admin/content-reports/", "platform:content.moderate",
-  "dismiss", "hide_content", "Alasan keputusan", "Authorization"
+  "dismiss", "hide_content", "Alasan keputusan", "Authorization", "preview_url", "media?.map"
 ]) assert.ok(reportsPage.includes(contract), `missing ENG-P14 Super Admin reports contract: ${contract}`);
 assert.doesNotMatch(reportsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockReports/);
 
