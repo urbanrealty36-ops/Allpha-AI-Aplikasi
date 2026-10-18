@@ -12,7 +12,7 @@ from allpha_api.operator_security import require_operator_scope, write_operator_
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
-CANDIDATES = 200
+CANDIDATES = 1000
 
 class ReactionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
