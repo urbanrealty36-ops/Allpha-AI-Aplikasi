@@ -67,7 +67,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
                     {"target_user_id": hidden_owner, "edge_type": "mute", "status": "active"},
                 ]
             return []
-        if table in {"content_reactions", "content_comments", "content_saves", "content_media"}:
+        if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"unexpected table {table}")
 
@@ -180,6 +180,61 @@ def test_blocked_creator_content_cannot_receive_interactions(monkeypatch):
         response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_share_records_event_and_returns_deep_link(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000021"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": "eng-p14-author", "body": "shareable", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+    writes = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "content_items": return [content]
+        if table == "social_edges": return []
+        if method == "POST" and table == "content_shares":
+            writes.append(body)
+            return [{"id": "share-event", **body, "created_at": now}]
+        raise AssertionError(f"unexpected {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).post(f"/v1/feed/{content_id}/share", json={"share_target": "copy_link"})
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["share"]["share_target"] == "copy_link"
+        assert payload["share_url"] == f"https://allpha.web.id/feed?content={content_id}"
+        assert len(writes) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000022"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": "eng-p14-author", "body": "deep link", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items": return [content]
+        if table == "social_edges": return []
+        if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}: return []
+        raise AssertionError(f"unexpected {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_signed_media_preview_url", lambda path: None)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get(f"/v1/feed/item/{content_id}")
+        assert response.status_code == 200, response.text
+        assert response.json()["item"]["id"] == content_id
+        assert response.json()["item"]["engagement"] == {"likes": 0, "comments": 0, "saves": 0, "shares": 0}
     finally:
         app.dependency_overrides.clear()
 
