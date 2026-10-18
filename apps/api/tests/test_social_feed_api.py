@@ -53,6 +53,8 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         params = params or {}
         if table == "feed_preferences":
             return []
+        if table == "user_interests":
+            return []
         if table == "content_items":
             return content_rows
         if table == "social_edges":
