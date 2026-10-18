@@ -272,6 +272,17 @@ async def list_content_reports(user: dict[str, Any] = Depends(require_operator_s
     if ids:
         content = await _server_db("GET", "content_items", params={"select": FIELDS, "id": f"in.({','.join(ids)})", "limit": str(len(ids))})
         by_id = {str(r["id"]): r for r in (content or [])}
+        media_rows = await _server_db("GET", "content_media", params={
+            "select": MEDIA_FIELDS, "content_id": f"in.({','.join(ids)})",
+            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, len(ids) * 5)),
+        })
+        media_by_id: dict[str, list[dict[str, Any]]] = {}
+        for media_row in media_rows or []:
+            media_item = {key: value for key, value in media_row.items() if key != "storage_path"}
+            media_item["preview_url"] = await _signed_media_preview_url(str(media_row["storage_path"]))
+            media_by_id.setdefault(str(media_row["content_id"]), []).append(media_item)
+        for content_id, item in by_id.items():
+            item["media"] = media_by_id.get(content_id, [])
     return {"items": [{**r, "content": by_id.get(str(r["content_id"]))} for r in reports]}
 
 @router.post("/v1/admin/content-reports/{report_id}/review")
