@@ -26,3 +26,19 @@ def test_social_feed_migration_pins_interaction_uniqueness_and_review_invariants
     assert "content_reports_one_pending_per_reporter_idx" in sql
     assert "content_reports_review_fields check" in sql
     assert "ranking_mode text not null default 'for_you' check (ranking_mode in ('for_you','recent'))" in sql
+
+
+MENTIONS_MIGRATION = ROOT / "supabase" / "migrations" / "20261018172408_eng_p14_mentions_shares.sql"
+
+
+def test_mentions_and_shares_migration_is_canonical_and_backend_only():
+    assert MENTIONS_MIGRATION.is_file()
+    sql = MENTIONS_MIGRATION.read_text(encoding="utf-8").lower()
+    for table in ("content_mentions", "content_shares"):
+        assert f"create table if not exists public.{table}" in sql
+        assert f"alter table public.{table} enable row level security" in sql
+    assert "revoke all on public.content_shares, public.content_mentions from public, anon, authenticated" in sql
+    assert "grant all on public.content_shares, public.content_mentions to service_role" in sql
+    assert "record_content_comment_mentions" in sql
+    assert "p.visibility = 'public'" in sql
+    assert "e.edge_type = 'block'" in sql
