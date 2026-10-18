@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 type Session = { access_token: string; refresh_token: string; expires_at: number; user: { id: string; email?: string } };
 type AuthResponse = { access_token?: string; refresh_token?: string; expires_in?: number; user?: { id: string; email?: string }; error_description?: string; msg?: string };
@@ -61,7 +62,7 @@ export default function ModelCostsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  async function refresh(active = session) {
+  const refresh = useCallback(async (active: Session | null = session) => {
     if (!active) return;
     setBusy(true); setError("");
     try {
@@ -72,8 +73,8 @@ export default function ModelCostsPage() {
       setItems(body.items || []);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Konfigurasi biaya gagal dimuat."); }
     finally { setBusy(false); }
-  }
-  useEffect(() => { if (session) void refresh(session); }, [session?.access_token]);
+  }, [session]);
+  useEffect(() => { if (session) void refresh(session); }, [session, refresh]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -139,7 +140,7 @@ export default function ModelCostsPage() {
 
   return <main style={{maxWidth:1200,margin:"0 auto",padding:"24px 18px",color:"#101828",fontFamily:"Arial, sans-serif"}}>
     <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap",marginBottom:20}}>
-      <div><a href="/" style={{color:"#475467"}}>← Super Admin</a><p style={{fontSize:12,letterSpacing:1.2,color:"#667085",marginBottom:6}}>ALLPHA / GOVERNANCE / COST OPERATIONS</p><h1 style={{fontSize:30,margin:"0 0 8px"}}>Konfigurasi biaya model AI</h1><p style={{color:"#475467",margin:0}}>CRUD tarif, versi harga, batas penggunaan dan aktivasi tarif lewat backend.</p></div>
+      <div><Link href="/" style={{color:"#475467"}}>← Super Admin</Link><p style={{fontSize:12,letterSpacing:1.2,color:"#667085",marginBottom:6}}>ALLPHA / GOVERNANCE / COST OPERATIONS</p><h1 style={{fontSize:30,margin:"0 0 8px"}}>Konfigurasi biaya model AI</h1><p style={{color:"#475467",margin:0}}>CRUD tarif, versi harga, batas penggunaan dan aktivasi tarif lewat backend.</p></div>
       {session && <button onClick={() => {setSession(null);setOperator(null);setItems([]);}} style={{padding:"10px 14px"}}>Logout</button>}
     </header>
     <section style={{border:"1px solid #eaecf0",borderRadius:12,padding:18,marginBottom:18,background:"#fff"}}>
@@ -166,13 +167,13 @@ export default function ModelCostsPage() {
       <h2>Aktivasi & arsip</h2><label style={{display:"grid",gap:6,maxWidth:600}}>Alasan aktivasi/arsip (min. 8 karakter)<input value={reason} onChange={event=>setReason(event.target.value)} minLength={8} maxLength={500} style={{padding:10}} placeholder="Contoh: tarif vendor terverifikasi untuk periode peluncuran" /></label>
       <div style={{overflowX:"auto",marginTop:16}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}><thead><tr>{["Provider / Model","Versi","Tarif input/output","Batas","Status","Policy","Aksi"].map(label=><th key={label} style={{textAlign:"left",padding:10,borderBottom:"1px solid #eaecf0"}}>{label}</th>)}</tr></thead><tbody>
         {items.map(item=><tr key={item.id}>{[
-          <><strong>{item.provider_id}</strong><br/>{item.model_id}<br/><small>{item.model_version}</small></>,
+          <><strong key="provider">{item.provider_id}</strong><br/>{item.model_id}<br/><small key="model-version">{item.model_version}</small></>,
           item.pricing_version,
           <>↑ {item.input_micro_cost_per_token} / ↓ {item.output_micro_cost_per_token}<br/><small>{item.cost_unit} per token</small></>,
           <>{item.max_cost_microunits} {item.cost_unit}<br/><small>{item.max_output_tokens} output tokens · {item.max_latency_ms} ms</small></>,
-          <span style={{fontWeight:700,color:item.status==="active"?"#067647":item.status==="draft"?"#b54708":"#667085"}}>{item.status.toUpperCase()}</span>,
+          <span key="status" style={{fontWeight:700,color:item.status==="active"?"#067647":item.status==="draft"?"#b54708":"#667085"}}>{item.status.toUpperCase()}</span>,
           item.policy_approved ? "APPROVED" : "NOT APPROVED",
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          <div key="actions" style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {item.status==="draft" && canWrite && <button disabled={busy} onClick={()=>edit(item)}>Edit</button>}
             {item.status==="draft" && canActivate && <button disabled={busy || reason.trim().length<8} onClick={()=>void activate(item)}>Aktifkan tarif</button>}
             {item.status!=="archived" && canActivate && <button disabled={busy || reason.trim().length<8} onClick={()=>void archive(item)}>Arsipkan</button>}
