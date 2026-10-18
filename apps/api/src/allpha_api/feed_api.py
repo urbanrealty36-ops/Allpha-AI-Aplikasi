@@ -112,7 +112,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and (r.get("visibility") != "followers" or str(r.get("owner_id")) in followed)]
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
-    if effective_mode == "for_you" and personalization_enabled:
+    if effective_mode == "for_you" and enabled:
         interest_rows = await _server_db("GET", "user_interests", params={
             "select": "interest_key,preference", "user_id": f"eq.{owner}", "limit": "500",
         })
