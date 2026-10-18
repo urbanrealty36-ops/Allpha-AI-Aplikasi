@@ -58,14 +58,19 @@ def _cursor_decode(cursor: str | None) -> tuple[int, datetime]:
     except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         raise HTTPException(422, detail={"code": "FEED_CURSOR_INVALID", "message": "Cursor feed tidak valid; muat ulang feed."}) from exc
 
-async def _public_content(content_id: uuid.UUID) -> dict[str, Any]:
+async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, Any]:
     rows = await _server_db("GET", "content_items", params={
         "select": FIELDS, "id": f"eq.{content_id}", "status": "eq.published",
-        "moderation_status": "eq.approved", "visibility": "eq.public", "limit": "1",
+        "moderation_status": "eq.approved", "visibility": "in.(public,followers)", "limit": "1",
     })
     if not rows:
-        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan."})
-    return rows[0]
+        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    item = rows[0]
+    if item.get("visibility") == "followers":
+        followed, hidden = await _edges(viewer_id)
+        if str(item.get("owner_id")) not in followed or str(item.get("owner_id")) in hidden:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    return item
 
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
     outgoing = await _server_db("GET", "social_edges", params={
@@ -100,11 +105,11 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     effective_mode = "recent" if not enabled else (prefs.get("ranking_mode", "for_you") if mode == "for_you" else "recent")
     rows = await _server_db("GET", "content_items", params={
         "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
-        "visibility": "eq.public", "published_at": f"lte.{as_of.isoformat()}",
+        "visibility": "in.(public,followers)", "published_at": f"lte.{as_of.isoformat()}",
         "order": "published_at.desc,id.desc", "limit": str(CANDIDATES)})
     candidates = rows or []
     followed, hidden = await _edges(owner)
-    candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden]
+    candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and (r.get("visibility") != "followers" or str(r.get("owner_id")) in followed)]
     ids = [str(r["id"]) for r in candidates]
     if not ids:
         return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
@@ -167,7 +172,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
 
 @router.put("/v1/feed/{content_id}/reaction")
 async def set_reaction(content_id: uuid.UUID, payload: ReactionWrite, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    content = await _public_content(content_id)
+    content = await _visible_content(content_id, str(user["id"]))
     if str(content["owner_id"]) == str(user["id"]):
         raise HTTPException(422, detail={"code": "SELF_REACTION_NOT_ALLOWED", "message": "Konten sendiri tidak dapat diberi reaksi."})
     rows = await _server_db("POST", "content_reactions", params={"on_conflict": "content_id,actor_user_id", "select": "content_id,actor_user_id,reaction,created_at"},
