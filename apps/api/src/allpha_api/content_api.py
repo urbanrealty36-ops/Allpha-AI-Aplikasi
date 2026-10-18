@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(prefix="/v1/content", tags=["content"])
 TEXT_LIMIT = 10_000
@@ -39,6 +40,13 @@ class ContentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(min_length=1, max_length=TEXT_LIMIT)
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
+
+
+class ContentReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: str = Field(pattern="^(approve|reject)$")
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=8, max_length=500)
 
 
 def _config() -> tuple[str, str]:
@@ -240,3 +248,60 @@ async def public_content_feed(request: Request, limit: int = 20) -> dict[str, An
         "visibility": "eq.public", "order": "published_at.desc", "limit": str(limit),
     })
     return {"items": rows or []}
+
+
+@router.get("/admin/review-queue", tags=["content-moderation"])
+async def content_review_queue(
+    request: Request,
+    limit: int = 50,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas antrean harus 1–100."})
+    rows = await _server_db("GET", "content_items", params={
+        "select": CONTENT_FIELDS, "status": "eq.review", "moderation_status": "eq.pending",
+        "order": "updated_at.asc", "limit": str(limit),
+    })
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.review_queue.read",
+        outcome="allowed", resource_type="content_queue", resource_id="pending", metadata={"count": len(rows or [])})
+    return {"items": rows or []}
+
+
+@router.post("/admin/{content_id}/review", tags=["content-moderation"])
+async def review_content(
+    content_id: uuid.UUID,
+    payload: ContentReview,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    current = await _server_db("GET", "content_items", params={
+        "select": CONTENT_FIELDS, "id": f"eq.{content_id}", "status": "eq.review",
+        "moderation_status": "eq.pending", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(404, detail={"code": "CONTENT_REVIEW_NOT_FOUND", "message": "Konten tidak ditemukan di antrean moderasi."})
+    item = current[0]
+    if int(item.get("version") or 0) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CONTENT_VERSION_CHANGED", "message": "Versi konten berubah; muat ulang antrean sebelum meninjau."})
+    allowed = payload.decision == "approve"
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
+        outcome="attempted", resource_type="content_item", resource_id=str(content_id),
+        metadata={"decision": payload.decision, "expected_version": payload.expected_version, "reason": payload.reason})
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    changes = {
+        "status": "published" if allowed else "failed",
+        "moderation_status": "approved" if allowed else "rejected",
+        "published_at": now if allowed else None,
+        "error_code": None if allowed else "MODERATION_REJECTED",
+        "version": payload.expected_version + 1,
+    }
+    rows = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "status": "eq.review", "moderation_status": "eq.pending",
+        "version": f"eq.{payload.expected_version}", "select": CONTENT_FIELDS,
+    }, body=changes, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CONTENT_REVIEW_CONFLICT", "message": "Konten berubah saat moderasi; keputusan tidak diterapkan."})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
+        outcome="allowed", resource_type="content_item", resource_id=str(content_id),
+        metadata={"decision": payload.decision, "version": payload.expected_version + 1, "reason": payload.reason})
+    return {"item": rows[0]}
