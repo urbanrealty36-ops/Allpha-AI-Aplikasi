@@ -213,7 +213,6 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
     return {"item": rows[0], "content": updated[0]}
 
 
-@router.get("/{content_id}/preview")
 async def _signed_media_preview_url(storage_path: str, *, expires_in: int = 300) -> str:
     """Issue a short-lived URL for a private object; never make the bucket public."""
     base, key = _config()
