@@ -23,7 +23,7 @@ def test_ready_reports_supabase_configuration_without_exposing_secrets(monkeypat
     assert response.status_code == 503
     payload = response.json()
     assert payload["status"] == "not_ready"
-    assert payload["dependencies"]["database"] == "not_configured"
+    assert payload["dependencies"]["database"]["status"] == "not_configured"
     assert "SUPABASE" not in response.text
 
 
@@ -59,7 +59,7 @@ def test_ready_requires_live_supabase_auth_and_postgrest(monkeypatch):
     assert response.status_code == 503
     payload = response.json()
     assert payload["status"] == "not_ready"
-    assert payload["dependencies"]["authentication"] == "reachable"
+    assert payload["dependencies"]["authentication"]["status"] == "reachable"
     assert payload["dependencies"]["database"] == "unavailable"
     assert "staging-example" not in response.text
     assert "sb_publishable_test_only" not in response.text
@@ -93,8 +93,8 @@ def test_ready_returns_ready_only_when_auth_and_postgrest_respond(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ready"
-    assert payload["dependencies"]["authentication"] == "reachable"
-    assert payload["dependencies"]["database"] == "reachable"
+    assert payload["dependencies"]["authentication"]["status"] == "reachable"
+    assert payload["dependencies"]["database"]["status"] == "reachable"
     assert payload["dependencies"]["object_storage"] == "not_configured"
     assert payload["dependencies"]["ai_gateway"] == "not_configured"
 
