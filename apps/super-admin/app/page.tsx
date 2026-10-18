@@ -183,6 +183,13 @@ export default function OperationsPage() {
   const [grantReason, setGrantReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [checkedAt, setCheckedAt] = useState("");
+  const [runtimePreflight, setRuntimePreflight] = useState<{
+    httpStatus: number; status?: string; failure_category?: string;
+    dependencies?: Record<string, string>; route?: Record<string, unknown>;
+    runtime_policy?: string; active_tariff?: string; metering_sink?: string;
+    request_id?: string;
+  } | null>(null);
+  const [runtimePreflightBusy, setRuntimePreflightBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const online = probes.filter((probe) => probe.status === "online").length;
@@ -545,8 +552,37 @@ export default function OperationsPage() {
     }
   }
 
+  async function runRuntimePreflight() {
+    if (!session) {
+      setError("Login operator diperlukan untuk menjalankan runtime preflight.");
+      return;
+    }
+    setRuntimePreflightBusy(true);
+    setRuntimePreflight(null);
+    setError("");
+    setNotice("");
+    try {
+      const response = await adminFetch("/v1/system/runtime-preflight", session, setSession);
+      const body = await response.json().catch(() => ({})) as {
+        status?: string; failure_category?: string; dependencies?: Record<string, string>;
+        route?: Record<string, unknown>; runtime_policy?: string; active_tariff?: string;
+        metering_sink?: string; request_id?: string;
+      };
+      setRuntimePreflight({ ...body, httpStatus: response.status });
+      if (response.ok && body.status === "ready") {
+        setNotice("Runtime preflight berhasil melalui sesi Supabase yang terautentikasi. Tidak ada panggilan model yang dijalankan.");
+      } else {
+        setError("Runtime belum siap. Kategori: " + (body.failure_category || "runtime_unavailable") + ". Tidak ada panggilan model yang dijalankan.");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Runtime preflight gagal dikirim.");
+    } finally {
+      setRuntimePreflightBusy(false);
+    }
+  }
+
   function logout() {
-    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setError(""); setNotice("");
+    setSession(null); setOperator(null); setAudit([]); setGrants([]); setCapabilities([]); setRuntimePreflight(null); setError(""); setNotice("");
   }
 
   return <main className="shell">
@@ -584,6 +620,21 @@ export default function OperationsPage() {
         <header className="panelHead"><div><h2>Operator identity & scopes</h2><p>Otorisasi dikonfirmasi oleh backend, bukan oleh status login saja.</p></div><span className="pill online">AUTHENTICATED</span></header>
         {operator ? <><p className="operatorIdentity">{operator.email || operator.id}</p><code>{operator.id}</code><div className="scopeList">{operator.scopes.map((scope) => <span className="scopeChip" key={scope}>{scope}</span>)}</div></> : <p className="muted">Backend belum memverifikasi grant operator.</p>}
         <button onClick={() => session && void loadOperatorData(session)} disabled={busy}>Refresh akses & audit</button>
+      </section>}
+      {session && <section className="panel" id="runtime-preflight">
+        <header className="panelHead"><div><h2>AI Runtime preflight</h2><p>Request menggunakan access token sesi aktif melalui helper API yang menangani refresh token. Pemeriksaan ini tidak memanggil model dan tidak menimbulkan biaya inference.</p></div><span className={"pill " + (runtimePreflight?.httpStatus === 200 ? "online" : "warning")}>{runtimePreflight ? "HTTP " + runtimePreflight.httpStatus : "NOT CHECKED"}</span></header>
+        <div className="panelActions"><button onClick={() => void runRuntimePreflight()} disabled={runtimePreflightBusy}>{runtimePreflightBusy ? "Memeriksa runtime…" : "Jalankan preflight terautentikasi"}</button><span className="muted">Sesi: {session.user.email || session.user.id}</span></div>
+        {runtimePreflight && <><p className="muted">Status: <strong>{runtimePreflight.status || "unknown"}</strong>{runtimePreflight.failure_category ? " · kategori: " + runtimePreflight.failure_category : ""}{runtimePreflight.request_id ? " · request: " + runtimePreflight.request_id : ""}</p>
+          <div className="tableWrap"><table><thead><tr><th>Dependency</th><th>Status</th></tr></thead><tbody>
+            {Object.entries(runtimePreflight.dependencies || {
+              provider_route: runtimePreflight.route ? "configured" : "not_reported",
+              runtime_policy: runtimePreflight.runtime_policy || "not_reported",
+              active_tariff: runtimePreflight.active_tariff || "not_reported",
+              metering_sink: runtimePreflight.metering_sink || "not_reported",
+            }).map(([key, value]) => <tr key={key}><td>{key}</td><td><span className={"pill " + (["ready", "configured", "approved", "verified"].includes(value) ? "online" : "warning")}>{value}</span></td></tr>)}
+          </tbody></table></div>
+          {runtimePreflight.route && <details><summary>Snapshot rute dan batas runtime</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(runtimePreflight.route, null, 2)}</pre></details>}
+        </>}
       </section>}
       {session && canManage && <section className="panel" id="operator-grants">
         <header className="panelHead"><div><h2>Operator grants</h2><p>Grant dan pencabutan memakai endpoint backend dan dicatat oleh trigger audit database.</p></div><span className="pill online">MANAGE SCOPE</span></header>
