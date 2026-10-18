@@ -160,7 +160,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
             1 for key in interest_keys
             if (terms := set(re.findall(r"[a-z0-9]+", key))) and terms.issubset(body_tokens)
         )
-        engagement_total = like_count + 2 * comment_count + 2 * save_count + share_count
+        engagement_total = like_count + comment_count + save_count + share_count
         signals = ["recency"]
         if followed_creator:
             signals.append("followed_creator")
