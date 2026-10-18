@@ -163,3 +163,53 @@ def test_storage_uses_bearer_auth_even_with_secret_key_fallback(monkeypatch):
 
     assert captured["apikey"] == "secret-key-test-only"
     assert captured["Authorization"] == "Bearer secret-key-test-only"
+
+
+def test_preview_signing_uses_secret_key_fallback_for_authorization(monkeypatch):
+    captured = {}
+
+    async def fake_owner(*args, **kwargs):
+        return {"id": CONTENT_ID, "status": "draft", "body": "preview"}
+
+    async def fake_db(method, table, **kwargs):
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": "media-1", "content_id": CONTENT_ID, "owner_id": "owner-a",
+                "bucket_id": "content-media", "storage_path": "owner-a/" + CONTENT_ID + "/media-1-photo.jpg",
+                "filename": "photo.jpg", "media_type": "image/jpeg", "size_bytes": 16,
+                "sha256": "a" * 64, "status": "uploaded", "created_at": "2026-10-18T00:00:00Z",
+            }]
+        return []
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"signedURL": "/object/sign/content-media/private-token"}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def post(self, url, **kwargs):
+            captured.update(kwargs.get("headers", {}))
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.example")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "secret-key-test-only")
+    monkeypatch.setattr(content_api, "_owner_content", fake_owner)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api.httpx, "AsyncClient", FakeClient)
+    app.dependency_overrides[current_user] = auth_as("owner-a")
+    try:
+        response = client.get(f"/v1/content/{CONTENT_ID}/preview")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["apikey"] == "secret-key-test-only"
+    assert captured["Authorization"] == "Bearer secret-key-test-only"
+    assert response.json()["media"][0]["preview_url"] == "https://supabase.example/storage/v1/object/sign/content-media/private-token"
