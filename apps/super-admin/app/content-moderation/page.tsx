@@ -76,7 +76,7 @@ export default function ContentModerationPage() {
   const canModerate = Boolean(operator?.scopes.includes("platform:content.moderate"));
   return <main style={{ maxWidth: 1000, margin: "0 auto", padding: 24, color: "#101828" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-      <div><Link href="/" style={{ color: "#175cd3", fontSize: 13 }}>← Super Admin</Link><h1 style={{ fontSize: 28, margin: "10px 0 4px" }}>Moderasi konten</h1><p style={{ margin: 0, color: "#667085" }}>Antrean review konten kreator, termasuk pratinjau privat media. URL pratinjau berlaku 5 menit; keputusan dicatat dengan alasan, versi, dan audit operator.</p></div>
+      <div><Link href="/" style={{ color: "#175cd3", fontSize: 13 }}>← Super Admin</Link> <Link href="/content-reports" style={{ color: "#175cd3", fontSize: 13, marginLeft: 12 }}>Laporan konten</Link><h1 style={{ fontSize: 28, margin: "10px 0 4px" }}>Moderasi konten</h1><p style={{ margin: 0, color: "#667085" }}>Antrean review konten kreator, termasuk pratinjau privat media. URL pratinjau berlaku 5 menit; keputusan dicatat dengan alasan, versi, dan audit operator.</p></div>
       {session ? <button onClick={() => { setSession(null); setOperator(null); setItems([]); setNotice(""); }} style={{ padding: "9px 13px" }}>Keluar</button> : null}
     </header>
     {error ? <p role="alert" style={{ padding: 12, background: "#fef3f2", color: "#b42318", borderRadius: 8 }}>{error}</p> : null}
