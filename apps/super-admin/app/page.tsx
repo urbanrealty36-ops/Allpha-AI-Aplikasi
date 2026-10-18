@@ -648,6 +648,7 @@ export default function OperationsPage() {
       <p className="navLabel">OPERATIONS</p>
       <a className="nav active" href="#overview">◈ &nbsp; Overview</a>
       <Link className="nav" href="/costs">▤ &nbsp; Model cost CRUD</Link>
+      <Link className="nav" href="/content-moderation">◈ &nbsp; Moderasi konten</Link>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
       {canReview && <a className="nav" href="#capability-review">◇ &nbsp; Capability review</a>}
