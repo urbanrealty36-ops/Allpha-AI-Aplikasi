@@ -209,6 +209,21 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     return {"items": items, "next_cursor": _cursor_encode(next_offset, as_of) if next_offset < len(ranked) and next_offset < CANDIDATES else None,
             "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
 
+@router.get("/v1/reels", tags=["reels"])
+async def get_reels(request: Request, mode: Literal["for_you", "recent"] = "for_you",
+                    limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
+                    user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Reuse the canonical feed's visibility, ranking, signed media URLs and cursor."""
+    page = await get_feed(request=request, mode=mode, limit=limit, cursor=cursor, user=user)
+    items = []
+    for item in page["items"]:
+        media = [m for m in item.get("media", [])
+                 if str(m.get("media_type", "")).startswith(("video/", "audio/"))]
+        if media:
+            items.append({**item, "media": media})
+    return {**page, "items": items, "media_kinds": ["video", "audio"]}
+
+
 @router.put("/v1/feed/{content_id}/reaction")
 async def set_reaction(content_id: uuid.UUID, payload: ReactionWrite, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _visible_content(content_id, str(user["id"]))
