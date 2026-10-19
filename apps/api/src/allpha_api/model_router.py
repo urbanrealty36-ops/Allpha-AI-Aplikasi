@@ -158,6 +158,7 @@ class EmbeddingRouter(Protocol):
 import hashlib
 import json
 import time
+from datetime import datetime, timezone
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
@@ -175,6 +176,7 @@ class TextGenerationRequest:
     agent_id: str | None = None
     source_id: str | None = None
     source_version: int = 1
+    billing_account_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
@@ -288,6 +290,8 @@ class TextGenerationEvidence:
     source_version: int
     sensitivity: str
     evidence_sha256: str
+    billing_account_id: str | None = None
+    completed_at: str = ""
 
 
 class TextGenerationMeteringSink(Protocol):
@@ -449,6 +453,8 @@ class CanonicalTextGenerationRouter:
                     "owner_id": request.owner_id, "agent_id": request.agent_id,
                     "source_id": request.source_id, "source_version": request.source_version,
                     "sensitivity": request.sensitivity,
+                    "billing_account_id": request.billing_account_id or request.owner_id,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
                 }
                 digest = hashlib.sha256(json.dumps(evidence_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
                 evidence = TextGenerationEvidence(**evidence_payload, evidence_sha256=digest)
