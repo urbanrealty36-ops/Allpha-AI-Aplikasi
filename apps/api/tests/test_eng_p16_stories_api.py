@@ -177,7 +177,7 @@ def test_story_media_upload_preserves_story_content_type(monkeypatch):
     try:
         response = client.post(
             f"/v1/content/{STORY_ID}/media",
-            files={"file": ("moment.png", b"\\x89PNG\\r\\n\\x1a\\nvalid-test-fixture", "image/png")},
+            files={"file": ("moment.png", bytes.fromhex("89504e470d0a1a0a") + b"valid-test-fixture", "image/png")},
         )
     finally:
         app.dependency_overrides.pop(current_user, None)
