@@ -124,6 +124,7 @@ def test_consumer_generation_requires_explicit_owner_approved_grant():
 @pytest.mark.parametrize("changes,match", [
     ({"grant_active": False}, "owner-approved consumer grant"),
     ({"policy_approved": False}, "owner-approved consumer grant"),
+    ({"policy_version": "stale-policy"}, "consumer authorization policy version mismatch"),
     ({"allowed_memory_scope": ("owner_private",)}, "owner-private memory"),
     ({"budget_reserved": False}, "budget reservation and metering"),
     ({"metering_ready": False}, "budget reservation and metering"),
