@@ -111,6 +111,31 @@ class RuntimeAuthorization:
     granted_scopes: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class AgentConsumerAuthorization:
+    """Trusted, server-resolved grant for a consumer to invoke a public Agent.
+
+    This object must only be constructed after the API verifies a durable,
+    owner-approved grant and current published Agent/Skill/runtime policy.
+    """
+    requester_id: str
+    owner_id: str
+    agent_id: str
+    agent_version: int
+    skill_id: str
+    skill_version: int
+    agent_public: bool
+    agent_active: bool
+    skill_published: bool
+    grant_active: bool
+    policy_approved: bool
+    policy_version: str
+    granted_scopes: tuple[str, ...] = ()
+    allowed_memory_scope: tuple[str, ...] = ()
+    budget_reserved: bool = False
+    metering_ready: bool = False
+
+
 @dataclass
 class AgentTask:
     envelope: AgentTaskEnvelope
@@ -253,10 +278,33 @@ class AgentRuntime:
         policy_version: str,
         router: CanonicalTextGenerationRouter,
         request: TextGenerationRequest,
+        consumer_authorization: AgentConsumerAuthorization | None = None,
     ) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
-        """Execute one pinned Skill generation through the canonical Model Router."""
-        if not requester_id or requester_id != owner_id:
-            raise AgentRuntimeBlocked("requester is not the authenticated Agent owner")
+        """Execute a pinned Skill through Model Router under owner or explicit consumer authorization."""
+        if not requester_id or not owner_id:
+            raise AgentRuntimeBlocked("verified requester and owner identities are required")
+        if requester_id != owner_id:
+            auth = consumer_authorization
+            if auth is None:
+                raise AgentRuntimeBlocked("public Agent consumer authorization is required")
+            if (auth.requester_id != requester_id or auth.owner_id != owner_id
+                    or auth.agent_id != agent_id or auth.agent_version != agent_version
+                    or auth.skill_id != skill_id or auth.skill_version != skill_version):
+                raise AgentRuntimeBlocked("consumer authorization identity or pinned version mismatch")
+            if not auth.agent_public or not auth.agent_active or not auth.skill_published:
+                raise AgentRuntimeBlocked("only active public Agents and published Skills can serve consumers")
+            if not auth.grant_active or not auth.policy_approved or not auth.policy_version:
+                raise AgentRuntimeBlocked("owner-approved consumer grant and runtime policy are required")
+            if not auth.budget_reserved or not auth.metering_ready:
+                raise AgentRuntimeBlocked("consumer budget reservation and metering must be ready")
+            if auth.allowed_memory_scope:
+                raise AgentRuntimeBlocked("consumer generation cannot access owner-private memory by default")
+            if request.sensitivity != "public" or request.owner_id != owner_id:
+                raise AgentRuntimeBlocked("consumer generation must use the public route with the canonical owner context")
+            if request.agent_id != agent_id or request.source_id != skill_id or request.source_version != skill_version:
+                raise AgentRuntimeBlocked("generation request does not match the authorized Agent/Skill version")
+            if request.requester_id if hasattr(request, "requester_id") else False:
+                raise AgentRuntimeBlocked("requester identity must not be inferred from model output")
         if not agent_id or agent_version < 1 or not skill_id or skill_version < 1:
             raise AgentRuntimeBlocked("canonical Agent and Skill identity/version are required")
         if not skill_published:
