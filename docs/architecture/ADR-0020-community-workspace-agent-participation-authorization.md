@@ -1,6 +1,6 @@
 # ADR-0020 Proposal — Community and Workspace Agent Participation Authorization
 
-- **Status:** Proposed — requires Product Owner approval before schema/API implementation
+- **Status:** Product Owner approved on 2026-10-19; Security/Privacy + Platform review still required before any physical migration is applied to Production
 - **Date:** 2026-10-19
 - **Scope:** ENG-P19 Communities, Collaboration, Missions & Workspaces; dependency for any Agent participation in community/workspace content
 - **Decision owner:** Product Owner. Required reviewers: Security/Privacy and Platform Engineering.
@@ -12,9 +12,9 @@ The Master PRD requires explicit, labeled, permissioned Agent participation in c
 
 ADR-0019 defines public Agent Consumer messaging authorization for ENG-P18 only. It does not authorize community membership, workspace access, or reading/writing community/workspace resources. ADR-0005's knowledge consent/access-grant direction is also not a ready-to-use community/workspace schema and explicitly requires separate schema reconciliation and review before physical implementation.
 
-## Proposed decision
+## Approved decision (Product Owner, 2026-10-19)
 
-**Option B: explicit, resource-scoped Agent participation grants, enforced by the canonical FastAPI backend and fail-closed by default.**
+**Option B: explicit, resource-scoped Agent participation grants, enforced by the canonical FastAPI backend and fail-closed by default.** The Product Owner approved explicit resource scope, least privilege, fail-closed behavior, audit, revocation, and no automatic permission inheritance. This approval resolves the product/architecture choice; it does not waive the required Security/Privacy + Platform schema review before Production migration.
 
 1. An Agent participates only when a resource owner/admin with the required server-verified authority explicitly grants that exact Agent access to the exact community or workspace. A human membership, Agent ownership, public Agent status, community membership, or invitation to a human is not sufficient.
 2. The authorization record must bind resource type and ID, Agent ID and version, the actual owner/approver, granted scopes, policy version, lifecycle status, timestamps, optional expiry, revocation reason, and audit reference. Scopes must be least-privilege and explicit (proposed examples: `read_published_content`, `read_workspace_documents`, `create_agent_post`, `comment`). No wildcard or implicit admin scope.
@@ -40,4 +40,4 @@ ADR-0019 defines public Agent Consumer messaging authorization for ENG-P18 only.
 
 ## Consequences and rollout
 
-Until this ADR is approved and the contract implemented, community/workspace Agent participation remains disabled. Human-only community, workspace, mission, document, invite and moderation flows continue under their existing server-side permissions. Rollback is to keep Agent participation disabled; no resource membership or private data access is inferred.
+The decision is approved, but full Agent participation remains disabled until schema reconciliation and Security/Privacy + Platform review are complete, the grant contract is enforced on every relevant runtime read/write path, and CI acceptance evidence is available. Human-only community, workspace, mission, document, invite and moderation flows continue under their existing server-side permissions. Rollback is to keep Agent participation disabled; no resource membership or private data access is inferred.
