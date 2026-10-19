@@ -158,7 +158,7 @@ class ConsumerBudgetReservation:
                  capability_id: str, tariff_version: str, entitlement_version: str,
                  usage_unit: str, credits_per_usage_unit: int, max_usage_units: int,
                  max_cost_microunits: int, cost_unit: str, pricing_version: str,
-                 allow_success_settlement: bool, allow_definitive_failure_release: bool,
+                 payer_role: str, allow_success_settlement: bool, allow_definitive_failure_release: bool,
                  allow_partial_settlement: bool) -> None:
         if min(credits_per_usage_unit, max_usage_units) <= 0 or max_cost_microunits < 0:
             raise ConsumerGrantUnavailable("approved consumer credit limits are invalid")
@@ -167,6 +167,9 @@ class ConsumerBudgetReservation:
             raise ConsumerGrantUnavailable("approved consumer credit policy is incomplete")
         self.store = store
         self.lifecycle = lifecycle
+        if payer_role not in {"consumer", "agent_owner"}:
+            raise ConsumerGrantUnavailable("approved policy must explicitly define the Consumer messaging payer")
+        self.payer_role = payer_role
         self.policy_version = policy_version
         self.approval_reference = approval_reference
         self.credit_scheme_version = credit_scheme_version
@@ -223,6 +226,7 @@ class ConsumerBudgetReservation:
                     and cap.get("cost_pricing_version") == expected_pricing_version
                     and cap.get("max_cost_microunits") == expected_max_cost_microunits
                     and consumer.get("max_usage_units_per_request")
+                    and consumer.get("payer_role") in {"consumer", "agent_owner"}
                     and cap.get("credits_per_usage_unit")
                     and consumer.get("allow_success_settlement") is True):
                 selected = (row, config, consumer, cap, entitlement, entitlement_version, capability_id)
@@ -240,19 +244,21 @@ class ConsumerBudgetReservation:
             max_usage_units=int(consumer["max_usage_units_per_request"]),
             max_cost_microunits=int(cap["max_cost_microunits"]), cost_unit=str(cap["cost_unit"]),
             pricing_version=str(cap["cost_pricing_version"]),
+            payer_role=str(consumer["payer_role"]),
             allow_success_settlement=consumer.get("allow_success_settlement") is True,
             allow_definitive_failure_release=consumer.get("allow_definitive_failure_release") is True,
             allow_partial_settlement=consumer.get("allow_partial_settlement") is True,
         )
 
-    async def reserve(self, *, owner_id: str, message_id: str) -> ReservationReceipt:
+    async def reserve(self, *, requester_id: str, owner_id: str, message_id: str) -> ReservationReceipt:
         units = self.max_usage_units
+        payer_id = requester_id if self.payer_role == "consumer" else owner_id
         credits = units * self.credits_per_usage_unit
         if credits <= 0:
             raise ConsumerGrantUnavailable("approved consumer reservation must be positive")
         command = CreditReservationCommand(
             idempotency_key=f"consumer-message-reserve:{message_id}",
-            account_id=owner_id, task_id=f"consumer-message:{message_id}",
+            account_id=payer_id, task_id=f"consumer-message:{message_id}",
             capability_id=self.capability_id, credits_to_reserve=credits,
             credit_scheme_version=self.credit_scheme_version, tariff_version=self.tariff_version,
             entitlement_version=self.entitlement_version, policy_approval_reference=self.approval_reference,
