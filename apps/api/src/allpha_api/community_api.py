@@ -318,7 +318,7 @@ async def create_community_post(community_id: uuid.UUID, payload: CommunityPostC
 async def update_community_post_pin(community_id: uuid.UUID, post_id: uuid.UUID, payload: CommunityPostPinUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     await _community(community_id)
     await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
-    rows = await _db("PATCH", "community_posts", params={"id": f"eq.{post_id}", "community_id": f"eq.{community_id}", "status": "eq.published"}, body={"is_pinned": payload.pinned, "pinned_by": str(user["id"]) if payload.pinned else None, "pinned_at": _now() if payload.pinned else None, "updated_at": _now()}, prefer="return=representation")
+    rows = await _db("PATCH", "community_posts", params={"id": f"eq.{post_id}", "community_id": f"eq.{community_id}", "status": "eq.published", "post_type": "eq.resource"}, body={"is_pinned": payload.pinned, "pinned_by": str(user["id"]) if payload.pinned else None, "pinned_at": _now() if payload.pinned else None, "updated_at": _now()}, prefer="return=representation")
     if not rows:
         raise HTTPException(404, detail={"code": "COMMUNITY_POST_NOT_FOUND", "message": "Sumber daya tidak ditemukan atau tidak berstatus published."})
     return {"post": rows[0]}
