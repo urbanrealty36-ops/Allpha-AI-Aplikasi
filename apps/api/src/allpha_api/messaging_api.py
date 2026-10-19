@@ -116,7 +116,7 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
         route_snapshot = text_router.route_snapshot_for("public")
         # Do not issue a grant until the approved Consumer tariff, payer and
         # settlement policy are present and match the actual Model Router route.
-        await ConsumerBudgetReservation.from_environment(
+        budget = await ConsumerBudgetReservation.from_environment(
             expected_cost_unit=str(route_snapshot["cost_unit"]),
             expected_pricing_version=str(route_snapshot["pricing_version"]),
             expected_max_cost_microunits=int(route_snapshot["max_cost_microunits"]),
@@ -128,6 +128,7 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
             skill_version=int(skills[0]["version"]), runtime_policy_version=policy_version,
             idempotency_key=payload.idempotency_key,
             expires_at=payload.expires_at.astimezone(timezone.utc).isoformat() if payload.expires_at else None,
+            policy_snapshot=budget.policy_snapshot(),
         )
     except (TextGenerationRouterUnavailable, ConsumerGrantUnavailable, ValueError) as exc:
         raise HTTPException(503, detail={"code":"CONSUMER_GRANT_UNAVAILABLE","message":"Grant tidak dapat disimpan atau policy runtime belum siap."}) from exc
@@ -302,20 +303,21 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
             policy_version = text_router.policy_version_for(sensitivity)
             consumer_authorization = None
             if not is_owner:
-                grant_store = AgentConsumerGrantStore.from_environment()
-                grant = await grant_store.resolve(
-                    requester_id=uid, owner_id=owner_id, agent_id=agent_id,
-                    agent_version=int(agent["version"]), skill_id=str(skill["id"]),
-                    skill_version=int(skill["version"]), runtime_policy_version=policy_version,
-                )
-                if not grant:
-                    raise AgentRuntimeBlocked("a current owner-approved Consumer grant is required")
                 route_snapshot = text_router.route_snapshot_for("public")
                 budget = await ConsumerBudgetReservation.from_environment(
                     expected_cost_unit=str(route_snapshot["cost_unit"]),
                     expected_pricing_version=str(route_snapshot["pricing_version"]),
                     expected_max_cost_microunits=int(route_snapshot["max_cost_microunits"]),
                 )
+                grant_store = AgentConsumerGrantStore.from_environment()
+                grant = await grant_store.resolve(
+                    requester_id=uid, owner_id=owner_id, agent_id=agent_id,
+                    agent_version=int(agent["version"]), skill_id=str(skill["id"]),
+                    skill_version=int(skill["version"]), runtime_policy_version=policy_version,
+                    policy_snapshot=budget.policy_snapshot(),
+                )
+                if not grant:
+                    raise AgentRuntimeBlocked("a current owner-approved Consumer grant and matching policy snapshot are required")
                 reservation = await budget.reserve(requester_id=uid, owner_id=owner_id, message_id=str(created[0]["id"]))
                 consumer_authorization = AgentConsumerAuthorization(
                     requester_id=uid, owner_id=owner_id, agent_id=agent_id,
