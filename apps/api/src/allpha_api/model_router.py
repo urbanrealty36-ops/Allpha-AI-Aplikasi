@@ -194,6 +194,8 @@ class TextGenerationRequest:
             raise ValueError("generation owner, agent and source context must be supplied together")
         if self.source_version < 1:
             raise ValueError("source_version must be positive")
+        if self.billing_account_id is not None and not self.billing_account_id.strip():
+            raise ValueError("billing_account_id must be non-empty when supplied")
 
 
 @dataclass(frozen=True)
