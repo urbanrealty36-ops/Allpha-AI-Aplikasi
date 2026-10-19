@@ -109,7 +109,8 @@ for (const contract of [
 ]) assert.ok(reelsPage.includes(contract), `missing ENG-P15 Web Reels contract: ${contract}`);
 assert.doesNotMatch(reelsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockReels|fakeReels/);
 assert.ok(contentStudio.includes("audio/mpeg") && contentStudio.includes("<audio"), "Creator Studio must upload and preview audio");
-assert.ok(reportsPage.includes("<audio"), "Super Admin moderation must preview audio");
+const moderationPage = readFileSync(new URL("../../super-admin/app/content-moderation/page.tsx", import.meta.url), "utf8");
+assert.ok(moderationPage.includes("<audio"), "Super Admin moderation must preview audio");
 
 console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, ENG-P13 content/moderation, ENG-P14 feed/reports, ENG-P15 Reels/audio, Agent Skill catalog, and Official Bot control smoke assertions passed.");
 
