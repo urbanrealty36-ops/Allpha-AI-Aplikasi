@@ -1,0 +1,464 @@
+"""ENG-P19 communities, collaboration workspaces and missions API."""
+from __future__ import annotations
+
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Literal
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
+
+from allpha_api.auth import current_user
+
+router = APIRouter(prefix="/v1", tags=["communities-workspaces"])
+TIMEOUT = httpx.Timeout(12, connect=3)
+
+
+def _config() -> tuple[str, str]:
+    base = os.getenv("SUPABASE_URL", "").rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SECRET_KEY", "")
+    if not base or not key:
+        raise HTTPException(503, detail={"code": "COLLABORATION_NOT_CONFIGURED", "message": "Layanan komunitas belum dikonfigurasi."})
+    return base, key
+
+
+async def _db(method: str, table: str, *, params: dict[str, str] | None = None, body: Any = None, prefer: str | None = None) -> Any:
+    base, key = _config()
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if prefer:
+        headers["Prefer"] = prefer
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            response = await client.request(method, f"{base}/rest/v1/{table}", params=params, json=body, headers=headers)
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={"code": "COLLABORATION_DATABASE_UNAVAILABLE", "message": "Data kolaborasi sementara tidak tersedia."}) from exc
+    if response.status_code >= 400:
+        if response.status_code == 409:
+            raise HTTPException(409, detail={"code": "COLLABORATION_CONFLICT", "message": "Data berubah atau permintaan duplikat. Muat ulang lalu coba lagi."})
+        if response.status_code in (401, 403):
+            raise HTTPException(403, detail={"code": "COLLABORATION_FORBIDDEN", "message": "Operasi tidak diizinkan."})
+        raise HTTPException(503, detail={"code": "COLLABORATION_DATABASE_ERROR", "message": "Data kolaborasi tidak dapat diproses."})
+    return response.json() if response.content else None
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def _community(community_id: uuid.UUID) -> dict[str, Any]:
+    rows = await _db("GET", "communities", params={"select": "*", "id": f"eq.{community_id}", "limit": "1"})
+    if not rows:
+        raise HTTPException(404, detail={"code": "COMMUNITY_NOT_FOUND", "message": "Komunitas tidak ditemukan."})
+    return rows[0]
+
+
+async def _membership(community_id: uuid.UUID, user_id: str) -> dict[str, Any] | None:
+    rows = await _db("GET", "community_memberships", params={"select": "*", "community_id": f"eq.{community_id}", "user_id": f"eq.{user_id}", "status": "eq.active", "limit": "1"})
+    return rows[0] if rows else None
+
+
+async def _require_member(community_id: uuid.UUID, user_id: str, roles: tuple[str, ...] = ("owner", "moderator", "member")) -> dict[str, Any]:
+    membership = await _membership(community_id, user_id)
+    if not membership or membership.get("role") not in roles:
+        raise HTTPException(403, detail={"code": "COMMUNITY_MEMBERSHIP_REQUIRED", "message": "Akses komunitas memerlukan keanggotaan yang aktif."})
+    return membership
+
+
+async def _workspace(workspace_id: uuid.UUID) -> dict[str, Any]:
+    rows = await _db("GET", "workspaces", params={"select": "*", "id": f"eq.{workspace_id}", "status": "eq.active", "limit": "1"})
+    if not rows:
+        raise HTTPException(404, detail={"code": "WORKSPACE_NOT_FOUND", "message": "Workspace tidak ditemukan."})
+    return rows[0]
+
+
+async def _require_workspace(workspace_id: uuid.UUID, user_id: str, write: bool = False) -> dict[str, Any]:
+    workspace = await _workspace(workspace_id)
+    rows = await _db("GET", "workspace_memberships", params={"select": "*", "workspace_id": f"eq.{workspace_id}", "user_id": f"eq.{user_id}", "status": "eq.active", "limit": "1"})
+    if not rows:
+        raise HTTPException(403, detail={"code": "WORKSPACE_ACCESS_DENIED", "message": "Anda bukan anggota workspace ini."})
+    membership = rows[0]
+    if write and membership.get("role") not in ("owner", "editor"):
+        raise HTTPException(403, detail={"code": "WORKSPACE_READ_ONLY", "message": "Peran Anda hanya dapat membaca workspace."})
+    return {"workspace": workspace, "membership": membership}
+
+
+class CommunityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=80)
+    slug: str = Field(min_length=3, max_length=60, pattern=r"^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$")
+    description: str = Field(default="", max_length=1000)
+    visibility: Literal["public", "private"] = "public"
+
+
+class CommunityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    description: str | None = Field(default=None, max_length=1000)
+    visibility: Literal["public", "private"] | None = None
+    status: Literal["active", "archived"] | None = None
+
+
+class CommunityPostCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    body: str = Field(min_length=1, max_length=5000)
+    post_type: Literal["discussion", "announcement", "resource", "event"] = "discussion"
+
+
+class InviteCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["member", "moderator"] = "member"
+    expires_in_hours: int = Field(default=168, ge=1, le=720)
+
+
+class RoleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["moderator", "member"]
+
+
+class WorkspaceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=2, max_length=120)
+    description: str = Field(default="", max_length=1000)
+    community_id: uuid.UUID | None = None
+    visibility: Literal["private", "community"] = "private"
+
+
+class WorkspaceDocumentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=160)
+    body: str = Field(default="", max_length=50000)
+
+
+class WorkspaceDocumentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=160)
+    body: str = Field(default="", max_length=50000)
+    expected_version: int = Field(ge=1)
+
+
+class AnnotationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    document_id: uuid.UUID
+    body: str = Field(min_length=1, max_length=4000)
+    anchor: dict[str, Any] = Field(default_factory=dict)
+
+
+class MissionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=2, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    target_count: int = Field(default=1, ge=1, le=100000)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+
+@router.get("/communities")
+async def list_communities(q: str | None = Query(default=None, max_length=80), limit: int = Query(default=30, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = str(user["id"])
+    public = await _db("GET", "communities", params={"select": "*", "visibility": "eq.public", "status": "eq.active", "order": "updated_at.desc", "limit": str(limit)})
+    own_memberships = await _db("GET", "community_memberships", params={"select": "community_id,role,status", "user_id": f"eq.{user_id}", "status": "eq.active", "limit": "500"})
+    own_ids = {m["community_id"] for m in (own_memberships or [])}
+    private = []
+    if own_ids:
+        private = await _db("GET", "communities", params={"select": "*", "id": "in.(" + ",".join(own_ids) + ")", "status": "eq.active", "limit": str(limit)})
+    by_id = {row["id"]: row for row in [*(public or []), *(private or [])]}
+    items = list(by_id.values())
+    if q:
+        needle = q.casefold()
+        items = [x for x in items if needle in x["name"].casefold() or needle in (x.get("description") or "").casefold()]
+    for item in items:
+        item["membership_role"] = next((m["role"] for m in (own_memberships or []) if m["community_id"] == item["id"]), None)
+    return {"items": items[:limit]}
+
+
+@router.post("/communities", status_code=201)
+async def create_community(payload: CommunityCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = str(user["id"])
+    existing = await _db("GET", "communities", params={"select": "id", "slug": f"eq.{payload.slug}", "limit": "1"})
+    if existing:
+        raise HTTPException(409, detail={"code": "COMMUNITY_SLUG_TAKEN", "message": "Slug komunitas sudah digunakan."})
+    rows = await _db("POST", "communities", body={"name": payload.name.strip(), "slug": payload.slug, "description": payload.description.strip(), "visibility": payload.visibility, "created_by": user_id}, prefer="return=representation")
+    community = rows[0]
+    await _db("POST", "community_memberships", body={"community_id": community["id"], "user_id": user_id, "role": "owner", "status": "active", "joined_at": _now()}, prefer="return=minimal")
+    return {"community": community, "membership_role": "owner"}
+
+
+@router.get("/communities/{community_id}")
+async def get_community(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    row = await _community(community_id)
+    membership = await _membership(community_id, str(user["id"]))
+    if row["visibility"] == "private" and not membership:
+        raise HTTPException(404, detail={"code": "COMMUNITY_NOT_FOUND", "message": "Komunitas tidak ditemukan."})
+    return {"community": row, "membership": membership}
+
+
+@router.patch("/communities/{community_id}")
+async def update_community(community_id: uuid.UUID, payload: CommunityUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    membership = await _require_member(community_id, str(user["id"]), ("owner",))
+    changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not changes:
+        raise HTTPException(422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan yang dikirim."})
+    changes["updated_at"] = _now()
+    rows = await _db("PATCH", "communities", params={"id": f"eq.{community_id}", "created_by": f"eq.{user['id']}"}, body=changes, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "COMMUNITY_UPDATE_CONFLICT", "message": "Komunitas tidak dapat diperbarui."})
+    return {"community": rows[0]}
+
+
+@router.post("/communities/{community_id}/join", status_code=201)
+async def join_community(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    community = await _community(community_id)
+    if community["status"] != "active" or community["visibility"] != "public":
+        raise HTTPException(404, detail={"code": "COMMUNITY_NOT_JOINABLE", "message": "Komunitas ini tidak dapat diikuti secara publik."})
+    user_id = str(user["id"])
+    current = await _membership(community_id, user_id)
+    if current:
+        return {"membership": current, "already_member": True}
+    rows = await _db("POST", "community_memberships", body={"community_id": str(community_id), "user_id": user_id, "role": "member", "status": "active", "joined_at": _now()}, prefer="return=representation")
+    return {"membership": rows[0]}
+
+
+@router.get("/communities/{community_id}/members")
+async def list_members(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]))
+    rows = await _db("GET", "community_memberships", params={"select": "community_id,user_id,role,status,joined_at", "community_id": f"eq.{community_id}", "status": "eq.active", "order": "joined_at.asc", "limit": "500"})
+    return {"items": rows or []}
+
+
+@router.patch("/communities/{community_id}/members/{member_id}")
+async def update_member_role(community_id: uuid.UUID, member_id: uuid.UUID, payload: RoleUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]), ("owner",))
+    if str(member_id) == str(user["id"]):
+        raise HTTPException(409, detail={"code": "OWNER_ROLE_IMMUTABLE", "message": "Pemilik tidak dapat mengubah perannya sendiri."})
+    rows = await _db("PATCH", "community_memberships", params={"community_id": f"eq.{community_id}", "user_id": f"eq.{member_id}", "status": "eq.active", "role": "neq.owner"}, body={"role": payload.role, "updated_at": _now()}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(404, detail={"code": "MEMBER_NOT_FOUND", "message": "Anggota tidak ditemukan."})
+    return {"membership": rows[0]}
+
+
+@router.delete("/communities/{community_id}/members/{member_id}", status_code=204)
+async def remove_member(community_id: uuid.UUID, member_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> None:
+    actor_id = str(user["id"])
+    target_id = str(member_id)
+    actor = await _require_member(community_id, actor_id)
+    target = await _membership(community_id, target_id)
+    if not target:
+        raise HTTPException(404, detail={"code": "MEMBER_NOT_FOUND", "message": "Anggota tidak ditemukan."})
+    if target.get("role") == "owner":
+        raise HTTPException(409, detail={"code": "OWNER_CANNOT_BE_REMOVED", "message": "Pemilik komunitas tidak dapat dikeluarkan."})
+    if actor_id != target_id and actor.get("role") not in ("owner", "moderator"):
+        raise HTTPException(403, detail={"code": "MEMBER_MANAGEMENT_DENIED", "message": "Hanya pemilik/moderator yang dapat mengelola anggota lain."})
+    await _db("PATCH", "community_memberships", params={"community_id": f"eq.{community_id}", "user_id": f"eq.{target_id}", "status": "eq.active"}, body={"status": "removed", "updated_at": _now()}, prefer="return=minimal")
+
+
+@router.post("/communities/{community_id}/invites", status_code=201)
+async def create_invite(community_id: uuid.UUID, payload: InviteCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
+    token = str(uuid.uuid4())
+    from datetime import timedelta
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)).isoformat()
+    rows = await _db("POST", "community_invites", body={"community_id": str(community_id), "created_by": str(user["id"]), "token_hash": __import__("hashlib").sha256(token.encode()).hexdigest(), "role": payload.role, "expires_at": expires_at}, prefer="return=representation")
+    return {"invite": {"id": rows[0]["id"], "token": token, "expires_at": expires_at, "role": payload.role}}
+
+
+@router.post("/community-invites/{token}/accept", status_code=201)
+async def accept_invite(token: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    import hashlib
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    rows = await _db("GET", "community_invites", params={"select": "*", "token_hash": f"eq.{digest}", "accepted_at": "is.null", "revoked_at": "is.null", "expires_at": f"gt.{_now()}", "limit": "1"})
+    if not rows:
+        raise HTTPException(404, detail={"code": "INVITE_INVALID", "message": "Undangan tidak valid atau telah kedaluwarsa."})
+    invite = rows[0]
+    community_id = uuid.UUID(invite["community_id"])
+    current = await _membership(community_id, str(user["id"]))
+    if current:
+        return {"membership": current, "already_member": True}
+    memberships = await _db("POST", "community_memberships", body={"community_id": str(community_id), "user_id": str(user["id"]), "role": invite["role"], "status": "active", "joined_at": _now()}, prefer="return=representation")
+    await _db("PATCH", "community_invites", params={"id": f"eq.{invite['id']}", "accepted_at": "is.null"}, body={"accepted_at": _now(), "accepted_by": str(user["id"])}, prefer="return=minimal")
+    return {"membership": memberships[0]}
+
+
+@router.get("/communities/{community_id}/posts")
+async def list_community_posts(community_id: uuid.UUID, limit: int = Query(default=30, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    community = await _community(community_id)
+    if community["visibility"] == "private":
+        await _require_member(community_id, str(user["id"]))
+    rows = await _db("GET", "community_posts", params={"select": "*", "community_id": f"eq.{community_id}", "status": "eq.published", "order": "created_at.desc", "limit": str(limit)})
+    return {"items": rows or []}
+
+
+@router.post("/communities/{community_id}/posts", status_code=201)
+async def create_community_post(community_id: uuid.UUID, payload: CommunityPostCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]))
+    rows = await _db("POST", "community_posts", body={"community_id": str(community_id), "author_id": str(user["id"]), "body": payload.body.strip(), "post_type": payload.post_type, "status": "published"}, prefer="return=representation")
+    return {"post": rows[0]}
+
+
+@router.post("/communities/{community_id}/reports", status_code=201)
+async def report_community(community_id: uuid.UUID, reason: str = Query(min_length=8, max_length=500), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
+    rows = await _db("POST", "community_reports", body={"community_id": str(community_id), "reporter_id": str(user["id"]), "reason": reason.strip(), "status": "open"}, prefer="return=representation")
+    return {"report": {"id": rows[0]["id"], "status": rows[0]["status"]}}
+
+
+@router.get("/workspaces")
+async def list_workspaces(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    memberships = await _db("GET", "workspace_memberships", params={"select": "workspace_id,role", "user_id": f"eq.{user['id']}", "status": "eq.active", "limit": "500"})
+    ids = [m["workspace_id"] for m in (memberships or [])]
+    if not ids:
+        return {"items": []}
+    rows = await _db("GET", "workspaces", params={"select": "*", "id": "in.(" + ",".join(ids) + ")", "status": "eq.active", "order": "updated_at.desc", "limit": "100"})
+    roles = {m["workspace_id"]: m["role"] for m in memberships}
+    for row in rows or []:
+        row["membership_role"] = roles.get(row["id"])
+    return {"items": rows or []}
+
+
+@router.post("/workspaces", status_code=201)
+async def create_workspace(payload: WorkspaceCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = str(user["id"])
+    if payload.visibility == "community" and not payload.community_id:
+        raise HTTPException(422, detail={"code": "COMMUNITY_REQUIRED", "message": "Workspace komunitas harus terikat pada komunitas."})
+    if payload.community_id:
+        await _require_member(payload.community_id, user_id)
+    rows = await _db("POST", "workspaces", body={"title": payload.title.strip(), "description": payload.description.strip(), "created_by": user_id, "community_id": str(payload.community_id) if payload.community_id else None, "visibility": payload.visibility}, prefer="return=representation")
+    workspace = rows[0]
+    await _db("POST", "workspace_memberships", body={"workspace_id": workspace["id"], "user_id": user_id, "role": "owner", "status": "active"}, prefer="return=minimal")
+    return {"workspace": workspace}
+
+
+@router.get("/workspaces/{workspace_id}")
+async def get_workspace(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    access = await _require_workspace(workspace_id, str(user["id"]))
+    return {"workspace": access["workspace"], "membership": access["membership"]}
+
+
+@router.post("/workspaces/{workspace_id}/members", status_code=201)
+async def add_workspace_member(workspace_id: uuid.UUID, member_id: uuid.UUID, role: Literal["editor", "viewer"] = "editor", user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    access = await _require_workspace(workspace_id, str(user["id"]), write=True)
+    if access["membership"]["role"] != "owner":
+        raise HTTPException(403, detail={"code": "WORKSPACE_OWNER_REQUIRED", "message": "Hanya pemilik workspace yang dapat menambahkan anggota."})
+    rows = await _db("POST", "workspace_memberships", body={"workspace_id": str(workspace_id), "user_id": str(member_id), "role": role, "status": "active"}, prefer="return=representation")
+    return {"membership": rows[0]}
+
+
+@router.get("/workspaces/{workspace_id}/documents")
+async def list_workspace_documents(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]))
+    rows = await _db("GET", "workspace_documents", params={"select": "id,workspace_id,title,version,updated_by,updated_at,created_at", "workspace_id": f"eq.{workspace_id}", "status": "eq.active", "order": "updated_at.desc", "limit": "200"})
+    return {"items": rows or []}
+
+
+@router.post("/workspaces/{workspace_id}/documents", status_code=201)
+async def create_workspace_document(workspace_id: uuid.UUID, payload: WorkspaceDocumentCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]), write=True)
+    rows = await _db("POST", "workspace_documents", body={"workspace_id": str(workspace_id), "title": payload.title.strip(), "body": payload.body, "version": 1, "created_by": str(user["id"]), "updated_by": str(user["id"])}, prefer="return=representation")
+    doc = rows[0]
+    await _db("POST", "workspace_document_versions", body={"document_id": doc["id"], "version": 1, "title": doc["title"], "body": doc["body"], "created_by": str(user["id"])}, prefer="return=minimal")
+    return {"document": doc}
+
+
+@router.get("/workspaces/{workspace_id}/documents/{document_id}")
+async def get_workspace_document(workspace_id: uuid.UUID, document_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]))
+    rows = await _db("GET", "workspace_documents", params={"select": "*", "id": f"eq.{document_id}", "workspace_id": f"eq.{workspace_id}", "status": "eq.active", "limit": "1"})
+    if not rows:
+        raise HTTPException(404, detail={"code": "DOCUMENT_NOT_FOUND", "message": "Dokumen tidak ditemukan."})
+    return {"document": rows[0]}
+
+
+@router.put("/workspaces/{workspace_id}/documents/{document_id}")
+async def update_workspace_document(workspace_id: uuid.UUID, document_id: uuid.UUID, payload: WorkspaceDocumentUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]), write=True)
+    rows = await _db("GET", "workspace_documents", params={"select": "*", "id": f"eq.{document_id}", "workspace_id": f"eq.{workspace_id}", "status": "eq.active", "limit": "1"})
+    if not rows:
+        raise HTTPException(404, detail={"code": "DOCUMENT_NOT_FOUND", "message": "Dokumen tidak ditemukan."})
+    current = rows[0]
+    if int(current["version"]) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "DOCUMENT_VERSION_CONFLICT", "message": "Dokumen telah berubah. Muat versi terbaru sebelum menyimpan."})
+    version = int(current["version"]) + 1
+    updated = await _db("PATCH", "workspace_documents", params={"id": f"eq.{document_id}", "workspace_id": f"eq.{workspace_id}", "version": f"eq.{payload.expected_version}"}, body={"title": payload.title.strip(), "body": payload.body, "version": version, "updated_by": str(user["id"]), "updated_at": _now()}, prefer="return=representation")
+    if not updated:
+        raise HTTPException(409, detail={"code": "DOCUMENT_VERSION_CONFLICT", "message": "Dokumen berubah bersamaan dengan penyimpanan."})
+    await _db("POST", "workspace_document_versions", body={"document_id": str(document_id), "version": version, "title": payload.title.strip(), "body": payload.body, "created_by": str(user["id"])}, prefer="return=minimal")
+    return {"document": updated[0]}
+
+
+@router.get("/workspaces/{workspace_id}/documents/{document_id}/versions")
+async def list_document_versions(workspace_id: uuid.UUID, document_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]))
+    rows = await _db("GET", "workspace_document_versions", params={"select": "id,document_id,version,title,created_by,created_at", "document_id": f"eq.{document_id}", "order": "version.desc", "limit": "100"})
+    return {"items": rows or []}
+
+
+@router.post("/workspaces/{workspace_id}/annotations", status_code=201)
+async def create_annotation(workspace_id: uuid.UUID, payload: AnnotationCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]), write=True)
+    doc = await _db("GET", "workspace_documents", params={"select": "id", "id": f"eq.{payload.document_id}", "workspace_id": f"eq.{workspace_id}", "status": "eq.active", "limit": "1"})
+    if not doc:
+        raise HTTPException(404, detail={"code": "DOCUMENT_NOT_FOUND", "message": "Dokumen tidak ditemukan."})
+    rows = await _db("POST", "workspace_annotations", body={"workspace_id": str(workspace_id), "document_id": str(payload.document_id), "author_id": str(user["id"]), "body": payload.body.strip(), "anchor": payload.anchor}, prefer="return=representation")
+    return {"annotation": rows[0]}
+
+
+@router.get("/workspaces/{workspace_id}/annotations")
+async def list_annotations(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]))
+    rows = await _db("GET", "workspace_annotations", params={"select": "*", "workspace_id": f"eq.{workspace_id}", "status": "eq.active", "order": "created_at.asc", "limit": "500"})
+    return {"items": rows or []}
+
+
+@router.post("/workspaces/{workspace_id}/presence")
+async def update_presence(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]))
+    rows = await _db("POST", "workspace_presence", params={"on_conflict": "workspace_id,user_id"}, body={"workspace_id": str(workspace_id), "user_id": str(user["id"]), "last_seen_at": _now()}, prefer="resolution=merge-duplicates,return=representation")
+    return {"presence": rows[0] if rows else {"workspace_id": str(workspace_id), "last_seen_at": _now()}}
+
+
+@router.get("/workspaces/{workspace_id}/presence")
+async def list_presence(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_workspace(workspace_id, str(user["id"]))
+    rows = await _db("GET", "workspace_presence", params={"select": "workspace_id,user_id,last_seen_at", "workspace_id": f"eq.{workspace_id}", "last_seen_at": f"gt.{(datetime.now(timezone.utc).replace(microsecond=0)).isoformat()}", "order": "last_seen_at.desc", "limit": "100"})
+    return {"items": rows or []}
+
+
+@router.get("/communities/{community_id}/missions")
+async def list_missions(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]))
+    rows = await _db("GET", "community_missions", params={"select": "*", "community_id": f"eq.{community_id}", "status": "eq.active", "order": "created_at.desc", "limit": "100"})
+    progress = await _db("GET", "community_mission_progress", params={"select": "mission_id,progress_count,status", "user_id": f"eq.{user['id']}", "limit": "500"})
+    progress_by_id = {x["mission_id"]: x for x in (progress or [])}
+    for row in rows or []:
+        row["my_progress"] = progress_by_id.get(row["id"], {"progress_count": 0, "status": "not_started"})
+    return {"items": rows or []}
+
+
+@router.post("/communities/{community_id}/missions", status_code=201)
+async def create_mission(community_id: uuid.UUID, payload: MissionCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
+    if payload.starts_at and payload.ends_at and payload.ends_at <= payload.starts_at:
+        raise HTTPException(422, detail={"code": "MISSION_DATE_RANGE_INVALID", "message": "Waktu berakhir harus setelah waktu mulai."})
+    rows = await _db("POST", "community_missions", body={"community_id": str(community_id), "created_by": str(user["id"]), "title": payload.title.strip(), "description": payload.description.strip(), "target_count": payload.target_count, "starts_at": payload.starts_at.isoformat() if payload.starts_at else None, "ends_at": payload.ends_at.isoformat() if payload.ends_at else None, "status": "active"}, prefer="return=representation")
+    return {"mission": rows[0]}
+
+
+@router.post("/communities/{community_id}/missions/{mission_id}/progress")
+async def update_mission_progress(community_id: uuid.UUID, mission_id: uuid.UUID, increment: int = Query(default=1, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _require_member(community_id, str(user["id"]))
+    mission_rows = await _db("GET", "community_missions", params={"select": "*", "id": f"eq.{mission_id}", "community_id": f"eq.{community_id}", "status": "eq.active", "limit": "1"})
+    if not mission_rows:
+        raise HTTPException(404, detail={"code": "MISSION_NOT_FOUND", "message": "Misi tidak ditemukan."})
+    mission = mission_rows[0]
+    now = datetime.now(timezone.utc)
+    if mission.get("starts_at") and datetime.fromisoformat(mission["starts_at"].replace("Z", "+00:00")) > now:
+        raise HTTPException(409, detail={"code": "MISSION_NOT_STARTED", "message": "Misi belum dimulai."})
+    if mission.get("ends_at") and datetime.fromisoformat(mission["ends_at"].replace("Z", "+00:00")) < now:
+        raise HTTPException(409, detail={"code": "MISSION_ENDED", "message": "Misi telah berakhir."})
+    existing = await _db("GET", "community_mission_progress", params={"select": "*", "mission_id": f"eq.{mission_id}", "user_id": f"eq.{user['id']}", "limit": "1"})
+    count = min(int(mission["target_count"]), (int(existing[0]["progress_count"]) if existing else 0) + increment)
+    status = "completed" if count >= int(mission["target_count"]) else "in_progress"
+    payload = {"community_id": str(community_id), "mission_id": str(mission_id), "user_id": str(user["id"]), "progress_count": count, "status": status, "updated_at": _now()}
+    rows = await _db("POST", "community_mission_progress", params={"on_conflict": "mission_id,user_id"}, body=payload, prefer="resolution=merge-duplicates,return=representation")
+    return {"progress": rows[0] if rows else payload, "reward_status": "not_configured"}
