@@ -131,6 +131,9 @@ def test_story_delete_is_owner_scoped_and_compare_and_set(monkeypatch):
         return [{"id": STORY_ID, "status": "archived", **(body or {})}]
 
     monkeypatch.setattr(stories_api, "_server_db", fake_db)
+    async def no_cleanup(*args, **kwargs):
+        return 0
+    monkeypatch.setattr(stories_api, "_cleanup_story_media", no_cleanup)
     app.dependency_overrides[current_user] = _auth()
     try:
         response = client.delete(f"/v1/stories/{STORY_ID}")
