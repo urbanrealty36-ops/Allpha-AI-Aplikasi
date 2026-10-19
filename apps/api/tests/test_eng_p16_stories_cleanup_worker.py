@@ -65,7 +65,26 @@ def test_storage_delete_is_idempotent_for_success_and_missing_object(monkeypatch
 
     monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))
     monkeypatch.setattr(worker.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
-    assert __import__("asyncio").run(worker._delete_storage_object("owner/story/file.png")) is True
+    assert __import__("asyncio").run(worker._delete_storage_object("owner/story/file.png", "owner")) is True
+
+
+
+
+@pytest.mark.parametrize("storage_path,owner_id", [
+    ("other-owner/story/file.png", "owner"),
+    ("owner/../other/file.png", "owner"),
+    ("owner//file.png", "owner"),
+    ("owner\\story\\file.png", "owner"),
+    ("owner/story/file.png", ""),
+])
+def test_storage_delete_rejects_paths_outside_owner_prefix(monkeypatch, storage_path, owner_id):
+    monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))
+    with pytest.raises(worker.StoriesCleanupStorageError):
+        worker._validated_storage_path(storage_path, owner_id)
+
+
+def test_storage_path_accepts_normalized_owner_scoped_key():
+    assert worker._validated_storage_path("owner/story/file.png", "owner") == "owner/story/file.png"
 
 
 def test_storage_delete_failure_is_retryable(monkeypatch):
@@ -85,7 +104,7 @@ def test_storage_delete_failure_is_retryable(monkeypatch):
     monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))
     monkeypatch.setattr(worker.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
     with pytest.raises(worker.StoriesCleanupStorageError):
-        __import__("asyncio").run(worker._delete_storage_object("owner/story/file.png"))
+        __import__("asyncio").run(worker._delete_storage_object("owner/story/file.png", "owner"))
 
 
 @pytest.mark.parametrize("initial_status,storage_failure", [
@@ -115,7 +134,7 @@ def test_recovery_sweep_preserves_failed_media_and_retries_deleting_status(
             return [{"id": "media-1"}]
         raise AssertionError((method, table, params, body))
 
-    async def fake_delete(_path):
+    async def fake_delete(_path, _owner_id):
         if storage_failure:
             raise worker.StoriesCleanupStorageError("test-only transient failure")
         return True
@@ -159,7 +178,7 @@ def test_metadata_is_not_deleted_when_storage_delete_fails(monkeypatch):
                      "storage_path": "owner-1/story-1/file.mp4", "status": "deleting"}]
         raise AssertionError((method, table, params, body))
 
-    async def fail_delete(_path):
+    async def fail_delete(_path, _owner_id):
         raise worker.StoriesCleanupStorageError("transient")
 
     monkeypatch.setattr(worker, "_server_db", fake_db)
@@ -226,7 +245,7 @@ def test_retry_after_transient_storage_failure_removes_metadata_only_on_success(
             return [{"id": "media-retry"}]
         raise AssertionError((method, table, params, body))
 
-    async def fake_delete(_path):
+    async def fake_delete(_path, _owner_id):
         storage_attempts["count"] += 1
         if storage_attempts["count"] == 1:
             raise worker.StoriesCleanupStorageError("transient")

@@ -78,11 +78,28 @@ def _batch_limit() -> int:
     return value
 
 
-async def _delete_storage_object(storage_path: str) -> bool:
-    """Idempotently delete an object; 404 means it was already removed."""
+def _validated_storage_path(storage_path: str, owner_id: str) -> str:
+    """Accept only a normalized object path rooted at the media owner's prefix."""
+    path = storage_path.strip()
+    owner = owner_id.strip()
+    parts = path.split("/")
+    if (
+        not owner
+        or not path
+        or "\\" in path
+        or any(part in ("", ".", "..") for part in parts)
+        or parts[0] != owner
+    ):
+        raise StoriesCleanupStorageError("Storage path is missing or outside the media owner's prefix")
+    return path
+
+
+async def _delete_storage_object(storage_path: str, owner_id: str) -> bool:
+    """Idempotently delete an owner-scoped object; 404 means it was already removed."""
+    safe_path = _validated_storage_path(storage_path, owner_id)
     base, key = _config()
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
-    url = f"{base}/storage/v1/object/{quote('content-media/' + storage_path, safe='/')}"
+    url = f"{base}/storage/v1/object/{quote('content-media/' + safe_path, safe='/')}"
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
             response = await client.delete(url, headers=headers)
@@ -148,7 +165,7 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
             marked = changed[0]
 
         try:
-            await _delete_storage_object(str(marked["storage_path"]))
+            await _delete_storage_object(str(marked["storage_path"]), str(marked["owner_id"]))
         except StoriesCleanupStorageError:
             stats["storage_failures"] += 1
             log.warning("Story media cleanup deferred; object deletion was not confirmed")
