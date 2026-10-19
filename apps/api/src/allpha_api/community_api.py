@@ -7,10 +7,11 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
+from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(prefix="/v1", tags=["communities-workspaces"])
 TIMEOUT = httpx.Timeout(12, connect=3)
@@ -462,3 +463,44 @@ async def update_mission_progress(community_id: uuid.UUID, mission_id: uuid.UUID
     payload = {"community_id": str(community_id), "mission_id": str(mission_id), "user_id": str(user["id"]), "progress_count": count, "status": status, "updated_at": _now()}
     rows = await _db("POST", "community_mission_progress", params={"on_conflict": "mission_id,user_id"}, body=payload, prefer="resolution=merge-duplicates,return=representation")
     return {"progress": rows[0] if rows else payload, "reward_status": "not_configured"}
+
+
+class CommunityReportReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["dismiss", "suspend_community"] 
+    reason: str = Field(min_length=8, max_length=500)
+
+
+@router.get("/admin/community-reports", tags=["community-moderation"])
+async def list_community_reports(user: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
+    rows = await _db("GET", "community_reports", params={"select": "*", "status": "in.(open,reviewing)", "order": "created_at.asc", "limit": "100"})
+    reports = rows or []
+    ids = list(dict.fromkeys(str(row["community_id"]) for row in reports))
+    by_id: dict[str, Any] = {}
+    if ids:
+        communities = await _db("GET", "communities", params={"select": "id,name,slug,visibility,status,created_by", "id": "in.(" + ",".join(ids) + ")", "limit": str(len(ids))})
+        by_id = {str(row["id"]): row for row in (communities or [])}
+    return {"items": [{**row, "community": by_id.get(str(row["community_id"]))} for row in reports]}
+
+
+@router.post("/admin/community-reports/{report_id}/review", tags=["community-moderation"])
+async def review_community_report(report_id: uuid.UUID, payload: CommunityReportReview, request: Request,
+    user: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
+    reports = await _db("GET", "community_reports", params={"select": "*", "id": f"eq.{report_id}", "status": "in.(open,reviewing)", "limit": "1"})
+    if not reports:
+        raise HTTPException(404, detail={"code": "COMMUNITY_REPORT_NOT_FOUND", "message": "Laporan tidak ditemukan atau sudah ditinjau."})
+    report = reports[0]
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="community.report.review", outcome="attempted",
+        resource_type="community_report", resource_id=str(report_id), metadata={"decision": payload.decision, "reason": payload.reason, "community_id": str(report["community_id"])})
+    if payload.decision == "suspend_community":
+        changed = await _db("PATCH", "communities", params={"id": f"eq.{report['community_id']}", "status": "eq.active"},
+            body={"status": "suspended", "updated_at": _now()}, prefer="return=representation")
+        if not changed:
+            raise HTTPException(409, detail={"code": "COMMUNITY_REVIEW_CONFLICT", "message": "Komunitas berubah atau sudah ditangguhkan."})
+    reviewed = await _db("PATCH", "community_reports", params={"id": f"eq.{report_id}", "status": "in.(open,reviewing)"},
+        body={"status": "dismissed" if payload.decision == "dismiss" else "resolved", "reviewer_id": str(user["id"]), "review_reason": payload.reason, "reviewed_at": _now()}, prefer="return=representation")
+    if not reviewed:
+        raise HTTPException(409, detail={"code": "COMMUNITY_REPORT_REVIEW_CONFLICT", "message": "Laporan ditinjau oleh operator lain."})
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="community.report.review", outcome="succeeded",
+        resource_type="community_report", resource_id=str(report_id), metadata={"decision": payload.decision, "reason": payload.reason, "community_id": str(report["community_id"])})
+    return {"report": reviewed[0], "community_suspended": payload.decision == "suspend_community"}
