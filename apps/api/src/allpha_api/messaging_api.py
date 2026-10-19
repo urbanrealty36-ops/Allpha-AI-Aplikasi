@@ -261,7 +261,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
         # previous request may have reached the provider before it was interrupted.
         participants = await _db("GET","conversation_participants",params={"select":"agent_id","conversation_id":f"eq.{conversation_id}","participant_type":"eq.agent","limit":"1"})
         replay_agent_id = str(participants[0]["agent_id"]) if participants else ""
-        reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL,"allpha-agent-reply:"+str(created[0]["id"]))
+        reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "allpha-agent-reply:" + str(created[0]["id"])))
         recovered_reply = await _db("GET","messages",params={
             "select":"id,conversation_id,sender_type,sender_agent_id,body,client_message_id,created_at,delivery_status",
             "conversation_id":f"eq.{conversation_id}","sender_agent_id":f"eq.{replay_agent_id}",
