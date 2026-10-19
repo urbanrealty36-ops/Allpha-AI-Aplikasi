@@ -61,7 +61,7 @@ for (const contract of [
 
 for (const contract of [
   '"/v1/reels?"', "loadNativeReels", "ENG-P15 · REELS", "audio/mpeg", "audio/ogg",
-  "Putar audio", "Putar video", "media_type.startsWith(\"audio/\")"
+  "Putar audio", "Putar video", "media_type.startsWith(\"audio/\")", 'contentFile.mimeType?.startsWith("audio/") ? "audio"'
 ]) assert.ok(app.includes(contract), `missing ENG-P15 Native Reels contract: ${contract}`);
 
 console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed and ENG-P15 Reels smoke tests passed.");
