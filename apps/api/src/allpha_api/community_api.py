@@ -537,3 +537,124 @@ async def review_community_report(report_id: uuid.UUID, payload: CommunityReport
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="community.report.review", outcome="succeeded",
         resource_type="community_report", resource_id=str(report_id), metadata={"decision": payload.decision, "reason": payload.reason, "community_id": str(report["community_id"])})
     return {"report": reviewed[0], "community_suspended": payload.decision == "suspend_community"}
+
+
+# ADR-0020 — explicit, least-privilege Agent resource grants.
+# These endpoints manage grants only. No Agent content/runtime route may use a grant
+# until it calls the same fail-closed authorization contract for every read/write.
+AGENT_RESOURCE_SCOPES = {
+    "community": {"read_published_content", "create_agent_post", "comment"},
+    "workspace": {"read_workspace_documents", "comment"},
+}
+
+
+class AgentResourceGrantCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resource_type: Literal["community", "workspace"]
+    resource_id: uuid.UUID
+    scopes: list[Literal["read_published_content", "read_workspace_documents", "create_agent_post", "comment"]] = Field(min_length=1, max_length=4)
+    expires_at: datetime | None = None
+
+
+class AgentResourceGrantRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+
+
+async def _require_agent_owner(agent_id: uuid.UUID, user_id: str) -> dict[str, Any]:
+    rows = await _db("GET", "agent_ownerships", params={
+        "select": "agent_id,owner_user_id,ownership_role,status",
+        "agent_id": f"eq.{agent_id}", "owner_user_id": f"eq.{user_id}",
+        "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(403, detail={"code": "AGENT_OWNER_REQUIRED", "message": "Izin pemilik Agent aktif diperlukan."})
+    agents = await _db("GET", "ai_agents", params={
+        "select": "id,status", "id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
+    })
+    if not agents:
+        raise HTTPException(404, detail={"code": "AGENT_NOT_ACTIVE", "message": "Agent tidak ditemukan atau tidak aktif."})
+    return agents[0]
+
+
+async def _resource_grant_authority(resource_type: str, resource_id: uuid.UUID, user_id: str) -> None:
+    if resource_type == "community":
+        community = await _community(resource_id)
+        membership = await _membership(resource_id, user_id)
+        if not membership or membership.get("role") not in ("owner", "moderator"):
+            raise HTTPException(403, detail={"code": "RESOURCE_GRANT_APPROVER_REQUIRED", "message": "Pemilik atau moderator komunitas harus menyetujui akses Agent."})
+        return
+    access = await _require_workspace(resource_id, user_id)
+    if access["membership"].get("role") != "owner":
+        raise HTTPException(403, detail={"code": "RESOURCE_GRANT_APPROVER_REQUIRED", "message": "Pemilik workspace harus menyetujui akses Agent."})
+
+
+@router.post("/agents/{agent_id}/resource-grants", status_code=201)
+async def create_agent_resource_grant(agent_id: uuid.UUID, payload: AgentResourceGrantCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = str(user["id"])
+    await _require_agent_owner(agent_id, user_id)
+    await _resource_grant_authority(payload.resource_type, payload.resource_id, user_id)
+    scopes = sorted(set(payload.scopes))
+    invalid = set(scopes) - AGENT_RESOURCE_SCOPES[payload.resource_type]
+    if invalid:
+        raise HTTPException(422, detail={"code": "AGENT_GRANT_SCOPE_NOT_ALLOWED", "message": "Scope tidak tersedia untuk jenis resource ini."})
+    if payload.expires_at and payload.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(422, detail={"code": "AGENT_GRANT_EXPIRY_INVALID", "message": "Masa berlaku harus berada di masa depan."})
+    resource_column = "community_id" if payload.resource_type == "community" else "workspace_id"
+    body = {
+        "agent_id": str(agent_id), "resource_type": payload.resource_type,
+        resource_column: str(payload.resource_id), "granted_by": user_id,
+        "scopes": scopes, "policy_version": 1, "status": "active",
+        "expires_at": payload.expires_at.astimezone(timezone.utc).isoformat() if payload.expires_at else None,
+    }
+    try:
+        rows = await _db("POST", "agent_resource_grants", body=body, prefer="return=representation")
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise HTTPException(409, detail={"code": "AGENT_RESOURCE_GRANT_CONFLICT", "message": "Grant aktif sudah ada untuk Agent dan resource ini."}) from exc
+        raise
+    grant = rows[0]
+    await _db("POST", "agent_resource_grant_audit", body={
+        "grant_id": grant["id"], "agent_id": str(agent_id),
+        "resource_type": payload.resource_type, "resource_id": str(payload.resource_id),
+        "actor_user_id": user_id, "action": "grant_created", "scopes": scopes,
+    }, prefer="return=minimal")
+    return {"grant": grant, "participation_enabled": False, "notice": "Grant tercatat; runtime Agent tetap fail-closed sampai semua jalur konten menegakkan kontrak otorisasi."}
+
+
+@router.get("/agents/{agent_id}/resource-grants")
+async def list_agent_resource_grants(agent_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = str(user["id"])
+    await _require_agent_owner(agent_id, user_id)
+    rows = await _db("GET", "agent_resource_grants", params={
+        "select": "*", "agent_id": f"eq.{agent_id}", "order": "created_at.desc", "limit": "200",
+    })
+    return {"grants": rows or []}
+
+
+@router.post("/agents/{agent_id}/resource-grants/{grant_id}/revoke")
+async def revoke_agent_resource_grant(agent_id: uuid.UUID, grant_id: uuid.UUID, payload: AgentResourceGrantRevoke, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    user_id = str(user["id"])
+    await _require_agent_owner(agent_id, user_id)
+    grants = await _db("GET", "agent_resource_grants", params={
+        "select": "*", "id": f"eq.{grant_id}", "agent_id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
+    })
+    if not grants:
+        raise HTTPException(404, detail={"code": "AGENT_RESOURCE_GRANT_NOT_FOUND", "message": "Grant aktif tidak ditemukan."})
+    grant = grants[0]
+    resource_id = grant.get("community_id") if grant["resource_type"] == "community" else grant.get("workspace_id")
+    await _resource_grant_authority(grant["resource_type"], uuid.UUID(resource_id), user_id)
+    now = datetime.now(timezone.utc).isoformat()
+    rows = await _db("PATCH", "agent_resource_grants", params={"id": f"eq.{grant_id}", "status": "eq.active"}, body={
+        "status": "revoked", "revoked_at": now, "revoked_by": user_id,
+        "revocation_reason": payload.reason, "updated_at": now,
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "AGENT_RESOURCE_GRANT_CONFLICT", "message": "Grant berubah saat dicabut; muat ulang."})
+    await _db("POST", "agent_resource_grant_audit", body={
+        "grant_id": str(grant_id), "agent_id": str(agent_id),
+        "resource_type": grant["resource_type"], "resource_id": resource_id,
+        "actor_user_id": user_id, "action": "grant_revoked", "scopes": grant.get("scopes", []),
+        "reason": payload.reason,
+    }, prefer="return=minimal")
+    return {"grant": rows[0], "participation_enabled": False}
