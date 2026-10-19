@@ -32,7 +32,7 @@ ALLOWED_MEDIA = {
     "audio/wav": (".wav", AUDIO_LIMIT),
     "audio/webm": (".weba", AUDIO_LIMIT),
 }
-CONTENT_FIELDS = "id,owner_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
+CONTENT_FIELDS = "id,owner_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at,expires_at,provenance"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
 
 
@@ -40,7 +40,7 @@ class ContentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(default="", max_length=TEXT_LIMIT)
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
-    content_type: str = Field(default="text", pattern="^(text|image|video|audio)$")
+    content_type: str = Field(default="text", pattern="^(text|image|video|audio|story)$")
 
 
 class ContentUpdate(BaseModel):
@@ -207,7 +207,7 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
             "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
             "status": "in.(draft,failed)", "select": CONTENT_FIELDS,
         }, body={
-            "status": "draft", "content_type": "video" if media_type.startswith("video/") else "audio" if media_type.startswith("audio/") else "image",
+            "status": "draft", "content_type": "story" if content.get("content_type") == "story" else "video" if media_type.startswith("video/") else "audio" if media_type.startswith("audio/") else "image",
             "version": int(content.get("version") or 1) + 1,
         }, prefer="return=representation")
         if not updated:
