@@ -340,7 +340,7 @@ class ConsumerBudgetReservation:
 
     async def settle(self, *, reservation: ReservationReceipt, message_id: str,
                      usage_units: int, cost_microunits: int, cost_unit: str,
-                     pricing_version: str) -> None:
+                     pricing_version: str, source_event_id: str | None = None) -> None:
         if usage_units <= 0 or usage_units > self.max_usage_units:
             await self.lifecycle.complete(
                 reservation=reservation, outcome=OperationOutcome.UNKNOWN, policy=self.policy,
@@ -359,7 +359,7 @@ class ConsumerBudgetReservation:
         await self.lifecycle.complete(
             reservation=reservation, outcome=OperationOutcome.SUCCEEDED, policy=self.policy,
             idempotency_key=f"consumer-message-settle:{message_id}",
-            source_event_id=message_id, actual_credits=actual_credits,
+            source_event_id=source_event_id or message_id, actual_credits=actual_credits,
             actual_usage_units=usage_units, usage_unit=self.usage_unit,
         )
 
