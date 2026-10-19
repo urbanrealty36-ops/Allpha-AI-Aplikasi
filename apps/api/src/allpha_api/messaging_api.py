@@ -293,7 +293,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                     expected_pricing_version=str(route_snapshot["pricing_version"]),
                     expected_max_cost_microunits=int(route_snapshot["max_cost_microunits"]),
                 )
-                reservation = await budget.reserve(owner_id=owner_id, message_id=str(created[0]["id"]))
+                reservation = await budget.reserve(requester_id=uid, owner_id=owner_id, message_id=str(created[0]["id"]))
                 consumer_authorization = AgentConsumerAuthorization(
                     requester_id=uid, owner_id=owner_id, agent_id=agent_id,
                     agent_version=int(agent["version"]), skill_id=str(skill["id"]),
