@@ -167,3 +167,69 @@ begin
     execute format('grant all on table public.%I to service_role', t);
   end loop;
 end $$;
+
+
+-- Atomic owner bootstrap: community and owner membership commit together.
+create or replace function public.create_community_with_owner(
+  p_name text, p_slug text, p_description text, p_visibility text, p_created_by uuid
+) returns setof public.communities
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare created public.communities;
+begin
+  insert into public.communities(name,slug,description,visibility,created_by)
+  values (trim(p_name),p_slug,coalesce(p_description,''),p_visibility,p_created_by)
+  returning * into created;
+  insert into public.community_memberships(community_id,user_id,role,status,joined_at)
+  values (created.id,p_created_by,'owner','active',now());
+  return next created;
+end $$;
+revoke all on function public.create_community_with_owner(text,text,text,text,uuid) from public, anon, authenticated;
+grant execute on function public.create_community_with_owner(text,text,text,text,uuid) to service_role;
+
+-- Mission progress uses an idempotency event and an atomic capped counter update.
+create table if not exists public.community_mission_progress_events (
+  id uuid primary key default gen_random_uuid(),
+  mission_id uuid not null references public.community_missions(id) on delete cascade,
+  community_id uuid not null references public.communities(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  idempotency_key uuid not null,
+  increment integer not null check (increment between 1 and 100),
+  created_at timestamptz not null default now(),
+  unique (mission_id,user_id,idempotency_key)
+);
+alter table public.community_mission_progress_events enable row level security;
+revoke all on table public.community_mission_progress_events from anon, authenticated;
+grant all on table public.community_mission_progress_events to service_role;
+
+create or replace function public.record_community_mission_progress(
+  p_community_id uuid, p_mission_id uuid, p_user_id uuid, p_increment integer, p_idempotency_key uuid
+) returns setof public.community_mission_progress
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare mission public.community_missions; existing_event public.community_mission_progress_events; current_progress public.community_mission_progress; next_count integer; next_status text;
+begin
+  if p_increment < 1 or p_increment > 100 then raise exception 'invalid_increment'; end if;
+  select * into mission from public.community_missions where id=p_mission_id and community_id=p_community_id and status='active' for update;
+  if not found then raise exception 'mission_not_found_or_inactive'; end if;
+  if mission.starts_at is not null and mission.starts_at > now() then raise exception 'mission_not_started'; end if;
+  if mission.ends_at is not null and mission.ends_at < now() then raise exception 'mission_ended'; end if;
+  if not exists(select 1 from public.community_memberships where community_id=p_community_id and user_id=p_user_id and status='active') then raise exception 'membership_required'; end if;
+  insert into public.community_mission_progress_events(mission_id,community_id,user_id,idempotency_key,increment)
+  values(p_mission_id,p_community_id,p_user_id,p_idempotency_key,p_increment)
+  on conflict(mission_id,user_id,idempotency_key) do nothing;
+  if not found then
+    select * into existing_event from public.community_mission_progress_events
+      where mission_id=p_mission_id and user_id=p_user_id and idempotency_key=p_idempotency_key;
+    if existing_event.increment <> p_increment then raise exception 'idempotency_conflict'; end if;
+    return query select * from public.community_mission_progress where mission_id=p_mission_id and user_id=p_user_id;
+    return;
+  end if;
+  select * into current_progress from public.community_mission_progress where mission_id=p_mission_id and user_id=p_user_id for update;
+  next_count := least(mission.target_count, coalesce(current_progress.progress_count,0)+p_increment);
+  next_status := case when next_count >= mission.target_count then 'completed' else 'in_progress' end;
+  insert into public.community_mission_progress(mission_id,community_id,user_id,progress_count,status,updated_at)
+  values(p_mission_id,p_community_id,p_user_id,next_count,next_status,now())
+  on conflict(mission_id,user_id) do update set community_id=excluded.community_id,progress_count=excluded.progress_count,status=excluded.status,updated_at=now();
+  return query select * from public.community_mission_progress where mission_id=p_mission_id and user_id=p_user_id;
+end $$;
+revoke all on function public.record_community_mission_progress(uuid,uuid,uuid,integer,uuid) from public, anon, authenticated;
+grant execute on function public.record_community_mission_progress(uuid,uuid,uuid,integer,uuid) to service_role;
