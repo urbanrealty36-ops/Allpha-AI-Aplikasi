@@ -10,6 +10,8 @@ from allpha_api.auth import current_user
 from allpha_api.agent_runtime import AgentRuntime, AgentRuntimeBlocked
 from allpha_api.agent_runtime_store import AgentRuntimeStore, AgentRuntimePersistenceError
 from allpha_api.model_router import TextGenerationRequest, TextGenerationRouterUnavailable
+from allpha_api.agent_consumer_grants import AgentConsumerGrantStore, ConsumerBudgetReservation, ConsumerGrantUnavailable
+from allpha_api.agent_runtime import AgentConsumerAuthorization
 
 router = APIRouter(prefix="/v1/messages", tags=["messaging"])
 TIMEOUT = httpx.Timeout(12, connect=3)
@@ -68,6 +70,80 @@ class MessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(min_length=1,max_length=10000)
     client_message_id: uuid.UUID
+
+class ConsumerGrantCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    requester_user_id: uuid.UUID
+    skill_id: uuid.UUID
+    idempotency_key: str = Field(min_length=1, max_length=256)
+    expires_at: datetime | None = None
+
+
+class ConsumerGrantRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(default="owner_revoked", min_length=1, max_length=300)
+
+
+@router.post("/agents/{agent_id}/consumer-grants", status_code=201)
+async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreate,
+                                request: Request, user: dict[str,Any] = Depends(current_user)):
+    owner_id = str(user["id"])
+    requester_id = str(payload.requester_user_id)
+    if requester_id == owner_id:
+        raise HTTPException(422, detail={"code":"CONSUMER_GRANT_SELF_NOT_ALLOWED","message":"Grant Consumer harus diberikan kepada pengguna lain."})
+    if payload.expires_at is not None:
+        if payload.expires_at.tzinfo is None or payload.expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(422, detail={"code":"CONSUMER_GRANT_EXPIRY_INVALID","message":"Waktu kedaluwarsa harus memiliki zona waktu dan berada di masa depan."})
+    ownership = await _db("GET","agent_ownerships",params={
+        "select":"agent_id,owner_user_id,ownership_role,status","agent_id":f"eq.{agent_id}",
+        "owner_user_id":f"eq.{owner_id}","ownership_role":"eq.owner","status":"eq.active","limit":"1"})
+    if not ownership:
+        raise HTTPException(403, detail={"code":"AGENT_OWNER_REQUIRED","message":"Hanya pemilik Agent yang dapat memberikan grant."})
+    agents = await _db("GET","ai_agents",params={"select":"id,version,status,visibility","id":f"eq.{agent_id}","limit":"1"})
+    if not agents or agents[0].get("status") != "active" or agents[0].get("visibility") != "public":
+        raise HTTPException(409, detail={"code":"PUBLIC_AGENT_NOT_READY","message":"Grant hanya tersedia untuk Agent publik yang aktif."})
+    skills = await _db("GET","agent_skills",params={
+        "select":"id,agent_id,version,status","id":f"eq.{payload.skill_id}",
+        "agent_id":f"eq.{agent_id}","status":"eq.published","limit":"1"})
+    if not skills:
+        raise HTTPException(409, detail={"code":"PUBLISHED_SKILL_REQUIRED","message":"Pilih Skill terpublikasi yang dimiliki Agent ini."})
+    text_router = getattr(request.app.state,"text_generation_router",None)
+    if text_router is None:
+        raise HTTPException(503, detail={"code":"AGENT_RUNTIME_NOT_READY","message":"Model Router belum tersedia."})
+    try:
+        text_router.require_runtime_ready("public")
+        policy_version = text_router.policy_version_for("public")
+        store = AgentConsumerGrantStore.from_environment()
+        grant = await store.create(
+            requester_id=requester_id, owner_id=owner_id, agent_id=str(agent_id),
+            agent_version=int(agents[0]["version"]), skill_id=str(skills[0]["id"]),
+            skill_version=int(skills[0]["version"]), runtime_policy_version=policy_version,
+            idempotency_key=payload.idempotency_key,
+            expires_at=payload.expires_at.astimezone(timezone.utc).isoformat() if payload.expires_at else None,
+        )
+    except (TextGenerationRouterUnavailable, ConsumerGrantUnavailable, ValueError) as exc:
+        raise HTTPException(503, detail={"code":"CONSUMER_GRANT_UNAVAILABLE","message":"Grant tidak dapat disimpan atau policy runtime belum siap."}) from exc
+    return {"grant":grant}
+
+
+@router.post("/agents/{agent_id}/consumer-grants/{grant_id}/revoke")
+async def revoke_consumer_grant(agent_id: uuid.UUID, grant_id: uuid.UUID,
+                                payload: ConsumerGrantRevoke, user: dict[str,Any] = Depends(current_user)):
+    owner_id = str(user["id"])
+    ownership = await _db("GET","agent_ownerships",params={
+        "select":"agent_id,owner_user_id","agent_id":f"eq.{agent_id}",
+        "owner_user_id":f"eq.{owner_id}","ownership_role":"eq.owner","status":"eq.active","limit":"1"})
+    if not ownership:
+        raise HTTPException(403, detail={"code":"AGENT_OWNER_REQUIRED","message":"Hanya pemilik Agent yang dapat mencabut grant."})
+    try:
+        grant = await AgentConsumerGrantStore.from_environment().revoke(
+            grant_id=str(grant_id), owner_id=owner_id, agent_id=str(agent_id), reason=payload.reason)
+    except LookupError as exc:
+        raise HTTPException(404, detail={"code":"CONSUMER_GRANT_NOT_FOUND","message":"Grant tidak ditemukan."}) from exc
+    except ConsumerGrantUnavailable as exc:
+        raise HTTPException(503, detail={"code":"CONSUMER_GRANT_REVOKE_UNCONFIRMED","message":"Pencabutan grant belum dapat dikonfirmasi."}) from exc
+    return {"grant":grant}
+
 
 @router.get("/conversations")
 async def list_conversations(request: Request, user: dict[str,Any] = Depends(current_user), limit: int = Query(30,ge=1,le=100)):
@@ -174,59 +250,125 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
     if conv and conv[0].get("kind") == "agent":
         participants = await _db("GET","conversation_participants",params={"select":"agent_id","conversation_id":f"eq.{conversation_id}","participant_type":"eq.agent","limit":"1"})
         agent_id = str(participants[0]["agent_id"]) if participants else ""
+        reservation = None
+        budget = None
         try:
-            runtime_store = AgentRuntimeStore.from_environment()
-            if not agent_id or not await runtime_store.owner_has_agent(uid,agent_id):
-                agent_reply = {"status":"unavailable","error_code":"PUBLIC_AGENT_RUNTIME_AUTHORIZATION_REQUIRED"}
+            if not agent_id:
+                raise AgentRuntimeBlocked("conversation Agent identity is missing")
+            agents = await _db("GET","ai_agents",params={
+                "select":"id,version,status,visibility,persona,boundaries",
+                "id":f"eq.{agent_id}","limit":"1"})
+            owners = await _db("GET","agent_ownerships",params={
+                "select":"owner_user_id,ownership_role,status","agent_id":f"eq.{agent_id}",
+                "ownership_role":"eq.owner","status":"eq.active","limit":"1"})
+            skills = await _db("GET","agent_skills",params={
+                "select":"id,version,status,name,instructions","agent_id":f"eq.{agent_id}",
+                "status":"eq.published","order":"updated_at.desc","limit":"1"})
+            text_router = getattr(request.app.state,"text_generation_router",None)
+            if not agents or not owners or not skills or text_router is None:
+                raise AgentRuntimeBlocked("Agent owner, published Skill or Model Router is unavailable")
+            agent, owner, skill = agents[0], owners[0], skills[0]
+            owner_id = str(owner["owner_user_id"])
+            if agent.get("status") != "active":
+                raise AgentRuntimeBlocked("Agent is not active")
+            is_owner = uid == owner_id
+            if not is_owner and agent.get("visibility") != "public":
+                raise AgentRuntimeBlocked("private Agents cannot serve Consumers")
+            sensitivity = "private" if is_owner else "public"
+            text_router.require_runtime_ready(sensitivity)
+            policy_version = text_router.policy_version_for(sensitivity)
+            consumer_authorization = None
+            if not is_owner:
+                grant_store = AgentConsumerGrantStore.from_environment()
+                grant = await grant_store.resolve(
+                    requester_id=uid, owner_id=owner_id, agent_id=agent_id,
+                    agent_version=int(agent["version"]), skill_id=str(skill["id"]),
+                    skill_version=int(skill["version"]), runtime_policy_version=policy_version,
+                )
+                if not grant:
+                    raise AgentRuntimeBlocked("a current owner-approved Consumer grant is required")
+                route_snapshot = text_router.route_snapshot_for("public")
+                budget = await ConsumerBudgetReservation.from_environment(
+                    expected_cost_unit=str(route_snapshot["cost_unit"]),
+                    expected_pricing_version=str(route_snapshot["pricing_version"]),
+                    expected_max_cost_microunits=int(route_snapshot["max_cost_microunits"]),
+                )
+                reservation = await budget.reserve(owner_id=owner_id, message_id=str(created[0]["id"]))
+                consumer_authorization = AgentConsumerAuthorization(
+                    requester_id=uid, owner_id=owner_id, agent_id=agent_id,
+                    agent_version=int(agent["version"]), skill_id=str(skill["id"]),
+                    skill_version=int(skill["version"]), agent_public=True, agent_active=True,
+                    skill_published=True, grant_active=True, policy_approved=True,
+                    policy_version=policy_version, granted_scopes=tuple(grant.get("granted_scopes") or ()),
+                    allowed_memory_scope=(), budget_reserved=True, metering_ready=True,
+                )
+            prompt = (
+                "Anda adalah AI Agent Allpha. Identitas peminta dan pemilik Agent berbeda jika permintaan berasal dari Consumer. "
+                "Ikuti persona, instruksi Skill, dan batas akses; jangan mengakses memory privat pemilik untuk Consumer. "
+                "Jangan mengklaim tindakan yang belum dilakukan. Balas dalam Bahasa Indonesia secara ringkas.\nPERSONA: "
+                + str(agent.get("persona") or {})[:3000]
+                + "\nBOUNDARIES: " + str(agent.get("boundaries") or {})[:1500]
+                + "\nSKILL: " + str(skill.get("name") or "")[:200]
+                + "\nINSTRUKSI SKILL: " + str(skill.get("instructions") or "")[:2500]
+                + "\nPESAN PENGGUNA: " + body
+            )
+            task_id, trace_id = str(uuid.uuid4()), str(uuid.uuid4())
+            generation = TextGenerationRequest(
+                task_id=task_id, trace_id=trace_id,
+                idempotency_key="message-agent-reply:"+str(created[0]["id"]),
+                sensitivity=sensitivity, prompt=prompt, max_output_tokens=512, timeout_ms=30000,
+                owner_id=owner_id, agent_id=agent_id, source_id=str(skill["id"]),
+                source_version=int(skill["version"]),
+            )
+            generated, evidence = await AgentRuntime().execute_skill_generation(
+                requester_id=uid, owner_id=owner_id, agent_id=agent_id,
+                agent_version=int(agent["version"]), skill_id=str(skill["id"]),
+                skill_version=int(skill["version"]), skill_published=True,
+                policy_version=policy_version, router=text_router, request=generation,
+                consumer_authorization=consumer_authorization,
+            )
+            if reservation is not None and budget is not None:
+                await budget.settle(
+                    reservation=reservation, message_id=str(created[0]["id"]),
+                    usage_units=evidence.input_tokens + evidence.output_tokens,
+                    cost_microunits=evidence.cost_microunits,
+                    cost_unit=evidence.cost_unit, pricing_version=evidence.pricing_version,
+                )
+            reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL,"allpha-agent-reply:"+str(created[0]["id"])))
+            reply_row = {"conversation_id":str(conversation_id),"sender_type":"agent","sender_agent_id":agent_id,
+                         "body":generated.output_text[:10000],"client_message_id":reply_id,"delivery_status":"sent"}
+            try:
+                reply_created = await _db("POST","messages",body=reply_row,prefer="return=representation")
+            except HTTPException as exc:
+                if exc.status_code != 409:
+                    raise
+                reply_created = await _db("GET","messages",params={
+                    "select":"id,conversation_id,sender_type,sender_agent_id,body,client_message_id,created_at,delivery_status",
+                    "conversation_id":f"eq.{conversation_id}","sender_agent_id":f"eq.{agent_id}",
+                    "client_message_id":f"eq.{reply_id}","limit":"1"})
+            if reply_created:
+                agent_reply = {"status":"sent","message":reply_created[0],"trace_id":evidence.trace_id}
+                await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},
+                          body={"updated_at":_now(),"last_message_at":reply_created[0]["created_at"]},
+                          prefer="return=minimal")
             else:
-                agents = await _db("GET","ai_agents",params={"select":"id,version,status,persona,boundaries","id":f"eq.{agent_id}","limit":"1"})
-                skills = await _db("GET","agent_skills",params={"select":"id,version,status,name,instructions","agent_id":f"eq.{agent_id}","status":"eq.published","order":"updated_at.desc","limit":"1"})
-                text_router = getattr(request.app.state,"text_generation_router",None)
-                if not agents or agents[0].get("status")!="active" or not skills or text_router is None:
-                    agent_reply = {"status":"unavailable","error_code":"AGENT_RUNTIME_NOT_READY"}
-                else:
-                    agent, skill = agents[0], skills[0]
-                    text_router.require_runtime_ready("private")
-                    policy_version = text_router.policy_version_for("private")
-                    prompt = (
-                        "Anda adalah AI Agent Allpha milik pengguna yang sedang menguji Agent-nya sendiri. "
-                        "Ikuti persona dan instruksi Skill, jangan melampaui boundaries, dan jangan mengklaim tindakan yang belum dilakukan. "
-                        "Balas dalam Bahasa Indonesia secara ringkas.\nPERSONA: " + str(agent.get("persona") or {})[:3000] +
-                        "\nBOUNDARIES: " + str(agent.get("boundaries") or {})[:1500] +
-                        "\nSKILL: " + str(skill.get("name") or "")[:200] +
-                        "\nINSTRUKSI SKILL: " + str(skill.get("instructions") or "")[:2500] +
-                        "\nPESAN PENGGUNA: " + body
-                    )
-                    task_id, trace_id = str(uuid.uuid4()), str(uuid.uuid4())
-                    generation = TextGenerationRequest(
-                        task_id=task_id, trace_id=trace_id,
-                        idempotency_key="message-agent-reply:"+str(created[0]["id"]),
-                        sensitivity="private", prompt=prompt, max_output_tokens=512, timeout_ms=30000,
-                        owner_id=uid, agent_id=agent_id, source_id=str(skill["id"]), source_version=int(skill["version"]),
-                    )
-                    generated, evidence = await AgentRuntime().execute_skill_generation(
-                        requester_id=uid, owner_id=uid, agent_id=agent_id, agent_version=int(agent["version"]),
-                        skill_id=str(skill["id"]), skill_version=int(skill["version"]), skill_published=True,
-                        policy_version=policy_version, router=text_router, request=generation,
-                    )
-                    reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL,"allpha-agent-reply:"+str(created[0]["id"])))
-                    reply_row = {"conversation_id":str(conversation_id),"sender_type":"agent","sender_agent_id":agent_id,
-                                 "body":generated.output_text[:10000],"client_message_id":reply_id,"delivery_status":"sent"}
-                    try:
-                        reply_created = await _db("POST","messages",body=reply_row,prefer="return=representation")
-                    except HTTPException as exc:
-                        if exc.status_code != 409: raise
-                        reply_created = await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_agent_id,body,client_message_id,created_at,delivery_status","conversation_id":f"eq.{conversation_id}","sender_agent_id":f"eq.{agent_id}","client_message_id":f"eq.{reply_id}","limit":"1"})
-                    if reply_created:
-                        agent_reply = {"status":"sent","message":reply_created[0],"trace_id":evidence.trace_id}
-                        await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},body={"updated_at":_now(),"last_message_at":reply_created[0]["created_at"]},prefer="return=minimal")
-                    else:
-                        agent_reply = {"status":"failed","error_code":"AGENT_REPLY_PERSISTENCE_FAILED","trace_id":evidence.trace_id}
-        except (AgentRuntimeBlocked, TextGenerationRouterUnavailable, AgentRuntimePersistenceError, ValueError):
-            agent_reply = {"status":"unavailable","error_code":"AGENT_RUNTIME_BLOCKED"}
+                agent_reply = {"status":"failed","error_code":"AGENT_REPLY_PERSISTENCE_FAILED","trace_id":evidence.trace_id}
+        except (AgentRuntimeBlocked, TextGenerationRouterUnavailable, AgentRuntimePersistenceError,
+                ConsumerGrantUnavailable, ValueError) as exc:
+            if reservation is not None and budget is not None:
+                try:
+                    await budget.mark_unknown(reservation=reservation, reason_code="consumer_generation_outcome_unknown")
+                except Exception:
+                    pass
+            code = "PUBLIC_AGENT_CONSUMER_GRANT_REQUIRED" if "grant" in str(exc).lower() else "AGENT_RUNTIME_BLOCKED"
+            agent_reply = {"status":"unavailable","error_code":code}
         except Exception:
-            # Provider/network/runtime failures must not erase the persisted user message.
-            # A retry with the same client_message_id re-enters this recovery path.
+            if reservation is not None and budget is not None:
+                try:
+                    await budget.mark_unknown(reservation=reservation, reason_code="consumer_generation_outcome_unknown")
+                except Exception:
+                    pass
+            # Never repeat a potentially billable provider call when its durable outcome is unknown.
             agent_reply = {"status":"failed","error_code":"AGENT_REPLY_RETRYABLE_FAILURE"}
     return {"message":created[0],"replayed":replayed,"agent_reply":agent_reply}
 
