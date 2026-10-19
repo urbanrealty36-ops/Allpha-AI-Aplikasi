@@ -302,7 +302,7 @@ function Profile({ session }: { session: Session }) {
     if (!contentBody.trim() && !contentFile) { setError("Isi teks atau pilih media terlebih dahulu."); return; }
     setContentBusy(true); setError(""); setMessage("");
     try {
-      const contentType = contentFile ? (contentFile.mimeType?.startsWith("video/") ? "video" : "image") : "text";
+      const contentType = contentFile ? (contentFile.mimeType?.startsWith("video/") ? "video" : contentFile.mimeType?.startsWith("audio/") ? "audio" : "image") : "text";
       const created = await apiRequest("/v1/content", { method: "POST", body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility, content_type: contentType }) }) as { item: NativeContentItem };
       setContentItems(current => [created.item, ...current.filter(item => item.id !== created.item.id)]);
       if (contentFile) {
