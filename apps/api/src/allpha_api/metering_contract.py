@@ -40,6 +40,7 @@ class MeteringRecord:
     cost_unit: str
     pricing_version: str
     completed_at: str
+    billing_account_id: str | None = None
 
     def __post_init__(self) -> None:
         required = (
@@ -60,6 +61,7 @@ class MeteringRecord:
             "task_id": self.task_id,
             "trace_id": self.trace_id,
             "owner_id": self.owner_id,
+            "billing_account_id": self.billing_account_id or self.owner_id,
             "agent_id": self.agent_id,
             "source_id": self.source_id,
             "source_version": self.source_version,
@@ -115,6 +117,7 @@ def build_metering_record(request: EmbeddingRequest, response: EmbeddingResponse
             cost_unit=response.cost_unit,
             pricing_version=response.pricing_version,
             completed_at=response.completed_at.astimezone(timezone.utc).isoformat(),
+            billing_account_id=request.owner_id,
         )
     except (AttributeError, TypeError, ValueError) as exc:
         raise MeteringContractError("actual metering attribution is malformed") from exc
