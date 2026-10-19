@@ -144,6 +144,8 @@ function Profile({ session }: { session: Session }) {
   const [messageDraft, setMessageDraft] = useState("");
   const [messageBusy, setMessageBusy] = useState(false);
   const [messageError, setMessageError] = useState("");
+  const [pendingNativeMessageId, setPendingNativeMessageId] = useState<string | null>(null);
+  const [messageRealtimeStatus, setMessageRealtimeStatus] = useState("connecting");
   const [discoveryItems, setDiscoveryItems] = useState<{id:string;body:string;content_type:string;created_at:string;published_at?:string|null}[]>([]);
   const [discoveryTrends, setDiscoveryTrends] = useState<{topic:string;content_count:number;example_content_id:string}[]>([]);
   const [discoveryTrendsBusy, setDiscoveryTrendsBusy] = useState(false);
@@ -224,6 +226,29 @@ function Profile({ session }: { session: Session }) {
     if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
     return body;
   }
+
+  useEffect(() => {
+    if (!activeConversation || tab !== "messages" || !supabase) return;
+    let stopped = false;
+    let channel: any = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const connect = () => {
+      if (stopped || !supabase) return;
+      channel = supabase.channel("native-messages:" + activeConversation.id + ":" + createMessageId())
+        .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: "conversation_id=eq." + activeConversation.id }, () => { void openMessageConversation(activeConversation); })
+        .subscribe((status: string) => {
+          if (stopped) return;
+          setMessageRealtimeStatus(status.toLowerCase());
+          if (status === "SUBSCRIBED") void openMessageConversation(activeConversation);
+          else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            if (retryTimer) clearTimeout(retryTimer);
+            retryTimer = setTimeout(() => { if (channel && supabase) void supabase.removeChannel(channel); connect(); }, 2500);
+          }
+        });
+    };
+    connect();
+    return () => { stopped = true; if (retryTimer) clearTimeout(retryTimer); if (channel && supabase) void supabase.removeChannel(channel); };
+  }, [activeConversation?.id, tab, session]);
   async function loadMessageConversations() {
     setMessageBusy(true); setMessageError("");
     try { const result = await apiRequest("/v1/messages/conversations") as { items?: NativeConversation[] }; setMessageConversations(result.items ?? []); }
@@ -242,8 +267,8 @@ function Profile({ session }: { session: Session }) {
     finally { setMessageBusy(false); }
   }
   async function sendNativeMessage() {
-    if (!activeConversation || !messageDraft.trim()) return; setMessageBusy(true); setMessageError("");
-    try { const result = await apiRequest("/v1/messages/conversations/" + encodeURIComponent(activeConversation.id) + "/messages", { method: "POST", body: JSON.stringify({ body: messageDraft.trim(), client_message_id: createMessageId() }) }) as { message?: NativeMessage }; if (result.message) setConversationMessages(old => [...old.filter(item => item.id !== result.message!.id), result.message!]); setMessageDraft(""); await loadMessageConversations(); }
+    if (!activeConversation || !messageDraft.trim()) return; setMessageBusy(true); setMessageError(""); const clientMessageId = pendingNativeMessageId || createMessageId(); setPendingNativeMessageId(clientMessageId);
+    try { const result = await apiRequest("/v1/messages/conversations/" + encodeURIComponent(activeConversation.id) + "/messages", { method: "POST", body: JSON.stringify({ body: messageDraft.trim(), client_message_id: clientMessageId }) }) as { message?: NativeMessage; agent_reply?: { status: string; message?: NativeMessage; error_code?: string } }; if (result.message) setConversationMessages(old => [...old.filter(item => item.id !== result.message!.id), result.message!]); if (result.agent_reply?.message) setConversationMessages(old => [...old.filter(item => item.id !== result.agent_reply!.message!.id), result.agent_reply!.message!]); if (result.agent_reply?.status === "unavailable") setMessageError("Pesan tersimpan, tetapi balasan Agent belum tersedia (" + result.agent_reply.error_code + ")."); setMessageDraft(""); setPendingNativeMessageId(null); await loadMessageConversations(); }
     catch (cause) { setMessageError(cause instanceof Error ? cause.message : "Pesan gagal dikirim."); }
     finally { setMessageBusy(false); }
   }
@@ -909,7 +934,7 @@ function Profile({ session }: { session: Session }) {
         {discoveryRecommendationsBusy ? <ActivityIndicator accessibilityLabel="Memuat rekomendasi" color="#A5B4FC"/> : discoveryRecommendationsError ? <View accessibilityRole="alert" style={s.socialRow}><Text style={s.error}>{discoveryRecommendationsError}</Text><Button title="Coba lagi" secondary onPress={() => void loadDiscoveryRecommendations()}/></View> : discoveryRecommendations.length ? discoveryRecommendations.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || "Konten"}</Text><Text style={s.muted}>{item.content_type} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text></View>) : <Text style={s.muted}>Belum ada rekomendasi yang dapat ditampilkan.</Text>}
       </>  : tab === "messages" ? <>
         <Text style={s.kicker}>ENG-P18 · MESSAGING & DELIVERY</Text><Text style={s.title}>Pesan Human / Agent</Text>
-        <Text style={s.muted}>Percakapan privat melalui API kanonis dengan status delivery/read.</Text>
+        <Text style={s.muted}>Percakapan privat melalui API kanonis dengan status delivery/read dan realtime: {messageRealtimeStatus}.</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><TextInput accessibilityLabel="UUID pengguna penerima" value={messageRecipient} onChangeText={setMessageRecipient} autoCapitalize="none" style={[field,{flex:1}]} placeholder="UUID penerima manusia" placeholderTextColor="#8B94AC"/><Button title="Baru" disabled={messageBusy || !messageRecipient.trim()} onPress={() => void startMessageConversation()}/></View>
         <Button title={messageBusy?"Memuat…":"Muat ulang percakapan"} secondary disabled={messageBusy} onPress={() => void loadMessageConversations()}/>
         {!!messageError && <Text accessibilityRole="alert" style={s.error}>{messageError}</Text>}

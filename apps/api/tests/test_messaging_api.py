@@ -33,3 +33,43 @@ def test_send_message_rejects_non_member(monkeypatch):
         assert response.status_code==404
     finally:
         app.dependency_overrides.clear()
+
+def test_send_message_checks_block_after_membership(monkeypatch):
+    import uuid
+    async def member(conversation_id,user_id): return {"conversation_id":str(conversation_id),"user_id":user_id}
+    async def blocked(conversation_id,user_id):
+        from fastapi import HTTPException
+        raise HTTPException(403,detail={"code":"MESSAGING_BLOCKED","message":"blocked"})
+    monkeypatch.setattr(messaging_api,"_membership",member)
+    monkeypatch.setattr(messaging_api,"_assert_not_blocked",blocked)
+    app.dependency_overrides[current_user]=_user
+    try:
+        response=TestClient(app).post(f"/v1/messages/conversations/{uuid.uuid4()}/messages",json={"body":"hello","client_message_id":str(uuid.uuid4())})
+        assert response.status_code==403
+    finally:
+        app.dependency_overrides.clear()
+
+def test_send_message_returns_existing_idempotent_message(monkeypatch):
+    import uuid
+    conversation_id = uuid.uuid4()
+    client_message_id = uuid.uuid4()
+    calls = []
+    async def member(conversation_id, user_id): return {"conversation_id":str(conversation_id),"user_id":user_id}
+    async def unblocked(conversation_id, user_id): return None
+    async def db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method,table,params))
+        if method == "GET" and table == "messages":
+            return [{"id":"existing-message","conversation_id":str(conversation_id),"body":"hello","client_message_id":str(client_message_id),"delivery_status":"sent"}]
+        raise AssertionError("idempotent replay must not write a second message")
+    monkeypatch.setattr(messaging_api,"_membership",member)
+    monkeypatch.setattr(messaging_api,"_assert_not_blocked",unblocked)
+    monkeypatch.setattr(messaging_api,"_db",db)
+    app.dependency_overrides[current_user]=_user
+    try:
+        response=TestClient(app).post(f"/v1/messages/conversations/{conversation_id}/messages",json={"body":"hello","client_message_id":str(client_message_id)})
+        assert response.status_code==200 or response.status_code==201
+        assert response.json()["replayed"] is True
+        assert response.json()["message"]["id"] == "existing-message"
+        assert not any(call[0] == "POST" for call in calls)
+    finally:
+        app.dependency_overrides.clear()
