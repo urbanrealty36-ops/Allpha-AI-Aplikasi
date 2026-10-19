@@ -95,3 +95,86 @@ def test_mission_progress_uses_atomic_idempotent_rpc(monkeypatch):
         assert response.json()["reward_status"] == "not_configured"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_grant_requires_active_agent_and_explicit_resource_approval(monkeypatch):
+    agent_id, community_id, grant_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    calls = []
+    async def db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if table == "ai_agents" and method == "GET":
+            return [{"id": str(agent_id), "status": "active"}]
+        if table == "agent_ownerships" and method == "GET":
+            return [{"agent_id": str(agent_id), "owner_user_id": "community-test-user"}]
+        if table == "communities" and method == "GET":
+            return [{"id": str(community_id), "status": "active", "visibility": "public"}]
+        if table == "community_memberships" and method == "GET":
+            return [{"community_id": str(community_id), "user_id": "community-test-user", "role": "owner", "status": "active"}]
+        if table == "agent_resource_grants" and method == "POST":
+            return [{"id": str(grant_id), **body}]
+        if table == "agent_resource_grant_audit" and method == "POST":
+            return None
+        raise AssertionError((method, table, params, body))
+    monkeypatch.setattr(community_api, "_db", db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).post(
+            f"/v1/agents/{agent_id}/resource-grants",
+            json={"resource_type":"community","resource_id":str(community_id),"scopes":["read_published_content","comment"]},
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["participation_enabled"] is False
+        assert response.json()["grant"]["scopes"] == ["comment", "read_published_content"]
+        assert any(call[1] == "agent_resource_grant_audit" for call in calls)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_agent_grant_fails_closed_without_resource_approver(monkeypatch):
+    agent_id, community_id = uuid.uuid4(), uuid.uuid4()
+    async def db(method, table, *, params=None, body=None, prefer=None):
+        if table == "ai_agents":
+            return [{"id": str(agent_id), "status": "active"}]
+        if table == "agent_ownerships":
+            return [{"agent_id": str(agent_id), "owner_user_id": "community-test-user"}]
+        if table == "communities":
+            return [{"id": str(community_id), "status": "active", "visibility": "public"}]
+        if table == "community_memberships":
+            return []
+        raise AssertionError((method, table))
+    monkeypatch.setattr(community_api, "_db", db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).post(
+            f"/v1/agents/{agent_id}/resource-grants",
+            json={"resource_type":"community","resource_id":str(community_id),"scopes":["read_published_content"]},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "RESOURCE_GRANT_APPROVER_REQUIRED"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_agent_grant_rejects_scope_not_allowed_for_resource(monkeypatch):
+    agent_id, workspace_id = uuid.uuid4(), uuid.uuid4()
+    async def db(method, table, *, params=None, body=None, prefer=None):
+        if table == "ai_agents":
+            return [{"id": str(agent_id), "status": "active"}]
+        if table == "agent_ownerships":
+            return [{"agent_id": str(agent_id), "owner_user_id": "community-test-user"}]
+        if table == "workspaces":
+            return [{"id": str(workspace_id), "status": "active"}]
+        if table == "workspace_memberships":
+            return [{"workspace_id": str(workspace_id), "user_id": "community-test-user", "role": "owner", "status": "active"}]
+        raise AssertionError((method, table))
+    monkeypatch.setattr(community_api, "_db", db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).post(
+            f"/v1/agents/{agent_id}/resource-grants",
+            json={"resource_type":"workspace","resource_id":str(workspace_id),"scopes":["create_agent_post"]},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "AGENT_GRANT_SCOPE_NOT_ALLOWED"
+    finally:
+        app.dependency_overrides.clear()
