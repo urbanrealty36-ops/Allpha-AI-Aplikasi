@@ -330,11 +330,10 @@ async def create_workspace(payload: WorkspaceCreate, user: dict[str, Any] = Depe
         raise HTTPException(422, detail={"code": "COMMUNITY_REQUIRED", "message": "Workspace komunitas harus terikat pada komunitas."})
     if payload.community_id:
         await _require_member(payload.community_id, user_id)
-    rows = await _db("POST", "workspaces", body={"title": payload.title.strip(), "description": payload.description.strip(), "created_by": user_id, "community_id": str(payload.community_id) if payload.community_id else None, "visibility": payload.visibility}, prefer="return=representation")
-    workspace = rows[0]
-    await _db("POST", "workspace_memberships", body={"workspace_id": workspace["id"], "user_id": user_id, "role": "owner", "status": "active"}, prefer="return=minimal")
-    return {"workspace": workspace}
-
+    rows = await _db("POST", "rpc/create_workspace_with_owner", body={"p_title": payload.title.strip(), "p_description": payload.description.strip(), "p_created_by": user_id, "p_community_id": str(payload.community_id) if payload.community_id else None, "p_visibility": payload.visibility}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "WORKSPACE_CREATE_FAILED", "message": "Workspace tidak dapat dibuat."})
+    return {"workspace": rows[0]}
 
 @router.get("/workspaces/{workspace_id}")
 async def get_workspace(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
@@ -347,7 +346,7 @@ async def add_workspace_member(workspace_id: uuid.UUID, member_id: uuid.UUID, ro
     access = await _require_workspace(workspace_id, str(user["id"]), write=True)
     if access["membership"]["role"] != "owner":
         raise HTTPException(403, detail={"code": "WORKSPACE_OWNER_REQUIRED", "message": "Hanya pemilik workspace yang dapat menambahkan anggota."})
-    rows = await _db("POST", "workspace_memberships", body={"workspace_id": str(workspace_id), "user_id": str(member_id), "role": role, "status": "active"}, prefer="return=representation")
+    rows = await _db("POST", "workspace_memberships", params={"on_conflict": "workspace_id,user_id"}, body={"workspace_id": str(workspace_id), "user_id": str(member_id), "role": role, "status": "active"}, prefer="resolution=merge-duplicates,return=representation")
     return {"membership": rows[0]}
 
 
