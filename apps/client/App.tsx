@@ -157,6 +157,7 @@ function Profile({ session }: { session: Session }) {
   const [communityDraftName, setCommunityDraftName] = useState("");
   const [communityDraftSlug, setCommunityDraftSlug] = useState("");
   const [communityPostDraft, setCommunityPostDraft] = useState("");
+  const [communityPostType, setCommunityPostType] = useState<"discussion"|"resource">("discussion");
   const [workspaceDraftName, setWorkspaceDraftName] = useState("");
   const [activeWorkspace, setActiveWorkspace] = useState<{id:string;title:string;membership_role?:string}|null>(null);
   const [workspaceDocs, setWorkspaceDocs] = useState<{id:string;title:string;body?:string;version:number}[]>([]);
@@ -966,8 +967,24 @@ function Profile({ session }: { session: Session }) {
   async function publishCommunityPost() {
     if(!activeCommunity || !communityPostDraft.trim()) return;
     setBusy(true); setError("");
-    try { await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/posts",{method:"POST",body:JSON.stringify({body:communityPostDraft.trim(),post_type:"discussion"})}); setCommunityPostDraft(""); await openNativeCommunity(activeCommunity); setMessage("Diskusi diterbitkan."); }
+    try { await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/posts",{method:"POST",body:JSON.stringify({body:communityPostDraft.trim(),post_type:communityPostType})}); setCommunityPostDraft(""); await openNativeCommunity(activeCommunity); setMessage(communityPostType==="resource"?"Sumber daya diterbitkan.":"Diskusi diterbitkan."); }
     catch(e) { setError(e instanceof Error ? e.message : "Diskusi gagal diterbitkan."); } finally { setBusy(false); }
+  }
+  async function toggleNativePostPin(post:{id:string;is_pinned?:boolean}) {
+    if (!activeCommunity) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/posts/" + encodeURIComponent(post.id) + "/pin", {method:"PATCH",body:JSON.stringify({pinned:!post.is_pinned})});
+      await openNativeCommunity(activeCommunity); setMessage(post.is_pinned ? "Pin sumber daya dilepas." : "Sumber daya disematkan.");
+    } catch(e) { setError(e instanceof Error ? e.message + " — muat ulang dan coba lagi." : "Pin sumber daya gagal diperbarui."); }
+    finally { setBusy(false); }
+  }
+  async function moderateNativePost(postId:string) {
+    if (!activeCommunity) return;
+    Alert.alert("Moderasi konten","Sembunyikan konten ini dari komunitas?",[
+      {text:"Batal",style:"cancel"},
+      {text:"Sembunyikan",style:"destructive",onPress:()=>{void (async()=>{setBusy(true);setError("");try{await apiRequest("/v1/communities/"+encodeURIComponent(activeCommunity.id)+"/posts/"+encodeURIComponent(postId)+"/moderation",{method:"PATCH",body:JSON.stringify({status:"hidden",reason:"Konten disembunyikan oleh moderator komunitas."})});await openNativeCommunity(activeCommunity);setMessage("Konten disembunyikan.");}catch(e){setError(e instanceof Error?e.message:"Moderasi gagal. Muat ulang lalu coba lagi.");}finally{setBusy(false);}})();}}
+    ]);
   }
   async function createNativeMission() {
     if (!activeCommunity || !missionDraftTitle.trim()) return;
@@ -1049,7 +1066,7 @@ function Profile({ session }: { session: Session }) {
         <Button title="Buat komunitas" disabled={busy||communityDraftName.trim().length<2||communityDraftSlug.trim().length<3} onPress={()=>void createNativeCommunity()}/>
         <Text style={s.kicker}>KOMUNITAS</Text>
         {communityItems.length===0?<Text style={s.muted}>Belum ada komunitas yang dapat diakses.</Text>:communityItems.map(item=><View key={item.id} style={s.socialRow}><Button title={(activeCommunity?.id===item.id?"✓ ":"")+item.name+" · "+(item.membership_role||"publik")} secondary={activeCommunity?.id!==item.id} onPress={()=>void openNativeCommunity(item)}/>{!item.membership_role&&item.visibility==="public"&&<Button title="Gabung" secondary disabled={busy} onPress={()=>void joinNativeCommunity(item)}/>}</View>)}
-        {activeCommunity&&<View style={s.socialRow}><Text style={s.title}>{activeCommunity.name}</Text>{communityPosts.map(post=><View key={post.id} style={s.socialRow}><Text style={s.body}>{post.body}</Text><Text style={s.muted}>{post.post_type} · {new Date(post.created_at).toLocaleString("id-ID")}</Text></View>)}{!!activeCommunity.membership_role&&<><TextInput accessibilityLabel="Tulis diskusi komunitas" value={communityPostDraft} onChangeText={setCommunityPostDraft} multiline maxLength={5000} style={[field,{minHeight:80}]} placeholder="Bagikan ide atau sumber daya…" placeholderTextColor="#8B94AC"/><Button title="Terbitkan diskusi" disabled={busy||!communityPostDraft.trim()} onPress={()=>void publishCommunityPost()}/></>}</View>}
+        {activeCommunity&&<View style={s.socialRow}><Text style={s.title}>{activeCommunity.name}</Text>{communityPosts.map(post=><View key={post.id} style={s.socialRow}>{!!post.is_pinned&&<Text style={s.kicker}>SUMBER DAYA DISEMATKAN</Text>}<Text style={s.body}>{post.body}</Text><Text style={s.muted}>{post.post_type} · {new Date(post.created_at).toLocaleString("id-ID")}</Text>{(activeCommunity.membership_role==="owner"||activeCommunity.membership_role==="moderator")&&<View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>{post.post_type==="resource"&&<Button title={post.is_pinned?"Lepas pin":"Sematkan sumber daya"} secondary onPress={()=>void toggleNativePostPin(post)}/>}<Button title="Sembunyikan" secondary onPress={()=>moderateNativePost(post.id)}/></View>}</View>)}{!!activeCommunity.membership_role&&<><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}><Button title={communityPostType==="discussion"?"✓ Diskusi":"Diskusi"} secondary={communityPostType!=="discussion"} onPress={()=>setCommunityPostType("discussion")}/><Button title={communityPostType==="resource"?"✓ Sumber daya":"Sumber daya"} secondary={communityPostType!=="resource"} onPress={()=>setCommunityPostType("resource")}/></View><TextInput accessibilityLabel="Tulis diskusi atau sumber daya komunitas" value={communityPostDraft} onChangeText={setCommunityPostDraft} multiline maxLength={5000} style={[field,{minHeight:80}]} placeholder="Bagikan ide atau sumber daya…" placeholderTextColor="#8B94AC"/><Button title={communityPostType==="resource"?"Terbitkan sumber daya":"Terbitkan diskusi"} disabled={busy||!communityPostDraft.trim()} onPress={()=>void publishCommunityPost()}/></>}</View>}
         <Text style={s.kicker}>WORKSPACE PRIVAT</Text><View style={{flexDirection:"row",gap:8}}><TextInput accessibilityLabel="Nama workspace" value={workspaceDraftName} onChangeText={setWorkspaceDraftName} style={[field,{flex:1}]} placeholder="Nama workspace" placeholderTextColor="#8B94AC"/><Button title="Buat" disabled={busy||workspaceDraftName.trim().length<2} onPress={()=>void createNativeWorkspace()}/></View>
         {workspaceItems.map(item=><Button key={item.id} title={(activeWorkspace?.id===item.id?"✓ ":"")+item.title+" · "+(item.membership_role||"anggota")} secondary={activeWorkspace?.id!==item.id} onPress={()=>void openNativeWorkspace(item)}/>)}
         {activeWorkspace&&<View style={s.socialRow}><Text style={s.title}>{activeWorkspace.title}</Text>{workspaceDocs.map(d=><Button key={d.id} title={d.title+" · v"+d.version} secondary={activeWorkspaceDoc?.id!==d.id} onPress={()=>{setActiveWorkspaceDoc(d);setWorkspaceDocTitle(d.title);setWorkspaceDocBody(d.body||"");void apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents/"+encodeURIComponent(d.id)).then((r:any)=>{if(r.document){setActiveWorkspaceDoc(r.document);setWorkspaceDocTitle(r.document.title);setWorkspaceDocBody(r.document.body||"");}}).catch(e=>setError(e instanceof Error?e.message:"Dokumen gagal dimuat."));}}/>)}<TextInput accessibilityLabel="Judul dokumen" value={workspaceDocTitle} onChangeText={setWorkspaceDocTitle} style={s.input} placeholder="Judul dokumen" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Isi dokumen" value={workspaceDocBody} onChangeText={setWorkspaceDocBody} multiline maxLength={50000} style={[s.input,{minHeight:100,textAlignVertical:"top"}]} placeholder="Isi dokumen" placeholderTextColor="#8B94AC"/><Button title="Buat dokumen baru" disabled={busy||!workspaceDocTitle.trim()||!!activeWorkspaceDoc} onPress={()=>void createNativeWorkspaceDoc()}/>{!!activeWorkspaceDoc&&<Button title={"Simpan versi baru v"+(activeWorkspaceDoc.version+1)} disabled={busy||!workspaceDocTitle.trim()} onPress={()=>void saveNativeWorkspaceDoc()}/>}</View>}
