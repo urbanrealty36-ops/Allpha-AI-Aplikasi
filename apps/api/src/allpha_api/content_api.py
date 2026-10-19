@@ -18,12 +18,19 @@ router = APIRouter(prefix="/v1/content", tags=["content"])
 TEXT_LIMIT = 10_000
 IMAGE_LIMIT = 10 * 1024 * 1024
 VIDEO_LIMIT = 50 * 1024 * 1024
+AUDIO_LIMIT = 50 * 1024 * 1024
 ALLOWED_MEDIA = {
     "image/jpeg": (".jpg", IMAGE_LIMIT),
     "image/png": (".png", IMAGE_LIMIT),
     "image/webp": (".webp", IMAGE_LIMIT),
     "video/mp4": (".mp4", VIDEO_LIMIT),
     "video/webm": (".webm", VIDEO_LIMIT),
+    "audio/mpeg": (".mp3", AUDIO_LIMIT),
+    "audio/mp4": (".m4a", AUDIO_LIMIT),
+    "audio/aac": (".aac", AUDIO_LIMIT),
+    "audio/ogg": (".ogg", AUDIO_LIMIT),
+    "audio/wav": (".wav", AUDIO_LIMIT),
+    "audio/webm": (".weba", AUDIO_LIMIT),
 }
 CONTENT_FIELDS = "id,owner_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
@@ -33,7 +40,7 @@ class ContentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(default="", max_length=TEXT_LIMIT)
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
-    content_type: str = Field(default="text", pattern="^(text|image|video)$")
+    content_type: str = Field(default="text", pattern="^(text|image|video|audio)$")
 
 
 class ContentUpdate(BaseModel):
@@ -155,7 +162,7 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
     media_type = (file.content_type or "").lower().split(";")[0].strip()
     spec = ALLOWED_MEDIA.get(media_type)
     if not spec:
-        raise HTTPException(415, detail={"code": "MEDIA_TYPE_UNSUPPORTED", "message": "Format media yang didukung: JPG, PNG, WebP, MP4, dan WebM."})
+        raise HTTPException(415, detail={"code": "MEDIA_TYPE_UNSUPPORTED", "message": "Format media yang didukung: JPG, PNG, WebP, MP4, WebM, MP3, M4A, AAC, OGG, WAV, dan audio WebM."})
     data = await file.read(spec[1] + 1)
     if not data:
         raise HTTPException(422, detail={"code": "MEDIA_EMPTY", "message": "File media kosong."})
@@ -168,6 +175,12 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         "image/webp": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP",
         "video/mp4": lambda b: len(b) >= 12 and b[4:8] == b"ftyp",
         "video/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
+        "audio/mpeg": lambda b: b.startswith(b"ID3") or (len(b) >= 2 and b[0] == 0xFF and (b[1] & 0xE0) == 0xE0),
+        "audio/mp4": lambda b: len(b) >= 12 and b[4:8] == b"ftyp",
+        "audio/aac": lambda b: len(b) >= 2 and b[0] == 0xFF and (b[1] & 0xF6) == 0xF0,
+        "audio/ogg": lambda b: b.startswith(b"OggS"),
+        "audio/wav": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE",
+        "audio/webm": lambda b: b.startswith(bytes.fromhex("1a45dfa3")),
     }
     if not signatures[media_type](data):
         raise HTTPException(422, detail={"code": "MEDIA_SIGNATURE_INVALID", "message": "Isi file tidak sesuai dengan format media yang dipilih."})
@@ -194,7 +207,7 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
             "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
             "status": "in.(draft,failed)", "select": CONTENT_FIELDS,
         }, body={
-            "status": "draft", "content_type": "video" if media_type.startswith("video/") else "image",
+            "status": "draft", "content_type": "video" if media_type.startswith("video/") else "audio" if media_type.startswith("audio/") else "image",
             "version": int(content.get("version") or 1) + 1,
         }, prefer="return=representation")
         if not updated:
