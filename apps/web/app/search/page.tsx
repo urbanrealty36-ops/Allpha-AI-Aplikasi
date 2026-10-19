@@ -15,6 +15,8 @@ export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<SearchItem[]>([]);
   const [trends, setTrends] = useState<Trend[]>([]);
+  const [trendsBusy, setTrendsBusy] = useState(false);
+  const [trendsError, setTrendsError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
@@ -27,8 +29,9 @@ export default function SearchPage() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!session) { setTrends([]); return; }
+    if (!session) { setTrends([]); setTrendsError(""); return; }
     let cancelled = false;
+    setTrendsBusy(true); setTrendsError("");
     void fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" })
       .then(async response => {
         if (!response.ok) throw new Error("Tren belum dapat dimuat.");
@@ -75,8 +78,8 @@ export default function SearchPage() {
     </section>
     <section style={{ marginTop: 36 }}>
       <h2 style={{ fontSize: 22 }}>Tren dari konten terbaru</h2>
-      <p style={{ opacity: .7, lineHeight: 1.5 }}>Topik dihitung dari konten nyata yang dapat Anda lihat, bukan data tren buatan.</p>
-      {trends.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{trends.map(item =>
+      <p style={{ opacity: .7, lineHeight: 1.5 }}>Topik dihitung dari konten nyata yang dapat Anda lihat, bukan data tren buatan. Cakupan saat ini adalah konten, belum profil atau Agent.</p>
+      {trendsBusy ? <p role="status">Memuat tren…</p> : trendsError ? <p role="alert">{trendsError} <button type="button" onClick={() => { if (session) { setTrendsBusy(true); setTrendsError(""); void fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" }).then(async response => { if (!response.ok) throw new Error("Tren belum dapat dimuat."); return response.json() as Promise<Payload<Trend>>; }).then(payload => setTrends(payload.items || [])).catch(cause => setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat.")).finally(() => setTrendsBusy(false)); } }}>Coba lagi</button></p> : trends.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{trends.map(item =>
         <button key={item.topic} type="button" onClick={() => { setQuery(item.topic); void runSearch(undefined, item.topic); }} style={{ border: "1px solid #c8cfda", background: "transparent", color: "inherit", borderRadius: 999, padding: "9px 13px", cursor: "pointer" }}>
           #{item.topic} <small>({item.content_count})</small>
         </button>)}</div> : <p style={{ opacity: .7 }}>Tren akan muncul saat tersedia konten publik yang sesuai dan dapat diakses.</p>}

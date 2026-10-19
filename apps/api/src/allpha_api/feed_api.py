@@ -217,13 +217,13 @@ async def search_content(
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Search only published, approved content and re-apply social visibility controls."""
-    query = " ".join(re.findall(r"[a-zA-Z0-9À-ÿ_ -]+", q)).strip()
+    query = " ".join(re.findall(r"[a-zA-Z0-9À-ÿ -]+", q)).strip()
     terms = [part for part in query.split() if len(part) >= 2][:8]
     if not terms:
         raise HTTPException(422, detail={"code": "SEARCH_QUERY_INVALID", "message": "Masukkan kata kunci yang valid."})
     owner = str(user["id"])
     # Each term is sanitized before it is sent to PostgREST; database filters remain authoritative.
-    clauses = [f"body.ilike.*{term.replace('*', '').replace('%', '')}*" for term in terms]
+    clauses = [f"body.ilike.*{term.replace('*', '').replace('%', '').replace('_', '')}*" for term in terms]
     rows = await _server_db("GET", "content_items", params={
         "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
         "visibility": "in.(public,followers)", "or": f"({','.join(clauses)})",

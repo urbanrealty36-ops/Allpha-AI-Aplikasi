@@ -135,6 +135,8 @@ function Profile({ session }: { session: Session }) {
   const [discoveryQuery, setDiscoveryQuery] = useState("");
   const [discoveryItems, setDiscoveryItems] = useState<{id:string;body:string;content_type:string;created_at:string;published_at?:string|null}[]>([]);
   const [discoveryTrends, setDiscoveryTrends] = useState<{topic:string;content_count:number;example_content_id:string}[]>([]);
+  const [discoveryTrendsBusy, setDiscoveryTrendsBusy] = useState(false);
+  const [discoveryTrendsError, setDiscoveryTrendsError] = useState("");
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState("");
   const [feedCommentDrafts, setFeedCommentDrafts] = useState<Record<string, string>>({});
@@ -216,12 +218,14 @@ function Profile({ session }: { session: Session }) {
   }
 
   async function loadDiscoveryTrends() {
+    setDiscoveryTrendsBusy(true); setDiscoveryTrendsError("");
     try {
       const response = await fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
       const payload = await response.json() as { items?: {topic:string;content_count:number;example_content_id:string}[]; error?: {message?:string} };
       if (!response.ok) throw new Error(payload.error?.message || "Tren belum dapat dimuat.");
       setDiscoveryTrends(payload.items || []);
-    } catch (cause) { setDiscoveryError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
+    } catch (cause) { setDiscoveryTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
+    finally { setDiscoveryTrendsBusy(false); }
   }
   async function runDiscoverySearch(value = discoveryQuery) {
     if (value.trim().length < 2) { setDiscoveryError("Masukkan minimal 2 karakter."); return; }
@@ -848,14 +852,14 @@ function Profile({ session }: { session: Session }) {
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "discovery" ? <>
         <Text style={s.kicker}>ENG-P17 · SEARCH & DISCOVERY</Text><Text style={s.title}>Cari di Allpha</Text>
-        <Text style={s.muted}>Hasil hanya dari konten yang dipublikasikan dan disetujui, mengikuti visibilitas, follow, block, dan mute.</Text>
+        <Text style={s.muted}>Hasil saat ini mencakup konten yang dipublikasikan dan disetujui, mengikuti visibilitas, follow, block, dan mute. Pencarian profil/Agent belum termasuk cakupan ini.</Text>
         <TextInput accessibilityLabel="Cari konten" value={discoveryQuery} onChangeText={setDiscoveryQuery} maxLength={100} style={s.input} placeholder="Cari topik atau kata kunci…" placeholderTextColor="#8B94AC" returnKeyType="search" onSubmitEditing={() => void runDiscoverySearch()}/>
         <Button title={discoveryBusy ? "Mencari…" : "Cari"} disabled={discoveryBusy || discoveryQuery.trim().length < 2} onPress={() => void runDiscoverySearch()}/>
         {!!discoveryError && <Text accessibilityRole="alert" style={s.error}>{discoveryError}</Text>}
         {discoveryItems.length === 0 && !discoveryBusy && <Text style={s.muted}>Belum ada hasil pencarian.</Text>}
         {discoveryItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body}</Text><Text style={s.muted}>{item.content_type} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text></View>)}
-        <Text style={s.title}>Tren</Text>
-        {discoveryTrends.length ? discoveryTrends.map(item => <Button key={item.topic} title={"#" + item.topic + " · " + item.content_count} secondary onPress={() => { setDiscoveryQuery(item.topic); void runDiscoverySearch(item.topic); }}/>) : <Text style={s.muted}>Tren muncul saat ada konten yang dapat diakses.</Text>}
+        <Text style={s.title}>Tren dari konten terbaru</Text>
+        {discoveryTrendsBusy ? <ActivityIndicator accessibilityLabel="Memuat tren" color="#A5B4FC"/> : discoveryTrendsError ? <View accessibilityRole="alert" style={s.socialRow}><Text style={s.error}>{discoveryTrendsError}</Text><Button title="Coba lagi" secondary onPress={() => void loadDiscoveryTrends()}/></View> : discoveryTrends.length ? discoveryTrends.map(item => <Button key={item.topic} title={"#" + item.topic + " · " + item.content_count} secondary onPress={() => { setDiscoveryQuery(item.topic); void runDiscoverySearch(item.topic); }}/>) : <Text style={s.muted}>Tren muncul saat ada konten yang dapat diakses.</Text>}
       </> : tab === "stories" ? <>
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
