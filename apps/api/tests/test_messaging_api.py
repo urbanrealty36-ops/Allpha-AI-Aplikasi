@@ -90,14 +90,19 @@ def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
         "delivery_status": "sent", "created_at": "2026-10-19T12:00:00+00:00",
     }
     calls = []
+    message_reads = 0
     async def member(conversation_id, user_id):
         return {"conversation_id": str(conversation_id), "user_id": user_id}
     async def unblocked(conversation_id, user_id):
         return None
     async def db(method, table, *, params=None, body=None, prefer=None):
+        nonlocal message_reads
         calls.append((method, table, body))
         if method == "GET" and table == "messages":
-            return [user_message]
+            message_reads += 1
+            # First lookup is the persisted human message; the deterministic
+            # Agent-reply lookup is empty, so retry must fail closed for reconciliation.
+            return [user_message] if message_reads == 1 else []
         if method == "GET" and table == "conversations":
             return [{"id": str(conversation_id), "kind": "agent"}]
         if method == "GET" and table == "conversation_participants":
@@ -150,8 +155,9 @@ def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
         result = response.json()
         assert result["replayed"] is True
         assert result["message"]["id"] == "persisted-user-message"
-        assert result["agent_reply"]["status"] == "sent"
-        assert any(call[0] == "GENERATE" for call in calls)
+        assert result["agent_reply"]["status"] == "pending_reconciliation"
+        assert result["agent_reply"]["code"] == "AGENT_REPLY_OUTCOME_UNKNOWN"
+        assert not any(call[0] == "GENERATE" for call in calls)
         assert not any(call[0] == "POST" and call[1] == "messages" and call[2].get("sender_type") == "human" for call in calls)
     finally:
         app.dependency_overrides.clear()
