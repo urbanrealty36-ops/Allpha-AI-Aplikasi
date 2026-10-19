@@ -172,10 +172,11 @@ class CreditLedgerLifecycleService:
                 raise CreditLifecycleBlocked("actual usage exceeds the reserved estimate")
             if reservation.usage_unit and usage_unit != reservation.usage_unit:
                 raise CreditLifecycleBlocked("actual usage unit does not match the reservation")
+            # estimated_usage_units is a reservation ceiling, not a promise that
+            # the provider will consume every reserved unit. A successful operation
+            # may settle below the estimate and release unused credits atomically.
             if outcome == OperationOutcome.PARTIAL and actual_usage_units >= reservation.estimated_usage_units:
                 raise CreditLifecycleBlocked("partial outcome must have fewer verified units than reserved")
-            if outcome == OperationOutcome.SUCCEEDED and actual_usage_units < reservation.estimated_usage_units:
-                raise CreditLifecycleBlocked("successful full outcome does not match verified usage units")
         if actual_credits > reservation.reserved_credits:
             raise CreditLifecycleBlocked("actual charge exceeds reservation; require explicit recovery policy")
         if actual_credits == 0:
