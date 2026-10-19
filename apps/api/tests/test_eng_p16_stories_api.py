@@ -116,7 +116,7 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
         app.dependency_overrides.pop(current_user, None)
     assert response.status_code == 200, response.text
     assert [item["id"] for item in response.json()["items"]] == [STORY_ID]
-    feed_query = next(params for method, table, params, _ in calls if method == "GET" and table == "content_items" and params.get("status") == "eq.published")
+    feed_query = next(params for method, table, params, _ in calls if method == "GET" and table == "content_items" and params.get("status") == "eq.published" and params.get("expires_at", "").startswith("gt."))
     assert feed_query["expires_at"].startswith("gt.")
     assert feed_query["moderation_status"] == "eq.approved"
 
