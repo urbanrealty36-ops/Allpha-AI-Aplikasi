@@ -108,7 +108,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -117,6 +117,9 @@ function Profile({ session }: { session: Session }) {
   const [contentFile, setContentFile] = useState<NativeContentFile | null>(null);
   const [contentBusy, setContentBusy] = useState(false);
   const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
+  const [reelsItems, setReelsItems] = useState<NativeFeedItem[]>([]);
+  const [reelsCursor, setReelsCursor] = useState<string | null>(null);
+  const [reelsBusy, setReelsBusy] = useState(false);
   const [feedBusy, setFeedBusy] = useState(false);
   const [feedCursor, setFeedCursor] = useState<string | null>(null);
   const [feedMode, setFeedMode] = useState<"for_you" | "recent">("for_you");
@@ -209,6 +212,17 @@ function Profile({ session }: { session: Session }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat."); }
     finally { setFeedBusy(false); }
   }
+  async function loadNativeReels(reset = true) {
+    setReelsBusy(true); setError(""); setMessage("");
+    try {
+      const params = new URLSearchParams({ mode: "recent", limit: "20" });
+      if (!reset && reelsCursor) params.set("cursor", reelsCursor);
+      const result = await apiRequest("/v1/reels?" + params.toString()) as { items?: NativeFeedItem[]; next_cursor?: string | null };
+      setReelsItems(current => reset ? (result.items ?? []) : [...current, ...(result.items ?? [])]);
+      setReelsCursor(result.next_cursor ?? null);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels tidak dapat dimuat."); }
+    finally { setReelsBusy(false); }
+  }
   async function saveNativeFeedPreferences(enabled: boolean, mode: "for_you" | "recent") {
     setFeedBusy(true); setError(""); setMessage("");
     try {
@@ -274,12 +288,12 @@ function Profile({ session }: { session: Session }) {
   }
   async function chooseContentMedia() {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"], copyToCacheDirectory: true, multiple: false });
+      const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/wav", "audio/webm"], copyToCacheDirectory: true, multiple: false });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const allowed = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"];
-      if (!asset.mimeType || !allowed.includes(asset.mimeType)) throw new Error("Format media harus JPG, PNG, WebP, MP4, atau WebM.");
-      const max = asset.mimeType.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      const allowed = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/wav", "audio/webm"];
+      if (!asset.mimeType || !allowed.includes(asset.mimeType)) throw new Error("Format media harus JPG, PNG, WebP, MP4, WebM, MP3, M4A, AAC, OGG, WAV, atau audio WebM.");
+      const max = asset.mimeType.startsWith("video/") || asset.mimeType.startsWith("audio/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
       if (asset.size && asset.size > max) throw new Error("Ukuran file melampaui batas format media.");
       setContentFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, size: asset.size });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemilihan media gagal."); }
@@ -748,7 +762,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "profile" ? profile ? <>
@@ -880,7 +894,28 @@ function Profile({ session }: { session: Session }) {
           <Text style={s.muted}>{item.engagement?.comments ?? 0} komentar · sinyal ranking: terbaru, follow, engagement</Text>
         </View>)}
         {feedCursor && <Button title="Muat feed berikutnya" secondary disabled={feedBusy} onPress={() => void loadNativeFeed(false)}/>}
-      </> : tab === "content" ? <>
+      </> : tab === "reels" ? <>
+        <Text style={s.kicker}>ENG-P15 · REELS</Text><Text style={s.title}>Video pendek & audio</Text>
+        <Text style={s.muted}>Konten yang lolos moderasi diambil dari API Reels kanonis. Pemutaran memakai URL signed berjangka pendek; tombol putar membuka pemutar media perangkat.</Text>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <Button title="Muat ulang" secondary disabled={reelsBusy} onPress={() => void loadNativeReels(true)}/>
+        </View>
+        {reelsBusy && <View accessibilityRole="progressbar" style={{ paddingVertical: 10, alignItems: "center" }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Reels…</Text></View>}
+        {!reelsBusy && reelsItems.length === 0 && <Text style={s.muted}>Belum ada video/audio publik yang disetujui.</Text>}
+        {reelsItems.map(item => <View key={item.id} style={[s.socialRow, { gap: 10 }]}>
+          <Text style={s.muted}>Creator {item.owner_id.slice(0, 8)} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text>
+          {!!item.body && <Text style={s.body}>{item.body}</Text>}
+          {item.media?.map(media => media.preview_url ? <View key={media.id} style={s.socialRow}>
+            <Text style={s.body}>{media.media_type.startsWith("audio/") ? "♫ Audio" : "▶ Video"} · {media.filename}</Text>
+            <Button title={media.media_type.startsWith("audio/") ? "Putar audio" : "Putar video"} onPress={() => void Linking.openURL(media.preview_url!)} />
+          </View> : null)}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={reelsBusy} onPress={() => void nativeFeedAction(item, "like")}/>
+            <Button title={"Bagikan · " + (item.engagement?.shares ?? 0)} secondary disabled={reelsBusy} onPress={() => void shareNativeContent(item)}/>
+          </View>
+        </View>)}
+        {reelsCursor && <Button title="Muat Reels berikutnya" secondary disabled={reelsBusy} onPress={() => void loadNativeReels(false)}/>}
+      </>> : tab === "content" ? <>
         <Text style={s.kicker}>ENG-P13 · CREATOR STUDIO</Text><Text style={s.title}>Buat konten</Text>
         <Text style={s.muted}>Draft teks atau media disimpan melalui API. Konten publik baru tayang setelah moderasi.</Text>
         <TextInput accessibilityLabel="Isi konten" value={contentBody} onChangeText={setContentBody} multiline maxLength={10000} style={[s.input, { minHeight: 110, textAlignVertical: "top", paddingTop: 12 }]} placeholder="Apa yang ingin kamu bagikan?" placeholderTextColor="#8B94AC"/>
