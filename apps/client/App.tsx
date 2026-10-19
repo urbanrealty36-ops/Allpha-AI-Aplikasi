@@ -158,6 +158,8 @@ function Profile({ session }: { session: Session }) {
   const [communityDraftSlug, setCommunityDraftSlug] = useState("");
   const [communityPostDraft, setCommunityPostDraft] = useState("");
   const [communityPostType, setCommunityPostType] = useState<"discussion"|"resource">("discussion");
+  const [inviteTokenDraft, setInviteTokenDraft] = useState("");
+  const [createdInviteToken, setCreatedInviteToken] = useState("");
   const [workspaceDraftName, setWorkspaceDraftName] = useState("");
   const [activeWorkspace, setActiveWorkspace] = useState<{id:string;title:string;membership_role?:string}|null>(null);
   const [workspaceDocs, setWorkspaceDocs] = useState<{id:string;title:string;body?:string;version:number}[]>([]);
@@ -970,6 +972,27 @@ function Profile({ session }: { session: Session }) {
     try { await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/posts",{method:"POST",body:JSON.stringify({body:communityPostDraft.trim(),post_type:communityPostType})}); setCommunityPostDraft(""); await openNativeCommunity(activeCommunity); setMessage(communityPostType==="resource"?"Sumber daya diterbitkan.":"Diskusi diterbitkan."); }
     catch(e) { setError(e instanceof Error ? e.message : "Diskusi gagal diterbitkan."); } finally { setBusy(false); }
   }
+  async function createNativeInvite() {
+    if (!activeCommunity) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/invites", {method:"POST",body:JSON.stringify({role:"member",expires_in_hours:168})}) as {invite:{token:string;expires_at:string}};
+      setCreatedInviteToken(result.invite.token);
+      await Share.share({message:"Undangan komunitas Allpha: " + result.invite.token + "\nBerlaku sampai " + result.invite.expires_at});
+      setMessage("Undangan dibuat. Token hanya ditampilkan saat dibuat; bagikan kepada penerima yang dituju.");
+    } catch(e) { setError(e instanceof Error ? e.message + " — periksa hak moderator lalu coba lagi." : "Undangan gagal dibuat/dibagikan."); }
+    finally { setBusy(false); }
+  }
+  async function acceptNativeInvite() {
+    const token = inviteTokenDraft.trim();
+    if (!token) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/community-invites/" + encodeURIComponent(token) + "/accept", {method:"POST",body:"{}"});
+      setInviteTokenDraft(""); setMessage("Undangan diterima. Komunitas kini tersedia di daftar Anda."); await loadCommunityWorkspace();
+    } catch(e) { setError(e instanceof Error ? e.message + " — token mungkin kedaluwarsa, sudah dicabut, atau akun sudah menjadi anggota." : "Undangan tidak dapat diterima. Periksa token lalu coba lagi."); }
+    finally { setBusy(false); }
+  }
   async function toggleNativePostPin(post:{id:string;is_pinned?:boolean}) {
     if (!activeCommunity) return;
     setBusy(true); setError(""); setMessage("");
@@ -1067,6 +1090,9 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.kicker}>KOMUNITAS</Text>
         {communityItems.length===0?<Text style={s.muted}>Belum ada komunitas yang dapat diakses.</Text>:communityItems.map(item=><View key={item.id} style={s.socialRow}><Button title={(activeCommunity?.id===item.id?"✓ ":"")+item.name+" · "+(item.membership_role||"publik")} secondary={activeCommunity?.id!==item.id} onPress={()=>void openNativeCommunity(item)}/>{!item.membership_role&&item.visibility==="public"&&<Button title="Gabung" secondary disabled={busy} onPress={()=>void joinNativeCommunity(item)}/>}</View>)}
         {activeCommunity&&<View style={s.socialRow}><Text style={s.title}>{activeCommunity.name}</Text>{communityPosts.map(post=><View key={post.id} style={s.socialRow}>{!!post.is_pinned&&<Text style={s.kicker}>SUMBER DAYA DISEMATKAN</Text>}<Text style={s.body}>{post.body}</Text><Text style={s.muted}>{post.post_type} · {new Date(post.created_at).toLocaleString("id-ID")}</Text>{(activeCommunity.membership_role==="owner"||activeCommunity.membership_role==="moderator")&&<View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>{post.post_type==="resource"&&<Button title={post.is_pinned?"Lepas pin":"Sematkan sumber daya"} secondary onPress={()=>void toggleNativePostPin(post)}/>}<Button title="Sembunyikan" secondary onPress={()=>moderateNativePost(post.id)}/></View>}</View>)}{!!activeCommunity.membership_role&&<><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}><Button title={communityPostType==="discussion"?"✓ Diskusi":"Diskusi"} secondary={communityPostType!=="discussion"} onPress={()=>setCommunityPostType("discussion")}/><Button title={communityPostType==="resource"?"✓ Sumber daya":"Sumber daya"} secondary={communityPostType!=="resource"} onPress={()=>setCommunityPostType("resource")}/></View><TextInput accessibilityLabel="Tulis diskusi atau sumber daya komunitas" value={communityPostDraft} onChangeText={setCommunityPostDraft} multiline maxLength={5000} style={[field,{minHeight:80}]} placeholder="Bagikan ide atau sumber daya…" placeholderTextColor="#8B94AC"/><Button title={communityPostType==="resource"?"Terbitkan sumber daya":"Terbitkan diskusi"} disabled={busy||!communityPostDraft.trim()} onPress={()=>void publishCommunityPost()}/></>}</View>}
+        {(activeCommunity?.membership_role==="owner"||activeCommunity?.membership_role==="moderator")&&<Button title="Buat & bagikan undangan" secondary disabled={busy} onPress={()=>void createNativeInvite()}/>}
+        {!!createdInviteToken&&<View style={s.socialRow}><Text style={s.muted}>Token undangan terbaru tersedia untuk dibagikan ulang.</Text><Button title="Bagikan ulang token" secondary onPress={()=>void Share.share({message:"Undangan komunitas Allpha: "+createdInviteToken})}/></View>}
+        <Text style={s.kicker}>TERIMA UNDANGAN</Text><TextInput accessibilityLabel="Token undangan komunitas" value={inviteTokenDraft} onChangeText={setInviteTokenDraft} autoCapitalize="none" style={s.input} placeholder="Tempel token undangan" placeholderTextColor="#8B94AC"/><Button title="Terima undangan" disabled={busy||!inviteTokenDraft.trim()} onPress={()=>void acceptNativeInvite()}/>
         <Text style={s.kicker}>WORKSPACE PRIVAT</Text><View style={{flexDirection:"row",gap:8}}><TextInput accessibilityLabel="Nama workspace" value={workspaceDraftName} onChangeText={setWorkspaceDraftName} style={[field,{flex:1}]} placeholder="Nama workspace" placeholderTextColor="#8B94AC"/><Button title="Buat" disabled={busy||workspaceDraftName.trim().length<2} onPress={()=>void createNativeWorkspace()}/></View>
         {workspaceItems.map(item=><Button key={item.id} title={(activeWorkspace?.id===item.id?"✓ ":"")+item.title+" · "+(item.membership_role||"anggota")} secondary={activeWorkspace?.id!==item.id} onPress={()=>void openNativeWorkspace(item)}/>)}
         {activeWorkspace&&<View style={s.socialRow}><Text style={s.title}>{activeWorkspace.title}</Text>{workspaceDocs.map(d=><Button key={d.id} title={d.title+" · v"+d.version} secondary={activeWorkspaceDoc?.id!==d.id} onPress={()=>{setActiveWorkspaceDoc(d);setWorkspaceDocTitle(d.title);setWorkspaceDocBody(d.body||"");void apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents/"+encodeURIComponent(d.id)).then((r:any)=>{if(r.document){setActiveWorkspaceDoc(r.document);setWorkspaceDocTitle(r.document.title);setWorkspaceDocBody(r.document.body||"");}}).catch(e=>setError(e instanceof Error?e.message:"Dokumen gagal dimuat."));}}/>)}<TextInput accessibilityLabel="Judul dokumen" value={workspaceDocTitle} onChangeText={setWorkspaceDocTitle} style={s.input} placeholder="Judul dokumen" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Isi dokumen" value={workspaceDocBody} onChangeText={setWorkspaceDocBody} multiline maxLength={50000} style={[s.input,{minHeight:100,textAlignVertical:"top"}]} placeholder="Isi dokumen" placeholderTextColor="#8B94AC"/><Button title="Buat dokumen baru" disabled={busy||!workspaceDocTitle.trim()||!!activeWorkspaceDoc} onPress={()=>void createNativeWorkspaceDoc()}/>{!!activeWorkspaceDoc&&<Button title={"Simpan versi baru v"+(activeWorkspaceDoc.version+1)} disabled={busy||!workspaceDocTitle.trim()} onPress={()=>void saveNativeWorkspaceDoc()}/>}</View>}
