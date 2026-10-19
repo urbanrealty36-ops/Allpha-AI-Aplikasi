@@ -109,7 +109,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -132,6 +132,11 @@ function Profile({ session }: { session: Session }) {
   const [feedCursor, setFeedCursor] = useState<string | null>(null);
   const [feedMode, setFeedMode] = useState<"for_you" | "recent">("for_you");
   const [feedPersonalization, setFeedPersonalization] = useState(true);
+  const [discoveryQuery, setDiscoveryQuery] = useState("");
+  const [discoveryItems, setDiscoveryItems] = useState<{id:string;body:string;content_type:string;created_at:string;published_at?:string|null}[]>([]);
+  const [discoveryTrends, setDiscoveryTrends] = useState<{topic:string;content_count:number;example_content_id:string}[]>([]);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState("");
   const [feedCommentDrafts, setFeedCommentDrafts] = useState<Record<string, string>>({});
   const [feedComments, setFeedComments] = useState<Record<string, NativeFeedComment[]>>({});
   const [feedCommentsOpen, setFeedCommentsOpen] = useState<Record<string, boolean>>({});
@@ -208,6 +213,26 @@ function Profile({ session }: { session: Session }) {
     try { const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Konten tidak dapat dimuat."); }
     finally { setContentBusy(false); }
+  }
+
+  async function loadDiscoveryTrends() {
+    try {
+      const response = await fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const payload = await response.json() as { items?: {topic:string;content_count:number;example_content_id:string}[]; error?: {message?:string} };
+      if (!response.ok) throw new Error(payload.error?.message || "Tren belum dapat dimuat.");
+      setDiscoveryTrends(payload.items || []);
+    } catch (cause) { setDiscoveryError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
+  }
+  async function runDiscoverySearch(value = discoveryQuery) {
+    if (value.trim().length < 2) { setDiscoveryError("Masukkan minimal 2 karakter."); return; }
+    setDiscoveryBusy(true); setDiscoveryError("");
+    try {
+      const response = await fetch(apiBase + "/v1/search?q=" + encodeURIComponent(value.trim()) + "&limit=30", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const payload = await response.json() as { items?: {id:string;body:string;content_type:string;created_at:string;published_at?:string|null}[]; error?: {message?:string} };
+      if (!response.ok) throw new Error(payload.error?.message || "Pencarian gagal.");
+      setDiscoveryItems(payload.items || []);
+    } catch (cause) { setDiscoveryError(cause instanceof Error ? cause.message : "Pencarian gagal."); setDiscoveryItems([]); }
+    finally { setDiscoveryBusy(false); }
   }
 
   async function loadNativeFeed(reset = true) {
@@ -818,10 +843,20 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
-      tab === "stories" ? <>
+      tab === "discovery" ? <>
+        <Text style={s.kicker}>ENG-P17 · SEARCH & DISCOVERY</Text><Text style={s.title}>Cari di Allpha</Text>
+        <Text style={s.muted}>Hasil hanya dari konten yang dipublikasikan dan disetujui, mengikuti visibilitas, follow, block, dan mute.</Text>
+        <TextInput accessibilityLabel="Cari konten" value={discoveryQuery} onChangeText={setDiscoveryQuery} maxLength={100} style={s.input} placeholder="Cari topik atau kata kunci…" placeholderTextColor="#8B94AC" returnKeyType="search" onSubmitEditing={() => void runDiscoverySearch()}/>
+        <Button title={discoveryBusy ? "Mencari…" : "Cari"} disabled={discoveryBusy || discoveryQuery.trim().length < 2} onPress={() => void runDiscoverySearch()}/>
+        {!!discoveryError && <Text accessibilityRole="alert" style={s.error}>{discoveryError}</Text>}
+        {discoveryItems.length === 0 && !discoveryBusy && <Text style={s.muted}>Belum ada hasil pencarian.</Text>}
+        {discoveryItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body}</Text><Text style={s.muted}>{item.content_type} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text></View>)}
+        <Text style={s.title}>Tren</Text>
+        {discoveryTrends.length ? discoveryTrends.map(item => <Button key={item.topic} title={"#" + item.topic + " · " + item.content_count} secondary onPress={() => { setDiscoveryQuery(item.topic); void runDiscoverySearch(item.topic); }}/>) : <Text style={s.muted}>Tren muncul saat ada konten yang dapat diakses.</Text>}
+      </> : tab === "stories" ? <>
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
         <TextInput accessibilityLabel="Isi Story" value={storyBody} onChangeText={setStoryBody} multiline maxLength={2000} style={[field,{minHeight:90,textAlignVertical:"top",paddingTop:12}]} placeholder="Apa yang sedang terjadi? (opsional jika ada media)" placeholderTextColor="#8B94AC"/>
