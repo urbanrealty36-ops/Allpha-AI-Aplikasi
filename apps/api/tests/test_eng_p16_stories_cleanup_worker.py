@@ -6,6 +6,30 @@ import pytest
 from allpha_api import stories_cleanup_worker as worker
 
 
+
+@pytest.mark.parametrize("value", [
+    {"message": "ambiguous relationship", "code": "PGRST201"},
+    ["not-a-row-object"],
+])
+def test_require_rows_rejects_malformed_database_responses(value):
+    with pytest.raises(worker.StoriesCleanupResponseError):
+        worker._require_rows(value, operation="regression")
+
+
+def test_require_rows_accepts_empty_and_object_rows():
+    assert worker._require_rows(None, operation="empty") == []
+    assert worker._require_rows([], operation="empty") == []
+    assert worker._require_rows([{"id": "row-1"}], operation="valid") == [{"id": "row-1"}]
+
+
+def test_sweep_fails_closed_on_malformed_story_query_response(monkeypatch):
+    async def malformed_db(*_args, **_kwargs):
+        return {"message": "Multiple Choices"}
+
+    monkeypatch.setattr(worker, "_server_db", malformed_db)
+    with pytest.raises(worker.StoriesCleanupResponseError):
+        __import__("asyncio").run(worker._sweep_archived_story_media(limit=10))
+
 def test_worker_requires_explicit_enablement(monkeypatch):
     monkeypatch.delenv("ALLPHA_STORIES_CLEANUP_ENABLED", raising=False)
     with pytest.raises(worker.StoriesCleanupConfigurationError):
@@ -79,11 +103,10 @@ def test_recovery_sweep_preserves_failed_media_and_retries_deleting_status(
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params, body, prefer))
+        if method == "GET" and table == "content_items":
+            return [{"id": "story-1"}]
         if method == "GET" and table == "content_media":
-            return [{
-                **dict(media), "content_id": "story-1",
-                "content_items": {"id": "story-1", "content_type": "story", "status": "archived"},
-            }]
+            return [{**dict(media), "content_id": "story-1"}]
         if method == "PATCH" and table == "content_media":
             if storage_failure:
                 return [{**media, "status": "deleting"}]
@@ -103,8 +126,8 @@ def test_recovery_sweep_preserves_failed_media_and_retries_deleting_status(
 
     query = next(params for method, table, params, _body, _prefer in calls
                  if method == "GET" and table == "content_media")
-    assert query["content_items.content_type"] == "eq.story"
-    assert query["content_items.status"] == "in.(archived,deleted)"
+    assert query["content_id"] == "in.(story-1)"
+    assert "content_items!inner" not in query["select"]
     assert query["status"] == "in.(uploaded,ready,processing,failed,deleting)"
     assert query["limit"] == "10"
     assert stats["media_candidates"] == 1
@@ -124,11 +147,12 @@ def test_metadata_is_not_deleted_when_storage_delete_fails(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params, body))
+        if method == "GET" and table == "content_items":
+            return [{"id": "story-1"}]
         if method == "GET" and table == "content_media":
             return [{
                 "id": "media-2", "content_id": "story-1", "owner_id": "owner-1",
                 "storage_path": "owner-1/story-1/file.mp4", "status": "ready",
-                "content_items": {"id": "story-1", "content_type": "story", "status": "deleted"},
             }]
         if method == "PATCH":
             return [{"id": "media-2", "owner_id": "owner-1",
@@ -182,6 +206,8 @@ def test_retry_after_transient_storage_failure_removes_metadata_only_on_success(
     db_deletes = {"count": 0}
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "content_items":
+            return [{"id": "story-retry"}]
         if method == "GET" and table == "content_media":
             if media_state["status"] == "removed":
                 return []
@@ -189,7 +215,6 @@ def test_retry_after_transient_storage_failure_removes_metadata_only_on_success(
                 "id": "media-retry", "content_id": "story-retry", "owner_id": "owner-retry",
                 "storage_path": "owner-retry/story-retry/file.png",
                 "status": media_state["status"],
-                "content_items": {"id": "story-retry", "content_type": "story", "status": "archived"},
             }]
         if method == "PATCH" and table == "content_media":
             media_state["status"] = "deleting"
