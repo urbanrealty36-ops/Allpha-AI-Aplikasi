@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from allpha_api.metering_contract import IdempotentMeteringSink, MeteringContractError, MeteringRecord
+from allpha_api.model_router import TextGenerationEvidence
 
 
 class SupabaseMeteringSink(IdempotentMeteringSink):
@@ -29,7 +30,30 @@ class SupabaseMeteringSink(IdempotentMeteringSink):
         self._transport = transport
         self._timeout_seconds = max(1.0, min(timeout_seconds, 30.0))
 
-    async def write_idempotent(self, record: MeteringRecord) -> None:
+    async def write_idempotent(self, record: MeteringRecord | TextGenerationEvidence) -> None:
+        if isinstance(record, TextGenerationEvidence):
+            if not record.completed_at.strip() or not record.billing_account_id:
+                raise MeteringContractError("text generation evidence requires completion time and billing account")
+            record = MeteringRecord(
+                idempotency_key=record.idempotency_key,
+                task_id=record.task_id,
+                trace_id=record.trace_id,
+                owner_id=record.owner_id or record.billing_account_id,
+                agent_id=record.agent_id or "",
+                source_id=record.source_id or "",
+                source_version=record.source_version,
+                sensitivity=record.sensitivity,
+                provider_id=record.provider_id,
+                model_id=record.model_id,
+                model_version=record.model_version,
+                usage_units=record.input_tokens + record.output_tokens,
+                usage_unit="token",
+                cost_microunits=record.cost_microunits,
+                cost_unit=record.cost_unit,
+                pricing_version=record.pricing_version,
+                completed_at=record.completed_at,
+                billing_account_id=record.billing_account_id,
+            )
         payload: dict[str, Any] = asdict(record)
         payload["payload_fingerprint"] = record.payload_fingerprint()
         headers = {
