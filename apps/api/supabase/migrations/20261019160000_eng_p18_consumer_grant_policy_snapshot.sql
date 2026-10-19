@@ -27,7 +27,7 @@ alter table public.agent_consumer_grants
     and max_cost_microunits is not null and max_cost_microunits >= 0
     and cost_unit is not null and length(cost_unit) between 1 and 80
     and pricing_version is not null and length(pricing_version) between 1 and 80
-    and payer_role in ('consumer','agent_owner')
+    and payer_role is not null and payer_role in ('consumer','agent_owner')
     and allow_success_settlement is not null
     and allow_definitive_failure_release is not null
     and allow_partial_settlement is not null
