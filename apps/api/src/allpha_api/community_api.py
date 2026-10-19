@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
@@ -49,11 +49,10 @@ def _now() -> str:
 
 
 async def _community(community_id: uuid.UUID) -> dict[str, Any]:
-    rows = await _db("GET", "communities", params={"select": "*", "id": f"eq.{community_id}", "limit": "1"})
+    rows = await _db("GET", "communities", params={"select": "*", "id": f"eq.{community_id}", "status": "eq.active", "limit": "1"})
     if not rows:
-        raise HTTPException(404, detail={"code": "COMMUNITY_NOT_FOUND", "message": "Komunitas tidak ditemukan."})
+        raise HTTPException(404, detail={"code": "COMMUNITY_NOT_FOUND", "message": "Komunitas tidak ditemukan atau tidak aktif."})
     return rows[0]
-
 
 async def _membership(community_id: uuid.UUID, user_id: str) -> dict[str, Any] | None:
     rows = await _db("GET", "community_memberships", params={"select": "*", "community_id": f"eq.{community_id}", "user_id": f"eq.{user_id}", "status": "eq.active", "limit": "1"})
@@ -176,15 +175,10 @@ async def list_communities(q: str | None = Query(default=None, max_length=80), l
 
 @router.post("/communities", status_code=201)
 async def create_community(payload: CommunityCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    user_id = str(user["id"])
-    existing = await _db("GET", "communities", params={"select": "id", "slug": f"eq.{payload.slug}", "limit": "1"})
-    if existing:
-        raise HTTPException(409, detail={"code": "COMMUNITY_SLUG_TAKEN", "message": "Slug komunitas sudah digunakan."})
-    rows = await _db("POST", "communities", body={"name": payload.name.strip(), "slug": payload.slug, "description": payload.description.strip(), "visibility": payload.visibility, "created_by": user_id}, prefer="return=representation")
-    community = rows[0]
-    await _db("POST", "community_memberships", body={"community_id": community["id"], "user_id": user_id, "role": "owner", "status": "active", "joined_at": _now()}, prefer="return=minimal")
-    return {"community": community, "membership_role": "owner"}
-
+    rows = await _db("POST", "rpc/create_community_with_owner", body={"p_name": payload.name.strip(), "p_slug": payload.slug, "p_description": payload.description.strip(), "p_visibility": payload.visibility, "p_created_by": str(user["id"])}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "COMMUNITY_CREATE_FAILED", "message": "Komunitas tidak dapat dibuat."})
+    return {"community": rows[0], "membership_role": "owner"}
 
 @router.get("/communities/{community_id}")
 async def get_community(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
@@ -211,15 +205,12 @@ async def update_community(community_id: uuid.UUID, payload: CommunityUpdate, us
 @router.post("/communities/{community_id}/join", status_code=201)
 async def join_community(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     community = await _community(community_id)
-    if community["status"] != "active" or community["visibility"] != "public":
+    if community["visibility"] != "public":
         raise HTTPException(404, detail={"code": "COMMUNITY_NOT_JOINABLE", "message": "Komunitas ini tidak dapat diikuti secara publik."})
-    user_id = str(user["id"])
-    current = await _membership(community_id, user_id)
-    if current:
-        return {"membership": current, "already_member": True}
-    rows = await _db("POST", "community_memberships", body={"community_id": str(community_id), "user_id": user_id, "role": "member", "status": "active", "joined_at": _now()}, prefer="return=representation")
+    rows = await _db("POST", "rpc/join_public_community", body={"p_community_id": str(community_id), "p_user_id": str(user["id"])}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "COMMUNITY_JOIN_FAILED", "message": "Keanggotaan tidak dapat disimpan."})
     return {"membership": rows[0]}
-
 
 @router.get("/communities/{community_id}/members")
 async def list_members(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
@@ -446,24 +437,12 @@ async def create_mission(community_id: uuid.UUID, payload: MissionCreate, user: 
 
 
 @router.post("/communities/{community_id}/missions/{mission_id}/progress")
-async def update_mission_progress(community_id: uuid.UUID, mission_id: uuid.UUID, increment: int = Query(default=1, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+async def update_mission_progress(community_id: uuid.UUID, mission_id: uuid.UUID, increment: int = Query(default=1, ge=1, le=100), idempotency_key: uuid.UUID = Header(alias="Idempotency-Key"), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     await _require_member(community_id, str(user["id"]))
-    mission_rows = await _db("GET", "community_missions", params={"select": "*", "id": f"eq.{mission_id}", "community_id": f"eq.{community_id}", "status": "eq.active", "limit": "1"})
-    if not mission_rows:
-        raise HTTPException(404, detail={"code": "MISSION_NOT_FOUND", "message": "Misi tidak ditemukan."})
-    mission = mission_rows[0]
-    now = datetime.now(timezone.utc)
-    if mission.get("starts_at") and datetime.fromisoformat(mission["starts_at"].replace("Z", "+00:00")) > now:
-        raise HTTPException(409, detail={"code": "MISSION_NOT_STARTED", "message": "Misi belum dimulai."})
-    if mission.get("ends_at") and datetime.fromisoformat(mission["ends_at"].replace("Z", "+00:00")) < now:
-        raise HTTPException(409, detail={"code": "MISSION_ENDED", "message": "Misi telah berakhir."})
-    existing = await _db("GET", "community_mission_progress", params={"select": "*", "mission_id": f"eq.{mission_id}", "user_id": f"eq.{user['id']}", "limit": "1"})
-    count = min(int(mission["target_count"]), (int(existing[0]["progress_count"]) if existing else 0) + increment)
-    status = "completed" if count >= int(mission["target_count"]) else "in_progress"
-    payload = {"community_id": str(community_id), "mission_id": str(mission_id), "user_id": str(user["id"]), "progress_count": count, "status": status, "updated_at": _now()}
-    rows = await _db("POST", "community_mission_progress", params={"on_conflict": "mission_id,user_id"}, body=payload, prefer="resolution=merge-duplicates,return=representation")
-    return {"progress": rows[0] if rows else payload, "reward_status": "not_configured"}
-
+    rows = await _db("POST", "rpc/record_community_mission_progress", body={"p_community_id": str(community_id), "p_mission_id": str(mission_id), "p_user_id": str(user["id"]), "p_increment": increment, "p_idempotency_key": str(idempotency_key)}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(404, detail={"code": "MISSION_NOT_FOUND", "message": "Misi tidak ditemukan atau tidak aktif."})
+    return {"progress": rows[0], "reward_status": "not_configured"}
 
 class CommunityReportReview(BaseModel):
     model_config = ConfigDict(extra="forbid")
