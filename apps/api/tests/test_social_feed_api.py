@@ -242,3 +242,47 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
 def test_feed_requires_authentication():
     response = TestClient(app).get("/v1/feed")
     assert response.status_code == 401
+
+def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
+    now = datetime.now(timezone.utc).isoformat()
+    owners = ["eng-p14-inactive-block", "eng-p14-inactive-mute", "eng-p14-inactive-incoming-block", "eng-p14-active-block"]
+    content_rows = [
+        {"id": f"00000000-0000-0000-0000-{index:012d}", "owner_id": owner, "body": owner,
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+        for index, owner in enumerate(owners, start=100)
+    ]
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "feed_preferences":
+            return []
+        if table == "content_items":
+            return content_rows
+        if table == "social_edges":
+            if params.get("actor_user_id") == "eq.eng-p14-viewer":
+                return [
+                    {"target_user_id": owners[0], "edge_type": "block", "status": "inactive"},
+                    {"target_user_id": owners[1], "edge_type": "mute", "status": "inactive"},
+                    {"target_user_id": owners[3], "edge_type": "block", "status": "active"},
+                ]
+            if params.get("target_user_id") == "eq.eng-p14-viewer":
+                # Adversarial fixture: even if a backend returned an inactive edge,
+                # it must not affect visibility.
+                return [{"actor_user_id": owners[2], "status": "inactive"}]
+            return []
+        if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
+            return []
+        raise AssertionError(f"unexpected table {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/feed?mode=recent&limit=10")
+        assert response.status_code == 200, response.text
+        visible_owners = {item["owner_id"] for item in response.json()["items"]}
+        assert set(owners[:3]).issubset(visible_owners)
+        assert owners[3] not in visible_owners
+    finally:
+        app.dependency_overrides.clear()
+
