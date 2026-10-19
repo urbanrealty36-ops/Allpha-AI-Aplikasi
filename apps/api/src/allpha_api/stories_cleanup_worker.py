@@ -73,7 +73,7 @@ async def _delete_storage_object(storage_path: str) -> bool:
 
 
 async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
-    """Retry archived/deleted Story media, preserving metadata on any failure."""
+    """Retry archived/deleted Story media with a hard per-run media-row limit."""
     stats = {
         "stories_with_media": 0,
         "media_candidates": 0,
@@ -82,73 +82,70 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
         "metadata_failures": 0,
         "concurrent_changes": 0,
     }
-    # PostgREST's embedded inner relation ensures only Stories with eligible media
-    # are returned, so a quiet set of archived Stories cannot starve later work.
-    rows = await _server_db("GET", "content_items", params={
-        "select": "id,content_media!inner(id,owner_id,storage_path,status)",
-        "content_type": "eq.story",
-        "status": "in.(archived,deleted)",
-        "content_media.status": "in.(uploaded,ready,processing,failed,deleting)",
-        "order": "updated_at.asc",
+    # Query media as the root relation so limit bounds media operations, not only
+    # parent Stories. The inner relation filters to archived/deleted Stories.
+    rows = await _server_db("GET", "content_media", params={
+        "select": "id,content_id,owner_id,storage_path,status,content_items!inner(id,content_type,status)",
+        "status": "in.(uploaded,ready,processing,failed,deleting)",
+        "content_items.content_type": "eq.story",
+        "content_items.status": "in.(archived,deleted)",
+        "order": "created_at.asc",
         "limit": str(limit),
     }) or []
 
-    for story in rows:
-        media = story.get("content_media") or []
-        if not media:
+    story_ids: set[str] = set()
+    stats["media_candidates"] = len(rows)
+    for item in rows:
+        story_ids.add(str(item.get("content_id") or ""))
+        current_status = str(item.get("status") or "")
+        if current_status not in ELIGIBLE_MEDIA_STATES:
             continue
-        stats["stories_with_media"] += 1
-        for item in media:
-            stats["media_candidates"] += 1
-            current_status = str(item.get("status") or "")
-            if current_status not in ELIGIBLE_MEDIA_STATES:
+
+        marked = item
+        if current_status != "deleting":
+            changed = await _server_db("PATCH", "content_media", params={
+                "id": f"eq.{item['id']}",
+                "owner_id": f"eq.{item['owner_id']}",
+                "status": f"eq.{current_status}",
+                "select": "id,owner_id,storage_path,status",
+            }, body={"status": "deleting"}, prefer="return=representation") or []
+            if not changed:
+                stats["concurrent_changes"] += 1
                 continue
+            marked = changed[0]
 
-            marked = item
-            if current_status != "deleting":
-                changed = await _server_db("PATCH", "content_media", params={
-                    "id": f"eq.{item['id']}",
-                    "owner_id": f"eq.{item['owner_id']}",
-                    "status": f"eq.{current_status}",
-                    "select": "id,owner_id,storage_path,status",
-                }, body={"status": "deleting"}, prefer="return=representation") or []
-                if not changed:
-                    stats["concurrent_changes"] += 1
-                    continue
-                marked = changed[0]
+        try:
+            await _delete_storage_object(str(marked["storage_path"]))
+        except StoriesCleanupStorageError:
+            stats["storage_failures"] += 1
+            log.warning("Story media cleanup deferred; object deletion was not confirmed")
+            continue
 
-            try:
-                await _delete_storage_object(str(marked["storage_path"]))
-            except StoriesCleanupStorageError:
-                stats["storage_failures"] += 1
-                log.warning("Story media cleanup deferred; object deletion was not confirmed")
-                continue
+        deleted_rows = await _server_db("DELETE", "content_media", params={
+            "id": f"eq.{marked['id']}",
+            "owner_id": f"eq.{marked['owner_id']}",
+            "status": "eq.deleting",
+            "select": "id",
+        }, prefer="return=representation") or []
+        if deleted_rows:
+            stats["media_deleted"] += 1
+            continue
 
-            deleted_rows = await _server_db("DELETE", "content_media", params={
-                "id": f"eq.{marked['id']}",
-                "owner_id": f"eq.{marked['owner_id']}",
-                "status": "eq.deleting",
-                "select": "id",
-            }, prefer="return=representation") or []
-            if deleted_rows:
-                stats["media_deleted"] += 1
-                continue
+        # A concurrent idempotent run may already have removed the metadata.
+        still_present = await _server_db("GET", "content_media", params={
+            "select": "id",
+            "id": f"eq.{marked['id']}",
+            "owner_id": f"eq.{marked['owner_id']}",
+            "limit": "1",
+        }) or []
+        if still_present:
+            stats["metadata_failures"] += 1
+            log.warning("Story media object is gone but metadata cleanup remains pending")
+        else:
+            stats["media_deleted"] += 1
 
-            # A concurrent idempotent run may already have removed the metadata.
-            still_present = await _server_db("GET", "content_media", params={
-                "select": "id",
-                "id": f"eq.{marked['id']}",
-                "owner_id": f"eq.{marked['owner_id']}",
-                "limit": "1",
-            }) or []
-            if still_present:
-                stats["metadata_failures"] += 1
-                log.warning("Story media object is gone but metadata cleanup remains pending")
-            else:
-                stats["media_deleted"] += 1
-
+    stats["stories_with_media"] = len(story_ids - {""})
     return stats
-
 
 async def run_cleanup_once(*, limit: int | None = None) -> dict[str, Any]:
     """Run a single bounded cleanup pass; raise on fatal configuration/database errors."""
