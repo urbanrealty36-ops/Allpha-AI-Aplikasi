@@ -111,7 +111,7 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
     if text_router is None:
         raise HTTPException(503, detail={"code":"AGENT_RUNTIME_NOT_READY","message":"Model Router belum tersedia."})
     try:
-        text_router.require_runtime_ready("public")
+        await text_router.preflight("public")
         policy_version = text_router.policy_version_for("public")
         store = AgentConsumerGrantStore.from_environment()
         grant = await store.create(
