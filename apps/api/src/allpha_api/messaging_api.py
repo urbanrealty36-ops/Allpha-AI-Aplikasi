@@ -255,8 +255,23 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
         await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},body={"updated_at":_now(),"last_message_at":created[0]["created_at"]},prefer="return=minimal")
     agent_reply = None
     conv = await _db("GET","conversations",params={"select":"id,kind","id":f"eq.{conversation_id}","limit":"1"})
-    if conv and conv[0].get("kind") == "agent":
+    if replayed and conv and conv[0].get("kind") == "agent":
+        # A replay must recover an already-persisted reply, never start another
+        # potentially billable model invocation. Missing reply is ambiguous: the
+        # previous request may have reached the provider before it was interrupted.
         participants = await _db("GET","conversation_participants",params={"select":"agent_id","conversation_id":f"eq.{conversation_id}","participant_type":"eq.agent","limit":"1"})
+        replay_agent_id = str(participants[0]["agent_id"]) if participants else ""
+        reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL,"allpha-agent-reply:"+str(created[0]["id"]))
+        recovered_reply = await _db("GET","messages",params={
+            "select":"id,conversation_id,sender_type,sender_agent_id,body,client_message_id,created_at,delivery_status",
+            "conversation_id":f"eq.{conversation_id}","sender_agent_id":f"eq.{replay_agent_id}",
+            "client_message_id":f"eq.{reply_id}","limit":"1"})
+        if recovered_reply:
+            agent_reply = {"status":"sent","message":recovered_reply[0],"replayed":True}
+        else:
+            agent_reply = {"status":"pending_reconciliation","error_code":"AGENT_REPLY_OUTCOME_UNKNOWN"}
+        return {"message":created[0],"replayed":True,"agent_reply":agent_reply}
+    if conv and conv[0].get("kind") == "agent":
         agent_id = str(participants[0]["agent_id"]) if participants else ""
         reservation = None
         budget = None
