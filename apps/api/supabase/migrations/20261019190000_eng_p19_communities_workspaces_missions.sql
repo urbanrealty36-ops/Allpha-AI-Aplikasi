@@ -233,3 +233,19 @@ begin
 end $$;
 revoke all on function public.record_community_mission_progress(uuid,uuid,uuid,integer,uuid) from public, anon, authenticated;
 grant execute on function public.record_community_mission_progress(uuid,uuid,uuid,integer,uuid) to service_role;
+
+
+create or replace function public.join_public_community(p_community_id uuid, p_user_id uuid)
+returns setof public.community_memberships
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if not exists(select 1 from public.communities where id=p_community_id and visibility='public' and status='active') then
+    raise exception 'community_not_joinable';
+  end if;
+  insert into public.community_memberships(community_id,user_id,role,status,joined_at)
+  values(p_community_id,p_user_id,'member','active',now())
+  on conflict(community_id,user_id) do update set status='active',role=case when public.community_memberships.role='owner' then 'owner' else 'member' end,joined_at=coalesce(public.community_memberships.joined_at,now()),updated_at=now();
+  return query select * from public.community_memberships where community_id=p_community_id and user_id=p_user_id and status='active';
+end $$;
+revoke all on function public.join_public_community(uuid,uuid) from public, anon, authenticated;
+grant execute on function public.join_public_community(uuid,uuid) to service_role;
