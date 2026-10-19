@@ -36,10 +36,19 @@ async def _db(method: str, table: str, *, params: dict[str, str] | None = None, 
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "COLLABORATION_DATABASE_UNAVAILABLE", "message": "Data kolaborasi sementara tidak tersedia."}) from exc
     if response.status_code >= 400:
-        if response.status_code == 409:
+        detail = response.text.casefold()
+        if response.status_code == 409 or "duplicate key" in detail or "unique constraint" in detail or "idempotency_conflict" in detail:
             raise HTTPException(409, detail={"code": "COLLABORATION_CONFLICT", "message": "Data berubah atau permintaan duplikat. Muat ulang lalu coba lagi."})
-        if response.status_code in (401, 403):
+        if "mission_not_started" in detail:
+            raise HTTPException(409, detail={"code": "MISSION_NOT_STARTED", "message": "Misi belum dimulai."})
+        if "mission_ended" in detail:
+            raise HTTPException(409, detail={"code": "MISSION_ENDED", "message": "Misi telah berakhir."})
+        if "mission_not_found_or_inactive" in detail:
+            raise HTTPException(404, detail={"code": "MISSION_NOT_FOUND", "message": "Misi tidak ditemukan atau tidak aktif."})
+        if "membership_required" in detail or response.status_code in (401, 403):
             raise HTTPException(403, detail={"code": "COLLABORATION_FORBIDDEN", "message": "Operasi tidak diizinkan."})
+        if "community_not_joinable" in detail:
+            raise HTTPException(404, detail={"code": "COMMUNITY_NOT_JOINABLE", "message": "Komunitas ini tidak dapat diikuti secara publik."})
         raise HTTPException(503, detail={"code": "COLLABORATION_DATABASE_ERROR", "message": "Data kolaborasi tidak dapat diproses."})
     return response.json() if response.content else None
 
