@@ -88,7 +88,7 @@ export default function ContentReportsPage() {
         <p className="mt-3 whitespace-pre-wrap text-sm">{item.content?.body || (item.content?.media?.length ? "[Konten berisi media]" : "[Konten tidak tersedia]")}</p>
         {item.content?.media?.map(media => media.preview_url && (media.media_type.startsWith("video/")
           ? <video key={media.id} src={media.preview_url} controls playsInline className="mt-3 max-h-[420px] w-full rounded-xl bg-black" />
-          : <img key={media.id} src={media.preview_url} alt={media.filename} className="mt-3 max-h-[420px] w-full rounded-xl object-contain" />))}
+          : media.media_type.startsWith("audio/") ? <audio key={media.id} src={media.preview_url} controls preload="metadata" className="mt-3 w-full" aria-label={media.filename} /> : <img key={media.id} src={media.preview_url} alt={media.filename} className="mt-3 max-h-[420px] w-full rounded-xl object-contain" />))}
         <p className="mt-2 text-xs text-slate-500">Reporter: {item.reporter_user_id} · Creator: {item.content?.owner_id || "tidak tersedia"}</p>
         {item.details && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">{item.details}</p>}
         <label className="mt-4 block text-sm">Alasan keputusan<textarea className="mt-1 min-h-20 w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600" value={reasons[item.id] || ""} onChange={e => setReasons(current => ({ ...current, [item.id]: e.target.value }))} minLength={8} maxLength={500} required /></label>
