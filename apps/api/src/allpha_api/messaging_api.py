@@ -82,7 +82,7 @@ async def create_conversation(payload: ConversationCreate, request: Request, use
         kind="human"
         participants=[{"user_id":uid,"participant_type":"human"},{"user_id":recipient,"participant_type":"human"}]
     else:
-        agents=await _db("GET","ai_agents",params={"select":"id,owner_user_id,status,visibility","id":f"eq.{payload.agent_id}","limit":"1"})
+        agents=await _db("GET","ai_agents",params={"select":"id,created_by,status,visibility","id":f"eq.{payload.agent_id}","limit":"1"})
         if not agents or agents[0].get("status")!="active" or agents[0].get("visibility")!="public":
             raise HTTPException(404,detail={"code":"AGENT_NOT_AVAILABLE","message":"Agent tidak tersedia untuk percakapan."})
         kind="agent"
