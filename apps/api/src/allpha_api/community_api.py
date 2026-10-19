@@ -561,6 +561,20 @@ class AgentResourceGrantRevoke(BaseModel):
     reason: str = Field(min_length=8, max_length=500)
 
 
+async def _require_agent_owner(agent_id: uuid.UUID, user_id: str) -> dict[str, Any]:
+    ownership = await _db("GET", "agent_ownerships", params={
+        "select": "agent_id", "agent_id": f"eq.{agent_id}",
+        "owner_user_id": f"eq.{user_id}", "ownership_role": "eq.owner",
+        "status": "eq.active", "limit": "1",
+    })
+    if not ownership:
+        raise HTTPException(403, detail={"code": "AGENT_OWNER_REQUIRED", "message": "Izin pemilik Agent aktif diperlukan."})
+    agents = await _db("GET", "ai_agents", params={"select": "id,status", "id": f"eq.{agent_id}", "limit": "1"})
+    if not agents:
+        raise HTTPException(404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+    return agents[0]
+
+
 async def _require_active_agent(agent_id: uuid.UUID) -> dict[str, Any]:
     agents = await _db("GET", "ai_agents", params={
         "select": "id,status", "id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
@@ -634,7 +648,6 @@ async def list_agent_resource_grants(agent_id: uuid.UUID, user: dict[str, Any] =
 @router.post("/agents/{agent_id}/resource-grants/{grant_id}/revoke")
 async def revoke_agent_resource_grant(agent_id: uuid.UUID, grant_id: uuid.UUID, payload: AgentResourceGrantRevoke, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     user_id = str(user["id"])
-    await _require_active_agent(agent_id)
     grants = await _db("GET", "agent_resource_grants", params={
         "select": "*", "id": f"eq.{grant_id}", "agent_id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
     })
