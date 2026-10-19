@@ -106,7 +106,6 @@ class CommunityUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=80)
     description: str | None = Field(default=None, max_length=1000)
     visibility: Literal["public", "private"] | None = None
-    status: Literal["active", "archived"] | None = None
 
 
 class CommunityPostCreate(BaseModel):
@@ -298,6 +297,7 @@ async def revoke_invite(community_id: uuid.UUID, invite_id: uuid.UUID, user: dic
         raise HTTPException(404, detail={"code": "INVITE_NOT_FOUND", "message": "Undangan tidak ditemukan atau sudah digunakan."})
 @router.post("/communities/{community_id}/posts", status_code=201)
 async def create_community_post(community_id: uuid.UUID, payload: CommunityPostCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
     await _require_member(community_id, str(user["id"]))
     rows = await _db("POST", "community_posts", body={"community_id": str(community_id), "author_id": str(user["id"]), "body": payload.body.strip(), "post_type": payload.post_type, "status": "published"}, prefer="return=representation")
     return {"post": rows[0]}
@@ -434,6 +434,7 @@ async def list_presence(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(
 
 @router.get("/communities/{community_id}/missions")
 async def list_missions(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
     await _require_member(community_id, str(user["id"]))
     rows = await _db("GET", "community_missions", params={"select": "*", "community_id": f"eq.{community_id}", "status": "eq.active", "order": "created_at.desc", "limit": "100"})
     progress = await _db("GET", "community_mission_progress", params={"select": "mission_id,progress_count,status", "user_id": f"eq.{user['id']}", "limit": "500"})
@@ -445,6 +446,7 @@ async def list_missions(community_id: uuid.UUID, user: dict[str, Any] = Depends(
 
 @router.post("/communities/{community_id}/missions", status_code=201)
 async def create_mission(community_id: uuid.UUID, payload: MissionCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
     await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
     if payload.starts_at and payload.ends_at and payload.ends_at <= payload.starts_at:
         raise HTTPException(422, detail={"code": "MISSION_DATE_RANGE_INVALID", "message": "Waktu berakhir harus setelah waktu mulai."})
@@ -454,6 +456,7 @@ async def create_mission(community_id: uuid.UUID, payload: MissionCreate, user: 
 
 @router.post("/communities/{community_id}/missions/{mission_id}/progress")
 async def update_mission_progress(community_id: uuid.UUID, mission_id: uuid.UUID, increment: int = Query(default=1, ge=1, le=100), idempotency_key: uuid.UUID = Header(alias="Idempotency-Key"), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
     await _require_member(community_id, str(user["id"]))
     rows = await _db("POST", "rpc/record_community_mission_progress", body={"p_community_id": str(community_id), "p_mission_id": str(mission_id), "p_user_id": str(user["id"]), "p_increment": increment, "p_idempotency_key": str(idempotency_key)}, prefer="return=representation")
     if not rows:
