@@ -105,7 +105,7 @@ assert.doesNotMatch(reportsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockRep
 const reelsPage = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/reels?", "controls", "playsInline", "<audio", "preview_url", "toggleLike", "share(item)",
-  "Masuk untuk menonton video pendek dan audio"
+  "Masuk untuk menonton video pendek dan audio", "onError", "Perbarui tautan media dan coba lagi", "mediaErrors"
 ]) assert.ok(reelsPage.includes(contract), `missing ENG-P15 Web Reels contract: ${contract}`);
 assert.doesNotMatch(reelsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockReels|fakeReels/);
 assert.ok(contentStudio.includes("audio/mpeg") && contentStudio.includes("<audio"), "Creator Studio must upload and preview audio");
