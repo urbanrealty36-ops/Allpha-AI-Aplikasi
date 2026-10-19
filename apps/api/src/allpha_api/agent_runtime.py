@@ -303,8 +303,6 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked("consumer generation must use the public route with the canonical owner context")
             if request.agent_id != agent_id or request.source_id != skill_id or request.source_version != skill_version:
                 raise AgentRuntimeBlocked("generation request does not match the authorized Agent/Skill version")
-            if request.requester_id if hasattr(request, "requester_id") else False:
-                raise AgentRuntimeBlocked("requester identity must not be inferred from model output")
         if not agent_id or agent_version < 1 or not skill_id or skill_version < 1:
             raise AgentRuntimeBlocked("canonical Agent and Skill identity/version are required")
         if not skill_published:
