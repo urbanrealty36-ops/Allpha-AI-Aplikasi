@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
-from allpha_api.content_api import MEDIA_FIELDS, _server_db, _signed_media_preview_url
+from allpha_api.content_api import MEDIA_FIELDS, _server_db, _signed_media_preview_url, _storage
 from allpha_api.feed_api import _edges
 
 router = APIRouter(prefix="/v1/stories", tags=["stories"])
@@ -58,6 +58,62 @@ async def _attach_media(items: list[dict[str, Any]], *, owner_id: str | None = N
     return [{**item, "media": by_content.get(str(item["id"]), [])} for item in items]
 
 
+async def _cleanup_story_media(content_id: str, owner_id: str | None = None) -> int:
+    """Delete expired/removed story binaries and then their metadata; retain failed items for retry."""
+    params: dict[str, str] = {
+        "select": "id,owner_id,storage_path,status",
+        "content_id": f"eq.{content_id}",
+        "status": "in.(uploaded,ready,processing,failed,deleting)",
+        "limit": "100",
+    }
+    if owner_id is not None:
+        params["owner_id"] = f"eq.{owner_id}"
+    media = await _server_db("GET", "content_media", params=params)
+    deleted = 0
+    for item in media or []:
+        marked = item
+        if item.get("status") != "deleting":
+            rows = await _server_db("PATCH", "content_media", params={
+                "id": f"eq.{item['id']}", "owner_id": f"eq.{item['owner_id']}",
+                "status": f"eq.{item['status']}", "select": "id,owner_id,storage_path,status",
+            }, body={"status": "deleting"}, prefer="return=representation")
+            if not rows:
+                continue
+            marked = rows[0]
+        try:
+            await _storage("DELETE", f"content-media/{marked['storage_path']}")
+        except HTTPException:
+            # Preserve deleting metadata so a subsequent cleanup attempt can retry.
+            continue
+        await _server_db("DELETE", "content_media", params={
+            "id": f"eq.{marked['id']}", "owner_id": f"eq.{marked['owner_id']}",
+            "status": "eq.deleting",
+        })
+        deleted += 1
+    return deleted
+
+
+async def _cleanup_pending_story_media() -> int:
+    """Retry media cleanup left in deleting state by an earlier interrupted request."""
+    pending = await _server_db("GET", "content_media", params={
+        "select": "id,content_id,owner_id",
+        "status": "eq.deleting",
+        "limit": "100",
+    })
+    deleted = 0
+    for item in pending or []:
+        parent = await _server_db("GET", "content_items", params={
+            "select": "id,content_type,status",
+            "id": f"eq.{item['content_id']}",
+            "content_type": "eq.story",
+            "status": "in.(archived,deleted)",
+            "limit": "1",
+        })
+        if parent:
+            deleted += await _cleanup_story_media(str(item["content_id"]), str(item["owner_id"]))
+    return deleted
+
+
 async def _expire_due_stories() -> int:
     """Hide expired stories immediately at read time and archive their lifecycle state."""
     now = _now().isoformat()
@@ -83,7 +139,10 @@ async def _expire_due_stories() -> int:
             "status": "archived",
             "version": int(row["version"]) + 1,
         }, prefer="return=representation")
-        changed += len(rows or [])
+        if rows:
+            changed += len(rows)
+            await _cleanup_story_media(str(row["id"]))
+    await _cleanup_pending_story_media()
     return changed
 
 
@@ -207,4 +266,5 @@ async def archive_my_story(
     }, prefer="return=representation")
     if not updated:
         raise HTTPException(409, detail={"code": "STORY_UPDATE_CONFLICT", "message": "Story berubah; muat ulang sebelum mencoba lagi."})
-    return {"item": updated[0], "message": "Story diarsipkan dan tidak lagi tersedia pada feed."}
+    await _cleanup_story_media(str(story_id), str(user["id"]))
+    return {"item": updated[0], "message": "Story diarsipkan; media yang dapat dihapus telah dibersihkan."}
