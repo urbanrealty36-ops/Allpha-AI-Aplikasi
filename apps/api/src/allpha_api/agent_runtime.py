@@ -295,6 +295,8 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked("only active public Agents and published Skills can serve consumers")
             if not auth.grant_active or not auth.policy_approved or not auth.policy_version:
                 raise AgentRuntimeBlocked("owner-approved consumer grant and runtime policy are required")
+            if auth.policy_version != policy_version:
+                raise AgentRuntimeBlocked("consumer authorization policy version mismatch")
             if not auth.budget_reserved or not auth.metering_ready:
                 raise AgentRuntimeBlocked("consumer budget reservation and metering must be ready")
             if auth.allowed_memory_scope:
