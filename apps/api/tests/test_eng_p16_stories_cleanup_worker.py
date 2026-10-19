@@ -79,10 +79,10 @@ def test_recovery_sweep_preserves_failed_media_and_retries_deleting_status(
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params, body, prefer))
-        if method == "GET" and table == "content_items":
+        if method == "GET" and table == "content_media":
             return [{
-                "id": "story-1",
-                "content_media": [dict(media)],
+                **dict(media), "content_id": "story-1",
+                "content_items": {"id": "story-1", "content_type": "story", "status": "archived"},
             }]
         if method == "PATCH" and table == "content_media":
             if storage_failure:
@@ -102,10 +102,11 @@ def test_recovery_sweep_preserves_failed_media_and_retries_deleting_status(
     stats = __import__("asyncio").run(worker._sweep_archived_story_media(limit=10))
 
     query = next(params for method, table, params, _body, _prefer in calls
-                 if method == "GET" and table == "content_items")
-    assert query["content_type"] == "eq.story"
-    assert query["status"] == "in.(archived,deleted)"
-    assert query["content_media.status"] == "in.(uploaded,ready,processing,failed,deleting)"
+                 if method == "GET" and table == "content_media")
+    assert query["content_items.content_type"] == "eq.story"
+    assert query["content_items.status"] == "in.(archived,deleted)"
+    assert query["status"] == "in.(uploaded,ready,processing,failed,deleting)"
+    assert query["limit"] == "10"
     assert stats["media_candidates"] == 1
     if storage_failure:
         assert stats["storage_failures"] == 1
@@ -123,11 +124,12 @@ def test_metadata_is_not_deleted_when_storage_delete_fails(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params, body))
-        if method == "GET" and table == "content_items":
-            return [{"id": "story-1", "content_media": [{
-                "id": "media-2", "owner_id": "owner-1",
+        if method == "GET" and table == "content_media":
+            return [{
+                "id": "media-2", "content_id": "story-1", "owner_id": "owner-1",
                 "storage_path": "owner-1/story-1/file.mp4", "status": "ready",
-            }]}]
+                "content_items": {"id": "story-1", "content_type": "story", "status": "deleted"},
+            }]
         if method == "PATCH":
             return [{"id": "media-2", "owner_id": "owner-1",
                      "storage_path": "owner-1/story-1/file.mp4", "status": "deleting"}]
@@ -180,14 +182,15 @@ def test_retry_after_transient_storage_failure_removes_metadata_only_on_success(
     db_deletes = {"count": 0}
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
-        if method == "GET" and table == "content_items":
+        if method == "GET" and table == "content_media":
             if media_state["status"] == "removed":
                 return []
-            return [{"id": "story-retry", "content_media": [{
-                "id": "media-retry", "owner_id": "owner-retry",
+            return [{
+                "id": "media-retry", "content_id": "story-retry", "owner_id": "owner-retry",
                 "storage_path": "owner-retry/story-retry/file.png",
                 "status": media_state["status"],
-            }]}]
+                "content_items": {"id": "story-retry", "content_type": "story", "status": "archived"},
+            }]
         if method == "PATCH" and table == "content_media":
             media_state["status"] = "deleting"
             return [{"id": "media-retry", "owner_id": "owner-retry",
