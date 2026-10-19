@@ -209,6 +209,103 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     return {"items": items, "next_cursor": _cursor_encode(next_offset, as_of) if next_offset < len(ranked) and next_offset < CANDIDATES else None,
             "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
 
+
+@router.get("/v1/search", tags=["search-discovery"])
+async def search_content(
+    q: str = Query(min_length=2, max_length=100),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Search only published, approved content and re-apply social visibility controls."""
+    query = " ".join(re.findall(r"[a-zA-Z0-9À-ÿ_ -]+", q)).strip()
+    terms = [part for part in query.split() if len(part) >= 2][:8]
+    if not terms:
+        raise HTTPException(422, detail={"code": "SEARCH_QUERY_INVALID", "message": "Masukkan kata kunci yang valid."})
+    owner = str(user["id"])
+    # Each term is sanitized before it is sent to PostgREST; database filters remain authoritative.
+    clauses = [f"body.ilike.*{term.replace('*', '').replace('%', '')}*" for term in terms]
+    rows = await _server_db("GET", "content_items", params={
+        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
+        "visibility": "in.(public,followers)", "or": f"({','.join(clauses)})",
+        "order": "published_at.desc,id.desc", "limit": "500",
+    })
+    followed, hidden = await _edges(owner)
+    eligible = [
+        row for row in (rows or [])
+        if str(row.get("owner_id")) not in hidden
+        and (row.get("visibility") != "followers" or str(row.get("owner_id")) in followed)
+    ]
+    needle = query.casefold()
+    eligible.sort(key=lambda row: (
+        0 if needle in str(row.get("body") or "").casefold() else 1,
+        -sum(1 for term in terms if term.casefold() in str(row.get("body") or "").casefold()),
+        -_published(row).timestamp(),
+        str(row.get("id")),
+    ))
+    page = eligible[:limit]
+    ids = [str(row["id"]) for row in page]
+    media_by_id: dict[str, list[dict[str, Any]]] = {}
+    if ids:
+        media = await _server_db("GET", "content_media", params={
+            "select": MEDIA_FIELDS, "content_id": f"in.({','.join(ids)})",
+            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(200, limit * 5)),
+        })
+        for row in media or []:
+            safe = {key: value for key, value in row.items() if key != "storage_path"}
+            safe["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+            media_by_id.setdefault(str(row["content_id"]), []).append(safe)
+    items = [{**row, "media": media_by_id.get(str(row["id"]), [])} for row in page]
+    return {"query": query, "items": items, "count": len(items), "has_more": len(eligible) > limit}
+
+
+@router.get("/v1/trends", tags=["search-discovery"])
+async def get_trends(
+    limit: int = Query(default=10, ge=1, le=30),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Derive lightweight trends from real eligible content; no synthetic trend rows."""
+    owner = str(user["id"])
+    rows = await _server_db("GET", "content_items", params={
+        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
+        "visibility": "in.(public,followers)", "order": "published_at.desc,id.desc", "limit": "500",
+    })
+    followed, hidden = await _edges(owner)
+    visible = [
+        row for row in (rows or [])
+        if str(row.get("owner_id")) not in hidden
+        and (row.get("visibility") != "followers" or str(row.get("owner_id")) in followed)
+    ]
+    stopwords = {
+        "yang", "dan", "atau", "untuk", "dari", "dengan", "pada", "ini", "itu", "akan",
+        "tidak", "ada", "saya", "kami", "kamu", "bisa", "juga", "dalam", "karena",
+        "the", "and", "for", "from", "with", "this", "that", "you", "your", "are",
+        "was", "have", "has", "will", "not", "but", "our", "all", "about", "into",
+    }
+    counts: dict[str, int] = {}
+    examples: dict[str, dict[str, Any]] = {}
+    for row in visible:
+        tokens = set(re.findall(r"[a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9_]{2,}", str(row.get("body") or "").casefold()))
+        for token in tokens - stopwords:
+            counts[token] = counts.get(token, 0) + 1
+            examples.setdefault(token, {"content_id": str(row["id"]), "published_at": row.get("published_at")})
+    trends = [
+        {"topic": topic, "content_count": count, "example_content_id": examples[topic]["content_id"]}
+        for topic, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    ]
+    return {"items": trends, "source": "eligible_published_content", "window": "latest_500_candidates"}
+
+
+@router.get("/v1/recommendations", tags=["search-discovery"])
+async def get_recommendations(
+    limit: int = Query(default=10, ge=1, le=30),
+    user: dict[str, Any] = Depends(current_user),
+    request: Request = None,
+) -> dict[str, Any]:
+    """Reuse canonical feed ranking and preference controls for recommendations."""
+    page = await get_feed(request=request, mode="for_you", limit=limit, cursor=None, user=user)
+    return {"items": page["items"], "mode": page["mode"], "personalization_enabled": page["personalization_enabled"]}
+
+
 @router.get("/v1/reels", tags=["reels"])
 async def get_reels(request: Request, mode: Literal["for_you", "recent"] = "for_you",
                     limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
