@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api import feed_api
@@ -21,7 +22,7 @@ CONTENT_ID = "00000000-0000-0000-0000-0000000000a1"
 OWNER = "isolated-eng-p14-author"
 
 
-def _test_identity(request):
+def _test_identity(request: Request):
     request.state.supabase_access_token = "isolated-test-token-not-valid-outside-tests"
     request.state.user_id = VIEWER
     return {"id": VIEWER, "email": "eng-p14-viewer@example.invalid"}
