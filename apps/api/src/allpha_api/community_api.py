@@ -611,6 +611,8 @@ async def create_agent_resource_grant(agent_id: uuid.UUID, payload: AgentResourc
     invalid = set(scopes) - AGENT_RESOURCE_SCOPES[payload.resource_type]
     if invalid:
         raise HTTPException(422, detail={"code": "AGENT_GRANT_SCOPE_NOT_ALLOWED", "message": "Scope tidak tersedia untuk jenis resource ini."})
+    if payload.expires_at and payload.expires_at.tzinfo is None:
+        raise HTTPException(422, detail={"code": "AGENT_GRANT_EXPIRY_TIMEZONE_REQUIRED", "message": "Masa berlaku harus menyertakan zona waktu."})
     if payload.expires_at and payload.expires_at <= datetime.now(timezone.utc):
         raise HTTPException(422, detail={"code": "AGENT_GRANT_EXPIRY_INVALID", "message": "Masa berlaku harus berada di masa depan."})
     resource_column = "community_id" if payload.resource_type == "community" else "workspace_id"
