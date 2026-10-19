@@ -289,7 +289,7 @@ class ConsumerBudgetReservation:
                     and isinstance(credits_per_unit, int) and credits_per_unit > 0
                     and isinstance(max_credits, int) and max_credits >= max_usage * credits_per_unit
                     and isinstance(max_concurrent, int) and max_concurrent > 0
-                    and cap.get("usage_unit") and cap.get("tariff_version")
+                    and cap.get("usage_unit") == "token" and cap.get("tariff_version")
                     and cap.get("cost_unit") == expected_cost_unit
                     and cap.get("cost_pricing_version") == expected_pricing_version
                     and isinstance(cap.get("max_cost_microunits"), int)
@@ -321,9 +321,13 @@ class ConsumerBudgetReservation:
             allow_partial_settlement=consumer.get("allow_partial_settlement") is True,
         )
 
+    def billing_account_id(self, *, requester_id: str, owner_id: str) -> str:
+        """Resolve the payer from the approved policy, never from a client payload."""
+        return requester_id if self.payer_role == "consumer" else owner_id
+
     async def reserve(self, *, requester_id: str, owner_id: str, message_id: str) -> ReservationReceipt:
         units = self.max_usage_units
-        payer_id = requester_id if self.payer_role == "consumer" else owner_id
+        payer_id = self.billing_account_id(requester_id=requester_id, owner_id=owner_id)
         credits = units * self.credits_per_usage_unit
         if credits <= 0:
             raise ConsumerGrantUnavailable("approved consumer reservation must be positive")
