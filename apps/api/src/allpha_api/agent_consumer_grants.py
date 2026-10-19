@@ -200,7 +200,7 @@ class ConsumerBudgetReservation:
                 response = await client.get(
                     f"{base}/rest/v1/credit_policy_versions",
                     params={"select":"policy_version,credit_scheme_version,approval_reference,configuration",
-                            "status":"eq.approved", "or":f"(effective_at.is.null,effective_at.lte.{_now()})",
+                            "status":"eq.approved", "or":f"(and(effective_at.is.null,expires_at.is.null),and(effective_at.is.null,expires_at.gt.{_now()}),and(effective_at.lte.{_now()},expires_at.is.null),and(effective_at.lte.{_now()},expires_at.gt.{_now()}))",
                             "order":"approved_at.desc.nullslast", "limit":"10"},
                     headers=headers,
                 )
@@ -223,7 +223,8 @@ class ConsumerBudgetReservation:
                     and cap.get("cost_pricing_version") == expected_pricing_version
                     and cap.get("max_cost_microunits") == expected_max_cost_microunits
                     and consumer.get("max_usage_units_per_request")
-                    and cap.get("credits_per_usage_unit")):
+                    and cap.get("credits_per_usage_unit")
+                    and consumer.get("allow_success_settlement") is True):
                 selected = (row, config, consumer, cap, entitlement, entitlement_version, capability_id)
                 break
         if selected is None:
