@@ -113,6 +113,14 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
     try:
         await text_router.preflight("public")
         policy_version = text_router.policy_version_for("public")
+        route_snapshot = text_router.route_snapshot_for("public")
+        # Do not issue a grant until the approved Consumer tariff, payer and
+        # settlement policy are present and match the actual Model Router route.
+        await ConsumerBudgetReservation.from_environment(
+            expected_cost_unit=str(route_snapshot["cost_unit"]),
+            expected_pricing_version=str(route_snapshot["pricing_version"]),
+            expected_max_cost_microunits=int(route_snapshot["max_cost_microunits"]),
+        )
         store = AgentConsumerGrantStore.from_environment()
         grant = await store.create(
             requester_id=requester_id, owner_id=owner_id, agent_id=str(agent_id),
