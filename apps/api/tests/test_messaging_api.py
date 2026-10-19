@@ -75,3 +75,83 @@ def test_send_message_returns_existing_idempotent_message(monkeypatch):
         assert not any(call[0] == "POST" and call[1] == "messages" for call in calls)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
+    import uuid
+    from types import SimpleNamespace
+
+    conversation_id = uuid.uuid4()
+    client_message_id = uuid.uuid4()
+    user_message = {
+        "id": "persisted-user-message", "conversation_id": str(conversation_id),
+        "sender_type": "human", "sender_user_id": "messaging-test-user",
+        "body": "please retry", "client_message_id": str(client_message_id),
+        "delivery_status": "sent", "created_at": "2026-10-19T12:00:00+00:00",
+    }
+    calls = []
+    async def member(conversation_id, user_id):
+        return {"conversation_id": str(conversation_id), "user_id": user_id}
+    async def unblocked(conversation_id, user_id):
+        return None
+    async def db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, body))
+        if method == "GET" and table == "messages":
+            return [user_message]
+        if method == "GET" and table == "conversations":
+            return [{"id": str(conversation_id), "kind": "agent"}]
+        if method == "GET" and table == "conversation_participants":
+            return [{"agent_id": "agent-1"}]
+        if method == "GET" and table == "ai_agents":
+            return [{"id": "agent-1", "version": 1, "status": "active", "persona": {}, "boundaries": {}}]
+        if method == "GET" and table == "agent_skills":
+            return [{"id": "skill-1", "version": 1, "status": "published", "name": "Answer", "instructions": "Answer safely"}]
+        if method == "POST" and table == "messages":
+            return [{
+                "id": "agent-reply-1", "conversation_id": str(conversation_id),
+                "sender_type": "agent", "sender_agent_id": "agent-1", "body": "Recovered reply",
+                "client_message_id": body["client_message_id"], "created_at": "2026-10-19T12:00:01+00:00",
+                "delivery_status": "sent",
+            }]
+        if method == "PATCH":
+            return None
+        raise AssertionError(f"Unexpected database call: {method} {table}")
+
+    class FakeStore:
+        async def owner_has_agent(self, owner_id, agent_id):
+            return True
+
+    class FakeRouter:
+        def require_runtime_ready(self, sensitivity):
+            assert sensitivity == "private"
+        def policy_version_for(self, sensitivity):
+            assert sensitivity == "private"
+            return "private-v1"
+
+    async def generate(self, **kwargs):
+        calls.append(("GENERATE", "runtime", kwargs))
+        return SimpleNamespace(output_text="Recovered reply"), SimpleNamespace(trace_id="trace-retry")
+
+    monkeypatch.setattr(messaging_api, "_membership", member)
+    monkeypatch.setattr(messaging_api, "_assert_not_blocked", unblocked)
+    monkeypatch.setattr(messaging_api, "_db", db)
+    monkeypatch.setattr(messaging_api.AgentRuntimeStore, "from_environment", classmethod(lambda cls: FakeStore()))
+    monkeypatch.setattr(messaging_api.AgentRuntime, "execute_skill_generation", generate)
+    app.state.text_generation_router = FakeRouter()
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).post(
+            f"/v1/messages/conversations/{conversation_id}/messages",
+            json={"body": "please retry", "client_message_id": str(client_message_id)},
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert result["replayed"] is True
+        assert result["message"]["id"] == "persisted-user-message"
+        assert result["agent_reply"]["status"] == "sent"
+        assert any(call[0] == "GENERATE" for call in calls)
+        assert not any(call[0] == "POST" and call[1] == "messages" and call[2].get("sender_type") == "human" for call in calls)
+    finally:
+        app.dependency_overrides.clear()
+        if hasattr(app.state, "text_generation_router"):
+            delattr(app.state, "text_generation_router")
