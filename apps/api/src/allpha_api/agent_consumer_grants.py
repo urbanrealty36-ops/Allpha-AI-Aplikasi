@@ -74,7 +74,7 @@ class AgentConsumerGrantStore:
     async def create(self, *, requester_id: str, owner_id: str, agent_id: str,
                      agent_version: int, skill_id: str, skill_version: int,
                      runtime_policy_version: str, idempotency_key: str,
-                     expires_at: str | None) -> dict[str, Any]:
+                     expires_at: str | None, policy_snapshot: dict[str, Any]) -> dict[str, Any]:
         if requester_id == owner_id:
             raise ValueError("owner cannot create a Consumer grant for themselves")
         if not idempotency_key.strip():
@@ -92,6 +92,19 @@ class AgentConsumerGrantStore:
             "skill_id": skill_id,
             "skill_version": skill_version,
             "runtime_policy_version": runtime_policy_version,
+            "capability_id": str(policy_snapshot["capability_id"]),
+            "credit_scheme_version": str(policy_snapshot["credit_scheme_version"]),
+            "approval_reference": str(policy_snapshot["approval_reference"]),
+            "tariff_version": str(policy_snapshot["tariff_version"]),
+            "entitlement_version": str(policy_snapshot["entitlement_version"]),
+            "max_usage_units": int(policy_snapshot["max_usage_units"]),
+            "max_cost_microunits": int(policy_snapshot["max_cost_microunits"]),
+            "cost_unit": str(policy_snapshot["cost_unit"]),
+            "pricing_version": str(policy_snapshot["pricing_version"]),
+            "payer_role": str(policy_snapshot["payer_role"]),
+            "allow_success_settlement": bool(policy_snapshot["allow_success_settlement"]),
+            "allow_definitive_failure_release": bool(policy_snapshot["allow_definitive_failure_release"]),
+            "allow_partial_settlement": bool(policy_snapshot["allow_partial_settlement"]),
             "granted_scopes": ["public_invoke"],
             "status": "active",
             "idempotency_key": idempotency_key,
@@ -101,7 +114,10 @@ class AgentConsumerGrantStore:
         if existing:
             row = existing[0]
             keys = ("requester_user_id","owner_user_id","agent_id","agent_version","skill_id",
-                    "skill_version","runtime_policy_version","expires_at")
+                    "skill_version","runtime_policy_version","expires_at","capability_id",
+                    "credit_scheme_version","approval_reference","tariff_version","entitlement_version",
+                    "max_usage_units","max_cost_microunits","cost_unit","pricing_version","payer_role",
+                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement")
             if any(row.get(key) != payload.get(key) for key in keys):
                 raise ConsumerGrantUnavailable("grant idempotency key was reused with different parameters")
             if row.get("status") == "active":
@@ -136,7 +152,7 @@ class AgentConsumerGrantStore:
 
     async def resolve(self, *, requester_id: str, owner_id: str, agent_id: str,
                       agent_version: int, skill_id: str, skill_version: int,
-                      runtime_policy_version: str) -> dict[str, Any] | None:
+                      runtime_policy_version: str, policy_snapshot: dict[str, Any]) -> dict[str, Any] | None:
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={"select":"*", "requester_user_id":f"eq.{requester_id}",
@@ -144,10 +160,30 @@ class AgentConsumerGrantStore:
                     "agent_version":f"eq.{agent_version}", "skill_id":f"eq.{skill_id}",
                     "skill_version":f"eq.{skill_version}", "runtime_policy_version":f"eq.{runtime_policy_version}",
                     "status":"eq.active", "granted_scopes":"cs.{public_invoke}",
+                    "capability_id":f"eq.{policy_snapshot['capability_id']}",
+                    "credit_scheme_version":f"eq.{policy_snapshot['credit_scheme_version']}",
+                    "approval_reference":f"eq.{policy_snapshot['approval_reference']}",
+                    "tariff_version":f"eq.{policy_snapshot['tariff_version']}",
+                    "entitlement_version":f"eq.{policy_snapshot['entitlement_version']}",
+                    "max_usage_units":f"eq.{policy_snapshot['max_usage_units']}",
+                    "max_cost_microunits":f"eq.{policy_snapshot['max_cost_microunits']}",
+                    "cost_unit":f"eq.{policy_snapshot['cost_unit']}",
+                    "pricing_version":f"eq.{policy_snapshot['pricing_version']}",
+                    "payer_role":f"eq.{policy_snapshot['payer_role']}",
+                    "allow_success_settlement":f"eq.{str(policy_snapshot['allow_success_settlement']).lower()}",
+                    "allow_definitive_failure_release":f"eq.{str(policy_snapshot['allow_definitive_failure_release']).lower()}",
+                    "allow_partial_settlement":f"eq.{str(policy_snapshot['allow_partial_settlement']).lower()}",
                     "or":f"(expires_at.is.null,expires_at.gt.{_now()})",
                     "order":"granted_at.desc", "limit":"1"},
         )
-        return rows[0] if rows else None
+        if not rows:
+            return None
+        row = rows[0]
+        # Fail closed if the database response does not exactly match the approved policy snapshot.
+        for key, value in policy_snapshot.items():
+            if row.get(key) != value:
+                return None
+        return row
 
 
 class ConsumerBudgetReservation:
@@ -189,6 +225,24 @@ class ConsumerBudgetReservation:
             allow_definitive_failure_release=allow_definitive_failure_release,
             allow_partial_settlement=allow_partial_settlement,
         )
+
+    def policy_snapshot(self) -> dict[str, Any]:
+        """Immutable grant contract bound to the approved financial and runtime policy."""
+        return {
+            "capability_id": self.capability_id,
+            "credit_scheme_version": self.credit_scheme_version,
+            "approval_reference": self.approval_reference,
+            "tariff_version": self.tariff_version,
+            "entitlement_version": self.entitlement_version,
+            "max_usage_units": self.max_usage_units,
+            "max_cost_microunits": self.max_cost_microunits,
+            "cost_unit": self.cost_unit,
+            "pricing_version": self.pricing_version,
+            "payer_role": self.payer_role,
+            "allow_success_settlement": self.policy.allow_success_settlement,
+            "allow_definitive_failure_release": self.policy.allow_definitive_failure_release,
+            "allow_partial_settlement": self.policy.allow_partial_settlement,
+        }
 
     @classmethod
     async def from_environment(cls, *, expected_cost_unit: str, expected_pricing_version: str,
