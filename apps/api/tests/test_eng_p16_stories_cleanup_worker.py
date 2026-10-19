@@ -76,6 +76,9 @@ def test_storage_delete_is_idempotent_for_success_and_missing_object(monkeypatch
     ("owner//file.png", "owner"),
     ("owner\\story\\file.png", "owner"),
     ("owner/story/file.png", ""),
+    (" owner/story/file.png", "owner"),
+    ("owner/story/file.png ", "owner"),
+    ("owner/story/file.png", " owner"),
 ])
 def test_storage_delete_rejects_paths_outside_owner_prefix(monkeypatch, storage_path, owner_id):
     monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))

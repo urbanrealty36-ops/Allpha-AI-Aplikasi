@@ -80,12 +80,14 @@ def _batch_limit() -> int:
 
 def _validated_storage_path(storage_path: str, owner_id: str) -> str:
     """Accept only a normalized object path rooted at the media owner's prefix."""
-    path = storage_path.strip()
-    owner = owner_id.strip()
+    path = storage_path
+    owner = owner_id
     parts = path.split("/")
     if (
         not owner
         or not path
+        or path != path.strip()
+        or owner != owner.strip()
         or "\\" in path
         or any(part in ("", ".", "..") for part in parts)
         or parts[0] != owner
