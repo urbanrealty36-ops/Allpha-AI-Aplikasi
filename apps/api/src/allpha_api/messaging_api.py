@@ -150,17 +150,25 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
     body=payload.body.strip()
     if not body: raise HTTPException(422,detail={"code":"MESSAGE_EMPTY","message":"Pesan tidak boleh kosong."})
     existing=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
-    if existing: return {"message":existing[0],"replayed":True}
-    row={"conversation_id":str(conversation_id),"sender_type":"human","sender_user_id":uid,"body":body,"client_message_id":str(payload.client_message_id),"delivery_status":"sent"}
-    try:
-        created=await _db("POST","messages",body=row,prefer="return=representation")
-    except HTTPException as exc:
-        if exc.status_code==409:
-            replay=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
-            if replay: return {"message":replay[0],"replayed":True}
-        raise
+    replayed = bool(existing)
+    created = existing
+    if not existing:
+        row={"conversation_id":str(conversation_id),"sender_type":"human","sender_user_id":uid,"body":body,"client_message_id":str(payload.client_message_id),"delivery_status":"sent"}
+        try:
+            created=await _db("POST","messages",body=row,prefer="return=representation")
+        except HTTPException as exc:
+            if exc.status_code==409:
+                replay=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
+                if replay:
+                    created = replay
+                    replayed = True
+                else:
+                    raise
+            else:
+                raise
     if not created: raise HTTPException(503,detail={"code":"MESSAGE_SEND_FAILED","message":"Pesan tidak dapat dikirim."})
-    await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},body={"updated_at":_now(),"last_message_at":created[0]["created_at"]},prefer="return=minimal")
+    if not replayed:
+        await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},body={"updated_at":_now(),"last_message_at":created[0]["created_at"]},prefer="return=minimal")
     agent_reply = None
     conv = await _db("GET","conversations",params={"select":"id,kind","id":f"eq.{conversation_id}","limit":"1"})
     if conv and conv[0].get("kind") == "agent":
@@ -216,7 +224,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                         agent_reply = {"status":"failed","error_code":"AGENT_REPLY_PERSISTENCE_FAILED","trace_id":evidence.trace_id}
         except (AgentRuntimeBlocked, TextGenerationRouterUnavailable, AgentRuntimePersistenceError, ValueError):
             agent_reply = {"status":"unavailable","error_code":"AGENT_RUNTIME_BLOCKED"}
-    return {"message":created[0],"replayed":False,"agent_reply":agent_reply}
+    return {"message":created[0],"replayed":replayed,"agent_reply":agent_reply}
 
 @router.post("/conversations/{conversation_id}/read")
 async def mark_read(conversation_id: uuid.UUID, request: Request, user: dict[str,Any] = Depends(current_user)):
