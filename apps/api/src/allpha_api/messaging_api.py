@@ -224,6 +224,10 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                         agent_reply = {"status":"failed","error_code":"AGENT_REPLY_PERSISTENCE_FAILED","trace_id":evidence.trace_id}
         except (AgentRuntimeBlocked, TextGenerationRouterUnavailable, AgentRuntimePersistenceError, ValueError):
             agent_reply = {"status":"unavailable","error_code":"AGENT_RUNTIME_BLOCKED"}
+        except Exception:
+            # Provider/network/runtime failures must not erase the persisted user message.
+            # A retry with the same client_message_id re-enters this recovery path.
+            agent_reply = {"status":"failed","error_code":"AGENT_REPLY_RETRYABLE_FAILURE"}
     return {"message":created[0],"replayed":replayed,"agent_reply":agent_reply}
 
 @router.post("/conversations/{conversation_id}/read")
