@@ -149,7 +149,11 @@ function Profile({ session }: { session: Session }) {
   const [communityItems, setCommunityItems] = useState<{id:string;name:string;slug:string;description:string;visibility:string;membership_role?:string|null}[]>([]);
   const [workspaceItems, setWorkspaceItems] = useState<{id:string;title:string;description:string;visibility:string;membership_role?:string}[]>([]);
   const [activeCommunity, setActiveCommunity] = useState<{id:string;name:string;membership_role?:string|null}|null>(null);
-  const [communityPosts, setCommunityPosts] = useState<{id:string;body:string;post_type:string;created_at:string}[]>([]);
+  const [communityPosts, setCommunityPosts] = useState<{id:string;body:string;post_type:string;created_at:string;is_pinned?:boolean}[]>([]);
+  const [communityMissions, setCommunityMissions] = useState<{id:string;title:string;description:string;target_count:number;my_progress?:{progress_count:number;status:string}}[]>([]);
+  const [missionDraftTitle, setMissionDraftTitle] = useState("");
+  const [missionDraftDescription, setMissionDraftDescription] = useState("");
+  const [missionDraftTarget, setMissionDraftTarget] = useState("1");
   const [communityDraftName, setCommunityDraftName] = useState("");
   const [communityDraftSlug, setCommunityDraftSlug] = useState("");
   const [communityPostDraft, setCommunityPostDraft] = useState("");
@@ -937,8 +941,12 @@ function Profile({ session }: { session: Session }) {
   async function openNativeCommunity(item: typeof communityItems[number]) {
     setActiveCommunity(item); setActiveWorkspace(null); setActiveWorkspaceDoc(null); setError("");
     try {
-      const result = await apiRequest("/v1/communities/" + encodeURIComponent(item.id) + "/posts") as {items?: typeof communityPosts};
-      setCommunityPosts(result.items || []);
+      const [postsResult, missionsResult] = await Promise.all([
+        apiRequest("/v1/communities/" + encodeURIComponent(item.id) + "/posts") as Promise<{items?: typeof communityPosts}>,
+        item.membership_role ? apiRequest("/v1/communities/" + encodeURIComponent(item.id) + "/missions") as Promise<{items?: typeof communityMissions}> : Promise.resolve({items: [] as typeof communityMissions}),
+      ]);
+      setCommunityPosts(postsResult.items || []);
+      setCommunityMissions(missionsResult.items || []);
     } catch (e) { setError(e instanceof Error ? e.message : "Diskusi komunitas gagal dimuat."); }
   }
   async function createNativeCommunity() {
@@ -960,6 +968,30 @@ function Profile({ session }: { session: Session }) {
     setBusy(true); setError("");
     try { await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/posts",{method:"POST",body:JSON.stringify({body:communityPostDraft.trim(),post_type:"discussion"})}); setCommunityPostDraft(""); await openNativeCommunity(activeCommunity); setMessage("Diskusi diterbitkan."); }
     catch(e) { setError(e instanceof Error ? e.message : "Diskusi gagal diterbitkan."); } finally { setBusy(false); }
+  }
+  async function createNativeMission() {
+    if (!activeCommunity || !missionDraftTitle.trim()) return;
+    const target = Number(missionDraftTarget);
+    if (!Number.isInteger(target) || target < 1 || target > 100000) { setError("Target misi harus bilangan bulat 1–100000."); return; }
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/missions", {method:"POST",body:JSON.stringify({title:missionDraftTitle.trim(),description:missionDraftDescription.trim(),target_count:target})});
+      setMissionDraftTitle(""); setMissionDraftDescription(""); setMissionDraftTarget("1");
+      const result = await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/missions") as {items?: typeof communityMissions};
+      setCommunityMissions(result.items || []); setMessage("Misi komunitas dibuat.");
+    } catch(e) { setError(e instanceof Error ? e.message : "Misi tidak dapat dibuat. Periksa peran komunitas lalu coba lagi."); }
+    finally { setBusy(false); }
+  }
+  async function progressNativeMission(missionId:string) {
+    if (!activeCommunity) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const idempotencyKey = createMessageId();
+      await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/missions/" + encodeURIComponent(missionId) + "/progress?increment=1", {method:"POST",headers:{"Idempotency-Key":idempotencyKey},body:"{}"});
+      const result = await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/missions") as {items?: typeof communityMissions};
+      setCommunityMissions(result.items || []); setMessage("Progres misi diperbarui. Reward belum dikonfigurasi.");
+    } catch(e) { setError(e instanceof Error ? e.message + " — coba muat ulang sebelum mengirim progres lagi." : "Progres misi gagal diperbarui. Muat ulang lalu coba lagi."); }
+    finally { setBusy(false); }
   }
   async function createNativeWorkspace() {
     setBusy(true); setError("");
@@ -1021,7 +1053,26 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.kicker}>WORKSPACE PRIVAT</Text><View style={{flexDirection:"row",gap:8}}><TextInput accessibilityLabel="Nama workspace" value={workspaceDraftName} onChangeText={setWorkspaceDraftName} style={[field,{flex:1}]} placeholder="Nama workspace" placeholderTextColor="#8B94AC"/><Button title="Buat" disabled={busy||workspaceDraftName.trim().length<2} onPress={()=>void createNativeWorkspace()}/></View>
         {workspaceItems.map(item=><Button key={item.id} title={(activeWorkspace?.id===item.id?"✓ ":"")+item.title+" · "+(item.membership_role||"anggota")} secondary={activeWorkspace?.id!==item.id} onPress={()=>void openNativeWorkspace(item)}/>)}
         {activeWorkspace&&<View style={s.socialRow}><Text style={s.title}>{activeWorkspace.title}</Text>{workspaceDocs.map(d=><Button key={d.id} title={d.title+" · v"+d.version} secondary={activeWorkspaceDoc?.id!==d.id} onPress={()=>{setActiveWorkspaceDoc(d);setWorkspaceDocTitle(d.title);setWorkspaceDocBody(d.body||"");void apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents/"+encodeURIComponent(d.id)).then((r:any)=>{if(r.document){setActiveWorkspaceDoc(r.document);setWorkspaceDocTitle(r.document.title);setWorkspaceDocBody(r.document.body||"");}}).catch(e=>setError(e instanceof Error?e.message:"Dokumen gagal dimuat."));}}/>)}<TextInput accessibilityLabel="Judul dokumen" value={workspaceDocTitle} onChangeText={setWorkspaceDocTitle} style={s.input} placeholder="Judul dokumen" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Isi dokumen" value={workspaceDocBody} onChangeText={setWorkspaceDocBody} multiline maxLength={50000} style={[s.input,{minHeight:100,textAlignVertical:"top"}]} placeholder="Isi dokumen" placeholderTextColor="#8B94AC"/><Button title="Buat dokumen baru" disabled={busy||!workspaceDocTitle.trim()||!!activeWorkspaceDoc} onPress={()=>void createNativeWorkspaceDoc()}/>{!!activeWorkspaceDoc&&<Button title={"Simpan versi baru v"+(activeWorkspaceDoc.version+1)} disabled={busy||!workspaceDocTitle.trim()} onPress={()=>void saveNativeWorkspaceDoc()}/>}</View>}
-        <Text style={s.muted}>Misi komunitas tersedia melalui API; reward finansial tidak diterbitkan otomatis.</Text>
+        <Text style={s.kicker}>MISI KOMUNITAS</Text>
+        {communityMissions.length === 0 && <Text style={s.muted}>Belum ada misi aktif untuk komunitas ini.</Text>}
+        {communityMissions.map(mission => {
+          const progress = mission.my_progress?.progress_count || 0;
+          const complete = mission.my_progress?.status === "completed" || progress >= mission.target_count;
+          return <View key={mission.id} style={s.socialRow}>
+            <Text style={s.body}>{mission.title}</Text>
+            {!!mission.description && <Text style={s.muted}>{mission.description}</Text>}
+            <Text style={s.muted}>Progres {Math.min(progress,mission.target_count)}/{mission.target_count} · {complete ? "Selesai" : "Berjalan"}</Text>
+            <Button title={complete ? "Misi selesai" : "Tambah progres +1"} secondary disabled={busy || complete} onPress={() => void progressNativeMission(mission.id)}/>
+          </View>;
+        })}
+        {(activeCommunity.membership_role === "owner" || activeCommunity.membership_role === "moderator") && <View style={s.socialRow}>
+          <Text style={s.title}>Buat misi</Text>
+          <TextInput accessibilityLabel="Judul misi" value={missionDraftTitle} onChangeText={setMissionDraftTitle} maxLength={120} style={s.input} placeholder="Judul misi" placeholderTextColor="#8B94AC"/>
+          <TextInput accessibilityLabel="Deskripsi misi" value={missionDraftDescription} onChangeText={setMissionDraftDescription} multiline maxLength={2000} style={s.input} placeholder="Deskripsi (opsional)" placeholderTextColor="#8B94AC"/>
+          <TextInput accessibilityLabel="Target progres misi" value={missionDraftTarget} onChangeText={setMissionDraftTarget} keyboardType="number-pad" maxLength={6} style={s.input} placeholder="Target progres" placeholderTextColor="#8B94AC"/>
+          <Button title="Buat misi" disabled={busy || missionDraftTitle.trim().length < 2} onPress={() => void createNativeMission()}/>
+        </View>}
+        <Text style={s.muted}>Reward finansial tidak diterbitkan otomatis. Progres diproses oleh API dengan kunci idempotensi.</Text>
       </> : tab === "stories" ? <>
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
