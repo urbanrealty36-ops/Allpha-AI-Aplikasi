@@ -82,11 +82,15 @@ async def _edges(user_id: str) -> tuple[set[str], set[str]]:
         "edge_type": "in.(follow,block,mute)", "limit": "1500",
     })
     incoming = await _server_db("GET", "social_edges", params={
-        "select": "actor_user_id", "target_user_id": f"eq.{user_id}", "edge_type": "eq.block", "limit": "500",
+        "select": "actor_user_id,status", "target_user_id": f"eq.{user_id}",
+        "edge_type": "eq.block", "status": "eq.active", "limit": "500",
     })
     followed = {str(x["target_user_id"]) for x in (outgoing or []) if x.get("edge_type") == "follow" and x.get("status") == "active"}
-    hidden = {str(x["target_user_id"]) for x in (outgoing or []) if x.get("edge_type") in {"block", "mute"}}
-    hidden.update(str(x["actor_user_id"]) for x in (incoming or []))
+    hidden = {
+        str(x["target_user_id"]) for x in (outgoing or [])
+        if x.get("edge_type") in {"block", "mute"} and x.get("status") == "active"
+    }
+    hidden.update(str(x["actor_user_id"]) for x in (incoming or []) if x.get("status") == "active")
     return followed, hidden
 
 def _published(row: dict[str, Any]) -> datetime:
