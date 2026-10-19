@@ -6,6 +6,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
 type Trend = { topic: string; content_count: number; example_content_id: string };
+type Recommendation = SearchItem;
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -17,6 +18,9 @@ export default function SearchPage() {
   const [trends, setTrends] = useState<Trend[]>([]);
   const [trendsBusy, setTrendsBusy] = useState(false);
   const [trendsError, setTrendsError] = useState("");
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendationsBusy, setRecommendationsBusy] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
@@ -28,18 +32,39 @@ export default function SearchPage() {
     return () => data.subscription.unsubscribe();
   }, [supabase]);
 
-  useEffect(() => {
+  async function loadTrends() {
     if (!session) { setTrends([]); setTrendsError(""); return; }
-    let cancelled = false;
     setTrendsBusy(true); setTrendsError("");
-    void fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" })
-      .then(async response => {
-        if (!response.ok) throw new Error("Tren belum dapat dimuat.");
-        return response.json() as Promise<Payload<Trend>>;
-      }).then(payload => { if (!cancelled) setTrends(payload.items || []); })
-      .catch(() => { if (!cancelled) setTrends([]); });
-    return () => { cancelled = true; };
-  }, [session]);
+    try {
+      const response = await fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const payload = await response.json() as Payload<Trend>;
+      if (!response.ok) throw new Error(payload.error?.message || "Tren belum dapat dimuat.");
+      setTrends(payload.items || []);
+    } catch (cause) { setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
+    finally { setTrendsBusy(false); }
+  }
+
+  async function loadRecommendations() {
+    if (!session) { setRecommendations([]); setRecommendationsError(""); return; }
+    setRecommendationsBusy(true); setRecommendationsError("");
+    try {
+      const response = await fetch(apiBase + "/v1/recommendations?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const payload = await response.json() as Payload<Recommendation>;
+      if (!response.ok) throw new Error(payload.error?.message || "Rekomendasi belum dapat dimuat.");
+      setRecommendations(payload.items || []);
+    } catch (cause) { setRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi belum dapat dimuat."); }
+    finally { setRecommendationsBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!session) {
+      setTrends([]); setTrendsError(""); setRecommendations([]); setRecommendationsError("");
+      return;
+    }
+    void loadTrends();
+    void loadRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
 
   async function runSearch(event?: FormEvent, value = query) {
     event?.preventDefault();
@@ -79,10 +104,15 @@ export default function SearchPage() {
     <section style={{ marginTop: 36 }}>
       <h2 style={{ fontSize: 22 }}>Tren dari konten terbaru</h2>
       <p style={{ opacity: .7, lineHeight: 1.5 }}>Topik dihitung dari konten nyata yang dapat Anda lihat, bukan data tren buatan. Cakupan saat ini adalah konten, belum profil atau Agent.</p>
-      {trendsBusy ? <p role="status">Memuat tren…</p> : trendsError ? <p role="alert">{trendsError} <button type="button" onClick={() => { if (session) { setTrendsBusy(true); setTrendsError(""); void fetch(apiBase + "/v1/trends?limit=10", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" }).then(async response => { if (!response.ok) throw new Error("Tren belum dapat dimuat."); return response.json() as Promise<Payload<Trend>>; }).then(payload => setTrends(payload.items || [])).catch(cause => setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat.")).finally(() => setTrendsBusy(false)); } }}>Coba lagi</button></p> : trends.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{trends.map(item =>
+      {trendsBusy ? <p role="status">Memuat tren…</p> : trendsError ? <p role="alert">{trendsError} <button type="button" onClick={() => void loadTrends()}>Coba lagi</button></p> : trends.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{trends.map(item =>
         <button key={item.topic} type="button" onClick={() => { setQuery(item.topic); void runSearch(undefined, item.topic); }} style={{ border: "1px solid #c8cfda", background: "transparent", color: "inherit", borderRadius: 999, padding: "9px 13px", cursor: "pointer" }}>
           #{item.topic} <small>({item.content_count})</small>
         </button>)}</div> : <p style={{ opacity: .7 }}>Tren akan muncul saat tersedia konten publik yang sesuai dan dapat diakses.</p>}
+    </section>
+    <section style={{ marginTop: 36 }} aria-label="Rekomendasi konten">
+      <h2 style={{ fontSize: 22 }}>Rekomendasi untuk Anda</h2>
+      <p style={{ opacity: .7, lineHeight: 1.5 }}>Mengikuti ranking feed kanonis dan pengaturan personalisasi akun Anda.</p>
+      {recommendationsBusy ? <p role="status">Memuat rekomendasi…</p> : recommendationsError ? <p role="alert">{recommendationsError} <button type="button" onClick={() => void loadRecommendations()}>Coba lagi</button></p> : recommendations.length ? recommendations.map(item => <article key={item.id} style={{ padding: "16px 0", borderBottom: "1px solid #d8dce5" }}><p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65, margin: "0 0 8px" }}>{item.body}</p><small style={{ opacity: .65 }}>{item.content_type} · {item.published_at ? new Date(item.published_at).toLocaleString() : new Date(item.created_at).toLocaleString()}</small></article>) : <p style={{ opacity: .7 }}>Belum ada rekomendasi yang dapat ditampilkan.</p>}
     </section>
   </main>;
 }

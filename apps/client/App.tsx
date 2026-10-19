@@ -137,6 +137,9 @@ function Profile({ session }: { session: Session }) {
   const [discoveryTrends, setDiscoveryTrends] = useState<{topic:string;content_count:number;example_content_id:string}[]>([]);
   const [discoveryTrendsBusy, setDiscoveryTrendsBusy] = useState(false);
   const [discoveryTrendsError, setDiscoveryTrendsError] = useState("");
+  const [discoveryRecommendations, setDiscoveryRecommendations] = useState<NativeFeedItem[]>([]);
+  const [discoveryRecommendationsBusy, setDiscoveryRecommendationsBusy] = useState(false);
+  const [discoveryRecommendationsError, setDiscoveryRecommendationsError] = useState("");
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState("");
   const [feedCommentDrafts, setFeedCommentDrafts] = useState<Record<string, string>>({});
@@ -217,6 +220,14 @@ function Profile({ session }: { session: Session }) {
     finally { setContentBusy(false); }
   }
 
+  async function loadDiscoveryRecommendations() {
+    setDiscoveryRecommendationsBusy(true); setDiscoveryRecommendationsError("");
+    try {
+      const result = await apiRequest("/v1/recommendations?limit=10") as { items?: NativeFeedItem[] };
+      setDiscoveryRecommendations(result.items ?? []);
+    } catch (cause) { setDiscoveryRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi belum dapat dimuat."); }
+    finally { setDiscoveryRecommendationsBusy(false); }
+  }
   async function loadDiscoveryTrends() {
     setDiscoveryTrendsBusy(true); setDiscoveryTrendsError("");
     try {
@@ -847,7 +858,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "discovery" ? <>
@@ -860,6 +871,8 @@ function Profile({ session }: { session: Session }) {
         {discoveryItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body}</Text><Text style={s.muted}>{item.content_type} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.title}>Tren dari konten terbaru</Text>
         {discoveryTrendsBusy ? <ActivityIndicator accessibilityLabel="Memuat tren" color="#A5B4FC"/> : discoveryTrendsError ? <View accessibilityRole="alert" style={s.socialRow}><Text style={s.error}>{discoveryTrendsError}</Text><Button title="Coba lagi" secondary onPress={() => void loadDiscoveryTrends()}/></View> : discoveryTrends.length ? discoveryTrends.map(item => <Button key={item.topic} title={"#" + item.topic + " · " + item.content_count} secondary onPress={() => { setDiscoveryQuery(item.topic); void runDiscoverySearch(item.topic); }}/>) : <Text style={s.muted}>Tren muncul saat ada konten yang dapat diakses.</Text>}
+        <Text style={s.title}>Rekomendasi untuk Anda</Text><Text style={s.muted}>Mengikuti ranking feed kanonis dan preferensi personalisasi akun.</Text>
+        {discoveryRecommendationsBusy ? <ActivityIndicator accessibilityLabel="Memuat rekomendasi" color="#A5B4FC"/> : discoveryRecommendationsError ? <View accessibilityRole="alert" style={s.socialRow}><Text style={s.error}>{discoveryRecommendationsError}</Text><Button title="Coba lagi" secondary onPress={() => void loadDiscoveryRecommendations()}/></View> : discoveryRecommendations.length ? discoveryRecommendations.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || "Konten"}</Text><Text style={s.muted}>{item.content_type} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text></View>) : <Text style={s.muted}>Belum ada rekomendasi yang dapat ditampilkan.</Text>}
       </> : tab === "stories" ? <>
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
