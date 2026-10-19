@@ -145,6 +145,47 @@ def test_story_delete_is_owner_scoped_and_compare_and_set(monkeypatch):
     assert calls[1][3]["status"] == "archived"
 
 
+
+def test_story_media_upload_preserves_story_content_type(monkeypatch):
+    from allpha_api import content_api
+
+    async def owner_content(content_id, user_id):
+        assert str(content_id) == STORY_ID
+        assert user_id == OWNER
+        return {
+            "id": STORY_ID, "owner_id": OWNER, "content_type": "story",
+            "status": "draft", "version": 1, "body": "",
+        }
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "POST" and table == "content_media":
+            return [{**body, "id": body["id"]}]
+        if method == "PATCH" and table == "content_items":
+            return [{"id": STORY_ID, "content_type": body["content_type"], "version": body["version"]}]
+        raise AssertionError((method, table, params, body))
+
+    async def fake_storage(method, path, *, data=None, media_type=None):
+        assert method == "POST"
+        assert path.startswith("content-media/" + OWNER + "/" + STORY_ID + "/")
+        assert media_type == "image/png"
+        return object()
+
+    monkeypatch.setattr(content_api, "_owner_content", owner_content)
+    monkeypatch.setattr(content_api, "_server_db", fake_db)
+    monkeypatch.setattr(content_api, "_storage", fake_storage)
+    app.dependency_overrides[current_user] = _auth()
+    try:
+        response = client.post(
+            f"/v1/content/{STORY_ID}/media",
+            files={"file": ("moment.png", b"\\x89PNG\\r\\n\\x1a\\nvalid-test-fixture", "image/png")},
+        )
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["content"]["content_type"] == "story"
+
+
 def test_migration_has_server_expiry_trigger_and_index():
     from pathlib import Path
     migration = (Path(__file__).parents[1] / "supabase/migrations/20261019100000_eng_p16_stories_expiry.sql").read_text()
