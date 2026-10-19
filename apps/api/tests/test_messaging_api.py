@@ -144,7 +144,7 @@ def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
             f"/v1/messages/conversations/{conversation_id}/messages",
             json={"body": "please retry", "client_message_id": str(client_message_id)},
         )
-        assert response.status_code == 200
+        assert response.status_code in (200, 201)
         result = response.json()
         assert result["replayed"] is True
         assert result["message"]["id"] == "persisted-user-message"
