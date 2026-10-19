@@ -92,6 +92,10 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params, body))
         if table == "content_items" and method == "GET":
+            if params and params.get("expires_at", "").startswith("lte."):
+                return [row for row in rows if datetime.fromisoformat(row["expires_at"]) <= now]
+            if params and params.get("expires_at", "").startswith("gt."):
+                return [row for row in rows if datetime.fromisoformat(row["expires_at"]) > now]
             return rows
         if table == "content_media":
             return []
