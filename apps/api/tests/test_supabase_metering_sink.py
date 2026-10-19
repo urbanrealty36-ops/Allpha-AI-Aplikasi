@@ -7,6 +7,7 @@ import pytest
 from allpha_api.embedding_contract import EmbeddingRequest, EmbeddingResponse
 from allpha_api.metering_contract import MeteringContractError, build_metering_record
 from allpha_api.supabase_metering_sink import SupabaseMeteringSink
+from allpha_api.model_router import TextGenerationEvidence
 
 
 def record():
@@ -77,3 +78,55 @@ def test_supabase_sink_fails_closed_on_non_success_rpc_result():
     import asyncio
     with pytest.raises(RuntimeError, match="did not confirm durable persistence"):
         asyncio.run(sink.write_idempotent(record()))
+
+
+def test_text_generation_metering_persists_approved_billing_account():
+    seen = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads((await request.aread()).decode())
+        return httpx.Response(200, json=True)
+
+    sink = SupabaseMeteringSink(
+        supabase_url="https://example.supabase.co",
+        service_key="test-only-service-key",
+        transport=httpx.MockTransport(handler),
+    )
+    evidence = TextGenerationEvidence(
+        task_id="consumer-message:message-1",
+        trace_id="trace-1",
+        idempotency_key="message-agent-reply:message-1",
+        policy_id="public-agent-policy",
+        policy_version="policy-v1",
+        provider_id="provider",
+        model_id="model",
+        model_version="model-v1",
+        prompt_sha256="a" * 64,
+        output_sha256="b" * 64,
+        input_tokens=11,
+        output_tokens=7,
+        cost_microunits=99,
+        cost_unit="USD_microunit",
+        pricing_version="price-v1",
+        latency_ms=100,
+        latency_budget_ms=5000,
+        cost_budget_microunits=500,
+        status="succeeded",
+        owner_id="agent-owner",
+        agent_id="agent-1",
+        source_id="skill-1",
+        source_version=3,
+        sensitivity="public",
+        evidence_sha256="c" * 64,
+        billing_account_id="consumer-payer",
+        completed_at="2026-10-19T15:00:00+00:00",
+    )
+    import asyncio
+    asyncio.run(sink.write_idempotent(evidence))
+    payload = seen["body"]["p_record"]
+    assert payload["owner_id"] == "agent-owner"
+    assert payload["billing_account_id"] == "consumer-payer"
+    assert payload["task_id"] == "consumer-message:message-1"
+    assert payload["idempotency_key"] == "message-agent-reply:message-1"
+    assert payload["usage_units"] == 18
+    assert payload["usage_unit"] == "token"
