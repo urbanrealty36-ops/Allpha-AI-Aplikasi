@@ -103,7 +103,9 @@ def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
         if method == "GET" and table == "conversation_participants":
             return [{"agent_id": "agent-1"}]
         if method == "GET" and table == "ai_agents":
-            return [{"id": "agent-1", "version": 1, "status": "active", "persona": {}, "boundaries": {}}]
+            return [{"id": "agent-1", "version": 1, "status": "active", "visibility": "private", "persona": {}, "boundaries": {}}]
+        if method == "GET" and table == "agent_ownerships":
+            return [{"owner_user_id": "messaging-test-user", "ownership_role": "owner", "status": "active"}]
         if method == "GET" and table == "agent_skills":
             return [{"id": "skill-1", "version": 1, "status": "published", "name": "Answer", "instructions": "Answer safely"}]
         if method == "POST" and table == "messages":
