@@ -23,6 +23,7 @@ export default function ReelsPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [mediaErrors, setMediaErrors] = useState<Record<string, boolean>>({});
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     if (!session) throw new Error("Masuk terlebih dahulu untuk membuka Reels.");
@@ -43,6 +44,7 @@ export default function ReelsPage() {
       const data = await request("/v1/reels?" + params.toString()) as { items?: Reel[]; next_cursor?: string | null };
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
+      if (reset) setMediaErrors({});
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels gagal dimuat."); }
     finally { setLoading(false); }
   }, [request]);
@@ -105,14 +107,15 @@ export default function ReelsPage() {
           {item.body && <p className="whitespace-pre-wrap px-4 pb-3 text-sm leading-6">{item.body}</p>}
           <div className="flex flex-1 flex-col justify-center gap-3 bg-black px-3 py-4">
             {item.media?.map(media => media.preview_url && (media.media_type.startsWith("video/")
-              ? <video key={media.id} src={media.preview_url} controls playsInline preload="metadata" className="max-h-[60vh] w-full rounded-2xl bg-black" aria-label={media.filename} />
+              ? <div key={media.id} className="space-y-2"><video src={media.preview_url} controls playsInline preload="metadata" className="max-h-[60vh] w-full rounded-2xl bg-black" aria-label={media.filename} onError={() => setMediaErrors(current => ({ ...current, [media.id]: true }))} />{mediaErrors[media.id] && <p role="alert" className="text-sm text-amber-300">Video gagal diputar atau tautan media kedaluwarsa.</p>}</div>
               : media.media_type.startsWith("audio/")
-                ? <div key={media.id} className="rounded-2xl bg-slate-800 p-4"><p className="mb-3 text-sm font-medium">{media.filename}</p><audio controls preload="metadata" src={media.preview_url} className="w-full" aria-label={media.filename} /></div>
+                ? <div key={media.id} className="rounded-2xl bg-slate-800 p-4"><p className="mb-3 text-sm font-medium">{media.filename}</p><audio controls preload="metadata" src={media.preview_url} className="w-full" aria-label={media.filename} onError={() => setMediaErrors(current => ({ ...current, [media.id]: true }))} />{mediaErrors[media.id] && <p role="alert" className="mt-2 text-sm text-amber-300">Audio gagal diputar atau tautan media kedaluwarsa.</p>}</div>
                 : null))}
           </div>
           <div className="flex items-center justify-between gap-3 px-4 py-3"><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void toggleLike(item)}>{item.viewer_reaction ? "♥ Disukai" : "♡ Suka"} · {item.engagement?.likes ?? 0}</button><span className="text-xs text-slate-400">{item.engagement?.comments ?? 0} komentar</span><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void share(item)}>Bagikan</button></div>
         </article>)}
       </div>
+      {Object.values(mediaErrors).some(Boolean) && <div className="mx-auto max-w-xl px-3 pb-4"><button className="w-full rounded-xl border border-amber-400/40 p-3 text-sm text-amber-200 disabled:opacity-50" disabled={loading} onClick={() => { setMediaErrors({}); setNotice("Memperbarui tautan media…"); void load(true); }}>Perbarui tautan media dan coba lagi</button></div>}
       {cursor && <div className="mx-auto max-w-xl px-3 pb-8"><button className="w-full rounded-xl border border-white/20 p-3 text-sm font-semibold disabled:opacity-50" disabled={loading} onClick={() => void load(false, cursor)}>Muat Reels berikutnya</button></div>}
     </>}
   </main>;
