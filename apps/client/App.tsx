@@ -915,7 +915,7 @@ function Profile({ session }: { session: Session }) {
           </View>
         </View>)}
         {reelsCursor && <Button title="Muat Reels berikutnya" secondary disabled={reelsBusy} onPress={() => void loadNativeReels(false)}/>}
-      </>> : tab === "content" ? <>
+      </> : tab === "content" ? <>
         <Text style={s.kicker}>ENG-P13 · CREATOR STUDIO</Text><Text style={s.title}>Buat konten</Text>
         <Text style={s.muted}>Draft teks atau media disimpan melalui API. Konten publik baru tayang setelah moderasi.</Text>
         <TextInput accessibilityLabel="Isi konten" value={contentBody} onChangeText={setContentBody} multiline maxLength={10000} style={[s.input, { minHeight: 110, textAlignVertical: "top", paddingTop: 12 }]} placeholder="Apa yang ingin kamu bagikan?" placeholderTextColor="#8B94AC"/>
