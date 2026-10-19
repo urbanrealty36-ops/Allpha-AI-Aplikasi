@@ -192,9 +192,12 @@ function Profile({ session }: { session: Session }) {
   const [spatialSceneKey, setSpatialSceneKey] = useState(""); const [spatialActiveKey, setSpatialActiveKey] = useState("");
   const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
   async function apiRequest(path: string, init: RequestInit = {}) {
+    const headers: Record<string, string> = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
+    if (!(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
+    Object.assign(headers, init.headers || {});
     const response = await fetch(apiBase + path, {
       ...init,
-      headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json", ...(init.headers || {}) },
+      headers,
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
