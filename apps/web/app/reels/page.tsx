@@ -35,17 +35,17 @@ export default function ReelsPage() {
     return response.json();
   }, [session]);
 
-  const load = useCallback(async (reset = true) => {
+  const load = useCallback(async (reset = true, nextCursor?: string | null) => {
     setLoading(true); setError("");
     try {
       const params = new URLSearchParams({ limit: "20", mode: "recent" });
-      if (!reset && cursor) params.set("cursor", cursor);
+      if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/reels?" + params.toString()) as { items?: Reel[]; next_cursor?: string | null };
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels gagal dimuat."); }
     finally { setLoading(false); }
-  }, [cursor, request]);
+  }, [request]);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -113,7 +113,7 @@ export default function ReelsPage() {
           <div className="flex items-center justify-between gap-3 px-4 py-3"><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void toggleLike(item)}>{item.viewer_reaction ? "♥ Disukai" : "♡ Suka"} · {item.engagement?.likes ?? 0}</button><span className="text-xs text-slate-400">{item.engagement?.comments ?? 0} komentar</span><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void share(item)}>Bagikan</button></div>
         </article>)}
       </div>
-      {cursor && <div className="mx-auto max-w-xl px-3 pb-8"><button className="w-full rounded-xl border border-white/20 p-3 text-sm font-semibold disabled:opacity-50" disabled={loading} onClick={() => void load(false)}>Muat Reels berikutnya</button></div>}
+      {cursor && <div className="mx-auto max-w-xl px-3 pb-8"><button className="w-full rounded-xl border border-white/20 p-3 text-sm font-semibold disabled:opacity-50" disabled={loading} onClick={() => void load(false, cursor)}>Muat Reels berikutnya</button></div>}
     </>}
   </main>;
 }
