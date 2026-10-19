@@ -30,6 +30,27 @@ class StoriesCleanupConfigurationError(RuntimeError):
 class StoriesCleanupStorageError(RuntimeError):
     """Storage deletion was not confirmed; metadata must remain retryable."""
 
+class StoriesCleanupResponseError(RuntimeError):
+    """A database response violates the expected list-of-row-objects contract."""
+
+
+def _require_rows(value: Any, *, operation: str) -> list[dict[str, Any]]:
+    """Validate PostgREST response shape before any row access or iteration."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise StoriesCleanupResponseError(
+            f"Unexpected database response for {operation}: expected list, "
+            f"received {type(value).__name__}"
+        )
+    for index, row in enumerate(value):
+        if not isinstance(row, dict):
+            raise StoriesCleanupResponseError(
+                f"Unexpected database response for {operation}: row {index} "
+                f"is {type(row).__name__}, expected object"
+            )
+    return value
+
 
 def _enabled() -> bool:
     raw = os.getenv("ALLPHA_STORIES_CLEANUP_ENABLED", "").strip().lower()
@@ -82,16 +103,28 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
         "metadata_failures": 0,
         "concurrent_changes": 0,
     }
-    # Query media as the root relation so limit bounds media operations, not only
-    # parent Stories. The inner relation filters to archived/deleted Stories.
-    rows = await _server_db("GET", "content_media", params={
-        "select": "id,content_id,owner_id,storage_path,status,content_items!inner(id,content_type,status)",
+    # Resolve parent Story IDs separately instead of embedding content_items in
+    # PostgREST. The embedded relation returned HTTP 300 (ambiguous FK), which
+    # _server_db previously treated as a successful JSON response.
+    story_rows = _require_rows(await _server_db("GET", "content_items", params={
+        "select": "id",
+        "content_type": "eq.story",
+        "status": "in.(archived,deleted)",
+        "order": "created_at.asc",
+        "limit": "1000",
+    }), operation="list archived/deleted Stories")
+    story_ids_for_query = [str(row.get("id") or "") for row in story_rows]
+    story_ids_for_query = [story_id for story_id in story_ids_for_query if story_id]
+    if not story_ids_for_query:
+        return stats
+
+    rows = _require_rows(await _server_db("GET", "content_media", params={
+        "select": "id,content_id,owner_id,storage_path,status",
+        "content_id": f"in.({','.join(story_ids_for_query)})",
         "status": "in.(uploaded,ready,processing,failed,deleting)",
-        "content_items.content_type": "eq.story",
-        "content_items.status": "in.(archived,deleted)",
         "order": "created_at.asc",
         "limit": str(limit),
-    }) or []
+    }), operation="list media for archived/deleted Stories")
 
     story_ids: set[str] = set()
     stats["media_candidates"] = len(rows)
@@ -103,12 +136,12 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
 
         marked = item
         if current_status != "deleting":
-            changed = await _server_db("PATCH", "content_media", params={
+            changed = _require_rows(await _server_db("PATCH", "content_media", params={
                 "id": f"eq.{item['id']}",
                 "owner_id": f"eq.{item['owner_id']}",
                 "status": f"eq.{current_status}",
                 "select": "id,owner_id,storage_path,status",
-            }, body={"status": "deleting"}, prefer="return=representation") or []
+            }, body={"status": "deleting"}, prefer="return=representation"), operation="mark media deleting")
             if not changed:
                 stats["concurrent_changes"] += 1
                 continue
@@ -121,23 +154,23 @@ async def _sweep_archived_story_media(*, limit: int) -> dict[str, int]:
             log.warning("Story media cleanup deferred; object deletion was not confirmed")
             continue
 
-        deleted_rows = await _server_db("DELETE", "content_media", params={
+        deleted_rows = _require_rows(await _server_db("DELETE", "content_media", params={
             "id": f"eq.{marked['id']}",
             "owner_id": f"eq.{marked['owner_id']}",
             "status": "eq.deleting",
             "select": "id",
-        }, prefer="return=representation") or []
+        }, prefer="return=representation"), operation="delete media metadata")
         if deleted_rows:
             stats["media_deleted"] += 1
             continue
 
         # A concurrent idempotent run may already have removed the metadata.
-        still_present = await _server_db("GET", "content_media", params={
+        still_present = _require_rows(await _server_db("GET", "content_media", params={
             "select": "id",
             "id": f"eq.{marked['id']}",
             "owner_id": f"eq.{marked['owner_id']}",
             "limit": "1",
-        }) or []
+        }), operation="verify media metadata removal")
         if still_present:
             stats["metadata_failures"] += 1
             log.warning("Story media object is gone but metadata cleanup remains pending")
