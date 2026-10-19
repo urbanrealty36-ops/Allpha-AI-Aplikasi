@@ -29,11 +29,13 @@ class ConsumerGrantUnavailable(RuntimeError):
 class AgentConsumerGrantStore:
     _timeout = httpx.Timeout(10.0, connect=3.0)
 
-    def __init__(self, *, supabase_url: str, service_key: str) -> None:
+    def __init__(self, *, supabase_url: str, service_key: str,
+                 transport: httpx.AsyncBaseTransport | None = None) -> None:
         if not supabase_url.strip() or not service_key.strip():
             raise ValueError("Supabase server credentials are required")
         self._base = supabase_url.rstrip("/")
         self._key = service_key
+        self._transport = transport
 
     @classmethod
     def from_environment(cls) -> "AgentConsumerGrantStore":
@@ -53,7 +55,7 @@ class AgentConsumerGrantStore:
         if prefer:
             headers["Prefer"] = prefer
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
                 response = await client.request(
                     method, f"{self._base}/rest/v1/{table}", params=params, json=body, headers=headers
                 )
@@ -122,6 +124,7 @@ class AgentConsumerGrantStore:
                 raise ConsumerGrantUnavailable("grant idempotency key was reused with different parameters")
             if row.get("status") == "active":
                 return row
+            raise ConsumerGrantUnavailable("a revoked grant idempotency key cannot be reused")
         rows = await self._request("POST", "agent_consumer_grants", body=payload, prefer="return=representation")
         if not rows:
             raise ConsumerGrantUnavailable("Consumer grant creation was not confirmed")
