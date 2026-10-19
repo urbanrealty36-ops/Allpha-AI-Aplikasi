@@ -143,7 +143,7 @@ def test_agent_runtime_executes_pinned_skill_via_model_router():
 def test_agent_runtime_rejects_owner_or_skill_authority_mismatch():
     runtime = AgentRuntime()
     router = make_router()
-    with pytest.raises(AgentRuntimeBlocked, match="owner"):
+    with pytest.raises(AgentRuntimeBlocked, match="consumer authorization is required"):
         asyncio.run(runtime.execute_skill_generation(
             requester_id="attacker", owner_id="owner-1",
             agent_id="agent-1", agent_version=2, skill_id="skill-1", skill_version=3,
