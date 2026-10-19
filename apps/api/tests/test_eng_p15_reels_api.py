@@ -64,7 +64,7 @@ def test_eng_p15_audio_upload_contract_is_added_to_existing_private_pipeline():
     assert "audio" in str(content_api.ContentCreate.model_fields["content_type"].metadata)
     migration = (
         __import__("pathlib").Path(__file__).parent.parent
-        / "supabase/migrations/20261019120000_eng_p15_audio_media.sql"
+        / "supabase/migrations/20261019044440_eng_p15_audio_media.sql"
     ).read_text()
     assert "'audio/mpeg'" in migration and "'audio/webm'" in migration
     assert "public=false" in migration
