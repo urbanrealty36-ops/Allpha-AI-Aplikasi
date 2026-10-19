@@ -74,7 +74,7 @@ async def _server_db(method: str, table: str, *, params: dict[str, str] | None =
             response = await client.request(method, f"{base}/rest/v1/{table}", headers=headers, params=params, json=body)
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "CONTENT_DATABASE_UNAVAILABLE", "message": "Data konten sementara tidak tersedia."}) from exc
-    if response.status_code >= 400:
+    if response.status_code >= 300:
         if response.status_code == 409:
             raise HTTPException(409, detail={"code": "CONTENT_CONFLICT", "message": "Konten berubah; muat ulang sebelum mencoba lagi."})
         raise HTTPException(503, detail={"code": "CONTENT_DATABASE_WRITE_FAILED", "message": "Perubahan konten tidak dapat disimpan."})
