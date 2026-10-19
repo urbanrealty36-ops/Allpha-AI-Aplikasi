@@ -277,15 +277,29 @@ class ConsumerBudgetReservation:
             entitlements = config.get("entitlements") or {}
             entitlement_version = str(consumer.get("entitlement_version") or "")
             entitlement = entitlements.get(entitlement_version) if entitlement_version else None
+            max_usage = consumer.get("max_usage_units_per_request")
+            credits_per_unit = cap.get("credits_per_usage_unit") if isinstance(cap, dict) else None
+            max_credits = entitlement.get("max_credits_per_request") if isinstance(entitlement, dict) else None
+            max_concurrent = entitlement.get("max_concurrent_reservations") if isinstance(entitlement, dict) else None
+            allow_success = consumer.get("allow_success_settlement") is True
+            allow_failure_release = consumer.get("allow_definitive_failure_release") is True
+            allow_partial = consumer.get("allow_partial_settlement") is True
             if (consumer.get("enabled") is True and isinstance(cap, dict) and isinstance(entitlement, dict)
+                    and isinstance(max_usage, int) and max_usage > 0
+                    and isinstance(credits_per_unit, int) and credits_per_unit > 0
+                    and isinstance(max_credits, int) and max_credits >= max_usage * credits_per_unit
+                    and isinstance(max_concurrent, int) and max_concurrent > 0
                     and cap.get("usage_unit") and cap.get("tariff_version")
                     and cap.get("cost_unit") == expected_cost_unit
                     and cap.get("cost_pricing_version") == expected_pricing_version
+                    and isinstance(cap.get("max_cost_microunits"), int)
+                    and cap.get("max_cost_microunits") >= 0
                     and cap.get("max_cost_microunits") == expected_max_cost_microunits
-                    and consumer.get("max_usage_units_per_request")
                     and consumer.get("payer_role") in {"consumer", "agent_owner"}
-                    and cap.get("credits_per_usage_unit")
-                    and consumer.get("allow_success_settlement") is True):
+                    and allow_success
+                    and config.get("allow_success_settlement") is allow_success
+                    and config.get("allow_definitive_failure_release") is allow_failure_release
+                    and config.get("allow_partial_settlement") is allow_partial):
                 selected = (row, config, consumer, cap, entitlement, entitlement_version, capability_id)
                 break
         if selected is None:
