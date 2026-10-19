@@ -13,6 +13,7 @@ type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undef
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
+type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[] };
 
 
 type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
@@ -108,7 +109,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -118,6 +119,13 @@ function Profile({ session }: { session: Session }) {
   const [contentBusy, setContentBusy] = useState(false);
   const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
   const [reelsItems, setReelsItems] = useState<NativeFeedItem[]>([]);
+  const [storyItems, setStoryItems] = useState<NativeStory[]>([]);
+  const [activeStories, setActiveStories] = useState<NativeStory[]>([]);
+  const [storyBody, setStoryBody] = useState("");
+  const [storyVisibility, setStoryVisibility] = useState<"public" | "followers" | "private">("public");
+  const [storyTtl, setStoryTtl] = useState(24);
+  const [storyFile, setStoryFile] = useState<NativeContentFile | null>(null);
+  const [storyBusy, setStoryBusy] = useState(false);
   const [reelsCursor, setReelsCursor] = useState<string | null>(null);
   const [reelsBusy, setReelsBusy] = useState(false);
   const [feedBusy, setFeedBusy] = useState(false);
@@ -223,6 +231,51 @@ function Profile({ session }: { session: Session }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels tidak dapat dimuat."); }
     finally { setReelsBusy(false); }
   }
+  async function loadNativeStories() {
+    setStoryBusy(true); setError(""); setMessage("");
+    try {
+      const [mine, active] = await Promise.all([
+        apiRequest("/v1/stories/mine?limit=50") as Promise<{ items?: NativeStory[] }>,
+        apiRequest("/v1/stories?limit=30") as Promise<{ items?: NativeStory[] }>,
+      ]);
+      setStoryItems(mine.items ?? []); setActiveStories(active.items ?? []);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Stories tidak dapat dimuat."); }
+    finally { setStoryBusy(false); }
+  }
+  async function chooseStoryMedia() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"], copyToCacheDirectory: true, multiple: false });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      if (!asset.mimeType || !["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"].includes(asset.mimeType)) throw new Error("Story mendukung JPG, PNG, WebP, MP4, dan WebM.");
+      const max = asset.mimeType.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (asset.size && asset.size > max) throw new Error("Ukuran media melampaui batas.");
+      setStoryFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, size: asset.size });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemilihan media Story gagal."); }
+  }
+  async function createNativeStory() {
+    if (!storyBody.trim() && !storyFile) { setError("Isi teks atau pilih gambar/video terlebih dahulu."); return; }
+    setStoryBusy(true); setError(""); setMessage("");
+    try {
+      const created = await apiRequest("/v1/stories", { method: "POST", body: JSON.stringify({ body: storyBody.trim(), visibility: storyVisibility, expires_after_hours: storyTtl }) }) as { item: NativeStory };
+      if (storyFile) {
+        const form = new FormData();
+        form.append("file", { uri: storyFile.uri, name: storyFile.name, type: storyFile.mimeType } as unknown as Blob);
+        await apiRequest("/v1/content/" + encodeURIComponent(created.item.id) + "/media", { method: "POST", body: form });
+      }
+      const result = await apiRequest("/v1/content/" + encodeURIComponent(created.item.id) + "/publish", { method: "POST" }) as { message?: string };
+      setStoryBody(""); setStoryFile(null); setMessage(result.message || "Story dikirim untuk moderasi.");
+      await loadNativeStories();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Story tidak dapat disimpan."); }
+    finally { setStoryBusy(false); }
+  }
+  async function archiveNativeStory(story: NativeStory) {
+    setStoryBusy(true); setError(""); setMessage("");
+    try { await apiRequest("/v1/stories/" + encodeURIComponent(story.id), { method: "DELETE" }); setMessage("Story diarsipkan."); await loadNativeStories(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Story tidak dapat diarsipkan."); }
+    finally { setStoryBusy(false); }
+  }
+
   async function saveNativeFeedPreferences(enabled: boolean, mode: "for_you" | "recent") {
     setFeedBusy(true); setError(""); setMessage("");
     try {
@@ -762,10 +815,20 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
-      tab === "profile" ? profile ? <>
+      tab === "stories" ? <>
+        <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
+        <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
+        <TextInput accessibilityLabel="Isi Story" value={storyBody} onChangeText={setStoryBody} multiline maxLength={2000} style={[field,{minHeight:90,textAlignVertical:"top",paddingTop:12}]} placeholder="Apa yang sedang terjadi? (opsional jika ada media)" placeholderTextColor="#8B94AC"/>
+        <Text style={s.kicker}>AUDIENCE</Text><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}><Button title={storyVisibility==="public"?"✓ Publik":"Publik"} secondary={storyVisibility!=="public"} onPress={()=>setStoryVisibility("public")}/><Button title={storyVisibility==="followers"?"✓ Pengikut":"Pengikut"} secondary={storyVisibility!=="followers"} onPress={()=>setStoryVisibility("followers")}/><Button title={storyVisibility==="private"?"✓ Pribadi":"Pribadi"} secondary={storyVisibility!=="private"} onPress={()=>setStoryVisibility("private")}/></View>
+        <Text style={s.kicker}>MASA AKTIF</Text><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}>{([6,12,24,48,72,168] as const).map(hours=><Button key={hours} title={(storyTtl===hours?"✓ ":"")+(hours===168?"7 hari":hours+" jam")} secondary={storyTtl!==hours} onPress={()=>setStoryTtl(hours)}/>)}</View>
+        <Button title={storyFile ? "Media: "+storyFile.name : "Pilih gambar/video"} secondary disabled={storyBusy} onPress={()=>void chooseStoryMedia()}/>{storyFile && <Text style={s.muted}>{storyFile.mimeType} · {storyFile.size ? (storyFile.size/1048576).toFixed(2)+" MB" : "ukuran tidak diketahui"}</Text>}
+        <Button title={storyBusy ? "Memproses…" : "Kirim Story ke moderasi"} disabled={storyBusy || (!storyBody.trim() && !storyFile)} onPress={()=>void createNativeStory()}/><Button title="Muat ulang Stories" secondary disabled={storyBusy} onPress={()=>void loadNativeStories()}/>
+        <Text style={s.kicker}>MOMEN AKTIF</Text>{activeStories.length===0 ? <Text style={s.muted}>Belum ada Story aktif yang dapat Anda lihat.</Text> : activeStories.map(story=><View key={story.id} style={s.socialRow}><Text style={s.body}>{story.body || "Momen media"}</Text><Text style={s.muted}>{story.visibility} · {story.expires_at ? "Berakhir "+new Date(story.expires_at).toLocaleString("id-ID") : "Expiry belum tersedia"}</Text>{(story.media||[]).map(media=>media.preview_url?<Button key={media.id} title={"Buka "+media.filename} secondary onPress={()=>void Linking.openURL(media.preview_url!)}/>:null)}</View>)}
+        <Text style={s.kicker}>STORIES SAYA</Text>{storyItems.length===0 ? <Text style={s.muted}>Belum ada Story pada akun ini.</Text> : storyItems.map(story=><View key={story.id} style={s.socialRow}><Text style={s.body}>{story.status} · {story.moderation_status}</Text><Text style={s.muted}>{story.body || "Momen media"} · {story.expires_at ? "Expiry: "+new Date(story.expires_at).toLocaleString("id-ID") : "Expiry dimulai setelah publikasi disetujui"}</Text>{story.status!=="archived" && story.status!=="deleted" && <Button title="Arsipkan Story" secondary disabled={storyBusy} onPress={()=>void archiveNativeStory(story)}/>}</View>)}
+      </> : tab === "profile" ? profile ? <>
         <Text style={s.muted}>Perubahan disimpan melalui API Allpha dan sesi akun Anda.</Text>
         <Text style={s.muted}>Nama tampilan</Text><TextInput accessibilityLabel="Nama tampilan" value={profile.display_name} onChangeText={display_name => setProfile({ ...profile, display_name })} maxLength={80} style={field} placeholder="Nama tampilan" placeholderTextColor="#8B94AC"/>
         <Text style={s.muted}>Username (huruf kecil, angka, _)</Text><TextInput accessibilityLabel="Username" autoCapitalize="none" value={profile.username || ""} onChangeText={value => setProfile({ ...profile, username: value.toLowerCase() || null })} maxLength={30} style={field} placeholder="nama_pengguna" placeholderTextColor="#8B94AC"/>
