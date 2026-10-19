@@ -1,9 +1,9 @@
 # ADR-0019 Proposal — Public Agent Consumer Messaging Authorization
 
-- **Status:** Proposed — awaiting product/security approval
+- **Status:** Approved for canonical runtime contract; consumer enablement remains gated
 - **Date:** 2026-10-19
 - **Scope:** ENG-P18 Messaging Human/Agent only
-- **Decision owner:** Product Owner + Security/Platform owner
+- **Decision owner:** Product Owner (approved by implementation directive on 2026-10-19); Security/Platform implementation checks remain required
 
 ## Context
 
@@ -19,7 +19,7 @@ Messaging cannot safely call the existing generation method for a non-owner with
 
 ## Proposal
 
-Prefer Option 2, implemented in the canonical Agent Runtime as a versioned authorization contract and tested independently before Messaging enables public-consumer replies. Until approval and implementation, Messaging may only generate a reply where the authenticated user is the Agent owner and the existing private route/policy is available. Public Agent consumer messages must fail closed with a stable safe error and must never imply a successful Agent reply.
+**Decision: Option 2.** Implement a typed consumer authorization contract in the canonical Agent Runtime and test it independently before Messaging enables public-consumer replies. The contract fails closed unless the caller supplies server-resolved authorization bound to the actual requester, owner, Agent/Skill versions, public/active status, owner-approved grant, approved policy, public sensitivity, empty owner-private memory scope, budget reservation and metering readiness. Until approval and implementation, Messaging may only generate a reply where the authenticated user is the Agent owner and the existing private route/policy is available. Public Agent consumer messages must fail closed with a stable safe error and must never imply a successful Agent reply.
 
 ## Consequences and acceptance
 
@@ -28,4 +28,4 @@ Prefer Option 2, implemented in the canonical Agent Runtime as a versioned autho
 - Usage/cost metering, rate/budget limits, policy version pinning, safe failures, idempotency and audit evidence remain mandatory.
 - Add tests for owner vs consumer identity, private/public Agent visibility, published/unpublished Skill, revoked policy, scope denial, quota/metering unavailability, retry/idempotency and no owner-private retrieval.
 - Rollback is to disable consumer generation while preserving ordinary human messaging; no direct database writes or schema bypass.
-- **Implementation remains blocked until this proposal is approved and the canonical runtime contract is implemented.**
+- **Implementation state:** ADR decision approved and the canonical runtime contract is implemented with fail-closed unit coverage. Public consumer replies remain disabled until a durable owner-grant lifecycle/API, policy and budget/metering integration are wired into the authenticated request path and verified.
