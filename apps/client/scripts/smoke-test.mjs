@@ -59,7 +59,12 @@ for (const contract of [
   "Personalisasi: aktif", "Laporkan", "misinformation"
 ]) assert.ok(app.includes(contract), `missing ENG-P14 Native feed contract: ${contract}`);
 
-console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed smoke tests passed.");
+for (const contract of [
+  '"/v1/reels?"', "loadNativeReels", "ENG-P15 · REELS", "audio/mpeg", "audio/ogg",
+  "Putar audio", "Putar video", "media_type.startsWith(\"audio/\")"
+]) assert.ok(app.includes(contract), `missing ENG-P15 Native Reels contract: ${contract}`);
+
+console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed and ENG-P15 Reels smoke tests passed.");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
