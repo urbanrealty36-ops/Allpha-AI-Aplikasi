@@ -345,6 +345,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                 sensitivity=sensitivity, prompt=prompt, max_output_tokens=512, timeout_ms=30000,
                 owner_id=owner_id, agent_id=agent_id, source_id=str(skill["id"]),
                 source_version=int(skill["version"]),
+                billing_account_id=(budget.billing_account_id(requester_id=uid, owner_id=owner_id) if budget is not None else owner_id),
             )
             generated, evidence = await AgentRuntime().execute_skill_generation(
                 requester_id=uid, owner_id=owner_id, agent_id=agent_id,
