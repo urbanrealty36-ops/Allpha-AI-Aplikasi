@@ -296,7 +296,7 @@ async def list_community_posts(community_id: uuid.UUID, limit: int = Query(defau
     community = await _community(community_id)
     if community["visibility"] == "private":
         await _require_member(community_id, str(user["id"]))
-    rows = await _db("GET", "community_posts", params={"select": "*", "community_id": f"eq.{community_id}", "status": "eq.published", "order": "created_at.desc", "limit": str(limit)})
+    rows = await _db("GET", "community_posts", params={"select": "*", "community_id": f"eq.{community_id}", "status": "eq.published", "order": "is_pinned.desc,pinned_at.desc,created_at.desc", "limit": str(limit)})
     return {"items": rows or []}
 
 
