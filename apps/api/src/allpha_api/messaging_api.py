@@ -337,7 +337,8 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                 + "\nINSTRUKSI SKILL: " + str(skill.get("instructions") or "")[:2500]
                 + "\nPESAN PENGGUNA: " + body
             )
-            task_id, trace_id = str(uuid.uuid4()), str(uuid.uuid4())
+            task_id = ('consumer-message:' + str(created[0]["id"]) if reservation is not None else str(uuid.uuid4()))
+            trace_id = str(uuid.uuid4())
             generation = TextGenerationRequest(
                 task_id=task_id, trace_id=trace_id,
                 idempotency_key="message-agent-reply:"+str(created[0]["id"]),
@@ -358,6 +359,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                     usage_units=evidence.input_tokens + evidence.output_tokens,
                     cost_microunits=evidence.cost_microunits,
                     cost_unit=evidence.cost_unit, pricing_version=evidence.pricing_version,
+                    source_event_id=evidence.idempotency_key,
                 )
             reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL,"allpha-agent-reply:"+str(created[0]["id"])))
             reply_row = {"conversation_id":str(conversation_id),"sender_type":"agent","sender_agent_id":agent_id,
