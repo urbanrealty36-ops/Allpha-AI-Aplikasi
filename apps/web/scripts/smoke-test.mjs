@@ -102,7 +102,16 @@ for (const contract of [
 ]) assert.ok(reportsPage.includes(contract), `missing ENG-P14 Super Admin reports contract: ${contract}`);
 assert.doesNotMatch(reportsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockReports/);
 
-console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, ENG-P13 content/moderation, ENG-P14 feed/reports, Agent Skill catalog, and Official Bot control smoke assertions passed.");
+const reelsPage = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/reels?", "controls", "playsInline", "<audio", "preview_url", "toggleLike", "share(item)",
+  "Masuk untuk menonton video pendek dan audio"
+]) assert.ok(reelsPage.includes(contract), `missing ENG-P15 Web Reels contract: ${contract}`);
+assert.doesNotMatch(reelsPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockReels|fakeReels/);
+assert.ok(contentStudio.includes("audio/mpeg") && contentStudio.includes("<audio"), "Creator Studio must upload and preview audio");
+assert.ok(reportsPage.includes("<audio"), "Super Admin moderation must preview audio");
+
+console.log("ENG-P08 retrieval, ENG-P10 task lifecycle, ENG-P11 workflow, ENG-P12 Skill Challenge, ENG-P13 content/moderation, ENG-P14 feed/reports, ENG-P15 Reels/audio, Agent Skill catalog, and Official Bot control smoke assertions passed.");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Web GLTF loader must import MeshoptDecoder");
