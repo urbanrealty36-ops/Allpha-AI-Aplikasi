@@ -290,6 +290,12 @@ async def list_community_posts(community_id: uuid.UUID, limit: int = Query(defau
     return {"items": rows or []}
 
 
+@router.delete("/communities/{community_id}/invites/{invite_id}", status_code=204)
+async def revoke_invite(community_id: uuid.UUID, invite_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> None:
+    await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
+    rows = await _db("PATCH", "community_invites", params={"id": f"eq.{invite_id}", "community_id": f"eq.{community_id}", "accepted_at": "is.null", "revoked_at": "is.null"}, body={"revoked_at": _now()}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(404, detail={"code": "INVITE_NOT_FOUND", "message": "Undangan tidak ditemukan atau sudah digunakan."})
 @router.post("/communities/{community_id}/posts", status_code=201)
 async def create_community_post(community_id: uuid.UUID, payload: CommunityPostCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     await _require_member(community_id, str(user["id"]))
@@ -421,7 +427,9 @@ async def update_presence(workspace_id: uuid.UUID, user: dict[str, Any] = Depend
 @router.get("/workspaces/{workspace_id}/presence")
 async def list_presence(workspace_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     await _require_workspace(workspace_id, str(user["id"]))
-    rows = await _db("GET", "workspace_presence", params={"select": "workspace_id,user_id,last_seen_at", "workspace_id": f"eq.{workspace_id}", "last_seen_at": f"gt.{(datetime.now(timezone.utc).replace(microsecond=0)).isoformat()}", "order": "last_seen_at.desc", "limit": "100"})
+    from datetime import timedelta
+    active_since = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    rows = await _db("GET", "workspace_presence", params={"select": "workspace_id,user_id,last_seen_at", "workspace_id": f"eq.{workspace_id}", "last_seen_at": f"gt.{active_since}", "order": "last_seen_at.desc", "limit": "100"})
     return {"items": rows or []}
 
 
