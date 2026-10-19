@@ -156,7 +156,7 @@ def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
         assert result["replayed"] is True
         assert result["message"]["id"] == "persisted-user-message"
         assert result["agent_reply"]["status"] == "pending_reconciliation"
-        assert result["agent_reply"]["code"] == "AGENT_REPLY_OUTCOME_UNKNOWN"
+        assert result["agent_reply"]["error_code"] == "AGENT_REPLY_OUTCOME_UNKNOWN"
         assert not any(call[0] == "GENERATE" for call in calls)
         assert not any(call[0] == "POST" and call[1] == "messages" and call[2].get("sender_type") == "human" for call in calls)
     finally:
