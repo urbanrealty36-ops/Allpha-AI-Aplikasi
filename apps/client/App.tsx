@@ -35,6 +35,8 @@ type Profile = { id: string; username: string | null; display_name: string; avat
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
+type NativeConversation = { id: string; title?: string | null; kind: "human" | "agent"; last_message?: { body: string; created_at: string; delivery_status: string } };
+type NativeMessage = { id: string; body: string; sender_type: string; sender_user_id?: string; created_at: string; delivery_status: string };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[] };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000") : "https://api.allpha.web.id")).replace(/\/$/, "");
@@ -106,10 +108,12 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView contentContainerStyle={s.page}><Brand/><View style={s.card}><Text style={s.title}>{mode === "signin" ? "Selamat datang kembali" : "Buat identitas Anda"}</Text>{mode === "signup" && <TextInput accessibilityLabel="Nama tampilan" placeholder="Nama tampilan" placeholderTextColor="#8B94AC" value={name} onChangeText={setName} style={s.input}/>}<TextInput accessibilityLabel="Email" autoCapitalize="none" keyboardType="email-address" autoComplete="email" placeholder="Email" placeholderTextColor="#8B94AC" value={email} onChangeText={setEmail} style={s.input}/><TextInput accessibilityLabel="Kata sandi" secureTextEntry autoCapitalize="none" placeholder="Kata sandi (min. 8 karakter)" placeholderTextColor="#8B94AC" value={password} onChangeText={setPassword} style={s.input}/>{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}{!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}{busy && <ActivityIndicator color="#A5B4FC"/>}<Button title={busy ? "Memproses…" : mode === "signin" ? "Masuk dengan aman" : "Daftar"} disabled={busy || !email.trim() || password.length < 8 || (mode === "signup" && !name.trim())} onPress={() => void submit()}/><Button title={mode === "signin" ? "Belum punya akun? Daftar" : "Sudah punya akun? Masuk"} secondary onPress={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setMessage(""); }}/><Button title="Kembali" secondary onPress={() => nav.goBack()}/></View></ScrollView></KeyboardAvoidingView>;
 }
 
+function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
+
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -133,6 +137,13 @@ function Profile({ session }: { session: Session }) {
   const [feedMode, setFeedMode] = useState<"for_you" | "recent">("for_you");
   const [feedPersonalization, setFeedPersonalization] = useState(true);
   const [discoveryQuery, setDiscoveryQuery] = useState("");
+  const [messageConversations, setMessageConversations] = useState<NativeConversation[]>([]);
+  const [activeConversation, setActiveConversation] = useState<NativeConversation | null>(null);
+  const [conversationMessages, setConversationMessages] = useState<NativeMessage[]>([]);
+  const [messageRecipient, setMessageRecipient] = useState("");
+  const [messageDraft, setMessageDraft] = useState("");
+  const [messageBusy, setMessageBusy] = useState(false);
+  const [messageError, setMessageError] = useState("");
   const [discoveryItems, setDiscoveryItems] = useState<{id:string;body:string;content_type:string;created_at:string;published_at?:string|null}[]>([]);
   const [discoveryTrends, setDiscoveryTrends] = useState<{topic:string;content_count:number;example_content_id:string}[]>([]);
   const [discoveryTrendsBusy, setDiscoveryTrendsBusy] = useState(false);
@@ -212,6 +223,29 @@ function Profile({ session }: { session: Session }) {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
     return body;
+  }
+  async function loadMessageConversations() {
+    setMessageBusy(true); setMessageError("");
+    try { const result = await apiRequest("/v1/messages/conversations") as { items?: NativeConversation[] }; setMessageConversations(result.items ?? []); }
+    catch (cause) { setMessageError(cause instanceof Error ? cause.message : "Percakapan gagal dimuat."); }
+    finally { setMessageBusy(false); }
+  }
+  async function openMessageConversation(conversation: NativeConversation) {
+    setActiveConversation(conversation); setMessageError("");
+    try { const result = await apiRequest("/v1/messages/conversations/" + encodeURIComponent(conversation.id) + "/messages") as { items?: NativeMessage[] }; setConversationMessages(result.items ?? []); await apiRequest("/v1/messages/conversations/" + encodeURIComponent(conversation.id) + "/read", { method: "POST", body: "{}" }); }
+    catch (cause) { setMessageError(cause instanceof Error ? cause.message : "Pesan gagal dimuat."); }
+  }
+  async function startMessageConversation() {
+    if (!messageRecipient.trim()) return; setMessageBusy(true); setMessageError("");
+    try { const result = await apiRequest("/v1/messages/conversations", { method: "POST", body: JSON.stringify({ recipient_user_id: messageRecipient.trim() }) }) as { conversation?: NativeConversation }; if (result.conversation) { setActiveConversation(result.conversation); setConversationMessages([]); } setMessageRecipient(""); await loadMessageConversations(); }
+    catch (cause) { setMessageError(cause instanceof Error ? cause.message : "Percakapan gagal dibuat."); }
+    finally { setMessageBusy(false); }
+  }
+  async function sendNativeMessage() {
+    if (!activeConversation || !messageDraft.trim()) return; setMessageBusy(true); setMessageError("");
+    try { const result = await apiRequest("/v1/messages/conversations/" + encodeURIComponent(activeConversation.id) + "/messages", { method: "POST", body: JSON.stringify({ body: messageDraft.trim(), client_message_id: createMessageId() }) }) as { message?: NativeMessage }; if (result.message) setConversationMessages(old => [...old.filter(item => item.id !== result.message!.id), result.message!]); setMessageDraft(""); await loadMessageConversations(); }
+    catch (cause) { setMessageError(cause instanceof Error ? cause.message : "Pesan gagal dikirim."); }
+    finally { setMessageBusy(false); }
   }
   async function loadMyContent() {
     setContentBusy(true); setError(""); setMessage("");
@@ -858,7 +892,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Pesan" secondary={tab !== "messages"} onPress={() => { setTab("messages"); setError(""); setMessage(""); void loadMessageConversations(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "discovery" ? <>
@@ -873,6 +907,14 @@ function Profile({ session }: { session: Session }) {
         {discoveryTrendsBusy ? <ActivityIndicator accessibilityLabel="Memuat tren" color="#A5B4FC"/> : discoveryTrendsError ? <View accessibilityRole="alert" style={s.socialRow}><Text style={s.error}>{discoveryTrendsError}</Text><Button title="Coba lagi" secondary onPress={() => void loadDiscoveryTrends()}/></View> : discoveryTrends.length ? discoveryTrends.map(item => <Button key={item.topic} title={"#" + item.topic + " · " + item.content_count} secondary onPress={() => { setDiscoveryQuery(item.topic); void runDiscoverySearch(item.topic); }}/>) : <Text style={s.muted}>Tren muncul saat ada konten yang dapat diakses.</Text>}
         <Text style={s.title}>Rekomendasi untuk Anda</Text><Text style={s.muted}>Mengikuti ranking feed kanonis dan preferensi personalisasi akun.</Text>
         {discoveryRecommendationsBusy ? <ActivityIndicator accessibilityLabel="Memuat rekomendasi" color="#A5B4FC"/> : discoveryRecommendationsError ? <View accessibilityRole="alert" style={s.socialRow}><Text style={s.error}>{discoveryRecommendationsError}</Text><Button title="Coba lagi" secondary onPress={() => void loadDiscoveryRecommendations()}/></View> : discoveryRecommendations.length ? discoveryRecommendations.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || "Konten"}</Text><Text style={s.muted}>{item.content_type} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text></View>) : <Text style={s.muted}>Belum ada rekomendasi yang dapat ditampilkan.</Text>}
+      </>  : tab === "messages" ? <>
+        <Text style={s.kicker}>ENG-P18 · MESSAGING & DELIVERY</Text><Text style={s.title}>Pesan Human / Agent</Text>
+        <Text style={s.muted}>Percakapan privat melalui API kanonis dengan status delivery/read.</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}><TextInput accessibilityLabel="UUID pengguna penerima" value={messageRecipient} onChangeText={setMessageRecipient} autoCapitalize="none" style={[field,{flex:1}]} placeholder="UUID penerima manusia" placeholderTextColor="#8B94AC"/><Button title="Baru" disabled={messageBusy || !messageRecipient.trim()} onPress={() => void startMessageConversation()}/></View>
+        <Button title={messageBusy?"Memuat…":"Muat ulang percakapan"} secondary disabled={messageBusy} onPress={() => void loadMessageConversations()}/>
+        {!!messageError && <Text accessibilityRole="alert" style={s.error}>{messageError}</Text>}
+        {messageConversations.map(c => <Button key={c.id} title={(activeConversation?.id===c.id?"✓ ":"")+(c.title || (c.kind==="agent"?"Percakapan Agent":"Percakapan Human"))+" · "+(c.last_message?.body || "Belum ada pesan")} secondary={activeConversation?.id!==c.id} onPress={() => void openMessageConversation(c)}/>)}
+        {activeConversation && <View style={s.socialRow}><Text style={s.title}>{activeConversation.title || "Percakapan"}</Text>{conversationMessages.map(m => <View key={m.id} style={s.socialRow}><Text style={s.body}>{m.body}</Text><Text style={s.muted}>{new Date(m.created_at).toLocaleString("id-ID")} · {m.delivery_status}</Text></View>)}<TextInput accessibilityLabel="Tulis pesan" value={messageDraft} onChangeText={setMessageDraft} multiline maxLength={10000} style={[field,{minHeight:70,textAlignVertical:"top"}]} placeholder="Tulis pesan…" placeholderTextColor="#8B94AC"/><Button title={messageBusy?"Mengirim…":"Kirim pesan"} disabled={messageBusy || !messageDraft.trim()} onPress={() => void sendNativeMessage()}/></View>}
       </> : tab === "stories" ? <>
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>

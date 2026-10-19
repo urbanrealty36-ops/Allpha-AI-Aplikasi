@@ -41,6 +41,7 @@ from allpha_api.spatial_ingest_api import router as spatial_ingest_router
 from allpha_api.content_api import router as content_router
 from allpha_api.feed_api import router as feed_router
 from allpha_api.stories_api import router as stories_router
+from allpha_api.messaging_api import router as messaging_router
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
@@ -1205,3 +1206,4 @@ app.include_router(spatial_ingest_router)
 app.include_router(content_router)
 app.include_router(feed_router)
 app.include_router(stories_router)
+app.include_router(messaging_router)
