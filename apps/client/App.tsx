@@ -113,7 +113,7 @@ function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".repla
 function Profile({ session }: { session: Session }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities">("profile");
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -146,6 +146,19 @@ function Profile({ session }: { session: Session }) {
   const [messageError, setMessageError] = useState("");
   const [pendingNativeMessageId, setPendingNativeMessageId] = useState<string | null>(null);
   const [messageRealtimeStatus, setMessageRealtimeStatus] = useState("connecting");
+  const [communityItems, setCommunityItems] = useState<{id:string;name:string;slug:string;description:string;visibility:string;membership_role?:string|null}[]>([]);
+  const [workspaceItems, setWorkspaceItems] = useState<{id:string;title:string;description:string;visibility:string;membership_role?:string}[]>([]);
+  const [activeCommunity, setActiveCommunity] = useState<{id:string;name:string;membership_role?:string|null}|null>(null);
+  const [communityPosts, setCommunityPosts] = useState<{id:string;body:string;post_type:string;created_at:string}[]>([]);
+  const [communityDraftName, setCommunityDraftName] = useState("");
+  const [communityDraftSlug, setCommunityDraftSlug] = useState("");
+  const [communityPostDraft, setCommunityPostDraft] = useState("");
+  const [workspaceDraftName, setWorkspaceDraftName] = useState("");
+  const [activeWorkspace, setActiveWorkspace] = useState<{id:string;title:string;membership_role?:string}|null>(null);
+  const [workspaceDocs, setWorkspaceDocs] = useState<{id:string;title:string;body?:string;version:number}[]>([]);
+  const [activeWorkspaceDoc, setActiveWorkspaceDoc] = useState<{id:string;title:string;body?:string;version:number}|null>(null);
+  const [workspaceDocTitle, setWorkspaceDocTitle] = useState("");
+  const [workspaceDocBody, setWorkspaceDocBody] = useState("");
   const [discoveryItems, setDiscoveryItems] = useState<{id:string;body:string;content_type:string;created_at:string;published_at?:string|null}[]>([]);
   const [discoveryTrends, setDiscoveryTrends] = useState<{topic:string;content_count:number;example_content_id:string}[]>([]);
   const [discoveryTrendsBusy, setDiscoveryTrendsBusy] = useState(false);
@@ -910,6 +923,61 @@ function Profile({ session }: { session: Session }) {
     } catch (e) { setError(e instanceof Error ? e.message : "Capability tidak dapat diminta."); }
     finally { setBusy(false); }
   }
+  async function loadCommunityWorkspace() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const [communityResult, workspaceResult] = await Promise.all([
+        apiRequest("/v1/communities") as Promise<{items?: typeof communityItems}>,
+        apiRequest("/v1/workspaces") as Promise<{items?: typeof workspaceItems}>,
+      ]);
+      setCommunityItems(communityResult.items || []); setWorkspaceItems(workspaceResult.items || []);
+    } catch (e) { setError(e instanceof Error ? e.message : "Komunitas/workspace gagal dimuat."); }
+    finally { setBusy(false); }
+  }
+  async function openNativeCommunity(item: typeof communityItems[number]) {
+    setActiveCommunity(item); setActiveWorkspace(null); setActiveWorkspaceDoc(null); setError("");
+    try {
+      const result = await apiRequest("/v1/communities/" + encodeURIComponent(item.id) + "/posts") as {items?: typeof communityPosts};
+      setCommunityPosts(result.items || []);
+    } catch (e) { setError(e instanceof Error ? e.message : "Diskusi komunitas gagal dimuat."); }
+  }
+  async function createNativeCommunity() {
+    setBusy(true); setError("");
+    try {
+      const result = await apiRequest("/v1/communities", {method:"POST",body:JSON.stringify({name:communityDraftName.trim(),slug:communityDraftSlug.trim().toLowerCase(),description:"",visibility:"public"})}) as {community:{id:string;name:string;slug:string;description:string;visibility:string}};
+      setCommunityDraftName(""); setCommunityDraftSlug(""); setMessage("Komunitas dibuat."); await loadCommunityWorkspace();
+      await openNativeCommunity({...result.community,membership_role:"owner"});
+    } catch (e) { setError(e instanceof Error ? e.message : "Komunitas gagal dibuat."); }
+    finally { setBusy(false); }
+  }
+  async function joinNativeCommunity(item: typeof communityItems[number]) {
+    setBusy(true); setError("");
+    try { await apiRequest("/v1/communities/" + encodeURIComponent(item.id) + "/join",{method:"POST",body:"{}"}); setMessage("Anda bergabung dengan komunitas."); await loadCommunityWorkspace(); await openNativeCommunity({...item,membership_role:"member"}); }
+    catch(e) { setError(e instanceof Error ? e.message : "Tidak dapat bergabung."); } finally { setBusy(false); }
+  }
+  async function publishCommunityPost() {
+    if(!activeCommunity || !communityPostDraft.trim()) return;
+    setBusy(true); setError("");
+    try { await apiRequest("/v1/communities/" + encodeURIComponent(activeCommunity.id) + "/posts",{method:"POST",body:JSON.stringify({body:communityPostDraft.trim(),post_type:"discussion"})}); setCommunityPostDraft(""); await openNativeCommunity(activeCommunity); setMessage("Diskusi diterbitkan."); }
+    catch(e) { setError(e instanceof Error ? e.message : "Diskusi gagal diterbitkan."); } finally { setBusy(false); }
+  }
+  async function createNativeWorkspace() {
+    setBusy(true); setError("");
+    try { const result=await apiRequest("/v1/workspaces",{method:"POST",body:JSON.stringify({title:workspaceDraftName.trim(),description:"",visibility:"private"})}) as {workspace:{id:string;title:string;membership_role?:string}}; setWorkspaceDraftName(""); setMessage("Workspace dibuat."); await loadCommunityWorkspace(); setActiveWorkspace(result.workspace); setActiveCommunity(null); setActiveWorkspaceDoc(null); await loadNativeWorkspaceDocs(result.workspace.id); }
+    catch(e) { setError(e instanceof Error ? e.message : "Workspace gagal dibuat."); } finally { setBusy(false); }
+  }
+  async function openNativeWorkspace(item: typeof workspaceItems[number]) { setActiveWorkspace(item); setActiveCommunity(null); setActiveWorkspaceDoc(null); await loadNativeWorkspaceDocs(item.id); }
+  async function loadNativeWorkspaceDocs(id:string) { try { const result=await apiRequest("/v1/workspaces/"+encodeURIComponent(id)+"/documents") as {items?:typeof workspaceDocs}; setWorkspaceDocs(result.items||[]); void apiRequest("/v1/workspaces/"+encodeURIComponent(id)+"/presence",{method:"POST",body:"{}"}).catch(()=>{}); } catch(e) { setError(e instanceof Error ? e.message : "Dokumen workspace gagal dimuat."); } }
+  async function createNativeWorkspaceDoc() {
+    if(!activeWorkspace || !workspaceDocTitle.trim()) return; setBusy(true); setError("");
+    try { const result=await apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents",{method:"POST",body:JSON.stringify({title:workspaceDocTitle.trim(),body:workspaceDocBody})}) as {document:typeof activeWorkspaceDoc}; setWorkspaceDocTitle(""); setWorkspaceDocBody(""); if(result.document)setActiveWorkspaceDoc(result.document); await loadNativeWorkspaceDocs(activeWorkspace.id); setMessage("Dokumen workspace dibuat."); }
+    catch(e) { setError(e instanceof Error ? e.message : "Dokumen gagal dibuat."); } finally { setBusy(false); }
+  }
+  async function saveNativeWorkspaceDoc() {
+    if(!activeWorkspace || !activeWorkspaceDoc) return; setBusy(true); setError("");
+    try { const result=await apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents/"+encodeURIComponent(activeWorkspaceDoc.id),{method:"PUT",body:JSON.stringify({title:workspaceDocTitle,body:workspaceDocBody,expected_version:activeWorkspaceDoc.version})}) as {document:typeof activeWorkspaceDoc}; if(result.document)setActiveWorkspaceDoc(result.document); await loadNativeWorkspaceDocs(activeWorkspace.id); setMessage("Versi dokumen tersimpan."); }
+    catch(e) { setError(e instanceof Error ? e.message : "Dokumen konflik; buka ulang versi terbaru."); } finally { setBusy(false); }
+  }
   const field = { ...s.input, flex: 1 } as const;
   return <ScrollView contentContainerStyle={s.page}><Brand/>
     <View style={s.card}>
@@ -917,7 +985,7 @@ function Profile({ session }: { session: Session }) {
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Pesan" secondary={tab !== "messages"} onPress={() => { setTab("messages"); setError(""); setMessage(""); void loadMessageConversations(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Pesan" secondary={tab !== "messages"} onPress={() => { setTab("messages"); setError(""); setMessage(""); void loadMessageConversations(); }}/><Button title="Komunitas & Workspace" secondary={tab !== "communities"} onPress={() => { setTab("communities"); setError(""); setMessage(""); void loadCommunityWorkspace(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "discovery" ? <>
@@ -940,6 +1008,20 @@ function Profile({ session }: { session: Session }) {
         {!!messageError && <Text accessibilityRole="alert" style={s.error}>{messageError}</Text>}
         {messageConversations.map(c => <Button key={c.id} title={(activeConversation?.id===c.id?"✓ ":"")+(c.title || (c.kind==="agent"?"Percakapan Agent":"Percakapan Human"))+" · "+(c.last_message?.body || "Belum ada pesan")} secondary={activeConversation?.id!==c.id} onPress={() => void openMessageConversation(c)}/>)}
         {activeConversation && <View style={s.socialRow}><Text style={s.title}>{activeConversation.title || "Percakapan"}</Text>{conversationMessages.map(m => <View key={m.id} style={s.socialRow}><Text style={s.body}>{m.body}</Text><Text style={s.muted}>{new Date(m.created_at).toLocaleString("id-ID")} · {m.delivery_status}</Text></View>)}<TextInput accessibilityLabel="Tulis pesan" value={messageDraft} onChangeText={setMessageDraft} multiline maxLength={10000} style={[field,{minHeight:70,textAlignVertical:"top"}]} placeholder="Tulis pesan…" placeholderTextColor="#8B94AC"/><Button title={messageBusy?"Mengirim…":"Kirim pesan"} disabled={messageBusy || !messageDraft.trim()} onPress={() => void sendNativeMessage()}/></View>}
+      </> : tab === "communities" ? <>
+        <Text style={s.kicker}>ENG-P19 · COMMUNITIES & WORKSPACES</Text><Text style={s.title}>Komunitas & Kolaborasi</Text>
+        <Text style={s.muted}>Akses data melalui FastAPI. Keanggotaan komunitas mengatur diskusi; workspace privat membatasi dokumen pada anggota.</Text>
+        <Text style={s.kicker}>BUAT KOMUNITAS PUBLIK</Text>
+        <TextInput accessibilityLabel="Nama komunitas" value={communityDraftName} onChangeText={value=>{setCommunityDraftName(value);if(!communityDraftSlug)setCommunityDraftSlug(value.toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-|-$/g,""));}} style={s.input} placeholder="Nama komunitas" placeholderTextColor="#8B94AC"/>
+        <TextInput accessibilityLabel="Slug komunitas" autoCapitalize="none" value={communityDraftSlug} onChangeText={setCommunityDraftSlug} style={s.input} placeholder="slug-komunitas" placeholderTextColor="#8B94AC"/>
+        <Button title="Buat komunitas" disabled={busy||communityDraftName.trim().length<2||communityDraftSlug.trim().length<3} onPress={()=>void createNativeCommunity()}/>
+        <Text style={s.kicker}>KOMUNITAS</Text>
+        {communityItems.length===0?<Text style={s.muted}>Belum ada komunitas yang dapat diakses.</Text>:communityItems.map(item=><View key={item.id} style={s.socialRow}><Button title={(activeCommunity?.id===item.id?"✓ ":"")+item.name+" · "+(item.membership_role||"publik")} secondary={activeCommunity?.id!==item.id} onPress={()=>void openNativeCommunity(item)}/>{!item.membership_role&&item.visibility==="public"&&<Button title="Gabung" secondary disabled={busy} onPress={()=>void joinNativeCommunity(item)}/>}</View>)}
+        {activeCommunity&&<View style={s.socialRow}><Text style={s.title}>{activeCommunity.name}</Text>{communityPosts.map(post=><View key={post.id} style={s.socialRow}><Text style={s.body}>{post.body}</Text><Text style={s.muted}>{post.post_type} · {new Date(post.created_at).toLocaleString("id-ID")}</Text></View>)}{!!activeCommunity.membership_role&&<><TextInput accessibilityLabel="Tulis diskusi komunitas" value={communityPostDraft} onChangeText={setCommunityPostDraft} multiline maxLength={5000} style={[field,{minHeight:80}]} placeholder="Bagikan ide atau sumber daya…" placeholderTextColor="#8B94AC"/><Button title="Terbitkan diskusi" disabled={busy||!communityPostDraft.trim()} onPress={()=>void publishCommunityPost()}/></>}</View>}
+        <Text style={s.kicker}>WORKSPACE PRIVAT</Text><View style={{flexDirection:"row",gap:8}}><TextInput accessibilityLabel="Nama workspace" value={workspaceDraftName} onChangeText={setWorkspaceDraftName} style={[field,{flex:1}]} placeholder="Nama workspace" placeholderTextColor="#8B94AC"/><Button title="Buat" disabled={busy||workspaceDraftName.trim().length<2} onPress={()=>void createNativeWorkspace()}/></View>
+        {workspaceItems.map(item=><Button key={item.id} title={(activeWorkspace?.id===item.id?"✓ ":"")+item.title+" · "+(item.membership_role||"anggota")} secondary={activeWorkspace?.id!==item.id} onPress={()=>void openNativeWorkspace(item)}/>)}
+        {activeWorkspace&&<View style={s.socialRow}><Text style={s.title}>{activeWorkspace.title}</Text>{workspaceDocs.map(d=><Button key={d.id} title={d.title+" · v"+d.version} secondary={activeWorkspaceDoc?.id!==d.id} onPress={()=>{setActiveWorkspaceDoc(d);setWorkspaceDocTitle(d.title);setWorkspaceDocBody(d.body||"");void apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents/"+encodeURIComponent(d.id)).then((r:any)=>{if(r.document){setActiveWorkspaceDoc(r.document);setWorkspaceDocTitle(r.document.title);setWorkspaceDocBody(r.document.body||"");}}).catch(e=>setError(e instanceof Error?e.message:"Dokumen gagal dimuat."));}}/>)}<TextInput accessibilityLabel="Judul dokumen" value={workspaceDocTitle} onChangeText={setWorkspaceDocTitle} style={s.input} placeholder="Judul dokumen" placeholderTextColor="#8B94AC"/><TextInput accessibilityLabel="Isi dokumen" value={workspaceDocBody} onChangeText={setWorkspaceDocBody} multiline maxLength={50000} style={[s.input,{minHeight:100,textAlignVertical:"top"}]} placeholder="Isi dokumen" placeholderTextColor="#8B94AC"/><Button title="Buat dokumen baru" disabled={busy||!workspaceDocTitle.trim()||!!activeWorkspaceDoc} onPress={()=>void createNativeWorkspaceDoc()}/>{!!activeWorkspaceDoc&&<Button title="Simpan versi baru v"+(activeWorkspaceDoc.version+1) disabled={busy||!workspaceDocTitle.trim()} onPress={()=>void saveNativeWorkspaceDoc()}/>}</View>}
+        <Text style={s.muted}>Misi komunitas tersedia melalui API; reward finansial tidak diterbitkan otomatis.</Text>
       </> : tab === "stories" ? <>
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
