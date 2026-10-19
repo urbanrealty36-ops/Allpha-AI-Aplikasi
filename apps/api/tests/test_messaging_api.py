@@ -59,8 +59,10 @@ def test_send_message_returns_existing_idempotent_message(monkeypatch):
     async def db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method,table,params))
         if method == "GET" and table == "messages":
-            return [{"id":"existing-message","conversation_id":str(conversation_id),"body":"hello","client_message_id":str(client_message_id),"delivery_status":"sent"}]
-        raise AssertionError("idempotent replay must not write a second message")
+            return [{"id":"existing-message","conversation_id":str(conversation_id),"body":"hello","client_message_id":str(client_message_id),"delivery_status":"sent","sender_user_id":"messaging-test-user"}]
+        if method == "GET" and table == "conversations":
+            return [{"id":str(conversation_id),"kind":"human"}]
+        raise AssertionError("idempotent replay must not write a second user message")
     monkeypatch.setattr(messaging_api,"_membership",member)
     monkeypatch.setattr(messaging_api,"_assert_not_blocked",unblocked)
     monkeypatch.setattr(messaging_api,"_db",db)
@@ -70,6 +72,6 @@ def test_send_message_returns_existing_idempotent_message(monkeypatch):
         assert response.status_code==200 or response.status_code==201
         assert response.json()["replayed"] is True
         assert response.json()["message"]["id"] == "existing-message"
-        assert not any(call[0] == "POST" for call in calls)
+        assert not any(call[0] == "POST" and call[1] == "messages" for call in calls)
     finally:
         app.dependency_overrides.clear()
