@@ -36,7 +36,9 @@ begin
     if new.published_at is null then
       new.published_at := now();
     end if;
-    if tg_op = 'INSERT' or old.status <> 'published' or old.moderation_status <> 'approved' or new.expires_at is null then
+    if tg_op = 'INSERT' then
+      new.expires_at := new.published_at + make_interval(hours => ttl_hours);
+    elsif old.status <> 'published' or old.moderation_status <> 'approved' or new.expires_at is null then
       new.expires_at := new.published_at + make_interval(hours => ttl_hours);
     end if;
   elsif new.status <> 'published' or new.moderation_status <> 'approved' then
