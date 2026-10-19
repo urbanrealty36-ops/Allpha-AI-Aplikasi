@@ -170,3 +170,50 @@ def async_stats(value):
         assert 1 <= limit <= worker.MAX_BATCH_LIMIT
         return value
     return inner
+
+
+def test_retry_after_transient_storage_failure_removes_metadata_only_on_success(monkeypatch):
+    import asyncio
+
+    media_state = {"status": "uploaded"}
+    storage_attempts = {"count": 0}
+    db_deletes = {"count": 0}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "content_items":
+            if media_state["status"] == "removed":
+                return []
+            return [{"id": "story-retry", "content_media": [{
+                "id": "media-retry", "owner_id": "owner-retry",
+                "storage_path": "owner-retry/story-retry/file.png",
+                "status": media_state["status"],
+            }]}]
+        if method == "PATCH" and table == "content_media":
+            media_state["status"] = "deleting"
+            return [{"id": "media-retry", "owner_id": "owner-retry",
+                     "storage_path": "owner-retry/story-retry/file.png", "status": "deleting"}]
+        if method == "DELETE" and table == "content_media":
+            db_deletes["count"] += 1
+            media_state["status"] = "removed"
+            return [{"id": "media-retry"}]
+        raise AssertionError((method, table, params, body))
+
+    async def fake_delete(_path):
+        storage_attempts["count"] += 1
+        if storage_attempts["count"] == 1:
+            raise worker.StoriesCleanupStorageError("transient")
+        return True
+
+    monkeypatch.setattr(worker, "_server_db", fake_db)
+    monkeypatch.setattr(worker, "_delete_storage_object", fake_delete)
+
+    first = asyncio.run(worker._sweep_archived_story_media(limit=10))
+    assert first["storage_failures"] == 1
+    assert media_state["status"] == "deleting"
+    assert db_deletes["count"] == 0
+
+    second = asyncio.run(worker._sweep_archived_story_media(limit=10))
+    assert second["media_deleted"] == 1
+    assert storage_attempts["count"] == 2
+    assert db_deletes["count"] == 1
+    assert media_state["status"] == "removed"
