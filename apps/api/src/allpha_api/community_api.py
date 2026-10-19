@@ -114,6 +114,17 @@ class CommunityPostCreate(BaseModel):
     post_type: Literal["discussion", "announcement", "resource", "event"] = "discussion"
 
 
+class CommunityPostPinUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pinned: bool
+
+
+class CommunityPostModerationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["published", "hidden", "removed"]
+    reason: str = Field(min_length=8, max_length=500)
+
+
 class InviteCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: Literal["member", "moderator"] = "member"
@@ -301,6 +312,30 @@ async def create_community_post(community_id: uuid.UUID, payload: CommunityPostC
     await _require_member(community_id, str(user["id"]))
     rows = await _db("POST", "community_posts", body={"community_id": str(community_id), "author_id": str(user["id"]), "body": payload.body.strip(), "post_type": payload.post_type, "status": "published"}, prefer="return=representation")
     return {"post": rows[0]}
+
+
+@router.patch("/communities/{community_id}/posts/{post_id}/pin")
+async def update_community_post_pin(community_id: uuid.UUID, post_id: uuid.UUID, payload: CommunityPostPinUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
+    await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
+    rows = await _db("PATCH", "community_posts", params={"id": f"eq.{post_id}", "community_id": f"eq.{community_id}", "status": "eq.published"}, body={"is_pinned": payload.pinned, "pinned_by": str(user["id"]) if payload.pinned else None, "pinned_at": _now() if payload.pinned else None, "updated_at": _now()}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(404, detail={"code": "COMMUNITY_POST_NOT_FOUND", "message": "Sumber daya tidak ditemukan atau tidak berstatus published."})
+    return {"post": rows[0]}
+
+
+@router.patch("/communities/{community_id}/posts/{post_id}/moderation")
+async def moderate_community_post(community_id: uuid.UUID, post_id: uuid.UUID, payload: CommunityPostModerationUpdate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    await _community(community_id)
+    await _require_member(community_id, str(user["id"]), ("owner", "moderator"))
+    rows = await _db("GET", "community_posts", params={"select": "id,community_id,status,author_id", "id": f"eq.{post_id}", "community_id": f"eq.{community_id}", "limit": "1"})
+    if not rows:
+        raise HTTPException(404, detail={"code": "COMMUNITY_POST_NOT_FOUND", "message": "Konten komunitas tidak ditemukan."})
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="community.post.moderate", outcome="attempted", resource_type="community_post", resource_id=str(post_id), metadata={"community_id": str(community_id), "status": payload.status, "reason": payload.reason})
+    changed = await _db("PATCH", "community_posts", params={"id": f"eq.{post_id}", "community_id": f"eq.{community_id}"}, body={"status": payload.status, "is_pinned": False if payload.status != "published" else None, "pinned_by": None if payload.status != "published" else None, "pinned_at": None if payload.status != "published" else None, "updated_at": _now()}, prefer="return=representation")
+    if not changed:
+        raise HTTPException(409, detail={"code": "COMMUNITY_POST_MODERATION_CONFLICT", "message": "Status konten berubah; muat ulang dan coba lagi."})
+    return {"post": changed[0], "reason": payload.reason}
 
 
 @router.post("/communities/{community_id}/reports", status_code=201)
