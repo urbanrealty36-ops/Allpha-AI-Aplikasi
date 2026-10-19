@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import httpx
+import pytest
+
+from allpha_api import stories_cleanup_worker as worker
+
+
+def test_worker_requires_explicit_enablement(monkeypatch):
+    monkeypatch.delenv("ALLPHA_STORIES_CLEANUP_ENABLED", raising=False)
+    with pytest.raises(worker.StoriesCleanupConfigurationError):
+        worker._enabled()
+
+
+def test_worker_rejects_invalid_batch_limit(monkeypatch):
+    monkeypatch.setenv("ALLPHA_STORIES_CLEANUP_BATCH_LIMIT", "201")
+    with pytest.raises(worker.StoriesCleanupConfigurationError):
+        worker._batch_limit()
+    monkeypatch.setenv("ALLPHA_STORIES_CLEANUP_BATCH_LIMIT", "not-an-int")
+    with pytest.raises(worker.StoriesCleanupConfigurationError):
+        worker._batch_limit()
+
+
+@pytest.mark.parametrize("status_code", [200, 202, 204, 404])
+def test_storage_delete_is_idempotent_for_success_and_missing_object(monkeypatch, status_code):
+    class FakeResponse:
+        def __init__(self, code):
+            self.status_code = code
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def delete(self, url, *, headers):
+            assert url == "https://supabase.example/storage/v1/object/content-media/owner/story/file.png"
+            assert headers["Authorization"] == "Bearer server-secret"
+            return FakeResponse(status_code)
+
+    monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))
+    monkeypatch.setattr(worker.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    assert __import__("asyncio").run(worker._delete_storage_object("owner/story/file.png")) is True
+
+
+def test_storage_delete_failure_is_retryable(monkeypatch):
+    class FakeResponse:
+        status_code = 503
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def delete(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))
+    monkeypatch.setattr(worker.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    with pytest.raises(worker.StoriesCleanupStorageError):
+        __import__("asyncio").run(worker._delete_storage_object("owner/story/file.png"))
+
+
+@pytest.mark.parametrize("initial_status,storage_failure", [
+    ("uploaded", True),
+    ("deleting", False),
+])
+def test_recovery_sweep_preserves_failed_media_and_retries_deleting_status(
+    monkeypatch, initial_status, storage_failure
+):
+    calls = []
+    media = {
+        "id": "media-1", "owner_id": "owner-1",
+        "storage_path": "owner-1/story-1/file.png", "status": initial_status,
+    }
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body, prefer))
+        if method == "GET" and table == "content_items":
+            return [{
+                "id": "story-1",
+                "content_media": [dict(media)],
+            }]
+        if method == "PATCH" and table == "content_media":
+            if storage_failure:
+                return [{**media, "status": "deleting"}]
+            return [{**media, "status": "deleting"}]
+        if method == "DELETE" and table == "content_media":
+            return [{"id": "media-1"}]
+        raise AssertionError((method, table, params, body))
+
+    async def fake_delete(_path):
+        if storage_failure:
+            raise worker.StoriesCleanupStorageError("test-only transient failure")
+        return True
+
+    monkeypatch.setattr(worker, "_server_db", fake_db)
+    monkeypatch.setattr(worker, "_delete_storage_object", fake_delete)
+    stats = __import__("asyncio").run(worker._sweep_archived_story_media(limit=10))
+
+    query = next(params for method, table, params, _body, _prefer in calls
+                 if method == "GET" and table == "content_items")
+    assert query["content_type"] == "eq.story"
+    assert query["status"] == "in.(archived,deleted)"
+    assert query["content_media.status"] == "in.(uploaded,ready,processing,failed,deleting)"
+    assert stats["media_candidates"] == 1
+    if storage_failure:
+        assert stats["storage_failures"] == 1
+        assert not any(method == "DELETE" and table == "content_media" for method, table, *_ in calls)
+        assert any(method == "PATCH" and body == {"status": "deleting"}
+                   for method, table, _params, body, _prefer in calls)
+    else:
+        assert stats["media_deleted"] == 1
+        assert any(method == "DELETE" and table == "content_media" for method, table, *_ in calls)
+        assert not any(method == "PATCH" for method, *_ in calls)
+
+
+def test_metadata_is_not_deleted_when_storage_delete_fails(monkeypatch):
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if method == "GET" and table == "content_items":
+            return [{"id": "story-1", "content_media": [{
+                "id": "media-2", "owner_id": "owner-1",
+                "storage_path": "owner-1/story-1/file.mp4", "status": "ready",
+            }]}]
+        if method == "PATCH":
+            return [{"id": "media-2", "owner_id": "owner-1",
+                     "storage_path": "owner-1/story-1/file.mp4", "status": "deleting"}]
+        raise AssertionError((method, table, params, body))
+
+    async def fail_delete(_path):
+        raise worker.StoriesCleanupStorageError("transient")
+
+    monkeypatch.setattr(worker, "_server_db", fake_db)
+    monkeypatch.setattr(worker, "_delete_storage_object", fail_delete)
+    stats = __import__("asyncio").run(worker._sweep_archived_story_media(limit=10))
+    assert stats["storage_failures"] == 1
+    assert not any(method == "DELETE" for method, *_ in calls)
+
+
+def test_run_cleanup_once_delegates_expiry_and_emits_summary(monkeypatch):
+    monkeypatch.setenv("ALLPHA_STORIES_CLEANUP_ENABLED", "true")
+    monkeypatch.setattr(worker, "_config", lambda: ("https://supabase.example", "server-secret"))
+    monkeypatch.setattr(worker, "_expire_due_stories", async_value(3))
+    monkeypatch.setattr(worker, "_sweep_archived_story_media", async_stats({
+        "stories_with_media": 2, "media_candidates": 4, "media_deleted": 3,
+        "storage_failures": 1, "metadata_failures": 0, "concurrent_changes": 0,
+    }))
+    summary = __import__("asyncio").run(worker.run_cleanup_once(limit=10))
+    assert summary["phase"] == "ENG-P16"
+    assert summary["expired_stories_archived"] == 3
+    assert summary["media_deleted"] == 3
+    assert summary["storage_failures"] == 1
+    assert summary["batch_limit"] == 10
+
+
+def async_value(value):
+    async def inner():
+        return value
+    return inner
+
+
+def async_stats(value):
+    async def inner(*, limit):
+        assert 1 <= limit <= worker.MAX_BATCH_LIMIT
+        return value
+    return inner
