@@ -5,7 +5,7 @@ import pytest
 
 from allpha_api.agent_runtime import (
     AgentRuntime, AgentRuntimeBlocked, AgentTask, AgentTaskEnvelope, AgentTaskState,
-    RuntimeAuthorization,
+    RuntimeAuthorization, AgentConsumerAuthorization,
 )
 
 
@@ -109,3 +109,41 @@ def test_terminal_task_states_are_immutable(terminal_state):
     with pytest.raises(AgentRuntimeBlocked, match="invalid task transition"):
         task.transition(AgentTaskState.POLICY_CHECK)
     assert task.state == terminal_state
+
+
+def test_consumer_generation_requires_explicit_owner_approved_grant():
+    runtime = AgentRuntime()
+    with pytest.raises(AgentRuntimeBlocked, match="consumer authorization is required"):
+        asyncio.run(runtime.execute_skill_generation(
+            requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+            agent_version=3, skill_id="skill-1", skill_version=2, skill_published=True,
+            policy_version="public-v1", router=None, request=None,
+        ))
+
+
+@pytest.mark.parametrize("changes,match", [
+    ({"grant_active": False}, "owner-approved consumer grant"),
+    ({"policy_approved": False}, "owner-approved consumer grant"),
+    ({"allowed_memory_scope": ("owner_private",)}, "owner-private memory"),
+    ({"budget_reserved": False}, "budget reservation and metering"),
+    ({"metering_ready": False}, "budget reservation and metering"),
+    ({"agent_public": False}, "active public Agents"),
+    ({"skill_published": False}, "active public Agents"),
+])
+def test_consumer_generation_fails_closed_before_provider_call(changes, match):
+    auth_values = dict(
+        requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+        agent_version=3, skill_id="skill-1", skill_version=2,
+        agent_public=True, agent_active=True, skill_published=True,
+        grant_active=True, policy_approved=True, policy_version="public-v1",
+        granted_scopes=(), allowed_memory_scope=(), budget_reserved=True, metering_ready=True,
+    )
+    auth_values.update(changes)
+    auth = AgentConsumerAuthorization(**auth_values)
+    with pytest.raises(AgentRuntimeBlocked, match=match):
+        asyncio.run(AgentRuntime().execute_skill_generation(
+            requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+            agent_version=3, skill_id="skill-1", skill_version=2, skill_published=True,
+            policy_version="public-v1", router=None, request=None,
+            consumer_authorization=auth,
+        ))
