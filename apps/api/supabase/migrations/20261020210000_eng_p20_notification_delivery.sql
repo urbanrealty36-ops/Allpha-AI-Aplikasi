@@ -110,7 +110,7 @@ begin
         'conversation_id', new.conversation_id
       ),
       case when allowed then 'delivered' else 'suppressed' end,
-      pg_catalog.coalesce(new.created_at, pg_catalog.now()),
+      coalesce(new.created_at, pg_catalog.now()),
       pg_catalog.now()
     )
     on conflict (user_id, event_key) do nothing;
@@ -198,8 +198,8 @@ begin
       and q.attempt_count < q.max_attempts
     )
     order by q.next_attempt_at, q.created_at
-    for update skip locked
     limit p_limit
+    for update skip locked
   )
   update public.notification_push_deliveries q
   set state = 'sending',
@@ -237,8 +237,8 @@ begin
       and q.sent_at <= pg_catalog.now() - interval '10 minutes'
       and (q.lease_token is null or q.lease_expires_at <= pg_catalog.now())
     order by q.sent_at, q.created_at
-    for update skip locked
     limit p_limit
+    for update skip locked
   )
   update public.notification_push_deliveries q
   set lease_token = gen_random_uuid(),
