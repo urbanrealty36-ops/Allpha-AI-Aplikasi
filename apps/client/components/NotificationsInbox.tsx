@@ -11,7 +11,7 @@ type InboxResponse = { items: NotificationItem[]; unread_count: number };
 type NotificationPreferences = { social_activity: boolean; community: boolean; workspace: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\/$/, "");
 
-export function NotificationsInbox({ session, pushStatus }: { session: Session; pushStatus?: string }) {
+export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange }: { session: Session; pushStatus?: string; onPushPreferenceChange?: () => void }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -44,6 +44,7 @@ export function NotificationsInbox({ session, pushStatus }: { session: Session; 
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
       setPreferences(result.preferences);
+      if (key === "push_enabled") onPushPreferenceChange?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
     }
