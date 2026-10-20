@@ -9,6 +9,7 @@ const publicKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 type Session = { access_token: string; refresh_token: string; user: { id: string; email?: string } };
 type NodeRow = { node_key: string; level: string; display_name: string; status: string; parent_id?: string | null };
 type AssetRow = { asset_key: string; version: number; display_name: string; category?: string; sha256: string; status: string; moderation_status?: string; license_evidence_status?: string; source_url?: string };
+type MappingRow = { id:string; agent_id:string; asset_key:string; asset_version:number; evidence_type:string; evidence_uri:string; evidence_sha256?:string|null; rationale:string; status:string; review_reason?:string|null };
 
 export default function SpatialGovernancePage() {
   const [session, setSession] = useState<Session | null>(null);
@@ -18,7 +19,10 @@ export default function SpatialGovernancePage() {
   const [message, setMessage] = useState("");
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [nodeStatus, setNodeStatus] = useState("draft");
-  const [assets, setAssets] = useState<AssetRow[]>([]);
+
+  const [mappings, setMappings] = useState<MappingRow[]>([]);
+  const [mappingStatus, setMappingStatus] = useState("pending");
+  const [mappingDraft, setMappingDraft] = useState({agent_id:"",asset_key:"",asset_version:"1",evidence_type:"authoritative_agent_profile",evidence_uri:"",evidence_sha256:"",rationale:""});  const [assets, setAssets] = useState<AssetRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [node, setNode] = useState({node_key:"",parent_key:"",level:"universe",slug:"",display_name:"",access_policy:"public"});
   const [evidence, setEvidence] = useState<Record<string,string>>({});
@@ -49,11 +53,12 @@ export default function SpatialGovernancePage() {
   async function load() {
     setBusy(true); setError(""); setMessage("");
     try {
-      const [n,a] = await Promise.all([
+      const [n,a,m] = await Promise.all([
         call<{items:NodeRow[]}>("/v1/admin/spatial/nodes?status="+nodeStatus+"&limit=100"),
-        call<{items:AssetRow[]}>("/v1/admin/spatial/assets/review?limit=100"),
+
+        call<{items:MappingRow[]}>("/v1/admin/spatial/agent-asset-mappings?status="+mappingStatus+"&limit=100"),        call<{items:AssetRow[]}>("/v1/admin/spatial/assets/review?limit=100"),
       ]);
-      setNodes(n.items || []); setAssets(a.items || []); setMessage("Data governance dimuat dari API kanonis.");
+      setNodes(n.items || []); setAssets(a.items || []); setMappings(m.items || []); setMessage("Data governance dimuat dari API kanonis.");
     } catch(e) { setError(e instanceof Error ? e.message : "Gagal memuat data."); }
     finally { setBusy(false); }
   }
@@ -77,6 +82,17 @@ export default function SpatialGovernancePage() {
     } catch(e) {setError(e instanceof Error ? e.message : "Aksi node gagal.");}
     finally {setBusy(false);}
   }
+  async function submitMapping(event:FormEvent) {
+    event.preventDefault(); setError("");setMessage("");setBusy(true);
+    try { const payload={...mappingDraft,asset_version:Number(mappingDraft.asset_version),evidence_sha256:mappingDraft.evidence_sha256||null}; await call("/v1/admin/spatial/agent-asset-mappings",{method:"POST",body:JSON.stringify(payload)}); setMessage("Usulan pemetaan dibuat dan menunggu review."); await load(); }
+    catch(e) {setError(e instanceof Error?e.message:"Usulan pemetaan gagal.");} finally {setBusy(false);}
+  }
+  async function mappingAction(mapping:MappingRow,decision:"approved"|"rejected") {
+    setError("");setMessage("");setBusy(true);
+    try { await call("/v1/admin/spatial/agent-asset-mappings/"+mapping.id+"/review",{method:"POST",body:JSON.stringify({decision,reason:reason["mapping:"+mapping.id]||"Review evidence dan kecocokan checksum."})}); setMessage("Review pemetaan diproses."); await load(); }
+    catch(e) {setError(e instanceof Error?e.message:"Review pemetaan gagal.");} finally {setBusy(false);}
+  }
+
   async function assetAction(asset:AssetRow, decision:"approved"|"rejected"|"publish") {
     setError("");setMessage("");setBusy(true);
     try {
@@ -107,7 +123,9 @@ export default function SpatialGovernancePage() {
         <button disabled={busy} style={buttonStyle}>Buat draft</button>
       </form><p style={mutedStyle}>Tidak ada seed bisnis. Koordinat/landmark dapat ditambahkan setelah node dibuat melalui kontrak API tervalidasi.</p></section>
       <section style={panelStyle}><h2 style={h2Style}>2. Node untuk governance</h2><label>Status<select value={nodeStatus} onChange={e=>setNodeStatus(e.target.value)} style={inputStyle}>{["draft","review","approved","published","rejected"].map(v=><option key={v}>{v}</option>)}</select></label><button style={secondaryStyle} disabled={busy} onClick={load}>Muat status</button>{nodes.length===0?<p style={mutedStyle}>Tidak ada draft node dalam hasil query. Muat status review/approved/published melalui API bila diperlukan.</p>:nodes.map(n=><article key={n.node_key} style={itemStyle}><div><strong>{n.display_name}</strong><p style={mutedStyle}>{n.node_key} · {n.level} · {n.status}</p></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{n.status==="draft"&&<button style={secondaryStyle} onClick={()=>nodeAction(n.node_key,"submit")}>Ajukan review</button>}{n.status==="review"&&<><input placeholder="Alasan review" value={reason["node:"+n.node_key]||""} onChange={e=>setReason({...reason,["node:"+n.node_key]:e.target.value})} style={inputStyle}/><button style={buttonStyle} onClick={()=>nodeAction(n.node_key,"review","approved")}>Approve</button><button style={secondaryStyle} onClick={()=>nodeAction(n.node_key,"review","rejected")}>Reject</button></>}{n.status==="approved"&&<button style={buttonStyle} onClick={()=>nodeAction(n.node_key,"publish")}>Publish</button>}</div></article>)}</section>
-      <section style={panelStyle}><h2 style={h2Style}>3. Review aset GLB</h2><p style={mutedStyle}>Persetujuan membutuhkan bukti lisensi HTTPS. Tidak ada publikasi otomatis.</p>{assets.length===0?<p style={mutedStyle}>Tidak ada aset dalam daftar review, atau belum tersedia izin operator.</p>:assets.map(a=><article key={a.asset_key+":"+a.version} style={itemStyle}><div style={{minWidth:240,flex:1}}><strong>{a.display_name}</strong><p style={mutedStyle}>{a.asset_key} · v{a.version} · {a.category || "kategori belum terpetakan"}</p><code style={{fontSize:11,overflowWrap:"anywhere"}}>SHA-256: {a.sha256}</code><p style={mutedStyle}>Status: {a.status} · moderasi: {a.moderation_status || "pending"} · lisensi: {a.license_evidence_status || "unverified"}</p><input placeholder="URL bukti lisensi HTTPS (wajib approve)" value={evidence[a.asset_key]||""} onChange={e=>setEvidence({...evidence,[a.asset_key]:e.target.value})} style={inputStyle}/><input placeholder="Alasan review" value={reason["asset:"+a.asset_key]||""} onChange={e=>setReason({...reason,["asset:"+a.asset_key]:e.target.value})} style={inputStyle}/></div><div style={{display:"flex",gap:6,flexWrap:"wrap",alignContent:"start"}}><button style={buttonStyle} onClick={()=>assetAction(a,"approved")}>Approve</button><button style={secondaryStyle} onClick={()=>assetAction(a,"rejected")}>Reject</button><button style={secondaryStyle} onClick={()=>assetAction(a,"publish")}>Publish</button></div></article>)}</section>
+      <section style={panelStyle}><h2 style={h2Style}>3. Pemetaan Agent–GLB</h2><p style={mutedStyle}>Usulan hanya dapat mengacu pada GLB published + approved. API memvalidasi UUID Agent, bukti HTTPS, dan checksum.</p><form onSubmit={submitMapping} style={formGrid}>
+<label>Agent UUID<input required value={mappingDraft.agent_id} onChange={e=>setMappingDraft({...mappingDraft,agent_id:e.target.value})} style={inputStyle}/></label><label>Asset key<input required value={mappingDraft.asset_key} onChange={e=>setMappingDraft({...mappingDraft,asset_key:e.target.value})} style={inputStyle}/></label><label>Asset version<input required type="number" min="1" value={mappingDraft.asset_version} onChange={e=>setMappingDraft({...mappingDraft,asset_version:e.target.value})} style={inputStyle}/></label><label>Jenis bukti<select value={mappingDraft.evidence_type} onChange={e=>setMappingDraft({...mappingDraft,evidence_type:e.target.value})} style={inputStyle}>{["authoritative_agent_profile","owner_attestation","source_manifest","reviewed_visual_match"].map(v=><option key={v}>{v}</option>)}</select></label><label>URL bukti HTTPS<input required type="url" pattern="https://.*" value={mappingDraft.evidence_uri} onChange={e=>setMappingDraft({...mappingDraft,evidence_uri:e.target.value})} style={inputStyle}/></label><label>SHA-256 bukti<input pattern="[a-f0-9]{64}" value={mappingDraft.evidence_sha256} onChange={e=>setMappingDraft({...mappingDraft,evidence_sha256:e.target.value})} style={inputStyle}/></label><label>Rasional<input required minLength={12} value={mappingDraft.rationale} onChange={e=>setMappingDraft({...mappingDraft,rationale:e.target.value})} style={inputStyle}/></label><button disabled={busy} style={buttonStyle}>Ajukan pemetaan</button></form><label>Status mapping<select value={mappingStatus} onChange={e=>setMappingStatus(e.target.value)} style={inputStyle}>{["pending","approved","rejected","revoked"].map(v=><option key={v}>{v}</option>)}</select></label><button style={secondaryStyle} disabled={busy} onClick={load}>Muat pemetaan</button>{mappings.length===0?<p style={mutedStyle}>Tidak ada pemetaan pada status ini.</p>:mappings.map(m=><article key={m.id} style={itemStyle}><div style={{minWidth:240,flex:1}}><strong>{m.asset_key} v{m.asset_version}</strong><p style={mutedStyle}>Agent {m.agent_id} · {m.status} · {m.evidence_type}</p><p style={mutedStyle}>Bukti: {m.evidence_uri}</p><p style={mutedStyle}>SHA-256 bukti: {m.evidence_sha256||"tidak disertakan"}</p><p style={mutedStyle}>{m.rationale}</p></div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{m.status==="pending"&&<><input placeholder="Alasan review" value={reason["mapping:"+m.id]||""} onChange={e=>setReason({...reason,["mapping:"+m.id]:e.target.value})} style={inputStyle}/><button style={buttonStyle} disabled={busy} onClick={()=>mappingAction(m,"approved")}>Approve</button><button style={secondaryStyle} disabled={busy} onClick={()=>mappingAction(m,"rejected")}>Reject</button></>}</div></article>)}</section>
+      <section style={panelStyle}><h2 style={h2Style}>4. Review aset GLB</h2>      <section style={panelStyle}><h2 style={h2Style}>3. Review aset GLB</h2><p style={mutedStyle}>Persetujuan membutuhkan bukti lisensi HTTPS. Tidak ada publikasi otomatis.</p>{assets.length===0?<p style={mutedStyle}>Tidak ada aset dalam daftar review, atau belum tersedia izin operator.</p>:assets.map(a=><article key={a.asset_key+":"+a.version} style={itemStyle}><div style={{minWidth:240,flex:1}}><strong>{a.display_name}</strong><p style={mutedStyle}>{a.asset_key} · v{a.version} · {a.category || "kategori belum terpetakan"}</p><code style={{fontSize:11,overflowWrap:"anywhere"}}>SHA-256: {a.sha256}</code><p style={mutedStyle}>Status: {a.status} · moderasi: {a.moderation_status || "pending"} · lisensi: {a.license_evidence_status || "unverified"}</p><input placeholder="URL bukti lisensi HTTPS (wajib approve)" value={evidence[a.asset_key]||""} onChange={e=>setEvidence({...evidence,[a.asset_key]:e.target.value})} style={inputStyle}/><input placeholder="Alasan review" value={reason["asset:"+a.asset_key]||""} onChange={e=>setReason({...reason,["asset:"+a.asset_key]:e.target.value})} style={inputStyle}/></div><div style={{display:"flex",gap:6,flexWrap:"wrap",alignContent:"start"}}><button style={buttonStyle} onClick={()=>assetAction(a,"approved")}>Approve</button><button style={secondaryStyle} onClick={()=>assetAction(a,"rejected")}>Reject</button><button style={secondaryStyle} onClick={()=>assetAction(a,"publish")}>Publish</button></div></article>)}</section>
     </section>}
     {error&&<p role="alert" style={{marginTop:16,color:"#a32626",background:"#fff1f1",padding:12,borderRadius:8}}>{error}</p>}
     {message&&<p role="status" style={{marginTop:16,color:"#205c3b",background:"#eefaf2",padding:12,borderRadius:8}}>{message}</p>}
