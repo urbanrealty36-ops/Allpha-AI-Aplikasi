@@ -7,8 +7,18 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.allpha.universe", "deploymentTarget": "15.1" },
-    "android": { "package": "com.allpha.universe", "edgeToEdgeEnabled": true },
-    "plugins": ["expo-secure-store"]
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.allpha.universe",
+      "deploymentTarget": "15.1"
+    },
+    "android": {
+      "package": "com.allpha.universe",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications"
+    ]
   }
 }
