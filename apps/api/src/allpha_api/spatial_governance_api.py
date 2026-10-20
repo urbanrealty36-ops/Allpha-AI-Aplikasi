@@ -203,7 +203,7 @@ async def list_assets_for_review(limit: int = 100,
     if not 1 <= limit <= 100:
         raise fail(422, "SPATIAL_ASSET_PAGINATION_INVALID", "Limit harus 1-100.")
     rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
-        "select":"asset_id,version,asset_key,display_name,category,sha256,byte_size,status,moderation_status,license_evidence_status,source_url,source_repo,source_path",
+        "select":"asset_id,version,asset_key,display_name,category,sha256,byte_size,status,moderation_status,license_evidence_status,source_url",
         "status":"eq.test_only","order":"created_at.asc","limit":str(limit)})
     return {"items":rows or [],"limit":limit,"note":"Tidak ada aset yang dipublikasikan otomatis."}
 
