@@ -75,6 +75,7 @@ def test_mark_notification_read_scopes_update_to_authenticated_owner(monkeypatch
         assert calls[0][0] == "PATCH"
         assert calls[0][2]["user_id"] == f"eq.{USER_ID}"
         assert calls[0][2]["read_at"] == "is.null"
+        assert calls[0][2]["delivery_state"] == "neq.suppressed"
         assert calls[0][3]["read_at"]
         assert calls[0][4] == "return=representation"
     finally:
@@ -119,6 +120,7 @@ def test_mark_all_read_updates_only_authenticated_owner(monkeypatch):
         assert calls[0][0] == "PATCH"
         assert calls[0][1]["user_id"] == f"eq.{USER_ID}"
         assert calls[0][1]["read_at"] == "is.null"
+        assert calls[0][1]["delivery_state"] == "neq.suppressed"
     finally:
         _clear()
 
