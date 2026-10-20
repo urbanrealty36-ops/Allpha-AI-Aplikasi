@@ -214,7 +214,9 @@ def test_register_expo_device_rejects_token_owned_by_another_user(monkeypatch):
             "expo_push_token": TOKEN, "platform": "ios",
         })
         assert response.status_code == 409
-        assert response.json()["detail"]["code"] == "EXPO_PUSH_TOKEN_IN_USE"
+        payload = response.json()
+        error = payload.get("detail", payload.get("error", {}))
+        assert error["code"] == "EXPO_PUSH_TOKEN_IN_USE"
     finally:
         _clear()
 
@@ -226,7 +228,9 @@ def test_register_expo_device_rejects_non_expo_token():
             "expo_push_token": "not-a-token-at-all-123456789", "platform": "ios",
         })
         assert response.status_code == 422
-        assert response.json()["detail"]["code"] == "EXPO_PUSH_TOKEN_INVALID"
+        payload = response.json()
+        error = payload.get("detail", payload.get("error", {}))
+        assert error["code"] == "EXPO_PUSH_TOKEN_INVALID"
     finally:
         _clear()
 
