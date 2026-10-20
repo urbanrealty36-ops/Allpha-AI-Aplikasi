@@ -162,6 +162,10 @@ function Profile({ session }: { session: Session }) {
   const [createdInviteToken, setCreatedInviteToken] = useState("");
   const [workspaceDraftName, setWorkspaceDraftName] = useState("");
   const [activeWorkspace, setActiveWorkspace] = useState<{id:string;title:string;membership_role?:string}|null>(null);
+  const [communityAgentDirectory, setCommunityAgentDirectory] = useState<{id:string;handle:string;display_name:string;version:number}[]>([]);
+  const [selectedCommunityAgentId, setSelectedCommunityAgentId] = useState("");
+  const [communityGrantScopes, setCommunityGrantScopes] = useState<string[]>(["read_published_content"]);
+  const [communityResourceGrants, setCommunityResourceGrants] = useState<{id:string;agent_id:string;agent_version:number;resource_type:"community"|"workspace";scopes:string[];status:"active"|"revoked";expires_at:string|null}[]>([]);
   const [workspaceDocs, setWorkspaceDocs] = useState<{id:string;title:string;body?:string;version:number}[]>([]);
   const [activeWorkspaceDoc, setActiveWorkspaceDoc] = useState<{id:string;title:string;body?:string;version:number}|null>(null);
   const [workspaceDocTitle, setWorkspaceDocTitle] = useState("");
@@ -1049,6 +1053,34 @@ function Profile({ session }: { session: Session }) {
     if(!activeWorkspace || !activeWorkspaceDoc) return; setBusy(true); setError("");
     try { const result=await apiRequest("/v1/workspaces/"+encodeURIComponent(activeWorkspace.id)+"/documents/"+encodeURIComponent(activeWorkspaceDoc.id),{method:"PUT",body:JSON.stringify({title:workspaceDocTitle,body:workspaceDocBody,expected_version:activeWorkspaceDoc.version})}) as {document:typeof activeWorkspaceDoc}; if(result.document)setActiveWorkspaceDoc(result.document); await loadNativeWorkspaceDocs(activeWorkspace.id); setMessage("Versi dokumen tersimpan."); }
     catch(e) { setError(e instanceof Error ? e.message : "Dokumen konflik; buka ulang versi terbaru."); } finally { setBusy(false); }
+  }
+
+  async function loadCommunityAgentDirectory() {
+    try { const result = await apiRequest("/v1/community-agent-directory") as {items?:{id:string;handle:string;display_name:string;version:number}[]}; const items=result.items||[]; setCommunityAgentDirectory(items); if(!selectedCommunityAgentId&&items[0])setSelectedCommunityAgentId(items[0].id); }
+    catch(e) { setError(e instanceof Error?e.message:"Direktori Agent publik gagal dimuat."); }
+  }
+  async function loadCommunityResourceGrants(resourceType:"community"|"workspace", resourceId:string) {
+    try { const result=await apiRequest("/v1/resource-grants?resource_type="+resourceType+"&resource_id="+encodeURIComponent(resourceId)) as {grants?:typeof communityResourceGrants}; setCommunityResourceGrants(result.grants||[]); }
+    catch(e) { setError(e instanceof Error?e.message:"Daftar izin Agent gagal dimuat."); }
+  }
+  async function createCommunityResourceGrant() {
+    const resource=activeCommunity?{type:"community" as const,id:activeCommunity.id}:activeWorkspace?{type:"workspace" as const,id:activeWorkspace.id}:null;
+    if(!resource||!selectedCommunityAgentId)return;
+    const allowed=resource.type==="community"?["read_published_content","create_agent_post","comment"]:["read_workspace_documents","comment"];
+    const scopes=communityGrantScopes.filter(scope=>allowed.includes(scope));
+    if(!scopes.length){setError("Pilih minimal satu scope yang tersedia.");return;}
+    setBusy(true);setError("");setMessage("");
+    try { await apiRequest("/v1/agents/"+encodeURIComponent(selectedCommunityAgentId)+"/resource-grants",{method:"POST",body:JSON.stringify({resource_type:resource.type,resource_id:resource.id,scopes})}); setMessage("Grant dan audit dicatat. Partisipasi Agent tetap dinonaktifkan sampai seluruh runtime dan review keamanan selesai."); await loadCommunityResourceGrants(resource.type,resource.id); }
+    catch(e) { setError(e instanceof Error?e.message:"Izin Agent gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function revokeCommunityResourceGrant(grant:typeof communityResourceGrants[number]) {
+    const resource=activeCommunity?{type:"community" as const,id:activeCommunity.id}:activeWorkspace?{type:"workspace" as const,id:activeWorkspace.id}:null;
+    if(!resource)return;
+    Alert.alert("Cabut izin Agent","Akses Agent ke resource ini akan dicabut.",[
+      {text:"Batal",style:"cancel"},
+      {text:"Cabut izin",style:"destructive",onPress:()=>{void (async()=>{setBusy(true);setError("");try{await apiRequest("/v1/agents/"+encodeURIComponent(grant.agent_id)+"/resource-grants/"+encodeURIComponent(grant.id)+"/revoke",{method:"POST",body:JSON.stringify({reason:"Dicabut setelah konfirmasi pemilik resource."})});await loadCommunityResourceGrants(resource.type,resource.id);setMessage("Grant dicabut; audit tercatat.");}catch(e){setError(e instanceof Error?e.message:"Grant gagal dicabut.");}finally{setBusy(false);}})();}}
+    ]);
   }
   const field = { ...s.input, flex: 1 } as const;
   return <ScrollView contentContainerStyle={s.page}><Brand/>
