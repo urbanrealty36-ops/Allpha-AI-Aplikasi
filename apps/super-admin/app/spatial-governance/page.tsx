@@ -55,8 +55,8 @@ export default function SpatialGovernancePage() {
     try {
       const [n,a,m] = await Promise.all([
         call<{items:NodeRow[]}>("/v1/admin/spatial/nodes?status="+nodeStatus+"&limit=100"),
-
-        call<{items:MappingRow[]}>("/v1/admin/spatial/agent-asset-mappings?status="+mappingStatus+"&limit=100"),        call<{items:AssetRow[]}>("/v1/admin/spatial/assets/review?limit=100"),
+        call<{items:AssetRow[]}>("/v1/admin/spatial/assets/review?limit=100"),
+        call<{items:MappingRow[]}>("/v1/admin/spatial/agent-asset-mappings?status="+mappingStatus+"&limit=100"),
       ]);
       setNodes(n.items || []); setAssets(a.items || []); setMappings(m.items || []); setMessage("Data governance dimuat dari API kanonis.");
     } catch(e) { setError(e instanceof Error ? e.message : "Gagal memuat data."); }
