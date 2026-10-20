@@ -252,6 +252,7 @@ function Profile({ session }: { session: Session }) {
   const [spatialSceneKey, setSpatialSceneKey] = useState(""); const [spatialActiveKey, setSpatialActiveKey] = useState("");
   const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
   const [pushRegistrationStatus, setPushRegistrationStatus] = useState("Memeriksa konfigurasi push…");
+  const [pushRegistrationRetry, setPushRegistrationRetry] = useState(0);
   async function apiRequest(path: string, init: RequestInit = {}) {
     const headers: Record<string, string> = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
     if (!(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
@@ -301,6 +302,11 @@ function Profile({ session }: { session: Session }) {
         setPushRegistrationStatus("Push belum aktif: EXPO_PUBLIC_EAS_PROJECT_ID belum dikonfigurasi.");
         return;
       }
+      const preferenceResult = await apiRequest("/v1/notifications/preferences") as { preferences?: { push_enabled?: boolean } };
+      if (preferenceResult.preferences?.push_enabled === false) {
+        setPushRegistrationStatus("Push dinonaktifkan di preferensi notifikasi.");
+        return;
+      }
       let permission = await Notifications.getPermissionsAsync();
       if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
       if (!permission.granted) {
@@ -319,7 +325,14 @@ function Profile({ session }: { session: Session }) {
         method: "POST",
         body: JSON.stringify({ expo_push_token: token.data, platform }),
       }) as { device?: { id?: string } };
-      registeredDeviceId = result.device?.id || null;
+      const newDeviceId = result.device?.id || null;
+      if (!active && newDeviceId) {
+        void fetch(apiBase + "/v1/notifications/devices/" + encodeURIComponent(newDeviceId), {
+          method: "DELETE", headers: { Authorization: "Bearer " + session.access_token },
+        }).catch(() => undefined);
+        return;
+      }
+      registeredDeviceId = newDeviceId;
       if (active) setPushRegistrationStatus("Token push perangkat berhasil didaftarkan.");
     })().catch(() => {
       if (active) setPushRegistrationStatus("Registrasi push belum berhasil; periksa build native dan konfigurasi provider.");
@@ -335,7 +348,7 @@ function Profile({ session }: { session: Session }) {
         }).catch(() => undefined);
       }
     };
-  }, [session.access_token]);
+  }, [session.access_token, pushRegistrationRetry]);
 
   useEffect(() => {
     if (!activeConversation || tab !== "messages" || !supabase) return;
@@ -1267,7 +1280,7 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.muted}>Status akun: {profile.account_status === "deactivation_requested" ? "Permintaan penonaktifan tercatat" : "Aktif"}</Text>
         <Button title={profile.account_status === "deactivation_requested" ? "Penonaktifan diminta" : "Minta penonaktifan akun"} secondary disabled={busy || profile.account_status === "deactivation_requested"} onPress={() => void requestDeactivation()}/>
       </> : <Text style={s.muted}>Profil belum tersedia.</Text> :
-      tab === "notifications" ? <NotificationsInbox session={session} pushStatus={pushRegistrationStatus}/> :
+      tab === "notifications" ? <NotificationsInbox session={session} pushStatus={pushRegistrationStatus} onPushPreferenceChange={() => setPushRegistrationRetry(value => value + 1)}/> :
       tab === "settings" ? settings ? <>
         <Text style={s.kicker}>PREFERENSI</Text><Text style={s.body}>Tema aplikasi</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Sistem" secondary={settings.theme !== "system"} onPress={() => setSettings({ ...settings, theme: "system" })}/><Button title="Terang" secondary={settings.theme !== "light"} onPress={() => setSettings({ ...settings, theme: "light" })}/><Button title="Gelap" secondary={settings.theme !== "dark"} onPress={() => setSettings({ ...settings, theme: "dark" })}/></View>
