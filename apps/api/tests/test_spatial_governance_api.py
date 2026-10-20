@@ -99,9 +99,9 @@ def test_mapping_checksum_mismatch_blocks_approval_before_write(monkeypatch):
 
 
 def test_every_governance_route_requires_operator_scope():
-    from allpha_api.main import app
-    routes = [route for route in app.routes if getattr(route, "path", "").startswith("/v1/admin/spatial")]
+    routes = list(governance.router.routes)
     assert routes
     for route in routes:
+        assert route.path.startswith("/v1/admin/spatial"), route.path
         assert route.dependant.dependencies, f"missing operator dependency on {route.path}"
-        assert any("require_operator_scope" in repr(dep.call) or dep.call.__name__ == "dependency" for dep in route.dependant.dependencies), route.path
+        assert any(dep.call.__name__ == "dependency" for dep in route.dependant.dependencies), route.path
