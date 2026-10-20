@@ -270,6 +270,11 @@ function Profile({ session }: { session: Session }) {
     let registeredDeviceId: string | null = null;
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, unknown>;
+      if (data.type === "community_invite_accepted") {
+        setTab("communities");
+        void loadCommunities();
+        return;
+      }
       if (data.type !== "message" || typeof data.conversationId !== "string") return;
       setTab("messages");
       void (async () => {
