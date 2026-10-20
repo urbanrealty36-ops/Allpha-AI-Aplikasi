@@ -1,0 +1,54 @@
+name: Allpha Native Production Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Native production target
+        required: true
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: EAS production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/client
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_PUBLIC_EAS_PROJECT_ID }}
+    steps:
+      - name: Checkout canonical repository
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/client/package-lock.json
+      - name: Require production EAS configuration
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "::error::Configure the EXPO_TOKEN GitHub Actions secret before running a native production build."
+            exit 1
+          fi
+          if [ -z "${EXPO_PUBLIC_EAS_PROJECT_ID:-}" ]; then
+            echo "::error::Configure the EXPO_PUBLIC_EAS_PROJECT_ID GitHub Actions variable before running a native production build."
+            exit 1
+          fi
+      - name: Install locked native dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Validate resolved Expo app config
+        run: npx expo config --type public
+      - name: Build native production binaries
+        run: npx eas-cli@latest build --platform "${{ inputs.platform }}" --profile production --non-interactive
