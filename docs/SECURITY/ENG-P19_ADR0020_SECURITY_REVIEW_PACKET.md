@@ -1,7 +1,7 @@
 # ENG-P19 / ADR-0020 Security & Platform Review Packet
 
-- **Status:** Awaiting Security/Privacy and Platform Engineering review; not approval to apply a Production migration.
-- **Product decision:** ADR-0020 approved by Product Owner on 2026-10-19.
+- **Status:** Product Owner confirmed approval to proceed with this review on 2026-10-20. This records Product Owner approval only; it does not represent or substitute for explicit Security/Privacy and Platform Engineering sign-off, and is not by itself approval to apply a Production migration.
+- **Product decision:** ADR-0020 approved by Product Owner on 2026-10-19; Product Owner reaffirmed approval to proceed with the ENG-P19 security/schema review on 2026-10-20.
 - **Scope:** Exact Agent grants for one community or workspace only.
 - **Canonical project:** Supabase project `dvdziauyvuhcnqhrrvww`. All findings below are from read-only catalog inspection on 2026-10-20. No grant schema migration was applied and no data was written.
 
@@ -43,7 +43,9 @@ The grant metadata alone does not authorize any Agent runtime operation. Runtime
 
 ## Required reviewer decisions
 
-Security/Privacy and Platform Engineering should review and explicitly record decisions on:
+**Product Owner disposition (2026-10-20):** approved proceeding with this review and implementation work under ADR-0020. The technical review disposition from Security/Privacy and Platform Engineering is still not recorded; do not attribute their approval to the Product Owner.
+
+Security/Privacy and Platform Engineering must review and explicitly record decisions on:
 
 - [ ] Is the proposed grant/audit schema consistent with the canonical authorization and audit lifecycle, or should an existing canonical engine own it?
 - [ ] Are resource approver roles correct: community owner/moderator; workspace owner only?
