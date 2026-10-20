@@ -5,10 +5,22 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
 import * as DocumentPicker from "expo-document-picker";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNativeWorldRenderer";
 import { NotificationsInbox } from "./components/NotificationsInbox";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
@@ -239,6 +251,7 @@ function Profile({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const [spatialSceneKey, setSpatialSceneKey] = useState(""); const [spatialActiveKey, setSpatialActiveKey] = useState("");
   const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
+  const [pushRegistrationStatus, setPushRegistrationStatus] = useState("Memeriksa konfigurasi push…");
   async function apiRequest(path: string, init: RequestInit = {}) {
     const headers: Record<string, string> = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
     if (!(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
@@ -251,6 +264,72 @@ function Profile({ session }: { session: Session }) {
     if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Permintaan gagal (" + response.status + ").");
     return body;
   }
+
+  useEffect(() => {
+    let active = true;
+    let registeredDeviceId: string | null = null;
+    const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      if (data.type !== "message" || typeof data.conversationId !== "string") return;
+      setTab("messages");
+      void (async () => {
+        try {
+          const result = await apiRequest("/v1/messages/conversations") as { items?: NativeConversation[] };
+          const conversation = (result.items || []).find(item => item.id === data.conversationId);
+          if (conversation) await openMessageConversation(conversation);
+        } catch (cause) {
+          setMessageError(cause instanceof Error ? cause.message : "Percakapan dari notifikasi tidak dapat dibuka.");
+        }
+      })();
+    });
+
+    void (async () => {
+      const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : null;
+      if (!platform) {
+        setPushRegistrationStatus("Push hanya tersedia pada build native Android/iOS.");
+        return;
+      }
+      const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID
+        || Constants.expoConfig?.extra?.eas?.projectId
+        || Constants.easConfig?.projectId;
+      if (!projectId) {
+        setPushRegistrationStatus("Push belum aktif: EXPO_PUBLIC_EAS_PROJECT_ID belum dikonfigurasi.");
+        return;
+      }
+      let permission = await Notifications.getPermissionsAsync();
+      if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+      if (!permission.granted) {
+        setPushRegistrationStatus("Izin notifikasi belum diberikan pada perangkat ini.");
+        return;
+      }
+      if (platform === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "Allpha",
+          importance: Notifications.AndroidImportance.DEFAULT,
+        });
+      }
+      const token = await Notifications.getExpoPushTokenAsync({ projectId });
+      const result = await apiRequest("/v1/notifications/devices", {
+        method: "POST",
+        body: JSON.stringify({ expo_push_token: token.data, platform }),
+      }) as { device?: { id?: string } };
+      registeredDeviceId = result.device?.id || null;
+      if (active) setPushRegistrationStatus("Token push perangkat berhasil didaftarkan.");
+    })().catch(() => {
+      if (active) setPushRegistrationStatus("Registrasi push belum berhasil; periksa build native dan konfigurasi provider.");
+    });
+
+    return () => {
+      active = false;
+      responseListener.remove();
+      if (registeredDeviceId) {
+        void fetch(apiBase + "/v1/notifications/devices/" + encodeURIComponent(registeredDeviceId), {
+          method: "DELETE",
+          headers: { Authorization: "Bearer " + session.access_token },
+        }).catch(() => undefined);
+      }
+    };
+  }, [session.access_token]);
 
   useEffect(() => {
     if (!activeConversation || tab !== "messages" || !supabase) return;
@@ -1182,7 +1261,7 @@ function Profile({ session }: { session: Session }) {
         <Text style={s.muted}>Status akun: {profile.account_status === "deactivation_requested" ? "Permintaan penonaktifan tercatat" : "Aktif"}</Text>
         <Button title={profile.account_status === "deactivation_requested" ? "Penonaktifan diminta" : "Minta penonaktifan akun"} secondary disabled={busy || profile.account_status === "deactivation_requested"} onPress={() => void requestDeactivation()}/>
       </> : <Text style={s.muted}>Profil belum tersedia.</Text> :
-      tab === "notifications" ? <NotificationsInbox session={session}/> :
+      tab === "notifications" ? <NotificationsInbox session={session} pushStatus={pushRegistrationStatus}/> :
       tab === "settings" ? settings ? <>
         <Text style={s.kicker}>PREFERENSI</Text><Text style={s.body}>Tema aplikasi</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Sistem" secondary={settings.theme !== "system"} onPress={() => setSettings({ ...settings, theme: "system" })}/><Button title="Terang" secondary={settings.theme !== "light"} onPress={() => setSettings({ ...settings, theme: "light" })}/><Button title="Gelap" secondary={settings.theme !== "dark"} onPress={() => setSettings({ ...settings, theme: "dark" })}/></View>
