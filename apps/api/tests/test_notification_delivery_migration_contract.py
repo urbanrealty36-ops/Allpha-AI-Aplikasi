@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_eng_p20_delivery_migration_is_additive_and_lease_bounded():
-    migration = Path(__file__).parents[1] / "supabase" / "migrations" / "20261020210000_eng_p20_notification_delivery.sql"
+    migration = Path(__file__).parents[1] / "supabase" / "migrations" / "20261020082804_eng_p20_notification_delivery.sql"
     sql = migration.read_text(encoding="utf-8").lower()
     assert "create table if not exists public.notification_devices" in sql
     assert "create table if not exists public.notification_push_deliveries" in sql
