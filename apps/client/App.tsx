@@ -272,7 +272,7 @@ function Profile({ session }: { session: Session }) {
       const data = response.notification.request.content.data as Record<string, unknown>;
       if (data.type === "community_invite_accepted") {
         setTab("communities");
-        void loadCommunities();
+        void loadCommunityWorkspace();
         return;
       }
       if (data.type !== "message" || typeof data.conversationId !== "string") return;
