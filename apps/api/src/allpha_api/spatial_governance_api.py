@@ -200,14 +200,14 @@ async def publish_spatial_node(node_key: str, request: Request,
 
 
 @router.get("/assets/review")
-async def list_assets_for_review(limit: int = 100,
+async def list_assets_for_review(limit: int = 100, offset: int = 0,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
-    if not 1 <= limit <= 100:
-        raise fail(422, "SPATIAL_ASSET_PAGINATION_INVALID", "Limit harus 1-100.")
+    if not 1 <= limit <= 100 or not 0 <= offset <= 10000:
+        raise fail(422, "SPATIAL_ASSET_PAGINATION_INVALID", "Limit harus 1-100 dan offset 0-10000.")
     rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
         "select":"asset_id,version,asset_key,display_name,category,sha256,byte_size,status,moderation_status,license_evidence_status,source_url,license_evidence,provenance",
-        "status":"eq.test_only","order":"created_at.asc","limit":str(limit)})
-    return {"items":rows or [],"limit":limit,"note":"Tidak ada aset yang dipublikasikan otomatis."}
+        "status":"eq.test_only","order":"created_at.asc","limit":str(limit),"offset":str(offset)})
+    return {"items":rows or [],"limit":limit,"offset":offset,"note":"Tidak ada aset yang dipublikasikan otomatis."}
 
 
 @router.post("/assets/{asset_key}/{version}/review")
