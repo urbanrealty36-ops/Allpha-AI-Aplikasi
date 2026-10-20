@@ -43,7 +43,7 @@ def test_worker_dispatches_claimed_notification_with_lease_and_safe_payload(monk
         if method == "GET" and table == "notifications":
             return [{
                 "id": "notification-1", "user_id": "user-1", "title": "Pesan baru",
-                "body": "Anda menerima pesan baru.", "delivery_state": "delivered",
+                "body": "Anda menerima pesan baru.", "category": "social_activity", "delivery_state": "delivered",
                 "payload": {"type": "message", "message_id": "message-1",
                             "conversation_id": "conversation-1", "untrusted_url": "https://evil.invalid"},
                 "expires_at": None,
@@ -51,6 +51,8 @@ def test_worker_dispatches_claimed_notification_with_lease_and_safe_payload(monk
         if method == "GET" and table == "notification_devices":
             return [{"id": "device-1", "user_id": "user-1",
                      "expo_push_token": "ExponentPushToken[valid]", "enabled": True}]
+        if method == "GET" and table == "user_settings":
+            return [{"notification_preferences": {"push_enabled": True, "social_activity": True}}]
         if method == "PATCH" and table == "notification_push_deliveries":
             return [{"id": "delivery-1"}]
         raise AssertionError((method, table, params))
@@ -107,10 +109,12 @@ def test_worker_retries_transient_provider_failure_with_bounded_backoff(monkeypa
     async def fake_rest(method, table, *, params=None, body=None, prefer=None):
         if method == "GET" and table == "notifications":
             return [{"id": "notification-1", "user_id": "user-1", "title": "Title",
-                     "body": "Body", "delivery_state": "delivered", "payload": {}, "expires_at": None}]
+                     "body": "Body", "category": "social_activity", "delivery_state": "delivered", "payload": {}, "expires_at": None}]
         if method == "GET" and table == "notification_devices":
             return [{"id": "device-1", "user_id": "user-1",
                      "expo_push_token": "ExponentPushToken[valid]", "enabled": True}]
+        if method == "GET" and table == "user_settings":
+            return [{"notification_preferences": {"push_enabled": True, "social_activity": True}}]
         if method == "PATCH" and table == "notification_push_deliveries":
             patches.append(body)
             return [{"id": "delivery-1"}]
