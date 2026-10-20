@@ -152,7 +152,7 @@ async def list_navigation_nodes(
                 raise HTTPException(status_code=404, detail={"code": "SPATIAL_NODE_NOT_FOUND", "message": "Node spasial publik tidak ditemukan."})
             parent_id = parents[0]["id"]
         params = {
-            "select": "id,node_key,parent_id,level,slug,display_name,coordinates,landmarks,scene_key,child_count,version",
+            "select": "id,node_key,parent_id,parent_node_key,level,slug,display_name,coordinates,landmarks,scene_key,child_count,version",
             "order": "created_at.asc,id.asc",
             "limit": str(limit + 1),
             "offset": str(offset),
@@ -164,7 +164,7 @@ async def list_navigation_nodes(
     has_more = len(rows) > limit
     rows = rows[:limit]
     items = [NavigationNode(
-        node_id=str(row["node_key"]), parent_id=str(row["parent_id"]) if row.get("parent_id") else None,
+        node_id=str(row["node_key"]), parent_id=str(row["parent_node_key"]) if row.get("parent_node_key") else None,
         level=row["level"], slug=row["slug"], display_name=row["display_name"],
         coordinates=row.get("coordinates"), landmarks=row.get("landmarks") or [],
         scene_key=row.get("scene_key"), child_count=int(row.get("child_count") or 0),
