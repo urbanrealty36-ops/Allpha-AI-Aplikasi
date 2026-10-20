@@ -24,6 +24,13 @@ DEFAULT_PREFERENCES = {
     "security_alerts": True,
     "push_enabled": True,
 }
+
+def _public_preferences(stored: Any) -> dict[str, bool]:
+    source = stored if isinstance(stored, dict) else {}
+    return {
+        key: source[key] if isinstance(source.get(key), bool) else default
+        for key, default in DEFAULT_PREFERENCES.items()
+    }
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 
 
@@ -114,8 +121,7 @@ async def get_notification_preferences(user: dict[str, Any] = Depends(current_us
         "limit": "1",
     })
     stored = rows[0].get("notification_preferences") if rows else {}
-    preferences = {**DEFAULT_PREFERENCES, **(stored if isinstance(stored, dict) else {})}
-    return {"preferences": {key: bool(preferences.get(key, default)) for key, default in DEFAULT_PREFERENCES.items()}}
+    return {"preferences": _public_preferences(stored)}
 
 
 @router.patch("/preferences")
@@ -146,7 +152,7 @@ async def update_notification_preferences(
         },
         prefer="resolution=merge-duplicates,return=minimal",
     )
-    return {"preferences": {key: bool(preferences.get(key, default)) for key, default in DEFAULT_PREFERENCES.items()}}
+    return {"preferences": _public_preferences(preferences)}
 
 
 @router.post("/devices", status_code=201)
