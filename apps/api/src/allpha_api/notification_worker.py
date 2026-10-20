@@ -362,8 +362,8 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
                 )
                 updated = await _patch_delivery(delivery, {
                     "state": "sent", "provider_ticket_id": ticket["ticket_id"],
-                    "sent_at": _now().isoformat(), "last_error_code": None,
-                    "next_attempt_at": _now().isoformat(),
+                    "sent_at": _now().isoformat(), "receipt_checked_at": None,
+                    "last_error_code": None, "next_attempt_at": _now().isoformat(),
                 })
                 if updated:
                     counts["sent"] += 1
