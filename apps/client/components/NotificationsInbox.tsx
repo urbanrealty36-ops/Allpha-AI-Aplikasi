@@ -11,7 +11,7 @@ type InboxResponse = { items: NotificationItem[]; unread_count: number };
 type NotificationPreferences = { social_activity: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\/$/, "");
 
-export function NotificationsInbox({ session }: { session: Session }) {
+export function NotificationsInbox({ session, pushStatus }: { session: Session; pushStatus?: string }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -88,6 +88,7 @@ export function NotificationsInbox({ session }: { session: Session }) {
     <Text style={{ color: "#A5B4FC", fontSize: 12, fontWeight: "700", letterSpacing: 1.4 }}>ALLPHA UNIVERSE</Text>
     <Text accessibilityRole="header" style={{ color: "#F8FAFC", fontSize: 24, fontWeight: "700" }}>Notifikasi</Text>
     <Text style={{ color: "#CBD5E1" }}>{unreadCount} belum dibaca</Text>
+    {pushStatus ? <Text style={{ color: pushStatus.includes("berhasil") ? "#86EFAC" : "#FCD34D", fontSize: 12 }}>{pushStatus}</Text> : null}
     <View style={{ flexDirection: "row", gap: 8 }}>
       <Pressable accessibilityRole="button" onPress={() => void load()} disabled={loading} style={{ padding: 10, borderWidth: 1, borderColor: "#334155", borderRadius: 10 }}><Text style={{ color: "#E2E8F0" }}>Muat ulang</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => void markAllRead()} disabled={loading || busyId !== null || unreadCount === 0} style={{ padding: 10, backgroundColor: "#6366F1", borderRadius: 10, opacity: unreadCount === 0 ? 0.5 : 1 }}><Text style={{ color: "white", fontWeight: "600" }}>Baca semua</Text></Pressable>
