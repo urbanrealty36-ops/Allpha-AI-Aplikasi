@@ -28,3 +28,13 @@ alter table public.spatial_navigation_nodes enable row level security;
 revoke all on public.spatial_navigation_nodes from anon, authenticated;
 grant select, insert, update, delete on public.spatial_navigation_nodes to service_role;
 comment on table public.spatial_navigation_nodes is 'Canonical Universe/Galaxy/World/District/Zone/Booth/POI hierarchy; only published public nodes are exposed by FastAPI.';
+
+create or replace view public.spatial_public_navigation_nodes as
+select n.id, n.node_key, n.parent_id, n.level, n.slug, n.display_name,
+       n.coordinates, n.landmarks, n.scene_key, n.version, n.created_at,
+       (select count(*)::integer from public.spatial_navigation_nodes child
+         where child.parent_id=n.id and child.status='published' and child.access_policy='public') as child_count
+from public.spatial_navigation_nodes n
+where n.status='published' and n.access_policy='public';
+revoke all on public.spatial_public_navigation_nodes from anon, authenticated;
+grant select on public.spatial_public_navigation_nodes to service_role;
