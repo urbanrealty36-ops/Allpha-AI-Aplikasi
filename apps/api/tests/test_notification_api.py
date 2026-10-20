@@ -7,14 +7,22 @@ from allpha_api import notification_api
 from allpha_api.auth import current_user
 from allpha_api.main import app
 
-
 USER_ID = "11111111-1111-4111-8111-111111111111"
 OTHER_USER_ID = "22222222-2222-4222-8222-222222222222"
+TOKEN = "ExponentPushToken[abcdefghijklmnopqrstuvwxyz0123456789]"
 
 
 def _user(request: Request):
     request.state.user_id = USER_ID
     return {"id": USER_ID, "email": "notification-test@example.invalid"}
+
+
+def _override():
+    app.dependency_overrides[current_user] = _user
+
+
+def _clear():
+    app.dependency_overrides.clear()
 
 
 def test_notification_inbox_requires_auth():
@@ -32,7 +40,7 @@ def test_notification_list_is_owner_scoped_and_returns_unread_count(monkeypatch)
         return [{"id": "n-1"}, {"id": "n-2"}]
 
     monkeypatch.setattr(notification_api, "_request", fake_request)
-    app.dependency_overrides[current_user] = _user
+    _override()
     try:
         response = TestClient(app).get("/v1/notifications?limit=10&unread_only=true")
         assert response.status_code == 200
@@ -41,9 +49,11 @@ def test_notification_list_is_owner_scoped_and_returns_unread_count(monkeypatch)
         assert body["items"][0]["id"] == "n-1"
         assert calls[0][2]["user_id"] == f"eq.{USER_ID}"
         assert calls[0][2]["read_at"] == "is.null"
+        assert calls[0][2]["delivery_state"] == "neq.suppressed"
         assert calls[1][2]["user_id"] == f"eq.{USER_ID}"
+        assert calls[1][2]["delivery_state"] == "neq.suppressed"
     finally:
-        app.dependency_overrides.clear()
+        _clear()
 
 
 def test_mark_notification_read_scopes_update_to_authenticated_owner(monkeypatch):
@@ -54,7 +64,7 @@ def test_mark_notification_read_scopes_update_to_authenticated_owner(monkeypatch
         return [{"id": "n-1", "read_at": "2026-10-20T00:00:00+00:00"}]
 
     monkeypatch.setattr(notification_api, "_request", fake_request)
-    app.dependency_overrides[current_user] = _user
+    _override()
     try:
         response = TestClient(app).patch(
             "/v1/notifications/11111111-1111-4111-8111-111111111111/read",
@@ -68,7 +78,7 @@ def test_mark_notification_read_scopes_update_to_authenticated_owner(monkeypatch
         assert calls[0][3]["read_at"]
         assert calls[0][4] == "return=representation"
     finally:
-        app.dependency_overrides.clear()
+        _clear()
 
 
 def test_mark_read_returns_not_found_for_other_users_notification(monkeypatch):
@@ -79,7 +89,7 @@ def test_mark_read_returns_not_found_for_other_users_notification(monkeypatch):
         return []
 
     monkeypatch.setattr(notification_api, "_request", fake_request)
-    app.dependency_overrides[current_user] = _user
+    _override()
     try:
         response = TestClient(app).patch(
             "/v1/notifications/33333333-3333-4333-8333-333333333333/read",
@@ -90,7 +100,7 @@ def test_mark_read_returns_not_found_for_other_users_notification(monkeypatch):
         error = payload.get("detail", payload.get("error", {}))
         assert error["code"] == "NOTIFICATION_NOT_FOUND"
     finally:
-        app.dependency_overrides.clear()
+        _clear()
 
 
 def test_mark_all_read_updates_only_authenticated_owner(monkeypatch):
@@ -101,7 +111,7 @@ def test_mark_all_read_updates_only_authenticated_owner(monkeypatch):
         return [{"id": "n-1"}, {"id": "n-2"}]
 
     monkeypatch.setattr(notification_api, "_request", fake_request)
-    app.dependency_overrides[current_user] = _user
+    _override()
     try:
         response = TestClient(app).post("/v1/notifications/read-all", json={})
         assert response.status_code == 200
@@ -110,11 +120,120 @@ def test_mark_all_read_updates_only_authenticated_owner(monkeypatch):
         assert calls[0][1]["user_id"] == f"eq.{USER_ID}"
         assert calls[0][1]["read_at"] == "is.null"
     finally:
-        app.dependency_overrides.clear()
+        _clear()
+
+
+def test_notification_preferences_get_uses_canonical_user_settings(monkeypatch):
+    async def fake_request(method, table, *, params, body=None, prefer=None):
+        assert method == "GET"
+        assert table == "user_settings"
+        assert params["user_id"] == f"eq.{USER_ID}"
+        return [{"notification_preferences": {"social_activity": False}}]
+
+    monkeypatch.setattr(notification_api, "_request", fake_request)
+    _override()
+    try:
+        response = TestClient(app).get("/v1/notifications/preferences")
+        assert response.status_code == 200
+        assert response.json()["preferences"] == {
+            "social_activity": False, "product_updates": True,
+            "security_alerts": True, "push_enabled": True,
+        }
+    finally:
+        _clear()
+
+
+def test_notification_preferences_patch_merges_only_supplied_values(monkeypatch):
+    calls = []
+
+    async def fake_request(method, table, *, params, body=None, prefer=None):
+        calls.append((method, table, params, body, prefer))
+        if method == "GET":
+            return [{"notification_preferences": {"social_activity": True, "custom_key": "preserve"}}]
+        return []
+
+    monkeypatch.setattr(notification_api, "_request", fake_request)
+    _override()
+    try:
+        response = TestClient(app).patch(
+            "/v1/notifications/preferences", json={"social_activity": False, "push_enabled": False}
+        )
+        assert response.status_code == 200
+        assert response.json()["preferences"]["social_activity"] is False
+        assert response.json()["preferences"]["push_enabled"] is False
+        write = calls[-1]
+        assert write[0] == "POST" and write[1] == "user_settings"
+        assert write[3]["notification_preferences"]["custom_key"] == "preserve"
+        assert write[3]["notification_preferences"]["product_updates"] is True
+        assert write[4] == "resolution=merge-duplicates,return=minimal"
+    finally:
+        _clear()
+
+
+def test_notification_preferences_reject_empty_patch():
+    _override()
+    try:
+        response = TestClient(app).patch("/v1/notifications/preferences", json={})
+        assert response.status_code == 422
+    finally:
+        _clear()
+
+
+def test_register_expo_device_is_owner_scoped_and_idempotent(monkeypatch):
+    calls = []
+
+    async def fake_request(method, table, *, params, body=None, prefer=None):
+        calls.append((method, table, params, body, prefer))
+        if method == "GET":
+            return []
+        return [{"id": "device-1", "platform": "android", "enabled": True}]
+
+    monkeypatch.setattr(notification_api, "_request", fake_request)
+    _override()
+    try:
+        response = TestClient(app).post("/v1/notifications/devices", json={
+            "expo_push_token": TOKEN, "platform": "android", "device_id": "android-test",
+        })
+        assert response.status_code == 201
+        assert response.json()["registered"] is True
+        assert calls[0][2]["expo_push_token"] == f"eq.{TOKEN}"
+        assert calls[1][3]["user_id"] == USER_ID
+        assert calls[1][4] == "return=representation"
+    finally:
+        _clear()
+
+
+def test_register_expo_device_rejects_token_owned_by_another_user(monkeypatch):
+    async def fake_request(method, table, *, params, body=None, prefer=None):
+        return [{"id": "device-1", "user_id": OTHER_USER_ID, "enabled": True}]
+
+    monkeypatch.setattr(notification_api, "_request", fake_request)
+    _override()
+    try:
+        response = TestClient(app).post("/v1/notifications/devices", json={
+            "expo_push_token": TOKEN, "platform": "ios",
+        })
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "EXPO_PUSH_TOKEN_IN_USE"
+    finally:
+        _clear()
+
+
+def test_register_expo_device_rejects_non_expo_token():
+    _override()
+    try:
+        response = TestClient(app).post("/v1/notifications/devices", json={
+            "expo_push_token": "not-a-token-at-all-123456789", "platform": "ios",
+        })
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "EXPO_PUSH_TOKEN_INVALID"
+    finally:
+        _clear()
 
 
 def test_notification_storage_failure_is_fail_closed(monkeypatch):
     from fastapi import HTTPException
+    import asyncio
 
     def no_config():
         raise HTTPException(status_code=503, detail={"code": "NOTIFICATIONS_NOT_CONFIGURED"})
@@ -124,7 +243,6 @@ def test_notification_storage_failure_is_fail_closed(monkeypatch):
     async def call_request():
         return await notification_api._request("GET", "notifications", params={"limit": "1"})
 
-    import asyncio
     try:
         asyncio.run(call_request())
         assert False, "expected a fail-closed 503"
