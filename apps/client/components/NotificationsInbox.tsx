@@ -44,7 +44,6 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
       setPreferences(result.preferences);
-      if (key === "push_enabled") onPushPreferenceChange?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
     }
@@ -59,6 +58,7 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
         method: "PATCH", body: JSON.stringify({ [key]: value }),
       });
       setPreferences(result.preferences);
+      if (key === "push_enabled") onPushPreferenceChange?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
     } finally { setPreferencesBusy(false); }
