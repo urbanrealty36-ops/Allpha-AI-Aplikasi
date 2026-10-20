@@ -38,7 +38,7 @@ def test_approval_requires_explicit_license_review_attestation():
     assert payload.license_evidence_reviewed is False
 
 
-def test_license_evidence_must_be_https():def test_license_evidence_must_be_https():
+def test_license_evidence_must_be_https():
     with pytest.raises(ValidationError):
         AssetDecision(decision="approved", reason="Evidence checked", license_evidence_uri="http://example.org/license")
 
