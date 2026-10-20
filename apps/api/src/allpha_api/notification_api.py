@@ -20,6 +20,8 @@ from allpha_api.auth import current_user
 router = APIRouter(prefix="/v1/notifications", tags=["notifications"])
 DEFAULT_PREFERENCES = {
     "social_activity": True,
+    "community": True,
+    "workspace": True,
     "product_updates": True,
     "security_alerts": True,
     "push_enabled": True,
@@ -101,6 +103,8 @@ async def list_notifications(
 class NotificationPreferencesUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     social_activity: bool | None = None
+    community: bool | None = None
+    workspace: bool | None = None
     product_updates: bool | None = None
     security_alerts: bool | None = None
     push_enabled: bool | None = None
