@@ -18,6 +18,7 @@ type NotificationItem = {
   expires_at: string | null;
 };
 type InboxResponse = { items: NotificationItem[]; unread_count: number; limit: number };
+type NotificationPreferences = { social_activity: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 type ApiError = { detail?: { message?: string }; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -31,6 +32,8 @@ export default function NotificationsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
+  const [preferencesBusy, setPreferencesBusy] = useState(false);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -66,6 +69,30 @@ export default function NotificationsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const loadPreferences = useCallback(async () => {
+    if (!session) { setPreferences(null); return; }
+    try {
+      const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
+      setPreferences(result.preferences);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
+    }
+  }, [api, session]);
+
+  useEffect(() => { void loadPreferences(); }, [loadPreferences]);
+
+  async function updatePreference(key: keyof NotificationPreferences, value: boolean) {
+    setPreferencesBusy(true); setError("");
+    try {
+      const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences", {
+        method: "PATCH", body: JSON.stringify({ [key]: value }),
+      });
+      setPreferences(result.preferences);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
+    } finally { setPreferencesBusy(false); }
+  }
+
   async function markRead(item: NotificationItem) {
     if (item.read_at) return;
     setBusyId(item.id); setError(""); setNotice("");
@@ -95,6 +122,25 @@ export default function NotificationsPage() {
       <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-300">Allpha Universe</p><h1 className="mt-1 text-2xl font-semibold">Notifikasi</h1><p className="mt-1 text-sm text-slate-400">{unreadCount} belum dibaca</p></div>
       <div className="flex flex-wrap gap-2"><a className="rounded-xl border border-slate-700 px-3 py-2 text-sm" href="/">Beranda</a><button className="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-50" onClick={() => void load()} disabled={loading}>Muat ulang</button><button className="rounded-xl bg-indigo-500 px-3 py-2 text-sm font-medium disabled:opacity-50" onClick={() => void markAllRead()} disabled={loading || busyId !== null || unreadCount === 0}>Baca semua</button></div>
     </header>
+    <section className="rounded-2xl border border-slate-800 p-4">
+      <h2 className="font-semibold">Preferensi notifikasi</h2>
+      <p className="mt-1 text-sm text-slate-400">Atur kategori inbox dan izin push perangkat.</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {([
+          ["social_activity", "Aktivitas sosial"],
+          ["product_updates", "Pembaruan produk"],
+          ["security_alerts", "Peringatan keamanan"],
+          ["push_enabled", "Push ke perangkat"],
+        ] as const).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-3 rounded-xl border border-slate-800 p-3 text-sm">
+            <input type="checkbox" checked={preferences?.[key] ?? true} disabled={!preferences || preferencesBusy}
+              onChange={event => void updatePreference(key, event.target.checked)}
+              className="h-4 w-4 accent-indigo-400" />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+    </section>
     <div className="flex gap-2" role="group" aria-label="Filter notifikasi"><button className={"rounded-full px-4 py-2 text-sm " + (!unreadOnly ? "bg-slate-100 text-slate-900" : "border border-slate-700")} onClick={() => setUnreadOnly(false)}>Semua</button><button className={"rounded-full px-4 py-2 text-sm " + (unreadOnly ? "bg-slate-100 text-slate-900" : "border border-slate-700")} onClick={() => setUnreadOnly(true)}>Belum dibaca</button></div>
     {error ? <div role="alert" className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-200">{error}</div> : null}
     {notice ? <p role="status" className="text-sm text-emerald-300">{notice}</p> : null}
