@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import pytest
+import asyncio
 
 from allpha_api import notification_worker as worker
 
 
-@pytest.mark.asyncio
-async def test_worker_noops_without_explicit_provider_configuration(monkeypatch):
+def test_worker_noops_without_explicit_provider_configuration(monkeypatch):
     calls = []
 
     async def forbidden(*args, **kwargs):
@@ -15,13 +14,12 @@ async def test_worker_noops_without_explicit_provider_configuration(monkeypatch)
 
     monkeypatch.setattr(worker, "_provider_enabled", lambda: False)
     monkeypatch.setattr(worker, "_rpc", forbidden)
-    result = await worker.process_batch(limit=10)
+    result = asyncio.run(worker.process_batch(limit=10))
     assert result["claimed"] == 0
     assert calls == []
 
 
-@pytest.mark.asyncio
-async def test_worker_dispatches_claimed_notification_with_lease_and_safe_payload(monkeypatch):
+def test_worker_dispatches_claimed_notification_with_lease_and_safe_payload(monkeypatch):
     delivery = {
         "id": "delivery-1", "notification_id": "notification-1", "user_id": "user-1",
         "device_id": "device-1", "lease_token": "lease-1", "attempt_count": 1,
@@ -68,7 +66,7 @@ async def test_worker_dispatches_claimed_notification_with_lease_and_safe_payloa
     monkeypatch.setattr(worker, "_rest", fake_rest)
     monkeypatch.setattr(worker, "_expo_send", fake_send)
 
-    result = await worker.process_batch(limit=10)
+    result = asyncio.run(worker.process_batch(limit=10))
     assert result["enqueued"] == 1
     assert result["claimed"] == 1
     assert result["sent"] == 1
@@ -89,8 +87,7 @@ async def test_worker_dispatches_claimed_notification_with_lease_and_safe_payloa
     ]
 
 
-@pytest.mark.asyncio
-async def test_worker_retries_transient_provider_failure_with_bounded_backoff(monkeypatch):
+def test_worker_retries_transient_provider_failure_with_bounded_backoff(monkeypatch):
     delivery = {
         "id": "delivery-1", "notification_id": "notification-1", "user_id": "user-1",
         "device_id": "device-1", "lease_token": "lease-1", "attempt_count": 2,
@@ -127,7 +124,7 @@ async def test_worker_retries_transient_provider_failure_with_bounded_backoff(mo
     monkeypatch.setattr(worker, "_rest", fake_rest)
     monkeypatch.setattr(worker, "_expo_send", fail_send)
 
-    result = await worker.process_batch(limit=10)
+    result = asyncio.run(worker.process_batch(limit=10))
     assert result["retrying"] == 1
     assert patches[0]["state"] == "failed"
     assert patches[0]["last_error_code"] == "expo_network_error"
