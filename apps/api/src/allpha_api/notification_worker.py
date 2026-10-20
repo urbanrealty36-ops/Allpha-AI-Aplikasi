@@ -191,11 +191,11 @@ async def _disable_device(device_id: str, user_id: str) -> None:
     )
 
 
-async def _notification_and_device(delivery: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+async def _notification_and_device(delivery: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
     notifications = await _rest(
         "GET", "notifications",
         params={
-            "select": "id,user_id,title,body,payload,delivery_state,expires_at",
+            "select": "id,user_id,category,title,body,payload,delivery_state,expires_at",
             "id": f"eq.{delivery['notification_id']}",
             "user_id": f"eq.{delivery['user_id']}",
             "limit": "1",
@@ -211,8 +211,18 @@ async def _notification_and_device(delivery: dict[str, Any]) -> tuple[dict[str, 
             "limit": "1",
         },
     )
+    settings = await _rest(
+        "GET", "user_settings",
+        params={
+            "select": "notification_preferences",
+            "user_id": f"eq.{delivery['user_id']}",
+            "limit": "1",
+        },
+    )
+    preferences = settings[0].get("notification_preferences", {}) if settings else {}
     return (notifications[0] if notifications else None,
-            devices[0] if devices else None)
+            devices[0] if devices else None,
+            preferences if isinstance(preferences, dict) else {})
 
 
 def _safe_push_data(notification: dict[str, Any]) -> dict[str, Any]:
@@ -318,10 +328,16 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
               "retrying": 0, "failed": 0, "receipts": receipt_counts["checked"]}
     for delivery in deliveries:
         try:
-            notification, device = await _notification_and_device(delivery)
+            notification, device, preferences = await _notification_and_device(delivery)
             if not notification or notification.get("delivery_state") != "delivered" or not device:
                 await _patch_delivery(delivery, {
                     "state": "suppressed", "last_error_code": "notification_or_device_unavailable",
+                })
+                continue
+            category = str(notification.get("category") or "social_activity")
+            if preferences.get("push_enabled") is False or preferences.get(category) is False:
+                await _patch_delivery(delivery, {
+                    "state": "suppressed", "last_error_code": "notification_preference_disabled",
                 })
                 continue
             expires_at = notification.get("expires_at")
