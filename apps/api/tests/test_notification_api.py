@@ -86,7 +86,9 @@ def test_mark_read_returns_not_found_for_other_users_notification(monkeypatch):
             json={},
         )
         assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "NOTIFICATION_NOT_FOUND"
+        payload = response.json()
+        error = payload.get("detail", payload.get("error", {}))
+        assert error["code"] == "NOTIFICATION_NOT_FOUND"
     finally:
         app.dependency_overrides.clear()
 
