@@ -69,7 +69,7 @@ def test_workspace_document_version_conflict_is_rejected(monkeypatch):
     try:
         response = TestClient(app).put(f"/v1/workspaces/{workspace_id}/documents/{document_id}", json={"title":"Doc","body":"stale","expected_version":2})
         assert response.status_code == 409
-        assert response.json()["detail"]["code"] == "DOCUMENT_VERSION_CONFLICT"
+        assert response.json().get("error", response.json().get("detail", {}))["code"] == "DOCUMENT_VERSION_CONFLICT"
     finally:
         app.dependency_overrides.clear()
 
@@ -78,6 +78,8 @@ def test_mission_progress_uses_atomic_idempotent_rpc(monkeypatch):
     community_id, mission_id = uuid.uuid4(), uuid.uuid4()
     async def member(*args, **kwargs): return {"role":"member"}
     async def db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "communities":
+            return [{"id": str(community_id), "status": "active", "visibility": "public"}]
         assert method == "POST" and table == "rpc/record_community_mission_progress"
         assert body["p_community_id"] == str(community_id)
         assert body["p_mission_id"] == str(mission_id)
@@ -150,7 +152,7 @@ def test_agent_grant_fails_closed_without_resource_approver(monkeypatch):
             json={"resource_type":"community","resource_id":str(community_id),"scopes":["read_published_content"]},
         )
         assert response.status_code == 403
-        assert response.json()["detail"]["code"] == "RESOURCE_GRANT_APPROVER_REQUIRED"
+        assert response.json().get("error", response.json().get("detail", {}))["code"] == "RESOURCE_GRANT_APPROVER_REQUIRED"
     finally:
         app.dependency_overrides.clear()
 
@@ -175,6 +177,6 @@ def test_agent_grant_rejects_scope_not_allowed_for_resource(monkeypatch):
             json={"resource_type":"workspace","resource_id":str(workspace_id),"scopes":["create_agent_post"]},
         )
         assert response.status_code == 422
-        assert response.json()["detail"]["code"] == "AGENT_GRANT_SCOPE_NOT_ALLOWED"
+        assert response.json().get("error", response.json().get("detail", {}))["code"] == "AGENT_GRANT_SCOPE_NOT_ALLOWED"
     finally:
         app.dependency_overrides.clear()
