@@ -128,7 +128,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   community_label text;
   pref_text text;
@@ -178,7 +178,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists community_invites_enqueue_accepted_notification on public.community_invites;
 create trigger community_invites_enqueue_accepted_notification
