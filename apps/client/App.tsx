@@ -148,7 +148,7 @@ function Profile({ session }: { session: Session }) {
   const [messageRealtimeStatus, setMessageRealtimeStatus] = useState("connecting");
   const [communityItems, setCommunityItems] = useState<{id:string;name:string;slug:string;description:string;visibility:string;membership_role?:string|null}[]>([]);
   const [workspaceItems, setWorkspaceItems] = useState<{id:string;title:string;description:string;visibility:string;membership_role?:string}[]>([]);
-  const [activeCommunity, setActiveCommunity] = useState<{id:string;name:string;membership_role?:string|null}|null>(null);
+  const [activeCommunity, setActiveCommunity] = useState<{id:string;name:string;slug:string;description:string;visibility:string;membership_role?:string|null}|null>(null);
   const [communityPosts, setCommunityPosts] = useState<{id:string;body:string;post_type:string;created_at:string;is_pinned?:boolean}[]>([]);
   const [communityMissions, setCommunityMissions] = useState<{id:string;title:string;description:string;target_count:number;my_progress?:{progress_count:number;status:string}}[]>([]);
   const [missionDraftTitle, setMissionDraftTitle] = useState("");
@@ -1108,7 +1108,7 @@ function Profile({ session }: { session: Session }) {
             <Button title={complete ? "Misi selesai" : "Tambah progres +1"} secondary disabled={busy || complete} onPress={() => void progressNativeMission(mission.id)}/>
           </View>;
         })}
-        {(activeCommunity.membership_role === "owner" || activeCommunity.membership_role === "moderator") && <View style={s.socialRow}>
+        {(activeCommunity?.membership_role === "owner" || activeCommunity?.membership_role === "moderator") && <View style={s.socialRow}>
           <Text style={s.title}>Buat misi</Text>
           <TextInput accessibilityLabel="Judul misi" value={missionDraftTitle} onChangeText={setMissionDraftTitle} maxLength={120} style={s.input} placeholder="Judul misi" placeholderTextColor="#8B94AC"/>
           <TextInput accessibilityLabel="Deskripsi misi" value={missionDraftDescription} onChangeText={setMissionDraftDescription} multiline maxLength={2000} style={s.input} placeholder="Deskripsi (opsional)" placeholderTextColor="#8B94AC"/>
