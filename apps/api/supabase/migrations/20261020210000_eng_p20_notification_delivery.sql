@@ -122,6 +122,69 @@ create trigger messages_enqueue_notification
 after insert on public.messages
 for each row execute function public.enqueue_message_notification();
 
+
+create or replace function public.enqueue_community_invite_accepted_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  community_label text;
+  pref_text text;
+  allowed boolean;
+begin
+  if old.accepted_at is not null
+     or new.accepted_at is null
+     or new.accepted_by is null
+     or new.accepted_by = new.created_by then
+    return new;
+  end if;
+
+  select c.name into community_label
+  from public.communities c
+  where c.id = new.community_id;
+  community_label := coalesce(nullif(pg_catalog.btrim(community_label), ''), 'komunitas');
+
+  select us.notification_preferences ->> 'community'
+    into pref_text
+  from public.user_settings us
+  where us.user_id = new.created_by;
+
+  allowed := case
+    when pref_text in ('true','false') then pref_text = 'true'
+    else true
+  end;
+
+  insert into public.notifications (
+    user_id, category, event_key, title, body, payload,
+    delivery_state, created_at, updated_at
+  ) values (
+    new.created_by,
+    'community',
+    'community_invite_accepted:' || new.id::text,
+    'Undangan komunitas diterima',
+    'Undangan ke ' || pg_catalog.left(community_label, 120) || ' telah diterima.',
+    pg_catalog.jsonb_build_object(
+      'type', 'community_invite_accepted',
+      'community_id', new.community_id,
+      'invitation_id', new.id
+    ),
+    case when allowed then 'delivered' else 'suppressed' end,
+    pg_catalog.now(),
+    pg_catalog.now()
+  )
+  on conflict (user_id, event_key) do nothing;
+
+  return new;
+end;
+$;
+
+drop trigger if exists community_invites_enqueue_accepted_notification on public.community_invites;
+create trigger community_invites_enqueue_accepted_notification
+after update of accepted_at on public.community_invites
+for each row execute function public.enqueue_community_invite_accepted_notification();
+
 create or replace function public.enqueue_notification_push_deliveries(p_limit integer default 200)
 returns integer
 language plpgsql
@@ -252,6 +315,7 @@ end;
 $$;
 
 revoke all on function public.enqueue_message_notification() from public, anon, authenticated;
+revoke all on function public.enqueue_community_invite_accepted_notification() from public, anon, authenticated;
 revoke all on function public.enqueue_notification_push_deliveries(integer) from public, anon, authenticated;
 revoke all on function public.claim_notification_push_deliveries(integer, integer) from public, anon, authenticated;
 revoke all on function public.claim_notification_push_receipts(integer, integer) from public, anon, authenticated;
