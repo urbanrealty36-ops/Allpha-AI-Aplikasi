@@ -234,6 +234,9 @@ def _safe_push_data(notification: dict[str, Any]) -> dict[str, Any]:
         data["type"] = "message"
         data["conversationId"] = str(payload["conversation_id"])
         data["messageId"] = str(payload.get("message_id", ""))
+    elif payload.get("type") == "community_invite_accepted" and payload.get("community_id"):
+        data["type"] = "community_invite_accepted"
+        data["communityId"] = str(payload["community_id"])
     return data
 
 
