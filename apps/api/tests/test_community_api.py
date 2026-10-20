@@ -112,10 +112,8 @@ def test_agent_grant_requires_active_agent_and_explicit_resource_approval(monkey
             return [{"id": str(community_id), "status": "active", "visibility": "public"}]
         if table == "community_memberships" and method == "GET":
             return [{"community_id": str(community_id), "user_id": "community-test-user", "role": "owner", "status": "active"}]
-        if table == "agent_resource_grants" and method == "POST":
-            return [{"id": str(grant_id), **body}]
-        if table == "agent_resource_grant_audit" and method == "POST":
-            return None
+        if table == "rpc/grant_agent_resource_access" and method == "POST":
+            return [{"id": str(grant_id), "agent_id": body["p_agent_id"], "scopes": body["p_scopes"], "resource_type": body["p_resource_type"]}]
         raise AssertionError((method, table, params, body))
     monkeypatch.setattr(community_api, "_db", db)
     app.dependency_overrides[current_user] = _user
@@ -127,7 +125,7 @@ def test_agent_grant_requires_active_agent_and_explicit_resource_approval(monkey
         assert response.status_code == 201, response.text
         assert response.json()["participation_enabled"] is False
         assert response.json()["grant"]["scopes"] == ["comment", "read_published_content"]
-        assert any(call[1] == "agent_resource_grant_audit" for call in calls)
+        assert any(call[1] == "rpc/grant_agent_resource_access" for call in calls)
     finally:
         app.dependency_overrides.clear()
 
