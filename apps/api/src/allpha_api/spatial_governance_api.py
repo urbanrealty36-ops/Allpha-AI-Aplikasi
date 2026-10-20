@@ -267,7 +267,7 @@ async def list_agent_asset_mappings(status: str = "pending", limit: int = 100,
     return {"items": rows or [], "status": status, "limit": limit}
 
 
-@router.post("/agent-asset-mappings", status_code=201)@router.post("/agent-asset-mappings", status_code=201)
+@router.post("/agent-asset-mappings", status_code=201)
 async def propose_agent_asset_mapping(payload: AgentAssetMappingCreate, request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
     assets=await privileged_rest_request("GET","spatial_asset_versions",params={"select":"asset_id,asset_key,version,status,moderation_status,sha256","asset_key":f"eq.{payload.asset_key}","version":f"eq.{payload.asset_version}","status":"eq.published","moderation_status":"eq.approved","limit":"1"})
