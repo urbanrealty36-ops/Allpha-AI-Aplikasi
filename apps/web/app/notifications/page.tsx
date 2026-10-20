@@ -18,7 +18,7 @@ type NotificationItem = {
   expires_at: string | null;
 };
 type InboxResponse = { items: NotificationItem[]; unread_count: number; limit: number };
-type NotificationPreferences = { social_activity: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
+type NotificationPreferences = { social_activity: boolean; community: boolean; workspace: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 type ApiError = { detail?: { message?: string }; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -128,6 +128,8 @@ export default function NotificationsPage() {
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {([
           ["social_activity", "Aktivitas sosial"],
+          ["community", "Komunitas"],
+          ["workspace", "Workspace"],
           ["product_updates", "Pembaruan produk"],
           ["security_alerts", "Peringatan keamanan"],
           ["push_enabled", "Push ke perangkat"],
