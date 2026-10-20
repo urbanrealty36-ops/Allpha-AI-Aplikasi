@@ -650,8 +650,8 @@ async def revoke_agent_resource_grant(agent_id: uuid.UUID, grant_id: uuid.UUID, 
     if not grants:
         raise HTTPException(404, detail={"code": "AGENT_RESOURCE_GRANT_NOT_FOUND", "message": "Grant aktif tidak ditemukan."})
     grant = grants[0]
-    resource_id = grant.get("community_id") if grant["resource_type"] == "community" else grant.get("workspace_id")
-    await _resource_grant_authority(grant["resource_type"], uuid.UUID(resource_id), user_id)
+    # The atomic database RPC re-checks the current resource approver. Do not require
+    # the resource to remain active just to revoke a grant after suspension.
     rows = await _db("POST", "rpc/revoke_agent_resource_access", body={
         "p_agent_id": str(agent_id), "p_grant_id": str(grant_id),
         "p_actor_user_id": user_id, "p_reason": payload.reason,
