@@ -615,26 +615,20 @@ async def create_agent_resource_grant(agent_id: uuid.UUID, payload: AgentResourc
         raise HTTPException(422, detail={"code": "AGENT_GRANT_EXPIRY_TIMEZONE_REQUIRED", "message": "Masa berlaku harus menyertakan zona waktu."})
     if payload.expires_at and payload.expires_at <= datetime.now(timezone.utc):
         raise HTTPException(422, detail={"code": "AGENT_GRANT_EXPIRY_INVALID", "message": "Masa berlaku harus berada di masa depan."})
-    resource_column = "community_id" if payload.resource_type == "community" else "workspace_id"
-    body = {
-        "agent_id": str(agent_id), "resource_type": payload.resource_type,
-        resource_column: str(payload.resource_id), "granted_by": user_id,
-        "scopes": scopes, "policy_version": 1, "status": "active",
-        "expires_at": payload.expires_at.astimezone(timezone.utc).isoformat() if payload.expires_at else None,
-    }
     try:
-        rows = await _db("POST", "agent_resource_grants", body=body, prefer="return=representation")
+        rows = await _db("POST", "rpc/grant_agent_resource_access", body={
+            "p_agent_id": str(agent_id), "p_resource_type": payload.resource_type,
+            "p_resource_id": str(payload.resource_id), "p_granted_by": user_id,
+            "p_scopes": scopes,
+            "p_expires_at": payload.expires_at.astimezone(timezone.utc).isoformat() if payload.expires_at else None,
+        }, prefer="return=representation")
     except HTTPException as exc:
         if exc.status_code == 409:
             raise HTTPException(409, detail={"code": "AGENT_RESOURCE_GRANT_CONFLICT", "message": "Grant aktif sudah ada untuk Agent dan resource ini."}) from exc
         raise
-    grant = rows[0]
-    await _db("POST", "agent_resource_grant_audit", body={
-        "grant_id": grant["id"], "agent_id": str(agent_id),
-        "resource_type": payload.resource_type, "resource_id": str(payload.resource_id),
-        "actor_user_id": user_id, "action": "grant_created", "scopes": scopes,
-    }, prefer="return=minimal")
-    return {"grant": grant, "participation_enabled": False, "notice": "Grant tercatat; runtime Agent tetap fail-closed sampai semua jalur konten menegakkan kontrak otorisasi."}
+    if not rows:
+        raise HTTPException(503, detail={"code": "AGENT_RESOURCE_GRANT_NOT_CONFIRMED", "message": "Grant tidak dapat dikonfirmasi; partisipasi Agent tetap dinonaktifkan."})
+    return {"grant": rows[0], "participation_enabled": False, "notice": "Grant tercatat secara atomik bersama audit; runtime Agent tetap fail-closed sampai semua jalur konten menegakkan kontrak otorisasi."}
 
 
 @router.get("/agents/{agent_id}/resource-grants")
@@ -658,17 +652,10 @@ async def revoke_agent_resource_grant(agent_id: uuid.UUID, grant_id: uuid.UUID, 
     grant = grants[0]
     resource_id = grant.get("community_id") if grant["resource_type"] == "community" else grant.get("workspace_id")
     await _resource_grant_authority(grant["resource_type"], uuid.UUID(resource_id), user_id)
-    now = datetime.now(timezone.utc).isoformat()
-    rows = await _db("PATCH", "agent_resource_grants", params={"id": f"eq.{grant_id}", "status": "eq.active"}, body={
-        "status": "revoked", "revoked_at": now, "revoked_by": user_id,
-        "revocation_reason": payload.reason, "updated_at": now,
+    rows = await _db("POST", "rpc/revoke_agent_resource_access", body={
+        "p_agent_id": str(agent_id), "p_grant_id": str(grant_id),
+        "p_actor_user_id": user_id, "p_reason": payload.reason,
     }, prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "AGENT_RESOURCE_GRANT_CONFLICT", "message": "Grant berubah saat dicabut; muat ulang."})
-    await _db("POST", "agent_resource_grant_audit", body={
-        "grant_id": str(grant_id), "agent_id": str(agent_id),
-        "resource_type": grant["resource_type"], "resource_id": resource_id,
-        "actor_user_id": user_id, "action": "grant_revoked", "scopes": grant.get("scopes", []),
-        "reason": payload.reason,
-    }, prefer="return=minimal")
     return {"grant": rows[0], "participation_enabled": False}
