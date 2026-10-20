@@ -62,12 +62,12 @@ declare
   allowed boolean;
 begin
   -- Only human-authored messages create user-facing social notifications.
-  if new.sender_type <> 'human' or new.sender_user_id is null then
+  if new.sender_type is distinct from 'human' or new.sender_user_id is null then
     return new;
   end if;
 
-  select coalesce(nullif(pg_catalog.trim(p.display_name), ''),
-                  nullif(pg_catalog.trim(p.username), ''),
+  select coalesce(nullif(pg_catalog.btrim(p.display_name), ''),
+                  nullif(pg_catalog.btrim(p.username), ''),
                   'Pengguna Allpha')
     into sender_label
   from public.profiles p
