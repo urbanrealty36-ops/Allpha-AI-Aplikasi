@@ -130,7 +130,7 @@ set search_path = ''
 as $$
 declare inserted_count integer;
 begin
-  if p_limit < 1 or p_limit > 1000 then
+  if p_limit is null or p_limit < 1 or p_limit > 1000 then
     raise exception 'invalid_limit';
   end if;
 
@@ -181,7 +181,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if p_limit < 1 or p_limit > 100 or p_lease_seconds < 30 or p_lease_seconds > 300 then
+  if p_limit is null or p_limit < 1 or p_limit > 100 or p_lease_seconds is null or p_lease_seconds < 30 or p_lease_seconds > 300 then
     raise exception 'invalid_claim_bounds';
   end if;
 
@@ -224,7 +224,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if p_limit < 1 or p_limit > 200 or p_lease_seconds < 30 or p_lease_seconds > 300 then
+  if p_limit is null or p_limit < 1 or p_limit > 200 or p_lease_seconds is null or p_lease_seconds < 30 or p_lease_seconds > 300 then
     raise exception 'invalid_receipt_claim_bounds';
   end if;
 
