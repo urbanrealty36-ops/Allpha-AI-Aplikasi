@@ -27,7 +27,7 @@ create table if not exists public.notification_push_deliveries (
     check (state in ('pending','sending','sent','delivered','failed','suppressed')),
   attempt_count integer not null default 0 check (attempt_count >= 0),
   max_attempts integer not null default 5 check (max_attempts between 1 and 10),
-  next_attempt_at timestamptz not null default now(),
+  next_attempt_at timestamptz default now(),
   lease_token uuid,
   lease_expires_at timestamptz,
   provider_ticket_id text,
