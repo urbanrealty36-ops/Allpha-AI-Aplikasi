@@ -309,6 +309,7 @@ function Profile({ session }: { session: Session }) {
         });
       }
       const token = await Notifications.getExpoPushTokenAsync({ projectId });
+      if (!active) return;
       const result = await apiRequest("/v1/notifications/devices", {
         method: "POST",
         body: JSON.stringify({ expo_push_token: token.data, platform }),
