@@ -1,9 +1,6 @@
 -- ENG-P20: transactional message notification producer, preference-aware inbox,
 -- per-device Expo push queue, bounded leases/retries, and provider receipt recovery.
 
-alter table public.notifications
-  add column if not exists push_enqueued_at timestamptz;
-
 create table if not exists public.notification_devices (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -161,6 +158,10 @@ begin
         else true
       end, true
     )
+  and not exists (
+    select 1 from public.notification_push_deliveries existing
+    where existing.notification_id = n.id and existing.device_id = d.id
+  )
   order by n.created_at, d.created_at
   limit p_limit
   on conflict (notification_id, device_id) do nothing;
