@@ -9,6 +9,8 @@ def test_eng_p20_delivery_migration_is_additive_and_lease_bounded():
     assert "create table if not exists public.notification_devices" in sql
     assert "create table if not exists public.notification_push_deliveries" in sql
     assert "create trigger messages_enqueue_notification" in sql
+    assert "create trigger community_invites_enqueue_accepted_notification" in sql
+    assert "community_invite_accepted:" in sql
     assert "on conflict (user_id, event_key) do nothing" in sql
     assert "for update skip locked" in sql
     assert "enable row level security" in sql
