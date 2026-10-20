@@ -1,0 +1,44 @@
+# ADR-0020: Notification Delivery and Native Push Transport
+
+- **Status:** Proposed — production push activation is gated on explicit provider/configuration confirmation.
+- **Date:** 2026-10-20
+- **Scope:** ENG-P20 notification preferences, transactional event producers, durable push dispatch, device registration, retries and receipts.
+- **Decision owner:** Product Owner.
+
+## Context
+
+The Master PRD requires notification preferences, deduplicated event delivery, durable bounded work, retry/recovery, native notifications and clear separation between in-app inbox persistence and device delivery. The canonical mobile client is Expo React Native. The existing production project has a dedicated Railway Cron Worker pattern and one canonical Supabase database; no new database or staging environment is needed.
+
+## Options
+
+1. Expo Push Service using Expo push tokens. Lowest integration overhead for the existing Expo client; requires a configured EAS project identifier in the native app, a development/production build with expo-notifications, and device permission/token registration.
+2. Direct FCM/APNs delivery. Provides direct provider control but requires Firebase/APNs credentials, platform configuration and credential rotation.
+3. Provider-neutral inbox only. Preserves durable in-app notifications but does not provide remote push.
+
+## Proposed decision
+
+Use an adapter boundary in the canonical API worker and initially implement an Expo Push Service adapter, because the current native client is built on Expo. Keep dispatch fail-closed: it is disabled unless ALLPHA_NOTIFICATION_WORKER_ENABLED=true, ALLPHA_NOTIFICATION_PUSH_ENABLED=true, and ALLPHA_NOTIFICATION_PUSH_PROVIDER=expo. The worker must not claim delivery until the Expo receipt is checked. A device token is private data and is never returned in API responses or written to logs.
+
+This ADR does not authorize enabling production push yet. The inspected production API and Cron Worker configuration do not contain the notification provider flags, and apps/client/app.json does not contain an EAS project ID or an expo-notifications plugin. The current client package also does not include expo-notifications. These are required before registering real devices and activating push.
+
+## Data and lifecycle
+
+- Message notifications are produced transactionally from the canonical public.messages insert trigger and deduplicated by (user_id, event_key).
+- public.user_settings.notification_preferences remains the only preference registry.
+- public.notification_devices stores owner-scoped Expo tokens with soft disable.
+- public.notification_push_deliveries stores per-notification/per-device state, leases, attempts, ticket IDs and receipt outcomes.
+- The API owns authenticated preference/device management; the worker alone dispatches through the provider.
+- No message content is copied into push body; push payload contains only a generic message notice and safe route identifiers.
+
+## Rollout and rollback
+
+The schema is additive and uses no data deletion. Disable dispatch with ALLPHA_NOTIFICATION_PUSH_ENABLED=false or ALLPHA_NOTIFICATION_WORKER_ENABLED=false; pending rows remain durable. Rollback of code must not drop the new tables or delete queued rows. A forward repair is preferred after the producer trigger is enabled because notification rows already emitted are legitimate user data.
+
+## Acceptance evidence
+
+Before setting this ADR to Accepted and ENG-P20 to acceptance_passed, verify:
+- native app EAS project ID, push plugin, build and real token registration on Android/iOS;
+- explicit provider approval and production worker configuration;
+- message-to-inbox event with deduplication and user preference suppression;
+- worker lease/retry/receipt behavior and device-token revocation;
+- authenticated Web and Native inbox/preferences journeys against production without fabricated business records.
