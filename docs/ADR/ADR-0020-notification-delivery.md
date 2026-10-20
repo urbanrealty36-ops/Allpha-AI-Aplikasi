@@ -1,6 +1,6 @@
 # ADR-0020: Notification Delivery and Native Push Transport
 
-- **Status:** Proposed — production push activation is gated on explicit provider/configuration confirmation.
+- **Status:** Accepted for the initial Expo Push Service adapter; native device delivery remains gated on EAS project configuration and real token registration.
 - **Date:** 2026-10-20
 - **Scope:** ENG-P20 notification preferences, transactional event producers, durable push dispatch, device registration, retries and receipts.
 - **Decision owner:** Product Owner.
@@ -19,7 +19,7 @@ The Master PRD requires notification preferences, deduplicated event delivery, d
 
 Use an adapter boundary in the canonical API worker and initially implement an Expo Push Service adapter, because the current native client is built on Expo. Keep dispatch fail-closed: it is disabled unless ALLPHA_NOTIFICATION_WORKER_ENABLED=true, ALLPHA_NOTIFICATION_PUSH_ENABLED=true, and ALLPHA_NOTIFICATION_PUSH_PROVIDER=expo. The worker must not claim delivery until the Expo receipt is checked. A device token is private data and is never returned in API responses or written to logs.
 
-This ADR does not authorize enabling production push yet. The inspected production API and Cron Worker configuration do not contain the notification provider flags, and apps/client/app.json does not contain an EAS project ID or an expo-notifications plugin. The current client package also does not include expo-notifications. These are required before registering real devices and activating push.
+The user explicitly requested full native push implementation for the canonical Expo React Native client. Expo Push Service is selected as the first reversible transport; direct FCM/APNs can replace it behind the same adapter if required later. The native plugin and package dependency are now present, but apps/client/app.json does not contain an EAS project ID and the current build environment has no EXPO_PUBLIC_EAS_PROJECT_ID. Production push has zero registered devices today. The worker can be deployed with the Expo adapter enabled safely because no device tokens exist; actual delivery still requires the EAS project ID to be configured in the native build environment and real users to grant notification permission and register tokens.
 
 ## Data and lifecycle
 
@@ -36,7 +36,7 @@ The schema is additive and uses no data deletion. Disable dispatch with ALLPHA_N
 
 ## Acceptance evidence
 
-Before setting this ADR to Accepted and ENG-P20 to acceptance_passed, verify:
+Before setting ENG-P20 to acceptance_passed, verify:
 - native app EAS project ID, push plugin, build and real token registration on Android/iOS;
 - explicit provider approval and production worker configuration;
 - message-to-inbox event with deduplication and user preference suppression;
