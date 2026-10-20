@@ -105,3 +105,45 @@ def test_every_governance_route_requires_operator_scope():
         assert route.path.startswith("/v1/admin/spatial"), route.path
         assert route.dependant.dependencies, f"missing operator dependency on {route.path}"
         assert any(dep.call.__name__ == "dependency" for dep in route.dependant.dependencies), route.path
+
+
+
+def test_parent_hierarchy_mismatch_blocks_node_creation(monkeypatch):
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET"
+        assert table == "spatial_navigation_nodes"
+        return [{"id": "e3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41", "node_key": "district-parent", "level": "district", "status": "published"}]
+
+    async def unexpected_audit(*args, **kwargs):
+        pytest.fail("invalid parent must be rejected before governance write/audit")
+
+    monkeypatch.setattr(governance, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(governance, "write_operator_audit", unexpected_audit)
+    payload = NodeCreate(node_key="world-invalid-parent", level="world", slug="world-invalid-parent",
+                         display_name="World", parent_key="district-parent")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(governance.create_spatial_node(payload, object(), {"id": "d3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41"}))
+    assert exc.value.status_code == 422
+    assert exc.value.detail["code"] == "SPATIAL_HIERARCHY_INVALID"
+
+
+def test_missing_operator_scope_is_denied_and_audited(monkeypatch):
+    from types import SimpleNamespace
+    from allpha_api import operator_security
+
+    async def no_grants(*args, **kwargs):
+        return []
+
+    audited = []
+    async def audit(*args, **kwargs):
+        audited.append(kwargs)
+
+    monkeypatch.setattr(operator_security, "user_db_request", no_grants)
+    monkeypatch.setattr(operator_security, "write_operator_audit", audit)
+    dependency = operator_security.require_operator_scope("platform:content.moderate")
+    request = SimpleNamespace(state=SimpleNamespace(supabase_access_token="test-token"))
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(request, {"id": "d3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41"}))
+    assert exc.value.status_code == 403
+    assert exc.value.detail["code"] == "OPERATOR_SCOPE_REQUIRED"
+    assert audited and audited[-1]["outcome"] == "denied"
