@@ -70,6 +70,7 @@ class AssetDecision(BaseModel):
     reason: str = Field(min_length=8, max_length=500)
     category: str | None = None
     license_evidence_uri: str | None = Field(default=None, max_length=2048)
+    license_evidence_reviewed: bool = False
 
     @field_validator("license_evidence_uri")
     @classmethod
@@ -203,7 +204,7 @@ async def list_assets_for_review(limit: int = 100,
     if not 1 <= limit <= 100:
         raise fail(422, "SPATIAL_ASSET_PAGINATION_INVALID", "Limit harus 1-100.")
     rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
-        "select":"asset_id,version,asset_key,display_name,category,sha256,byte_size,status,moderation_status,license_evidence_status,source_url",
+        "select":"asset_id,version,asset_key,display_name,category,sha256,byte_size,status,moderation_status,license_evidence_status,source_url,license_evidence,provenance",
         "status":"eq.test_only","order":"created_at.asc","limit":str(limit)})
     return {"items":rows or [],"limit":limit,"note":"Tidak ada aset yang dipublikasikan otomatis."}
 
@@ -221,6 +222,8 @@ async def review_spatial_asset(asset_key: str, version: int, payload: AssetDecis
     row=rows[0]
     if payload.decision == "approved" and not payload.license_evidence_uri:
         raise fail(422, "SPATIAL_LICENSE_EVIDENCE_REQUIRED", "Persetujuan membutuhkan URL bukti lisensi HTTPS.")
+    if payload.decision == "approved" and not payload.license_evidence_reviewed:
+        raise fail(422, "SPATIAL_LICENSE_REVIEW_ATTESTATION_REQUIRED", "Operator harus mengonfirmasi bahwa hak publik dan pengecualian tekstur/model telah ditinjau.")
     body={"moderation_status":payload.decision,"moderation_reason":payload.reason,"reviewed_by":operator["id"],"reviewed_at":datetime.now(timezone.utc).isoformat()}
     if payload.license_evidence_uri:
         body["license_evidence_uri"]=payload.license_evidence_uri
