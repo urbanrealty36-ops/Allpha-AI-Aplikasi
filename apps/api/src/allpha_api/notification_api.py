@@ -237,7 +237,7 @@ async def mark_notification_read(
 ) -> dict[str, Any]:
     rows = await _request("PATCH", "notifications", params={
         "id": f"eq.{notification_id}", "user_id": f"eq.{user['id']}",
-        "read_at": "is.null", "select": "id,read_at",
+        "read_at": "is.null", "delivery_state": "neq.suppressed", "select": "id,read_at",
     }, body={"read_at": datetime.now(timezone.utc).isoformat(),
              "updated_at": datetime.now(timezone.utc).isoformat()},
        prefer="return=representation")
@@ -261,6 +261,6 @@ async def mark_all_notifications_read(
 ) -> dict[str, int]:
     now = datetime.now(timezone.utc).isoformat()
     rows = await _request("PATCH", "notifications", params={
-        "user_id": f"eq.{user['id']}", "read_at": "is.null", "select": "id",
+        "user_id": f"eq.{user['id']}", "read_at": "is.null", "delivery_state": "neq.suppressed", "select": "id",
     }, body={"read_at": now, "updated_at": now}, prefer="return=representation")
     return {"updated_count": len(rows)}
