@@ -25,6 +25,7 @@ dev = [
 [project.scripts]
 allpha-knowledge-worker = "allpha_api.knowledge_worker:main"
 allpha-workflow-worker = "allpha_api.workflow_worker_host:main"
+allpha-notification-worker = "allpha_api.notification_worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
