@@ -8,7 +8,7 @@ type NotificationItem = {
   read_at: string | null; created_at: string;
 };
 type InboxResponse = { items: NotificationItem[]; unread_count: number };
-type NotificationPreferences = { social_activity: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
+type NotificationPreferences = { social_activity: boolean; community: boolean; workspace: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\/$/, "");
 
 export function NotificationsInbox({ session, pushStatus }: { session: Session; pushStatus?: string }) {
