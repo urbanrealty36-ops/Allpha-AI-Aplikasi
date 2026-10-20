@@ -178,3 +178,38 @@ def test_agent_grant_rejects_scope_not_allowed_for_resource(monkeypatch):
         assert response.json().get("error", response.json().get("detail", {}))["code"] == "AGENT_GRANT_SCOPE_NOT_ALLOWED"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_grant_revoke_uses_atomic_rpc_and_requires_reason(monkeypatch):
+    agent_id, grant_id, community_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    calls = []
+    async def db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if method == "GET" and table == "agent_resource_grants":
+            return [{
+                "id": str(grant_id), "agent_id": str(agent_id), "resource_type": "community",
+                "community_id": str(community_id), "scopes": ["comment"], "status": "active",
+            }]
+        if method == "POST" and table == "rpc/revoke_agent_resource_access":
+            assert body == {
+                "p_agent_id": str(agent_id), "p_grant_id": str(grant_id),
+                "p_actor_user_id": "community-test-user", "p_reason": "Approved revoke request",
+            }
+            return [{
+                "id": str(grant_id), "agent_id": str(agent_id), "resource_type": "community",
+                "community_id": str(community_id), "scopes": ["comment"], "status": "revoked",
+            }]
+        raise AssertionError((method, table, params, body))
+    monkeypatch.setattr(community_api, "_db", db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).post(
+            f"/v1/agents/{agent_id}/resource-grants/{grant_id}/revoke",
+            json={"reason": "Approved revoke request"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["participation_enabled"] is False
+        assert response.json()["grant"]["status"] == "revoked"
+        assert [call[1] for call in calls if call[0] == "POST"] == ["rpc/revoke_agent_resource_access"]
+    finally:
+        app.dependency_overrides.clear()
