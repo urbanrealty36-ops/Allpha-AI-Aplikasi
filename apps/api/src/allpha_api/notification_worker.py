@@ -329,7 +329,7 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
     enqueued_count = int(enqueued or 0) if not isinstance(enqueued, list) else len(enqueued)
     receipt_counts = await _process_receipts(min(limit * 2, 200))
     deliveries = await _rpc("claim_notification_push_deliveries", {
-        "p_limit": limit, "p_lease_seconds": 90,
+        "p_limit": limit, "p_lease_seconds": 300,
     })
     if not isinstance(deliveries, list):
         raise NotificationWorkerStorageError("notification_claim_response_invalid")
