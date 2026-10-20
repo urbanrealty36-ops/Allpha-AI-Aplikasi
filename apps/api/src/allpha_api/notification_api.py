@@ -244,7 +244,7 @@ async def mark_notification_read(
     if not rows:
         existing = await _request("GET", "notifications", params={
             "select": "id,read_at", "id": f"eq.{notification_id}",
-            "user_id": f"eq.{user['id']}", "limit": "1",
+            "user_id": f"eq.{user['id']}", "delivery_state": "neq.suppressed", "limit": "1",
         })
         if not existing:
             raise HTTPException(status_code=404, detail={
