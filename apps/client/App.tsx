@@ -10,6 +10,7 @@ import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNativeWorldRenderer";
+import { SpatialNavigationScreen } from "./components/spatial/SpatialNavigationScreen";
 import { NotificationsInbox } from "./components/NotificationsInbox";
 
 Notifications.setNotificationHandler({
@@ -1454,6 +1455,7 @@ function Profile({ session }: { session: Session }) {
         <Button title="Muat scene dari API" disabled={spatialSceneKey.trim().length < 3} onPress={() => setSpatialActiveKey(spatialSceneKey.trim())}/>
         {spatialActiveKey.length >= 3 && <CanonicalNativeWorldRenderer sceneKey={spatialActiveKey}/>}
       </View>
+      <View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>ENG-P21 · UNIVERSE NAVIGATION</Text><SpatialNavigationScreen/></View>
       <Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/>
     </View>
     <Text style={s.footnote}>Data identitas, pengaturan dan privasi dibaca/ditulis melalui API resmi. Tidak ada akses database langsung dari aplikasi.</Text>
