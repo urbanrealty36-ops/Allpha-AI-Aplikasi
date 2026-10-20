@@ -1,14 +1,14 @@
 -- ENG-P21 governance evidence and Agent-to-GLB mapping. Additive; no business rows seeded.
 alter table public.spatial_asset_versions
   add column if not exists moderation_reason text,
-  add column if not exists reviewed_by uuid,
+  add column if not exists reviewed_by uuid references auth.users(id) on delete restrict,
   add column if not exists reviewed_at timestamptz,
   add column if not exists license_evidence_uri text,
   add column if not exists license_evidence_status text not null default 'unverified'
     check (license_evidence_status in ('unverified','verified','rejected'));
 create table if not exists public.spatial_agent_asset_mappings (
   id uuid primary key default gen_random_uuid(),
-  agent_id uuid not null,
+  agent_id uuid not null references public.ai_agents(id) on delete restrict,
   asset_key text not null,
   asset_version integer not null check (asset_version > 0),
   evidence_type text not null check (evidence_type in ('authoritative_agent_profile','owner_attestation','source_manifest','reviewed_visual_match')),
@@ -16,7 +16,7 @@ create table if not exists public.spatial_agent_asset_mappings (
   evidence_sha256 text check (evidence_sha256 is null or evidence_sha256 ~ '^[a-f0-9]{64}$'),
   rationale text not null check (char_length(rationale) between 12 and 1000),
   status text not null default 'pending' check (status in ('pending','approved','rejected','revoked')),
-  created_by uuid not null,
+  created_by uuid not null references auth.users(id) on delete restrict,
   reviewed_by uuid,
   reviewed_at timestamptz,
   review_reason text,
