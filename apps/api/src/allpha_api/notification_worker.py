@@ -261,8 +261,16 @@ async def _process_receipts(limit: int) -> dict[str, int]:
             raise ExpoPushError("expo_receipt_invalid_response", retryable=True)
     except (httpx.HTTPError, ValueError, ExpoPushError) as exc:
         log.warning("Notification receipt poll deferred: %s", type(exc).__name__)
-        for row in rows:
-            await _patch_delivery(row, {"lease_token": None, "lease_expires_at": None})
+        if isinstance(exc, ExpoPushError) and not exc.retryable:
+            for row in rows:
+                await _patch_delivery(row, {
+                    "state": "failed", "last_error_code": exc.code,
+                    "receipt_checked_at": _now().isoformat(),
+                })
+                # A permanent receipt endpoint error is not retried indefinitely.
+        else:
+            for row in rows:
+                await _patch_delivery(row, {"lease_token": None, "lease_expires_at": None})
         return {"checked": 0, "delivered": 0, "retrying": 0, "failed": 0}
 
     counts = {"checked": 0, "delivered": 0, "retrying": 0, "failed": 0}
@@ -297,8 +305,6 @@ async def _process_receipts(limit: int) -> dict[str, int]:
                 "next_attempt_at": next_at, "provider_ticket_id": None,
                 "sent_at": None, "receipt_checked_at": _now().isoformat(),
             })
-            if updated:
-                counts["checked"] += 1
         counts["checked"] += 1
     # Expo may not have receipts ready for every ticket. Release leases without
     # changing the sent state so the next cron run can check them again.
