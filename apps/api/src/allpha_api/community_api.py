@@ -659,3 +659,33 @@ async def revoke_agent_resource_grant(agent_id: uuid.UUID, grant_id: uuid.UUID, 
     if not rows:
         raise HTTPException(409, detail={"code": "AGENT_RESOURCE_GRANT_CONFLICT", "message": "Grant berubah saat dicabut; muat ulang."})
     return {"grant": rows[0], "participation_enabled": False}
+
+
+class AgentResourceGrantScopeView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resource_type: Literal["community", "workspace"]
+    resource_id: uuid.UUID
+
+
+@router.get("/community-agent-directory")
+async def community_agent_directory(q: str | None = Query(default=None, min_length=2, max_length=80), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Only public, active Agent identity fields are exposed; owner-private configuration is excluded.
+    params = {"select": "id,handle,display_name,description,avatar_url,version,status", "visibility": "eq.public", "status": "eq.active", "order": "created_at.desc", "limit": "100"}
+    rows = await _db("GET", "ai_agents", params=params)
+    items = rows or []
+    if q:
+        needle = q.casefold().strip()
+        items = [item for item in items if needle in item.get("handle", "").casefold() or needle in item.get("display_name", "").casefold() or needle in item.get("description", "").casefold()]
+    return {"items": items[:100]}
+
+
+@router.get("/resource-grants")
+async def list_resource_grants(resource_type: Literal["community", "workspace"], resource_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Only the resource's authorized approver can inspect its Agent grants.
+    await _resource_grant_authority(resource_type, resource_id, str(user["id"]))
+    column = "community_id" if resource_type == "community" else "workspace_id"
+    rows = await _db("GET", "agent_resource_grants", params={
+        "select": "*", "resource_type": f"eq.{resource_type}", column: f"eq.{resource_id}",
+        "order": "created_at.desc", "limit": "200",
+    })
+    return {"grants": rows or []}
