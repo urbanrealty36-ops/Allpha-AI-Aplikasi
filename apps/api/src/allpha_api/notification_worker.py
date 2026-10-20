@@ -15,8 +15,8 @@ from typing import Any
 import httpx
 
 log = logging.getLogger("allpha.notification_worker")
-DB_TIMEOUT = httpx.Timeout(12.0, connect=4.0)
-PUSH_TIMEOUT = httpx.Timeout(12.0, connect=4.0)
+DB_TIMEOUT = httpx.Timeout(6.0, connect=2.0)
+PUSH_TIMEOUT = httpx.Timeout(8.0, connect=2.0)
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
 MAX_BATCH = 100
@@ -158,7 +158,7 @@ async def _expo_send(token: str, title: str, body: str, data: dict[str, Any]) ->
     code = str(details.get("error") or item.get("message") or "expo_ticket_error")[:80]
     retryable = code in {
         "MessageRateExceeded", "ExpoServerError", "InternalServerError",
-        "ServiceUnavailable", "MessageTooBig",
+        "ServiceUnavailable",
     }
     raise ExpoPushError(code, retryable=retryable)
 
@@ -239,7 +239,7 @@ def _safe_push_data(notification: dict[str, Any]) -> dict[str, Any]:
 
 async def _process_receipts(limit: int) -> dict[str, int]:
     rows = await _rpc("claim_notification_push_receipts", {
-        "p_limit": limit, "p_lease_seconds": 90,
+        "p_limit": limit, "p_lease_seconds": 300,
     })
     if not isinstance(rows, list) or not rows:
         return {"checked": 0, "delivered": 0, "retrying": 0, "failed": 0}
@@ -398,7 +398,7 @@ def main() -> None:
             log.info("Notification worker enabled but push provider is not configured; no dispatch performed")
             return
         _db_config()
-        limit = _bounded_int("ALLPHA_NOTIFICATION_BATCH_LIMIT", 25, 1, MAX_BATCH)
+        limit = _bounded_int("ALLPHA_NOTIFICATION_BATCH_LIMIT", 8, 1, 8)
     except NotificationWorkerConfigurationError as exc:
         raise SystemExit(str(exc)) from exc
     summary = asyncio.run(process_batch(limit=limit))
