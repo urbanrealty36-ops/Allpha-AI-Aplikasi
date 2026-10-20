@@ -8,6 +8,7 @@ type NotificationItem = {
   read_at: string | null; created_at: string;
 };
 type InboxResponse = { items: NotificationItem[]; unread_count: number };
+type NotificationPreferences = { social_activity: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\/$/, "");
 
 export function NotificationsInbox({ session }: { session: Session }) {
@@ -17,6 +18,8 @@ export function NotificationsInbox({ session }: { session: Session }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
+  const [preferencesBusy, setPreferencesBusy] = useState(false);
 
   const api = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
     const response = await fetch(apiBase + path, {
@@ -36,6 +39,29 @@ export function NotificationsInbox({ session }: { session: Session }) {
   }, [api]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadPreferences = useCallback(async () => {
+    try {
+      const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
+      setPreferences(result.preferences);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
+    }
+  }, [api]);
+
+  useEffect(() => { void loadPreferences(); }, [loadPreferences]);
+
+  async function updatePreference(key: keyof NotificationPreferences, value: boolean) {
+    setPreferencesBusy(true); setError("");
+    try {
+      const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences", {
+        method: "PATCH", body: JSON.stringify({ [key]: value }),
+      });
+      setPreferences(result.preferences);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
+    } finally { setPreferencesBusy(false); }
+  }
 
   async function markRead(item: NotificationItem) {
     if (item.read_at) return;
@@ -65,6 +91,27 @@ export function NotificationsInbox({ session }: { session: Session }) {
     <View style={{ flexDirection: "row", gap: 8 }}>
       <Pressable accessibilityRole="button" onPress={() => void load()} disabled={loading} style={{ padding: 10, borderWidth: 1, borderColor: "#334155", borderRadius: 10 }}><Text style={{ color: "#E2E8F0" }}>Muat ulang</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => void markAllRead()} disabled={loading || busyId !== null || unreadCount === 0} style={{ padding: 10, backgroundColor: "#6366F1", borderRadius: 10, opacity: unreadCount === 0 ? 0.5 : 1 }}><Text style={{ color: "white", fontWeight: "600" }}>Baca semua</Text></Pressable>
+    </View>
+    <View style={{ borderWidth: 1, borderColor: "#334155", borderRadius: 14, padding: 12, gap: 8 }}>
+      <Text style={{ color: "#F8FAFC", fontWeight: "700" }}>Preferensi notifikasi</Text>
+      <Text style={{ color: "#94A3B8", fontSize: 12 }}>Atur kategori inbox dan izin push perangkat.</Text>
+      {([
+        ["social_activity", "Aktivitas sosial"],
+        ["product_updates", "Pembaruan produk"],
+        ["security_alerts", "Peringatan keamanan"],
+        ["push_enabled", "Push ke perangkat"],
+      ] as const).map(([key, label]) => (
+        <Pressable key={key} accessibilityRole="switch"
+          accessibilityState={{ checked: preferences?.[key] ?? true, disabled: !preferences || preferencesBusy }}
+          onPress={() => void updatePreference(key, !(preferences?.[key] ?? true))}
+          disabled={!preferences || preferencesBusy}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 }}>
+          <Text style={{ color: "#CBD5E1" }}>{label}</Text>
+          <Text style={{ color: preferences?.[key] ? "#A5B4FC" : "#94A3B8", fontWeight: "700" }}>
+            {preferences?.[key] ? "Aktif" : "Nonaktif"}
+          </Text>
+        </Pressable>
+      ))}
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: "#FDA4AF" }}>{error}</Text> : null}
     {notice ? <Text accessibilityRole="text" style={{ color: "#86EFAC" }}>{notice}</Text> : null}
