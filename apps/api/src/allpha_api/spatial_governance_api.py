@@ -116,6 +116,7 @@ async def create_spatial_node(payload: NodeCreate, request: Request,
     body = {"node_key": payload.node_key, "parent_id": parent_id, "level": payload.level, "slug": payload.slug,
         "display_name": payload.display_name, "coordinates": payload.coordinates, "landmarks": payload.landmarks,
         "scene_key": payload.scene_key, "access_policy": payload.access_policy, "status": "draft", "version": 1}
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.node.create", outcome="attempted", resource_type="spatial_navigation_node", resource_id=payload.node_key, metadata={"level": payload.level, "parent_key": payload.parent_key})
     try:
         rows = await privileged_rest_request("POST", "spatial_navigation_nodes", body=body, prefer="return=representation")
     except HTTPException as exc:
@@ -151,6 +152,7 @@ async def submit_spatial_node(node_key: str, request: Request,
         parents = await privileged_rest_request("GET", "spatial_navigation_nodes", params={"select":"id,status","id":f"eq.{row['parent_id']}","limit":"1"})
         if not parents or parents[0]["status"] not in ("approved", "published"):
             raise fail(409, "SPATIAL_PARENT_NOT_APPROVED", "Parent harus approved atau published.")
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.node.submit", outcome="attempted", resource_type="spatial_navigation_node", resource_id=node_key, metadata={})
     updated = await privileged_rest_request("PATCH", "spatial_navigation_nodes", params={"id":f"eq.{row['id']}","status":"eq.draft"}, body={"status":"review","updated_at":datetime.now(timezone.utc).isoformat(),"version":1}, prefer="return=representation")
     await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.node.submit", outcome="allowed", resource_type="spatial_navigation_node", resource_id=node_key, metadata={})
     return {"item": updated[0] if updated else None}
@@ -168,6 +170,7 @@ async def review_spatial_node(node_key: str, payload: NodeDecision, request: Req
         if not parents or parents[0]["status"] not in ("approved", "published"):
             raise fail(409, "SPATIAL_PARENT_NOT_APPROVED", "Parent belum approved/published.")
     status = payload.decision
+    await write_operator_audit(request, actor_user_id=operator["id"], action=f"spatial.node.{status}", outcome="attempted", resource_type="spatial_navigation_node", resource_id=node_key, metadata={"reason": payload.reason})
     updated = await privileged_rest_request("PATCH", "spatial_navigation_nodes", params={"node_key":f"eq.{node_key}","status":"eq.review"},
         body={"status":status,"updated_at":datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
     await write_operator_audit(request, actor_user_id=operator["id"], action=f"spatial.node.{status}", outcome="allowed",
@@ -186,6 +189,7 @@ async def publish_spatial_node(node_key: str, request: Request,
         parents = await privileged_rest_request("GET", "spatial_navigation_nodes", params={"select":"id,status","id":f"eq.{row['parent_id']}","limit":"1"})
         if not parents or parents[0]["status"] != "published":
             raise fail(409, "SPATIAL_PARENT_NOT_PUBLISHED", "Parent harus dipublikasikan lebih dahulu.")
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.node.publish", outcome="attempted", resource_type="spatial_navigation_node", resource_id=node_key, metadata={"access_policy": row["access_policy"]})
     updated = await privileged_rest_request("PATCH", "spatial_navigation_nodes", params={"id":f"eq.{row['id']}","status":"eq.approved"},
         body={"status":"published","published_at":datetime.now(timezone.utc).isoformat(),"updated_at":datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
     await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.node.publish", outcome="allowed",
@@ -223,6 +227,7 @@ async def review_spatial_asset(asset_key: str, version: int, payload: AssetDecis
         body["license_evidence_status"]="verified"
     if payload.category:
         body["category"]=payload.category
+    await write_operator_audit(request, actor_user_id=operator["id"], action=f"spatial.asset.review.{payload.decision}", outcome="attempted", resource_type="spatial_asset_version", resource_id=f"{asset_key}:{version}", metadata={"reason": payload.reason, "sha256": row["sha256"]})
     updated=await privileged_rest_request("PATCH","spatial_asset_versions",params={"asset_key":f"eq.{asset_key}","version":f"eq.{version}","status":f"in.({row['status']})"},body=body,prefer="return=representation")
     await write_operator_audit(request,actor_user_id=operator["id"],action=f"spatial.asset.review.{payload.decision}",outcome="allowed",
         resource_type="spatial_asset_version",resource_id=f"{asset_key}:{version}",metadata={"reason":payload.reason,"category":payload.category,"license_evidence_supplied":bool(payload.license_evidence_uri),"sha256":row["sha256"]})
@@ -238,13 +243,25 @@ async def publish_spatial_asset(asset_key: str, version: int, request: Request,
     row=rows[0]
     if row.get("moderation_status")!="approved" or row.get("license_evidence_status")!="verified" or row.get("status") not in ("test_only","quarantined"):
         raise fail(409,"SPATIAL_ASSET_NOT_READY","Aset wajib approved, memiliki bukti lisensi verified, dan berada dalam lifecycle yang dapat dipublikasikan.")
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.asset.publish", outcome="attempted", resource_type="spatial_asset_version", resource_id=f"{asset_key}:{version}", metadata={"sha256": row["sha256"], "category": row["category"]})
     updated=await privileged_rest_request("PATCH","spatial_asset_versions",params={"asset_key":f"eq.{asset_key}","version":f"eq.{version}","status":f"in.(test_only,quarantined)","moderation_status":"eq.approved","license_evidence_status":"eq.verified"},
         body={"status":"published","published_at":datetime.now(timezone.utc).isoformat()},prefer="return=representation")
     await write_operator_audit(request,actor_user_id=operator["id"],action="spatial.asset.publish",outcome="allowed",resource_type="spatial_asset_version",resource_id=f"{asset_key}:{version}",metadata={"sha256":row["sha256"],"category":row["category"]})
     return {"item":updated[0] if updated else None}
 
 
-@router.post("/agent-asset-mappings", status_code=201)
+@router.get("/agent-asset-mappings")
+async def list_agent_asset_mappings(status: str = "pending", limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
+    if status not in {"pending", "approved", "rejected", "revoked"} or not 1 <= limit <= 100:
+        raise fail(422, "SPATIAL_MAPPING_FILTER_INVALID", "Filter mapping tidak valid.")
+    rows = await privileged_rest_request("GET", "spatial_agent_asset_mappings", params={
+        "select": "id,agent_id,asset_key,asset_version,evidence_type,evidence_uri,evidence_sha256,rationale,status,created_by,created_at,reviewed_by,reviewed_at,review_reason",
+        "status": f"eq.{status}", "order": "created_at.asc", "limit": str(limit)})
+    return {"items": rows or [], "status": status, "limit": limit}
+
+
+@router.post("/agent-asset-mappings", status_code=201)@router.post("/agent-asset-mappings", status_code=201)
 async def propose_agent_asset_mapping(payload: AgentAssetMappingCreate, request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
     assets=await privileged_rest_request("GET","spatial_asset_versions",params={"select":"asset_id,asset_key,version,status,moderation_status,sha256","asset_key":f"eq.{payload.asset_key}","version":f"eq.{payload.asset_version}","status":"eq.published","moderation_status":"eq.approved","limit":"1"})
@@ -253,6 +270,7 @@ async def propose_agent_asset_mapping(payload: AgentAssetMappingCreate, request:
     body={"agent_id":str(payload.agent_id),"asset_key":payload.asset_key,"asset_version":payload.asset_version,
         "evidence_type":payload.evidence_type,"evidence_uri":payload.evidence_uri,"evidence_sha256":payload.evidence_sha256,
         "rationale":payload.rationale,"status":"pending","created_by":operator["id"]}
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.agent_asset_mapping.propose", outcome="attempted", resource_type="spatial_agent_asset_mapping", resource_id=str(payload.agent_id), metadata={"asset_key": payload.asset_key, "asset_version": payload.asset_version})
     rows=await privileged_rest_request("POST","spatial_agent_asset_mappings",body=body,prefer="return=representation")
     row=rows[0] if isinstance(rows,list) and rows else {}
     await write_operator_audit(request,actor_user_id=operator["id"],action="spatial.agent_asset_mapping.propose",outcome="allowed",
@@ -275,6 +293,7 @@ async def review_agent_asset_mapping(mapping_id: UUID, payload: NodeDecision, re
         if row.get("evidence_sha256") and row["evidence_sha256"] != assets[0]["sha256"]:
             raise fail(409,"SPATIAL_MAPPING_EVIDENCE_MISMATCH","Checksum bukti tidak cocok dengan GLB.")
     body={"status":payload.decision,"reviewed_by":operator["id"],"reviewed_at":datetime.now(timezone.utc).isoformat(),"review_reason":payload.reason}
+    await write_operator_audit(request, actor_user_id=operator["id"], action=f"spatial.agent_asset_mapping.{payload.decision}", outcome="attempted", resource_type="spatial_agent_asset_mapping", resource_id=str(mapping_id), metadata={"reason": payload.reason, "asset_key": row["asset_key"]})
     updated=await privileged_rest_request("PATCH","spatial_agent_asset_mappings",params={"id":f"eq.{mapping_id}","status":"eq.pending"},body=body,prefer="return=representation")
     await write_operator_audit(request,actor_user_id=operator["id"],action=f"spatial.agent_asset_mapping.{payload.decision}",outcome="allowed",
         resource_type="spatial_agent_asset_mapping",resource_id=str(mapping_id),metadata={"reason":payload.reason,"asset_key":row["asset_key"]})
