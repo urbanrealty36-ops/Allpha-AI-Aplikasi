@@ -136,8 +136,8 @@ def test_notification_preferences_get_uses_canonical_user_settings(monkeypatch):
         response = TestClient(app).get("/v1/notifications/preferences")
         assert response.status_code == 200
         assert response.json()["preferences"] == {
-            "social_activity": False, "product_updates": True,
-            "security_alerts": True, "push_enabled": True,
+            "social_activity": False, "community": True, "workspace": True,
+            "product_updates": True, "security_alerts": True, "push_enabled": True,
         }
     finally:
         _clear()
@@ -165,6 +165,7 @@ def test_notification_preferences_patch_merges_only_supplied_values(monkeypatch)
         assert write[0] == "POST" and write[1] == "user_settings"
         assert write[3]["notification_preferences"]["custom_key"] == "preserve"
         assert write[3]["notification_preferences"]["product_updates"] is True
+        assert write[3]["notification_preferences"]["community"] is True
         assert write[4] == "resolution=merge-duplicates,return=minimal"
     finally:
         _clear()
