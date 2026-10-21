@@ -370,12 +370,5 @@ async def batch_activate_spatial_assets(payload: AssetBatchActivation, request: 
             except Exception:
                 summary["catalog_publish"]["failed"] += 1
 
-    summary["internal_preview"]["skipped"] = max(
-        summary["internal_preview"]["skipped"],
-        payload.limit - len(preview_rows) if payload.mode in ("internal_preview", "both") else 0)
-    summary["catalog_publish"]["skipped"] = max(
-        summary["catalog_publish"]["skipped"],
-        payload.limit - len(publish_rows) if payload.mode in ("catalog_publish", "both") else 0)
-
     await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.asset.batch_activate", outcome="allowed" if not (summary["internal_preview"]["failed"] or summary["catalog_publish"]["failed"]) else "error", resource_type="spatial_asset_batch", resource_id=None, metadata=summary)
     return summary
