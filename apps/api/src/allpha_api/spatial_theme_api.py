@@ -177,6 +177,34 @@ async def _build_render_manifest(theme: dict[str, Any], version: dict[str, Any],
     }
 
 
+
+@router.get("/v1/admin/spatial/assets")
+async def list_theme_builder_assets(
+    category: str | None = None, status: str | None = None,
+    limit: int = 100, offset: int = 0,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Operator asset library backed by the one canonical spatial asset registry."""
+    if not 1 <= limit <= 100 or offset < 0:
+        raise _fail(422, "SPATIAL_ASSET_PAGINATION_INVALID", "Pagination aset tidak valid.")
+    if category is not None and category not in CATEGORIES:
+        raise _fail(422, "SPATIAL_ASSET_CATEGORY_INVALID", "Kategori aset tidak termasuk taxonomy kanonis.")
+    allowed_statuses = {"draft", "uploaded", "quarantined", "validating", "review", "approved", "test_only", "published", "deprecated", "retired", "rejected", "failed", "blocked", "revoked"}
+    if status is not None and status not in allowed_statuses:
+        raise _fail(422, "SPATIAL_ASSET_STATUS_INVALID", "Status aset tidak valid.")
+    params = {
+        "select": "asset_key,version,display_name,category,status,moderation_status,license_evidence,sha256,byte_size,capabilities,compatibility,created_at",
+        "order": "created_at.desc,asset_key.asc,version.desc",
+        "limit": str(limit), "offset": str(offset),
+    }
+    if category:
+        params["category"] = f"eq.{category}"
+    if status:
+        params["status"] = f"eq.{status}"
+    rows = await privileged_rest_request("GET", "spatial_asset_versions", params=params)
+    return {"items": rows or [], "limit": limit, "offset": offset, "category": category, "status": status}
+
+
 @router.get("/v1/admin/spatial/themes")
 async def list_themes(
     limit: int = 50, offset: int = 0,
