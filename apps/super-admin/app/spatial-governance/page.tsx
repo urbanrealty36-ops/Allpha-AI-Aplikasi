@@ -55,8 +55,16 @@ export default function SpatialGovernancePage() {
   async function batchActivate() {
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await call<{mode:string;internal_preview:{succeeded:number;skipped:number;failed:number};catalog_publish:{succeeded:number;skipped:number;failed:number};note:string}>("/v1/admin/spatial/assets/batch-activate", {method:"POST",body:JSON.stringify({mode:"both",limit:100})});
-      setMessage("Batch selesai (maks. 100 aset per eksekusi). Preview: berhasil "+result.internal_preview.succeeded+", dilewati "+result.internal_preview.skipped+", gagal "+result.internal_preview.failed+". Publikasi katalog: berhasil "+result.catalog_publish.succeeded+", dilewati "+result.catalog_publish.skipped+", gagal "+result.catalog_publish.failed+". "+result.note);
+      const total = {preview:{succeeded:0,skipped:0,failed:0},publish:{succeeded:0,skipped:0,failed:0}};
+      let runs = 0;
+      while (runs < 20) {
+        const result = await call<{internal_preview:{succeeded:number;skipped:number;failed:number};catalog_publish:{succeeded:number;skipped:number;failed:number};note:string}>("/v1/admin/spatial/assets/batch-activate", {method:"POST",body:JSON.stringify({mode:"both",limit:100})});
+        total.preview.succeeded += result.internal_preview.succeeded; total.preview.skipped += result.internal_preview.skipped; total.preview.failed += result.internal_preview.failed;
+        total.publish.succeeded += result.catalog_publish.succeeded; total.publish.skipped += result.catalog_publish.skipped; total.publish.failed += result.catalog_publish.failed;
+        runs += 1;
+        if (result.internal_preview.succeeded === 0) break;
+      }
+      setMessage("Batch selesai setelah "+runs+" batch. Preview internal: berhasil "+total.preview.succeeded+", dilewati "+total.preview.skipped+", gagal "+total.preview.failed+". Publikasi katalog: berhasil "+total.publish.succeeded+", dilewati "+total.publish.skipped+", gagal "+total.publish.failed+". Publikasi hanya berlaku untuk aset approved + license-verified. Jika batas 20 batch tercapai, tekan kembali untuk melanjutkan.");
       await load();
     } catch(e) { setError(e instanceof Error ? e.message : "Batch activation gagal."); }
     finally { setBusy(false); }
