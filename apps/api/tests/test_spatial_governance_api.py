@@ -260,3 +260,33 @@ def test_batch_activation_returns_next_cursor_for_full_page(monkeypatch):
     assert result["internal_preview"]["next_cursor"] == {"asset_id": rows[-1]["asset_id"], "version": 1}
     get_params = next(params for method, params, _ in calls if method == "GET")
     assert get_params["order"] == "asset_id.asc,version.asc"
+
+
+def test_rejecting_asset_revokes_existing_internal_preview(monkeypatch):
+    calls = []
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}, body or {}))
+        if method == "GET" and table == "spatial_asset_versions":
+            return [{"asset_id": "e3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41",
+                     "version": 1, "asset_key": "rejected-asset", "status": "test_only",
+                     "moderation_status": "rejected", "sha256": "a" * 64,
+                     "source_url": "https://example.org/asset.glb",
+                     "license_evidence_status": "unverified"}]
+        if method == "PATCH" and table == "spatial_asset_versions":
+            return [{"asset_key": "rejected-asset", "version": 1,
+                     "moderation_status": "rejected", "internal_preview_enabled": False}]
+        pytest.fail(f"unexpected store operation: {method} {table}")
+
+    async def audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    result = asyncio.run(governance.review_spatial_asset(
+        "rejected-asset", 1, AssetDecision(decision="rejected", reason="Rights evidence is insufficient"),
+        object(), {"id": "d3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41"}
+    ))
+    patch = next(body for method, table, _, body in calls if method == "PATCH" and table == "spatial_asset_versions")
+    assert patch["moderation_status"] == "rejected"
+    assert patch["internal_preview_enabled"] is False
+    assert result["item"]["internal_preview_enabled"] is False
