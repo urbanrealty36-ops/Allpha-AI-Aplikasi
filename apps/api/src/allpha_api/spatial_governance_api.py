@@ -228,6 +228,9 @@ async def review_spatial_asset(asset_key: str, version: int, payload: AssetDecis
     if payload.decision == "approved" and not payload.license_evidence_reviewed:
         raise fail(422, "SPATIAL_LICENSE_REVIEW_ATTESTATION_REQUIRED", "Operator harus mengonfirmasi bahwa hak publik dan pengecualian tekstur/model telah ditinjau.")
     body={"moderation_status":payload.decision,"moderation_reason":payload.reason,"reviewed_by":operator["id"],"reviewed_at":datetime.now(timezone.utc).isoformat()}
+    if payload.decision == "rejected":
+        # Rejection must also revoke any stale internal-preview permission.
+        body["internal_preview_enabled"] = False
     if payload.license_evidence_uri:
         body["license_evidence_uri"]=payload.license_evidence_uri
         body["license_evidence_status"]="verified"
