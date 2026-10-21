@@ -190,3 +190,73 @@ def test_batch_publish_includes_assets_already_enabled_for_internal_preview(monk
                          if method == "PATCH" and body.get("status") == "published")
     assert publish_patch["status"] == "published"
     assert audit_events
+
+
+def test_batch_cursor_requires_asset_id_and_version_together():
+    with pytest.raises(ValidationError):
+        AssetBatchActivation(mode="internal_preview", preview_after_asset_id="e3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41")
+    with pytest.raises(ValidationError):
+        AssetBatchActivation(mode="internal_preview", preview_after_version=1)
+
+
+def test_batch_cursor_uses_stable_keyset_filter():
+    from allpha_api.spatial_governance_api import _asset_cursor_filter
+
+    asset_id = UUID("e3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41")
+    assert _asset_cursor_filter(asset_id, 2) == {
+        "or": f"(asset_id.gt.{asset_id},and(asset_id.eq.{asset_id},version.gt.2))"
+    }
+    assert _asset_cursor_filter(None, None) == {}
+
+
+def test_batch_activation_never_enables_preview_for_rejected_asset(monkeypatch):
+    asset_id = "e3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41"
+    calls = []
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}, body or {}))
+        if method == "GET" and table == "spatial_asset_versions":
+            return [{"asset_id": asset_id, "asset_key": "rejected-asset", "version": 1,
+                     "status": "test_only", "moderation_status": "rejected",
+                     "internal_preview_enabled": False}]
+        pytest.fail(f"Rejected asset must not be mutated: {method} {table}")
+
+    async def audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    result = asyncio.run(governance.batch_activate_spatial_assets(
+        AssetBatchActivation(mode="internal_preview", limit=10), object(), {"id": asset_id}
+    ))
+    assert result["internal_preview"]["skipped"] == 1
+    assert result["internal_preview"]["succeeded"] == 0
+    assert result["internal_preview"]["has_more"] is False
+    assert all(method != "PATCH" for method, *_ in calls)
+
+
+def test_batch_activation_returns_next_cursor_for_full_page(monkeypatch):
+    rows = [
+        {"asset_id": f"00000000-0000-4000-8000-{i:012d}", "asset_key": f"asset-{i:03d}",
+         "version": 1, "status": "test_only", "moderation_status": "approved",
+         "internal_preview_enabled": False}
+        for i in range(1, 4)
+    ]
+    calls = []
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, params or {}, body or {}))
+        if method == "GET":
+            return rows
+        return [{"asset_id": "updated"}]
+
+    async def audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(governance, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    result = asyncio.run(governance.batch_activate_spatial_assets(
+        AssetBatchActivation(mode="internal_preview", limit=3), object(), {"id": "operator"}
+    ))
+    assert result["internal_preview"]["has_more"] is True
+    assert result["internal_preview"]["next_cursor"] == {"asset_id": rows[-1]["asset_id"], "version": 1}
+    get_params = next(params for method, params, _ in calls if method == "GET")
+    assert get_params["order"] == "asset_id.asc,version.asc"
