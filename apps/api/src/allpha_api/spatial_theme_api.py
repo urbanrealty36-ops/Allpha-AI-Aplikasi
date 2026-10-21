@@ -115,6 +115,9 @@ async def _validate_assets(manifest: ThemeManifestDraft, *, for_publish: bool = 
         if asset.get("status") in {"rejected", "revoked", "retired", "blocked", "failed"}:
             errors.append({"slot_key": slot.slot_key, "code": "ASSET_LIFECYCLE_BLOCKED"})
             continue
+        if asset.get("moderation_status") == "rejected":
+            errors.append({"slot_key": slot.slot_key, "code": "ASSET_MODERATION_REJECTED"})
+            continue
         license_evidence = asset.get("license_evidence")
         rights_verified = isinstance(license_evidence, dict) and license_evidence.get("status") == "verified"
         is_published = asset.get("status") == "published" and asset.get("moderation_status") == "approved" and rights_verified
