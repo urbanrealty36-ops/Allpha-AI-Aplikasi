@@ -147,3 +147,30 @@ def test_theme_migration_declares_server_only_access_and_immutable_versions():
     assert "spatial_theme_version_immutable_guard" in source
     assert "revoke all on public.spatial_themes from anon, authenticated" in source
     assert "revoke all on public.spatial_theme_versions from anon, authenticated" in source
+
+
+
+def test_theme_preview_and_publish_both_block_moderation_rejected_assets(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    async def rejected_asset(asset_key, version):
+        return {
+            "asset_id": "00000000-0000-0000-0000-000000000001",
+            "asset_key": asset_key, "version": version, "category": "district",
+            "status": "test_only", "moderation_status": "rejected",
+            "license_evidence": {"status": "unverified"},
+            "sha256": "a" * 64, "byte_size": 128,
+            "storage_bucket": "private", "storage_path": "asset.glb",
+        }
+
+    monkeypatch.setattr(theme_api, "_get_asset", rejected_asset)
+    manifest = ThemeManifestDraft.model_validate({
+        "theme_key": "crystal-city", "display_name": "Crystal City",
+        "slots": [{"slot_key": "district-slot", "category": "district",
+                   "asset_key": "district-rejected", "asset_version": 1}],
+    })
+    preview = asyncio.run(theme_api._validate_assets(manifest, for_publish=False))
+    publish = asyncio.run(theme_api._validate_assets(manifest, for_publish=True))
+    assert preview["valid"] is False
+    assert publish["valid"] is False
+    assert any(error["code"] == "ASSET_MODERATION_REJECTED" for error in preview["errors"])
