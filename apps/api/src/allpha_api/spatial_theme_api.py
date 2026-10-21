@@ -256,6 +256,8 @@ async def create_theme_version(
     })
     if not themes:
         raise _fail(404, "SPATIAL_THEME_NOT_FOUND", "Theme tidak ditemukan.")
+    if themes[0].get("status") == "retired":
+        raise _fail(409, "SPATIAL_THEME_RETIRED", "Theme retired tidak dapat menerima versi baru.")
     versions = await privileged_rest_request("GET", "spatial_theme_versions", params={
         "select": "version", "theme_key": f"eq.{theme_key}", "order": "version.desc", "limit": "1",
     })
@@ -427,14 +429,15 @@ async def list_published_themes(
                 "status": "eq.published", "active_version": "not.is.null",
                 "order": "updated_at.desc", "limit": str(limit), "offset": str(offset),
             })
-            items = []
-            for theme in rows:
-                version_rows = await _get_rows(client, url, key, "spatial_theme_versions", {
-                    "select": "version,status", "theme_key": f"eq.{theme['theme_key']}",
-                    "version": f"eq.{theme['active_version']}", "status": "eq.published", "limit": "1",
-                })
-                if version_rows:
-                    items.append(theme)
+            if not rows:
+                return {"items": [], "limit": limit, "offset": offset}
+            theme_keys = ",".join(theme["theme_key"] for theme in rows)
+            version_rows = await _get_rows(client, url, key, "spatial_theme_versions", {
+                "select": "theme_key,version", "theme_key": f"in.({theme_keys})",
+                "status": "eq.published", "limit": str(limit),
+            })
+            published_versions = {(row.get("theme_key"), row.get("version")) for row in version_rows}
+            items = [theme for theme in rows if (theme["theme_key"], theme["active_version"]) in published_versions]
             return {"items": items, "limit": limit, "offset": offset}
     except HTTPException:
         raise
