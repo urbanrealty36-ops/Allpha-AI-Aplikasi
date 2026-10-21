@@ -348,6 +348,37 @@ async def preview_theme_version(
     return rendered
 
 
+
+@router.get("/v1/spatial/themes")
+async def list_published_themes(
+    limit: int = 50, offset: int = 0,
+) -> dict[str, Any]:
+    """Public directory contains only themes with an active published version."""
+    if not 1 <= limit <= 100 or offset < 0:
+        raise _fail(422, "SPATIAL_THEME_PAGINATION_INVALID", "Pagination Theme tidak valid.")
+    url, key = _service_config()
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            rows = await _get_rows(client, url, key, "spatial_themes", {
+                "select": "theme_key,display_name,description,status,active_version,updated_at",
+                "status": "eq.published", "active_version": "not.is.null",
+                "order": "updated_at.desc", "limit": str(limit), "offset": str(offset),
+            })
+            items = []
+            for theme in rows:
+                version_rows = await _get_rows(client, url, key, "spatial_theme_versions", {
+                    "select": "version,status", "theme_key": f"eq.{theme['theme_key']}",
+                    "version": f"eq.{theme['active_version']}", "status": "eq.published", "limit": "1",
+                })
+                if version_rows:
+                    items.append(theme)
+            return {"items": items, "limit": limit, "offset": offset}
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
+        raise _fail(503, "SPATIAL_THEME_CATALOG_UNAVAILABLE", "Katalog Theme sementara tidak tersedia.") from exc
+
+
 @router.get("/v1/spatial/themes/{theme_key}/manifest")
 async def get_published_theme_manifest(
     response: Response,
