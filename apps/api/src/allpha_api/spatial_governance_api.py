@@ -71,7 +71,6 @@ class AssetDecision(BaseModel):
     category: str | None = None
     license_evidence_uri: str | None = Field(default=None, max_length=2048)
     license_evidence_reviewed: bool = False
-    license_evidence_reviewed: bool = False
 
     @field_validator("license_evidence_uri")
     @classmethod
@@ -223,8 +222,6 @@ async def review_spatial_asset(asset_key: str, version: int, payload: AssetDecis
     row=rows[0]
     if payload.decision == "approved" and not payload.license_evidence_uri:
         raise fail(422, "SPATIAL_LICENSE_EVIDENCE_REQUIRED", "Persetujuan membutuhkan URL bukti lisensi HTTPS.")
-    if payload.decision == "approved" and not payload.license_evidence_reviewed:
-        raise fail(422, "SPATIAL_LICENSE_REVIEW_ATTESTATION_REQUIRED", "Konfirmasi review lisensi dan hak publik diperlukan.")
     if payload.decision == "approved" and not payload.license_evidence_reviewed:
         raise fail(422, "SPATIAL_LICENSE_REVIEW_ATTESTATION_REQUIRED", "Operator harus mengonfirmasi bahwa hak publik dan pengecualian tekstur/model telah ditinjau.")
     body={"moderation_status":payload.decision,"moderation_reason":payload.reason,"reviewed_by":operator["id"],"reviewed_at":datetime.now(timezone.utc).isoformat()}
