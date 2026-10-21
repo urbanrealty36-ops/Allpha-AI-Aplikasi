@@ -318,10 +318,40 @@ async def publish_theme_version(
     return {"theme_key": theme_key, "version": version, "status": "published", "manifest_sha256": item["manifest_sha256"]}
 
 
+
+
+@router.get("/v1/admin/spatial/themes/{theme_key}/versions/{version}/preview")
+async def preview_theme_version(
+    theme_key: str, version: int, request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Operator-only preview; signed URLs never make draft assets public."""
+    rows = await privileged_rest_request("GET", "spatial_theme_versions", params={
+        "select": "theme_key,version,manifest,manifest_sha256,status",
+        "theme_key": f"eq.{theme_key}", "version": f"eq.{version}", "limit": "1",
+    })
+    themes = await privileged_rest_request("GET", "spatial_themes", params={
+        "select": "theme_key,display_name,status", "theme_key": f"eq.{theme_key}", "limit": "1",
+    })
+    if not rows or not themes:
+        raise _fail(404, "SPATIAL_THEME_VERSION_NOT_FOUND", "Versi Theme tidak ditemukan.")
+    item = rows[0]
+    if item.get("status") not in {"draft", "review", "approved"}:
+        raise _fail(409, "SPATIAL_THEME_PREVIEW_STATE_INVALID", "Preview operator hanya tersedia untuk versi nonpublik yang dapat ditinjau.")
+    draft = ThemeManifestDraft.model_validate(item.get("manifest"))
+    if _canonical_digest(draft) != item.get("manifest_sha256"):
+        raise _fail(409, "THEME_MANIFEST_HASH_MISMATCH", "Hash manifest tidak cocok.")
+    rendered = await _build_render_manifest(themes[0], item, public=False)
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.theme.version.preview",
+        outcome="allowed", resource_type="spatial_theme_version", resource_id=f"{theme_key}:{version}",
+        metadata={"manifest_sha256": item["manifest_sha256"], "object_count": len(rendered["objects"])})
+    return rendered
+
+
 @router.get("/v1/spatial/themes/{theme_key}/manifest")
 async def get_published_theme_manifest(
+    response: Response,
     theme_key: str = Path(min_length=3, max_length=120, pattern=r"^[a-z0-9][a-z0-9._-]{2,119}$"),
-    response: Response = None,
 ) -> dict[str, Any]:
     """Renderer contract: published Theme + immutable published asset versions only."""
     if response is not None:
