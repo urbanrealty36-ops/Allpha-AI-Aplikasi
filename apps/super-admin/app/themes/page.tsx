@@ -13,7 +13,8 @@ const categories = [
 
 type Session = { access_token: string; refresh_token: string; user: { id: string; email?: string } };
 type Theme = { theme_key: string; display_name: string; description: string; status: string; active_version: number | null; updated_at: string };
-type ApiResult = { item?: Theme; items?: Theme[]; validation?: Record<string, unknown>; [key: string]: unknown };
+type Asset = { asset_key: string; version: number; display_name: string; category: string; status: string; moderation_status: string; sha256: string; byte_size: number; license_evidence?: { status?: string; note?: string } };
+type ApiResult = { item?: Theme; items?: unknown[]; validation?: Record<string, unknown>; [key: string]: unknown };
 
 const defaultManifest = (themeKey: string, displayName: string) => JSON.stringify({
   schema_version: "1.0",
@@ -29,6 +30,9 @@ export default function ThemeBuilderPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [themes, setThemes] = useState<Theme[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetCategory, setAssetCategory] = useState("");
+  const [assetOffset, setAssetOffset] = useState(0);
   const [themeKey, setThemeKey] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
@@ -63,7 +67,20 @@ export default function ThemeBuilderPage() {
     setThemes(Array.isArray(result.items) ? result.items as Theme[] : []);
   }, [request, session]);
 
-  useEffect(() => { void loadThemes().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Katalog Theme tidak tersedia.")); }, [loadThemes]);
+  const loadAssets = useCallback(async () => {
+    if (!session) return;
+    const params = new URLSearchParams({ limit: "100", offset: String(assetOffset) });
+    if (assetCategory) params.set("category", assetCategory);
+    const result = await request<ApiResult>("/v1/admin/spatial/assets?" + params.toString());
+    setAssets(Array.isArray(result.items) ? result.items as Asset[] : []);
+  }, [request, session, assetCategory, assetOffset]);
+
+  useEffect(() => {
+    void loadThemes().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Katalog Theme tidak tersedia."));
+  }, [loadThemes]);
+  useEffect(() => {
+    void loadAssets().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Asset Library tidak tersedia."));
+  }, [loadAssets]);
 
   async function login(event: FormEvent) {
     event.preventDefault(); setError(""); setMessage(""); setBusy(true);
@@ -98,6 +115,26 @@ export default function ThemeBuilderPage() {
     setSelected(item); setThemeKey(item.theme_key); setDisplayName(item.display_name); setDescription(item.description || "");
     setManifestText(defaultManifest(item.theme_key, item.display_name)); setVersion(null); setValidation(null); setPreview(null);
     setError(""); setMessage("Theme dipilih. Untuk membuat versi baru, edit manifest deklaratif lalu simpan versi.");
+  }
+
+  function addAssetSlot(asset: Asset) {
+    setError(""); setMessage("");
+    if (!selected) { setError("Pilih Theme sebelum menambahkan slot."); return; }
+    try {
+      const manifest = JSON.parse(manifestText);
+      if (manifest.theme_key !== selected.theme_key) throw new Error("theme_key pada manifest harus sama dengan Theme yang dipilih.");
+      const stem = asset.asset_key.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 100);
+      let slotKey = (asset.category + "." + stem).slice(0, 120);
+      const used = new Set<string>((manifest.slots || []).map((slot: { slot_key?: string }) => slot.slot_key || ""));
+      let suffix = 2;
+      while (used.has(slotKey)) { slotKey = (asset.category + "." + stem).slice(0, 115) + "-" + suffix++; }
+      manifest.slots = [...(manifest.slots || []), {
+        slot_key: slotKey, category: asset.category, asset_key: asset.asset_key, asset_version: asset.version,
+        transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }, required: true,
+      }];
+      setManifestText(JSON.stringify(manifest, null, 2));
+      setMessage("Slot " + slotKey + " ditambahkan ke editor. Simpan sebagai versi baru setelah layout diperiksa.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Slot tidak dapat ditambahkan."); }
   }
 
   async function createVersion() {
@@ -148,6 +185,32 @@ export default function ThemeBuilderPage() {
             <strong>{item.display_name}</strong><span style={muted}>{item.theme_key}</span><span style={badge}>{item.status}{item.active_version ? " · v"+item.active_version : ""}</span>
           </button>)}
         </div>}
+      </section>
+
+      <section style={{ ...panel, marginBottom: 20 }}>
+        <div style={row}><h2 style={h2}>Asset Library · registry kanonis</h2><button style={secondary} disabled={busy} onClick={()=>void loadAssets()}>Muat ulang</button></div>
+        <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap",marginBottom:12}}>
+          <label style={{...label,minWidth:240}}>Filter kategori
+            <select value={assetCategory} onChange={e=>{setAssetCategory(e.target.value);setAssetOffset(0);}} style={input}>
+              <option value="">Semua kategori</option>{categories.map(category=><option key={category} value={category}>{category}</option>)}
+            </select>
+          </label>
+          <span style={muted}>Menampilkan {assets.length} aset · offset {assetOffset}. Pilih aset untuk menambahkan slot ke manifest.</span>
+        </div>
+        {assets.length===0 ? <p style={muted}>Tidak ada aset pada filter ini, atau registry belum tersedia.</p> : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:10}}>
+          {assets.map(asset=><article key={asset.asset_key+":"+asset.version} style={{border:"1px solid #dbe2ea",borderRadius:10,padding:12,display:"grid",gap:6}}>
+            <strong>{asset.display_name}</strong><span style={muted}>{asset.asset_key} · v{asset.version}</span>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={categoryChip}>{asset.category}</span><span style={badge}>{asset.status}</span><span style={badge}>moderation: {asset.moderation_status}</span></div>
+            <span style={muted}>SHA-256: {asset.sha256.slice(0,16)}… · {(asset.byte_size/1024/1024).toFixed(2)} MiB</span>
+            <span style={muted}>Rights evidence: {asset.license_evidence?.status || "missing"}</span>
+            <button type="button" style={secondary} disabled={!selected||busy} onClick={()=>addAssetSlot(asset)}>Tambahkan ke manifest</button>
+          </article>)}
+        </div>}
+        <div style={{display:"flex",gap:8,alignItems:"center",marginTop:12}}>
+          <button style={secondary} disabled={busy||assetOffset===0} onClick={()=>setAssetOffset(Math.max(0,assetOffset-100))}>Sebelumnya</button>
+          <span style={muted}>Offset {assetOffset}</span>
+          <button style={secondary} disabled={busy||assets.length<100} onClick={()=>setAssetOffset(assetOffset+100)}>Berikutnya</button>
+        </div>
       </section>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,420px),1fr))", gap:20, alignItems:"start" }}>
