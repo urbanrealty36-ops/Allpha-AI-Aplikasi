@@ -273,9 +273,13 @@ async def readyz() -> JSONResponse:
             return {"status": "unavailable"}
 
     # Independent calls are deliberate: failure/timeout of Auth must not skip PostgREST.
+    # The PostgREST OpenAPI root ("/rest/v1/") is intentionally restricted
+    # to secret API keys on projects using the modern key model. Readiness must
+    # use the publishable key only against a harmless, zero-row data request.
+    # This verifies the Data API without requiring or exposing service-role access.
     auth_result, database_result = await asyncio.gather(
         probe(f"{supabase_url}/auth/v1/health"),
-        probe(f"{supabase_url}/rest/v1/"),
+        probe(f"{supabase_url}/rest/v1/agent_ownerships?select=id&limit=0"),
     )
     ready = auth_result["status"] == "reachable" and database_result["status"] == "reachable"
     return JSONResponse(
