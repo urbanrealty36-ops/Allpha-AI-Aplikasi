@@ -94,3 +94,56 @@ def test_theme_publish_validation_requires_published_rights_verified_assets(monk
 def test_theme_public_manifest_route_rejects_invalid_key():
     response = TestClient(app).get("/v1/spatial/themes/Invalid%20Key/manifest")
     assert response.status_code == 422
+
+
+
+def test_complete_theme_requires_all_fourteen_canonical_categories(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    async def approved_asset(asset_key, version):
+        slot = next(item for item in slots if item.asset_key == asset_key)
+        return {
+            "asset_id": f"00000000-0000-0000-0000-{version:012d}",
+            "asset_key": asset_key, "version": version, "category": slot.category,
+            "status": "published", "moderation_status": "approved",
+            "license_evidence": {"status": "verified"},
+            "sha256": "a" * 64, "byte_size": 1024,
+            "storage_bucket": "private", "storage_path": asset_key + ".glb",
+        }
+
+    slots = [
+        ThemeSlot(slot_key="slot-" + category, category=category, asset_key="asset-" + category, asset_version=1)
+        for category in CATEGORIES
+    ]
+    monkeypatch.setattr(theme_api, "_get_asset", approved_asset)
+    manifest = ThemeManifestDraft(theme_key="complete-theme", display_name="Complete Theme", slots=slots)
+    result = asyncio.run(theme_api._validate_assets(manifest, for_publish=True))
+    assert result["valid"] is True
+    assert len(result["resolved"]) == 14
+    assert all(result["category_coverage"][category] == 1 for category in CATEGORIES)
+
+
+def test_theme_manifest_hash_is_canonical_and_content_sensitive():
+    first = ThemeManifestDraft.model_validate({
+        "theme_key": "crystal-city", "display_name": "Crystal City",
+        "slots": [{"slot_key": "district-slot", "category": "district", "asset_key": "district-one", "asset_version": 1}],
+    })
+    same = ThemeManifestDraft.model_validate(json.loads(json.dumps(first.model_dump(mode="json"))))
+    changed = ThemeManifestDraft.model_validate({
+        "theme_key": "crystal-city", "display_name": "Crystal City",
+        "slots": [{"slot_key": "district-slot", "category": "district", "asset_key": "district-one", "asset_version": 2}],
+    })
+    assert _canonical_digest(first) == _canonical_digest(same)
+    assert _canonical_digest(first) != _canonical_digest(changed)
+
+
+def test_theme_migration_declares_server_only_access_and_immutable_versions():
+    from pathlib import Path
+
+    migration = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / "20261021100000_eng_p22_theme_builder_registry.sql"
+    source = migration.read_text(encoding="utf-8")
+    assert "create table if not exists public.spatial_themes" in source
+    assert "create table if not exists public.spatial_theme_versions" in source
+    assert "spatial_theme_version_immutable_guard" in source
+    assert "revoke all on public.spatial_themes from anon, authenticated" in source
+    assert "revoke all on public.spatial_theme_versions from anon, authenticated" in source
