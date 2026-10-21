@@ -53,20 +53,64 @@ export default function SpatialGovernancePage() {
     return body as T;
   }
   async function batchActivate() {
+    if (!session) return;
     setBusy(true); setError(""); setMessage("");
+    const checkpointKey = "allpha:spatial-glb-batch:v2:" + session.user.id;
+    type Cursor = {asset_id:string;version:number} | null;
+    type Checkpoint = {previewDone:boolean;publishDone:boolean;previewCursor:Cursor;publishCursor:Cursor};
+    const fresh:Checkpoint = {previewDone:false,publishDone:false,previewCursor:null,publishCursor:null};
+    let checkpoint:Checkpoint = fresh;
     try {
+      const saved = window.localStorage.getItem(checkpointKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as Partial<Checkpoint>;
+          if (typeof parsed.previewDone === "boolean" && typeof parsed.publishDone === "boolean") {
+            checkpoint = {...fresh,...parsed};
+          }
+        } catch { window.localStorage.removeItem(checkpointKey); }
+      }
       const total = {preview:{succeeded:0,skipped:0,failed:0},publish:{succeeded:0,skipped:0,failed:0}};
       let runs = 0;
-      while (runs < 20) {
-        const result = await call<{internal_preview:{succeeded:number;skipped:number;failed:number};catalog_publish:{succeeded:number;skipped:number;failed:number};note:string}>("/v1/admin/spatial/assets/batch-activate", {method:"POST",body:JSON.stringify({mode:"both",limit:100})});
-        total.preview.succeeded += result.internal_preview.succeeded; total.preview.skipped += result.internal_preview.skipped; total.preview.failed += result.internal_preview.failed;
-        total.publish.succeeded += result.catalog_publish.succeeded; total.publish.skipped += result.catalog_publish.skipped; total.publish.failed += result.catalog_publish.failed;
+      while (runs < 20 && !(checkpoint.previewDone && checkpoint.publishDone)) {
+        const mode = checkpoint.previewDone ? "catalog_publish" : checkpoint.publishDone ? "internal_preview" : "both";
+        const result = await call<{
+          internal_preview:{succeeded:number;skipped:number;failed:number;next_cursor:Cursor;has_more:boolean};
+          catalog_publish:{succeeded:number;skipped:number;failed:number;next_cursor:Cursor;has_more:boolean};
+          note:string;
+        }>("/v1/admin/spatial/assets/batch-activate", {
+          method:"POST",
+          body:JSON.stringify({
+            mode,limit:100,
+            ...(mode !== "catalog_publish" && checkpoint.previewCursor ? {preview_after_asset_id:checkpoint.previewCursor.asset_id,preview_after_version:checkpoint.previewCursor.version}:{}),
+            ...(mode !== "internal_preview" && checkpoint.publishCursor ? {publish_after_asset_id:checkpoint.publishCursor.asset_id,publish_after_version:checkpoint.publishCursor.version}:{})
+          })
+        });
+        if (mode !== "catalog_publish") {
+          total.preview.succeeded += result.internal_preview.succeeded;
+          total.preview.skipped += result.internal_preview.skipped;
+          total.preview.failed += result.internal_preview.failed;
+          checkpoint.previewDone = !result.internal_preview.has_more;
+          checkpoint.previewCursor = result.internal_preview.has_more ? result.internal_preview.next_cursor : null;
+        }
+        if (mode !== "internal_preview") {
+          total.publish.succeeded += result.catalog_publish.succeeded;
+          total.publish.skipped += result.catalog_publish.skipped;
+          total.publish.failed += result.catalog_publish.failed;
+          checkpoint.publishDone = !result.catalog_publish.has_more;
+          checkpoint.publishCursor = result.catalog_publish.has_more ? result.catalog_publish.next_cursor : null;
+        }
         runs += 1;
-        if (result.internal_preview.succeeded === 0 && result.catalog_publish.succeeded === 0) break;
+        if (checkpoint.previewDone && checkpoint.publishDone) {
+          window.localStorage.removeItem(checkpointKey);
+        } else {
+          window.localStorage.setItem(checkpointKey, JSON.stringify(checkpoint));
+        }
       }
-      setMessage("Batch selesai setelah "+runs+" batch. Preview internal: berhasil "+total.preview.succeeded+", dilewati "+total.preview.skipped+", gagal "+total.preview.failed+". Publikasi katalog: berhasil "+total.publish.succeeded+", dilewati "+total.publish.skipped+", gagal "+total.publish.failed+". Publikasi hanya berlaku untuk aset approved + license-verified. Jika batas 20 batch tercapai, tekan kembali untuk melanjutkan.");
+      const complete = checkpoint.previewDone && checkpoint.publishDone;
+      setMessage("Batch " + (complete ? "selesai" : "tersimpan untuk dilanjutkan") + " setelah " + runs + " permintaan. Preview internal: berhasil " + total.preview.succeeded + ", dilewati " + total.preview.skipped + ", gagal " + total.preview.failed + ". Publikasi katalog: berhasil " + total.publish.succeeded + ", dilewati " + total.publish.skipped + ", gagal " + total.publish.failed + ". " + (complete ? "Cursor selesai; batch baru akan mengulang pemeriksaan untuk retry kegagalan." : "Checkpoint tersimpan di browser ini; tekan tombol lagi untuk melanjutkan.") + " Aset ditolak moderasi tidak dipreview; publikasi hanya untuk approved + license-verified.");
       await load();
-    } catch(e) { setError(e instanceof Error ? e.message : "Batch activation gagal."); }
+    } catch(e) { setError(e instanceof Error ? e.message : "Batch activation gagal. Checkpoint sebelumnya dipertahankan agar dapat dilanjutkan."); }
     finally { setBusy(false); }
   }
   async function load() {
