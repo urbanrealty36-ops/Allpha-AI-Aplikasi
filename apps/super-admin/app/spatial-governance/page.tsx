@@ -108,8 +108,9 @@ export default function SpatialGovernancePage() {
         }
       }
       const complete = checkpoint.previewDone && checkpoint.publishDone;
-      setMessage("Batch " + (complete ? "selesai" : "tersimpan untuk dilanjutkan") + " setelah " + runs + " permintaan. Preview internal: berhasil " + total.preview.succeeded + ", dilewati " + total.preview.skipped + ", gagal " + total.preview.failed + ". Publikasi katalog: berhasil " + total.publish.succeeded + ", dilewati " + total.publish.skipped + ", gagal " + total.publish.failed + ". " + (complete ? "Cursor selesai; batch baru akan mengulang pemeriksaan untuk retry kegagalan." : "Checkpoint tersimpan di browser ini; tekan tombol lagi untuk melanjutkan.") + " Aset ditolak moderasi tidak dipreview; publikasi hanya untuk approved + license-verified.");
+      const batchMessage = "Batch " + (complete ? "selesai" : "tersimpan untuk dilanjutkan") + " setelah " + runs + " permintaan. Preview internal: berhasil " + total.preview.succeeded + ", dilewati " + total.preview.skipped + ", gagal " + total.preview.failed + ". Publikasi katalog: berhasil " + total.publish.succeeded + ", dilewati " + total.publish.skipped + ", gagal " + total.publish.failed + ". " + (complete ? "Cursor selesai; batch baru akan mengulang pemeriksaan untuk retry kegagalan." : "Checkpoint tersimpan di browser ini; tekan tombol lagi untuk melanjutkan.") + " Aset ditolak moderasi tidak dipreview; publikasi hanya untuk approved + license-verified.";
       await load();
+      setMessage(batchMessage);
     } catch(e) { setError(e instanceof Error ? e.message : "Batch activation gagal. Checkpoint sebelumnya dipertahankan agar dapat dilanjutkan."); }
     finally { setBusy(false); }
   }
