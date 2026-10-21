@@ -64,7 +64,7 @@ function SceneObjectModel({ object, onLoaded }: { object: SceneObject; onLoaded:
   return <primitive object={model} />;
 }
 
-export function CanonicalNativeWorldRenderer({ sceneKey }: { sceneKey: string }) {
+export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?: string; themeKey?: string }) {
   const [manifest, setManifest] = useState<SceneManifest | null>(null);
   const [loadedIds, setLoadedIds] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -75,20 +75,24 @@ export function CanonicalNativeWorldRenderer({ sceneKey }: { sceneKey: string })
   useEffect(() => {
     const controller = new AbortController();
     setManifest(null); setLoadedIds([]); setError("");
-    if (!/^[a-z0-9][a-z0-9._-]{2,119}$/.test(sceneKey)) {
-      setError("Kunci scene tidak valid.");
+    const key = themeKey || sceneKey || "";
+    if (!/^[a-z0-9][a-z0-9._-]{2,119}$/.test(key) || Boolean(themeKey && sceneKey)) {
+      setError("Kunci scene/Theme tidak valid.");
       return () => controller.abort();
     }
-    void fetch(base + "/v1/spatial/scenes/" + encodeURIComponent(sceneKey) + "/manifest", {
+    const manifestPath = themeKey
+      ? "/v1/spatial/themes/" + encodeURIComponent(themeKey) + "/manifest"
+      : "/v1/spatial/scenes/" + encodeURIComponent(key) + "/manifest";
+    void fetch(base + manifestPath, {
       signal: controller.signal, headers: { Accept: "application/json" },
     }).then(async (response) => {
-      if (!response.ok) throw new Error(response.status === 404 ? "Scene publik tidak ditemukan." : "Manifest scene tidak tersedia (" + response.status + ").");
+      if (!response.ok) throw new Error(response.status === 404 ? (themeKey ? "Theme publik tidak ditemukan." : "Scene publik tidak ditemukan.") : "Manifest scene/Theme tidak tersedia (" + response.status + ").");
       return validateManifest(await response.json());
     }).then(setManifest).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Scene tidak dapat dimuat.");
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Scene/Theme tidak dapat dimuat.");
     });
     return () => controller.abort();
-  }, [sceneKey, base, retry]);
+  }, [sceneKey, themeKey, base, retry]);
 
   return (
     <View style={{ flex: 1 }}>
