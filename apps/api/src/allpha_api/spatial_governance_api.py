@@ -325,7 +325,7 @@ async def batch_activate_spatial_assets(payload: AssetBatchActivation, request: 
     # Read a bounded canonical batch first; no arbitrary client-supplied asset IDs.
     rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
         "select": "asset_id,asset_key,version,status,moderation_status,license_evidence_status,internal_preview_enabled",
-        "status": "in.(test_only,quarantined,published)", "order": "created_at.asc", "limit": str(payload.limit)})
+        "status": "in.(test_only,quarantined)", "internal_preview_enabled": "eq.false", "order": "created_at.asc", "limit": str(payload.limit)})
     rows = rows or []
     eligible_preview = [r for r in rows if r.get("status") in ("test_only", "quarantined") and not r.get("internal_preview_enabled", False)]
     existing_preview = [r for r in rows if r.get("status") in ("test_only", "quarantined") and r.get("internal_preview_enabled", False)]
