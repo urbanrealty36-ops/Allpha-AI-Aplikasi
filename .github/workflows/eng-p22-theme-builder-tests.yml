@@ -1,0 +1,90 @@
+name: ENG-P22 Theme Builder and GLB Manifest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/src/allpha_api/spatial_theme_api.py"
+      - "apps/api/src/allpha_api/spatial_manifest_api.py"
+      - "apps/api/tests/test_spatial_theme_api.py"
+      - "apps/api/tests/test_spatial_manifest_api.py"
+      - "apps/api/supabase/migrations/*eng_p22*"
+      - "apps/web/app/theme/**"
+      - "apps/web/components/spatial/CanonicalWorldRenderer.tsx"
+      - "apps/client/App.tsx"
+      - "apps/client/components/spatial/CanonicalNativeWorldRenderer.tsx"
+      - "apps/client/components/spatial/SpatialThemeCatalogScreen.tsx"
+      - "apps/super-admin/app/themes/**"
+      - ".github/workflows/eng-p22-theme-builder-tests.yml"
+  pull_request:
+    paths:
+      - "apps/api/src/allpha_api/spatial_theme_api.py"
+      - "apps/api/src/allpha_api/spatial_manifest_api.py"
+      - "apps/api/tests/test_spatial_theme_api.py"
+      - "apps/api/tests/test_spatial_manifest_api.py"
+      - "apps/api/supabase/migrations/*eng_p22*"
+      - "apps/web/app/theme/**"
+      - "apps/web/components/spatial/CanonicalWorldRenderer.tsx"
+      - "apps/client/App.tsx"
+      - "apps/client/components/spatial/CanonicalNativeWorldRenderer.tsx"
+      - "apps/client/components/spatial/SpatialThemeCatalogScreen.tsx"
+      - "apps/super-admin/app/themes/**"
+      - ".github/workflows/eng-p22-theme-builder-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  api-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e "apps/api[dev]"
+      - run: pytest apps/api/tests/test_spatial_theme_api.py apps/api/tests/test_spatial_manifest_api.py apps/api/tests/test_spatial_ingest_api.py
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: apps/web
+        run: npm install --no-audit --no-fund
+      - working-directory: apps/web
+        run: npm test
+      - working-directory: apps/web
+        run: npm run build
+
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: apps/client
+        run: npm install --no-audit --no-fund
+      - working-directory: apps/client
+        run: npm test
+      - working-directory: apps/client
+        run: npm run typecheck
+
+  super-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: apps/super-admin
+        run: npm install --no-audit --no-fund
+      - working-directory: apps/super-admin
+        run: npm test
+      - working-directory: apps/super-admin
+        run: npm run typecheck
+      - working-directory: apps/super-admin
+        run: npm run build
