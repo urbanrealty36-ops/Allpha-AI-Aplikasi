@@ -151,7 +151,7 @@ export default function ThemeBuilderPage() {
     finally { setBusy(false); }
   }
 
-  async function runAction(action: "validate" | "preview" | "publish") {
+  async function runAction(action: "validate" | "preview" | "approve" | "publish") {
     setError(""); setMessage(""); setBusy(true);
     try {
       if (!selected || version === null) throw new Error("Simpan versi draft sebelum menjalankan aksi.");
@@ -159,7 +159,10 @@ export default function ThemeBuilderPage() {
       if (action === "validate") setValidation(result as Record<string, unknown>);
       if (action === "preview") setPreview(result as Record<string, unknown>);
       if (action === "publish") { setMessage("Versi Theme dipublikasikan. Renderer publik dapat mengambil manifest melalui API kanonis."); await loadThemes(); }
-      else setMessage(action === "validate" ? "Validasi selesai. Periksa error, warning, coverage kategori, dan hash." : "Manifest preview berhasil dibuat menggunakan URL aset berumur pendek.");
+      else if (action === "approve") {
+        setValidation(result as Record<string, unknown>);
+        setMessage(result.status === "approved" ? "Versi Theme disetujui; publikasi sekarang dapat diajukan." : "Persetujuan diblokir. Periksa hasil validasi sebelum mencoba lagi.");
+      } else setMessage(action === "validate" ? "Validasi selesai. Periksa error, warning, coverage kategori, dan hash." : "Manifest preview berhasil dibuat menggunakan URL aset berumur pendek.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Aksi Theme gagal."); }
     finally { setBusy(false); }
   }
@@ -234,6 +237,7 @@ export default function ThemeBuilderPage() {
             <button disabled={busy||!selected} style={button} onClick={()=>void createVersion()}>Simpan versi immutable</button>
             <button disabled={busy||version===null} style={secondary} onClick={()=>void runAction("validate")}>Validasi</button>
             <button disabled={busy||version===null} style={secondary} onClick={()=>void runAction("preview")}>Buat preview</button>
+            <button disabled={busy||version===null} style={secondary} onClick={()=>void runAction("approve")}>Setujui versi</button>
             <button disabled={busy||version===null} style={secondary} onClick={()=>void runAction("publish")}>Publikasikan</button>
           </div>
           {version!==null && <p style={muted}>Versi terpilih: v{version}. Untuk mengubah manifest, buat versi baru; versi ini tetap immutable.</p>}
