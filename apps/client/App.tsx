@@ -11,6 +11,7 @@ import { StatusBar } from "expo-status-bar";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { CanonicalNativeWorldRenderer } from "./components/spatial/CanonicalNativeWorldRenderer";
 import { SpatialNavigationScreen } from "./components/spatial/SpatialNavigationScreen";
+import { SpatialThemeCatalogScreen } from "./components/spatial/SpatialThemeCatalogScreen";
 import { NotificationsInbox } from "./components/NotificationsInbox";
 
 Notifications.setNotificationHandler({
@@ -1448,7 +1449,7 @@ function Profile({ session }: { session: Session }) {
       {!!error && !loading && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       {!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}
       <View style={[s.card, { padding: 14, borderRadius: 18 }]}>
-        <Text style={s.kicker}>ENG-P23 · SPATIAL RENDERER</Text>
+        <Text style={s.kicker}>ENG-P22 · SPATIAL RENDERER</Text>
         <Text style={s.title}>Pratinjau World Scene</Text>
         <Text style={s.muted}>Masukkan scene key yang telah dipublikasikan. Aplikasi hanya meminta manifest publik dari API; tidak ada aset contoh atau akses database langsung.</Text>
         <TextInput accessibilityLabel="Scene key publik" value={spatialSceneKey} onChangeText={setSpatialSceneKey} autoCapitalize="none" maxLength={120} style={field} placeholder="scene-key" placeholderTextColor="#8B94AC"/>
@@ -1456,6 +1457,7 @@ function Profile({ session }: { session: Session }) {
         {spatialActiveKey.length >= 3 && <CanonicalNativeWorldRenderer sceneKey={spatialActiveKey}/>}
       </View>
       <View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>ENG-P21 · UNIVERSE NAVIGATION</Text><SpatialNavigationScreen/></View>
+      <View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>ENG-P22 · THEME BUILDER / GLB MANIFEST</Text><SpatialThemeCatalogScreen/></View>
       <Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/>
     </View>
     <Text style={s.footnote}>Data identitas, pengaturan dan privasi dibaca/ditulis melalui API resmi. Tidak ada akses database langsung dari aplikasi.</Text>
