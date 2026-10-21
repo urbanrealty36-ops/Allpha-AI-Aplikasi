@@ -307,6 +307,41 @@ async def validate_theme_version(
     return validation
 
 
+@router.post("/v1/admin/spatial/themes/{theme_key}/versions/{version}/approve")
+async def approve_theme_version(
+    theme_key: str, version: int, request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request("GET", "spatial_theme_versions", params={
+        "select": "theme_key,version,manifest,manifest_sha256,status",
+        "theme_key": f"eq.{theme_key}", "version": f"eq.{version}", "limit": "1",
+    })
+    if not rows:
+        raise _fail(404, "SPATIAL_THEME_VERSION_NOT_FOUND", "Versi Theme tidak ditemukan.")
+    item = rows[0]
+    if item.get("status") not in {"draft", "review"}:
+        raise _fail(409, "SPATIAL_THEME_TRANSITION_INVALID", "Hanya versi draft/review yang dapat disetujui.")
+    draft = ThemeManifestDraft.model_validate(item["manifest"])
+    if _canonical_digest(draft) != item.get("manifest_sha256"):
+        raise _fail(409, "THEME_MANIFEST_HASH_MISMATCH", "Hash manifest tidak cocok.")
+    validation = await _validate_assets(draft, for_publish=True)
+    if not validation["valid"]:
+        validation.pop("resolved", None)
+        return {"status": "blocked", "validation": validation}
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.theme.version.approve",
+        outcome="attempted", resource_type="spatial_theme_version", resource_id=f"{theme_key}:{version}",
+        metadata={"manifest_sha256": item["manifest_sha256"], "slot_count": len(draft.slots)})
+    updated = await privileged_rest_request("PATCH", "spatial_theme_versions", params={
+        "theme_key": f"eq.{theme_key}", "version": f"eq.{version}", "status": "in.(draft,review)",
+    }, body={"status": "approved"}, prefer="return=representation")
+    if not isinstance(updated, list) or not updated:
+        raise _fail(409, "SPATIAL_THEME_TRANSITION_CONFLICT", "Versi Theme berubah; muat ulang sebelum persetujuan.")
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.theme.version.approve",
+        outcome="allowed", resource_type="spatial_theme_version", resource_id=f"{theme_key}:{version}",
+        metadata={"manifest_sha256": item["manifest_sha256"]})
+    return {"theme_key": theme_key, "version": version, "status": "approved", "manifest_sha256": item["manifest_sha256"]}
+
+
 @router.post("/v1/admin/spatial/themes/{theme_key}/versions/{version}/publish")
 async def publish_theme_version(
     theme_key: str, version: int, request: Request,
@@ -319,8 +354,8 @@ async def publish_theme_version(
     if not rows:
         raise _fail(404, "SPATIAL_THEME_VERSION_NOT_FOUND", "Versi Theme tidak ditemukan.")
     item = rows[0]
-    if item.get("status") not in {"draft", "review", "approved"}:
-        raise _fail(409, "SPATIAL_THEME_TRANSITION_INVALID", "Hanya versi draft/review/approved yang dapat dipublikasikan.")
+    if item.get("status") != "approved":
+        raise _fail(409, "SPATIAL_THEME_TRANSITION_INVALID", "Versi Theme harus disetujui sebelum publikasi.")
     draft = ThemeManifestDraft.model_validate(item["manifest"])
     if _canonical_digest(draft) != item.get("manifest_sha256"):
         raise _fail(409, "THEME_MANIFEST_HASH_MISMATCH", "Hash manifest tidak cocok.")
@@ -333,7 +368,7 @@ async def publish_theme_version(
         metadata={"manifest_sha256": item["manifest_sha256"], "slot_count": len(draft.slots)})
     now = datetime.now(timezone.utc).isoformat()
     updated = await privileged_rest_request("PATCH", "spatial_theme_versions", params={
-        "theme_key": f"eq.{theme_key}", "version": f"eq.{version}", "status": f"in.(draft,review,approved)",
+        "theme_key": f"eq.{theme_key}", "version": f"eq.{version}", "status": "eq.approved",
     }, body={"status": "published", "published_at": now}, prefer="return=representation")
     if not isinstance(updated, list) or not updated:
         raise _fail(409, "SPATIAL_THEME_TRANSITION_CONFLICT", "Versi Theme berubah; muat ulang sebelum publikasi.")
