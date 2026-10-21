@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 import allpha_api.spatial_governance_api as governance
-from allpha_api.spatial_governance_api import AgentAssetMappingCreate, AssetDecision, NodeCreate, NodeDecision
+from allpha_api.spatial_governance_api import AgentAssetMappingCreate, AssetBatchActivation, AssetDecision, NodeCreate, NodeDecision
 
 
 def test_universe_must_be_root():
@@ -147,3 +147,44 @@ def test_missing_operator_scope_is_denied_and_audited(monkeypatch):
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "OPERATOR_SCOPE_REQUIRED"
     assert audited and audited[-1]["outcome"] == "denied"
+
+
+
+def test_batch_publish_includes_assets_already_enabled_for_internal_preview(monkeypatch):
+    calls = []
+    audit_events = []
+    asset_id = "e3f40f6a-83de-4c0b-9f26-6d7e0f2a3b41"
+
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}, body or {}))
+        if method == "GET" and table == "spatial_asset_versions":
+            if (params or {}).get("internal_preview_enabled") == "eq.false":
+                return [{"asset_id": asset_id, "asset_key": "preview-asset", "version": 1,
+                         "status": "test_only", "internal_preview_enabled": False}]
+            if (params or {}).get("moderation_status") == "eq.approved":
+                return [{"asset_id": asset_id, "asset_key": "preview-asset", "version": 1,
+                         "status": "test_only", "moderation_status": "approved",
+                         "license_evidence_status": "verified", "internal_preview_enabled": True}]
+        if method == "PATCH" and table == "spatial_asset_versions":
+            return [{"asset_id": asset_id, "asset_key": "preview-asset", "version": 1}]
+        pytest.fail(f"unexpected store operation: {method} {table} {params}")
+
+    async def audit(*args, **kwargs):
+        audit_events.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    result = asyncio.run(governance.batch_activate_spatial_assets(
+        AssetBatchActivation(mode="both", limit=10), object(), {"id": asset_id}
+    ))
+
+    assert result["internal_preview"]["succeeded"] == 1
+    assert result["catalog_publish"]["succeeded"] == 1
+    publish_query = next(params for method, table, params, _ in calls
+                         if method == "GET" and table == "spatial_asset_versions"
+                         and params.get("moderation_status") == "eq.approved")
+    assert "internal_preview_enabled" not in publish_query
+    publish_patch = next(body for method, table, _, body in calls
+                         if method == "PATCH" and body.get("status") == "published")
+    assert publish_patch["status"] == "published"
+    assert audit_events
