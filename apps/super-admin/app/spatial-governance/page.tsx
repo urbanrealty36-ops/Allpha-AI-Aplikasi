@@ -62,7 +62,7 @@ export default function SpatialGovernancePage() {
         total.preview.succeeded += result.internal_preview.succeeded; total.preview.skipped += result.internal_preview.skipped; total.preview.failed += result.internal_preview.failed;
         total.publish.succeeded += result.catalog_publish.succeeded; total.publish.skipped += result.catalog_publish.skipped; total.publish.failed += result.catalog_publish.failed;
         runs += 1;
-        if (result.internal_preview.succeeded === 0) break;
+        if (result.internal_preview.succeeded === 0 && result.catalog_publish.succeeded === 0) break;
       }
       setMessage("Batch selesai setelah "+runs+" batch. Preview internal: berhasil "+total.preview.succeeded+", dilewati "+total.preview.skipped+", gagal "+total.preview.failed+". Publikasi katalog: berhasil "+total.publish.succeeded+", dilewati "+total.publish.skipped+", gagal "+total.publish.failed+". Publikasi hanya berlaku untuk aset approved + license-verified. Jika batas 20 batch tercapai, tekan kembali untuk melanjutkan.");
       await load();
