@@ -304,3 +304,64 @@ async def review_agent_asset_mapping(mapping_id: UUID, payload: NodeDecision, re
     await write_operator_audit(request,actor_user_id=operator["id"],action=f"spatial.agent_asset_mapping.{payload.decision}",outcome="allowed",
         resource_type="spatial_agent_asset_mapping",resource_id=str(mapping_id),metadata={"reason":payload.reason,"asset_key":row["asset_key"]})
     return {"item":updated[0] if updated else None}
+
+
+class AssetBatchActivation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["internal_preview", "catalog_publish", "both"] = "both"
+    limit: int = Field(default=100, ge=1, le=100)
+
+
+@router.post("/assets/batch-activate")
+async def batch_activate_spatial_assets(payload: AssetBatchActivation, request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate"))) -> dict[str, Any]:
+    """Idempotent batch operation separating internal preview from public publication."""
+    summary: dict[str, Any] = {
+        "mode": payload.mode, "limit": payload.limit, "actor_user_id": operator["id"],
+        "internal_preview": {"succeeded": 0, "skipped": 0, "failed": 0},
+        "catalog_publish": {"succeeded": 0, "skipped": 0, "failed": 0},
+        "note": "Internal preview does not imply license verification or public rights. Publication only processes approved + license-verified assets."
+    }
+    # Read a bounded canonical batch first; no arbitrary client-supplied asset IDs.
+    rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
+        "select": "asset_id,asset_key,version,status,moderation_status,license_evidence_status,internal_preview_enabled",
+        "status": "in.(test_only,quarantined,published)", "order": "created_at.asc", "limit": str(payload.limit)})
+    rows = rows or []
+    eligible_preview = [r for r in rows if r.get("status") in ("test_only", "quarantined") and not r.get("internal_preview_enabled", False)]
+    existing_preview = [r for r in rows if r.get("status") in ("test_only", "quarantined") and r.get("internal_preview_enabled", False)]
+    if payload.mode in ("internal_preview", "both"):
+        for asset in eligible_preview:
+            try:
+                updated = await privileged_rest_request("PATCH", "spatial_asset_versions", params={
+                    "asset_id": f"eq.{asset['asset_id']}", "version": f"eq.{asset['version']}",
+                    "status": f"in.(test_only,quarantined)"}, body={"internal_preview_enabled": True}, prefer="return=representation")
+                if updated:
+                    summary["internal_preview"]["succeeded"] += 1
+                else:
+                    summary["internal_preview"]["skipped"] += 1
+            except Exception:
+                summary["internal_preview"]["failed"] += 1
+        summary["internal_preview"]["skipped"] += len(existing_preview)
+    elif payload.mode == "catalog_publish":
+        summary["internal_preview"]["skipped"] = len(rows)
+
+    publish_candidates = [r for r in rows if r.get("status") in ("test_only", "quarantined") and r.get("moderation_status") == "approved" and r.get("license_evidence_status") == "verified"]
+    if payload.mode in ("catalog_publish", "both"):
+        for asset in publish_candidates:
+            try:
+                updated = await privileged_rest_request("PATCH", "spatial_asset_versions", params={
+                    "asset_id": f"eq.{asset['asset_id']}", "version": f"eq.{asset['version']}",
+                    "status": "in.(test_only,quarantined)", "moderation_status": "eq.approved",
+                    "license_evidence_status": "eq.verified"}, body={"status": "published", "published_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
+                if updated:
+                    summary["catalog_publish"]["succeeded"] += 1
+                else:
+                    summary["catalog_publish"]["skipped"] += 1
+            except Exception:
+                summary["catalog_publish"]["failed"] += 1
+        summary["catalog_publish"]["skipped"] += len(rows) - len(publish_candidates)
+    else:
+        summary["catalog_publish"]["skipped"] = len(rows)
+
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.asset.batch_activate", outcome="allowed" if not (summary["internal_preview"]["failed"] or summary["catalog_publish"]["failed"]) else "error", resource_type="spatial_asset_batch", resource_id=None, metadata=summary)
+    return summary
