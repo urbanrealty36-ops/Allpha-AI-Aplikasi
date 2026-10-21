@@ -143,7 +143,7 @@ export default function ThemeBuilderPage() {
       if (!selected) throw new Error("Pilih atau buat Theme terlebih dahulu.");
       const manifest = JSON.parse(manifestText);
       const result = await request<ApiResult>("/v1/admin/spatial/themes/" + encodeURIComponent(selected.theme_key) + "/versions", "POST", { manifest });
-      const item = result.item as { version: number };
+      const item = result.item as unknown as { version: number };
       setVersion(item.version);
       setValidation((result.validation || null) as Record<string, unknown> | null);
       setMessage("Versi draft v" + item.version + " tersimpan sebagai snapshot immutable. Perubahan selanjutnya harus menjadi versi baru.");
