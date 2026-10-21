@@ -180,6 +180,8 @@ def test_batch_publish_includes_assets_already_enabled_for_internal_preview(monk
 
     assert result["internal_preview"]["succeeded"] == 1
     assert result["catalog_publish"]["succeeded"] == 1
+    assert result["internal_preview"]["skipped"] == 0
+    assert result["catalog_publish"]["skipped"] == 0
     publish_query = next(params for method, table, params, _ in calls
                          if method == "GET" and table == "spatial_asset_versions"
                          and params.get("moderation_status") == "eq.approved")
