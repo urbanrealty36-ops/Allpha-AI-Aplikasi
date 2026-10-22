@@ -39,7 +39,7 @@ def test_readiness_passes_when_core_supabase_configuration_exists(monkeypatch) -
         async def get(self, url: str, headers: dict[str, str]):
             assert url in {
                 "https://example.supabase.co/auth/v1/health",
-                "https://example.supabase.co/rest/v1/",
+                "https://example.supabase.co/rest/v1/agent_ownerships?select=agent_id&limit=0",
             }
             assert headers == {"apikey": "test-publishable-key"}
             return HealthyResponse()
