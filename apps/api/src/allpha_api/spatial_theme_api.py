@@ -107,16 +107,20 @@ async def _validate_assets(manifest: ThemeManifestDraft, *, for_publish: bool = 
     for slot in manifest.slots:
         asset = await _get_asset(slot.asset_key, slot.asset_version)
         if not asset:
-            errors.append({"slot_key": slot.slot_key, "code": "ASSET_VERSION_NOT_FOUND"})
+            target = errors if slot.required else warnings
+            target.append({"slot_key": slot.slot_key, "code": "ASSET_VERSION_NOT_FOUND"})
             continue
         if asset.get("category") != slot.category:
-            errors.append({"slot_key": slot.slot_key, "code": "CATEGORY_MISMATCH"})
+            target = errors if slot.required else warnings
+            target.append({"slot_key": slot.slot_key, "code": "CATEGORY_MISMATCH"})
             continue
         if asset.get("status") in {"rejected", "revoked", "retired", "blocked", "failed"}:
-            errors.append({"slot_key": slot.slot_key, "code": "ASSET_LIFECYCLE_BLOCKED"})
+            target = errors if slot.required else warnings
+            target.append({"slot_key": slot.slot_key, "code": "ASSET_LIFECYCLE_BLOCKED"})
             continue
         if asset.get("moderation_status") == "rejected":
-            errors.append({"slot_key": slot.slot_key, "code": "ASSET_MODERATION_REJECTED"})
+            target = errors if slot.required else warnings
+            target.append({"slot_key": slot.slot_key, "code": "ASSET_MODERATION_REJECTED"})
             continue
         license_evidence = asset.get("license_evidence")
         rights_verified = isinstance(license_evidence, dict) and license_evidence.get("status") == "verified"
@@ -179,6 +183,38 @@ async def _build_render_manifest(theme: dict[str, Any], version: dict[str, Any],
         "manifest_sha256": version["manifest_sha256"], "objects": objects,
     }
 
+
+
+@router.get("/v1/admin/spatial/assets/category-coverage")
+async def get_theme_builder_category_coverage(
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Read-only, evidence-backed coverage for the canonical 14-category asset registry."""
+    rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
+        "select": "category,status,moderation_status,license_evidence_status",
+        "order": "asset_key.asc,version.asc", "limit": "1000",
+    })
+    records = rows or []
+    categories: list[dict[str, Any]] = []
+    for category in CATEGORIES:
+        matching = [row for row in records if row.get("category") == category]
+        categories.append({
+            "category": category,
+            "asset_versions": len(matching),
+            "published": sum(1 for row in matching if row.get("status") == "published"),
+            "approved": sum(1 for row in matching if row.get("moderation_status") == "approved"),
+            "rights_verified": sum(1 for row in matching if row.get("license_evidence_status") == "verified"),
+            "publication_ready": sum(1 for row in matching if row.get("status") == "published"
+                                     and row.get("moderation_status") == "approved"
+                                     and row.get("license_evidence_status") == "verified"),
+        })
+    return {
+        "registry": "spatial_asset_versions",
+        "total_asset_versions": len(records),
+        "categories": categories,
+        "unmapped_or_noncanonical": sum(1 for row in records if row.get("category") not in CATEGORIES),
+        "truncated": len(records) >= 1000,
+    }
 
 
 @router.get("/v1/admin/spatial/assets")
@@ -489,6 +525,12 @@ async def get_published_theme_manifest(
                 if not assets:
                     raise _fail(409, "SPATIAL_ASSET_NOT_PUBLISHED", "Theme merujuk aset yang belum dipublikasikan.")
                 asset = assets[0]
+                if asset.get("category") != slot.category:
+                    raise _fail(409, "SPATIAL_ASSET_CATEGORY_MISMATCH", "Kategori aset tidak cocok dengan slot Theme.")
+                if not isinstance(asset.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", asset["sha256"]):
+                    raise _fail(409, "SPATIAL_ASSET_CHECKSUM_INVALID", "Checksum aset tidak valid.")
+                if not isinstance(asset.get("byte_size"), int) or asset["byte_size"] <= 0:
+                    raise _fail(409, "SPATIAL_ASSET_SIZE_INVALID", "Ukuran aset tidak valid.")
                 evidence = asset.get("license_evidence")
                 if not isinstance(evidence, dict) or evidence.get("status") != "verified":
                     raise _fail(409, "SPATIAL_ASSET_RIGHTS_UNVERIFIED", "Aset Theme tidak memiliki bukti hak yang terverifikasi.")
