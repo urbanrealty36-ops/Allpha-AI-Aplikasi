@@ -174,3 +174,84 @@ def test_theme_preview_and_publish_both_block_moderation_rejected_assets(monkeyp
     assert preview["valid"] is False
     assert publish["valid"] is False
     assert any(error["code"] == "ASSET_MODERATION_REJECTED" for error in preview["errors"])
+
+
+
+def test_optional_missing_asset_is_warning_not_blocking_required_slot(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    async def missing_asset(asset_key, version):
+        return None
+
+    monkeypatch.setattr(theme_api, "_get_asset", missing_asset)
+    manifest = ThemeManifestDraft.model_validate({
+        "theme_key": "optional-theme", "display_name": "Optional Theme",
+        "slots": [{
+            "slot_key": "optional-booth", "category": "booth",
+            "asset_key": "missing-booth", "asset_version": 1, "required": False,
+        }],
+    })
+    result = asyncio.run(theme_api._validate_assets(manifest))
+    assert result["valid"] is True
+    assert not any(error["code"] == "ASSET_VERSION_NOT_FOUND" for error in result["errors"])
+    assert any(warning["code"] == "ASSET_VERSION_NOT_FOUND" for warning in result["warnings"])
+
+
+def test_category_coverage_reports_all_fourteen_categories_from_canonical_registry(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET"
+        assert table == "spatial_asset_versions"
+        assert params["limit"] == "1000"
+        return [
+            {"category": "agent-character", "status": "test_only", "moderation_status": "pending", "license_evidence_status": "unverified"},
+            {"category": "agent-character", "status": "published", "moderation_status": "approved", "license_evidence_status": "verified"},
+            {"category": "unknown", "status": "test_only", "moderation_status": "pending", "license_evidence_status": "unverified"},
+        ]
+
+    monkeypatch.setattr(theme_api, "privileged_rest_request", fake_store)
+    result = asyncio.run(theme_api.get_theme_builder_category_coverage({"id": "operator"}))
+    assert result["registry"] == "spatial_asset_versions"
+    assert result["total_asset_versions"] == 3
+    assert len(result["categories"]) == 14
+    avatar = next(row for row in result["categories"] if row["category"] == "agent-character")
+    assert avatar["asset_versions"] == 2
+    assert avatar["publication_ready"] == 1
+    assert result["unmapped_or_noncanonical"] == 1
+    assert result["truncated"] is False
+
+
+def test_public_theme_manifest_rejects_asset_category_mismatch(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    manifest = ThemeManifestDraft.model_validate({
+        "theme_key": "crystal-city", "display_name": "Crystal City",
+        "slots": [{
+            "slot_key": "district-slot", "category": "district",
+            "asset_key": "wrong-category-asset", "asset_version": 1,
+        }],
+    })
+    digest = _canonical_digest(manifest)
+
+    async def fake_rows(client, url, key, table, params):
+        if table == "spatial_themes":
+            return [{"theme_key": "crystal-city", "display_name": "Crystal City", "status": "published", "active_version": 1}]
+        if table == "spatial_theme_versions":
+            return [{"theme_key": "crystal-city", "version": 1, "manifest": manifest.model_dump(mode="json"), "manifest_sha256": digest, "status": "published"}]
+        if table == "spatial_asset_versions":
+            return [{
+                "asset_id": "00000000-0000-0000-0000-000000000001",
+                "asset_key": "wrong-category-asset", "version": 1, "category": "booth",
+                "sha256": "a" * 64, "byte_size": 1024, "storage_bucket": "private",
+                "storage_path": "wrong-category-asset.glb", "status": "published",
+                "moderation_status": "approved", "license_evidence": {"status": "verified"},
+            }]
+        pytest.fail("unexpected canonical registry table: " + table)
+
+    monkeypatch.setattr(theme_api, "_service_config", lambda: ("https://example.supabase.co", "service-role-test"))
+    monkeypatch.setattr(theme_api, "_get_rows", fake_rows)
+    monkeypatch.setattr(theme_api, "_signed_asset_url", lambda *args, **kwargs: "https://example.supabase.co/signed.glb")
+    response = TestClient(app).get("/v1/spatial/themes/crystal-city/manifest")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "SPATIAL_ASSET_CATEGORY_MISMATCH"
