@@ -42,7 +42,7 @@ def test_readyz_probes_auth_and_postgrest_independently(monkeypatch):
     assert payload["dependencies"]["database"]["status"] == "reachable"
     assert set(calls) == {
         "https://supabase.example/auth/v1/health",
-        "https://supabase.example/rest/v1/",
+        "https://supabase.example/rest/v1/agent_ownerships?select=agent_id&limit=0",
     }
 
 
