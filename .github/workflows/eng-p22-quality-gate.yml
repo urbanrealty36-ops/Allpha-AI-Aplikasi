@@ -1,6 +1,7 @@
 name: ENG-P22 Spatial and Production Quality Gate
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -9,6 +10,7 @@ on:
       - "apps/super-admin/**"
       - "apps/client/**"
       - "tools/3d-assets/**"
+      - "docs/PHASES/**"
       - ".github/workflows/eng-p22-quality-gate.yml"
   pull_request:
     branches: [main]
@@ -18,6 +20,7 @@ on:
       - "apps/super-admin/**"
       - "apps/client/**"
       - "tools/3d-assets/**"
+      - "docs/PHASES/**"
       - ".github/workflows/eng-p22-quality-gate.yml"
 
 permissions:
