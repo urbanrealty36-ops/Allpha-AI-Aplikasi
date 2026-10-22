@@ -50,23 +50,24 @@ function validateManifest(value: unknown): SceneManifest {
   return m as SceneManifest;
 }
 
-function SceneObjectModel({ object, onLoaded }: { object: SceneObject; onLoaded: (id: string) => void }) {
+function SceneObjectModel({ object, onLoaded, onSelect, selected }: { object: SceneObject; onLoaded: (id: string) => void; onSelect: (id: string) => void; selected: boolean }) {
   const gltf = useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader);
   const model = useMemo(() => {
     const copy = new Group();
     copy.add(gltf.scene.clone(true));
     copy.position.set(...object.position);
     copy.rotation.set(...object.rotation);
-    copy.scale.set(...object.scale);
+    copy.scale.set(object.scale[0] * (selected ? 1.04 : 1), object.scale[1] * (selected ? 1.04 : 1), object.scale[2] * (selected ? 1.04 : 1));
     return copy;
-  }, [gltf, object.position, object.rotation, object.scale]);
+  }, [gltf, object.position, object.rotation, object.scale, selected]);
   useEffect(() => { onLoaded(object.entity_id); }, [object.entity_id, onLoaded]);
-  return <primitive object={model} />;
+  return <primitive object={model} onClick={(event: { stopPropagation: () => void }) => { event.stopPropagation(); onSelect(object.entity_id); }} />;
 }
 
 export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?: string; themeKey?: string }) {
   const [manifest, setManifest] = useState<SceneManifest | null>(null);
   const [loadedIds, setLoadedIds] = useState<string[]>([]);
+  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const base = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
@@ -74,7 +75,7 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
 
   useEffect(() => {
     const controller = new AbortController();
-    setManifest(null); setLoadedIds([]); setError("");
+    setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setError("");
     const key = themeKey || sceneKey || "";
     if (!/^[a-z0-9][a-z0-9._-]{2,119}$/.test(key) || Boolean(themeKey && sceneKey)) {
       setError("Kunci scene/Theme tidak valid.");
@@ -93,6 +94,8 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
     });
     return () => controller.abort();
   }, [sceneKey, themeKey, base, retry]);
+
+  const selectedObject = manifest?.objects.find((object) => object.entity_id === selectedEntityId) || null;
 
   return (
     <View style={{ flex: 1 }}>
@@ -116,15 +119,19 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
                 <directionalLight position={[10, 14, 8]} intensity={2} />
                 <gridHelper args={[40, 40]} />
                 <Suspense fallback={null}>
-                  {manifest.objects.map((object) => <SceneObjectModel key={object.entity_id} object={object} onLoaded={markLoaded} />)}
+                  {manifest.objects.map((object) => <SceneObjectModel key={object.entity_id} object={object} onLoaded={markLoaded} onSelect={setSelectedEntityId} selected={object.entity_id === selectedEntityId} />)}
                 </Suspense>
               </Canvas>
             </SceneErrorBoundary>
           </View>}
           {manifest.objects.length === 0 && manifest.fallback_mode === "2d" && <Text style={{ padding: 16 }}>Allpha Starter Universe aktif dalam mode 2D. Objek GLB akan tampil ketika tersedia pada manifest publik.</Text>}
-          {manifest.fallback_mode === "2d" && manifest.objects.map((object) => (
-            <Text key={object.entity_id} style={{ paddingHorizontal: 12, paddingVertical: 4 }}>{object.category} · {object.asset_id} v{object.asset_version}</Text>
-          ))}
+          {manifest.objects.length > 0 && <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Text style={{ fontWeight: "700", paddingBottom: 6 }}>Interaksi ruang</Text>
+            <Text>{selectedObject ? selectedObject.entity_id + " · " + selectedObject.category + " · asset " + selectedObject.asset_id + " v" + selectedObject.asset_version : "Pilih objek pada scene atau dari daftar untuk melihat detailnya."}</Text>
+            {manifest.objects.map((object) => <Pressable key={object.entity_id} accessibilityRole="button" accessibilityState={{ selected: object.entity_id === selectedEntityId }} onPress={() => setSelectedEntityId(object.entity_id)} style={{ paddingVertical: 8 }}>
+              <Text>{object.entity_id} · {object.category} · v{object.asset_version}{object.entity_id === selectedEntityId ? " ✓" : ""}</Text>
+            </Pressable>)}
+          </View>}
         </>
       )}
     </View>
