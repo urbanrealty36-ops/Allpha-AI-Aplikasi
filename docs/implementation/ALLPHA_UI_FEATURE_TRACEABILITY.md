@@ -224,3 +224,76 @@ The fixed plan explicitly states that ENG-P37 is cross-domain validation/release
 | Cross-surface integration and release | ENG-P37 | Deliberately deferred until feature completeness and phase dependencies are ready |
 
 **Exit status: NOT COMPLETE.** This pass identifies concrete handlers and state patterns, but it does not yet enumerate every rendered action line-by-line, inspect every imported screen/component (notably the spatial renderer and notification screens), or prove all state transitions. Continue the same matrix rather than creating a parallel status board. Do not start broad integration/E2E audit now; do not mark runtime/provider/pricing issues complete. After Native and remaining Web/Super Admin screens are fully traced and gaps reconciled, implement missing feature behavior in canonical phase dependency order, then reserve ENG-P37 for the later integration/release gate.
+
+
+## Deep source trace — Native auxiliary screens + Web/Admin sample reconciliation (2026-10-22)
+
+This update follows actual source paths found in the current recursive Git tree. The standalone Native files live under `apps/client/components/` (not `apps/client/src/screens/`).
+
+### Native notifications — `apps/client/components/NotificationsInbox.tsx`
+
+| User action / state | Source evidence | API contract | Traceability finding |
+|---|---|---|---|
+| Load / refresh inbox | `load`, `loading`, `error`; refresh button disabled while loading | `GET /v1/notifications?limit=100` | Has loading, visible error, refresh retry and explicit empty state |
+| Load notification preferences | `loadPreferences` | `GET /v1/notifications/preferences` | Errors share the component error area; loading state is not separately rendered for preferences |
+| Update preference toggle | `updatePreference`, `preferencesBusy`; toggles disabled without preferences or while saving | `PATCH /v1/notifications/preferences` | Busy/error handling present; verify success notice and restoration after failed mutation |
+| Mark one as read | `markRead`; skips already-read item; per-item `busyId`; optimistic local update after API success | `PATCH /v1/notifications/{id}/read` | Error shown; no explicit per-item retry control beyond retrying the mutation from item UI/reload |
+| Mark all as read | `markAllRead`; disabled if loading, another mutation active, or unread count is zero | `POST /v1/notifications/read-all` | Success notice includes updated count; error shown |
+| Empty/error/loading presentation | Render branch checks loading then `items.length === 0`; error is separately displayed | — | Empty state is explicit after loading; if refresh fails with stale items, error can coexist with prior list |
+
+### Native spatial navigation — `apps/client/components/spatial/SpatialNavigationScreen.tsx`
+
+| User action / state | Source evidence | API contract | Traceability finding |
+|---|---|---|---|
+| Load root/child hierarchy | `loadNodes(parentKey?)`, `loading`, `error` | `GET /v1/spatial/navigation/nodes`, optional `parent_key` | Has separate node loading/error state; inspect full JSX to ensure error retry is reachable |
+| Open node / navigate back in trail | `open(node)`, `back(index)`, `trail` | Same nodes endpoint with selected node ID as parent key | UI state changes and reloads children; failed child load may leave the trail updated, so recovery semantics need review |
+| Load published GLB catalog | `loadAssets`, `assetLoading`, `assetError`, category filter | `GET /v1/spatial/assets?limit=100`, optional `category` | Independent asset loading/error; ensure retry and empty states are explicit in UI |
+| Select asset/category | `category`, `assets` | Reloads catalog endpoint when category changes | Need confirm selected category reset and error recovery when request fails |
+| Spatial state completeness | Nodes and assets use separate request state | — | Source contains independent errors, but this screen is compressed into very long JSX lines; line-by-line action/state review remains open |
+
+### Native Theme catalog and canonical renderer
+
+**Files:** `apps/client/components/spatial/SpatialThemeCatalogScreen.tsx`, `apps/client/components/spatial/CanonicalNativeWorldRenderer.tsx`.
+
+| User action / state | Source evidence | API contract | Traceability finding |
+|---|---|---|---|
+| Load published themes | Abortable `load(signal)`, `loading`, `error`, `retry` | `GET /v1/spatial/themes?limit=100&offset=0` | Loading/error/retry/empty states are explicit; request is aborted on cleanup |
+| Select theme / close preview | Selected theme state; select row; “Tutup preview” | Selects `theme_key`, passes it to renderer | Selection and preview entry are explicit; catalog itself does not establish that the theme GLB visually renders correctly |
+| Load manifest | Renderer validates scene key and mutual exclusivity of `themeKey` / `sceneKey`; abortable request | `GET /v1/spatial/themes/{themeKey}/manifest` or `GET /v1/spatial/scenes/{sceneKey}/manifest` | Explicit progress/error/retry. 404 distinguishes missing published Theme vs Scene |
+| Validate manifest/assets | `validateManifest` checks schema, object count, unique IDs, allowed category/publication status, HTTPS URL, SHA-256, byte size, vectors and positive scale | Manifest returned by canonical API | Fail-closed validation is implemented in source; actual URL integrity and real asset render remain separate verification |
+| Load GLB models | `GLTFLoader`, `useLoader`, `loadedIds`, `SceneErrorBoundary` | Uses manifest asset URLs | Progress displays loaded object count; renderer error boundary surfaces error |
+| Retry renderer | Retry button clears error/manifest/loaded IDs and increments retry counter | Re-fetches manifest | Retry path is explicit; Suspense fallback is `null`, so model-load suspension may temporarily render no visual progress beyond the count already loaded |
+| Fallback | Manifest carries `fallback_mode` (`2d` or `low_detail`); source contains a 2D fallback branch | Manifest field | The error text says “Fallback: gunakan daftar objek scene jika manifest tersedia”; ensure error fallback actually renders an object list when manifest validation/fetch fails (manifest is null in that branch) |
+| Renderer acceptance | Source implementation and validation only | — | No real-device visual, GPU memory, texture decoding or production manifest acceptance inferred here |
+
+### Web and Super Admin route sample — evidence and gaps
+
+| Surface/route | Source evidence inspected | State/action evidence | Open gap |
+|---|---|---|---|
+| Web notifications `apps/web/app/notifications/page.tsx` | Authenticated API helper and notification/preferences handlers | Loading/error/notice, unread filter, refresh, preference updates, mark-read/read-all actions | Complete per-control trace still needed; distinguish missing session from empty inbox and verify disabled/retry/success per action |
+| Web spatial navigation `apps/web/app/spatial/navigation/page.tsx` | Route file is only 6 lines and delegates to a component | Route presence alone does not prove child state coverage | Trace imported navigation component and its API/state implementation |
+| Web spatial scene `apps/web/app/spatial/[sceneKey]/page.tsx` | Route resolves scene key and delegates renderer view | Route presence only | Trace imported renderer and error/loading/retry/fallback states; do not infer render success from route |
+| Super Admin spatial governance `apps/super-admin/app/spatial-governance/page.tsx` | Operator login, authenticated `call` helper, node/asset/mapping draft state | Login error and API error paths; forms and status selectors | Continue through remaining JSX/handlers to map every create/update/moderate action, empty state, disabled control and retry path |
+| Super Admin runtime policies `apps/super-admin/app/runtime-policies/page.tsx` | Supabase Auth helper, API helper with token refresh path, policy form state | Busy/error state and auth/API failure handling | Full handler-to-endpoint mapping and success/empty/retry UI still required; not runtime/provider acceptance evidence |
+| Super Admin costs `apps/super-admin/app/costs/page.tsx` | Supabase Auth helper, API helper, cost-policy form and operator access check | Busy/error/notice states | Complete pricing policy lifecycle and disabled/empty/retry behavior must be mapped; pricing/provider gap remains open |
+
+### Canonical phase reconciliation — source-backed only
+
+The canonical fixed plan baseline currently identifies the following owners/statuses (from its phase table):
+- ENG-P01 platform foundation: `in_progress`
+- ENG-P02 identity/authentication/authorization/tenant isolation: `in_progress`
+- ENG-P03 identity/profile/settings/privacy: `in_progress`
+- ENG-P04 Social Graph: `in_progress`
+- ENG-P06 Agent Studio/skills/tools/capability governance: `in_progress`
+- ENG-P09 AI Gateway/model router/provider adapters/cost policy: plan baseline `implemented` for its source slice; do not interpret as production/provider acceptance
+- ENG-P10 Agent Runtime: plan baseline `implemented` for its source slice; do not interpret as full live runtime acceptance
+- ENG-P12 Skill Challenge: `in_progress`
+- ENG-P14 feed: `implemented`; ENG-P15 Reels: `implemented`; ENG-P16 Stories: `in_progress`
+- ENG-P20 notification center/delivery orchestration: `implemented`
+- ENG-P21 spatial navigation: `in_progress`; ENG-P22 Theme Builder/GLB catalog/manifest: `in_progress`; ENG-P23 World Renderer/spatial interaction: `in_progress`
+- ENG-P34 Super Admin Control Plane: `in_progress`
+- ENG-P37 final cross-domain E2E/security/release: `not_started`, intentionally deferred until features are ready.
+
+These statuses are quoted as the plan's baseline, not updated by this UI trace. Keep source implementation, CI, live integration, acceptance and production verification as separate evidence levels. The renderer's source fallback, notification actions and admin forms do not close their owning phase by themselves.
+
+**Current inventory exit status: NOT COMPLETE.** Native notifications and the separate spatial components now have a concrete source/endpoint/state mapping, and representative Web/Admin routes have been sampled. Remaining work: finish every JSX action and handler in spatial navigation, Web notification/spatial components and all eight Super Admin screens; trace all other Web screens and API endpoints; reconcile every PRD screen/domain row to a precise owner in the fixed phase plan. Only then start the feature implementation backlog in canonical dependency order. ENG-P37 remains deferred; no broad integration/E2E audit is claimed or started by this update.
