@@ -120,3 +120,57 @@
 - Domain yang belum ditemukan diberi **Perlu verifikasi kode**, bukan otomatis **Belum ada**.
 - Tidak ada test, integrasi nyata, device QA, deployment verification atau acceptance journey yang dijalankan untuk artefak inventaris ini.
 - Phase lintas-domain perlu dicocokkan kembali dengan detail acceptance row dalam fixed phase plan sebelum implementasi.
+
+## PRD screen inventory — 42 screen-level cross-check
+
+Source: Master PRD §12.2. Screen mapping below distinguishes a directly located route/component from a screen that still needs a deeper Native/shared-component search.
+
+| # | PRD screen | Source evidence located | Inventory status |
+|---:|---|---|---|
+| 1 | Splash and onboarding | Web root `apps/web/app/page.tsx`; Native navigation in `apps/client/App.tsx` | Perlu verifikasi kode untuk onboarding states |
+| 2 | Account registration/login/recovery | Web root; Native `Welcome/Auth` route keys in `apps/client/App.tsx` | Parsial; recovery flow perlu ditelusuri |
+| 3 | Human profile and identity | Native `Profile` route key; Web root/auth | Perlu verifikasi kode |
+| 4 | Privacy, session and security settings | Tidak ada dedicated Web route pada snapshot; cari screen native/shared | Perlu verifikasi kode |
+| 5 | Universe Home | Web root and spatial components | Perlu verifikasi kode terhadap PRD journey |
+| 6 | Galaxy/Universe Navigator | `apps/web/app/spatial/navigation/page.tsx`; `SpatialNavigationScreen` | Ada; state/navigasi perlu verifikasi |
+| 7 | World Explorer | Spatial navigation and scene routes | Parsial; dedicated explorer journey perlu verifikasi |
+| 8 | District 3D | `apps/web/app/spatial/[sceneKey]/page.tsx`; `CanonicalNativeWorldRenderer` | Ada; loading/fallback/interactions perlu verifikasi |
+| 9 | Zone and Booth | Scene renderer/spatial governance | Perlu verifikasi kode |
+| 10 | Agent profile and passport | `/agents`; `/agents/passport/[handle]`; native labels include “AI Agent & Passport” | Ada; cakupan perlu verifikasi |
+| 11 | Feed and Moments | `/feed`; native “Feed sosial” | Ada; sebagian aksi/state ditemukan |
+| 12 | Reels/video discovery | `/reels`; native “Reels” | Ada; playback/state perlu verifikasi |
+| 13 | Stories | `/stories`; native “Isi Story”, “Arsipkan Story” | Ada; sebagian lifecycle UI ditemukan |
+| 14 | Content Capsule | Dedicated route not located in Web route list; native screen search required | Perlu verifikasi kode |
+| 15 | Ask/AI interaction | Agent Studio/runtime code and native app | Perlu verifikasi kode screen journey |
+| 16 | Create Studio | `/content-studio`; native “Creator Studio” label | Ada; perlu pastikan cakupan create studio PRD |
+| 17 | Agent Factory | `/agents`; native catalog labels include “Cari 500 blueprint + Agency Agents” | Parsial; journey penuh perlu verifikasi |
+| 18 | My Agent overview | `/agents`; native Agent Studio labels | Parsial |
+| 19 | Agent permission center | Agent Studio/native “Setujui scope Agent” | Parsial; seluruh approval/revoke/error states perlu verifikasi |
+| 20 | Memory & Knowledge Studio | Native app includes “Query retrieval knowledge”; dedicated screen component belum dipastikan | Parsial / perlu verifikasi kode |
+| 21 | Skill Builder | `/agents/[agentId]/studio`; native labels “Kelola Skills & Tools”, “Slug Skill”, “Instruksi Skill”, “Permission scopes Skill” | Ada; cakupan perlu verifikasi |
+| 22 | Workflow Studio | `/workflows` | Ada; node editor, validation, run/resume states perlu verifikasi |
+| 23 | AI Challenge & evaluation | `/skill-challenges`; native “Skill Challenge” | Ada; evaluasi/evidence states perlu verifikasi |
+| 24 | Agent version history/performance | Agent Studio source; dedicated route not located | Perlu verifikasi kode |
+| 25 | Live lobby and session creation | Dedicated Web route not located in snapshot | Perlu verifikasi Native Client |
+| 26 | Live Stage 3D | Dedicated Web route not located in snapshot | Perlu verifikasi Native Client |
+| 27 | Document/slide viewer | Native app imports document picker; viewer screen not confirmed | Perlu verifikasi kode |
+| 28 | AI Character preview/control | Native/spatial renderer and theme catalog components | Perlu verifikasi kode |
+| 29 | Community | `/communities`; Super Admin community moderation | Ada; membership/role states perlu verifikasi |
+| 30 | Messaging/DM | `/messages`; native app | Ada; message/realtime states terlihat sebagian |
+| 31 | Search and Explore | `/search`; native “Search & Discovery” | Ada; cross-domain coverage perlu verifikasi |
+| 32 | Marketplace | Dedicated marketplace route not located in Web route list | Perlu verifikasi Native Client/shared |
+| 33 | Commerce, Credits and Billing | Super Admin `/costs` only; not evidence of customer billing journey | Perlu verifikasi kode |
+| 34 | Creator Studio/reward dashboard | Native label “Creator Studio”; no dedicated rewards route found | Parsial / perlu verifikasi kode |
+| 35 | Theme/World Builder | `/theme/[themeKey]`; Super Admin themes; native theme catalog | Parsial; builder vs catalog distinction needs verification |
+| 36 | Asset Library and validation status | Super Admin themes/spatial governance; no dedicated asset-library route found | Perlu verifikasi kode |
+| 37 | Universe Map | Spatial navigation component; dedicated map view not confirmed | Perlu verifikasi kode |
+| 38 | Notifications/activity | `/notifications`; native `NotificationsInbox` | Ada; delivery channels/state coverage perlu verifikasi |
+| 39 | Human Control Center | No dedicated route identified in snapshot | Perlu verifikasi Native Client/shared |
+| 40 | Developer Console | No Developer Console route identified in snapshot | Perlu verifikasi kode |
+| 41 | Super Admin Control Plane | `apps/super-admin/app/page.tsx` plus moderation, costs, policies, spatial governance and themes routes | Ada; privileged journey coverage perlu verifikasi |
+| 42 | Operations/observability dashboards | Super Admin `/costs` and `/runtime-policies`; dedicated observability route not located | Parsial / perlu verifikasi kode |
+
+## Source-observed native UI labels (not acceptance evidence)
+
+Inspection of `apps/client/App.tsx` (blob `49f7449ada5aa37afa1405f99e6a935ad0338b87`, 160,760 characters) surfaced UI labels including **AI Agent & Passport**, **Skill Challenge**, **Creator Studio**, **Feed sosial**, **Search & Discovery**, **Reels**, **Muat direktori Agent publik**, **Setujui scope Agent**, **Cari 500 blueprint + Agency Agents**, **Lihat Passport**, **Kelola Skills & Tools**, **Jalankan Skill & evaluasi**, **Tulis komentar feed**, **Muat feed berikutnya**, and **Muat Reels berikutnya**. This confirms that some native journeys are embedded in the large application file rather than separate route files. It does not establish full requirement coverage or API integration.
+
