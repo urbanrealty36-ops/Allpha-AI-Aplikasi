@@ -191,16 +191,23 @@ async def get_theme_builder_category_coverage(
 ) -> dict[str, Any]:
     """Read-only, evidence-backed coverage for the canonical 14-category asset registry."""
     rows = await privileged_rest_request("GET", "spatial_asset_versions", params={
-        "select": "category,status,moderation_status,license_evidence_status",
+        "select": "asset_key,version,category,status,moderation_status,license_evidence_status,sha256,byte_size",
         "order": "asset_key.asc,version.asc", "limit": "1000",
     })
+    receipts = await privileged_rest_request("GET", "spatial_asset_ingest_receipts", params={
+        "select": "asset_key,display_name,category_candidate,category_mapping_status,lifecycle_status,sha256,byte_size,source_repo,source_path,source_url,source_license_claim,review_state",
+        "order": "asset_key.asc", "limit": "1000",
+    })
     records = rows or []
+    receipt_records = receipts or []
     categories: list[dict[str, Any]] = []
     for category in CATEGORIES:
         matching = [row for row in records if row.get("category") == category]
+        receipt_matching = [row for row in receipt_records if row.get("category_candidate") == category]
         categories.append({
             "category": category,
             "asset_versions": len(matching),
+            "ingest_receipts": len(receipt_matching),
             "published": sum(1 for row in matching if row.get("status") == "published"),
             "approved": sum(1 for row in matching if row.get("moderation_status") == "approved"),
             "rights_verified": sum(1 for row in matching if row.get("license_evidence_status") == "verified"),
@@ -208,12 +215,54 @@ async def get_theme_builder_category_coverage(
                                      and row.get("moderation_status") == "approved"
                                      and row.get("license_evidence_status") == "verified"),
         })
+    by_key: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        by_key.setdefault(str(record.get("asset_key")), []).append(record)
+    unregistered = []
+    integrity_mismatches = []
+    category_mismatches = []
+    for receipt in receipt_records:
+        matching_assets = by_key.get(str(receipt.get("asset_key")), [])
+        if not matching_assets:
+            unregistered.append({
+                key: receipt.get(key) for key in (
+                    "asset_key", "display_name", "category_candidate", "category_mapping_status",
+                    "lifecycle_status", "sha256", "byte_size", "source_repo", "source_path",
+                    "source_url", "source_license_claim", "review_state",
+                )
+            })
+            continue
+        asset = next((row for row in matching_assets if row.get("sha256") == receipt.get("sha256")), matching_assets[0])
+        if asset.get("sha256") != receipt.get("sha256") or asset.get("byte_size") != receipt.get("byte_size"):
+            integrity_mismatches.append({
+                "asset_key": receipt.get("asset_key"),
+                "receipt_sha256": receipt.get("sha256"),
+                "asset_sha256": asset.get("sha256"),
+                "receipt_byte_size": receipt.get("byte_size"),
+                "asset_byte_size": asset.get("byte_size"),
+            })
+        if receipt.get("category_mapping_status") == "mapped" and receipt.get("category_candidate") != asset.get("category"):
+            category_mismatches.append({
+                "asset_key": receipt.get("asset_key"),
+                "receipt_category": receipt.get("category_candidate"),
+                "asset_category": asset.get("category"),
+            })
+    mapping_status_counts: dict[str, int] = {}
+    for receipt in receipt_records:
+        status = str(receipt.get("category_mapping_status") or "unknown")
+        mapping_status_counts[status] = mapping_status_counts.get(status, 0) + 1
     return {
         "registry": "spatial_asset_versions",
+        "receipt_registry": "spatial_asset_ingest_receipts",
         "total_asset_versions": len(records),
+        "total_ingest_receipts": len(receipt_records),
         "categories": categories,
         "unmapped_or_noncanonical": sum(1 for row in records if row.get("category") not in CATEGORIES),
-        "truncated": len(records) >= 1000,
+        "receipt_mapping_status_counts": mapping_status_counts,
+        "unregistered_receipts": unregistered,
+        "integrity_mismatches": integrity_mismatches,
+        "category_mismatches": category_mismatches,
+        "truncated": len(records) >= 1000 or len(receipt_records) >= 1000,
     }
 
 
