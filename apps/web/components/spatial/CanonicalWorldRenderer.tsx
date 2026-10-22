@@ -58,7 +58,7 @@ function validateManifest(value: unknown): SceneManifest {
   return m as SceneManifest;
 }
 
-function SceneObjectModel({ object, onLoaded }: { object: SceneObject; onLoaded: (id: string) => void }) {
+function SceneObjectModel({ object, onLoaded, onSelect, selected }: { object: SceneObject; onLoaded: (id: string) => void; onSelect: (id: string) => void; selected: boolean }) {
   const gltf = useLoader(GLTFLoader, object.asset_url, configureAllphaGLTFLoader);
   const model = useMemo(() => {
     const copy = new Group();
@@ -69,12 +69,12 @@ function SceneObjectModel({ object, onLoaded }: { object: SceneObject; onLoaded:
     return copy;
   }, [gltf, object.position, object.rotation, object.scale]);
   useEffect(() => { onLoaded(object.entity_id); }, [object.entity_id, onLoaded]);
-  return <primitive object={model} />;
+  return <primitive object={model} onClick={(event: { stopPropagation: () => void }) => { event.stopPropagation(); onSelect(object.entity_id); }} />;
 }
 
 export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneKey?: string; themeKey?: string; apiBase?: string }) {
   const [manifest, setManifest] = useState<SceneManifest | null>(null);
-  const [loadedIds, setLoadedIds] = useState<string[]>([]);
+  const [loadedIds, setLoadedIds] = useState<string[]>([]);\n  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const base = (apiBase || process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
@@ -82,7 +82,7 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
 
   useEffect(() => {
     const controller = new AbortController();
-    setManifest(null); setLoadedIds([]); setError("");
+    setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setError("");
     const key = themeKey || sceneKey || "";
     if (!/^[a-z0-9][a-z0-9._-]{2,119}$/.test(key) || Boolean(themeKey && sceneKey)) {
       setError("Kunci scene/Theme tidak valid.");
@@ -102,7 +102,7 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
     return () => controller.abort();
   }, [sceneKey, themeKey, base, retry]);
 
-  const retryScene = () => { setError(""); setManifest(null); setLoadedIds([]); setRetry((value) => value + 1); };
+  const retryScene = () => { setError(""); setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setRetry((value) => value + 1); };\n  const selectedObject = manifest?.objects.find((object) => object.entity_id === selectedEntityId) || null;
   return (
     <section aria-label="Allpha World Renderer" style={{ width: "100%" }}>
       {error && <div role="alert" style={{ padding: 16 }}>
@@ -123,7 +123,7 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
             <directionalLight position={[10, 14, 8]} intensity={2} />
             <gridHelper args={[40, 40, "#aab2bf", "#d6dbe3"]} />
             <Suspense fallback={null}>
-              {manifest.objects.map((object) => <SceneObjectModel key={object.entity_id} object={object} onLoaded={markLoaded} />)}
+              {manifest.objects.map((object) => <SceneObjectModel key={object.entity_id} object={object} onLoaded={markLoaded} onSelect={setSelectedEntityId} selected={object.entity_id === selectedEntityId} />)}
             </Suspense>
           </Canvas>
         </SceneErrorBoundary>
