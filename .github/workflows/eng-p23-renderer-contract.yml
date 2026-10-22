@@ -6,7 +6,9 @@ on:
     paths:
       - "apps/web/components/spatial/CanonicalWorldRenderer.tsx"
       - "apps/web/components/spatial/CanonicalGlbPreview.tsx"
+      - "apps/web/scripts/smoke-test.mjs"
       - "apps/client/components/spatial/CanonicalNativeWorldRenderer.tsx"
+      - "apps/client/scripts/smoke-test.mjs"
       - "apps/client/lib/spatial/configureAllphaGLTFLoader.ts"
       - "apps/web/lib/spatial/configureAllphaGLTFLoader.ts"
       - ".github/workflows/eng-p23-renderer-contract.yml"
