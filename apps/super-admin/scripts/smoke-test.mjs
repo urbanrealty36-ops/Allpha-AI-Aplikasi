@@ -36,4 +36,4 @@ assert.ok(receiptReconciliation.includes("/v1/admin/spatial/assets/category-cove
 assert.ok(receiptReconciliation.includes("/register"), "Receipt reconciliation must call the canonical registration API");
 assert.ok(receiptReconciliation.includes("Daftarkan sebagai karantina"), "Receipt registration must explicitly remain quarantined");
 assert.ok(receiptReconciliation.includes("URL bukti visual/semantik"), "Category assignment must capture evidence URI");
-assert.ok(receiptReconciliation.includes("Hak operator akan divalidasi ulang") || receiptReconciliation.includes("Hak operator tetap diverifikasi"), "Operator authorization must remain server-side");
+assert.ok(receiptReconciliation.includes("izin operator akan divalidasi ulang oleh FastAPI"), "Operator authorization must remain server-side");
