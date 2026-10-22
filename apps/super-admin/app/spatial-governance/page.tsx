@@ -179,7 +179,7 @@ export default function SpatialGovernancePage() {
   }
 
   return <main style={{maxWidth:1120,margin:"0 auto",padding:"28px 20px",fontFamily:"system-ui,sans-serif",color:"#17202a"}}>
-    <header style={{marginBottom:24}}><p style={{fontSize:12,letterSpacing:2,fontWeight:700}}>ALLPHA UNIVERSE · ENG-P21</p><h1 style={{fontSize:30,margin:"6px 0"}}>Spatial Governance</h1><p style={{color:"#596579"}}>Node lifecycle, GLB moderation, license evidence, and audit-ready operator actions.</p></header>
+    <header style={{marginBottom:24}}><p style={{fontSize:12,letterSpacing:2,fontWeight:700}}>ALLPHA UNIVERSE · ENG-P21 / ENG-P22</p><h1 style={{fontSize:30,margin:"6px 0"}}>Spatial Governance</h1><p style={{color:"#596579"}}>Node lifecycle, GLB moderation, license evidence, and audit-ready operator actions.</p><a href="/spatial-themes" style={{display:"inline-block",marginTop:8,padding:"10px 14px",borderRadius:8,background:"#17202a",color:"#fff",textDecoration:"none"}}>Buka Spatial Theme Builder →</a></header>
     {!session ? <form onSubmit={login} style={{maxWidth:440,border:"1px solid #d7dce3",borderRadius:12,padding:20,display:"grid",gap:12}}>
       <h2 style={{fontSize:18}}>Login operator</h2><label>Email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle}/></label><label>Password<input required type="password" value={password} onChange={e=>setPassword(e.target.value)} style={inputStyle}/></label><button disabled={busy} style={buttonStyle}>{busy?"Memproses…":"Login melalui Supabase Auth"}</button><small>Login tidak otomatis memberi hak operator. API memeriksa grant dan audit pada setiap aksi.</small>
     </form> : <section style={{display:"grid",gap:24}}>
