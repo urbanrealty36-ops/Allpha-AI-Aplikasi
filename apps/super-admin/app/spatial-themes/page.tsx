@@ -16,6 +16,7 @@ type Session = { access_token: string; refresh_token: string; user: { id: string
 type Asset = { asset_key: string; version: number; display_name: string; category: Category; status: string; moderation_status?: string; sha256: string; byte_size: number; license_evidence_status?: string };
 type Theme = { theme_key: string; display_name: string; description: string; status: string; active_version: number | null };
 type ThemeVersion = { theme_key: string; version: number; status: string; manifest_sha256: string };
+type Coverage = { category: Category; asset_versions: number; published: number; approved: number; rights_verified: number; publication_ready: number };
 type ApiResult<T> = T & { detail?: { code?: string; message?: string }; message?: string };
 
 const inputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid #334155", borderRadius: 8, background: "#0f172a", color: "#f8fafc", marginTop: 5 };
@@ -31,6 +32,8 @@ export default function SpatialThemeBuilderPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedTheme, setSelectedTheme] = useState("");
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [selectedVersionStatus, setSelectedVersionStatus] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<Coverage[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Partial<Record<Category, string>>>({});
   const [themeKey, setThemeKey] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -56,12 +59,16 @@ export default function SpatialThemeBuilderPage() {
     if (!session) return;
     setBusy(true); setError("");
     try {
-      const themeData = await call<{ items: Theme[] }>("/v1/admin/spatial/themes?limit=100&offset=0");
-      const assetPages = await Promise.all(CATEGORIES.map(category =>
-        call<{ items: Asset[] }>("/v1/admin/spatial/assets?limit=100&offset=0&category=" + encodeURIComponent(category))
-          .then(result => result.items || [])
-      ));
+      const [themeData, coverageData, ...assetPages] = await Promise.all([
+        call<{ items: Theme[] }>("/v1/admin/spatial/themes?limit=100&offset=0"),
+        call<{ categories: Coverage[]; truncated: boolean }>("/v1/admin/spatial/assets/category-coverage"),
+        ...CATEGORIES.map(category =>
+          call<{ items: Asset[] }>("/v1/admin/spatial/assets?limit=100&offset=0&category=" + encodeURIComponent(category))
+            .then(result => result.items || [])
+        ),
+      ]);
       setThemes(themeData.items || []);
+      setCoverage(coverageData.categories || []);
       setAssets(assetPages.flat());
       setMessage("Theme dan aset dimuat dari API kanonis. Aset hanya kandidat; status lifecycle tetap menentukan apakah boleh dipublikasikan.");
     } catch (cause) {
@@ -129,6 +136,7 @@ export default function SpatialThemeBuilderPage() {
         method: "POST", body: JSON.stringify({ manifest }),
       });
       setSelectedVersion(result.item.version);
+      setSelectedVersionStatus(result.item.status || "draft");
       setValidation(result.validation);
       setMessage("Versi draft v" + result.item.version + " tersimpan. Kelengkapan kategori dan status aset ditampilkan pada hasil validasi.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Versi Theme gagal dibuat."); }
@@ -141,6 +149,7 @@ export default function SpatialThemeBuilderPage() {
     try {
       const result = await call<Record<string, unknown>>("/v1/admin/spatial/themes/" + encodeURIComponent(selectedTheme) + "/versions/" + selectedVersion + "/" + action, { method: "POST" });
       setValidation(result);
+      if (typeof result.status === "string" && result.status !== "blocked") setSelectedVersionStatus(result.status);
       if (result.status === "blocked" || result.valid === false) {
         setMessage("Aksi " + action + " diblokir oleh validasi lifecycle. Periksa error dan warning; tidak ada publikasi yang dipaksakan.");
       } else {
@@ -193,7 +202,7 @@ export default function SpatialThemeBuilderPage() {
 
       <section style={panelStyle}>
         <h2 style={{ marginTop: 0 }}>2. Pilih Theme dan susun 14 kategori</h2>
-        <label>Theme kanonis<select value={selectedTheme} onChange={event => { setSelectedTheme(event.target.value); setSelectedVersion(null); setValidation(null); }} style={inputStyle}>
+        <label>Theme kanonis<select value={selectedTheme} onChange={event => { setSelectedTheme(event.target.value); setSelectedVersion(null); setSelectedVersionStatus(null); setValidation(null); }} style={inputStyle}>
           <option value="">Pilih Theme</option>{themes.map(theme => <option key={theme.theme_key} value={theme.theme_key}>{theme.display_name} · {theme.theme_key} · {theme.status}{theme.active_version ? " v" + theme.active_version : ""}</option>)}
         </select></label>
         <label style={{ display: "block", marginTop: 12 }}>Fallback renderer<select value={fallbackMode} onChange={event => setFallbackMode(event.target.value as "low_detail" | "2d")} style={inputStyle}><option value="low_detail">low_detail</option><option value="2d">2d</option></select></label>
@@ -202,7 +211,7 @@ export default function SpatialThemeBuilderPage() {
             const candidates = readyAssets(category);
             return <label key={category} style={{ border: "1px solid #293548", borderRadius: 10, padding: 12 }}>
               <strong>{category}</strong>
-              <p style={muted}>{candidates.length ? candidates.length + " kandidat pada halaman pertama" : "Belum ada asset record pada kategori ini"}</p>
+              <p style={muted}>{coverage.find(item => item.category === category)?.asset_versions ?? 0} asset record · {coverage.find(item => item.category === category)?.publication_ready ?? 0} siap publikasi · {candidates.length} kandidat di halaman pertama</p>
               <select value={selectedAsset[category] || ""} onChange={event => setSelectedAsset(current => ({ ...current, [category]: event.target.value }))} style={inputStyle}>
                 <option value="">Slot belum dipetakan</option>
                 {candidates.map(asset => <option key={asset.asset_key + "@" + asset.version} value={asset.asset_key + "@" + asset.version}>{asset.display_name} · v{asset.version} · {asset.status}/{asset.moderation_status || "pending"}</option>)}
@@ -214,8 +223,8 @@ export default function SpatialThemeBuilderPage() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           <button disabled={busy || !selectedTheme || selectedAssets.length === 0} style={buttonStyle} onClick={() => void createVersion()}>Buat versi manifest draft</button>
           <button disabled={busy || !selectedTheme || !selectedVersion} style={buttonStyle} onClick={() => void versionAction("validate")}>Validasi versi</button>
-          <button disabled={busy || !selectedTheme || !selectedVersion} style={buttonStyle} onClick={() => void versionAction("approve")}>Minta persetujuan versi</button>
-          <button disabled={busy || !selectedTheme || !selectedVersion} style={buttonStyle} onClick={() => void versionAction("publish")}>Publikasikan versi</button>
+          <button disabled={busy || !selectedTheme || !selectedVersion || !["draft", "review"].includes(selectedVersionStatus || "")} style={buttonStyle} onClick={() => void versionAction("approve")}>Setujui versi</button>
+          <button disabled={busy || !selectedTheme || !selectedVersion || selectedVersionStatus !== "approved"} style={buttonStyle} onClick={() => void versionAction("publish")}>Publikasikan versi</button>
         </div>
         <p style={muted}>Publish tetap diblokir oleh API jika kategori belum lengkap, hash tidak cocok, atau aset belum published + approved + rights verified. Tombol UI tidak dapat melewati pemeriksaan tersebut.</p>
       </section>
@@ -224,7 +233,7 @@ export default function SpatialThemeBuilderPage() {
         <h2 style={{ marginTop: 0 }}>3. Theme registry kanonis</h2>
         {themes.length === 0 ? <p style={muted}>Belum ada Theme pada registry. Tidak ada Theme contoh yang dibuat otomatis.</p> : themes.map(theme => <article key={theme.theme_key} style={{ display: "flex", gap: 12, justifyContent: "space-between", flexWrap: "wrap", borderTop: "1px solid #293548", padding: "12px 0" }}>
           <div><strong>{theme.display_name}</strong><p style={muted}>{theme.theme_key} · {theme.status} · active version: {theme.active_version ?? "none"}</p></div>
-          <button style={buttonStyle} onClick={() => { setSelectedTheme(theme.theme_key); setSelectedVersion(theme.active_version); setValidation(null); }}>Pilih Theme</button>
+          <button style={buttonStyle} onClick={() => { setSelectedTheme(theme.theme_key); setSelectedVersion(theme.active_version); setSelectedVersionStatus(theme.active_version ? "published" : null); setValidation(null); }}>Pilih Theme</button>
         </article>)}
       </section>
     </>}
