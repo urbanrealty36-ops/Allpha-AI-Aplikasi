@@ -816,3 +816,56 @@ async def reconcile_spatial_assets(
             "theme": "Only the canonical Theme version publish flow can create a public manifest.",
         },
     }
+
+
+@router.get("/v1/admin/spatial/assets/publication-candidates")
+async def list_spatial_publication_candidates(
+    category: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """List only canonical GLB versions that can be referenced by a public Theme manifest.
+
+    This is a compact actionable registry view, not an approval bypass: it never mutates
+    asset state and deliberately excludes pending, rejected, rights-unverified, or test-only rows.
+    """
+    if not 1 <= limit <= 100 or offset < 0:
+        raise _fail(422, "SPATIAL_ASSET_PAGINATION_INVALID", "Pagination aset tidak valid.")
+    if category is not None and category not in CATEGORIES:
+        raise _fail(422, "SPATIAL_ASSET_CATEGORY_INVALID", "Kategori aset tidak termasuk taxonomy kanonis.")
+    params: dict[str, str] = {
+        "select": "asset_id,asset_key,version,display_name,category,status,moderation_status,license_evidence,license_evidence_status,sha256,byte_size,storage_bucket,storage_path,capabilities,compatibility",
+        "status": "eq.published", "moderation_status": "eq.approved",
+        "license_evidence_status": "eq.verified",
+        "order": "category.asc,asset_key.asc,version.desc",
+        "limit": str(limit), "offset": str(offset),
+    }
+    if category:
+        params["category"] = f"eq.{category}"
+    rows = await privileged_rest_request("GET", "spatial_asset_versions", params=params)
+    eligible = []
+    for row in rows if isinstance(rows, list) else []:
+        evidence = row.get("license_evidence")
+        if not (isinstance(evidence, dict) and evidence.get("status") == "verified"):
+            continue
+        if not re.fullmatch(r"[a-f0-9]{64}", str(row.get("sha256") or "")):
+            continue
+        if not isinstance(row.get("byte_size"), int) or row["byte_size"] <= 0:
+            continue
+        if not row.get("storage_bucket") or not row.get("storage_path"):
+            continue
+        eligible.append({
+            "asset_key": row["asset_key"], "asset_version": row["version"],
+            "asset_id": row["asset_id"], "display_name": row.get("display_name"),
+            "category": row["category"], "sha256": row["sha256"],
+            "byte_size": row["byte_size"], "capabilities": row.get("capabilities") or [],
+            "compatibility": row.get("compatibility") or {},
+            "eligible_for_theme_slot": True,
+        })
+    return {
+        "items": eligible, "count": len(eligible), "limit": limit, "offset": offset,
+        "filters": {"category": category, "status": "published", "moderation_status": "approved",
+                    "license_evidence_status": "verified"},
+        "next_action": "Create Theme slots from these exact asset_key/version pairs; never infer eligibility from file presence alone.",
+    }
