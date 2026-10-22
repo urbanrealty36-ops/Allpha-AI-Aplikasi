@@ -106,6 +106,8 @@ export default function SpatialThemeBuilderPage() {
         method: "POST", body: JSON.stringify({ theme_key: themeKey.trim(), display_name: displayName.trim(), description: description.trim() }),
       });
       setSelectedTheme(result.item.theme_key);
+      setSelectedVersion(null);
+      setSelectedVersionStatus(null);
       setThemeKey(""); setDisplayName(""); setDescription("");
       setMessage("Theme draft dibuat: " + result.item.theme_key + ". Pilih aset yang benar-benar tersedia untuk menyusun versi manifest.");
       await load();
