@@ -133,7 +133,10 @@ async def _validate_assets(manifest: ThemeManifestDraft, *, for_publish: bool = 
         resolved.append({"slot": slot.model_dump(mode="json"), "asset": asset, "publication_ready": is_published})
     resolved_categories = {item["slot"]["category"] for item in resolved}
     missing_categories = sorted(set(CATEGORIES) - resolved_categories)
-    if missing_categories:
+    # A zero-asset 2D fallback Theme is a valid public shell while spatial GLBs are being
+    # onboarded. It publishes no GLB and cannot accidentally expose quarantined assets.
+    fallback_shell = not manifest.slots and manifest.fallback_mode == "2d"
+    if missing_categories and not fallback_shell:
         warnings.append({"code": "THEME_CATEGORY_COVERAGE_INCOMPLETE", "categories": ",".join(missing_categories)})
         if for_publish:
             errors.append({"code": "THEME_CATEGORY_COVERAGE_INCOMPLETE", "categories": ",".join(missing_categories)})
