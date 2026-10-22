@@ -371,7 +371,7 @@ def test_asset_reconciliation_is_repeatable_and_keeps_unverified_assets_pending(
         {"receipt_id": "receipt-2", "asset_key": "glb-orphan-two", "display_name": "Unknown.glb",
          "category_candidate": None, "category_mapping_status": "unmapped",
          "lifecycle_status": "quarantined", "sha256": "b" * 64, "byte_size": 256},
-        {"receipt_id": "receipt-3", "asset_key": "glb-conflict-three", "display_name": "Conflict.glb",
+        {"receipt_id": "receipt-3", "asset_key": "glb-pending-one", "display_name": "Conflict.glb",
          "category_candidate": "world", "category_mapping_status": "mapped",
          "lifecycle_status": "quarantined", "sha256": "c" * 64, "byte_size": 512},
     ]
