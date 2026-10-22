@@ -174,3 +174,53 @@ Source: Master PRD §12.2. Screen mapping below distinguishes a directly located
 
 Inspection of `apps/client/App.tsx` (blob `49f7449ada5aa37afa1405f99e6a935ad0338b87`, 160,760 characters) surfaced UI labels including **AI Agent & Passport**, **Skill Challenge**, **Creator Studio**, **Feed sosial**, **Search & Discovery**, **Reels**, **Muat direktori Agent publik**, **Setujui scope Agent**, **Cari 500 blueprint + Agency Agents**, **Lihat Passport**, **Kelola Skills & Tools**, **Jalankan Skill & evaluasi**, **Tulis komentar feed**, **Muat feed berikutnya**, and **Muat Reels berikutnya**. This confirms that some native journeys are embedded in the large application file rather than separate route files. It does not establish full requirement coverage or API integration.
 
+
+
+## Native Client source/handler trace — 2026-10-22
+
+**Evidence reviewed:** `apps/client/App.tsx` at blob `49f7449ada5aa37afa1405f99e6a935ad0338b87` (1,478 lines). This is a source-level trace, not a device/E2E acceptance claim. Native UI actions are implemented in one large screen module; shared `apiRequest` sends authenticated domain requests to FastAPI and throws for non-2xx responses. The reusable `Button` supports a disabled state and accessibility role.
+
+### Handler-to-action inventory
+
+| Native area / actions | Handler/source evidence | States visible in source | Gap to resolve before marking complete |
+|---|---|---|---|
+| Welcome/API health | `Welcome`, `GET /healthz` | Initial “Memeriksa API…”; success/error message | Explicit retry control and request timeout/recovery need verification |
+| Sign-in/sign-up | `Auth.submit` | Busy, inline error, success/message; required name validation | Confirm disabled/loading treatment of submit and duplicate-submit prevention in rendered JSX |
+| Profile/settings/deactivation | `saveProfile`, `saveSettings`, `requestDeactivation` | Shared busy/error/message; disabled save/deactivation guards | Verify each form's empty/loading/success/retry rendering and preservation of unsaved edits after failure |
+| Social graph/interests | `loadSocialGraph`, `addSocialEdge`, `removeSocialEdge`, `resolveFollowRequest`, `saveInterest`, `removeInterest` | Explicit loading flag and finally-reset; error and retry button when data absent | Empty state is not clearly differentiated from not-yet-loaded in all branches; verify per-action disabled/duplicate submission |
+| Agent list/passport/studio | `loadAgents`, `loadPassport`, `loadAgentStudio`, `createAgent`, `updateAgent` | Loading flags, errors, reload; catalog failure disables Agent creation | Empty-state and retry consistency; ensure failure state is not mistaken for empty successful response |
+| Knowledge sources/retrieval | `loadKnowledgeSources`, `retrieveKnowledgeContext`, `uploadKnowledgeDocument`, `knowledgeSourceAction` | Loading/error, retrieval-specific error, retry/process/delete actions | Verify empty result and success confirmation per operation; document retry idempotency/recovery |
+| Agent runtime | `loadRuntimeCatalog`, `loadRuntimeSessions`, `createRuntimeSession`, `createRuntimeTask`, `runtimeTaskAction` | Task-state-based disabled rules for execute/cancel/recover; error path | Runtime catalog/session/task loading and empty states need explicit matrix; verify unknown-outcome recovery is not an automatic duplicate side effect |
+| Skill challenge | `loadChallengeCatalog`, `issueNativeChallenge`, `submitNativeChallenge`, `compareNativeChallenge`, `decideNativeChallenge` | Busy flag, validation/disabled guards, errors, result display | Explicit empty/error retry for catalog/runs and per-action success feedback require verification |
+| Feed/comments/reels | `loadNativeFeed`, `loadNativeReels`, `nativeFeedAction`, `submitNativeFeedComment`, `toggleNativeComments`, `shareNativeContent` | Busy states, retry/reload, cursor pagination disabled while busy, action errors | Empty states, per-item pending states, and recovery after a failed mutation need consistent review; one shared busy flag can disable unrelated actions |
+| Stories/content/media | `loadNativeStories`, `createNativeStory`, `archiveNativeStory`, `chooseStoryMedia`, `createNativeContentDraft`, `submitNativeContent`, `retryNativeContent`, `previewNativeContent` | Busy flags, media/type/size validation, error/success messages, some explicit empty states and retry buttons | Distinguish initial load from valid empty data; validate selection cancellation and retry after partial upload/publish outcomes |
+| Messages | `loadMessageConversations`, `openMessageConversation`, `startMessageConversation`, `sendNativeMessage` | Busy/error, Realtime reconnect timer for channel errors/timeouts/closed; send idempotency key retained in state | Verify empty conversations/messages, send-disabled conditions, retry UX and recovery if response outcome is unknown |
+| Community/workspace/invites/missions/grants | `loadCommunityWorkspace`, `openNativeCommunity`, `joinNativeCommunity`, `createNativeInvite`, `acceptNativeInvite`, `createNativeMission`, `progressNativeMission`, workspace document and resource-grant handlers | Shared busy/error/message; input validation/role-gated controls; targeted recovery hints on invite, pin and mission progress | Several loaders catch errors but do not expose a dedicated retry button beside each resource; check empty/success feedback and prevent duplicate writes |
+| Consent history | `loadConsentHistory` | Loading, error and retry are rendered | Empty state and policy-version guard are documented; verify all branches stay read-only |
+| Spatial scene entry | `spatialSceneKey` / `spatialActiveKey` controls; canonical renderer component imported elsewhere | Key-length disabled guard | Trace actual manifest loading, renderer loading/error/empty/fallback and retry behavior in `CanonicalNativeWorldRenderer`; entry control alone is not proof |
+
+### Cross-cutting state classification
+
+- **Loading:** present for many operations via booleans and `ActivityIndicator`; not every list/resource has a distinct initial-loading versus refresh state.
+- **Empty:** some branches explicitly render “Belum ada…”, but an empty array can also be the default before a request completes or after a failed request. Those cases must be separated.
+- **Error:** a shared `error` string plus some domain-specific error strings are used. Several operations clear or reuse shared errors, so per-resource visibility needs review.
+- **Success:** shared `message` state and local result display exist, but success confirmation is not consistently scoped to the action/resource.
+- **Disabled:** the reusable button supports disabled; key actions have guards for busy state, valid inputs and task lifecycle. This is not yet a complete control-by-control inventory.
+- **Retry/recovery:** explicit retry/reload exists for profile bootstrap, feed/reels, content, agents, consent and selected other resources; runtime has explicit task recovery; Realtime reconnects after selected channel statuses. Retry coverage is incomplete/needs verification for other loaders and for ambiguous mutation outcomes.
+
+### Canonical phase reconciliation (no phase-status mutation)
+
+The fixed plan explicitly states that ENG-P37 is cross-domain validation/release, not a substitute for missing feature implementation, and phase status cannot be inferred from code or CI alone. Native inventory work therefore remains a **traceability activity**, not a new engineering phase or a declaration that any ENG phase is closed.
+
+| Gap group | Canonical ownership to reconcile in the fixed plan | Required inventory exit evidence |
+|---|---|---|
+| Platform/session/API error contract | ENG-P01; identity/session dependencies ENG-P02–ENG-P03 | Every Native screen's auth prerequisite, API endpoint, loading/error/retry behavior; do not claim live integration verified |
+| Social/profile/settings/consent | ENG-P03–ENG-P04 | Screen-action-handler-API mapping and separate empty/error/success states |
+| Content, feed, reels, stories, search, messaging | Corresponding existing social/content/discovery phases in fixed plan | All actions and pagination/media states mapped to source and owner phase |
+| Agent/skills/knowledge/runtime/challenge | Existing Agent/Skill/Runtime/Challenge phases (including ENG-P06, ENG-P10, ENG-P12 where applicable) | Handler transitions and disabled rules mapped to canonical API contracts; runtime recovery must preserve idempotency |
+| Spatial scenes and GLB renderer | ENG-P22/ENG-P23; downstream spatial phases only per plan | Trace renderer component and fallback/error states; legal/visual/device acceptance remains separate |
+| Community/workspace/invites/missions/grants | Existing community/collaboration phase owners in fixed plan | Role-gated actions, empty/error/success states and recovery mapped per handler |
+| Super Admin and provider/pricing/runtime policy | Existing owning phase(s) in fixed plan | Keep as gaps until inspected; provider/runtime/pricing issues are not marked resolved by this Native pass |
+| Cross-surface integration and release | ENG-P37 | Deliberately deferred until feature completeness and phase dependencies are ready |
+
+**Exit status: NOT COMPLETE.** This pass identifies concrete handlers and state patterns, but it does not yet enumerate every rendered action line-by-line, inspect every imported screen/component (notably the spatial renderer and notification screens), or prove all state transitions. Continue the same matrix rather than creating a parallel status board. Do not start broad integration/E2E audit now; do not mark runtime/provider/pricing issues complete. After Native and remaining Web/Super Admin screens are fully traced and gaps reconciled, implement missing feature behavior in canonical phase dependency order, then reserve ENG-P37 for the later integration/release gate.
