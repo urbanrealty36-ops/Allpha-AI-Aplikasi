@@ -163,6 +163,9 @@ assert.ok(worldRenderer.includes("publication_status") && worldRenderer.includes
 assert.ok(worldRenderer.includes("validateManifest") && worldRenderer.includes("themeKey"), "Web renderer must validate canonical manifest input");
 assert.ok(glbPreview.includes("ALLPHA_ASSET_CATEGORIES") && glbPreview.includes("navigation-fx"), "Web GLB preview must expose the canonical 14-category taxonomy");
 assert.ok(worldRenderer.includes("configureAllphaGLTFLoader"), "Web scene renderer must register the canonical GLTF loader");
+assert.ok(worldRenderer.includes("onSelect={setSelectedEntityId}"), "Web renderer must wire scene object selection");
+assert.ok(worldRenderer.includes("aria-label=\"Spatial interactions\""), "Web renderer must expose accessible spatial interaction details");
+assert.ok(worldRenderer.includes("aria-pressed={object.entity_id === selectedEntityId}"), "Web object list must expose selection state");
 console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
 
 const spatialThemeCatalog = readFileSync(new URL("../app/spatial/themes/page.tsx", import.meta.url), "utf8");
