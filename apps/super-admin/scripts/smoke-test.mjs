@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 const page=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
+const spatialGovernance=readFileSync(new URL("../app/spatial-governance/page.tsx",import.meta.url),"utf8");
+const themeBuilder=readFileSync(new URL("../app/spatial-themes/page.tsx",import.meta.url),"utf8");
 const pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
 assert.ok(pkg.dependencies.next);
 assert.match(page,/https:\/\/api\.allpha\.web\.id/); assert.match(page,/\/healthz/); assert.match(page,/\/readyz/); assert.match(page,/\/v1\/system\/status/);
@@ -16,4 +18,12 @@ assert.match(page,/Approve request/); assert.match(page,/Deny request/); assert.
 assert.match(page,/platform:operators.manage/);
 assert.match(page,/tidak disimpan ke localStorage\/sessionStorage/);
 assert.doesNotMatch(page,/service_role|SUPABASE_SERVICE_ROLE_KEY/i);
-console.log("ENG-P06 Super Admin operator security source smoke tests passed.");
+assert.match(spatialGovernance,/\/spatial-themes/);
+assert.match(themeBuilder,/Spatial Theme Builder/);
+assert.match(themeBuilder,/platform:content\.moderate/);
+assert.match(themeBuilder,/\/v1\/admin\/spatial\/themes/);
+assert.match(themeBuilder,/\/v1\/admin\/spatial\/assets/);
+assert.match(themeBuilder,/14 kategori/);
+assert.match(themeBuilder,/rights verified/);
+assert.doesNotMatch(themeBuilder,/SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+console.log("ENG-P06 operator security and ENG-P22 Theme Builder source smoke tests passed.");
