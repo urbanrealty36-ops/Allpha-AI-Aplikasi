@@ -65,9 +65,9 @@ function SceneObjectModel({ object, onLoaded, onSelect, selected }: { object: Sc
     copy.add(gltf.scene.clone(true));
     copy.position.set(...object.position);
     copy.rotation.set(...object.rotation);
-    copy.scale.set(...object.scale);
+    copy.scale.set(object.scale[0] * (selected ? 1.04 : 1), object.scale[1] * (selected ? 1.04 : 1), object.scale[2] * (selected ? 1.04 : 1));
     return copy;
-  }, [gltf, object.position, object.rotation, object.scale]);
+  }, [gltf, object.position, object.rotation, object.scale, selected]);
   useEffect(() => { onLoaded(object.entity_id); }, [object.entity_id, onLoaded]);
   return <primitive object={model} onClick={(event: { stopPropagation: () => void }) => { event.stopPropagation(); onSelect(object.entity_id); }} />;
 }
@@ -128,9 +128,13 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
           </Canvas>
         </SceneErrorBoundary>
       </div>}
-      {manifest?.fallback_mode === "2d" && <ul aria-label="Daftar objek scene">
-        {manifest.objects.map((object) => <li key={object.entity_id}>{object.category} · {object.asset_id} v{object.asset_version}</li>)}
-      </ul>}
+      {manifest && manifest.objects.length > 0 && <section aria-label="Spatial interactions" style={{ padding: 12, border: "1px solid #d6dbe3", borderRadius: 12, marginTop: 8 }}>
+        <strong>Interaksi ruang</strong>
+        {selectedObject ? <p role="status">{selectedObject.entity_id} · {selectedObject.category} · asset {selectedObject.asset_id} v{selectedObject.asset_version}</p> : <p>Pilih objek pada scene atau dari daftar untuk melihat detailnya.</p>}
+        <ul aria-label="Daftar objek scene">
+          {manifest.objects.map((object) => <li key={object.entity_id}><button type="button" aria-pressed={object.entity_id === selectedEntityId} onClick={() => setSelectedEntityId(object.entity_id)}>{object.entity_id} · {object.category} · v{object.asset_version}</button></li>)}
+        </ul>
+      </section>}
     </section>
   );
 }
