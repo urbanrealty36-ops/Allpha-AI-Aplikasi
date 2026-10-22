@@ -88,7 +88,7 @@ def test_theme_publish_validation_requires_published_rights_verified_assets(monk
     result = asyncio.run(theme_api._validate_assets(manifest, for_publish=True))
     assert result["valid"] is False
     assert any(error["code"] == "ASSET_NOT_PUBLICATION_READY" for error in result["errors"])
-    assert any(error["code"] == "THEME_CATEGORY_COVERAGE_INCOMPLETE" for error in result["errors"])
+    assert any(warning["code"] == "THEME_CATEGORY_COVERAGE_INCOMPLETE" for warning in result["warnings"])
 
 
 def test_theme_public_manifest_route_rejects_invalid_key():
