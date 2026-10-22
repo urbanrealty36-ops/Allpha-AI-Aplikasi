@@ -65,7 +65,7 @@ export default function SpatialReceiptReconciliationPage() {
       setDrafts((old) => {
         const next = { ...old };
         for (const receipt of result.unregistered_receipts || []) {
-          if (!next[receipt.receipt_id]) next[receipt.receipt_id] = { category: "", rationale: "", evidence_uri: receipt.source_url || "" };
+          if (!next[receipt.receipt_id]) next[receipt.receipt_id] = { category: "", rationale: "", evidence_uri: "" };
         }
         return next;
       });
@@ -135,7 +135,7 @@ export default function SpatialReceiptReconciliationPage() {
       </div>
     </section>}
     {session && report?.unregistered_receipts.map((receipt) => {
-      const draft = drafts[receipt.receipt_id] || { category: "", rationale: "", evidence_uri: receipt.source_url || "" };
+      const draft = drafts[receipt.receipt_id] || { category: "", rationale: "", evidence_uri: "" };
       return <article key={receipt.receipt_id} style={panel}>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}>
           <div><h3 style={{ margin: 0, fontSize: 17 }}>{receipt.display_name}</h3><p style={{ color: "#a5b4fc", margin: "4px 0" }}>{receipt.asset_key}</p></div>
