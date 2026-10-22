@@ -16,7 +16,9 @@ type Session = { access_token: string; refresh_token: string; user: { id: string
 type Asset = { asset_key: string; version: number; display_name: string; category: Category; status: string; moderation_status?: string; sha256: string; byte_size: number; license_evidence_status?: string };
 type Theme = { theme_key: string; display_name: string; description: string; status: string; active_version: number | null };
 type ThemeVersion = { theme_key: string; version: number; status: string; manifest_sha256: string };
-type Coverage = { category: Category; asset_versions: number; published: number; approved: number; rights_verified: number; publication_ready: number };
+type Coverage = { category: Category; asset_versions: number; ingest_receipts: number; published: number; approved: number; rights_verified: number; publication_ready: number };
+type UnregisteredReceipt = { asset_key: string; display_name: string; category_candidate: Category | null; category_mapping_status: string; lifecycle_status: string; sha256: string; byte_size: number; source_repo?: string; source_path?: string; source_url?: string; source_license_claim?: string; review_state?: string };
+type CoverageReport = { categories: Coverage[]; total_asset_versions: number; total_ingest_receipts: number; receipt_mapping_status_counts: Record<string, number>; unregistered_receipts: UnregisteredReceipt[]; integrity_mismatches: unknown[]; category_mismatches: unknown[]; truncated: boolean };
 type ApiResult<T> = T & { detail?: { code?: string; message?: string }; message?: string };
 
 const inputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid #334155", borderRadius: 8, background: "#0f172a", color: "#f8fafc", marginTop: 5 };
@@ -34,6 +36,7 @@ export default function SpatialThemeBuilderPage() {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [selectedVersionStatus, setSelectedVersionStatus] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<Coverage[]>([]);
+  const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Partial<Record<Category, string>>>({});
   const [themeKey, setThemeKey] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -61,7 +64,7 @@ export default function SpatialThemeBuilderPage() {
     try {
       const [themeData, coverageData, ...assetPages] = await Promise.all([
         call<{ items: Theme[] }>("/v1/admin/spatial/themes?limit=100&offset=0"),
-        call<{ categories: Coverage[]; truncated: boolean }>("/v1/admin/spatial/assets/category-coverage"),
+        call<CoverageReport>("/v1/admin/spatial/assets/category-coverage"),
         ...CATEGORIES.map(category =>
           call<{ items: Asset[] }>("/v1/admin/spatial/assets?limit=100&offset=0&category=" + encodeURIComponent(category))
             .then(result => result.items || [])
@@ -69,6 +72,7 @@ export default function SpatialThemeBuilderPage() {
       ]);
       setThemes(themeData.items || []);
       setCoverage(coverageData.categories || []);
+      setCoverageReport(coverageData);
       setAssets(assetPages.flat());
       setMessage("Theme dan aset dimuat dari API kanonis. Aset hanya kandidat; status lifecycle tetap menentukan apakah boleh dipublikasikan.");
     } catch (cause) {
@@ -201,7 +205,28 @@ export default function SpatialThemeBuilderPage() {
       </section>
 
       <section style={panelStyle}>
-        <h2 style={{ marginTop: 0 }}>2. Pilih Theme dan susun 14 kategori</h2>
+        <h2 style={{ marginTop: 0 }}>2. Rekonsiliasi 927 ingest receipts</h2>
+        {!coverageReport ? <p style={muted}>Laporan coverage belum tersedia.</p> : <>
+          <p style={muted}>Registry aset: {coverageReport.total_asset_versions} versi · ingest receipts: {coverageReport.total_ingest_receipts} · status mapping: {Object.entries(coverageReport.receipt_mapping_status_counts).map(([key, value]) => key + " " + value).join(" · ") || "belum tersedia"}.</p>
+          <p style={muted}>Ketidakcocokan checksum/ukuran: {coverageReport.integrity_mismatches.length} · ketidakcocokan kategori: {coverageReport.category_mismatches.length} · laporan terpotong: {coverageReport.truncated ? "ya" : "tidak"}.</p>
+          {coverageReport.unregistered_receipts.length === 0 ? <p style={muted}>Semua receipt yang dibaca memiliki asset record kanonis.</p> : <div style={{ display: "grid", gap: 10 }}>
+            <strong>{coverageReport.unregistered_receipts.length} receipt belum mempunyai asset record kanonis</strong>
+            {coverageReport.unregistered_receipts.map(receipt => <article key={receipt.asset_key} style={{ border: "1px solid #7c2d12", borderRadius: 10, padding: 12 }}>
+              <strong>{receipt.display_name}</strong>
+              <p style={muted}>{receipt.asset_key} · {receipt.lifecycle_status} · {receipt.category_mapping_status} · kandidat: {receipt.category_candidate || "unmapped"}</p>
+              <p style={muted}>Sumber: {receipt.source_repo || "unknown"} / {receipt.source_path || "unknown"}</p>
+              <p style={muted}>Klaim lisensi: {receipt.source_license_claim || "unknown"} · review: {receipt.review_state || "pending"}</p>
+              <code style={{ fontSize: 11, overflowWrap: "anywhere" }}>SHA-256: {receipt.sha256} · {receipt.byte_size} bytes</code>
+              <p style={muted}>Belum otomatis didaftarkan: perlu rekonsiliasi file/hash, kategori berbukti, dan lifecycle ingest sebelum registrasi kanonis.</p>
+            </article>)}
+          </div>}
+          {coverageReport.integrity_mismatches.length > 0 && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{JSON.stringify(coverageReport.integrity_mismatches, null, 2)}</pre>}
+          {coverageReport.category_mismatches.length > 0 && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{JSON.stringify(coverageReport.category_mismatches, null, 2)}</pre>}
+        </>}
+      </section>
+
+      <section style={panelStyle}>
+        <h2 style={{ marginTop: 0 }}>3. Pilih Theme dan susun 14 kategori</h2>
         <label>Theme kanonis<select value={selectedTheme} onChange={event => { setSelectedTheme(event.target.value); setSelectedVersion(null); setSelectedVersionStatus(null); setValidation(null); }} style={inputStyle}>
           <option value="">Pilih Theme</option>{themes.map(theme => <option key={theme.theme_key} value={theme.theme_key}>{theme.display_name} · {theme.theme_key} · {theme.status}{theme.active_version ? " v" + theme.active_version : ""}</option>)}
         </select></label>
@@ -230,7 +255,7 @@ export default function SpatialThemeBuilderPage() {
       </section>
 
       <section style={panelStyle}>
-        <h2 style={{ marginTop: 0 }}>3. Theme registry kanonis</h2>
+        <h2 style={{ marginTop: 0 }}>4. Theme registry kanonis</h2>
         {themes.length === 0 ? <p style={muted}>Belum ada Theme pada registry. Tidak ada Theme contoh yang dibuat otomatis.</p> : themes.map(theme => <article key={theme.theme_key} style={{ display: "flex", gap: 12, justifyContent: "space-between", flexWrap: "wrap", borderTop: "1px solid #293548", padding: "12px 0" }}>
           <div><strong>{theme.display_name}</strong><p style={muted}>{theme.theme_key} · {theme.status} · active version: {theme.active_version ?? "none"}</p></div>
           <button style={buttonStyle} onClick={() => { setSelectedTheme(theme.theme_key); setSelectedVersion(theme.active_version); setSelectedVersionStatus(theme.active_version ? "published" : null); setValidation(null); }}>Pilih Theme</button>
