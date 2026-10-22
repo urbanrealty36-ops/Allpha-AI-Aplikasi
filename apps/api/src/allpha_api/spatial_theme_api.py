@@ -138,8 +138,9 @@ async def _validate_assets(manifest: ThemeManifestDraft, *, for_publish: bool = 
     fallback_shell = not manifest.slots and manifest.fallback_mode == "2d"
     if missing_categories and not fallback_shell:
         warnings.append({"code": "THEME_CATEGORY_COVERAGE_INCOMPLETE", "categories": ",".join(missing_categories)})
-        if for_publish:
-            errors.append({"code": "THEME_CATEGORY_COVERAGE_INCOMPLETE", "categories": ",".join(missing_categories)})
+        # Partial Themes are publishable: one vetted GLB is useful production progress.
+        # Coverage is reported as a warning; the publication gate applies to each referenced
+        # asset, not to requiring all 14 taxonomy categories before the first usable release.
     return {"valid": not errors, "errors": errors, "warnings": warnings, "resolved": resolved,
             "category_coverage": {category: sum(1 for slot in manifest.slots if slot.category == category) for category in CATEGORIES}}
 
