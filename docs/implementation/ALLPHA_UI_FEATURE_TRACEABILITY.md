@@ -404,3 +404,36 @@ Inspeksi source route dilakukan pada `apps/api/src/allpha_api/main.py` dan modul
 - Master PRD dibaca sebagai acuan utama dan fixed phase plan tetap satu-satunya sumber status/dependency phase. Tidak ada perubahan status phase pada pembaruan dokumentasi ini.
 
 **Status rekonsiliasi API: PARSIAL.** Beberapa jalur sudah cocok pada level path, tetapi request/response schema, router mounting/prefix, authorization/scope, migration state, dan negative tests belum ditelusuri lengkap untuk semua aksi. Implementasi fitur gap masih menunggu inventaris lengkap; ENG-P37 tetap ditunda.
+
+
+## Dependency-based gap backlog draft — reconciled to fixed phase plan
+
+This is a traceability section inside the existing implementation artifact, not a new phase/status source. The fixed phase plan remains authoritative and current phase states are unchanged.
+
+### Priority A — canonical dependencies and security/data contracts
+
+1. **ENG-P01 / ENG-P02 foundations remain upstream dependencies** for every screen that depends on auth, authorization, API origin, schema grants or migration correctness. The phase plan records unresolved live/non-production integration and schema reconciliation evidence; do not use UI fixes to bypass these boundaries.
+2. **ENG-P03 / ENG-P04 / ENG-P05 / ENG-P06** own identity/profile/social graph, Agent identity/passport, studio/skills/capabilities and operator capability review. For Web root, agent list/studio/passport, and Super Admin root, complete body/response/schema and scope mapping before changing UI behavior.
+3. **ENG-P07 / ENG-P08 / ENG-P09 / ENG-P10** own knowledge ingestion/retrieval, memory/policy, metering/credits and runtime sessions/tasks. Existing screen inventory alone does not prove all these journeys have a screen or complete API lifecycle. Route/owner gaps must be resolved before dependent consumer/runtime UX is enabled.
+4. **ENG-P11 / ENG-P12** own workflow execution and skill-challenge evidence/release decisions. Web /workflows and /skill-challenges, plus Super Admin cost/policy controls where applicable, require exact schema and negative-test mapping before implementation gaps are finalized.
+
+### Priority B — social/content and communication dependencies
+
+5. **ENG-P13 / ENG-P14 / ENG-P15 / ENG-P16** own media pipeline, feed interactions, reels/audio, stories lifecycle. UI partial mutation handling (create → upload → publish), retry safety, idempotency, media errors, report/reaction/save/share and story expiry must be mapped to canonical API and migration behavior.
+6. **ENG-P18 / ENG-P19 / ENG-P20** own messaging, community/workspace, and notifications. Web/Native messaging, community grant controls, notification inbox/preferences/push state need exact auth/membership/scope contracts and per-action recovery. Notification collection route presence remains to be confirmed explicitly because the client collection GET was not yet matched to a decorator in the sampled notification module.
+7. **ENG-P21 / ENG-P22 / ENG-P23** own spatial hierarchy, theme registry, and scene/assets/renderer lifecycle. Spatial navigation, Web/Native renderer, Super Admin spatial governance/theme editor must preserve publish gates, schema validation, license/provenance checks, and fail-closed behavior. Do not mark spatial feature acceptance from component existence or an empty public endpoint.
+
+### Priority C — later product domains and final gate
+
+8. **ENG-P24–ENG-P36**: compare remaining PRD domain requirements against current Web/Native/Admin surfaces and canonical engine ownership. Any route/domain with no trace must be recorded as “not located / unresolved”, not automatically “missing” until Native/shared components and backend ownership have been checked.
+9. **ENG-P34** remains an explicit phase owner for platform-owned/official Agent control-plane capabilities where the fixed plan says so; map its Admin root actions to the official-bot API, migrations, scope and audit requirements.
+10. **ENG-P37** stays deferred until required feature slices are implemented. Only then run cross-domain/E2E, regression, security/load and release readiness work per PRD/phase plan.
+
+### Current confirmed gaps versus unresolved checks
+
+- **Confirmed documentation gap:** inventory remains incomplete; handler-level state/method/payload mappings for all Web and all eight Admin pages are not finished.
+- **Confirmed process constraint:** endpoint/source/migration file existence cannot prove router mount, canonical DB migration state, authorization, or live provider behavior.
+- **Needs focused code comparison:** notification collection GET; story collection/create endpoints; model-cost create endpoint; runtime-policy endpoint ownership; all route-prefix mounting and request/response schema compatibility.
+- **Needs further source trace:** Super Admin root’s numerous handlers and the remainder of Web routes (Agents/Studio/Passport, Communities, Content Studio, Theme, plus exact UI methods and state transitions).
+- **Needs migration/test crosswalk:** each screen endpoint to Pydantic request/response schema, service/store method, relevant migration, and positive/negative test; migrations are not assumed applied unless the canonical phase plan or live readback says so.
+- **No feature implementation declared complete by this backlog draft.** After the traceability crosswalk is complete, implement by dependency order and update the relevant canonical phase row with actual code/check evidence. Do not update phase status based on this document alone.
