@@ -49,7 +49,7 @@ def test_ready_requires_live_supabase_auth_and_postgrest(monkeypatch):
             self.calls.append(url)
             if url.endswith("/auth/v1/health"):
                 return FakeResponse(200)
-            if url.endswith("/rest/v1/"):
+            if url.endswith("/rest/v1/agent_ownerships?select=agent_id&limit=0"):
                 return FakeResponse(503)
             raise AssertionError(f"Unexpected readiness probe URL: {url}")
 
