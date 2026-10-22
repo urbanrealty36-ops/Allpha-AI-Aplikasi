@@ -152,3 +152,15 @@ delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fall
 assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
   { index: 1, reasons: ["fallback_flag_missing"] }
 ], "URI-less nonzero buffer without fallback marker must be rejected");
+
+
+const publishedThemeRoute = readFileSync(new URL("../app/theme/[themeKey]/page.tsx", import.meta.url), "utf8");
+const worldRenderer = readFileSync(new URL("../components/spatial/CanonicalWorldRenderer.tsx", import.meta.url), "utf8");
+const glbPreview = readFileSync(new URL("../components/spatial/CanonicalGlbPreview.tsx", import.meta.url), "utf8");
+assert.ok(publishedThemeRoute.includes("CanonicalWorldRenderer"), "public Theme route must use the canonical renderer");
+assert.ok(worldRenderer.includes("/v1/spatial/themes/") && worldRenderer.includes("/manifest"), "Web renderer must resolve the canonical published Theme manifest");
+assert.ok(worldRenderer.includes("publication_status") && worldRenderer.includes("fallback_mode"), "Web renderer must enforce publication status and renderer fallback contract");
+assert.ok(worldRenderer.includes("validateManifest") && worldRenderer.includes("THEME"), "Web renderer must validate canonical manifest input");
+assert.ok(glbPreview.includes("ALLPHA_ASSET_CATEGORIES") && glbPreview.includes("navigation-fx"), "Web GLB preview must expose the canonical 14-category taxonomy");
+assert.ok(worldRenderer.includes("configureAllphaGLTFLoader"), "Web scene renderer must register the canonical GLTF loader");
+console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
