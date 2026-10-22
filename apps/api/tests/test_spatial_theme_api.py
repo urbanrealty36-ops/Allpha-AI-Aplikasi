@@ -401,3 +401,22 @@ def test_asset_reconciliation_is_repeatable_and_keeps_unverified_assets_pending(
     assert first["public_manifest_mutation"] is False
     assert asset["status"] == "test_only"
     assert asset["moderation_status"] == "pending"
+
+
+def test_empty_two_dimensional_fallback_theme_is_publishable_without_glb_assets(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    async def no_assets(*args, **kwargs):
+        pytest.fail("empty fallback theme must not look up any GLB asset")
+
+    monkeypatch.setattr(theme_api, "_get_asset", no_assets)
+    manifest = theme_api.ThemeManifestDraft(
+        theme_key="allpha-starter-universe",
+        display_name="Allpha Starter Universe",
+        description="Published fallback shell; spatial GLB assets load as they qualify for publication.",
+        fallback_mode="2d",
+        slots=[],
+    )
+    result = asyncio.run(theme_api._validate_assets(manifest, for_publish=True))
+    assert result["valid"] is True
+    assert result["resolved"] == []
