@@ -202,23 +202,37 @@ def test_category_coverage_reports_all_fourteen_categories_from_canonical_regist
 
     async def fake_store(method, table, *, params=None, body=None, prefer=None):
         assert method == "GET"
-        assert table == "spatial_asset_versions"
         assert params["limit"] == "1000"
-        return [
-            {"category": "agent-character", "status": "test_only", "moderation_status": "pending", "license_evidence_status": "unverified"},
-            {"category": "agent-character", "status": "published", "moderation_status": "approved", "license_evidence_status": "verified"},
-            {"category": "unknown", "status": "test_only", "moderation_status": "pending", "license_evidence_status": "unverified"},
-        ]
+        if table == "spatial_asset_versions":
+            return [
+                {"asset_key": "agent-one", "version": 1, "category": "agent-character", "status": "test_only", "moderation_status": "pending", "license_evidence_status": "unverified", "sha256": "a" * 64, "byte_size": 100},
+                {"asset_key": "agent-two", "version": 1, "category": "agent-character", "status": "published", "moderation_status": "approved", "license_evidence_status": "verified", "sha256": "b" * 64, "byte_size": 200},
+                {"asset_key": "unknown-one", "version": 1, "category": "unknown", "status": "test_only", "moderation_status": "pending", "license_evidence_status": "unverified", "sha256": "c" * 64, "byte_size": 300},
+            ]
+        if table == "spatial_asset_ingest_receipts":
+            return [
+                {"asset_key": "agent-one", "display_name": "Agent one", "category_candidate": "agent-character", "category_mapping_status": "mapped", "lifecycle_status": "test_only", "sha256": "a" * 64, "byte_size": 100},
+                {"asset_key": "unregistered", "display_name": "Quarantined asset", "category_candidate": None, "category_mapping_status": "unmapped", "lifecycle_status": "quarantined", "sha256": "d" * 64, "byte_size": 400, "source_repo": "example/repo", "source_path": "asset.glb", "source_url": "https://example.org/asset.glb", "source_license_claim": "unknown", "review_state": "quarantined"},
+            ]
+        pytest.fail("unexpected registry table: " + table)
 
     monkeypatch.setattr(theme_api, "privileged_rest_request", fake_store)
     result = asyncio.run(theme_api.get_theme_builder_category_coverage({"id": "operator"}))
     assert result["registry"] == "spatial_asset_versions"
+    assert result["receipt_registry"] == "spatial_asset_ingest_receipts"
     assert result["total_asset_versions"] == 3
+    assert result["total_ingest_receipts"] == 2
     assert len(result["categories"]) == 14
     avatar = next(row for row in result["categories"] if row["category"] == "agent-character")
     assert avatar["asset_versions"] == 2
+    assert avatar["ingest_receipts"] == 1
     assert avatar["publication_ready"] == 1
     assert result["unmapped_or_noncanonical"] == 1
+    assert len(result["unregistered_receipts"]) == 1
+    assert result["unregistered_receipts"][0]["asset_key"] == "unregistered"
+    assert result["integrity_mismatches"] == []
+    assert result["category_mismatches"] == []
+    assert result["receipt_mapping_status_counts"] == {"mapped": 1, "unmapped": 1}
     assert result["truncated"] is False
 
 
