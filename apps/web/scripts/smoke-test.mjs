@@ -164,3 +164,10 @@ assert.ok(worldRenderer.includes("validateManifest") && worldRenderer.includes("
 assert.ok(glbPreview.includes("ALLPHA_ASSET_CATEGORIES") && glbPreview.includes("navigation-fx"), "Web GLB preview must expose the canonical 14-category taxonomy");
 assert.ok(worldRenderer.includes("configureAllphaGLTFLoader"), "Web scene renderer must register the canonical GLTF loader");
 console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
+
+const spatialThemeCatalog = readFileSync(new URL("../app/spatial/themes/page.tsx", import.meta.url), "utf8");
+assert.ok(spatialThemeCatalog.includes("/v1/spatial/themes?limit=100&offset=0"), "Web Theme catalog must use canonical published-theme API");
+assert.ok(spatialThemeCatalog.includes("CanonicalWorldRenderer themeKey={selected.theme_key}"), "Web Theme catalog must invoke canonical renderer");
+assert.ok(spatialThemeCatalog.includes("Belum ada Theme publik"), "Web Theme catalog must provide a truthful empty state");
+assert.ok(spatialThemeCatalog.includes("AbortController"), "Web Theme catalog must cancel stale requests on unmount");
+assert.ok(spatialThemeCatalog.includes("Coba lagi"), "Web Theme catalog must provide retry on API failure");
