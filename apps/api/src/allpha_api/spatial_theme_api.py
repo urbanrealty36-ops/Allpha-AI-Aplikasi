@@ -718,3 +718,98 @@ async def register_orphan_asset_receipt(
             "reason": "Hak penggunaan masih belum terverifikasi dan moderasi belum disetujui.",
         },
     }
+
+
+@router.post("/v1/admin/spatial/assets/reconcile")
+async def reconcile_spatial_assets(
+    request: Request,
+    limit: int = 1000,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Idempotent evidence-based reconciliation report for canonical assets and ingest receipts.
+
+    Safe to repeat. This classifies every receipt without inventing rights/moderation decisions
+    or publishing assets; unresolved receipts do not block independent eligible assets.
+    """
+    if not 1 <= limit <= 1000:
+        raise _fail(422, "SPATIAL_RECONCILE_LIMIT_INVALID", "Limit rekonsiliasi harus 1 sampai 1000.")
+    assets = await privileged_rest_request("GET", "spatial_asset_versions", params={
+        "select": "asset_key,version,category,status,moderation_status,license_evidence,license_evidence_status,sha256,byte_size",
+        "order": "asset_key.asc,version.asc", "limit": str(limit),
+    })
+    receipts = await privileged_rest_request("GET", "spatial_asset_ingest_receipts", params={
+        "select": "receipt_id,asset_key,display_name,category_candidate,category_mapping_status,lifecycle_status,sha256,byte_size,source_license_claim,review_state",
+        "order": "asset_key.asc,receipt_id.asc", "limit": str(limit),
+    })
+    asset_rows = assets if isinstance(assets, list) else []
+    receipt_rows = receipts if isinstance(receipts, list) else []
+    by_key: dict[str, list[dict[str, Any]]] = {}
+    for asset in asset_rows:
+        by_key.setdefault(str(asset.get("asset_key") or ""), []).append(asset)
+    outcomes: list[dict[str, Any]] = []
+    counts = {"ready_for_existing_publish_flow": 0, "needs_evidence_or_review": 0,
+              "rejected_or_blocked": 0, "conflict": 0, "unregistered": 0}
+    for receipt in receipt_rows:
+        key = str(receipt.get("asset_key") or "")
+        candidates = by_key.get(key, [])
+        matched = None
+        if not candidates:
+            outcome, reasons = "unregistered", ["CANONICAL_ASSET_VERSION_MISSING"]
+        else:
+            exact = [row for row in candidates if row.get("sha256") == receipt.get("sha256")
+                     and row.get("byte_size") == receipt.get("byte_size")]
+            if not exact:
+                outcome, reasons = "conflict", ["CHECKSUM_OR_SIZE_MISMATCH"]
+            else:
+                matched = exact[0]
+                if (matched.get("status") in {"rejected", "revoked", "retired", "blocked", "failed"}
+                        or matched.get("moderation_status") == "rejected"):
+                    outcome, reasons = "rejected_or_blocked", ["ASSET_LIFECYCLE_OR_MODERATION_BLOCKED"]
+                else:
+                    license = matched.get("license_evidence")
+                    rights_verified = isinstance(license, dict) and license.get("status") == "verified"
+                    if matched.get("license_evidence_status") != "verified" or not rights_verified:
+                        outcome, reasons = "needs_evidence_or_review", ["LICENSE_RIGHTS_NOT_VERIFIED"]
+                    elif matched.get("moderation_status") != "approved":
+                        outcome, reasons = "needs_evidence_or_review", ["MODERATION_NOT_APPROVED"]
+                    else:
+                        outcome, reasons = "ready_for_existing_publish_flow", [
+                            "ASSET_ALREADY_PUBLICATION_READY" if matched.get("status") == "published"
+                            else "RIGHTS_AND_MODERATION_VERIFIED_BUT_ASSET_NOT_PUBLISHED"
+                        ]
+                    if (receipt.get("category_mapping_status") == "mapped"
+                            and receipt.get("category_candidate") != matched.get("category")):
+                        outcome, reasons = "conflict", ["CATEGORY_MAPPING_CONFLICT"]
+        counts[outcome] += 1
+        outcomes.append({
+            "receipt_id": receipt.get("receipt_id"), "asset_key": key,
+            "display_name": receipt.get("display_name"), "outcome": outcome,
+            "reason_codes": reasons, "matched_version": matched.get("version") if matched else None,
+            "canonical_category": matched.get("category") if matched else None,
+            "receipt_category": receipt.get("category_candidate"),
+            "sha256": receipt.get("sha256"), "byte_size": receipt.get("byte_size"),
+            "next_action": (
+                "Continue through existing canonical asset publish flow" if outcome == "ready_for_existing_publish_flow" else
+                "Collect and verify rights evidence, then complete moderation review" if outcome == "needs_evidence_or_review" else
+                "Keep excluded from public manifests; investigate or resolve conflict" if outcome in {"conflict", "rejected_or_blocked"} else
+                "Register through the existing quarantined receipt workflow after category evidence review"
+            ),
+        })
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="spatial.asset.reconcile",
+        outcome="allowed", resource_type="spatial_asset_registry", resource_id="batch",
+        metadata={"asset_count": len(asset_rows), "receipt_count": len(receipt_rows),
+                  "counts": counts, "truncated": len(asset_rows) >= limit or len(receipt_rows) >= limit},
+    )
+    return {
+        "operation": "spatial_asset_reconciliation", "idempotent": True,
+        "mutated_asset_lifecycle": False, "public_manifest_mutation": False,
+        "counts": counts, "assets_examined": len(asset_rows), "receipts_examined": len(receipt_rows),
+        "truncated": len(asset_rows) >= limit or len(receipt_rows) >= limit, "items": outcomes,
+        "policy": {
+            "eligible": "Rights and moderation must already be verified; proceed through existing publish flow.",
+            "pending": "Missing evidence/review stays pending and does not block other receipts.",
+            "excluded": "Rejected or conflicting assets remain excluded from public manifests.",
+            "theme": "Only the canonical Theme version publish flow can create a public manifest.",
+        },
+    }
