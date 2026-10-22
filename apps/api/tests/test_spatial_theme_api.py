@@ -272,7 +272,7 @@ def test_public_theme_manifest_rejects_asset_category_mismatch(monkeypatch):
     monkeypatch.setattr(theme_api, "_signed_asset_url", lambda *args, **kwargs: "https://example.supabase.co/signed.glb")
     response = TestClient(app).get("/v1/spatial/themes/crystal-city/manifest")
     assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "SPATIAL_ASSET_CATEGORY_MISMATCH"
+    assert response.json()["error"]["code"] == "SPATIAL_ASSET_CATEGORY_MISMATCH"
 
 
 
