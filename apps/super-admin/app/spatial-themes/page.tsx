@@ -18,7 +18,7 @@ type Theme = { theme_key: string; display_name: string; description: string; sta
 type ThemeVersion = { theme_key: string; version: number; status: string; manifest_sha256: string };
 type Coverage = { category: Category; asset_versions: number; ingest_receipts: number; published: number; approved: number; rights_verified: number; publication_ready: number };
 type UnregisteredReceipt = { asset_key: string; display_name: string; category_candidate: Category | null; category_mapping_status: string; lifecycle_status: string; sha256: string; byte_size: number; source_repo?: string; source_path?: string; source_url?: string; source_license_claim?: string; review_state?: string };
-type CoverageReport = { categories: Coverage[]; total_asset_versions: number; total_ingest_receipts: number; receipt_mapping_status_counts: Record<string, number>; unregistered_receipts: UnregisteredReceipt[]; integrity_mismatches: unknown[]; category_mismatches: unknown[]; truncated: boolean };
+type CoverageReport = { categories: Coverage[]; total_asset_versions: number; total_ingest_receipts: number; receipt_mapping_status_counts: Record<string, number>; unregistered_receipts: UnregisteredReceipt[]; integrity_mismatches: unknown[]; category_mismatches: unknown[]; notes: string[]; truncated: boolean };
 type ApiResult<T> = T & { detail?: { code?: string; message?: string }; message?: string };
 
 const inputStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid #334155", borderRadius: 8, background: "#0f172a", color: "#f8fafc", marginTop: 5 };
@@ -211,6 +211,7 @@ export default function SpatialThemeBuilderPage() {
         {!coverageReport ? <p style={muted}>Laporan coverage belum tersedia.</p> : <>
           <p style={muted}>Registry aset: {coverageReport.total_asset_versions} versi · ingest receipts: {coverageReport.total_ingest_receipts} · status mapping: {Object.entries(coverageReport.receipt_mapping_status_counts).map(([key, value]) => key + " " + value).join(" · ") || "belum tersedia"}.</p>
           <p style={muted}>Ketidakcocokan checksum/ukuran: {coverageReport.integrity_mismatches.length} · ketidakcocokan kategori: {coverageReport.category_mismatches.length} · laporan terpotong: {coverageReport.truncated ? "ya" : "tidak"}.</p>
+          {coverageReport.notes.map(note => <p key={note} style={muted}>{note}</p>)}
           {coverageReport.unregistered_receipts.length === 0 ? <p style={muted}>Semua receipt yang dibaca memiliki asset record kanonis.</p> : <div style={{ display: "grid", gap: 10 }}>
             <strong>{coverageReport.unregistered_receipts.length} receipt belum mempunyai asset record kanonis</strong>
             {coverageReport.unregistered_receipts.map(receipt => <article key={receipt.asset_key} style={{ border: "1px solid #7c2d12", borderRadius: 10, padding: 12 }}>
