@@ -30,3 +30,10 @@ assert.match(themeBuilder,/14 kategori/);
 assert.match(themeBuilder,/rights verified/);
 assert.doesNotMatch(themeBuilder,/SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 console.log("ENG-P06 operator security and ENG-P22 Theme Builder source smoke tests passed.");
+
+const receiptReconciliation = readFileSync(new URL("../app/spatial-receipts/page.tsx", import.meta.url), "utf8");
+assert.ok(receiptReconciliation.includes("/v1/admin/spatial/assets/category-coverage"), "Receipt reconciliation must load canonical registry coverage");
+assert.ok(receiptReconciliation.includes("/register"), "Receipt reconciliation must call the canonical registration API");
+assert.ok(receiptReconciliation.includes("Daftarkan sebagai karantina"), "Receipt registration must explicitly remain quarantined");
+assert.ok(receiptReconciliation.includes("URL bukti visual/semantik"), "Category assignment must capture evidence URI");
+assert.ok(receiptReconciliation.includes("Hak operator akan divalidasi ulang") || receiptReconciliation.includes("Hak operator tetap diverifikasi"), "Operator authorization must remain server-side");
