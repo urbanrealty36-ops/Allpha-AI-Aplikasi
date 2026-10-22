@@ -353,3 +353,51 @@ def test_orphan_receipt_registration_refuses_duplicate_registry_asset(monkeypatc
         ))
     assert error.value.status_code == 409
     assert error.value.detail["code"] == "SPATIAL_ASSET_RECEIPT_ALREADY_REGISTERED"
+
+
+def test_asset_reconciliation_is_repeatable_and_keeps_unverified_assets_pending(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    asset = {
+        "asset_key": "glb-pending-one", "version": 1, "category": "world",
+        "status": "test_only", "moderation_status": "pending",
+        "license_evidence": {"status": "unverified"}, "license_evidence_status": "unverified",
+        "sha256": "a" * 64, "byte_size": 128,
+    }
+    receipts = [
+        {"receipt_id": "receipt-1", "asset_key": "glb-pending-one", "display_name": "World.glb",
+         "category_candidate": "world", "category_mapping_status": "mapped",
+         "lifecycle_status": "quarantined", "sha256": "a" * 64, "byte_size": 128},
+        {"receipt_id": "receipt-2", "asset_key": "glb-orphan-two", "display_name": "Unknown.glb",
+         "category_candidate": None, "category_mapping_status": "unmapped",
+         "lifecycle_status": "quarantined", "sha256": "b" * 64, "byte_size": 256},
+        {"receipt_id": "receipt-3", "asset_key": "glb-conflict-three", "display_name": "Conflict.glb",
+         "category_candidate": "world", "category_mapping_status": "mapped",
+         "lifecycle_status": "quarantined", "sha256": "c" * 64, "byte_size": 512},
+    ]
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "spatial_asset_versions":
+            return [asset]
+        if method == "GET" and table == "spatial_asset_ingest_receipts":
+            return receipts
+        pytest.fail("unexpected store call: " + method + " " + table)
+
+    async def fake_audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(theme_api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(theme_api, "write_operator_audit", fake_audit)
+    first = asyncio.run(theme_api.reconcile_spatial_assets(
+        object(), 1000, {"id": "operator"}
+    ))
+    second = asyncio.run(theme_api.reconcile_spatial_assets(
+        object(), 1000, {"id": "operator"}
+    ))
+    assert first["counts"]["needs_evidence_or_review"] == 1
+    assert first["counts"]["unregistered"] == 1
+    assert first["counts"]["conflict"] == 1
+    assert first["items"] == second["items"]
+    assert first["mutated_asset_lifecycle"] is False
+    assert first["public_manifest_mutation"] is False
+    assert asset["status"] == "test_only"
+    assert asset["moderation_status"] == "pending"
