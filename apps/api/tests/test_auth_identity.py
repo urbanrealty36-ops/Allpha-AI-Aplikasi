@@ -83,7 +83,7 @@ def test_ready_returns_ready_only_when_auth_and_postgrest_respond(monkeypatch):
             return False
 
         async def get(self, url, **kwargs):
-            assert url.endswith(("/auth/v1/health", "/rest/v1/"))
+            assert url.endswith(("/auth/v1/health", "/rest/v1/agent_ownerships?select=agent_id&limit=0"))
             assert kwargs["headers"] == {"apikey": "sb_publishable_test_only"}
             return FakeResponse()
 
