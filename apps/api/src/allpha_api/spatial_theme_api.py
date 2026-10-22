@@ -262,6 +262,11 @@ async def get_theme_builder_category_coverage(
         "unregistered_receipts": unregistered,
         "integrity_mismatches": integrity_mismatches,
         "category_mismatches": category_mismatches,
+        "notes": [
+            "Receipt category candidates and mapped flags are ingest metadata, not independent semantic/visual category approval.",
+            "A receipt without a canonical asset version remains quarantined and is never auto-registered by this read-only report.",
+            "Only published, moderation-approved, rights-verified asset versions are eligible for public manifests.",
+        ],
         "truncated": len(records) >= 1000 or len(receipt_records) >= 1000,
     }
 
