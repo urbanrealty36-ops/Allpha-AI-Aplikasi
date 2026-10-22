@@ -41,7 +41,7 @@ class SceneErrorBoundary extends Component<{ children: ReactNode; onError: (erro
 function validateManifest(value: unknown): SceneManifest {
   if (!value || typeof value !== "object") throw new Error("Respons manifest bukan objek.");
   const m = value as Partial<SceneManifest>;
-  if (m.schema_version !== "1.0" || !m.scene_id || !m.world_id || !Array.isArray(m.objects) || m.objects.length < 1 || m.objects.length > 500) {
+  if (m.schema_version !== "1.0" || !m.scene_id || !m.world_id || !Array.isArray(m.objects) || m.objects.length > 500 || (m.objects.length === 0 && m.fallback_mode !== "2d")) {
     throw new Error("Versi atau struktur scene manifest tidak valid.");
   }
   const seen = new Set<string>();
@@ -111,6 +111,7 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
         <p>Fallback: gunakan daftar objek scene setelah manifest tersedia.</p>
       </div>}
       {!error && !manifest && <p role="status" style={{ padding: 16 }}>Memuat manifest scene…</p>}
+      {manifest && manifest.objects.length === 0 && manifest.fallback_mode === "2d" && <div role="status" style={{ padding: 16, border: "1px solid #d6dbe3", borderRadius: 12 }}><strong>Allpha Starter Universe</strong><p>Mode 2D aktif. Objek GLB akan tampil ketika tersedia pada manifest publik.</p></div>}
       {manifest && <p role="status" style={{ padding: 8 }}>
         {loadedIds.length < manifest.objects.length ? "Memuat objek " + loadedIds.length + "/" + manifest.objects.length : "Scene siap"} · {manifest.world_id} · v{manifest.scene_version}
       </p>}
