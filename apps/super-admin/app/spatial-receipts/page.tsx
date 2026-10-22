@@ -93,7 +93,7 @@ export default function SpatialReceiptReconciliationPage() {
   }
 
   function updateDraft(id: string, patch: Partial<Draft>) {
-    setDrafts((old) => ({ ...old, [id]: { category: "", rationale: "", evidence_uri: "", ...old[id], ...patch } }));
+    setDrafts((old) => { const current = old[id] ?? { category: "", rationale: "", evidence_uri: "" }; return { ...old, [id]: { ...current, ...patch } }; });
   }
 
   async function register(receipt: Receipt) {
