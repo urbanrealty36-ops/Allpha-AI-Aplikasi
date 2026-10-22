@@ -62,14 +62,14 @@ export default function SpatialThemeBuilderPage() {
     if (!session) return;
     setBusy(true); setError("");
     try {
-      const [themeData, coverageData, ...assetPages] = await Promise.all([
+      const [themeData, coverageData] = await Promise.all([
         call<{ items: Theme[] }>("/v1/admin/spatial/themes?limit=100&offset=0"),
         call<CoverageReport>("/v1/admin/spatial/assets/category-coverage"),
-        ...CATEGORIES.map(category =>
-          call<{ items: Asset[] }>("/v1/admin/spatial/assets?limit=100&offset=0&category=" + encodeURIComponent(category))
-            .then(result => result.items || [])
-        ),
       ]);
+      const assetPages = await Promise.all(CATEGORIES.map(category =>
+        call<{ items: Asset[] }>("/v1/admin/spatial/assets?limit=100&offset=0&category=" + encodeURIComponent(category))
+          .then(result => result.items || [])
+      ));
       setThemes(themeData.items || []);
       setCoverage(coverageData.categories || []);
       setCoverageReport(coverageData);
