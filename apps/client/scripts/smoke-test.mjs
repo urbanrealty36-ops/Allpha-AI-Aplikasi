@@ -66,6 +66,11 @@ for (const contract of [
 
 console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed and ENG-P15 Reels smoke tests passed.");
 
+const nativeWorldRenderer = readFileSync(new URL("../components/spatial/CanonicalNativeWorldRenderer.tsx", import.meta.url), "utf8");
+assert.ok(nativeWorldRenderer.includes("onSelect={setSelectedEntityId}"), "Native renderer must wire scene object selection");
+assert.ok(nativeWorldRenderer.includes("Interaksi ruang"), "Native renderer must expose spatial interaction details");
+assert.ok(nativeWorldRenderer.includes("accessibilityState={{ selected: object.entity_id === selectedEntityId }}"), "Native object list must expose accessible selection state");
+
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
 assert.ok(meshoptHelper.includes("loader.setMeshoptDecoder(MeshoptDecoder)"), "Native GLTF loader must register MeshoptDecoder");
