@@ -233,6 +233,7 @@ def test_category_coverage_reports_all_fourteen_categories_from_canonical_regist
     assert result["integrity_mismatches"] == []
     assert result["category_mismatches"] == []
     assert result["receipt_mapping_status_counts"] == {"mapped": 1, "unmapped": 1}
+    assert any("not independent semantic/visual" in note for note in result["notes"])
     assert result["truncated"] is False
 
 
