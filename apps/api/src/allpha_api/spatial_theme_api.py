@@ -196,7 +196,7 @@ async def get_theme_builder_category_coverage(
         "order": "asset_key.asc,version.asc", "limit": "1000",
     })
     receipts = await privileged_rest_request("GET", "spatial_asset_ingest_receipts", params={
-        "select": "asset_key,display_name,category_candidate,category_mapping_status,lifecycle_status,sha256,byte_size,source_repo,source_path,source_url,source_license_claim,review_state",
+        "select": "receipt_id,asset_key,display_name,category_candidate,category_mapping_status,lifecycle_status,sha256,byte_size,source_repo,source_path,source_url,source_license_claim,review_state",
         "order": "asset_key.asc", "limit": "1000",
     })
     records = rows or []
@@ -227,7 +227,7 @@ async def get_theme_builder_category_coverage(
         if not matching_assets:
             unregistered.append({
                 key: receipt.get(key) for key in (
-                    "asset_key", "display_name", "category_candidate", "category_mapping_status",
+                    "receipt_id", "asset_key", "display_name", "category_candidate", "category_mapping_status",
                     "lifecycle_status", "sha256", "byte_size", "source_repo", "source_path",
                     "source_url", "source_license_claim", "review_state",
                 )
