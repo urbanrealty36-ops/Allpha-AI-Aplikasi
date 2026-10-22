@@ -131,7 +131,8 @@ async def _validate_assets(manifest: ThemeManifestDraft, *, for_publish: bool = 
         if not is_published:
             warnings.append({"slot_key": slot.slot_key, "code": "ASSET_NOT_PUBLIC"})
         resolved.append({"slot": slot.model_dump(mode="json"), "asset": asset, "publication_ready": is_published})
-    missing_categories = sorted(set(CATEGORIES) - {slot.category for slot in manifest.slots})
+    resolved_categories = {item["slot"]["category"] for item in resolved}
+    missing_categories = sorted(set(CATEGORIES) - resolved_categories)
     if missing_categories:
         warnings.append({"code": "THEME_CATEGORY_COVERAGE_INCOMPLETE", "categories": ",".join(missing_categories)})
         if for_publish:
