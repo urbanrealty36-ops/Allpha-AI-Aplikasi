@@ -609,3 +609,112 @@ async def get_published_theme_manifest(
         raise
     except httpx.HTTPError as exc:
         raise _fail(503, "SPATIAL_THEME_CATALOG_UNAVAILABLE", "Katalog Theme sementara tidak tersedia.") from exc
+
+
+class OrphanReceiptRegistration(BaseModel):
+    """Operator-reviewed category assignment; never grants rights or publication approval."""
+    model_config = ConfigDict(extra="forbid")
+    category: Literal[
+        "universe", "galaxy", "world", "orbit", "capsule", "district", "booth",
+        "content-feed", "agent-character", "live-stage", "human-live",
+        "sticker-social", "animation", "navigation-fx",
+    ]
+    rationale: str = Field(min_length=12, max_length=1000)
+    evidence_uri: str = Field(min_length=8, max_length=2048, pattern=r"^https://")
+
+
+@router.post("/v1/admin/spatial/assets/receipts/{receipt_id}/register", status_code=201)
+async def register_orphan_asset_receipt(
+    payload: OrphanReceiptRegistration,
+    request: Request,
+    receipt_id: str = Path(min_length=36, max_length=36),
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Register an orphan receipt as quarantined after an operator records category evidence.
+
+    This action repairs registry linkage only. It deliberately leaves license evidence
+    unverified, moderation pending, and lifecycle quarantined; it cannot publish an asset.
+    """
+    receipts = await privileged_rest_request("GET", "spatial_asset_ingest_receipts", params={
+        "select": "receipt_id,asset_key,display_name,source_url,source_repo,source_path,source_license_claim,review_state,category_candidate,category_mapping_status,sha256,byte_size,storage_bucket,storage_path,lifecycle_status",
+        "receipt_id": f"eq.{receipt_id}", "limit": "1",
+    })
+    if not receipts:
+        raise _fail(404, "SPATIAL_ASSET_RECEIPT_NOT_FOUND", "Receipt aset tidak ditemukan.")
+    receipt = receipts[0]
+    existing = await privileged_rest_request("GET", "spatial_asset_versions", params={
+        "select": "asset_key,version,category,sha256,byte_size,status",
+        "asset_key": f"eq.{receipt['asset_key']}", "limit": "2",
+    })
+    if existing:
+        if any(row.get("sha256") == receipt.get("sha256") and row.get("byte_size") == receipt.get("byte_size") for row in existing):
+            raise _fail(409, "SPATIAL_ASSET_RECEIPT_ALREADY_REGISTERED", "Receipt sudah memiliki versi aset kanonis; jalankan rekonsiliasi, bukan registrasi ulang.")
+        raise _fail(409, "SPATIAL_ASSET_KEY_CONFLICT", "Asset key sudah digunakan oleh konten dengan checksum berbeda.")
+    if receipt.get("lifecycle_status") != "quarantined":
+        raise _fail(409, "SPATIAL_ASSET_RECEIPT_NOT_QUARANTINED", "Endpoint ini hanya menerima receipt orphan yang masih dikarantina.")
+    if receipt.get("category_mapping_status") == "mapped" and receipt.get("category_candidate") != payload.category:
+        raise _fail(409, "SPATIAL_ASSET_CATEGORY_REVIEW_CONFLICT", "Receipt sudah memiliki kategori kandidat yang berbeda; selesaikan konflik melalui review terpisah.")
+    provenance = {
+        "ingest_receipt_id": receipt["receipt_id"],
+        "source_repo": receipt["source_repo"],
+        "source_path": receipt["source_path"],
+        "category_review": {
+            "reviewed_by": operator["id"],
+            "rationale": payload.rationale.strip(),
+            "evidence_uri": payload.evidence_uri,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+    license_evidence = {
+        "status": "unverified",
+        "reason": "Registrasi receipt tidak membuktikan lisensi atau hak karya turunan.",
+        "source_license_claim": receipt.get("source_license_claim") or "unknown",
+    }
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.asset.receipt.register",
+        outcome="attempted", resource_type="spatial_asset_receipt", resource_id=receipt_id,
+        metadata={"asset_key": receipt["asset_key"], "category": payload.category, "sha256": receipt["sha256"]})
+    created = await privileged_rest_request("POST", "spatial_asset_versions", body={
+        "asset_key": receipt["asset_key"],
+        "version": 1,
+        "display_name": receipt["display_name"],
+        "category": payload.category,
+        "source_url": receipt["source_url"],
+        "provenance": provenance,
+        "license_evidence": license_evidence,
+        "sha256": receipt["sha256"],
+        "byte_size": receipt["byte_size"],
+        "mime_type": "model/gltf-binary",
+        "storage_bucket": receipt["storage_bucket"],
+        "storage_path": receipt["storage_path"],
+        "moderation_status": "pending",
+        "status": "quarantined",
+        "license_evidence_uri": None,
+        "license_evidence_status": "unverified",
+        "internal_preview_enabled": False,
+    }, prefer="return=representation")
+    if not isinstance(created, list) or not created:
+        raise _fail(503, "SPATIAL_ASSET_RECEIPT_REGISTER_FAILED", "Versi aset karantina tidak berhasil dibuat.")
+    updated_receipt = await privileged_rest_request("PATCH", "spatial_asset_ingest_receipts", params={
+        "receipt_id": f"eq.{receipt_id}",
+    }, body={
+        "category_candidate": payload.category,
+        "category_mapping_status": "mapped",
+        "review_state": "CATEGORY_MAPPED_RIGHTS_QUARANTINED",
+        "lifecycle_status": "quarantined",
+    }, prefer="return=representation")
+    if not isinstance(updated_receipt, list) or not updated_receipt:
+        await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.asset.receipt.register",
+            outcome="partial_failure", resource_type="spatial_asset_receipt", resource_id=receipt_id,
+            metadata={"asset_key": receipt["asset_key"], "reason": "receipt_update_failed"})
+        raise _fail(503, "SPATIAL_ASSET_RECEIPT_RECONCILIATION_PARTIAL", "Aset sudah terdaftar dalam status karantina, tetapi receipt belum tersinkron. Jalankan rekonsiliasi idempoten.")
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.asset.receipt.register",
+        outcome="allowed", resource_type="spatial_asset_receipt", resource_id=receipt_id,
+        metadata={"asset_key": receipt["asset_key"], "category": payload.category, "status": "quarantined"})
+    return {
+        "item": created[0],
+        "receipt": updated_receipt[0],
+        "publication": {
+            "status": "blocked",
+            "reason": "Hak penggunaan masih belum terverifikasi dan moderasi belum disetujui.",
+        },
+    }
