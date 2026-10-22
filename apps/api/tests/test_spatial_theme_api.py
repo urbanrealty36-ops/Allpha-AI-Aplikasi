@@ -273,3 +273,83 @@ def test_public_theme_manifest_rejects_asset_category_mismatch(monkeypatch):
     response = TestClient(app).get("/v1/spatial/themes/crystal-city/manifest")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "SPATIAL_ASSET_CATEGORY_MISMATCH"
+
+
+
+def test_orphan_receipt_registration_keeps_asset_quarantined_and_rights_unverified(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    receipt = {
+        "receipt_id": "d1d35d77-3fe4-462f-b801-31ad8a0636f8",
+        "asset_key": "glb-4f402c385e89eacd1fb1d5396dcb516451f73faa",
+        "display_name": "4f402c385e89_RkFTX0HX",
+        "source_url": "https://raw.githubusercontent.com/example/repo/main/asset.glb",
+        "source_repo": "example/repo", "source_path": "asset.glb",
+        "source_license_claim": "unknown", "review_state": "QUARANTINE_LICENSE",
+        "category_candidate": None, "category_mapping_status": "unmapped",
+        "sha256": "4" * 64, "byte_size": 1024, "storage_bucket": "allpha-spatial-assets",
+        "storage_path": "test-only-unmapped/asset.glb", "lifecycle_status": "quarantined",
+    }
+    writes = []
+
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "spatial_asset_ingest_receipts":
+            return [receipt]
+        if method == "GET" and table == "spatial_asset_versions":
+            return []
+        if method == "POST" and table == "spatial_asset_versions":
+            writes.append((table, body))
+            return [{**body, "asset_id": "00000000-0000-0000-0000-000000000001"}]
+        if method == "PATCH" and table == "spatial_asset_ingest_receipts":
+            writes.append((table, body))
+            return [{**receipt, **body}]
+        pytest.fail("unexpected store call: " + method + " " + table)
+
+    async def fake_audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(theme_api, "privileged_rest_request", fake_store)
+    monkeypatch.setattr(theme_api, "write_operator_audit", fake_audit)
+    payload = theme_api.OrphanReceiptRegistration(
+        category="agent-character",
+        rationale="Model diperiksa dan bentuknya sesuai karakter humanoid.",
+        evidence_uri="https://example.org/review/asset-visual-check",
+    )
+    result = asyncio.run(theme_api.register_orphan_asset_receipt(
+        payload, object(), receipt["receipt_id"], {"id": "00000000-0000-0000-0000-000000000002"}
+    ))
+    asset = writes[0][1]
+    assert asset["status"] == "quarantined"
+    assert asset["moderation_status"] == "pending"
+    assert asset["license_evidence"]["status"] == "unverified"
+    assert asset["license_evidence_status"] == "unverified"
+    assert asset["provenance"]["category_review"]["evidence_uri"] == payload.evidence_uri
+    assert writes[1][1]["category_mapping_status"] == "mapped"
+    assert result["publication"]["status"] == "blocked"
+
+
+def test_orphan_receipt_registration_refuses_duplicate_registry_asset(monkeypatch):
+    import allpha_api.spatial_theme_api as theme_api
+
+    async def fake_store(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "spatial_asset_ingest_receipts":
+            return [{
+                "receipt_id": "d1d35d77-3fe4-462f-b801-31ad8a0636f8",
+                "asset_key": "glb-example-asset", "sha256": "a" * 64, "byte_size": 128,
+                "lifecycle_status": "quarantined",
+            }]
+        if method == "GET" and table == "spatial_asset_versions":
+            return [{"asset_key": "glb-example-asset", "version": 1, "sha256": "a" * 64, "byte_size": 128}]
+        pytest.fail("unexpected store call: " + method + " " + table)
+
+    monkeypatch.setattr(theme_api, "privileged_rest_request", fake_store)
+    payload = theme_api.OrphanReceiptRegistration(
+        category="district", rationale="Pemetaan berdasarkan pemeriksaan visual model.",
+        evidence_uri="https://example.org/evidence",
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(theme_api.register_orphan_asset_receipt(
+            payload, object(), "d1d35d77-3fe4-462f-b801-31ad8a0636f8", {"id": "operator"}
+        ))
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "SPATIAL_ASSET_RECEIPT_ALREADY_REGISTERED"
