@@ -869,3 +869,161 @@ async def list_spatial_publication_candidates(
                     "license_evidence_status": "verified"},
         "next_action": "Create Theme slots from these exact asset_key/version pairs; never infer eligibility from file presence alone.",
     }
+
+
+@router.post("/v1/admin/spatial/themes/{theme_key}/versions/from-publication-candidates", status_code=201)
+async def create_theme_version_from_publication_candidates(
+    request: Request,
+    theme_key: str = Path(min_length=3, max_length=120, pattern=r"^[a-z0-9][a-z0-9._-]{2,119}$"),
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Create a draft Theme from exact, already-publication-ready canonical GLB versions."""
+    if not 1 <= limit <= 350:
+        raise _fail(422, "SPATIAL_THEME_CANDIDATE_LIMIT_INVALID", "Limit harus 1 sampai 350.")
+    themes = await privileged_rest_request("GET", "spatial_themes", params={
+        "select": "theme_key,status", "theme_key": f"eq.{theme_key}", "limit": "1",
+    })
+    if not themes:
+        raise _fail(404, "SPATIAL_THEME_NOT_FOUND", "Theme tidak ditemukan.")
+    if themes[0].get("status") == "retired":
+        raise _fail(409, "SPATIAL_THEME_RETIRED", "Theme retired tidak dapat menerima versi baru.")
+    candidates = await privileged_rest_request("GET", "spatial_asset_versions", params={
+        "select": "asset_id,asset_key,version,display_name,category,status,moderation_status,license_evidence,license_evidence_status,sha256,byte_size,storage_bucket,storage_path",
+        "status": "eq.published", "moderation_status": "eq.approved",
+        "license_evidence_status": "eq.verified",
+        "order": "category.asc,asset_key.asc,version.desc", "limit": str(limit),
+    })
+    chosen: dict[str, dict[str, Any]] = {}
+    for asset in candidates if isinstance(candidates, list) else []:
+        evidence = asset.get("license_evidence")
+        if (asset.get("category") not in CATEGORIES or not isinstance(evidence, dict)
+                or evidence.get("status") != "verified"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(asset.get("sha256") or ""))
+                or not isinstance(asset.get("byte_size"), int) or asset["byte_size"] <= 0
+                or not asset.get("storage_bucket") or not asset.get("storage_path")):
+            continue
+        chosen.setdefault(asset["category"], asset)
+    if not chosen:
+        raise _fail(409, "SPATIAL_THEME_NO_PUBLICATION_CANDIDATES",
+                    "Belum ada GLB yang memenuhi status publikasi, moderasi, hak, checksum, dan Storage.")
+    versions = await privileged_rest_request("GET", "spatial_theme_versions", params={
+        "select": "version", "theme_key": f"eq.{theme_key}", "order": "version.desc", "limit": "1",
+    })
+    version = int(versions[0]["version"]) + 1 if versions else 1
+    import math
+    slots = []
+    for index, category in enumerate(CATEGORIES):
+        asset = chosen.get(category)
+        if not asset:
+            continue
+        angle = (2 * math.pi * index) / len(CATEGORIES)
+        radius = 4.0 if category in {"universe", "world", "district"} else 2.0
+        slots.append({
+            "slot_key": f"{category}-main", "category": category,
+            "asset_key": asset["asset_key"], "asset_version": asset["version"],
+            "transform": {"position": [round(radius * math.cos(angle), 4), 0.0, round(radius * math.sin(angle), 4)],
+                          "rotation": [0.0, round(-angle, 4), 0.0], "scale": [1.0, 1.0, 1.0]},
+            "required": True,
+        })
+    manifest = ThemeManifestDraft(
+        theme_key=theme_key,
+        display_name=theme_key.replace("-", " ").replace("_", " ").title(),
+        description="Generated from exact publication-ready canonical GLB versions; review before publishing.",
+        fallback_mode="2d", slots=slots,
+    )
+    validation = await _validate_assets(manifest)
+    digest = _canonical_digest(manifest)
+    rows = await privileged_rest_request("POST", "spatial_theme_versions", body={
+        "theme_key": theme_key, "version": version, "schema_version": "1.0",
+        "manifest": manifest.model_dump(mode="json"), "manifest_sha256": digest,
+        "status": "draft", "created_by": operator["id"],
+    }, prefer="return=representation")
+    if not isinstance(rows, list) or not rows:
+        raise _fail(503, "SPATIAL_THEME_VERSION_CREATE_FAILED", "Versi Theme tidak dapat disimpan.")
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.theme.version.from_candidates",
+        outcome="allowed", resource_type="spatial_theme_version", resource_id=f"{theme_key}:{version}",
+        metadata={"manifest_sha256": digest, "slot_count": len(slots), "categories": [slot["category"] for slot in slots]})
+    return {"item": rows[0], "status": "draft", "publication_requires_normal_lifecycle": True,
+            "candidate_count": len(slots), "missing_categories": sorted(set(CATEGORIES) - set(chosen)),
+            "validation": {key: value for key, value in validation.items() if key != "resolved"},
+            "next_steps": ["validate", "approve", "publish"]}
+
+
+@router.get("/v1/admin/spatial/agents/character-skill-mapping-candidates")
+async def list_agent_character_skill_mapping_candidates(
+    request: Request,
+    limit: int = 100,
+    offset: int = 0,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    """Resolve bot/archetype/asset/immutable skill-version links without auto-activating bots."""
+    if not 1 <= limit <= 500 or offset < 0:
+        raise _fail(422, "SPATIAL_AGENT_MAPPING_PAGINATION_INVALID", "Pagination mapping tidak valid.")
+    bots = await privileged_rest_request("GET", "official_agent_bots", params={
+        "select": "id,display_name,character_archetype_key,character_asset_key,agent_id,status,skill_version_id,skill_version_number,skill_version_digest,asset_validation_status",
+        "order": "character_archetype_key.asc,id.asc", "limit": str(limit), "offset": str(offset),
+    })
+    assets = await privileged_rest_request("GET", "spatial_asset_versions", params={
+        "select": "asset_id,asset_key,version,category,status,moderation_status,license_evidence,license_evidence_status,sha256,byte_size,storage_bucket,storage_path,capabilities,compatibility",
+        "category": "eq.agent-character", "order": "asset_key.asc,version.desc", "limit": "1000",
+    })
+    skill_versions = await privileged_rest_request("GET", "agent_skill_versions", params={
+        "select": "id,skill_id,agent_id,version,snapshot,created_at", "order": "agent_id.asc,version.desc", "limit": "1000",
+    })
+    skill_by_agent: dict[str, list[dict[str, Any]]] = {}
+    for skill_version in skill_versions if isinstance(skill_versions, list) else []:
+        if skill_version.get("agent_id"):
+            skill_by_agent.setdefault(str(skill_version["agent_id"]), []).append(skill_version)
+    asset_rows = assets if isinstance(assets, list) else []
+    output = []
+    counts = {"fully_linked": 0, "missing_character_asset": 0, "missing_skill_version": 0,
+              "asset_not_publication_ready": 0, "archetype_mismatch": 0}
+    for bot in bots if isinstance(bots, list) else []:
+        archetype = str(bot.get("character_archetype_key") or "")
+        exact_key = next((asset for asset in asset_rows if asset.get("asset_key") == bot.get("character_asset_key")), None)
+        compatible = []
+        for asset in asset_rows:
+            metadata = json.dumps({"capabilities": asset.get("capabilities") or [], "compatibility": asset.get("compatibility") or {}}, sort_keys=True)
+            if archetype and archetype in metadata:
+                compatible.append(asset)
+        chosen = exact_key or (compatible[0] if len(compatible) == 1 else None)
+        skill_match = next((sv for sv in skill_by_agent.get(str(bot.get("agent_id") or ""), [])
+                            if bot.get("skill_version_id") and sv.get("id") == bot.get("skill_version_id")), None)
+        if not chosen:
+            reason = "missing_character_asset"
+        elif (chosen.get("status") != "published" or chosen.get("moderation_status") != "approved"
+              or chosen.get("license_evidence_status") != "verified"
+              or not isinstance(chosen.get("license_evidence"), dict)
+              or chosen["license_evidence"].get("status") != "verified"
+              or not re.fullmatch(r"[a-f0-9]{64}", str(chosen.get("sha256") or ""))
+              or not isinstance(chosen.get("byte_size"), int) or chosen["byte_size"] <= 0
+              or not chosen.get("storage_bucket") or not chosen.get("storage_path")):
+            reason = "asset_not_publication_ready"
+        elif not skill_match or not bot.get("skill_version_digest") or not bot.get("skill_version_number"):
+            reason = "missing_skill_version"
+        elif skill_match.get("agent_id") != bot.get("agent_id") or skill_match.get("version") != bot.get("skill_version_number"):
+            reason = "missing_skill_version"
+        elif archetype not in json.dumps({"capabilities": chosen.get("capabilities") or [], "compatibility": chosen.get("compatibility") or {}}, sort_keys=True):
+            reason = "archetype_mismatch"
+        else:
+            reason = "fully_linked"
+        counts[reason] += 1
+        output.append({
+            "bot_id": bot.get("id"), "display_name": bot.get("display_name"),
+            "character_archetype_key": archetype or None,
+            "character_asset_key": chosen.get("asset_key") if chosen else bot.get("character_asset_key"),
+            "asset_version": chosen.get("version") if chosen else None,
+            "asset_publication_ready": reason == "fully_linked",
+            "agent_id": bot.get("agent_id"), "skill_version_id": skill_match.get("id") if skill_match else bot.get("skill_version_id"),
+            "skill_version_number": skill_match.get("version") if skill_match else bot.get("skill_version_number"),
+            "skill_version_digest": bot.get("skill_version_digest"),
+            "mapping_status": reason, "bot_status_unchanged": True,
+        })
+    await write_operator_audit(request, actor_user_id=operator["id"], action="spatial.agent.mapping.candidates",
+        outcome="allowed", resource_type="official_agent_bots", resource_id="batch",
+        metadata={"bot_count": len(output), "counts": counts})
+    return {"source_of_truth": ["official_agent_bots", "spatial_asset_versions", "agent_skill_versions"],
+            "counts": counts, "items": output, "limit": limit, "offset": offset,
+            "activation_performed": False,
+            "policy": "Only archetype-compatible published rights-verified character assets and the matching immutable Skill Version can be fully linked."}
