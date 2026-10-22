@@ -33,7 +33,7 @@ class SceneErrorBoundary extends Component<{ children: ReactNode; onError: (erro
 function validateManifest(value: unknown): SceneManifest {
   if (!value || typeof value !== "object") throw new Error("Respons manifest bukan objek.");
   const m = value as Partial<SceneManifest>;
-  if (m.schema_version !== "1.0" || !m.scene_id || !m.world_id || !Array.isArray(m.objects) || m.objects.length < 1 || m.objects.length > 500) {
+  if (m.schema_version !== "1.0" || !m.scene_id || !m.world_id || !Array.isArray(m.objects) || m.objects.length > 500 || (m.objects.length === 0 && m.fallback_mode !== "2d")) {
     throw new Error("Versi atau struktur scene manifest tidak valid.");
   }
   const seen = new Set<string>();
@@ -108,8 +108,8 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
         <Text accessibilityRole="progressbar" style={{ padding: 16 }}>Memuat manifest scene…</Text>
       ) : (
         <>
-          <Text style={{ padding: 8 }}>{loadedIds.length < manifest.objects.length ? "Memuat objek " + loadedIds.length + "/" + manifest.objects.length : "Scene siap"} · {manifest.world_id} · v{manifest.scene_version}</Text>
-          <View style={{ height: 360, width: "100%" }}>
+          <Text style={{ padding: 8 }}>{manifest.objects.length === 0 && manifest.fallback_mode === "2d" ? "Theme fallback 2D aktif" : loadedIds.length < manifest.objects.length ? "Memuat objek " + loadedIds.length + "/" + manifest.objects.length : "Scene siap"} · {manifest.world_id} · v{manifest.scene_version}</Text>
+          {manifest.objects.length > 0 && <View style={{ height: 360, width: "100%" }}>
             <SceneErrorBoundary key={manifest.scene_id + ":" + manifest.scene_version + ":" + retry} onError={(cause) => setError(cause.message || "Renderer gagal memuat scene.")}>
               <Canvas camera={{ position: [8, 6, 8], fov: 50 }}>
                 <ambientLight intensity={1.3} />
@@ -120,7 +120,8 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
                 </Suspense>
               </Canvas>
             </SceneErrorBoundary>
-          </View>
+          </View>}
+          {manifest.objects.length === 0 && manifest.fallback_mode === "2d" && <Text style={{ padding: 16 }}>Allpha Starter Universe aktif dalam mode 2D. Objek GLB akan tampil ketika tersedia pada manifest publik.</Text>}
           {manifest.fallback_mode === "2d" && manifest.objects.map((object) => (
             <Text key={object.entity_id} style={{ paddingHorizontal: 12, paddingVertical: 4 }}>{object.category} · {object.asset_id} v{object.asset_version}</Text>
           ))}
