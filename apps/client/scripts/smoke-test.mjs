@@ -70,6 +70,10 @@ const nativeWorldRenderer = readFileSync(new URL("../components/spatial/Canonica
 assert.ok(nativeWorldRenderer.includes("onSelect={setSelectedEntityId}"), "Native renderer must wire scene object selection");
 assert.ok(nativeWorldRenderer.includes("Interaksi ruang"), "Native renderer must expose spatial interaction details");
 assert.ok(nativeWorldRenderer.includes("accessibilityState={{ selected: object.entity_id === selectedEntityId }}"), "Native object list must expose accessible selection state");
+assert.ok(nativeWorldRenderer.includes('m.coordinate_system !== "right-handed-y-up"'), "Native renderer must validate scene coordinate system");
+assert.ok(nativeWorldRenderer.includes("Number.isSafeInteger(m.scene_version)"), "Native renderer must validate scene version");
+assert.ok(nativeWorldRenderer.includes("!object.asset_id.trim()"), "Native renderer must reject missing asset identity");
+assert.ok(nativeWorldRenderer.includes("object.asset_version < 1"), "Native renderer must reject invalid asset versions");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
