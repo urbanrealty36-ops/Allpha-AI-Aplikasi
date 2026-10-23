@@ -170,6 +170,8 @@ assert.ok(worldRenderer.includes('m.coordinate_system !== "right-handed-y-up"'),
 assert.ok(worldRenderer.includes("Number.isSafeInteger(m.scene_version)"), "Web renderer must validate scene version");
 assert.ok(worldRenderer.includes("!object.asset_id.trim()"), "Web renderer must reject missing asset identity");
 assert.ok(worldRenderer.includes("object.asset_version < 1"), "Web renderer must reject invalid asset versions");
+assert.ok(worldRenderer.includes("clear(GLTFLoader, object.asset_url)"), "Web renderer retry must clear cached GLTFLoader failures");
+assert.ok(glbPreview.includes("clear(GLTFLoader, asset.asset_url)"), "Web GLB preview retry must clear cached GLTFLoader failures");
 console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
 
 const spatialThemeCatalog = readFileSync(new URL("../app/spatial/themes/page.tsx", import.meta.url), "utf8");

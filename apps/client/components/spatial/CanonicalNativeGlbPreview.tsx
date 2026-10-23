@@ -1,6 +1,6 @@
 import React, { Component, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { Canvas, useLoader } from "@react-three/fiber/native";
+import { Canvas, clear, useLoader } from "@react-three/fiber/native";
 import { Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
@@ -71,7 +71,7 @@ export function CanonicalNativeGlbPreview({ asset, style }: Props) {
       {error ? (
         <View accessibilityRole="alert">
           <Text>Aset 3D gagal dimuat: {error}</Text>
-          <Pressable onPress={() => { setError(""); setLoaded(false); setRetry((n) => n + 1); }} accessibilityRole="button">
+          <Pressable onPress={() => { clear(GLTFLoader, asset.asset_url); setError(""); setLoaded(false); setRetry((n) => n + 1); }} accessibilityRole="button">
             <Text>Coba lagi</Text>
           </Pressable>
           <Text>Mode fallback: informasi aset 2D tersedia.</Text>
@@ -79,7 +79,7 @@ export function CanonicalNativeGlbPreview({ asset, style }: Props) {
       ) : (
         <View style={{ height: 280, width: "100%" }}>
           <RenderErrorBoundary key={asset.asset_url + ":" + retry} onError={(cause) => setError(cause.message || "Dekode GLB gagal.")}>
-            <Canvas camera={{ position: [3, 2, 3], fov: 45 }}>
+            <Canvas camera={{ position: [3, 2, 3], fov: 45 }} dpr={1}>
               <ambientLight intensity={1.6} />
               <directionalLight position={[4, 6, 5]} intensity={2} />
               <Suspense fallback={null}>
