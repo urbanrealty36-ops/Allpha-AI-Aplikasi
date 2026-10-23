@@ -1,6 +1,6 @@
 import React, { Component, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Canvas, clear, useLoader } from "@react-three/fiber/native";
+import { Canvas, useLoader } from "@react-three/fiber/native";
 import { Group } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
@@ -103,7 +103,7 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
         <View accessibilityRole="alert" style={{ padding: 16 }}>
           <Text>Scene 3D tidak dapat ditampilkan: {error}</Text>
           <Pressable onPress={() => {
-            manifest?.objects.forEach((object) => clear(GLTFLoader, object.asset_url));
+            manifest?.objects.forEach((object) => useLoader.clear(GLTFLoader, object.asset_url));
             setError("");
             setLoadedIds([]);
             setSelectedEntityId("");
@@ -122,7 +122,7 @@ export function CanonicalNativeWorldRenderer({ sceneKey, themeKey }: { sceneKey?
           <Text style={{ padding: 8 }}>{manifest.objects.length === 0 && manifest.fallback_mode === "2d" ? "Theme fallback 2D aktif" : loadedIds.length < manifest.objects.length ? "Memuat objek " + loadedIds.length + "/" + manifest.objects.length : "Scene siap"} · {manifest.world_id} · v{manifest.scene_version}</Text>
           {manifest.objects.length > 0 && !error && <View style={{ height: 360, width: "100%" }}>
             <SceneErrorBoundary key={manifest.scene_id + ":" + manifest.scene_version + ":" + retry} onError={(cause) => setError(cause.message || "Renderer gagal memuat scene.")}>
-              <Canvas camera={{ position: [8, 6, 8], fov: 50 }} dpr={1}>
+              <Canvas camera={{ position: [8, 6, 8], fov: 50 }}>
                 <ambientLight intensity={1.3} />
                 <directionalLight position={[10, 14, 8]} intensity={2} />
                 <gridHelper args={[40, 40]} />

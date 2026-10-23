@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Canvas, clear, useLoader } from "@react-three/fiber";
+import { Canvas, useLoader } from "@react-three/fiber";
 import { Group } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
@@ -103,7 +103,7 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
     return () => controller.abort();
   }, [sceneKey, themeKey, base, retry]);
 
-  const retryScene = () => { manifest?.objects.forEach((object) => clear(GLTFLoader, object.asset_url)); setError(""); setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setRetry((value) => value + 1); };
+  const retryScene = () => { manifest?.objects.forEach((object) => useLoader.clear(GLTFLoader, object.asset_url)); setError(""); setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setRetry((value) => value + 1); };
   const selectedObject = manifest?.objects.find((object) => object.entity_id === selectedEntityId) || null;
   return (
     <section aria-label="Allpha World Renderer" style={{ width: "100%" }}>

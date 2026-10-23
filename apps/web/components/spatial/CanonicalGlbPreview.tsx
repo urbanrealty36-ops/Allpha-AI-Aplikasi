@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Canvas, clear, useLoader } from "@react-three/fiber";
+import { Canvas, useLoader } from "@react-three/fiber";
 import { Box3, Group, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
@@ -72,7 +72,7 @@ export function CanonicalGlbPreview({ asset, className, label = "Pratinjau aset 
       {error && <div role="alert" style={{ padding: 12 }}>
         <p>Aset 3D gagal dimuat.</p>
         <p>{error}</p>
-        <button type="button" onClick={() => { clear(GLTFLoader, asset.asset_url); setError(""); setLoaded(false); setRetry((n) => n + 1); }}>Coba lagi</button>
+        <button type="button" onClick={() => { useLoader.clear(GLTFLoader, asset.asset_url); setError(""); setLoaded(false); setRetry((n) => n + 1); }}>Coba lagi</button>
       </div>}
       {!error && <div style={{ height: 320, width: "100%" }}>
         <RenderErrorBoundary key={asset.asset_url + ":" + retry} onError={(cause) => setError(cause.message || "Dekode GLB gagal.")}>

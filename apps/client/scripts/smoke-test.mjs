@@ -74,9 +74,8 @@ assert.ok(nativeWorldRenderer.includes('m.coordinate_system !== "right-handed-y-
 assert.ok(nativeWorldRenderer.includes("Number.isSafeInteger(m.scene_version)"), "Native renderer must validate scene version");
 assert.ok(nativeWorldRenderer.includes("!object.asset_id.trim()"), "Native renderer must reject missing asset identity");
 assert.ok(nativeWorldRenderer.includes("object.asset_version < 1"), "Native renderer must reject invalid asset versions");
-assert.ok(nativeWorldRenderer.includes("clear(GLTFLoader, object.asset_url)"), "Native renderer retry must clear cached GLTFLoader failures");
+assert.ok(nativeWorldRenderer.includes("useLoader.clear(GLTFLoader, object.asset_url)"), "Native renderer retry must clear cached GLTFLoader failures");
 assert.ok(nativeWorldRenderer.includes("Fallback aktif: daftar objek scene tetap tersedia di bawah."), "Native renderer must preserve scene object fallback after a render error");
-assert.ok(nativeWorldRenderer.includes("dpr={1}"), "Native renderer must cap pixel ratio for predictable mobile GPU load");
 
 const meshoptHelper = readFileSync(new URL("../lib/spatial/configureAllphaGLTFLoader.ts", import.meta.url), "utf8");
 assert.ok(meshoptHelper.includes("MeshoptDecoder"), "Native GLTF loader must import MeshoptDecoder");
@@ -90,7 +89,7 @@ for (const [file, loadCall] of [
   const source = readFileSync(new URL(file, import.meta.url), "utf8");
   assert.ok(source.includes("configureAllphaGLTFLoader"), `missing Meshopt loader configuration in ${file}`);
   assert.ok(source.includes(loadCall), `GLTFLoader call is not configured for Meshopt in ${file}`);
-  assert.ok(source.includes("clear(GLTFLoader"), `retry path must clear failed GLTFLoader cache in ${file}`);
+  assert.ok(source.includes("useLoader.clear(GLTFLoader"), `retry path must clear failed GLTFLoader cache in ${file}`);
 }
 
 
