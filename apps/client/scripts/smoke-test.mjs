@@ -91,7 +91,6 @@ for (const [file, loadCall] of [
 
 
 const nativeThemeCatalog = readFileSync(new URL("../components/spatial/SpatialThemeCatalogScreen.tsx", import.meta.url), "utf8");
-const nativeWorldRenderer = readFileSync(new URL("../components/spatial/CanonicalNativeWorldRenderer.tsx", import.meta.url), "utf8");
 assert.ok(app.includes("SpatialThemeCatalogScreen"), "Native app must expose the canonical Theme catalog screen");
 assert.ok(app.includes("ENG-P22 · THEME BUILDER / GLB MANIFEST"), "Native app must place the Theme catalog in the product surface");
 assert.ok(nativeThemeCatalog.includes("/v1/spatial/themes?limit=100&offset=0"), "Native Theme catalog must use the public FastAPI catalog");
