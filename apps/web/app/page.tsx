@@ -86,11 +86,18 @@ export default function HomePage() {
       if (mode === "signup") {
         const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { display_name: displayName.trim(), locale: "id-ID" } } });
         if (authError) throw authError;
-        if (!data.session) setMessage("Akun dibuat. Periksa email untuk menyelesaikan konfirmasi sebelum masuk.");
-        else setMessage("Akun berhasil dibuat.");
+        if (!data.session) {
+          setMessage("Akun dibuat. Periksa email untuk menyelesaikan konfirmasi sebelum masuk.");
+        } else {
+          setMessage("Akun berhasil dibuat. Menyiapkan onboarding Allpha…");
+          window.location.assign("/start");
+          return;
+        }
       } else {
         const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (authError) throw authError;
+        window.location.assign("/start");
+        return;
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Autentikasi gagal."); }
     finally { setSaving(false); }
