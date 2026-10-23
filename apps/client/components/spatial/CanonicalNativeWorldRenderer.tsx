@@ -33,15 +33,15 @@ class SceneErrorBoundary extends Component<{ children: ReactNode; onError: (erro
 function validateManifest(value: unknown): SceneManifest {
   if (!value || typeof value !== "object") throw new Error("Respons manifest bukan objek.");
   const m = value as Partial<SceneManifest>;
-  if (m.schema_version !== "1.0" || !m.scene_id || !m.world_id || !Array.isArray(m.objects) || m.objects.length > 500 || (m.objects.length === 0 && m.fallback_mode !== "2d")) {
+  if (m.schema_version !== "1.0" || typeof m.scene_id !== "string" || !m.scene_id.trim() || typeof m.world_id !== "string" || !m.world_id.trim() || !Number.isSafeInteger(m.scene_version) || (m.scene_version ?? 0) < 1 || m.coordinate_system !== "right-handed-y-up" || m.units !== "meters" || !["2d", "low_detail"].includes(m.fallback_mode as string) || !Array.isArray(m.objects) || m.objects.length > 500 || (m.objects.length === 0 && m.fallback_mode !== "2d")) {
     throw new Error("Versi atau struktur scene manifest tidak valid.");
   }
   const seen = new Set<string>();
   for (const object of m.objects) {
-    if (!object?.entity_id || seen.has(object.entity_id)) throw new Error("ID objek scene kosong atau duplikat.");
+    if (!object || typeof object !== "object" || typeof object.entity_id !== "string" || !object.entity_id.trim() || seen.has(object.entity_id) || typeof object.asset_id !== "string" || !object.asset_id.trim() || !Number.isSafeInteger(object.asset_version) || object.asset_version < 1) throw new Error("ID entity/aset kosong, versi aset tidak valid, atau ID objek duplikat.");
     seen.add(object.entity_id);
     if (!CATEGORY_KEYS.includes(object.category) || !["approved", "published"].includes(object.publication_status)) throw new Error("Kategori atau status aset tidak diizinkan.");
-    if (!/^https:\/\//i.test(object.asset_url) || !/^[a-f0-9]{64}$/i.test(object.sha256) || !Number.isSafeInteger(object.byte_size) || object.byte_size <= 0) throw new Error("Referensi atau integritas aset tidak valid.");
+    if (!/^https:\/\/[^\s]+$/i.test(object.asset_url) || !/^[a-f0-9]{64}$/i.test(object.sha256) || !Number.isSafeInteger(object.byte_size) || object.byte_size <= 0) throw new Error("Referensi atau integritas aset tidak valid.");
     for (const vector of [object.position, object.rotation, object.scale]) {
       if (!Array.isArray(vector) || vector.length !== 3 || vector.some((n) => !Number.isFinite(n))) throw new Error("Koordinat scene tidak valid.");
     }
