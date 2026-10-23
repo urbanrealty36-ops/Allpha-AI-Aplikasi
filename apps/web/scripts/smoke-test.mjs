@@ -166,6 +166,10 @@ assert.ok(worldRenderer.includes("configureAllphaGLTFLoader"), "Web scene render
 assert.ok(worldRenderer.includes("onSelect={setSelectedEntityId}"), "Web renderer must wire scene object selection");
 assert.ok(worldRenderer.includes("aria-label=\"Spatial interactions\""), "Web renderer must expose accessible spatial interaction details");
 assert.ok(worldRenderer.includes("aria-pressed={object.entity_id === selectedEntityId}"), "Web object list must expose selection state");
+assert.ok(worldRenderer.includes('m.coordinate_system !== "right-handed-y-up"'), "Web renderer must validate scene coordinate system");
+assert.ok(worldRenderer.includes("Number.isSafeInteger(m.scene_version)"), "Web renderer must validate scene version");
+assert.ok(worldRenderer.includes("!object.asset_id.trim()"), "Web renderer must reject missing asset identity");
+assert.ok(worldRenderer.includes("object.asset_version < 1"), "Web renderer must reject invalid asset versions");
 console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
 
 const spatialThemeCatalog = readFileSync(new URL("../app/spatial/themes/page.tsx", import.meta.url), "utf8");
