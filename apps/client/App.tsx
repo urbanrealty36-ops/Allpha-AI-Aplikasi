@@ -848,16 +848,20 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
     } catch (e) { setError(e instanceof Error ? e.message : "Permintaan penonaktifan gagal."); }
     finally { setBusy(false); }
   }
-  async function loadAgents() {
+  const loadAgents = useCallback(async () => {
     setAgentLoading(true); setError("");
     try {
       const response = await fetch(apiBase + "/v1/agents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
       const body = await response.json();
-      if (!response.ok) throw new Error(body?.error?.message || "Daftar Agent tidak dapat dimuat.");
+      if (!response.ok) throw new Error(body?.error?.message || body?.detail?.message || "Daftar Agent tidak dapat dimuat.");
       setAgents(Array.isArray(body.items) ? body.items : []);
     } catch (e) { setError(e instanceof Error ? e.message : "Daftar Agent tidak dapat dimuat."); }
     finally { setAgentLoading(false); }
-  }
+  }, [session.access_token]);
+
+  useEffect(() => {
+    if (tab === "agents") void loadAgents();
+  }, [tab, loadAgents]);
   useEffect(() => {
     let active = true;
     void Promise.all([
