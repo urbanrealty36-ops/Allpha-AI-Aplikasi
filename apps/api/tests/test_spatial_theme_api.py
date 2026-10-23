@@ -197,7 +197,7 @@ def test_optional_missing_asset_is_warning_not_blocking_required_slot(monkeypatc
     assert any(warning["code"] == "ASSET_VERSION_NOT_FOUND" for warning in result["warnings"])
     publish_result = asyncio.run(theme_api._validate_assets(manifest, for_publish=True))
     assert publish_result["valid"] is True
-    assert any(error["code"] == "THEME_CATEGORY_COVERAGE_INCOMPLETE" for error in publish_result["errors"])
+    assert any(warning["code"] == "THEME_CATEGORY_COVERAGE_INCOMPLETE" for warning in publish_result["warnings"])
 
 
 def test_category_coverage_reports_all_fourteen_categories_from_canonical_registry(monkeypatch):
