@@ -125,10 +125,10 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 
 function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
 
-function Profile({ session }: { session: Session }) {
+function Profile({ session, initialTab = "profile" }: { session: Session; initialTab?: "profile" | "agents" | "feed" }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities">(initialTab);
   const [agents, setAgents] = useState<AgentIdentity[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [contentItems, setContentItems] = useState<NativeContentItem[]>([]);
@@ -1465,10 +1465,61 @@ function Profile({ session }: { session: Session }) {
 }
 
 function Navigator() {
-  const [session, setSession] = useState<Session | null>(null); const [ready, setReady] = useState(false);
-  useEffect(() => { let active = true; if (!supabase) { setReady(true); return; } void supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); setReady(true); } }); const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); }); return () => { active = false; data.subscription.unsubscribe(); }; }, []);
-  if (!ready) return <View style={s.loading}><ActivityIndicator size="large" color="#A5B4FC"/><Text style={s.muted}>Menyiapkan sesi aman…</Text></View>;
-  return <NavigationContainer><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <Stack.Screen name="Profile">{() => <Profile session={session}/>}</Stack.Screen> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
+  const [journeyReady, setJourneyReady] = useState(false);
+  const [journeyTab, setJourneyTab] = useState<"agents" | "feed">("feed");
+
+  useEffect(() => {
+    let active = true;
+    const resolveJourney = async (next: Session | null) => {
+      if (!active) return;
+      setSession(next);
+      if (!next) {
+        setJourneyTab("feed");
+        setJourneyReady(true);
+        return;
+      }
+      setJourneyReady(false);
+      try {
+        const response = await fetch(apiBase + "/v1/agents", {
+          headers: { Authorization: "Bearer " + next.access_token, Accept: "application/json" },
+        });
+        if (!response.ok) {
+          setJourneyTab("agents");
+        } else {
+          const payload = await response.json() as { items?: AgentIdentity[] };
+          setJourneyTab(Array.isArray(payload.items) && payload.items.length > 0 ? "feed" : "agents");
+        }
+      } catch {
+        // Fail closed into the Agent screen; its own API-backed loader shows the actionable error.
+        setJourneyTab("agents");
+      }
+      if (active) setJourneyReady(true);
+    };
+
+    if (!supabase) {
+      setReady(true);
+      setJourneyReady(true);
+      return () => { active = false; };
+    }
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setReady(true);
+        setJourneyReady(true);
+        return;
+      }
+      void resolveJourney(data.session).finally(() => { if (active) setReady(true); });
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      void resolveJourney(next);
+    });
+    return () => { active = false; data.subscription.unsubscribe(); };
+  }, []);
+
+  if (!ready || (session && !journeyReady)) return <View style={s.loading}><ActivityIndicator size="large" color="#A5B4FC"/><Text style={s.muted}>Menyiapkan sesi dan memeriksa identitas AI Agent…</Text></View>;
+  return <NavigationContainer><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <Stack.Screen name="Profile">{() => <Profile session={session} initialTab={journeyTab}/>}</Stack.Screen> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
