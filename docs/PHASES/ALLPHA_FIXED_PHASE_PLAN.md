@@ -5,6 +5,8 @@
 **Branch:** `main` · **Monorepo:** `urbanrealty36-ops/Allpha-AI-Aplikasi`  
 **Last reconciled:** 2026-10-21
 
+**Architecture decision update (2026-10-23):** Accepted ADR [`ADR-0003`](../ADR/ADR-0003-reference-ui-ux-parity-pwa-web.md) authorizes `apps/web` to be delivered as an installable PWA as a narrow exception to the Master PRD's blanket PWA exclusion. The reference repository `urbanrealty36-ops/Allpha-Front-End-UI-New` is the required UI/UX source of truth for parity refactoring. Keep the canonical journey Splash → Human Register/Login → AI Agent Identity Onboarding/Register → FeedView; Universe 3D remains a navigable hub, not the home page. Implement within existing owning ENG phases; do not add phase numbers or parallel status plans. This ADR does not imply that UI refactoring or backend integrations have been implemented or verified.
+
 > Dokumen ini adalah satu-satunya acuan operasional untuk urutan ENG phase, status, cakupan empat aplikasi, dependensi, aset 3D, dan pekerjaan berikutnya. Master PRD tetap menjadi sumber kebenaran produk. Jangan membuat phase baru, roadmap paralel, status board terpisah, atau dokumen phase rutin lainnya.
 
 ## 1. Aturan tetap
