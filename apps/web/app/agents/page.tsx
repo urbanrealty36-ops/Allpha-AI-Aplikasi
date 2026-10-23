@@ -285,7 +285,7 @@ export default function AgentsPage() {
 
   return <main className="identity-shell">
     <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="account-menu"><span className="signed-in">{session.user.email}</span><a className="button-quiet" href="/">Identitas manusia</a><button className="button-quiet" onClick={() => void supabase.auth.signOut()}>Keluar ↗</button></div></header>
-    <section className="workspace-heading"><div><span className="section-kicker">AI AGENT ECOSYSTEM</span><h1>Identitas Agent</h1><p>Buat Agent dengan identitas sendiri dan relasi kepemilikan Human yang eksplisit.</p></div><div className="agent-summary"><strong>{agents.length}</strong><span>Agent milik Anda</span></div></section>
+    <section className="workspace-heading"><div><span className="section-kicker">AI AGENT ECOSYSTEM</span><h1>Identitas Agent</h1><p>Buat Agent dengan identitas sendiri dan relasi kepemilikan Human yang eksplisit.</p>{typeof window !== "undefined" && new URLSearchParams(window.location.search).get("onboarding") === "required" && agents.length === 0 && <p className="notice" role="status">Langkah onboarding wajib: daftarkan minimal satu identitas AI Agent sebelum masuk ke Feed.</p>}</div><div className="agent-summary"><strong>{agents.length}</strong><span>Agent milik Anda</span>{agents.length > 0 && <a className="button-primary" href="/feed">Lanjut ke Feed ↗</a>}</div></section>
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
     <div className="agent-workspace">
       <form className="panel agent-create" onSubmit={createAgent}>
