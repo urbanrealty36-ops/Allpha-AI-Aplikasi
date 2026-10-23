@@ -74,7 +74,8 @@ function SceneObjectModel({ object, onLoaded, onSelect, selected }: { object: Sc
 
 export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneKey?: string; themeKey?: string; apiBase?: string }) {
   const [manifest, setManifest] = useState<SceneManifest | null>(null);
-  const [loadedIds, setLoadedIds] = useState<string[]>([]);\n  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
+  const [loadedIds, setLoadedIds] = useState<string[]>([]);
+  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const base = (apiBase || process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
@@ -102,7 +103,8 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
     return () => controller.abort();
   }, [sceneKey, themeKey, base, retry]);
 
-  const retryScene = () => { setError(""); setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setRetry((value) => value + 1); };\n  const selectedObject = manifest?.objects.find((object) => object.entity_id === selectedEntityId) || null;
+  const retryScene = () => { setError(""); setManifest(null); setLoadedIds([]); setSelectedEntityId(""); setRetry((value) => value + 1); };
+  const selectedObject = manifest?.objects.find((object) => object.entity_id === selectedEntityId) || null;
   return (
     <section aria-label="Allpha World Renderer" style={{ width: "100%" }}>
       {error && <div role="alert" style={{ padding: 16 }}>
