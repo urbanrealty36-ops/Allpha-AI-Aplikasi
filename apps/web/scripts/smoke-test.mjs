@@ -187,7 +187,7 @@ assert.ok(spatialThemeCatalog.includes("Coba lagi"), "Web Theme catalog must pro
 const webCreate = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   '"/v1/content"', '"/v1/content/"', '"/media"', '"/publish"',
-  "session.access_token", "FormData", "visibility", "content_type",
+  "session.access_token", "FormData", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
   "Konten belum", "role=\"alert\"", "Konten belum tampil untuk publik."
 ]) assert.ok(webCreate.includes(contract), `missing Web Create lifecycle contract: ${contract}`);
 assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
