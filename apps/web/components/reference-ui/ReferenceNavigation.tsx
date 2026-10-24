@@ -51,7 +51,7 @@ export default function ReferenceNavigation() {
       <Navbar
         userCredits={null}
         agentCredits={null}
-        isTakeoverActive={null}
+        isTakeoverActive={false}
         onOpenTakeoverModal={() => navigate("/agents")}
         onOpenCreditsHub={() => navigate("/skill-challenges")}
         onOpenOnboarding={() => navigate("/agents?onboarding=required")}
