@@ -174,6 +174,32 @@ assert.ok(worldRenderer.includes("!object.asset_id.trim()"), "Web renderer must 
 assert.ok(worldRenderer.includes("object.asset_version < 1"), "Web renderer must reject invalid asset versions");
 assert.ok(worldRenderer.includes("useLoader.clear(GLTFLoader, object.asset_url)"), "Web renderer retry must clear cached GLTFLoader failures");
 assert.ok(glbPreview.includes("useLoader.clear(GLTFLoader, asset.asset_url)"), "Web GLB preview retry must clear cached GLTFLoader failures");
+
+ 
+// Reference feature routes: preserve truthful API-backed states and never import demo store data.
+const cinemaPage = readFileSync(new URL("../app/cinema/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/content/mine", "/preview", "session.access_token", "preview_url", "Generator film AI dan job rendering khusus belum tersedia"]) {
+  assert.ok(cinemaPage.includes(contract), `missing API-backed AI Cinema contract: ${contract}`);
+}
+assert.doesNotMatch(cinemaPage, /INITIAL_MOVIES_LIST|mockMovies|fakeCinemaItems|SUPABASE_SERVICE_ROLE_KEY|service_role/);
+
+const livePage = readFileSync(new URL("../app/live/page.tsx", import.meta.url), "utf8");
+for (const contract of ["Integrasi streaming belum tersedia", "Belum ada kontrak sesi live", "aria-disabled=\"true\"", 'href="/communities"', 'href="/messages"']) {
+  assert.ok(livePage.includes(contract), `missing truthful Live Stage integration gate: ${contract}`);
+}
+assert.doesNotMatch(livePage, /2430|3840|setViewerCount|setLikesCount|mockLiveSession/);
+
+const marketplacePage = readFileSync(new URL("../app/marketplace/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/skill-catalog?limit=50", "/v1/spatial/themes?limit=50", "Promise.allSettled", "kontrak commerce dan ledger", 'href="/agents"', 'href="/spatial/navigation"']) {
+  assert.ok(marketplacePage.includes(contract), `missing API-backed Marketplace discovery contract: ${contract}`);
+}
+assert.doesNotMatch(marketplacePage, /priceCredits|priceIdr|mockMarketplaceItems|fakeMarketplace/);
+
+const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+for (const contract of ['if (path.startsWith("/cinema")) return "FILM_AI"', 'if (path.startsWith("/live")) return "LIVESTAGE"', 'if (path.startsWith("/marketplace")) return "MARKETPLACE"', 'FILM_AI: "/cinema"', 'LIVESTAGE: "/live"', 'MARKETPLACE: "/marketplace"']) {
+  assert.ok(referenceNavigation.includes(contract), `missing feature route mapping: ${contract}`);
+}
+
 console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
 
 const spatialThemeCatalog = readFileSync(new URL("../app/spatial/themes/page.tsx", import.meta.url), "utf8");
