@@ -37,9 +37,9 @@ export default function BottomNav({ activeTab, setActiveTab, onOpenCreateModal }
             </button>
           );
           return (
-            <button key={item.id} type="button" aria-label={item.label} aria-current={selected ? "page" : undefined} onClick={() => setActiveTab(item.id)} className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[10px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500 ${selected ? (activeTab === "REELS" ? "text-cyan-300" : "text-blue-700") : (activeTab === "REELS" ? "text-white/65 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
+            <button key={item.id} type="button" aria-label={item.label} aria-current={selected ? "page" : undefined} onClick={() => setActiveTab(item.id)} className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[9px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500 ${selected ? (activeTab === "REELS" ? "text-cyan-300" : "text-blue-700") : (activeTab === "REELS" ? "text-white/65 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
               <Icon size={20} strokeWidth={selected ? 2.5 : 1.8}/>
-              <span className="max-w-full truncate">{item.label}</span>
+              <span className="whitespace-nowrap">{item.label}</span>
             </button>
           );
         })}
