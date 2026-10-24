@@ -135,3 +135,23 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-create-page form input[type=file]{display:block;width:100%;padding:12px;background:#f8faff}
 .allpha-create-page form button[type=submit]{background:#155eef!important;border-color:#155eef!important;box-shadow:0 7px 18px rgba(37,99,235,.18)}
 @media(max-width:700px){.allpha-page{min-height:calc(100dvh - 58px)}.allpha-feed-page,.allpha-create-page{padding:10px 9px 96px!important}.allpha-feed-page article{padding:13px!important;border-radius:17px!important}.allpha-create-page form{padding:14px!important;border-radius:17px!important}}
+
+.allpha-reels-page{min-height:calc(100dvh - 64px)!important;background:#f7f9ff!important;color:#111b3d!important;padding:0 12px 100px!important}
+.allpha-reels-page>header{position:sticky;top:64px;z-index:20;background:rgba(255,255,255,.94)!important;color:#111b3d!important;border:1px solid #e5eaf6!important;border-radius:0 0 18px 18px;padding:12px 14px!important;backdrop-filter:blur(16px)}
+.allpha-reels-page>header a,.allpha-reels-page>header button{color:#2458cb!important}
+.allpha-reels-page article{background:#fff!important;color:#111b3d!important;border:1px solid #e1e8f7!important;border-radius:22px!important;box-shadow:0 12px 34px rgba(30,64,175,.07);overflow:hidden}
+.allpha-reels-page article>div:first-child{color:#68769a!important}
+.allpha-reels-page article>div:has(video),.allpha-reels-page article>div:has(audio){background:#eef3ff!important}
+.allpha-reels-page article video,.allpha-reels-page article audio{border-radius:16px}
+.allpha-reels-page article button{border-color:#dbe5fb!important;color:#1d4ed8!important}
+.allpha-messages-page{max-width:1080px!important;grid-template-columns:minmax(240px,320px) minmax(0,1fr)!important;gap:16px!important;padding:22px 14px 100px!important}
+.allpha-messages-page>section{min-width:0;border:1px solid #e2e8f7!important;border-radius:22px!important;background:#fff!important;box-shadow:0 8px 28px rgba(30,64,175,.045);padding:18px!important}
+.allpha-messages-page h1{font-size:24px!important}
+.allpha-messages-page button{border-radius:11px}
+.allpha-search-page{max-width:900px!important;padding:24px 14px 100px!important;color:#111b3d!important}
+.allpha-search-page>h1{margin:16px 0 8px!important}
+.allpha-search-page form{display:flex;gap:10px;align-items:center;margin:18px 0;padding:8px;background:#fff;border:1px solid #e2e8f7;border-radius:18px;box-shadow:0 8px 24px rgba(30,64,175,.045)}
+.allpha-search-page form input{flex:1;padding:12px 14px;border:0!important;box-shadow:none!important}
+.allpha-search-page form button{padding:11px 18px;border-radius:12px;background:#155eef;color:#fff;font-weight:700}
+.allpha-search-page article,.allpha-search-page>section{border:1px solid #e2e8f7;border-radius:18px;background:#fff;padding:16px;margin:12px 0;box-shadow:0 7px 24px rgba(30,64,175,.04)}
+@media(max-width:700px){.allpha-reels-page{padding-left:8px!important;padding-right:8px!important}.allpha-reels-page>header{top:58px;padding:10px!important}.allpha-messages-page{display:flex!important;flex-direction:column;padding:12px 9px 96px!important}.allpha-messages-page>section{padding:14px!important;border-radius:17px!important}.allpha-search-page form{flex-wrap:wrap}.allpha-search-page form input{flex-basis:100%}.allpha-search-page form button{width:100%}}

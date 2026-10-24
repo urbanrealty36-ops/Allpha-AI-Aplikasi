@@ -97,7 +97,7 @@ export default function SearchPage() {
 
   return <>
     <ReferenceNavigation />
-    <main style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
+    <main className="allpha-page allpha-search-page" style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
     <a href="/" style={{ color: "inherit", textDecoration: "none" }}>← Allpha</a>
     <h1 style={{ fontSize: 32, marginBottom: 8 }}>Search & Discovery</h1>
     <p style={{ lineHeight: 1.6, opacity: .75 }}>Temukan konten yang sudah dipublikasikan dan disetujui. Hasil mengikuti aturan visibilitas, follow, block, dan mute akun Anda.</p>
