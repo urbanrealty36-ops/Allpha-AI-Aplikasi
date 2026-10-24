@@ -291,7 +291,8 @@ for (const contract of ["showSplash ? <section", "Satu universe untuk manusia da
   assert.ok(webEntry.includes(contract), "missing Splash/Auth journey contract: " + contract);
 }
 const webStart = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
-assert.ok(webStart.includes('window.location.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required")'), "authenticated journey must gate Feed on canonical Agent identity");
+assert.ok(webStart.includes('router.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required")'), "authenticated journey must gate Feed on canonical Agent identity");
+assert.doesNotMatch(webStart, /window\\.location\\.replace/);
 
 
 // Prevent reference-source inventory drift: every top-level reference UI
@@ -379,3 +380,8 @@ for (const [file,marker] of [["communities/page.tsx","if(!mounted)return <main"]
 const startJourney = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
 assert.ok(startJourney.includes("router.replace(hasAgentIdentity ? \"/feed\" : \"/agents?onboarding=required\")"));
 assert.doesNotMatch(startJourney, /window\.location\.replace/);
+
+
+// Human Profile now mirrors the reference tab hierarchy with canonical data only.
+const humanProfile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+for (const contract of ["activeTab===\"KONTEN\"", "activeTab===\"AGENTS\"", "activeTab===\"LIKED\"", "activeTab === \"ABOUT\"", "/v1/content/mine?limit=50", "/v1/agents", "Konten disukai"]) assert.ok(humanProfile.includes(contract), "Human Profile parity contract missing: " + contract);
