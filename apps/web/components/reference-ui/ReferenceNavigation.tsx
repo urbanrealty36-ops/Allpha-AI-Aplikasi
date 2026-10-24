@@ -14,9 +14,10 @@ function tabForPath(path: string): TabType {
   if (path.startsWith("/reels")) return "REELS";
   if (path.startsWith("/messages")) return "MESSAGES";
   if (path.startsWith("/spatial")) return "WORLD3D";
-  if (path.startsWith("/skill-challenges")) return "SKILLS_CREDITS";
+  if (path.startsWith("/skill-challenges") || path.startsWith("/credits")) return "SKILLS_CREDITS";
   if (path.startsWith("/search") || path.startsWith("/communities")) return "EXPLORE";
   if (path.startsWith("/content-studio")) return "FILM_AI";
+  if (path.startsWith("/profile")) return "PROFILE";
   if (path.startsWith("/agents")) return "PROFILE";
   return "FEED";
 }
@@ -31,7 +32,7 @@ const routeForTab: Partial<Record<TabType, string>> = {
   REELS: "/reels",
   SKILLS_CREDITS: "/skill-challenges",
   MARKETPLACE: "/marketplace",
-  PROFILE: "/agents",
+  PROFILE: "/profile",
   POST_DETAIL: "/feed",
   TAKEOVER_CONTROL: "/agents",
   ASK_AI_VIEW: "/content-studio",
@@ -61,7 +62,10 @@ export default function ReferenceNavigation() {
         unreadMessagesCount={0}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onSearchSubmit={() => { const query = searchQuery.trim(); navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/search"); }}
+        onSearchSubmit={() => {
+          const query = searchQuery.trim();
+          navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
+        }}
       />
       <BottomNav
         activeTab={tabForPath(pathname)}
