@@ -18,7 +18,7 @@ const desktop = [
   { href: "/spatial/navigation", label: "3D Universe" },
   { href: "/communities", label: "Komunitas" },
   { href: "/skill-challenges", label: "Skills" },
-  { href: "/theme", label: "Theme Builder" },
+  { href: "/workflows", label: "Workflows" },
 ];
 
 export default function ReferenceNavigation() {
