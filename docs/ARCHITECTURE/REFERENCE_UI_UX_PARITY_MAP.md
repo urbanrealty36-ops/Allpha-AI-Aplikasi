@@ -180,3 +180,10 @@ Observed `apps/web/tsconfig.json` excludes `reference-source/**` and `components
 - **Asset inventory:** file names, byte sizes and source blob hashes captured; exact target-path gaps are listed above.
 - **Component/runtime wiring:** intentionally not part of A acceptance; still pending.
 - **Checkpoint A status:** `inventory complete / implementation in progress`; no phase completion is inferred from this document.
+
+
+## Exact component-copy reconciliation — 2026-10-24
+
+Commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) restored the 13 reference components whose copied target content had diverged from the reference source. A fresh tree comparison after that commit confirms **25/25** `apps/web/components/reference-ui/*.tsx` component blob SHAs exactly match the corresponding `components/*.tsx` blob SHAs from reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
+
+This exact-copy result is deliberately limited to the source component folder. It is **not** runtime wiring, API integration, or visual acceptance. Keep these source files isolated from canonical routes until the source-first UI port checkpoint wires them to existing routes with the required compatibility adaptations. Do not replace canonical `apps/web/app/page.tsx` with the reference's demo-state orchestrator.
