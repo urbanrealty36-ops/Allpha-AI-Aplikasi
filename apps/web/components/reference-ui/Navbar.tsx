@@ -137,7 +137,8 @@ export default function Navbar({
           <button
             onClick={onOpenNotifications}
             className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition"
-            title="Notifikasi"\n            aria-label="Notifikasi"
+            title="Notifikasi"
+            aria-label="Notifikasi"
           >
             <Bell className="w-4 h-4" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
