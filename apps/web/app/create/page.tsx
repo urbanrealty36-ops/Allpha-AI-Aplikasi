@@ -42,9 +42,7 @@ export default function CreatePage() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (active) setSession(next);
     });
-    return (
-    <>
-      <ReferenceNavigation />) => { active = false; listener.subscription.unsubscribe(); };
+    return () => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   async function request(path: string, init: RequestInit = {}) {
@@ -111,7 +109,9 @@ export default function CreatePage() {
   if (loading) return <main className="mx-auto max-w-2xl p-6 text-sm text-slate-500">Memeriksa sesi…</main>;
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-2xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
+    <>
+      <ReferenceNavigation />
+      <main className="mx-auto min-h-screen w-full max-w-2xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav aria-label="Navigasi utama" className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
         <Link href="/feed" className="font-semibold tracking-tight">Allpha Universe</Link>
         <div className="flex items-center gap-4 text-sm">
