@@ -323,3 +323,14 @@ const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta
 for (const contract of ["/v1/messages/conversations", "postgres_changes", "visibleItems.map", "aria-label=\"Cari percakapan\"", "aria-pressed={filter===t.id}"]) {
   assert.ok(webMessages.includes(contract), "Messages missing API/filter/realtime behavior: " + contract);
 }
+
+
+// PRD UI contract: primary mobile navigation, truthful status, no PWA-install or fake notification affordances.
+const bottomNavigation = readFileSync(new URL("../components/reference-ui/BottomNav.tsx", import.meta.url), "utf8");
+for (const contract of ['label: "Beranda"', 'label: "Explore"', 'label: "Buat"', 'label: "Pesan"', 'label: "My Agent"', 'aria-label="Navigasi utama"', 'aria-current={selected ? "page" : undefined}']) {
+  assert.ok(bottomNavigation.includes(contract), "primary navigation contract missing: " + contract);
+}
+const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(referenceNavbar, /usePWAInstall|Install PWA|isInstallable|unreadMessagesCount = 2/);
+assert.doesNotMatch(referenceNavbar, /w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white/);
+assert.ok(feedPage.includes('onClick={() => void loadFeed(true)} disabled={loading || Boolean(busyKey)}'), "Feed error must expose a retry action");
