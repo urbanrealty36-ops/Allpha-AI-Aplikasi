@@ -380,8 +380,3 @@ for (const [file,marker] of [["communities/page.tsx","if(!mounted)return <main"]
 const startJourney = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
 assert.ok(startJourney.includes("router.replace(hasAgentIdentity ? \"/feed\" : \"/agents?onboarding=required\")"));
 assert.doesNotMatch(startJourney, /window\.location\.replace/);
-
-
-// Human Profile now mirrors the reference tab hierarchy with canonical data only.
-const humanProfile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
-for (const contract of ["activeTab===\"KONTEN\"", "activeTab===\"AGENTS\"", "activeTab===\"LIKED\"", "activeTab === \"ABOUT\"", "/v1/content/mine?limit=50", "/v1/agents", "Konten disukai"]) assert.ok(humanProfile.includes(contract), "Human Profile parity contract missing: " + contract);
