@@ -214,7 +214,6 @@ export default function FeedPage() {
         {cursor && <button className="mt-6 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold disabled:opacity-50 dark:border-slate-600" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button>}
       </>}
     </main>
-  );
     </>
   );
 }
