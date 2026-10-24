@@ -276,10 +276,10 @@ assert.ok(profileReferenceNavigation.includes('PROFILE: "/profile"'), "Profile n
 // Explore has a stable reference-navigation route and delegates to the existing
 // canonical search/trends/recommendations API page without sample data.
 const exploreRoute = readFileSync(new URL("../app/explore/page.tsx", import.meta.url), "utf8");
-assert.ok(exploreRoute.includes('redirect(query ? `/search?q=${encodeURIComponent(query)}` : "/search")'), "Explore must preserve the query while using canonical Search");
-assert.ok(exploreRoute.includes('from "next/navigation"'), "Explore route must use Next.js canonical navigation");
+assert.ok(exploreRoute.includes('"/v1/search?q="'), "Explore must use canonical FastAPI search");
+assert.ok(exploreRoute.includes('"/v1/trends?limit=10"') && exploreRoute.includes('"/v1/recommendations?limit=8"'), "Explore must load canonical trends and recommendations");
 const exploreReferenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
-assert.ok(exploreReferenceNavigation.includes('if (path.startsWith("/explore")) return "EXPLORE"'), "Explore route must activate Explore navigation");
+assert.ok(exploreReferenceNavigation.includes('path.startsWith("/search") || path.startsWith("/explore") || path.startsWith("/communities")'), "Explore/Search/Communities routes must activate Explore navigation");
 assert.ok(exploreReferenceNavigation.includes('EXPLORE: "/explore"'), "Explore tab must open the Explore route");
 
 
