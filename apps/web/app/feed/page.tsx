@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
+import FeedPostCard from "../../components/feed/FeedPostCard";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
@@ -192,24 +193,23 @@ export default function FeedPage() {
         {loading && <p className="py-8 text-center text-sm text-slate-500">Memuat feed…</p>}
         {!loading && items.length === 0 && <section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><h2 className="font-semibold">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan muncul setelah disetujui melalui moderasi.</p></section>}
         <div className="space-y-4">
-          {items.map(item => <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">Creator · {item.owner_id.slice(0, 8)}</p><time className="mt-1 block text-xs text-slate-500">{new Date(item.published_at ?? item.created_at).toLocaleString()}</time></div><div className="flex items-center gap-2"><select aria-label="Alasan laporan konten" className="max-w-40 rounded-lg border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600" value={reportReasons[item.id] ?? "other"} onChange={e => setReportReasons(current => ({ ...current, [item.id]: e.target.value as "spam" | "harassment" | "privacy" | "misinformation" | "other" }))}><option value="spam">Spam</option><option value="harassment">Pelecehan</option><option value="privacy">Privasi</option><option value="misinformation">Misinformasi</option><option value="other">Lainnya</option></select><button className="text-xs text-slate-500 hover:text-red-600" onClick={() => void report(item)} disabled={busyKey === item.id}>Laporkan</button></div></div>
-            {item.body && <p className="whitespace-pre-wrap break-words text-sm leading-6">{item.body}</p>}
-            {item.media?.map(media => media.preview_url && (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline preload="metadata" className="mt-3 max-h-[480px] w-full rounded-xl bg-black" /> : media.media_type.startsWith("audio/") ? <audio key={media.id} src={media.preview_url} controls preload="metadata" className="mt-3 w-full" aria-label={media.filename} /> : <img key={media.id} src={media.preview_url} alt={media.filename} className="mt-3 max-h-[480px] w-full rounded-xl object-contain" />))}
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-              <button className={"rounded-full border px-3 py-2 text-sm " + (item.viewer_reaction ? "border-blue-500 text-blue-600" : "border-slate-300 dark:border-slate-600")} onClick={() => void toggleReaction(item)} disabled={busyKey === item.id}>♥ {item.engagement?.likes ?? 0}</button>
-              <button className={"rounded-full border px-3 py-2 text-sm " + (item.saved ? "border-blue-500 text-blue-600" : "border-slate-300 dark:border-slate-600")} onClick={() => void toggleSave(item)} disabled={busyKey === item.id}>{item.saved ? "Tersimpan" : "Simpan"} · {item.engagement?.saves ?? 0}</button>
-              <button className="rounded-full border border-slate-300 px-3 py-2 text-sm dark:border-slate-600" onClick={() => void openComments(item)}>{commentsOpen[item.id] ? "Tutup komentar" : "Komentar"} · {item.engagement?.comments ?? 0}</button>
-              <button className="rounded-full border border-slate-300 px-3 py-2 text-sm dark:border-slate-600" onClick={() => void share(item)} disabled={busyKey === item.id}>Bagikan · {item.engagement?.shares ?? 0}</button>
-            </div>
-            {commentsOpen[item.id] && <div className="mt-3 space-y-3">
-              {(comments[item.id] ?? []).map(comment => <div key={comment.id} className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><p className="mb-1 text-xs text-slate-500">{comment.actor_user_id.slice(0, 8)} · {new Date(comment.created_at).toLocaleString()}</p><p className="whitespace-pre-wrap">{comment.body}</p></div>)}
-              <form className="flex gap-2" onSubmit={e => { e.preventDefault(); void submitComment(item); }}>
-                <input aria-label="Tulis komentar" className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-600" value={commentDrafts[item.id] ?? ""} onChange={e => setCommentDrafts(current => ({ ...current, [item.id]: e.target.value }))} maxLength={2000} placeholder="Tulis komentar…" />
-                <button className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900" disabled={busyKey === item.id || !(commentDrafts[item.id] ?? "").trim()}>Kirim</button>
-              </form>
-            </div>}
-          </article>)}
+          {items.map(item => <FeedPostCard
+            key={item.id}
+            item={item}
+            comments={comments[item.id] ?? []}
+            commentsOpen={Boolean(commentsOpen[item.id])}
+            commentDraft={commentDrafts[item.id] ?? ""}
+            reportReason={reportReasons[item.id] ?? "other"}
+            busy={busyKey === item.id}
+            onToggleReaction={toggleReaction}
+            onToggleSave={toggleSave}
+            onOpenComments={openComments}
+            onShare={share}
+            onReport={report}
+            onReportReasonChange={reason => setReportReasons(current => ({ ...current, [item.id]: reason }))}
+            onCommentDraftChange={value => setCommentDrafts(current => ({ ...current, [item.id]: value }))}
+            onSubmitComment={submitComment}
+          />)}
         </div>
         {cursor && <button className="mt-6 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold disabled:opacity-50 dark:border-slate-600" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button>}
       </>}
