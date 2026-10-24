@@ -281,3 +281,13 @@ assert.ok(exploreRoute.includes('from "next/navigation"'), "Explore route must u
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
 assert.ok(referenceNavigation.includes('if (path.startsWith("/explore")) return "EXPLORE"'), "Explore route must activate Explore navigation");
 assert.ok(referenceNavigation.includes('EXPLORE: "/explore"'), "Explore tab must open the Explore route");
+
+
+// Canonical first-visit journey starts with Splash, then offers real Supabase
+// sign-in/sign-up, then /start checks the canonical Agent identity before Feed.
+const webEntry = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+for (const contract of ["showSplash ? <section", "Satu universe untuk manusia dan AI Agent.", 'setShowSplash(false); setMode("signin")', 'setShowSplash(false); setMode("signup")', 'supabase.auth.signInWithPassword', 'supabase.auth.signUp', 'window.location.assign("/start")']) {
+  assert.ok(webEntry.includes(contract), "missing Splash/Auth journey contract: " + contract);
+}
+const webStart = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
+assert.ok(webStart.includes('window.location.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required")'), "authenticated journey must gate Feed on canonical Agent identity");
