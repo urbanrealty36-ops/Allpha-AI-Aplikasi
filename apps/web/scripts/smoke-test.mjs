@@ -271,3 +271,13 @@ for (const contract of [
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
 assert.ok(referenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "profile route must activate the Profile navigation item");
 assert.ok(referenceNavigation.includes('PROFILE: "/profile"'), "Profile navigation must target the canonical Human Profile route");
+
+
+// Explore has a stable reference-navigation route and delegates to the existing
+// canonical search/trends/recommendations API page without sample data.
+const exploreRoute = readFileSync(new URL("../app/explore/page.tsx", import.meta.url), "utf8");
+assert.ok(exploreRoute.includes('redirect(query ? `/search?q=${encodeURIComponent(query)}` : "/search")'), "Explore must preserve the query while using canonical Search");
+assert.ok(exploreRoute.includes('from "next/navigation"'), "Explore route must use Next.js canonical navigation");
+const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+assert.ok(referenceNavigation.includes('if (path.startsWith("/explore")) return "EXPLORE"'), "Explore route must activate Explore navigation");
+assert.ok(referenceNavigation.includes('EXPLORE: "/explore"'), "Explore tab must open the Explore route");
