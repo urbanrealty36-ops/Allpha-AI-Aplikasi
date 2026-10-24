@@ -63,9 +63,7 @@ export default function StoriesPage() {
     let alive = true;
     void supabase.auth.getSession().then(({ data }) => { if (alive) { setSession(data.session); if (!data.session) setLoading(false); } });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (alive) setSession(next); });
-    return (
-    <>
-      <ReferenceNavigation />) => { alive = false; data.subscription.unsubscribe(); };
+    return () => { alive = false; data.subscription.unsubscribe(); };
   }, [supabase]);
   useEffect(() => { if (session) void reload(); }, [session, reload]);
 
@@ -103,7 +101,9 @@ export default function StoriesPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
+    <>
+      <ReferenceNavigation />
+      <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav className="mb-6 flex items-center justify-between gap-3">
         <div className="flex flex-wrap gap-4"><Link href="/" className="text-sm text-blue-600 hover:underline">← Allpha</Link><Link href="/feed" className="text-sm text-cyan-600 hover:underline">Feed</Link><Link href="/create" className="text-sm text-cyan-600 hover:underline">Buat konten</Link><Link href="/reels" className="text-sm text-cyan-600 hover:underline">Reels</Link></div>
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ENG-P16 · Stories</span>
