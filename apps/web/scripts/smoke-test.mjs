@@ -184,7 +184,7 @@ for (const contract of ["/v1/content/mine", "/preview", "session.access_token", 
 assert.doesNotMatch(cinemaPage, /INITIAL_MOVIES_LIST|mockMovies|fakeCinemaItems|SUPABASE_SERVICE_ROLE_KEY|service_role/);
 
 const livePage = readFileSync(new URL("../app/live/page.tsx", import.meta.url), "utf8");
-for (const contract of ["Integrasi streaming belum tersedia", "Belum ada kontrak sesi live", "aria-disabled=\"true\"", 'href="/communities"', 'href="/messages"']) {
+for (const contract of ["Integrasi streaming belum tersedia", "belum menyediakan kontrak sesi live", "aria-disabled=\"true\"", 'href="/communities"', 'href="/messages"']) {
   assert.ok(livePage.includes(contract), `missing truthful Live Stage integration gate: ${contract}`);
 }
 assert.doesNotMatch(livePage, /2430|3840|setViewerCount|setLikesCount|mockLiveSession/);
