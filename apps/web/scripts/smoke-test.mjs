@@ -380,3 +380,9 @@ for (const [file,marker] of [["communities/page.tsx","if(!mounted)return <main"]
 const startJourney = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
 assert.ok(startJourney.includes("router.replace(hasAgentIdentity ? \"/feed\" : \"/agents?onboarding=required\")"));
 assert.doesNotMatch(startJourney, /window\.location\.replace/);
+
+
+// Root Splash must render a stable initial frame before browser-only Supabase initialization.
+const rootJourney = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+assert.ok(rootJourney.includes("const [mounted, setMounted] = useState(false)"));
+assert.ok(rootJourney.includes("if (!mounted) return <main className=\"identity-shell\""));
