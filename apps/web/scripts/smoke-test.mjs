@@ -335,3 +335,14 @@ const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.
 assert.doesNotMatch(referenceNavbar, /usePWAInstall|Install PWA|isInstallable|unreadMessagesCount = 2/);
 assert.doesNotMatch(referenceNavbar, /w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white/);
 assert.ok(feedPage.includes('onClick={() => void loadFeed(true)} disabled={loading || Boolean(busyKey)}'), "Feed error must expose a retry action");
+
+
+// Error states must not masquerade as empty business data; retries must re-fetch canonical APIs.
+const feedRetryPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+assert.ok(feedRetryPage.includes('!loading && !error && items.length === 0'), "Feed error must not show a false empty state");
+const agentWorkspace = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
+assert.ok(agentWorkspace.includes('onClick={() => session && void loadAgents(session)}'), "Agent workspace error must offer retry");
+assert.ok(agentWorkspace.includes(': !error && agents.length === 0 ?'), "Agent API errors must not be shown as no Agent exists");
+const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+assert.ok(storiesPage.includes('!error && active.length === 0'), "Stories API errors must not be shown as an empty active feed");
+assert.ok(storiesPage.includes('!loading && !error && mine.length === 0'), "Stories API errors must not be shown as an empty owned list");
