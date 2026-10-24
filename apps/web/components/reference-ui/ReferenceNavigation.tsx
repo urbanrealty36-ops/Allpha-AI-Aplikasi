@@ -1,81 +1,68 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import Navbar from "./Navbar";
+import BottomNav, { type TabType } from "./BottomNav";
 
-const primary = [
-  { href: "/feed", label: "Beranda", glyph: "⌂" },
-  { href: "/search", label: "Jelajahi", glyph: "⌕" },
-  { href: "/create", label: "Buat", glyph: "+" },
-  { href: "/reels", label: "Reels", glyph: "▷" },
-  { href: "/messages", label: "Pesan", glyph: "◌" },
-  { href: "/agents", label: "My Agent", glyph: "◇" },
-];
+function tabForPath(path: string): TabType {
+  if (path.startsWith("/create")) return "CREATE";
+  if (path.startsWith("/reels")) return "REELS";
+  if (path.startsWith("/messages")) return "MESSAGES";
+  if (path.startsWith("/spatial")) return "WORLD3D";
+  if (path.startsWith("/skill-challenges")) return "SKILLS_CREDITS";
+  if (path.startsWith("/search") || path.startsWith("/communities")) return "EXPLORE";
+  if (path.startsWith("/content-studio")) return "FILM_AI";
+  if (path.startsWith("/agents")) return "PROFILE";
+  return "FEED";
+}
 
-const desktop = [
-  { href: "/feed", label: "Konten" },
-  { href: "/agents", label: "AI Agent" },
-  { href: "/spatial/navigation", label: "3D Universe" },
-  { href: "/communities", label: "Komunitas" },
-  { href: "/skill-challenges", label: "Skills" },
-  { href: "/workflows", label: "Workflows" },
-];
+const routeForTab: Partial<Record<TabType, string>> = {
+  FEED: "/feed",
+  EXPLORE: "/search",
+  CREATE: "/create",
+  LIVESTAGE: "/spatial/navigation",
+  WORLD3D: "/spatial/navigation",
+  MESSAGES: "/messages",
+  REELS: "/reels",
+  SKILLS_CREDITS: "/skill-challenges",
+  MARKETPLACE: "/search",
+  PROFILE: "/agents",
+  POST_DETAIL: "/feed",
+  TAKEOVER_CONTROL: "/agents",
+  ASK_AI_VIEW: "/content-studio",
+  FILM_AI: "/content-studio",
+};
 
 export default function ReferenceNavigation() {
   const pathname = usePathname() || "/feed";
-  const isActive = (href: string) =>
-    pathname === href || (href !== "/feed" && pathname.startsWith(href + "/"));
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const navigate = (path: string) => router.push(path);
+  const setActiveTab = (tab: TabType) => navigate(routeForTab[tab] ?? "/feed");
 
   return (
     <>
-      <header className="allpha-ref-navbar">
-        <Link href="/feed" className="allpha-ref-brand" aria-label="Allpha Universe beranda">
-          <span className="allpha-ref-mark">A</span>
-          <span className="allpha-ref-brand-copy"><strong>ALLPHA</strong><small>UNIVERSE</small></span>
-        </Link>
-        <label className="allpha-ref-search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="Cari konten, AI Agent, dan Universe"
-            placeholder="Cari konten, AI Agent, atau District 3D..."
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                const value = (event.currentTarget as HTMLInputElement).value.trim();
-                if (value.length >= 2) window.location.assign("/search?q=" + encodeURIComponent(value));
-              }
-            }}
-          />
-        </label>
-        <nav className="allpha-ref-top-links" aria-label="Jelajah Allpha">
-          {desktop.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={isActive(item.href) ? "page" : undefined}
-              className={isActive(item.href) ? "is-active" : ""}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <Link href="/messages" className="allpha-ref-top-action" aria-label="Buka pesan">◌</Link>
-      </header>
-      <nav className="allpha-ref-bottom-nav" aria-label="Navigasi utama">
-        {primary.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={"allpha-ref-nav-item" + (active ? " is-active" : "")}
-            >
-              <span className={"allpha-ref-nav-glyph" + (item.href === "/create" ? " is-create" : "")}>{item.glyph}</span>
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <Navbar
+        userCredits={null}
+        agentCredits={null}
+        isTakeoverActive={null}
+        onOpenTakeoverModal={() => navigate("/agents")}
+        onOpenCreditsHub={() => navigate("/skill-challenges")}
+        onOpenOnboarding={() => navigate("/agents?onboarding=required")}
+        onOpenMessages={() => navigate("/messages")}
+        onOpenNotifications={() => navigate("/notifications")}
+        isMessagesActive={pathname.startsWith("/messages")}
+        unreadMessagesCount={0}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+      />
+      <BottomNav
+        activeTab={tabForPath(pathname)}
+        setActiveTab={setActiveTab}
+        onOpenCreateModal={() => navigate("/create")}
+      />
     </>
   );
 }

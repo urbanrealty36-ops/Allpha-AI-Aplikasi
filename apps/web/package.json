@@ -16,7 +16,10 @@
     "next": "15.5.27",
     "react": "19.1.7",
     "react-dom": "19.1.7",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.553.0",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@types/node": "22.18.6",
@@ -25,6 +28,8 @@
     "@types/three": "^0.180.0",
     "eslint": "9.35.0",
     "eslint-config-next": "15.5.27",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "@tailwindcss/postcss": "4.1.11",
+    "tailwindcss": "4.1.11"
   }
 }
