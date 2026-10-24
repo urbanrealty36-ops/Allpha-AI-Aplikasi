@@ -76,3 +76,107 @@ The reference app is a single Next.js application whose root `app/page.tsx` owns
 | Shared reference shell | Reference `BottomNav` / `Navbar` is the interaction contract, not a source of business truth. | Native uses one Profile screen with internal tab state and stack navigation for Welcome/Auth/Profile. | **Open gap:** consistent active navigation state, selected-tab deep linking, and reference component hierarchy are not yet proven equivalent. Do not mark the parity work complete from source inspection alone. |
 
 Validation added in commit `85eb613` extends `apps/web/scripts/smoke-test.mjs` to assert the Feed/Create/Stories/Reels API and navigation contracts, including that no mocked business collections are used. Media preflight fix in `bd65961` rejects unsupported MIME types and files over backend limits before creating a draft. The source assertions have been committed but have not yet been executed in this session; Vercel build completion is not equivalent to running this smoke-test script.
+
+
+## Checkpoint A closure inventory — source tree observed 2026-10-24
+
+Reference tree: `5184f44e9f6c4e641cbe37e9f743583cf40d785e` (branch `main`). Canonical tree observed before this documentation update: `5b00bba180ebb6a2249870fbf9acf660d21af639`. The source tree has 73 blobs across 90 tree entries; all 25 top-level `components/*.tsx` entries are represented below. This closes the *inventory* portion of Checkpoint A; it does not mean components are runtime-wired or visually accepted.
+
+### 25 component source → canonical target → route map
+
+| Reference component | Canonical copied source | Existing route / route gap | Target file status | Source blob SHA |
+|---|---|---|---|---|
+| `AgentGoalsTasksModal.tsx` | `apps/web/components/reference-ui/AgentGoalsTasksModal.tsx` | `/agents/[agentId]/studio` (candidate; action/route integration pending) | present; copy exists | `8f7990a47b5bdb4c39286e5ab12b169fbfb2bdc3` |
+| `AgentIdentityModal.tsx` | `apps/web/components/reference-ui/AgentIdentityModal.tsx` | `/agents` (existing; onboarding route wiring pending) | present; copy exists | `812625ed02ffaec4ffec1ff0661eae05447557fd` |
+| `AiCinemaView.tsx` | `apps/web/components/reference-ui/AiCinemaView.tsx` | NEW route required (suggest `/cinema`; do not implement route until component-port checkpoint) | present; copy exists | `8f0978d57f3b5d679820a0d8c8fdc8a183cf9dae` |
+| `AllphaHubView.tsx` | `apps/web/components/reference-ui/AllphaHubView.tsx` | `/communities` (existing route; visual composition parity pending) | present; copy exists | `9ce176b8e7fe1cd7a6833a89477aebe24594e6d0` |
+| `AskAiModal.tsx` | `apps/web/components/reference-ui/AskAiModal.tsx` | Existing Agent workspace route candidate (`/agents/[agentId]/studio`); no dedicated Ask AI route confirmed | present; copy exists | `79dfe76d2bd727c2a40e9b442b0fb82aefd7d091` |
+| `AskAiView.tsx` | `apps/web/components/reference-ui/AskAiView.tsx` | Existing Agent workspace route candidate (`/agents/[agentId]/studio`); no dedicated Ask AI route confirmed | present; copy exists | `c040e2fd89e9cb20075bb198286811265ca9dacc` |
+| `AuthOnboardingFlow.tsx` | `apps/web/components/reference-ui/AuthOnboardingFlow.tsx` | `/` and `/start` identity journey; preserve canonical Supabase Auth | present; copy exists | `0ae993ee0540352a9e2994dab7cd87a3ec6904f3` |
+| `BottomNav.tsx` | `apps/web/components/reference-ui/BottomNav.tsx` | Shared shell on authenticated routes; existing target `ReferenceNavigation.tsx` partial | present; copy exists | `40d64c49fe279710c702708d1e5dbfc30c9c9618` |
+| `CreatePostModal.tsx` | `apps/web/components/reference-ui/CreatePostModal.tsx` | `/create` (existing route; source modal can be reused without demo state) | present; copy exists | `3d1c326ab9ec7752f47ec9a3fe788db23bc55750` |
+| `ExploreView.tsx` | `apps/web/components/reference-ui/ExploreView.tsx` | `/search` (existing route); Explore-specific view may need a new route | present; copy exists | `1d71c457bfec41810db0f870beb42d790995cd8e` |
+| `FeedView.tsx` | `apps/web/components/reference-ui/FeedView.tsx` | `/feed` (existing route) | present; copy exists | `0df4fe886e63d2c89e64207a38cab1acd2b14aa1` |
+| `GenerateModal.tsx` | `apps/web/components/reference-ui/GenerateModal.tsx` | `/content-studio` (existing route; no provider/business wiring in this checkpoint) | present; copy exists | `b694cbb8135f581aa064cf499c29963291c19c3d` |
+| `LiveExperienceStage.tsx` | `apps/web/components/reference-ui/LiveExperienceStage.tsx` | NEW route required (suggest `/live`; no canonical route found) | present; copy exists | `15583edb11792fc370b88e88b3ea59f5072fa5ae` |
+| `MarketplaceView.tsx` | `apps/web/components/reference-ui/MarketplaceView.tsx` | NEW route required (suggest `/marketplace`; no canonical route found) | present; copy exists | `90f2a4b76adf00cf46fe5e06c61cd2ec43be46f1` |
+| `MessagesView.tsx` | `apps/web/components/reference-ui/MessagesView.tsx` | `/messages` (existing route) | present; copy exists | `24153bb9fd37669ebdde383fb4e940e994d0936e` |
+| `Navbar.tsx` | `apps/web/components/reference-ui/Navbar.tsx` | Shared shell; existing target `ReferenceNavigation.tsx` partial | present; copy exists | `c566d22fe5310adcc96965e65c6764d55512819f` |
+| `PostDetailView.tsx` | `apps/web/components/reference-ui/PostDetailView.tsx` | NEW route required (suggest `/posts/[postId]`; no canonical route found) | present; copy exists | `57143b041f446454f66d38b8d46be94a34774fd5` |
+| `ProfileView.tsx` | `apps/web/components/reference-ui/ProfileView.tsx` | `/agents/passport/[handle]` only for Agent passport; human profile route needs verification/new route | present; copy exists | `92a01fc2be7bd0e5108b9e3715afff114de72d98` |
+| `ReelsView.tsx` | `apps/web/components/reference-ui/ReelsView.tsx` | `/reels` (existing route) | present; copy exists | `9708f92b32654cb0ddce9d023461864a12339ac2` |
+| `SkillsChallengeHub.tsx` | `apps/web/components/reference-ui/SkillsChallengeHub.tsx` | `/skill-challenges` (existing route) | present; copy exists | `a7868c00a333d918bca176ae355b6c8a683ce626` |
+| `TakeoverControlView.tsx` | `apps/web/components/reference-ui/TakeoverControlView.tsx` | `/agents/[agentId]/studio` (candidate; canonical policy actions must not be wired in UI-only checkpoint) | present; copy exists | `9b261d3c894119bf1eb3ea929f6ddbfbcb8db236` |
+| `TakeoverModal.tsx` | `apps/web/components/reference-ui/TakeoverModal.tsx` | `/agents/[agentId]/studio` (candidate; confirmation component only) | present; copy exists | `4797dfca29205e9ee88d88c3e601862b12ef7944` |
+| `ThreeWorldView.tsx` | `apps/web/components/reference-ui/ThreeWorldView.tsx` | `/spatial/[sceneKey]` (existing route; component wiring pending) | present; copy exists | `74da25aa6790bc7a3d340423e08ddcd533e01f38` |
+| `Universe3DExperience.tsx` | `apps/web/components/reference-ui/Universe3DExperience.tsx` | `/spatial/navigation` (existing route; component wiring pending) | present; copy exists | `5ac27375f9629bd9b06d59c0a29c52da63e0b2f9` |
+| `Universe3DHubView.tsx` | `apps/web/components/reference-ui/Universe3DHubView.tsx` | `/spatial/navigation` (existing route; secondary hub, never Feed home) | present; copy exists | `4792f79cf9300748a7c74749fc4a330832718cd9` |
+
+### Supporting files and ownership boundaries
+
+| Source file/group | Purpose | Canonical handling |
+|---|---|---|
+| `app/page.tsx` | Reference root view/tab orchestrator | Preserved in reference archive only; uses demo/local state and must not replace canonical `apps/web/app/page.tsx` |
+| `app/layout.tsx` | Reference root metadata, viewport, document shell | Archive only; canonical root layout remains authoritative |
+| `app/globals.css` | Source CSS entry point | Current source is only 49 bytes and imports Tailwind + `tw-animate-css`; full design styles are mostly component-level/other dependency styles, so inspect component class usage and source package dependencies rather than assuming this file contains the full design system |
+| `hooks/use-mobile.ts` | Responsive breakpoint hook | Copied to `apps/web/hooks/use-mobile.ts`; review imports and actual use before wiring |
+| `hooks/usePWAInstall.ts` | Install prompt hook | Copied to `apps/web/hooks/usePWAInstall.ts`; source-only until route/shell wiring |
+| `lib/store.ts` | Reference UI's initial data and local state store | Archive-only; contains sample/initial data and cannot be used as production business truth |
+| `lib/utils.ts` | Reference helper utilities | Archive-only until import/dependency compatibility is verified |
+| `app/api/agent/interact/route.ts` | Reference Agent interaction route | Archive-only; canonical business logic remains in `apps/api` and must not be shadowed by a Next route |
+| `package.json`, `next.config.ts`, `tsconfig.json`, lint/PostCSS config, env example | Reference app tooling | Archive-only; do not overwrite monorepo app configuration |
+| `public/icon.svg`, `public/assets/aistudio/*` | Visual reference assets | Asset-by-asset reconciliation below; binary transfer gaps remain explicit |
+| `.aistudio/artifacts/brain/**/.tempmediaStorage/*` | AI Studio generated temporary media | Source tree inventory only; these are temporary media artifacts and must not be copied into public runtime assets without explicit UI usage/path mapping |
+
+### Reference binary assets — checksum/path reconciliation
+
+Source inventory contains 19 files under `public/assets/aistudio/`. Matching exact target path status:
+
+| Source asset | Bytes | Source blob SHA | Canonical target |
+|---|---:|---|---|
+| `ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md` | 129536 | `ff7b7b14b1245da0d6e6510dea4f033d8099c1a9` | MISSING at canonical path |
+| `Screenshot_20261015-164747_fd4f48e4.jpg` | 915577 | `4a2dee71322ee123ff7a835789e0e5820af3fda2` | present at same path |
+| `Screenshot_20261020-224657_48336231.jpg` | 464766 | `53e9c361665384c8e66d9379468eeac5d18a0788` | present at same path |
+| `Screenshot_20261022-214044_2d568e43.jpg` | 1105749 | `808ddbb761676c06e91ba6e092244511e1d1e899` | MISSING at canonical path |
+| `Screenshot_20261022-220040_ce194f62.jpg` | 699468 | `dc1dbd4d93a89155e44dc0d0e499b3022684aabc` | present at same path |
+| `Screenshot_20261023-174657_88e4a1c1.jpg` | 644676 | `d2383fd34b56cff879be3fd2291ab0662aae51e3` | present at same path |
+| `Screenshot_20261023-182318_4e89cb4b.jpg` | 590774 | `4182881e0a3d78e7d1a757e2c2622fea98d3a151` | present at same path |
+| `Screenshot_20261023-182405_d765b801.jpg` | 672454 | `0730fcf3e580a6c8a3bc10cc6aabfb4cd1d45010` | present at same path |
+| `Screenshot_20261023-185525_22a42efd.jpg` | 1104144 | `8e58ed3ef6c1562c027ad45ff56f265e357e2d77` | MISSING at canonical path |
+| `Screenshot_20261023-190053_0db052a1.jpg` | 586619 | `14e593bb3b4f465f386294f8250cf7c26ebf7d5d` | present at same path |
+| `Screenshot_20261023-191515_c07d41e9.jpg` | 558343 | `2844a29f29371611e638158eae79a167560eafd1` | present at same path |
+| `Screenshot_20261023-204929_f99e67e4.jpg` | 741976 | `b63fe9a95b0b1aceff9315731b0156ef53a2d161` | present at same path |
+| `Screenshot_20261023-205615_1e35e812.jpg` | 685285 | `597c4ee0de2cc0ab7e114ef650f2d4a18916812d` | present at same path |
+| `Screenshot_20261023-211448_393205d1.jpg` | 651621 | `422d339e4c9c48e2bac26c9bf435c93408fb58b3` | present at same path |
+| `file_000000000124820cac0b31096f36996d_47c73336.png` | 2284057 | `12d6c93d1f47e22017355db24d5c5f9d650eac64` | MISSING at canonical path |
+| `file_00000000560c820baca9cd747fc97471_b104badb.png` | 2070206 | `b0cbd91174768e7eb979f9920b85f637f7d920f4` | MISSING at canonical path |
+| `file_000000008064820b8790f095225931fd_64393eeb.png` | 2092646 | `e89cac55c852fc19a76c53427fe79ba42426ef50` | MISSING at canonical path |
+| `file_00000000d1c08207a6952642d1a26363_df39e383.png` | 2674422 | `7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66` | MISSING at canonical path |
+| `file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png` | 2663435 | `749060b67cf8d143fc360c6c45e7742b849c27ab` | MISSING at canonical path |
+
+Additional temporary media under `.aistudio/artifacts/brain/**/.tempmediaStorage/` are inventoried in the source Git tree but are not public assets and have no confirmed runtime references. Do not bulk-copy them into `public/` merely because they exist.
+
+### Route coverage and new route candidates
+
+Canonical Web routes observed in `apps/web/app`: `/agents/[agentId]/studio, `/agents, `/agents/passport/[handle], `/communities, `/content-studio, `/create, `/feed, `/messages, `/notifications, `, `/reels, `/search, `/skill-challenges, `/spatial/[sceneKey], `/spatial/navigation, `/spatial/themes, `/start, `/stories, `/theme/[themeKey], `/workflows.
+
+Route gaps discovered from source component inventory:
+- AI Cinema: no dedicated `/cinema` route confirmed; candidate route only.
+- Live Experience Stage: no dedicated `/live` route confirmed; candidate route only.
+- Marketplace: no dedicated `/marketplace` route confirmed; candidate route only.
+- Post Detail: no `/posts/[postId]` route confirmed; candidate route only.
+- Human Profile: Agent passport route exists, but it is not automatically equivalent to a human profile route.
+- Ask AI and Explore have component-level designs, but dedicated canonical routes are not confirmed by the current route tree.
+These are route inventory findings, not authorization to implement new layouts in Checkpoints A/B.
+
+### Runtime archive isolation audit
+
+Observed `apps/web/tsconfig.json` excludes `reference-source/**` and `components/reference-ui/*.tsx`, but its glob does not explicitly exclude every `*.reference` file or `docs/reference-ui-source/**`. Existing `.reference` snapshots use a non-TypeScript extension and are not compiled as TS/TSX by default; source snapshots under `docs/` are outside `apps/web`. The archive under `apps/web/reference-source/` is outside Next's `app/` directory, but should remain excluded from TypeScript/lint inputs. Do not delete or rewrite existing snapshots; add explicit exclusions only if the build/lint configuration actually traverses them.
+
+### Checkpoint A result
+
+- **Inventory:** complete for the observed source tree and 25 top-level components.
+- **Route mapping:** complete as existing-route vs candidate-gap mapping; candidates remain unimplemented until the port checkpoint.
+- **Asset inventory:** file names, byte sizes and source blob hashes captured; exact target-path gaps are listed above.
+- **Component/runtime wiring:** intentionally not part of A acceptance; still pending.
+- **Checkpoint A status:** `inventory complete / implementation in progress`; no phase completion is inferred from this document.
