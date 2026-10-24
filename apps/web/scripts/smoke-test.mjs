@@ -89,11 +89,13 @@ for (const contract of [
 assert.doesNotMatch(nativeContent, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
 const feedPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+const feedPostCard = readFileSync(new URL("../components/feed/FeedPostCard.tsx", import.meta.url), "utf8");
+const feedContract = feedPage + "\\n" + feedPostCard;
 for (const contract of [
   "/v1/feed?", "/v1/feed/preferences", "/v1/feed/item/", "/reaction", "/save", "/comments", "/report", "/share",
   "personalization_enabled", "ranking_mode", "next_cursor", "Laporkan", "Bagikan", "reportReasons", "misinformation", "navigator.clipboard", "content"
-]) assert.ok(feedPage.includes(contract), `missing ENG-P14 Web feed contract: ${contract}`);
-assert.doesNotMatch(feedPage, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockFeedItems|fakeFeed/);
+]) assert.ok(feedContract.includes(contract), `missing ENG-P14 Web feed contract: ${contract}`);
+assert.doesNotMatch(feedPage + feedPostCard, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockFeedItems|fakeFeed/);
 
 const reportsPage = readFileSync(new URL("../../super-admin/app/content-reports/page.tsx", import.meta.url), "utf8");
 for (const contract of [
