@@ -984,3 +984,13 @@ For each checkpoint, update this fixed plan with: (1) source repository and comm
 - Scope boundary: route parity is implemented, but pixel/interaction parity for the complete reference `ExploreView` + `AllphaHubView` composition is still open. The reference's sample data is not wired into the canonical application.
 - Coverage: Web=CHANGE (route/navigation + source smoke assertion); API/DB=NOT AFFECTED (reuses existing search/trend/recommendation contracts); Native Client=INTEGRATE (existing canonical discovery contracts remain the parity reference); Super Admin=NOT AFFECTED (no operator workflow changed).
 - ENG-P02/ENG-P03 and the source-first UI parity checkpoint remain `in_progress`; no phase status is advanced by this route addition.
+
+
+## Focused parity pass — Splash → Auth → Agent onboarding → Feed (2026-10-24)
+
+- The unauthenticated Web entry now presents a Splash/Welcome step first, with explicit actions for sign-in or account creation. These actions switch to the existing canonical Supabase Auth form; they do not create local/demo accounts.
+- Successful sign-in or sign-up with a session continues to `/start`. That route verifies the session and fetches the current user's Agent identities through FastAPI before routing to `/feed` or `/agents?onboarding=required`. If the backend cannot verify the identity list, the flow stays fail-closed and presents a retry state.
+- Added smoke-test source assertions for Splash actions, Supabase sign-in/sign-up, `/start`, and the Agent-identity gate. CI is queued/pending; these assertions are not yet reported as passing.
+- No reference demo state or direct browser business writes were introduced. The full authenticated journey remains unaccepted until CI and browser/API behavior are verified.
+
+Coverage: Web=CHANGE (Splash/Auth entry); API/DB=INTEGRATE (existing Auth + Agent identity contracts); Native Client=INTEGRATE (existing welcome/auth/Agent gate remains parity reference); Super Admin=NOT AFFECTED. ENG-P02/ENG-P03 remain `in_progress`.
