@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type CreatedContent = { id: string; status: string; moderation_status: string };
@@ -41,7 +42,9 @@ export default function CreatePage() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (active) setSession(next);
     });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    return (
+    <>
+      <ReferenceNavigation />) => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   async function request(path: string, init: RequestInit = {}) {
@@ -156,5 +159,6 @@ export default function CreatePage() {
         </form>
       )}
     </main>
+    </>
   );
 }
