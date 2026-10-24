@@ -212,3 +212,12 @@ This exact-copy result is deliberately limited to the source component folder. I
 - Added a route link from Agent Identity so Human Profile and AI Agent identity remain distinct but reachable in the UI.
 - No direct Supabase browser table writes, sample profile data, or changes to the existing API/schema were introduced.
 - Source smoke assertions were added; execution and TypeScript/build/authenticated browser validation remain unverified.
+
+
+## Focused parity pass — Explore route entry (2026-10-24)
+
+- Added `/explore` as the canonical entry point for the reference Explore/Allpha Hub navigation.
+- The route delegates to the existing `/search` implementation and preserves a supplied `q` query. It does not duplicate search logic or introduce sample trends/recommendations; `/search` remains the API-backed owner of search, trends and recommendations.
+- Updated the reference navigation's Explore tab to target `/explore` and map it as the active tab. Navbar global search continues to submit directly to `/search?q=…`.
+- Added smoke-test source assertions for the Explore route and active navigation contract. CI execution is pending; this is not yet a test-pass claim.
+- This is route/navigation parity only. A visual/runtime comparison against `ExploreView.tsx` and its `AllphaHubView` composition remains open; demo/local data from the reference is not used as production truth.
