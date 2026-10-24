@@ -311,3 +311,15 @@ for (const component of referenceComponents) {
   assert.ok(canonicalReferenceFiles.has(component), "reference UI component missing from canonical source inventory: " + component);
 }
 assert.equal(referenceComponents.length, 25, "reference UI component inventory must cover all 25 top-level components");
+
+
+// Explore and Messages must use real authenticated domain APIs, not reference demo stores.
+const webExplore = readFileSync(new URL("../app/explore/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/search?q=", "/v1/trends?limit=10", "/v1/recommendations?limit=8", "/v1/skill-catalog?limit=6", "/v1/spatial/themes?limit=6", "session.access_token"]) {
+  assert.ok(webExplore.includes(contract), "Explore missing canonical API contract: " + contract);
+}
+assert.doesNotMatch(webExplore, /SKILL_BLUEPRINTS_SAMPLE|INITIAL_POSTS|MEDIA_SURFACES_SAMPLE/);
+const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/messages/conversations", "postgres_changes", "visibleItems.map", "aria-label=\"Cari percakapan\"", "aria-pressed={filter===t.id}"]) {
+  assert.ok(webMessages.includes(contract), "Messages missing API/filter/realtime behavior: " + contract);
+}
