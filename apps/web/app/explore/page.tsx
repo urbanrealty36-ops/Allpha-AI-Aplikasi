@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { ArrowUpRight, Compass, Flame, Search, Sparkles, Boxes, Bot, RefreshCw } from "lucide-react";
@@ -24,6 +24,7 @@ function catalogDescription(item: CatalogItem) { return String(item.description 
 export default function ExplorePage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
+  const initialQueryHandled = useRef(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ContentItem[]>([]);
   const [trends, setTrends] = useState<Trend[]>([]);
@@ -94,7 +95,8 @@ export default function ExplorePage() {
   }, [query, session]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || initialQueryHandled.current) return;
+    initialQueryHandled.current = true;
     const initial = new URLSearchParams(window.location.search).get("q")?.trim().slice(0, 100);
     if (initial && initial.length >= 2) { setQuery(initial); void runSearch(undefined, initial); }
   }, [session, runSearch]);
@@ -115,7 +117,7 @@ export default function ExplorePage() {
     {searchError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{searchError}</p>}
     {searched && <section className="mt-7"><div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-950">Hasil pencarian</h2><button type="button" onClick={() => { setSearched(false); setResults([]); }} className="text-sm text-blue-700">Tutup hasil</button></div>{searching ? <p role="status" className="text-sm text-slate-500">Mencari konten…</p> : results.length ? <div className="grid gap-3 sm:grid-cols-2">{results.map(item => <ContentCard key={item.id} item={item}/>)}</div> : !searchError ? <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">Belum ada konten yang cocok.</p> : null}</section>}
     <section className="mt-8"><div className="mb-3 flex items-end justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-orange-600">Topik aktif</p><h2 className="mt-1 flex items-center gap-2 text-xl font-extrabold text-slate-950"><Flame size={20}/> Tren dari konten nyata</h2></div><span className="text-xs text-slate-500">Berdasarkan akses akun</span></div>
-      {loading ? <LoadingLine/> : trends.length ? <div className="flex flex-wrap gap-2">{trends.map(item => <button key={item.topic} type="button" onClick={() => { setQuery(item.topic); void runSearch(undefined, item.topic); }} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-400 hover:text-blue-700"># {item.topic}<span className="ml-2 text-xs text-slate-400">{item.content_count}</span></button>)}</div> : <EmptyNote text="Tren akan muncul saat tersedia konten yang dapat diakses."/ >}
+      {loading ? <LoadingLine/> : trends.length ? <div className="flex flex-wrap gap-2">{trends.map(item => <button key={item.topic} type="button" onClick={() => { setQuery(item.topic); void runSearch(undefined, item.topic); }} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-400 hover:text-blue-700"># {item.topic}<span className="ml-2 text-xs text-slate-400">{item.content_count}</span></button>)}</div> : <EmptyNote text="Tren akan muncul saat tersedia konten yang dapat diakses."/>}
     </section>
     <section className="mt-9"><div className="mb-3 flex items-end justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-blue-700">Untuk Anda</p><h2 className="mt-1 flex items-center gap-2 text-xl font-extrabold text-slate-950"><Sparkles size={20}/> Rekomendasi konten</h2></div><Link href="/feed" className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700">Buka Feed <ArrowUpRight size={15}/></Link></div>
       {loading ? <LoadingLine/> : recommendations.length ? <div className="grid gap-3 sm:grid-cols-2">{recommendations.map(item => <ContentCard key={item.id} item={item}/>)}</div> : <EmptyNote text="Belum ada rekomendasi yang tersedia untuk akun ini."/>}
