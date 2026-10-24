@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 
@@ -9,6 +10,7 @@ const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV =
 type AgentList = { items?: { id: string; status: string }[] };
 
 export default function StartJourneyPage() {
+  const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [status, setStatus] = useState("Memeriksa sesi autentikasi…");
   const [error, setError] = useState("");
@@ -26,7 +28,7 @@ export default function StartJourneyPage() {
       if (!active || routed) return;
       if (!session) {
         routed = true;
-        window.location.replace("/");
+        router.replace("/");
         return;
       }
       setStatus("Memeriksa identitas AI Agent melalui Allpha API…");
@@ -47,7 +49,7 @@ export default function StartJourneyPage() {
         if (!active) return;
         routed = true;
         const hasAgentIdentity = Array.isArray(payload.items) && payload.items.length > 0;
-        window.location.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required");
+        router.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required");
       } catch (cause) {
         if (!active) return;
         setError(cause instanceof Error ? cause.message : "Perjalanan onboarding tidak dapat dilanjutkan.");
@@ -70,7 +72,7 @@ export default function StartJourneyPage() {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, router]);
 
   return (
     <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#0b1020", color: "#f7f8ff", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
