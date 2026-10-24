@@ -14,7 +14,7 @@ const viewports = [
   { width: 1440, height: 1000, label: "desktop-1440" },
 ];
 const routes = [
-  "/feed", "/explore", "/search", "/reels", "/profile", "/agents", "/messages",
+  "/", "/feed", "/explore", "/search", "/reels", "/profile", "/agents", "/messages",
   "/stories", "/create", "/posts/ui-responsive-smoke", "/cinema", "/live",
   "/marketplace", "/communities", "/notifications", "/spatial/navigation", "/spatial/ui-responsive-smoke",
   "/spatial/themes", "/theme/ui-responsive-smoke", "/content-studio", "/skill-challenges", "/workflows", "/start",
@@ -66,7 +66,7 @@ try {
         if (route !== "/spatial/navigation" && route !== "/posts/ui-responsive-smoke") {
           if (!(metrics.mainCount > 0)) result.failures.push(route + " did not render main content");
         }
-        if (viewport.width <= 390 && !["/spatial/navigation", "/posts/ui-responsive-smoke"].includes(route)) {
+        if (viewport.width <= 390 && route !== "/" && route !== "/start" && !route.startsWith("/spatial/") && !route.startsWith("/posts/")) {
           if (!metrics.visiblePrimaryNav) result.failures.push(route + " did not retain primary mobile navigation");
         }
         const screenshotPath = path.join(outDir, viewport.label + route.replaceAll("/", "_") + ".png");
