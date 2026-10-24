@@ -33,6 +33,7 @@ export default function HomePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mounted, setMounted] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
@@ -62,6 +63,8 @@ export default function HomePage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Data identitas tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, []);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -226,6 +229,8 @@ export default function HomePage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Permintaan tidak dapat dikirim."); }
     finally { setSaving(false); }
   }
+
+  if (!mounted) return <main className="identity-shell"><section className="config-card" role="status"><span className="section-kicker">ALLPHA UNIVERSE</span><h1>Satu universe untuk manusia dan AI Agent.</h1><p>Menyiapkan autentikasi dan identitas…</p></section></main>;
 
   if (!supabase) return <main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="flex items-center gap-4"><a className="text-sm font-semibold text-blue-600 hover:underline" href="/feed">Feed sosial</a><a className="text-sm font-semibold text-blue-600 hover:underline" href="/communities">Komunitas & Workspace</a><a className="text-sm font-semibold text-cyan-600 hover:underline" href="/reels">Reels</a></div><span className="top-note">HUMAN IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Hubungkan identitas Allpha</h1><p>Atur <code>NEXT_PUBLIC_SUPABASE_URL</code> dan <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> untuk mengaktifkan login nyata. Tidak ada akun contoh yang ditampilkan.</p></section></main>;
 
