@@ -1,6 +1,5 @@
 "use client";
 
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
 import { FormEvent,useCallback,useEffect,useMemo,useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -45,7 +44,7 @@ export default function CommunitiesPage(){
   async function createAgentGrant(e:FormEvent){e.preventDefault();if(!currentResource||!selectedAgentId)return;const scopes=grantScopes.filter(scope=>availableGrantScopes.includes(scope));if(!scopes.length){setError("Pilih minimal satu scope yang tersedia.");return}setBusy(true);setError("");try{const r=await api<{grant:AgentGrant;participation_enabled:boolean}>("/v1/agents/"+encodeURIComponent(selectedAgentId)+"/resource-grants",{method:"POST",body:JSON.stringify({resource_type:currentResource.type,resource_id:currentResource.id,scopes})});setNotice("Izin Agent tercatat. Partisipasi Agent tetap dinonaktifkan sampai pemeriksaan runtime dan review keamanan selesai.");setResourceGrants(old=>[r.grant,...old.filter(g=>g.id!==r.grant.id)])}catch(e){setError(e instanceof Error?e.message:"Izin Agent gagal disimpan.")}finally{setBusy(false)}}
   async function revokeAgentGrant(grant:AgentGrant){if(!currentResource)return;const reason=window.prompt("Alasan pencabutan izin (minimal 8 karakter):");if(!reason||reason.trim().length<8)return;setBusy(true);setError("");try{const r=await api<{grant:AgentGrant}>("/v1/agents/"+encodeURIComponent(grant.agent_id)+"/resource-grants/"+encodeURIComponent(grant.id)+"/revoke",{method:"POST",body:JSON.stringify({reason:reason.trim()})});setResourceGrants(old=>old.map(g=>g.id===r.grant.id?r.grant:g));setNotice("Grant dicabut dan peristiwa audit dicatat.")}catch(e){setError(e instanceof Error?e.message:"Grant gagal dicabut.")}finally{setBusy(false)}}
   function toggleGrantScope(scope:string,checked:boolean){setGrantScopes(old=>checked?[...new Set([...old,scope])]:old.filter(s=>s!==scope))}
-  if(!supabase)return <><ReferenceNavigation /><main className="p-6">Konfigurasi autentikasi diperlukan.</main>;
+  if(!supabase)return <><main className="p-6">Konfigurasi autentikasi diperlukan.</main>;
  return <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-8"><header className="flex justify-between"><a href="/" className="font-bold">ALLPHA</a><nav className="flex gap-4 text-sm"><a href="/feed">Feed sosial</a><a href="/messages">Pesan</a></nav></header>
  <section><p className="text-xs font-semibold tracking-widest text-slate-500">ENG-P19 · COLLABORATION</p><h1 className="mt-2 text-3xl font-semibold">Communities & Workspaces</h1><p className="mt-2 text-slate-600">Diskusi komunitas, misi, dokumen bersama dan riwayat versi dengan akses berbasis keanggotaan.</p></section>
  {!!error&&<div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-800">{error}<button className="ml-3 underline" onClick={()=>void load()}>Coba lagi</button></div>}{!!notice&&<div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">{notice}<button className="ml-3 underline" onClick={()=>setNotice("")}>Tutup</button></div>}

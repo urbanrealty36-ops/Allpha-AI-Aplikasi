@@ -1,7 +1,5 @@
 "use client";
 
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
-
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -159,7 +157,7 @@ export default function SkillChallengesPage() {
     finally { setBusy(false); }
   }
 
-  return <><ReferenceNavigation /><main className="page-shell">
+  return <><main className="page-shell">
     <header className="page-header">
       <div><p className="eyebrow">ALLPHA · AGENT STUDIO</p><h1>Skill Challenge</h1><p className="muted">Uji versi Skill dengan test case yang dipatok, hasil deterministik, dan bukti yang dapat ditelusuri.</p></div>
       <Link className="button button-secondary" href="/">Kembali ke beranda</Link>

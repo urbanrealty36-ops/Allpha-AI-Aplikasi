@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ReferenceAppShell from "../components/ReferenceAppShell";
 
 export const metadata: Metadata = {
   title: "Allpha — AI Social Universe",
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id">
-      <body>{children}</body>
+      <body><ReferenceAppShell>{children}</ReferenceAppShell></body>
     </html>
   );
 }

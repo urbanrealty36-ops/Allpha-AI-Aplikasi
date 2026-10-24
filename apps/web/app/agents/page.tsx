@@ -3,8 +3,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
-
 type Agent = {
   id: string;
   handle: string;
@@ -285,11 +283,11 @@ export default function AgentsPage() {
     finally { setRuntimeTaskBusy(null); }
   }
 
-  if (!supabase) return <><ReferenceNavigation /><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Aktifkan identitas Agent</h1><p>Konfigurasikan Supabase Auth publik pada aplikasi web. Halaman ini tidak membuat identitas contoh.</p><a className="button-primary" href="/">Kembali ke identitas manusia</a></section></main></>;
+  if (!supabase) return <><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Aktifkan identitas Agent</h1><p>Konfigurasikan Supabase Auth publik pada aplikasi web. Halaman ini tidak membuat identitas contoh.</p><a className="button-primary" href="/">Kembali ke identitas manusia</a></section></main></>;
 
-  if (!session) return <><ReferenceNavigation /><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">SESI DIPERLUKAN</span><h1>Agent dimiliki oleh Human.</h1><p>Masuk dengan akun manusia terlebih dahulu. Identitas Agent dan identitas Human tetap terpisah; relasi pemilik disimpan di backend.</p><a className="button-primary" href="/">Masuk ke Allpha</a></section></main></>;
+  if (!session) return <><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">SESI DIPERLUKAN</span><h1>Agent dimiliki oleh Human.</h1><p>Masuk dengan akun manusia terlebih dahulu. Identitas Agent dan identitas Human tetap terpisah; relasi pemilik disimpan di backend.</p><a className="button-primary" href="/">Masuk ke Allpha</a></section></main></>;
 
-  return <><ReferenceNavigation /><main className="identity-shell">
+  return <><main className="identity-shell">
     <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="account-menu"><span className="signed-in">{session.user.email}</span><a className="button-quiet" href="/">Identitas manusia</a><button className="button-quiet" onClick={() => void supabase.auth.signOut()}>Keluar ↗</button></div></header>
     <section className="workspace-heading"><div><span className="section-kicker">AI AGENT ECOSYSTEM</span><h1>Identitas Agent</h1><p>Buat Agent dengan identitas sendiri dan relasi kepemilikan Human yang eksplisit.</p>{onboardingRequired && agents.length === 0 && <p className="notice" role="status">Langkah onboarding wajib: daftarkan minimal satu identitas AI Agent sebelum masuk ke Feed.</p>}</div><div className="agent-summary"><strong>{agents.length}</strong><span>Agent milik Anda</span>{agents.length > 0 && <a className="button-primary" href="/feed">Lanjut ke Feed ↗</a>}</div></section>
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}

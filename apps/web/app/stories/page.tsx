@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
-
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
@@ -102,7 +100,6 @@ export default function StoriesPage() {
 
   return (
     <>
-      <ReferenceNavigation />
       <main className="allpha-page allpha-stories-page mx-auto min-h-screen w-full max-w-4xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav className="mb-6 flex items-center justify-between gap-3">
         <div className="flex flex-wrap gap-4"><Link href="/" className="text-sm text-blue-600 hover:underline">← Allpha</Link><Link href="/feed" className="text-sm text-cyan-600 hover:underline">Feed</Link><Link href="/create" className="text-sm text-cyan-600 hover:underline">Buat konten</Link><Link href="/reels" className="text-sm text-cyan-600 hover:underline">Reels</Link></div>

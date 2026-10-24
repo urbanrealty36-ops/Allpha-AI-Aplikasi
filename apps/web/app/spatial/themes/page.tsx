@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import ReferenceNavigation from "../../../components/reference-ui/ReferenceNavigation";
 import { CanonicalWorldRenderer } from "../../../components/spatial/CanonicalWorldRenderer";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
@@ -50,7 +49,7 @@ export default function SpatialThemesPage() {
   }, [retry]);
 
   return (
-    <><ReferenceNavigation /><main className="allpha-page allpha-spatial-page" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px 48px", color: "#e8edf7" }}>
+    <><main className="allpha-page allpha-spatial-page" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px 48px", color: "#e8edf7" }}>
       <header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 24 }}>
         <div>
           <p style={{ color: "#94a3b8", fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase" }}>Allpha Universe · Spatial</p>

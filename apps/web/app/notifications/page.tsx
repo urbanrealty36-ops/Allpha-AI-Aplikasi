@@ -1,7 +1,5 @@
 "use client";
 
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -117,9 +115,9 @@ export default function NotificationsPage() {
     finally { setBusyId(null); }
   }
 
-  if (!session) return <><ReferenceNavigation /><main className="allpha-page allpha-notifications-page mx-auto max-w-3xl p-6 text-slate-100"><h1 className="text-2xl font-semibold">Notifikasi</h1><p className="mt-3 text-slate-300">Masuk melalui halaman utama Allpha untuk melihat kotak notifikasi.</p><a className="mt-4 inline-block underline" href="/">Kembali ke Allpha</a></main></>;
+  if (!session) return <><main className="allpha-page allpha-notifications-page mx-auto max-w-3xl p-6 text-slate-100"><h1 className="text-2xl font-semibold">Notifikasi</h1><p className="mt-3 text-slate-300">Masuk melalui halaman utama Allpha untuk melihat kotak notifikasi.</p><a className="mt-4 inline-block underline" href="/">Kembali ke Allpha</a></main></>;
 
-  return <><ReferenceNavigation /><main className="allpha-page allpha-notifications-page mx-auto max-w-3xl space-y-5 p-4 text-slate-100 sm:p-6">
+  return <><main className="allpha-page allpha-notifications-page mx-auto max-w-3xl space-y-5 p-4 text-slate-100 sm:p-6">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-300">Allpha Universe</p><h1 className="mt-1 text-2xl font-semibold">Notifikasi</h1><p className="mt-1 text-sm text-slate-400">{unreadCount} belum dibaca</p></div>
       <div className="flex flex-wrap gap-2"><a className="rounded-xl border border-slate-700 px-3 py-2 text-sm" href="/">Beranda</a><button className="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-50" onClick={() => void load()} disabled={loading}>Muat ulang</button><button className="rounded-xl bg-indigo-500 px-3 py-2 text-sm font-medium disabled:opacity-50" onClick={() => void markAllRead()} disabled={loading || busyId !== null || unreadCount === 0}>Baca semua</button></div>

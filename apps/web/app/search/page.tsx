@@ -3,8 +3,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
-
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
@@ -96,7 +94,6 @@ export default function SearchPage() {
   }, [session, runSearch]);
 
   return <>
-    <ReferenceNavigation />
     <main className="allpha-page allpha-search-page" style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
     <a href="/" style={{ color: "inherit", textDecoration: "none" }}>← Allpha</a>
     <h1 style={{ fontSize: 32, marginBottom: 8 }}>Search & Discovery</h1>

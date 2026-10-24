@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
-
 type ReelsMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Reel = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: ReelsMedia[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -92,7 +90,6 @@ export default function ReelsPage() {
   }
 
   return <>
-    <ReferenceNavigation />
     <main className="allpha-page allpha-reels-page min-h-screen bg-slate-950 text-white">
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur">
       <div className="flex items-center gap-3 text-sm"><Link href="/feed" className="text-cyan-300 hover:underline">← Feed</Link><Link href="/create" className="text-slate-300 hover:underline">Buat</Link><Link href="/stories" className="text-slate-300 hover:underline">Stories</Link></div>
