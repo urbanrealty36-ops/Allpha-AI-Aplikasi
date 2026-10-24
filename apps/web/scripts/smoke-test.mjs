@@ -196,7 +196,7 @@ for (const contract of ["/v1/skill-catalog?limit=50", "/v1/spatial/themes?limit=
 assert.doesNotMatch(marketplacePage, /priceCredits|priceIdr|mockMarketplaceItems|fakeMarketplace/);
 
 const humanProfile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
-for (const contract of ["/v1/me", "/v1/me/profile", "session.access_token", "PATCH", "visibility", "Simpan profil", "role=\"alert\"", "Coba lagi"]) {
+for (const contract of ["/v1/me", "/v1/me/profile", "session.access_token", "PATCH", "visibility", "Simpan profil", 'role="alert"', "Coba lagi", 'activeTab==="KONTEN"', 'activeTab==="AGENTS"', 'activeTab==="LIKED"', 'activeTab === "ABOUT"', "/v1/content/mine?limit=50", "/v1/agents", "Konten disukai"]) {
   assert.ok(humanProfile.includes(contract), `missing API-backed Human Profile contract: ${contract}`);
 }
 assert.doesNotMatch(humanProfile, /mockProfile|fakeProfile|SUPABASE_SERVICE_ROLE_KEY|service_role/);
@@ -292,7 +292,7 @@ for (const contract of ["showSplash ? <section", "Satu universe untuk manusia da
 }
 const webStart = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
 assert.ok(webStart.includes('router.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required")'), "authenticated journey must gate Feed on canonical Agent identity");
-assert.doesNotMatch(webStart, /window\\.location\\.replace/);
+assert.doesNotMatch(webStart, /window\.location\.replace/);
 
 
 // Prevent reference-source inventory drift: every top-level reference UI
