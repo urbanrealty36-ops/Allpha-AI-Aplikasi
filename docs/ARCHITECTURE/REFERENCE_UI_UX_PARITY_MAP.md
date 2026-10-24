@@ -221,3 +221,11 @@ This exact-copy result is deliberately limited to the source component folder. I
 - Updated the reference navigation's Explore tab to target `/explore` and map it as the active tab. Navbar global search continues to submit directly to `/search?q=…`.
 - Added smoke-test source assertions for the Explore route and active navigation contract. CI execution is pending; this is not yet a test-pass claim.
 - This is route/navigation parity only. A visual/runtime comparison against `ExploreView.tsx` and its `AllphaHubView` composition remains open; demo/local data from the reference is not used as production truth.
+
+
+## Focused parity pass — Splash → Auth → Agent onboarding → Feed (2026-10-24)
+
+- The unauthenticated Web entry now presents a Splash/Welcome step first, with explicit actions for sign-in or account creation. These actions switch to the existing canonical Supabase Auth form; they do not create local/demo accounts.
+- Successful sign-in or sign-up with a session continues to `/start`. That route verifies the session and fetches the current user's Agent identities through FastAPI before routing to `/feed` or `/agents?onboarding=required`. If the backend cannot verify the identity list, the flow stays fail-closed and presents a retry state.
+- Added smoke-test source assertions for Splash actions, Supabase sign-in/sign-up, `/start`, and the Agent-identity gate. CI is queued/pending; these assertions are not yet reported as passing.
+- No reference demo state or direct browser business writes were introduced. The full authenticated journey remains unaccepted until CI and browser/API behavior are verified.
