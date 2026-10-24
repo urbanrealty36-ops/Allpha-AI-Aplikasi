@@ -77,3 +77,10 @@ The GitHub connector successfully exposes source tree metadata (path, byte size 
 - Checkpoint A: source component/route/asset inventory documented; route gaps explicit.
 - Checkpoint B: text/source capture is present, but binary capture is **incomplete** until the missing public assets are copied and hash-verified. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.
 - Component runtime wiring and full API integration are deliberately out of scope for A/B.
+
+
+## Exact component-copy verification
+
+After the initial manifest was recorded, commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) copied the 13 remaining divergent component files byte-for-byte from reference source. A subsequent Git tree comparison verified **25 of 25** top-level reference component files now have the same Git blob SHA at `apps/web/components/reference-ui/<component>` as at `components/<component>` in reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
+
+This is source-copy evidence only. Component route wiring, production API behavior, and UI acceptance remain unverified. Binary asset transfer remains incomplete as stated above.
