@@ -1,5 +1,7 @@
 "use client";
 
+import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -115,7 +117,7 @@ export default function NotificationsPage() {
     finally { setBusyId(null); }
   }
 
-  if (!session) return <main className="mx-auto max-w-3xl p-6 text-slate-100"><h1 className="text-2xl font-semibold">Notifikasi</h1><p className="mt-3 text-slate-300">Masuk melalui halaman utama Allpha untuk melihat kotak notifikasi.</p><a className="mt-4 inline-block underline" href="/">Kembali ke Allpha</a></main>;
+  if (!session) return <><ReferenceNavigation /><main className="mx-auto max-w-3xl p-6 text-slate-100"><h1 className="text-2xl font-semibold">Notifikasi</h1><p className="mt-3 text-slate-300">Masuk melalui halaman utama Allpha untuk melihat kotak notifikasi.</p><a className="mt-4 inline-block underline" href="/">Kembali ke Allpha</a></main>;
 
   return <main className="mx-auto max-w-3xl space-y-5 p-4 text-slate-100 sm:p-6">
     <header className="flex flex-wrap items-start justify-between gap-3">
@@ -151,5 +153,5 @@ export default function NotificationsPage() {
       <ul className="space-y-3">{items.map(item => <li key={item.id} className={"rounded-2xl border p-4 " + (item.read_at ? "border-slate-800 bg-slate-950/30" : "border-indigo-400/40 bg-indigo-950/20")}>
         <div className="flex items-start gap-3"><span aria-hidden="true" className={"mt-1 h-2.5 w-2.5 shrink-0 rounded-full " + (item.read_at ? "bg-slate-600" : "bg-indigo-400")} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><h2 className="font-semibold">{item.title}</h2><time className="text-xs text-slate-500" dateTime={item.created_at}>{new Date(item.created_at).toLocaleString("id-ID")}</time></div>{item.body ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{item.body}</p> : null}<p className="mt-2 text-xs text-slate-500">{item.category.replaceAll("_", " ")} · {item.delivery_state === "delivered" ? "Terkirim ke inbox" : item.delivery_state === "queued" ? "Menunggu pengiriman" : item.delivery_state === "suppressed" ? "Pengiriman ditahan" : "Pengiriman gagal"}</p>{!item.read_at ? <button className="mt-3 rounded-lg border border-slate-700 px-3 py-1.5 text-sm disabled:opacity-50" disabled={busyId !== null} onClick={() => void markRead(item)}>{busyId === item.id ? "Menyimpan…" : "Tandai dibaca"}</button> : <p className="mt-3 text-xs text-slate-500">Sudah dibaca</p>}</div></div>
       </li>)}</ul>}
-  </main>;
+  </main></>;
 }

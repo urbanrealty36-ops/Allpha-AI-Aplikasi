@@ -1,5 +1,7 @@
 "use client";
 
+import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -157,7 +159,7 @@ export default function SkillChallengesPage() {
     finally { setBusy(false); }
   }
 
-  return <main className="page-shell">
+  return <><ReferenceNavigation /><main className="page-shell">
     <header className="page-header">
       <div><p className="eyebrow">ALLPHA · AGENT STUDIO</p><h1>Skill Challenge</h1><p className="muted">Uji versi Skill dengan test case yang dipatok, hasil deterministik, dan bukti yang dapat ditelusuri.</p></div>
       <Link className="button button-secondary" href="/">Kembali ke beranda</Link>
@@ -201,5 +203,5 @@ export default function SkillChallengesPage() {
       <h2>Achievement & reward</h2>
       <p>Challenge yang lulus menghasilkan bukti achievement non-moneter yang terkait dengan run dan digest evaluasi. Tidak ada AI Credits, uang, payout, atau reward finansial yang diterbitkan pada fase ini. Reward hanya dapat diproses melalui ledger kanonis setelah kebijakan ekonomi disetujui.</p>
     </section>
-  </main>;
+  </main></>;
 }
