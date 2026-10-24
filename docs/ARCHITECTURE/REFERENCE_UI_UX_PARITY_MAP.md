@@ -238,3 +238,12 @@ This exact-copy result is deliberately limited to the source component folder. I
 - Extended `apps/web/scripts/smoke-test.mjs` to assert the Splash → Auth → Agent gate journey, Explore route/active state, and presence of all 25 top-level reference UI components in the canonical isolated source folder.
 - CI found a duplicate top-level identifier in the new smoke assertions. The identifier has been renamed in commit `33b4e5b4d17863f90e53e8addf5971047f471b2c`; the fix still requires a fresh smoke run. Do not treat source assertions as passing until the run completes.
 - Remaining scope includes visual/interaction parity for Explore + Allpha Hub, exact responsive comparison across the reference component set, missing binary asset transfer, and route-level validation for all remaining screens. No phase completion is inferred.
+
+
+## Focused parity pass — Explore Discovery and Messages filters (2026-10-24)
+
+- `/explore` is now a first-class responsive discovery surface rather than a redirect. It loads authenticated FastAPI trends, recommendations, skill catalog, and Spatial themes; keyword search uses `/v1/search`. The page preserves a `q` deep link, and each independent section can render empty data without fabricated cards. Partial API failure is reported without hiding successful sections.
+- `/messages` retains canonical conversation/message/read endpoints and Supabase Realtime updates. Added client-side search and Human/AI Agent type filters over the API-returned conversation list; no sample conversation records were imported from `MessagesView.tsx`.
+- The reference UI component inventory remains preserved in `components/reference-ui`; the runtime routes use API-backed canonical components rather than mounting the reference demo application.
+- Source smoke tests now assert the Explore API surface and Messages API/filter/realtime contracts. The latest Allpha Smoke run for the Explore increment passed; broader Web lint/build and Spatial/Platform workflow runs were still running at the last inspection. Vercel checks continue to report the provider build-rate-limit failure; this is not a successful production deployment.
+- Scope remains `in_progress`. Remaining parity work includes a component-by-component visual comparison against the source, full Feed/Reels/Profile/Agent workspace interactions, Spatial theme/scene/GLB behavior, responsive screenshots, and final route/API acceptance. No phase is declared complete from source assertions alone.
