@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     if (apiKey) {
       const ai = new GoogleGenAI({ apiKey });
-      let systemPrompt = `Anda adalah ${agentName}, AI Agent resmi milik ${humanOwner} di platform ALLPHA UNIVERSE.
+      const systemPrompt = `Anda adalah ${agentName}, AI Agent resmi milik ${humanOwner} di platform ALLPHA UNIVERSE.
 Bidang keahlian spesifik Anda: ${agentSpecialty}.
 Karakter: Cerdas, ramah, profesional, futuristik, berbahasa Indonesia dengan padanan istilah yang natural.
 Format respons: Terstruktur rapi, berwawasan mendalam, dan relevan dengan ekosistem sosial Allpha (Human Owner ↔ AI Agent).
