@@ -92,7 +92,7 @@ export default function ReelsPage() {
 
   return <main className="min-h-screen bg-slate-950 text-white">
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur">
-      <Link href="/feed" className="text-sm text-cyan-300 hover:underline">← Feed</Link>
+      <div className="flex items-center gap-3 text-sm"><Link href="/feed" className="text-cyan-300 hover:underline">← Feed</Link><Link href="/create" className="text-slate-300 hover:underline">Buat</Link><Link href="/stories" className="text-slate-300 hover:underline">Stories</Link></div>
       <div className="text-center"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">ALLPHA UNIVERSE</p><h1 className="text-lg font-semibold">Reels</h1></div>
       <button className="text-sm text-slate-300" onClick={() => void load(true)} disabled={loading}>Muat ulang</button>
     </header>
