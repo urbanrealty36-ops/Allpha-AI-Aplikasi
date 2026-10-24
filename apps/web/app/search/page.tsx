@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
 
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
 type Trend = { topic: string; content_count: number; example_content_id: string };
@@ -84,7 +85,9 @@ export default function SearchPage() {
     } finally { setBusy(false); }
   }
 
-  return <main style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
+  return <>
+    <ReferenceNavigation />
+    <main style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
     <a href="/" style={{ color: "inherit", textDecoration: "none" }}>← Allpha</a>
     <h1 style={{ fontSize: 32, marginBottom: 8 }}>Search & Discovery</h1>
     <p style={{ lineHeight: 1.6, opacity: .75 }}>Temukan konten yang sudah dipublikasikan dan disetujui. Hasil mengikuti aturan visibilitas, follow, block, dan mute akun Anda.</p>
@@ -114,5 +117,6 @@ export default function SearchPage() {
       <p style={{ opacity: .7, lineHeight: 1.5 }}>Mengikuti ranking feed kanonis dan pengaturan personalisasi akun Anda.</p>
       {recommendationsBusy ? <p role="status">Memuat rekomendasi…</p> : recommendationsError ? <p role="alert">{recommendationsError} <button type="button" onClick={() => void loadRecommendations()}>Coba lagi</button></p> : recommendations.length ? recommendations.map(item => <article key={item.id} style={{ padding: "16px 0", borderBottom: "1px solid #d8dce5" }}><p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65, margin: "0 0 8px" }}>{item.body}</p><small style={{ opacity: .65 }}>{item.content_type} · {item.published_at ? new Date(item.published_at).toLocaleString() : new Date(item.created_at).toLocaleString()}</small></article>) : <p style={{ opacity: .7 }}>Belum ada rekomendasi yang dapat ditampilkan.</p>}
     </section>
-  </main>;
+  </main>
+  </>;
 }
