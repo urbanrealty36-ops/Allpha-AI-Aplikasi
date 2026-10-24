@@ -14,7 +14,7 @@ const viewports = [
   { width: 1440, height: 1000, label: "desktop-1440" },
 ];
 const routes = [
-  "/", "/feed", "/explore", "/search", "/reels", "/profile", "/agents", "/messages",
+  "/", "/feed", "/explore", "/search", "/reels", "/profile", "/agents", "/agents/passport/ui-smoke", "/agents/ui-responsive-smoke/studio", "/messages",
   "/stories", "/create", "/posts/ui-responsive-smoke", "/cinema", "/live",
   "/marketplace", "/communities", "/notifications", "/spatial/navigation", "/spatial/ui-responsive-smoke",
   "/spatial/themes", "/theme/ui-responsive-smoke", "/content-studio", "/skill-challenges", "/workflows", "/start",
@@ -91,6 +91,7 @@ try {
     total: results.length,
     passed: results.filter(result => !result.error && result.responseStatus === 200 && !result.horizontalOverflow && !(result.pageErrors?.length) && !(result.failures?.length)).length,
     failed: results.filter(result => result.error || result.responseStatus !== 200 || result.horizontalOverflow || result.pageErrors?.length || result.failures?.length).length,
+    failureDetails: results.filter(result => result.error || result.responseStatus !== 200 || result.horizontalOverflow || result.pageErrors?.length || result.failures?.length).map(result => ({ route: result.route, viewport: result.viewport, responseStatus: result.responseStatus, horizontalOverflow: result.horizontalOverflow, pageErrors: result.pageErrors, failures: result.failures, error: result.error })),
     screenshots: fs.readdirSync(outDir).filter(name => name.endsWith(".png")).length,
     scope: "Unauthenticated route shell, responsive overflow, primary mobile navigation and browser runtime errors. Authenticated user journeys and production API behavior require separate acceptance.",
     results,
