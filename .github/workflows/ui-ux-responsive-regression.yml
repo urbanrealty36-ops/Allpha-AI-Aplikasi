@@ -1,0 +1,51 @@
+name: UI/UX Responsive Regression
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/ui-ux-responsive-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-ux-responsive-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  responsive-route-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      NEXT_PUBLIC_API_BASE_URL: https://allpha-api.up.railway.app
+      NEXT_PUBLIC_SUPABASE_URL: https://dvdziauyvuhcnqhrrvww.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_CI_BUILD_ONLY
+      ALLPHA_UI_ARTIFACTS: .artifacts/ui-responsive
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --no-package-lock playwright
+      - run: npx playwright install --with-deps chromium
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - name: Check route layout at mobile, tablet and desktop widths
+        run: node scripts/ui-responsive-smoke.mjs
+      - name: Upload screenshots and responsive test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-ui-responsive-${{ github.sha }}
+          path: apps/web/.artifacts/ui-responsive/
+          if-no-files-found: warn
+          retention-days: 14
