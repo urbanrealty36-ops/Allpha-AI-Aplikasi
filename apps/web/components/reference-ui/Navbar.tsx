@@ -6,12 +6,10 @@ import {
   Search, 
   Coins, 
   Sparkles, 
-  Download, 
   SlidersHorizontal,
   Compass,
   MessageCircle
 } from 'lucide-react';
-import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 interface NavbarProps {
   userCredits: number | null;
@@ -41,12 +39,11 @@ export default function Navbar({
   onOpenNotifications,
   onSearchSubmit,
   isMessagesActive = false,
-  unreadMessagesCount = 2,
+  unreadMessagesCount = 0,
   searchQuery,
   setSearchQuery,
   isHidden = false,
 }: NavbarProps) {
-  const { isInstallable, install, isIOS } = usePWAInstall();
 
   if (isHidden) return null;
 
@@ -84,7 +81,7 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Right Actions: AI Credits, Takeover Status, PWA Install, Notifications */}
+        {/* Right Actions: canonical credits, messages, notifications and onboarding */}
         <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Credits Hub Button */}
           <button
@@ -96,17 +93,6 @@ export default function Navbar({
             <span className="font-mono">{userCredits !== null && agentCredits !== null ? userCredits + agentCredits : '—'}</span>
             <span className="text-[10px] text-amber-800 font-normal hidden sm:inline">Cr</span>
           </button>
-
-          {/* PWA Install Button */}
-          {isInstallable && (
-            <button
-              onClick={install}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs transition"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Install PWA</span>
-            </button>
-          )}
 
           {/* Direct Message (DM / Inbox Pesan) */}
           <button
@@ -141,7 +127,7 @@ export default function Navbar({
             aria-label="Notifikasi"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
+            
           </button>
 
           {/* Onboarding / Account Switcher Button */}
