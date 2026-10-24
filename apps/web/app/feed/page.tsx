@@ -165,7 +165,9 @@ export default function FeedPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
+    <>
+      {session && <ReferenceNavigation />}
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav className="mb-6 flex items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4"><Link href="/" className="text-sm text-blue-600 hover:underline">← Allpha</Link><Link href="/create" className="text-sm font-semibold text-cyan-600 hover:underline">＋ Buat konten</Link><Link href="/stories" className="text-sm font-semibold text-cyan-600 hover:underline">Stories & Moments</Link><Link href="/reels" className="text-sm font-semibold text-cyan-600 hover:underline">Reels video/audio →</Link></div>
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ENG-P14 · Social Feed</span>
@@ -176,7 +178,6 @@ export default function FeedPage() {
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Konten publik yang telah disetujui, dengan ranking yang dapat Anda kendalikan.</p>
       </header>
       {!session ? <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="mb-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="font-semibold text-blue-600 hover:underline" href="/">Masuk melalui Allpha</Link></section> : <>
-      <ReferenceNavigation />
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="font-semibold">Kontrol feed</h2><p className="mt-1 text-xs text-slate-500">Matikan personalisasi kapan saja.</p></div>
