@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const primary = [
   { href: "/feed", label: "Beranda", glyph: "⌂" },
-  { href: "/explore", label: "Explore", glyph: "⌕" },
+  { href: "/search", label: "Explore", glyph: "⌕" },
   { href: "/create", label: "Buat", glyph: "+" },
   { href: "/reels", label: "Reels", glyph: "▷" },
   { href: "/messages", label: "Pesan", glyph: "◌" },
