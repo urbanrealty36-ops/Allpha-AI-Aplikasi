@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 type ReelsMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
+type ReelComment = { id: string; actor_user_id: string; body: string; created_at: string };
 type Reel = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: ReelsMedia[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -23,6 +24,9 @@ export default function ReelsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [mediaErrors, setMediaErrors] = useState<Record<string, boolean>>({});
+  const [comments, setComments] = useState<Record<string, ReelComment[]>>({});
+  const [commentsOpen, setCommentsOpen] = useState<Record<string, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     if (!session) throw new Error("Masuk terlebih dahulu untuk membuka Reels.");
@@ -77,6 +81,36 @@ export default function ReelsPage() {
     finally { setBusy(""); }
   }
 
+  async function toggleComments(item: Reel) {
+    const nextOpen = !commentsOpen[item.id];
+    setCommentsOpen(current => ({ ...current, [item.id]: nextOpen }));
+    if (!nextOpen) return;
+    setError("");
+    try {
+      const result = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments?limit=30") as { items?: ReelComment[] };
+      setComments(current => ({ ...current, [item.id]: result.items ?? [] }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Komentar Reels gagal dimuat.");
+    }
+  }
+
+  async function submitComment(item: Reel) {
+    const body = (commentDrafts[item.id] ?? "").trim();
+    if (!body || busy) return;
+    setBusy(item.id); setError(""); setNotice("");
+    try {
+      const result = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments", {
+        method: "POST", body: JSON.stringify({ body }),
+      }) as { comment: ReelComment };
+      setComments(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), result.comment] }));
+      setCommentDrafts(current => ({ ...current, [item.id]: "" }));
+      setNotice("Komentar Reels tersimpan.");
+      await load(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Komentar Reels gagal dikirim.");
+    } finally { setBusy(""); }
+  }
+
   async function share(item: Reel) {
     setBusy(item.id); setError(""); setNotice("");
     try {
@@ -112,7 +146,12 @@ export default function ReelsPage() {
                 ? <div key={media.id} className="rounded-2xl bg-slate-800 p-4"><p className="mb-3 text-sm font-medium">{media.filename}</p><audio controls preload="metadata" src={media.preview_url} className="w-full" aria-label={media.filename} onError={() => setMediaErrors(current => ({ ...current, [media.id]: true }))} />{mediaErrors[media.id] && <p role="alert" className="mt-2 text-sm text-amber-300">Audio gagal diputar atau tautan media kedaluwarsa.</p>}</div>
                 : null))}
           </div>
-          <div className="flex items-center justify-between gap-3 px-4 py-3"><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void toggleLike(item)}>{item.viewer_reaction ? "♥ Disukai" : "♡ Suka"} · {item.engagement?.likes ?? 0}</button><span className="text-xs text-slate-400">{item.engagement?.comments ?? 0} komentar</span><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void share(item)}>Bagikan</button></div>
+          <div className="flex items-center justify-between gap-3 px-4 py-3"><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void toggleLike(item)}>{item.viewer_reaction ? "♥ Disukai" : "♡ Suka"} · {item.engagement?.likes ?? 0}</button><button type="button" aria-expanded={Boolean(commentsOpen[item.id])} aria-label={"Buka komentar Reels " + item.id} className="text-xs text-slate-400 underline-offset-4 hover:underline" onClick={() => void toggleComments(item)}>{item.engagement?.comments ?? 0} komentar</button><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void share(item)}>Bagikan</button></div>
+          {commentsOpen[item.id] && <section aria-label="Komentar Reels" className="space-y-3 border-t border-white/10 bg-slate-900 p-4">
+            <h3 className="text-sm font-semibold">Komentar</h3>
+            {(comments[item.id] ?? []).length === 0 ? <p className="text-xs text-slate-400">Belum ada komentar yang dapat ditampilkan.</p> : <ul className="space-y-2">{comments[item.id].map(comment => <li key={comment.id} className="rounded-xl bg-white/5 p-3"><p className="whitespace-pre-wrap break-words text-sm">{comment.body}</p><p className="mt-1 text-[10px] text-slate-400">{new Date(comment.created_at).toLocaleString("id-ID")}</p></li>)}</ul>}
+            <form onSubmit={event => { event.preventDefault(); void submitComment(item); }} className="flex gap-2"><label className="sr-only" htmlFor={"reel-comment-"+item.id}>Tulis komentar</label><input id={"reel-comment-"+item.id} value={commentDrafts[item.id] ?? ""} onChange={event => setCommentDrafts(current => ({ ...current, [item.id]: event.target.value }))} maxLength={2000} placeholder="Tulis komentar…" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" /><button type="submit" disabled={busy === item.id || !(commentDrafts[item.id] ?? "").trim()} className="rounded-xl bg-cyan-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy === item.id ? "Mengirim…" : "Kirim"}</button></form>
+          </section>}
         </article>)}
       </div>
       {Object.values(mediaErrors).some(Boolean) && <div className="mx-auto max-w-xl px-3 pb-4"><button className="w-full rounded-xl border border-amber-400/40 p-3 text-sm text-amber-200 disabled:opacity-50" disabled={loading} onClick={() => { setMediaErrors({}); setNotice("Memperbarui tautan media…"); void load(true); }}>Perbarui tautan media dan coba lagi</button></div>}
