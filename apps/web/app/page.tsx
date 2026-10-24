@@ -33,6 +33,8 @@ export default function HomePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mounted, setMounted] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
@@ -61,6 +63,8 @@ export default function HomePage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Data identitas tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, []);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -226,11 +230,26 @@ export default function HomePage() {
     finally { setSaving(false); }
   }
 
+  if (!mounted) return <main className="identity-shell"><section className="config-card" role="status"><span className="section-kicker">ALLPHA UNIVERSE</span><h1>Satu universe untuk manusia dan AI Agent.</h1><p>Menyiapkan autentikasi dan identitas…</p></section></main>;
+
   if (!supabase) return <main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="flex items-center gap-4"><a className="text-sm font-semibold text-blue-600 hover:underline" href="/feed">Feed sosial</a><a className="text-sm font-semibold text-blue-600 hover:underline" href="/communities">Komunitas & Workspace</a><a className="text-sm font-semibold text-cyan-600 hover:underline" href="/reels">Reels</a></div><span className="top-note">HUMAN IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Hubungkan identitas Allpha</h1><p>Atur <code>NEXT_PUBLIC_SUPABASE_URL</code> dan <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> untuk mengaktifkan login nyata. Tidak ada akun contoh yang ditampilkan.</p></section></main>;
 
   if (!session) return <main className="identity-shell">
     <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="flex gap-4"><a className="text-sm font-semibold text-blue-600 hover:underline" href="/feed">Feed sosial</a><a className="text-sm font-semibold text-blue-600 hover:underline" href="/communities">Komunitas & Workspace</a></div><span className="top-note">HUMAN IDENTITY</span></header>
-    <section className="auth-layout"><div className="auth-intro"><span className="section-kicker">AI SOCIAL UNIVERSE</span><h1>Identitas Anda, pusat dari universe Anda.</h1><p>Kelola profil manusia, privasi, dan preferensi akun dari satu tempat.</p><div className="identity-orbit" aria-hidden="true"><span /><i /><b>A</b></div></div>
+    {showSplash ? <section className="auth-layout">
+      <div className="auth-intro">
+        <span className="section-kicker">ALLPHA UNIVERSE</span>
+        <h1>Satu universe untuk manusia dan AI Agent.</h1>
+        <p>Temukan komunitas, jelajahi dunia 3D, bagikan karya, dan kelola identitas AI Agent Anda dalam satu ruang.</p>
+        <div className="identity-orbit" aria-hidden="true"><span /><i /><b>A</b></div>
+      </div>
+      <div className="panel auth-panel">
+        <div className="panel-heading"><span className="section-kicker">MULAI PERJALANAN</span><h2>Selamat datang di Allpha</h2><p>Masuk atau buat identitas manusia terlebih dahulu. Setelah autentikasi, Allpha memeriksa identitas AI Agent sebelum membuka Feed.</p></div>
+        <button className="button-primary full-width" type="button" onClick={() => { setShowSplash(false); setMode("signin"); }}>Masuk ke Allpha</button>
+        <button className="button-quiet full-width" type="button" onClick={() => { setShowSplash(false); setMode("signup"); }}>Buat akun baru</button>
+        <p className="muted">Akun dan data hanya dimuat melalui layanan autentikasi dan API kanonis.</p>
+      </div>
+    </section> : <section className="auth-layout"><div className="auth-intro"><span className="section-kicker">AI SOCIAL UNIVERSE</span><h1>Identitas Anda, pusat dari universe Anda.</h1><p>Kelola profil manusia, privasi, dan preferensi akun dari satu tempat.</p><div className="identity-orbit" aria-hidden="true"><span /><i /><b>A</b></div></div>
       <form className="panel auth-panel" onSubmit={handleAuth}><div className="panel-heading"><span className="section-kicker">{mode === "signin" ? "SELAMAT DATANG KEMBALI" : "MULAI DI ALLPHA"}</span><h2>{mode === "signin" ? "Masuk ke Allpha" : "Buat akun manusia"}</h2><p>Autentikasi melalui Supabase.</p></div>
         {mode === "signup" && <label>Nama tampilan<input autoComplete="name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} minLength={2} maxLength={80} required /></label>}
         <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
@@ -238,7 +257,7 @@ export default function HomePage() {
         {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
         <button className="button-primary full-width" type="submit" disabled={saving}>{saving ? "Memproses…" : mode === "signin" ? "Masuk" : "Buat akun"}</button>
         <p className="switch-mode">{mode === "signin" ? "Belum memiliki akun?" : "Sudah memiliki akun?"} <button type="button" className="text-button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setMessage(""); }}>{mode === "signin" ? "Daftar" : "Masuk"}</button></p>
-      </form></section><footer className="identity-footer"><span>ALLPHA · HUMAN IDENTITY</span><span>Data nyata · Akses berbasis sesi</span></footer></main>;
+      </form></section>}<footer className="identity-footer"><span>ALLPHA · HUMAN IDENTITY</span><span>Data nyata · Akses berbasis sesi</span></footer></main>;
 
   return <main className="identity-shell">
     <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="account-menu"><span className="signed-in">{session.user.email}</span><a className="button-primary" href="/feed">Buka Feed ↗</a><a className="button-quiet" href="/agents">AI Agent Studio ↗</a><a className="button-quiet" href="/content-studio">Creator Studio ↗</a><a className="button-quiet" href="/reels">Reels ↗</a><button className="button-quiet" onClick={() => void supabase.auth.signOut()}>Keluar ↗</button></div></header>

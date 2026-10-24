@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type CreatedContent = { id: string; status: string; moderation_status: string };
@@ -110,7 +109,6 @@ export default function CreatePage() {
 
   return (
     <>
-      <ReferenceNavigation />
       <main className="allpha-page allpha-create-page mx-auto min-h-screen w-full max-w-2xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav aria-label="Navigasi utama" className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
         <Link href="/feed" className="font-semibold tracking-tight">Allpha Universe</Link>

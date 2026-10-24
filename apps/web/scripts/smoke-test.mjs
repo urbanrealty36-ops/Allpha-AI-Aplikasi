@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
-import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/meshopt-fallback-compat.mjs";
+
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+
+const meshoptFallbackModuleUrl = new URL("../../../tools/3d-assets/meshopt-fallback-compat.mjs", import.meta.url);
+let findInvalidMeshoptFallbackBuffers = null;
+if (existsSync(meshoptFallbackModuleUrl)) {
+  ({ findInvalidMeshoptFallbackBuffers } = await import(meshoptFallbackModuleUrl.href));
+}
 
 const page = readFileSync(new URL("../app/agents/[agentId]/studio/page.tsx", import.meta.url), "utf8");
 const agents = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
@@ -133,27 +139,32 @@ for (const [file, loadCall] of [
 
 
 
-const validMeshoptFallback = {
-  extensionsRequired: ["EXT_meshopt_compression"],
-  buffers: [
-    { byteLength: 8 },
-    { byteLength: 16, extensions: { EXT_meshopt_compression: { fallback: true } } }
-  ],
-  bufferViews: [{
-    buffer: 1,
-    byteLength: 16,
-    extensions: { EXT_meshopt_compression: {
-      buffer: 0, byteOffset: 0, byteLength: 8, byteStride: 4, count: 4, mode: "ATTRIBUTES"
-    } }
-  }]
-};
-assert.deepEqual(findInvalidMeshoptFallbackBuffers(validMeshoptFallback), [],
-  "spec-conformant URI-less Meshopt fallback buffer must not be misclassified as malformed");
-const invalidMeshoptFallback = structuredClone(validMeshoptFallback);
-delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fallback;
-assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
-  { index: 1, reasons: ["fallback_flag_missing"] }
-], "URI-less nonzero buffer without fallback marker must be rejected");
+if (findInvalidMeshoptFallbackBuffers) {
+  const validMeshoptFallback = {
+    extensionsRequired: ["EXT_meshopt_compression"],
+    buffers: [
+      { byteLength: 8 },
+      { byteLength: 16, extensions: { EXT_meshopt_compression: { fallback: true } } }
+    ],
+    bufferViews: [{
+      buffer: 1,
+      byteLength: 16,
+      extensions: { EXT_meshopt_compression: {
+        buffer: 0, byteOffset: 0, byteLength: 8, byteStride: 4, count: 4, mode: "ATTRIBUTES"
+      } }
+    }]
+  };
+  assert.deepEqual(findInvalidMeshoptFallbackBuffers(validMeshoptFallback), [],
+    "spec-conformant URI-less Meshopt fallback buffer must not be misclassified as malformed");
+  const invalidMeshoptFallback = structuredClone(validMeshoptFallback);
+  delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fallback;
+  assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
+    { index: 1, reasons: ["fallback_flag_missing"] }
+  ], "URI-less nonzero buffer without fallback marker must be rejected");
+} else {
+  // The standalone Web Docker build context excludes repository-level tools/; the full-repository CI job runs the fixture test.
+  assert.equal(existsSync(meshoptFallbackModuleUrl), false);
+}
 
 
 const publishedThemeRoute = readFileSync(new URL("../app/theme/[themeKey]/page.tsx", import.meta.url), "utf8");
@@ -174,6 +185,40 @@ assert.ok(worldRenderer.includes("!object.asset_id.trim()"), "Web renderer must 
 assert.ok(worldRenderer.includes("object.asset_version < 1"), "Web renderer must reject invalid asset versions");
 assert.ok(worldRenderer.includes("useLoader.clear(GLTFLoader, object.asset_url)"), "Web renderer retry must clear cached GLTFLoader failures");
 assert.ok(glbPreview.includes("useLoader.clear(GLTFLoader, asset.asset_url)"), "Web GLB preview retry must clear cached GLTFLoader failures");
+
+ 
+// Reference feature routes: preserve truthful API-backed states and never import demo store data.
+const cinemaPage = readFileSync(new URL("../app/cinema/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/content/mine", "/preview", "session.access_token", "preview_url", "Generator film AI dan job rendering khusus belum tersedia"]) {
+  assert.ok(cinemaPage.includes(contract), `missing API-backed AI Cinema contract: ${contract}`);
+}
+assert.doesNotMatch(cinemaPage, /INITIAL_MOVIES_LIST|mockMovies|fakeCinemaItems|SUPABASE_SERVICE_ROLE_KEY|service_role/);
+
+const livePage = readFileSync(new URL("../app/live/page.tsx", import.meta.url), "utf8");
+for (const contract of ["Integrasi streaming belum tersedia", "belum menyediakan kontrak sesi live", "aria-disabled=\"true\"", 'href="/communities"', 'href="/messages"']) {
+  assert.ok(livePage.includes(contract), `missing truthful Live Stage integration gate: ${contract}`);
+}
+assert.doesNotMatch(livePage, /2430|3840|setViewerCount|setLikesCount|mockLiveSession/);
+
+const marketplacePage = readFileSync(new URL("../app/marketplace/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/skill-catalog?limit=50", "/v1/spatial/themes?limit=50", "Promise.allSettled", "kontrak commerce dan ledger", 'href="/agents"', 'href="/spatial/navigation"']) {
+  assert.ok(marketplacePage.includes(contract), `missing API-backed Marketplace discovery contract: ${contract}`);
+}
+assert.doesNotMatch(marketplacePage, /priceCredits|priceIdr|mockMarketplaceItems|fakeMarketplace/);
+
+const humanProfile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/me", "/v1/me/profile", "session.access_token", "PATCH", "visibility", "Simpan profil", 'role="alert"', "Coba lagi", 'activeTab==="KONTEN"', 'activeTab==="AGENTS"', 'activeTab==="LIKED"', 'activeTab === "ABOUT"', "/v1/content/mine?limit=50", "/v1/agents", "Konten disukai"]) {
+  assert.ok(humanProfile.includes(contract), `missing API-backed Human Profile contract: ${contract}`);
+}
+assert.doesNotMatch(humanProfile, /mockProfile|fakeProfile|SUPABASE_SERVICE_ROLE_KEY|service_role/);
+const agentIdentityPage = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
+assert.ok(agentIdentityPage.includes('href="/profile"'), "Agent Identity must link to Human Profile");
+
+const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+for (const contract of ['if (path.startsWith("/cinema")) return "FILM_AI"', 'if (path.startsWith("/live")) return "LIVESTAGE"', 'if (path.startsWith("/marketplace")) return "MARKETPLACE"', 'FILM_AI: "/cinema"', 'LIVESTAGE: "/live"', 'MARKETPLACE: "/marketplace"']) {
+  assert.ok(referenceNavigation.includes(contract), `missing feature route mapping: ${contract}`);
+}
+
 console.log("ENG-P22 Theme manifest and ENG-P23 Web renderer source smoke tests passed.");
 
 const spatialThemeCatalog = readFileSync(new URL("../app/spatial/themes/page.tsx", import.meta.url), "utf8");
@@ -230,3 +275,134 @@ for (const contract of [
   "/v1/content", "/v1/stories", "/v1/feed", "/v1/reels",
   "session.access_token", "DocumentPicker", "FormData"
 ]) assert.ok(nativeContent.includes(contract), `missing Native social/content parity contract: ${contract}`);
+
+
+// Reference UI parity: active profile tab and profile action must target the
+// canonical Human Profile route, not the AI Agent registry route.
+const profileReferenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+assert.ok(profileReferenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "profile route must activate the Profile navigation item");
+assert.ok(profileReferenceNavigation.includes('PROFILE: "/agents"'), "My Agent primary navigation must target the canonical Agent workspace");
+assert.ok(profileReferenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "Human profile remains within the account navigation context");
+
+
+// Explore has a stable reference-navigation route and delegates to the existing
+// canonical search/trends/recommendations API page without sample data.
+const exploreRoute = readFileSync(new URL("../app/explore/page.tsx", import.meta.url), "utf8");
+assert.ok(exploreRoute.includes('"/v1/search?q="'), "Explore must use canonical FastAPI search");
+assert.ok(exploreRoute.includes('"/v1/trends?limit=10"') && exploreRoute.includes('"/v1/recommendations?limit=8"'), "Explore must load canonical trends and recommendations");
+const exploreReferenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+assert.ok(exploreReferenceNavigation.includes('path.startsWith("/search") || path.startsWith("/explore") || path.startsWith("/communities")'), "Explore/Search/Communities routes must activate Explore navigation");
+assert.ok(exploreReferenceNavigation.includes('EXPLORE: "/explore"'), "Explore tab must open the Explore route");
+
+
+// Canonical first-visit journey starts with Splash, then offers real Supabase
+// sign-in/sign-up, then /start checks the canonical Agent identity before Feed.
+const webEntry = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+for (const contract of ["showSplash ? <section", "Satu universe untuk manusia dan AI Agent.", 'setShowSplash(false); setMode("signin")', 'setShowSplash(false); setMode("signup")', 'supabase.auth.signInWithPassword', 'supabase.auth.signUp', 'window.location.assign("/start")']) {
+  assert.ok(webEntry.includes(contract), "missing Splash/Auth journey contract: " + contract);
+}
+const webStart = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
+assert.ok(webStart.includes('router.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required")'), "authenticated journey must gate Feed on canonical Agent identity");
+assert.doesNotMatch(webStart, /window\.location\.replace/);
+
+
+// Prevent reference-source inventory drift: every top-level reference UI
+// component copied into the canonical isolated source folder must remain present.
+const referenceComponents = [
+  "AgentGoalsTasksModal.tsx", "AgentIdentityModal.tsx", "AiCinemaView.tsx",
+  "AllphaHubView.tsx", "AskAiModal.tsx", "AskAiView.tsx",
+  "AuthOnboardingFlow.tsx", "BottomNav.tsx", "CreatePostModal.tsx",
+  "ExploreView.tsx", "FeedView.tsx", "GenerateModal.tsx",
+  "LiveExperienceStage.tsx", "MarketplaceView.tsx", "MessagesView.tsx",
+  "Navbar.tsx", "PostDetailView.tsx", "ProfileView.tsx", "ReelsView.tsx",
+  "SkillsChallengeHub.tsx", "TakeoverControlView.tsx", "TakeoverModal.tsx",
+  "ThreeWorldView.tsx", "Universe3DExperience.tsx", "Universe3DHubView.tsx"
+];
+const canonicalReferenceDirectory = new URL("../components/reference-ui/", import.meta.url);
+const canonicalReferenceFiles = new Set(readdirSync(canonicalReferenceDirectory));
+for (const component of referenceComponents) {
+  assert.ok(canonicalReferenceFiles.has(component), "reference UI component missing from canonical source inventory: " + component);
+}
+assert.equal(referenceComponents.length, 25, "reference UI component inventory must cover all 25 top-level components");
+
+
+// Explore and Messages must use real authenticated domain APIs, not reference demo stores.
+const webExplore = readFileSync(new URL("../app/explore/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/search?q=", "/v1/trends?limit=10", "/v1/recommendations?limit=8", "/v1/skill-catalog?limit=6", "/v1/spatial/themes?limit=6", "session.access_token"]) {
+  assert.ok(webExplore.includes(contract), "Explore missing canonical API contract: " + contract);
+}
+assert.doesNotMatch(webExplore, /SKILL_BLUEPRINTS_SAMPLE|INITIAL_POSTS|MEDIA_SURFACES_SAMPLE/);
+const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/messages/conversations", "postgres_changes", "visibleItems.map", "aria-label=\"Cari percakapan\"", "aria-pressed={filter===t.id}"]) {
+  assert.ok(webMessages.includes(contract), "Messages missing API/filter/realtime behavior: " + contract);
+}
+
+
+// PRD UI contract: primary mobile navigation, truthful status, no PWA-install or fake notification affordances.
+const bottomNavigation = readFileSync(new URL("../components/reference-ui/BottomNav.tsx", import.meta.url), "utf8");
+for (const contract of ['label: "Beranda"', 'label: "Explore"', 'label: "Buat"', 'label: "Pesan"', 'label: "My Agent"', 'aria-label="Navigasi utama"', 'aria-current={selected ? "page" : undefined}']) {
+  assert.ok(bottomNavigation.includes(contract), "primary navigation contract missing: " + contract);
+}
+const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(referenceNavbar, /usePWAInstall|Install PWA|isInstallable|unreadMessagesCount = 2/);
+assert.doesNotMatch(referenceNavbar, /w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white/);
+assert.ok(feedPage.includes('onClick={() => void loadFeed(true)} disabled={loading || Boolean(busyKey)}'), "Feed error must expose a retry action");
+
+
+// Error states must not masquerade as empty business data; retries must re-fetch canonical APIs.
+const feedRetryPage = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+assert.ok(feedRetryPage.includes('!loading && !error && items.length === 0'), "Feed error must not show a false empty state");
+const agentWorkspace = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
+assert.ok(agentWorkspace.includes('onClick={() => session && void loadAgents(session)}'), "Agent workspace error must offer retry");
+assert.ok(agentWorkspace.includes(': !error && agents.length === 0 ?'), "Agent API errors must not be shown as no Agent exists");
+const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+assert.ok(storiesPage.includes('!error && active.length === 0'), "Stories API errors must not be shown as an empty active feed");
+assert.ok(storiesPage.includes('!loading && !error && mine.length === 0'), "Stories API errors must not be shown as an empty owned list");
+
+
+// Reels comments must use canonical feed comment endpoints, not reference alert/sample interactions.
+const reelsInteractions = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  '"/v1/feed/" + encodeURIComponent(item.id) + "/comments?limit=30"',
+  '"/v1/feed/" + encodeURIComponent(item.id) + "/comments"',
+  "toggleComments", "submitComment", "commentsLoading", "commentsErrors",
+  "aria-expanded={Boolean(commentsOpen[item.id])}", "maxLength={2000}"
+]) {
+  assert.ok(reelsInteractions.includes(contract), "Reels comment interaction contract missing: " + contract);
+}
+assert.doesNotMatch(reelsInteractions, /alert\(|mockReels|fakeReels/);
+
+
+// Agent workspace must render the same first frame on the server and during hydration.
+assert.ok(agents.includes("const [mounted, setMounted] = useState(false)"));
+assert.ok(agents.includes("if (!mounted) return <main className=") && agents.includes("Memeriksa sesi identitas Agent…"), "Agent workspace must render a stable hydration frame");
+
+
+// The shared shell owns global navigation; Create must not render a duplicate header or bottom bar.
+const createRoute = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(createRoute, /ReferenceNavigation|BottomNav|<Navbar/);
+
+
+// Client-only Supabase availability must not change server-rendered first frames; onboarding uses router navigation.
+for (const [file,marker] of [["communities/page.tsx","if(!mounted)return <main"],["workflows/page.tsx","if (!mounted) return <main"]]) {
+  const source = readFileSync(new URL("../app/" + file, import.meta.url), "utf8");
+  assert.ok(source.includes(marker), file + " must avoid Supabase-dependent hydration mismatch");
+}
+const startJourney = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
+assert.ok(startJourney.includes("router.replace(hasAgentIdentity ? \"/feed\" : \"/agents?onboarding=required\")"));
+assert.doesNotMatch(startJourney, /window\.location\.replace/);
+
+
+// Root Splash must render a stable initial frame before browser-only Supabase initialization.
+const rootJourney = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+assert.ok(rootJourney.includes("const [mounted, setMounted] = useState(false)"));
+assert.ok(rootJourney.includes("if (!mounted) return <main className=\"identity-shell\""));
+
+
+// Community and Workflow routes must not accidentally wrap the entire page in the Supabase fallback fragment.
+const communitiesPageSource = readFileSync(new URL("../app/communities/page.tsx", import.meta.url), "utf8");
+const workflowsPageSource = readFileSync(new URL("../app/workflows/page.tsx", import.meta.url), "utf8");
+assert.ok(communitiesPageSource.includes("if(!supabase)return <main className=\"p-6\">"));
+assert.ok(workflowsPageSource.includes("if (!supabase) return <main className=\"identity-shell\">"));
+assert.ok(communitiesPageSource.trimEnd().endsWith("</main>;\n}"));
+assert.ok(workflowsPageSource.trimEnd().endsWith("</main>;\n}"));

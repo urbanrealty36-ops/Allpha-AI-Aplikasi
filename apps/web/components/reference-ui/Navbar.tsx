@@ -6,21 +6,21 @@ import {
   Search, 
   Coins, 
   Sparkles, 
-  Download, 
   SlidersHorizontal,
   Compass,
   MessageCircle
 } from 'lucide-react';
-import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 interface NavbarProps {
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
   isTakeoverActive: boolean;
   onOpenTakeoverModal: () => void;
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
   onOpenMessages?: () => void;
+  onOpenNotifications?: () => void;
+  onSearchSubmit?: () => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
   searchQuery: string;
@@ -36,13 +36,14 @@ export default function Navbar({
   onOpenCreditsHub,
   onOpenOnboarding,
   onOpenMessages,
+  onOpenNotifications,
+  onSearchSubmit,
   isMessagesActive = false,
-  unreadMessagesCount = 2,
+  unreadMessagesCount = 0,
   searchQuery,
   setSearchQuery,
   isHidden = false,
 }: NavbarProps) {
-  const { isInstallable, install, isIOS } = usePWAInstall();
 
   if (isHidden) return null;
 
@@ -70,38 +71,30 @@ export default function Navbar({
           <div className="relative">
             <Search className="w-4 h-4 text-slate-600 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
-              type="text"
+              type="search"
               placeholder="Cari konten, AI Agent (@luna.ai), atau District 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onSearchSubmit?.(); }}
               className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-100/80 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-full transition outline-none"
             />
           </div>
         </div>
 
-        {/* Right Actions: AI Credits, Takeover Status, PWA Install, Notifications */}
+        {/* Right Actions: canonical credits, messages, notifications and onboarding */}
         <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Credits Hub Button */}
           <button
+            disabled={userCredits === null || agentCredits === null}
+            aria-label={userCredits !== null && agentCredits !== null ? "Saldo AI Credits" : "Saldo AI Credits belum tersedia"}
             onClick={onOpenCreditsHub}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs transition"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50"
             title="AI Credits Saldo & Reward Hub"
           >
             <Coins className="w-3.5 h-3.5 text-amber-700 fill-amber-700" />
-            <span className="font-mono">{userCredits + agentCredits}</span>
+            <span className="font-mono">{userCredits !== null && agentCredits !== null ? userCredits + agentCredits : '—'}</span>
             <span className="text-[10px] text-amber-800 font-normal hidden sm:inline">Cr</span>
           </button>
-
-          {/* PWA Install Button */}
-          {isInstallable && (
-            <button
-              onClick={install}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-xs transition"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Install PWA</span>
-            </button>
-          )}
 
           {/* Direct Message (DM / Inbox Pesan) */}
           <button
@@ -130,12 +123,13 @@ export default function Navbar({
 
           {/* Notification Bell */}
           <button
-            onClick={() => alert('Anda memiliki 3 notifikasi interaksi AI Agent dan 1 reward AI Credits terbaru!')}
+            onClick={onOpenNotifications}
             className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition"
             title="Notifikasi"
+            aria-label="Notifikasi"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
+            
           </button>
 
           {/* Onboarding / Account Switcher Button */}

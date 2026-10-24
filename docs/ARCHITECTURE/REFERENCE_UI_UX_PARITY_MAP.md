@@ -187,3 +187,71 @@ Observed `apps/web/tsconfig.json` excludes `reference-source/**` and `components
 Commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) restored the 13 reference components whose copied target content had diverged from the reference source. A fresh tree comparison after that commit confirms **25/25** `apps/web/components/reference-ui/*.tsx` component blob SHAs exactly match the corresponding `components/*.tsx` blob SHAs from reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
 
 This exact-copy result is deliberately limited to the source component folder. It is **not** runtime wiring, API integration, or visual acceptance. Keep these source files isolated from canonical routes until the source-first UI port checkpoint wires them to existing routes with the required compatibility adaptations. Do not replace canonical `apps/web/app/page.tsx` with the reference's demo-state orchestrator.
+
+## Focused parity pass — Post Detail route (2026-10-24)
+
+- Added canonical dynamic route `/posts/[postId]` using the reference's Post Detail route intent while preserving the canonical API as the source of truth.
+- The page reads the authenticated session from Supabase Auth and fetches `GET /v1/feed/item/{content_id}`; it renders real API content/media, loading, unavailable/error and retry states. Reaction, save and share actions call the existing Feed API contracts and refresh from the server; no sample post collection or client-side business writes are introduced.
+- The route is intentionally a focused visual/route slice, not a claim that all Post Detail reference interactions or comments are complete. The copied `PostDetailView.tsx` remains source material until its reference-specific prop/state contract is adapted without importing `lib/store.ts` sample data.
+- Validation: source file created on `eng-ui-checkpoint-c-navigation-shell`; TypeScript/build/smoke and authenticated runtime have not yet been executed/verified in this session.
+- Next in the existing owner phases: audit endpoint/service/schema ownership before creating runtime pages for AI Cinema, Live Stage and Marketplace; route shells must not imply unsupported backend capabilities. Keep UI parity and affected phases `in_progress`.
+
+## Focused parity pass — AI Cinema, Live Stage, Marketplace (2026-10-24)
+
+- **AI Cinema route `/cinema`:** Added a canonical library page backed by authenticated `GET /v1/content/mine?limit=100` and owner-authorized `GET /v1/content/{content_id}/preview`. It renders only the current user's actual video/audio content, status, moderation state and short-lived preview URLs. It links to the existing Create route. It explicitly does not claim to generate films: the audited backend exposes content draft/upload/preview/publish/retry lifecycle, but no cinematic generation/render-job contract was found. The reference `AiCinemaView.tsx` contains `INITIAL_MOVIES_LIST` and hard-coded sample film data, so it is not mounted as a live catalogue.
+- **Live Experience route `/live`:** Added a reference-aligned stage presentation with truthful integration status and links to existing Communities/Messages routes. The inspected canonical Supabase schema has no live session/participant/streaming tables, and the FastAPI route inventory has no live session/signaling/provider endpoints. Start-broadcast is disabled; no fake viewer counts, live state, camera/microphone success, or session creation is presented. Full ENG-P25/P26 and related ENG-P27 behavior requires a provider, versioned API contracts, schema/migrations, authorization, reconnect/partial-failure handling and tests.
+- **Marketplace route `/marketplace`:** Added discovery from the existing public `GET /v1/skill-catalog` and `GET /v1/spatial/themes` endpoints. These sources return metadata-only Skill blueprints and published Themes; the page does not infer that a blueprint is executable or that a Theme is purchasable. Purchase/pricing/order/subscription controls are intentionally absent because canonical commerce and ledger endpoints/contracts are not present in the audited API/schema. ENG-P28/P29/P30 remain the owning phases for actual listing eligibility, commerce and settlement.
+- **Shared navigation:** The existing reference navigation now routes Film AI → `/cinema`, Live Stage → `/live`, Marketplace → `/marketplace`, maps the selected tab by route, and hides bottom navigation on `/posts/[postId]`.
+- **Regression guard:** Added smoke-test source assertions for the three routes, their API contracts, route mappings and explicit absence of demo collections/purchase prices/fake live counts. The script has been edited but not executed in this session; assertions are not test-pass evidence.
+- **Canonical data audit:** Read the active AllphaAiAplikasi-db project `dvdziauyvuhcnqhrrvww` through the Supabase connector. Existing `content_items`/`content_media` and published Theme registry support the implemented reads. The current public schema has no dedicated live-session, cinematic-render-job, marketplace-listing/order/payment tables. No database mutation or migration was applied.
+- **Status:** Source implementation only; TypeScript, lint, smoke execution, build, authenticated browser, visual comparison and end-to-end behavior remain **NOT VERIFIED**. Keep ENG-P13–P16, ENG-P25–P30 and overall parity `in_progress` according to their existing owners; do not create new phases or claim the full domain is complete.
+
+## Focused parity pass — Human Profile route (2026-10-24)
+
+- Added `/profile` as the Human Profile route, backed by Supabase Auth session + FastAPI `GET /v1/me` and `PATCH /v1/me/profile`. It edits only the authenticated user's canonical profile fields (display name, username, avatar URL, bio, visibility), and includes loading, validation, error/retry and save feedback states.
+- Added a route link from Agent Identity so Human Profile and AI Agent identity remain distinct but reachable in the UI.
+- No direct Supabase browser table writes, sample profile data, or changes to the existing API/schema were introduced.
+- Source smoke assertions were added; execution and TypeScript/build/authenticated browser validation remain unverified.
+
+
+## Focused parity pass — Explore route entry (2026-10-24)
+
+- Added `/explore` as the canonical entry point for the reference Explore/Allpha Hub navigation.
+- The route delegates to the existing `/search` implementation and preserves a supplied `q` query. It does not duplicate search logic or introduce sample trends/recommendations; `/search` remains the API-backed owner of search, trends and recommendations.
+- Updated the reference navigation's Explore tab to target `/explore` and map it as the active tab. Navbar global search continues to submit directly to `/search?q=…`.
+- Added smoke-test source assertions for the Explore route and active navigation contract. CI execution is pending; this is not yet a test-pass claim.
+- This is route/navigation parity only. A visual/runtime comparison against `ExploreView.tsx` and its `AllphaHubView` composition remains open; demo/local data from the reference is not used as production truth.
+
+
+## Focused parity pass — Splash → Auth → Agent onboarding → Feed (2026-10-24)
+
+- The unauthenticated Web entry now presents a Splash/Welcome step first, with explicit actions for sign-in or account creation. These actions switch to the existing canonical Supabase Auth form; they do not create local/demo accounts.
+- Successful sign-in or sign-up with a session continues to `/start`. That route verifies the session and fetches the current user's Agent identities through FastAPI before routing to `/feed` or `/agents?onboarding=required`. If the backend cannot verify the identity list, the flow stays fail-closed and presents a retry state.
+- Added smoke-test source assertions for Splash actions, Supabase sign-in/sign-up, `/start`, and the Agent-identity gate. CI is queued/pending; these assertions are not yet reported as passing.
+- No reference demo state or direct browser business writes were introduced. The full authenticated journey remains unaccepted until CI and browser/API behavior are verified.
+
+
+## Focused parity pass — entry journey and reference inventory guard (2026-10-24)
+
+- Added a Splash/Welcome state to the unauthenticated root before the existing canonical Supabase sign-in/sign-up form. After authentication, `/start` verifies the current Agent identity through FastAPI and routes to Feed or required Agent onboarding; failures remain retryable and fail closed.
+- Added a stable `/explore` entry route that preserves a query and delegates to the existing API-backed `/search` implementation. The reference Explore tab maps to `/explore`; global search remains `/search?q=…`.
+- Extended `apps/web/scripts/smoke-test.mjs` to assert the Splash → Auth → Agent gate journey, Explore route/active state, and presence of all 25 top-level reference UI components in the canonical isolated source folder.
+- CI found a duplicate top-level identifier in the new smoke assertions. The identifier has been renamed in commit `33b4e5b4d17863f90e53e8addf5971047f471b2c`; the fix still requires a fresh smoke run. Do not treat source assertions as passing until the run completes.
+- Remaining scope includes visual/interaction parity for Explore + Allpha Hub, exact responsive comparison across the reference component set, missing binary asset transfer, and route-level validation for all remaining screens. No phase completion is inferred.
+
+
+## Focused parity pass — Explore Discovery and Messages filters (2026-10-24)
+
+- `/explore` is now a first-class responsive discovery surface rather than a redirect. It loads authenticated FastAPI trends, recommendations, skill catalog, and Spatial themes; keyword search uses `/v1/search`. The page preserves a `q` deep link, and each independent section can render empty data without fabricated cards. Partial API failure is reported without hiding successful sections.
+- `/messages` retains canonical conversation/message/read endpoints and Supabase Realtime updates. Added client-side search and Human/AI Agent type filters over the API-returned conversation list; no sample conversation records were imported from `MessagesView.tsx`.
+- The reference UI component inventory remains preserved in `components/reference-ui`; the runtime routes use API-backed canonical components rather than mounting the reference demo application.
+- Source smoke tests now assert the Explore API surface and Messages API/filter/realtime contracts. The latest Allpha Smoke run for the Explore increment passed; broader Web lint/build and Spatial/Platform workflow runs were still running at the last inspection. Vercel checks continue to report the provider build-rate-limit failure; this is not a successful production deployment.
+- Scope remains `in_progress`. Remaining parity work includes a component-by-component visual comparison against the source, full Feed/Reels/Profile/Agent workspace interactions, Spatial theme/scene/GLB behavior, responsive screenshots, and final route/API acceptance. No phase is declared complete from source assertions alone.
+
+## Reference-source preservation slice (2026-10-24)
+
+- The exact upstream component source from `urbanrealty36-ops/Allpha-Front-End-UI-New@main` is preserved in `apps/web/components/reference-source/` for the 25 primary components: BottomNav, Navbar, FeedView, ReelsView, ProfileView, ExploreView, AllphaHubView, AuthOnboardingFlow, AgentGoalsTasksModal, AgentIdentityModal, AskAiModal, AskAiView, AiCinemaView, LiveExperienceStage, MarketplaceView, MessagesView, CreatePostModal, GenerateModal, PostDetailView, SkillsChallengeHub, TakeoverControlView, TakeoverModal, ThreeWorldView, Universe3DExperience, Universe3DHubView.
+- Exact upstream app shell files are preserved under `apps/web/reference-source/app/` (page, globals CSS, layout, manifest), and shared source is preserved under `apps/web/reference-source/lib/` and `apps/web/reference-source/hooks/` (store, utils, PWA install hook, mobile hook).
+- This is source preservation, not yet proof of runtime mounting or visual parity. The copied reference app remains isolated; its reference-only state/demo content must not become canonical business data. Runtime adapters and actual page-by-page screenshot comparison remain in progress.
+- PRD source authority and fixed-plan acceptance gate were updated in this branch. Do not declare completion until the copied source is actually used in the canonical application and screenshot/interaction evidence passes.
+

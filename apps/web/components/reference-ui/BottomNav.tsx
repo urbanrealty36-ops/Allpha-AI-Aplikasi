@@ -1,33 +1,11 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { 
-  Home, 
-  Compass, 
-  PlusCircle, 
-  Radio, 
-  Box, 
-  MessageSquare, 
-  User, 
-  Coins,
-  Film
-} from 'lucide-react';
+import { Compass, Home, MessageCircle, PlusCircle, UserRound } from "lucide-react";
 
-export type TabType = 
-  | 'FEED' 
-  | 'EXPLORE' 
-  | 'CREATE' 
-  | 'LIVESTAGE' 
-  | 'WORLD3D' 
-  | 'MESSAGES' 
-  | 'REELS' 
-  | 'SKILLS_CREDITS' 
-  | 'MARKETPLACE' 
-  | 'PROFILE'
-  | 'POST_DETAIL'
-  | 'TAKEOVER_CONTROL'
-  | 'ASK_AI_VIEW'
-  | 'FILM_AI';
+export type TabType =
+  | "FEED" | "EXPLORE" | "CREATE" | "LIVESTAGE" | "WORLD3D" | "MESSAGES"
+  | "REELS" | "SKILLS_CREDITS" | "MARKETPLACE" | "PROFILE" | "POST_DETAIL"
+  | "TAKEOVER_CONTROL" | "ASK_AI_VIEW" | "FILM_AI";
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -35,87 +13,33 @@ interface BottomNavProps {
   onOpenCreateModal: () => void;
 }
 
-export default function BottomNav({
-  activeTab,
-  setActiveTab,
-  onOpenCreateModal,
-}: BottomNavProps) {
-  // Hide global bottom nav in 3D world or dedicated input views
-  if (activeTab === 'WORLD3D' || activeTab === 'POST_DETAIL' || activeTab === 'ASK_AI_VIEW') {
-    return null;
-  }
+const items = [
+  { id: "FEED", label: "Beranda", icon: Home },
+  { id: "EXPLORE", label: "Explore", icon: Compass },
+  { id: "CREATE", label: "Buat", icon: PlusCircle, action: true },
+  { id: "MESSAGES", label: "Pesan", icon: MessageCircle },
+  { id: "PROFILE", label: "My Agent", icon: UserRound },
+] as const;
 
-  interface NavItem {
-    id: TabType;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    isAction?: boolean;
-    highlight?: boolean;
-    badge?: string;
-  }
-
-  const navItems: NavItem[] = [
-    { id: 'FEED', label: 'Beranda', icon: Home },
-    { id: 'FILM_AI', label: 'Film AI', icon: Film, badge: 'VIP' },
-    { id: 'CREATE', label: 'Tambah', icon: PlusCircle, isAction: true },
-    { id: 'WORLD3D', label: 'Dunia 3D', icon: Box, highlight: true },
-    { id: 'EXPLORE', label: 'Allpha Hub', icon: Compass },
-    { id: 'PROFILE', label: 'My Agent', icon: User },
-  ];
-
-  const isReels = activeTab === 'REELS';
+export default function BottomNav({ activeTab, setActiveTab, onOpenCreateModal }: BottomNavProps) {
+  if (activeTab === "WORLD3D" || activeTab === "POST_DETAIL" || activeTab === "ASK_AI_VIEW") return null;
+  const activeId = activeTab === "REELS" ? "FEED" : activeTab === "FILM_AI" || activeTab === "LIVESTAGE" || activeTab === "MARKETPLACE" || activeTab === "SKILLS_CREDITS" ? "EXPLORE" : activeTab;
 
   return (
-    <nav className={`fixed bottom-0 left-0 right-0 z-40 transition-colors duration-300 ${
-      isReels
-        ? 'bg-black/80 backdrop-blur-lg border-t border-white/10'
-        : 'bg-white/95 backdrop-blur border-t border-slate-200'
-    }`}>
-      <div className="max-w-xl mx-auto px-2 h-16 flex items-center justify-around">
-        {navItems.map((item) => {
+    <nav aria-label="Navigasi utama" className={`fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur-xl ${activeTab === "REELS" ? "border-white/10 bg-slate-950/95 text-white" : "border-slate-200 bg-white/95 text-slate-700"}`}>
+      <div className="mx-auto grid h-16 max-w-xl grid-cols-5 items-center px-2 pb-[env(safe-area-inset-bottom)]">
+        {items.map(item => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
-
-          if (item.isAction) {
-            return (
-              <button
-                key={item.id}
-                onClick={onOpenCreateModal}
-                className="flex flex-col items-center justify-center p-1 text-blue-600 hover:text-blue-700 transition"
-              >
-                <div className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-500/25">
-                  <Icon className="w-5 h-5" />
-                </div>
-              </button>
-            );
-          }
-
+          const selected = activeId === item.id;
+          if ("action" in item && item.action) return (
+            <button key={item.id} type="button" aria-label="Buat konten" onClick={onOpenCreateModal} className="mx-auto flex min-h-12 min-w-12 items-center justify-center rounded-2xl bg-blue-700 text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+              <Icon size={23} strokeWidth={2.4}/>
+            </button>
+          );
           return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-xl transition ${
-                isActive
-                  ? isReels ? 'text-cyan-400 font-bold' : 'text-blue-600 font-bold'
-                  : isReels ? 'text-white/60 hover:text-white' : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <div className="relative">
-                <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : 'stroke-[1.8px]'}`} />
-                {item.badge && (
-                  <span className="absolute -top-1.5 -right-3.5 px-1 py-0.2 rounded-full bg-rose-500 text-white text-[8px] font-bold uppercase tracking-tight animate-pulse">
-                    {item.badge}
-                  </span>
-                )}
-                {item.highlight && (
-                  <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-cyan-600 text-white text-[8px] font-bold uppercase">
-                    3D
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] mt-0.5 tracking-tight truncate max-w-[62px]">
-                {item.label}
-              </span>
+            <button key={item.id} type="button" aria-label={item.label} aria-current={selected ? "page" : undefined} onClick={() => setActiveTab(item.id)} className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[9px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500 ${selected ? (activeTab === "REELS" ? "text-cyan-300" : "text-blue-700") : (activeTab === "REELS" ? "text-white/65 hover:text-white" : "text-slate-500 hover:text-slate-900")}`}>
+              <Icon size={20} strokeWidth={selected ? 2.5 : 1.8}/>
+              <span className="whitespace-nowrap">{item.label}</span>
             </button>
           );
         })}

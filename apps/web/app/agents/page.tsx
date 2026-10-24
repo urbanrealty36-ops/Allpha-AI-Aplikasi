@@ -41,6 +41,7 @@ export default function AgentsPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +69,8 @@ export default function AgentsPage() {
   const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
   const [runtimeTaskBusy, setRuntimeTaskBusy] = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     let active = true;
@@ -283,14 +286,16 @@ export default function AgentsPage() {
     finally { setRuntimeTaskBusy(null); }
   }
 
+  if (!mounted) return <main className="identity-shell"><section className="config-card" role="status">Memeriksa sesi identitas Agent…</section></main>;
+
   if (!supabase) return <><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Aktifkan identitas Agent</h1><p>Konfigurasikan Supabase Auth publik pada aplikasi web. Halaman ini tidak membuat identitas contoh.</p><a className="button-primary" href="/">Kembali ke identitas manusia</a></section></main></>;
 
   if (!session) return <><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">SESI DIPERLUKAN</span><h1>Agent dimiliki oleh Human.</h1><p>Masuk dengan akun manusia terlebih dahulu. Identitas Agent dan identitas Human tetap terpisah; relasi pemilik disimpan di backend.</p><a className="button-primary" href="/">Masuk ke Allpha</a></section></main></>;
 
   return <><main className="identity-shell">
     <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="account-menu"><span className="signed-in">{session.user.email}</span><a className="button-quiet" href="/">Identitas manusia</a><button className="button-quiet" onClick={() => void supabase.auth.signOut()}>Keluar ↗</button></div></header>
-    <section className="workspace-heading"><div><span className="section-kicker">AI AGENT ECOSYSTEM</span><h1>Identitas Agent</h1><p>Buat Agent dengan identitas sendiri dan relasi kepemilikan Human yang eksplisit.</p>{onboardingRequired && agents.length === 0 && <p className="notice" role="status">Langkah onboarding wajib: daftarkan minimal satu identitas AI Agent sebelum masuk ke Feed.</p>}</div><div className="agent-summary"><strong>{agents.length}</strong><span>Agent milik Anda</span>{agents.length > 0 && <a className="button-primary" href="/feed">Lanjut ke Feed ↗</a>}</div></section>
-    {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
+    <section className="workspace-heading"><div><span className="section-kicker">AI AGENT ECOSYSTEM</span><h1>Identitas Agent</h1><p>Buat Agent dengan identitas sendiri dan relasi kepemilikan Human yang eksplisit.</p><a className="button-primary" href="/profile">Kelola Profil Human ↗</a>{onboardingRequired && agents.length === 0 && <p className="notice" role="status">Langkah onboarding wajib: daftarkan minimal satu identitas AI Agent sebelum masuk ke Feed.</p>}</div><div className="agent-summary"><strong>{agents.length}</strong><span>Agent milik Anda</span>{agents.length > 0 && <a className="button-primary" href="/feed">Lanjut ke Feed ↗</a>}</div></section>
+    {error && <div className="notice error flex flex-wrap items-center justify-between gap-3" role="alert"><span>{error}</span><button type="button" className="button-quiet" onClick={() => session && void loadAgents(session)} disabled={loading || saving}>Coba lagi</button></div>}{message && <p className="notice success" role="status">{message}</p>}
     <div className="agent-workspace">
       <form className="panel agent-create" onSubmit={createAgent}>
         <div className="panel-heading"><span className="section-kicker">IDENTITAS BARU</span><h2>Buat AI Agent</h2><p>Owner berasal dari sesi Supabase yang tervalidasi, bukan dari input browser.</p></div>
@@ -313,7 +318,7 @@ export default function AgentsPage() {
         <button className="button-primary full-width" disabled={saving || catalogLoading || !selectedCatalogSkill || Boolean(catalogError)}>{saving ? "Menyimpan…" : "Buat Agent dan catat pemilik"}</button>
       </form>
       <section className="agent-list-section"><div className="panel-heading"><span className="section-kicker">PASSPORT & OWNERSHIP</span><h2>Agent Anda</h2><p>Profil Agent berbeda dari profil manusia. Status aktif tidak menjalankan runtime AI dengan sendirinya.</p></div>
-        {loading ? <section className="panel loading-panel">Memuat identitas Agent dari API…</section> : agents.length === 0 ? <section className="panel agent-empty"><strong>Belum ada Agent</strong><p className="muted">Buat Agent pertama. Identitas akan tersimpan pada database dan terhubung dengan Human pemiliknya.</p></section> :
+        {loading ? <section className="panel loading-panel">Memuat identitas Agent dari API…</section> : !error && agents.length === 0 ? <section className="panel agent-empty"><strong>Belum ada Agent</strong><p className="muted">Buat Agent pertama. Identitas akan tersimpan pada database dan terhubung dengan Human pemiliknya.</p></section> :
           <div className="agent-cards">{agents.map((agent) => <article className="panel agent-card" key={agent.id}>
             <div className="agent-card-head"><div className="agent-avatar">{agent.display_name.slice(0, 1).toUpperCase()}</div><div className="agent-title"><h3>{agent.display_name}</h3><span>@{agent.handle}</span></div><span className={"agent-status status-" + agent.status}>{agent.status}</span></div>
             <p className="agent-description">{agent.description || "Belum ada deskripsi."}</p>{agent.disclosure && <p className="agent-disclosure"><strong>Disclosure:</strong> {agent.disclosure}</p>}
