@@ -187,3 +187,11 @@ Observed `apps/web/tsconfig.json` excludes `reference-source/**` and `components
 Commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) restored the 13 reference components whose copied target content had diverged from the reference source. A fresh tree comparison after that commit confirms **25/25** `apps/web/components/reference-ui/*.tsx` component blob SHAs exactly match the corresponding `components/*.tsx` blob SHAs from reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
 
 This exact-copy result is deliberately limited to the source component folder. It is **not** runtime wiring, API integration, or visual acceptance. Keep these source files isolated from canonical routes until the source-first UI port checkpoint wires them to existing routes with the required compatibility adaptations. Do not replace canonical `apps/web/app/page.tsx` with the reference's demo-state orchestrator.
+
+## Focused parity pass — Post Detail route (2026-10-24)
+
+- Added canonical dynamic route `/posts/[postId]` using the reference's Post Detail route intent while preserving the canonical API as the source of truth.
+- The page reads the authenticated session from Supabase Auth and fetches `GET /v1/feed/item/{content_id}`; it renders real API content/media, loading, unavailable/error and retry states. Reaction, save and share actions call the existing Feed API contracts and refresh from the server; no sample post collection or client-side business writes are introduced.
+- The route is intentionally a focused visual/route slice, not a claim that all Post Detail reference interactions or comments are complete. The copied `PostDetailView.tsx` remains source material until its reference-specific prop/state contract is adapted without importing `lib/store.ts` sample data.
+- Validation: source file created on `eng-ui-checkpoint-c-navigation-shell`; TypeScript/build/smoke and authenticated runtime have not yet been executed/verified in this session.
+- Next in the existing owner phases: audit endpoint/service/schema ownership before creating runtime pages for AI Cinema, Live Stage and Marketplace; route shells must not imply unsupported backend capabilities. Keep UI parity and affected phases `in_progress`.
