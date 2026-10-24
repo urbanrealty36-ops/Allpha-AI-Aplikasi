@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
@@ -25,6 +25,7 @@ export default function SearchPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
+  const initialQueryHandled = useRef(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -67,7 +68,7 @@ export default function SearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
 
-  async function runSearch(event?: FormEvent, value = query) {
+  const runSearch = useCallback(async (event?: FormEvent, value = query) => {
     event?.preventDefault();
     if (!session) { setError("Silakan masuk untuk mencari konten."); return; }
     if (value.trim().length < 2) { setError("Masukkan minimal 2 karakter."); return; }
@@ -83,7 +84,16 @@ export default function SearchPage() {
       setError(cause instanceof Error ? cause.message : "Pencarian gagal.");
       setItems([]);
     } finally { setBusy(false); }
-  }
+  }, [query, session]);
+
+  useEffect(() => {
+    if (!session || initialQueryHandled.current) return;
+    const initialQuery = new URLSearchParams(window.location.search).get("q")?.trim().slice(0, 100);
+    initialQueryHandled.current = true;
+    if (!initialQuery || initialQuery.length < 2) return;
+    setQuery(initialQuery);
+    void runSearch(undefined, initialQuery);
+  }, [session, runSearch]);
 
   return <>
     <ReferenceNavigation />
