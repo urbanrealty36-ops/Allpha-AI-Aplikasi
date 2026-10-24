@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
-import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/meshopt-fallback-compat.mjs";
+
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+
+const meshoptFallbackModuleUrl = new URL("../../../tools/3d-assets/meshopt-fallback-compat.mjs", import.meta.url);
+let findInvalidMeshoptFallbackBuffers = null;
+if (existsSync(meshoptFallbackModuleUrl)) {
+  ({ findInvalidMeshoptFallbackBuffers } = await import(meshoptFallbackModuleUrl.href));
+}
 
 const page = readFileSync(new URL("../app/agents/[agentId]/studio/page.tsx", import.meta.url), "utf8");
 const agents = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
@@ -133,27 +139,32 @@ for (const [file, loadCall] of [
 
 
 
-const validMeshoptFallback = {
-  extensionsRequired: ["EXT_meshopt_compression"],
-  buffers: [
-    { byteLength: 8 },
-    { byteLength: 16, extensions: { EXT_meshopt_compression: { fallback: true } } }
-  ],
-  bufferViews: [{
-    buffer: 1,
-    byteLength: 16,
-    extensions: { EXT_meshopt_compression: {
-      buffer: 0, byteOffset: 0, byteLength: 8, byteStride: 4, count: 4, mode: "ATTRIBUTES"
-    } }
-  }]
-};
-assert.deepEqual(findInvalidMeshoptFallbackBuffers(validMeshoptFallback), [],
-  "spec-conformant URI-less Meshopt fallback buffer must not be misclassified as malformed");
-const invalidMeshoptFallback = structuredClone(validMeshoptFallback);
-delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fallback;
-assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
-  { index: 1, reasons: ["fallback_flag_missing"] }
-], "URI-less nonzero buffer without fallback marker must be rejected");
+if (findInvalidMeshoptFallbackBuffers) {
+  const validMeshoptFallback = {
+    extensionsRequired: ["EXT_meshopt_compression"],
+    buffers: [
+      { byteLength: 8 },
+      { byteLength: 16, extensions: { EXT_meshopt_compression: { fallback: true } } }
+    ],
+    bufferViews: [{
+      buffer: 1,
+      byteLength: 16,
+      extensions: { EXT_meshopt_compression: {
+        buffer: 0, byteOffset: 0, byteLength: 8, byteStride: 4, count: 4, mode: "ATTRIBUTES"
+      } }
+    }]
+  };
+  assert.deepEqual(findInvalidMeshoptFallbackBuffers(validMeshoptFallback), [],
+    "spec-conformant URI-less Meshopt fallback buffer must not be misclassified as malformed");
+  const invalidMeshoptFallback = structuredClone(validMeshoptFallback);
+  delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fallback;
+  assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
+    { index: 1, reasons: ["fallback_flag_missing"] }
+  ], "URI-less nonzero buffer without fallback marker must be rejected");
+} else {
+  // The standalone Web Docker build context excludes repository-level tools/; the full-repository CI job runs the fixture test.
+  assert.equal(existsSync(meshoptFallbackModuleUrl), false);
+}
 
 
 const publishedThemeRoute = readFileSync(new URL("../app/theme/[themeKey]/page.tsx", import.meta.url), "utf8");
