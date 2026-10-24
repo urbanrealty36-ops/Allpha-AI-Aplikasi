@@ -24,7 +24,7 @@ jobs:
     env:
       NEXT_PUBLIC_API_BASE_URL: https://allpha-api.up.railway.app
       NEXT_PUBLIC_SUPABASE_URL: https://dvdziauyvuhcnqhrrvww.supabase.co
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_CI_BUILD_ONLY
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Kc2veoWBTA_Plv-LBMfMqw_82bu43hg
       ALLPHA_UI_ARTIFACTS: .artifacts/ui-responsive
     steps:
       - uses: actions/checkout@v4
