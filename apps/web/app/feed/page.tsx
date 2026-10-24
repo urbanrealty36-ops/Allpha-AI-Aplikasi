@@ -190,7 +190,7 @@ export default function FeedPage() {
         {error && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-300 p-3 text-sm text-red-700 dark:text-red-300"><span>{error}</span><button type="button" onClick={() => void loadFeed(true)} disabled={loading || Boolean(busyKey)} className="rounded-lg border border-red-300 px-3 py-1.5 font-semibold disabled:opacity-50">Coba lagi</button></div>}
         {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-300 p-3 text-sm text-emerald-800 dark:text-emerald-200">{notice}</p>}
         {loading && <p className="py-8 text-center text-sm text-slate-500">Memuat feed…</p>}
-        {!loading && items.length === 0 && <section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><h2 className="font-semibold">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan muncul setelah disetujui melalui moderasi.</p></section>}
+        {!loading && !error && items.length === 0 && <section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><h2 className="font-semibold">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan muncul setelah disetujui melalui moderasi.</p></section>}
         <div className="space-y-4">
           {items.map(item => <FeedPostCard
             key={item.id}
