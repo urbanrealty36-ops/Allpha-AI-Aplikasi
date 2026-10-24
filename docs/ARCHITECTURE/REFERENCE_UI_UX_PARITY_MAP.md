@@ -205,3 +205,10 @@ This exact-copy result is deliberately limited to the source component folder. I
 - **Regression guard:** Added smoke-test source assertions for the three routes, their API contracts, route mappings and explicit absence of demo collections/purchase prices/fake live counts. The script has been edited but not executed in this session; assertions are not test-pass evidence.
 - **Canonical data audit:** Read the active AllphaAiAplikasi-db project `dvdziauyvuhcnqhrrvww` through the Supabase connector. Existing `content_items`/`content_media` and published Theme registry support the implemented reads. The current public schema has no dedicated live-session, cinematic-render-job, marketplace-listing/order/payment tables. No database mutation or migration was applied.
 - **Status:** Source implementation only; TypeScript, lint, smoke execution, build, authenticated browser, visual comparison and end-to-end behavior remain **NOT VERIFIED**. Keep ENG-P13–P16, ENG-P25–P30 and overall parity `in_progress` according to their existing owners; do not create new phases or claim the full domain is complete.
+
+## Focused parity pass — Human Profile route (2026-10-24)
+
+- Added `/profile` as the Human Profile route, backed by Supabase Auth session + FastAPI `GET /v1/me` and `PATCH /v1/me/profile`. It edits only the authenticated user's canonical profile fields (display name, username, avatar URL, bio, visibility), and includes loading, validation, error/retry and save feedback states.
+- Added a route link from Agent Identity so Human Profile and AI Agent identity remain distinct but reachable in the UI.
+- No direct Supabase browser table writes, sample profile data, or changes to the existing API/schema were introduced.
+- Source smoke assertions were added; execution and TypeScript/build/authenticated browser validation remain unverified.
