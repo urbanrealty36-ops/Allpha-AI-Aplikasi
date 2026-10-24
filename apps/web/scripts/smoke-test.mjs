@@ -350,7 +350,12 @@ assert.ok(storiesPage.includes('!loading && !error && mine.length === 0'), "Stor
 
 // Reels comments must use canonical feed comment endpoints, not reference alert/sample interactions.
 const reelsInteractions = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
-for (const contract of ["/v1/feed/" + encodeURIComponent(item.id) + "/comments?limit=30", "/comments\", {", "toggleComments", "submitComment", "aria-expanded={Boolean(commentsOpen[item.id])}", "maxLength={2000}"]) {
+for (const contract of [
+  '"/v1/feed/" + encodeURIComponent(item.id) + "/comments?limit=30"',
+  '"/v1/feed/" + encodeURIComponent(item.id) + "/comments"',
+  "toggleComments", "submitComment", "commentsLoading", "commentsErrors",
+  "aria-expanded={Boolean(commentsOpen[item.id])}", "maxLength={2000}"
+]) {
   assert.ok(reelsInteractions.includes(contract), "Reels comment interaction contract missing: " + contract);
 }
 assert.doesNotMatch(reelsInteractions, /alert\(|mockReels|fakeReels/);
