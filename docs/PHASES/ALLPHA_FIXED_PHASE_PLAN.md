@@ -1005,3 +1005,23 @@ Coverage: Web=CHANGE (Splash/Auth entry); API/DB=INTEGRATE (existing Auth + Agen
 - Remaining scope includes visual/interaction parity for Explore + Allpha Hub, exact responsive comparison across the reference component set, missing binary asset transfer, and route-level validation for all remaining screens. No phase completion is inferred.
 
 Coverage: Web=CHANGE; API/DB=INTEGRATE/NOT AFFECTED for existing auth and search contracts; Native Client=INTEGRATE as cross-client journey reference; Super Admin=NOT AFFECTED. ENG-P02/ENG-P03 and source-first parity remain `in_progress`.
+
+---
+
+## UI/UX Reference Source Parity — execution contract (2026-10-24)
+
+**Status: IN PROGRESS — NOT ACCEPTED / NOT PHASE-COMPLETE**
+
+Product owner has clarified that the current UI implementation must copy the supplied reference repo's source components, layouts, CSS, navigation, interactions and PWA presentation rather than reinterpret them using the historical Master PRD. The Master PRD now contains a dated source-authority addendum. Reference source: `urbanrealty36-ops/Allpha-Front-End-UI-New`, branch `main`.
+
+Execution order:
+1. Inventory every file in the reference repository (not only the 25 prominent components), including global CSS, app shell, manifest/PWA hooks, shared store/utilities, images and 3D assets. Preserve upstream paths/revision and identify dependency/asset references.
+2. Keep exact upstream source distinguishable from canonical app adapters. Do not rewrite layout or remove a reference feature just because its endpoint is absent.
+3. Reproduce the reference screenshot structure first: blue/white header, credits and notification affordances, Feed tabs, Stories row, live stage card, post layout and fixed bottom navigation; apply the same source-of-truth rule to every other reference route.
+4. Track Splash/Auth/Register, Agent onboarding/workspace, Feed, Stories, Create/Generate, Reels, Profile, Explore/Allpha Hub, Messages, Post Detail, AI Cinema, Live Experience, Marketplace, Skills Challenge, Takeover modals/control and all Three World/Universe 3D views.
+5. After UI parity, connect canonical adapters to FastAPI/Auth/Supabase. Remove reference demo data from production paths, do not bypass the backend, and explicitly mark missing API/schema contracts as blockers rather than inventing them.
+6. Capture browser screenshots at 360, 390, 820 and 1440 CSS px; compare against the corresponding reference states. Exercise route navigation, modal lifecycle, loading/empty/error/retry, keyboard/touch, and overflow. For GLB, capture successful load/parse evidence and renderer errors/resize/disposal behavior.
+7. Record source file → target file → route → evidence in `docs/ARCHITECTURE/REFERENCE_UI_UX_PARITY_MAP.md`. Do not call source-presence smoke tests visual acceptance.
+
+**Acceptance gate:** all reference pages/components/assets inventoried; source faithfully preserved and used; no unapproved visual deviations; responsive screenshot evidence for every required journey; CI clean on latest commit; then adapter integration is reviewed separately. No phase status advances based on code-presence checks alone. Existing fixed phase IDs and canonical domain ownership remain unchanged.
+
