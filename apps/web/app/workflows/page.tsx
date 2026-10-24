@@ -36,6 +36,7 @@ async function errorMessage(response: Response): Promise<string> {
 
 export default function WorkflowsPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
+  const [mounted, setMounted] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -84,6 +85,8 @@ export default function WorkflowsPage() {
       setLoading(false);
     }
   }, [request, session]);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -159,6 +162,8 @@ export default function WorkflowsPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Run tidak dapat dibatalkan."); }
     finally { setSaving(false); }
   }
+
+  if (!mounted) return <main className="identity-shell"><section className="config-card" role="status">Memeriksa sesi Workflow Engine…</section></main>;
 
   if (!supabase) return <><main className="identity-shell"><section className="config-card"><span className="section-kicker">WORKFLOW ENGINE / KONFIGURASI</span><h1>Konfigurasi autentikasi belum tersedia.</h1><p>Atur NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY untuk mengaktifkan sesi login. Kunci service-role tidak boleh berada di browser.</p></section></main>;
 
