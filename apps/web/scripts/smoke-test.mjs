@@ -268,9 +268,9 @@ for (const contract of [
 
 // Reference UI parity: active profile tab and profile action must target the
 // canonical Human Profile route, not the AI Agent registry route.
-const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
-assert.ok(referenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "profile route must activate the Profile navigation item");
-assert.ok(referenceNavigation.includes('PROFILE: "/profile"'), "Profile navigation must target the canonical Human Profile route");
+const profileReferenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+assert.ok(profileReferenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "profile route must activate the Profile navigation item");
+assert.ok(profileReferenceNavigation.includes('PROFILE: "/profile"'), "Profile navigation must target the canonical Human Profile route");
 
 
 // Explore has a stable reference-navigation route and delegates to the existing
