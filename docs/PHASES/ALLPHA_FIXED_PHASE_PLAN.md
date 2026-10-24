@@ -909,3 +909,37 @@ This backlog is part of the canonical fixed phase plan, not a parallel phase boa
 
 
 **Reference UI/UX parity execution checkpoint (2026-10-24, in progress):** Added a reusable reference-style navigation shell (apps/web/components/reference-ui/ReferenceNavigation.tsx) and applied it to Web routes /feed, /create, /stories, and /reels. Added responsive styling in apps/web/app/globals.css. Transferred 8 reference JPEG assets into the source snapshot archive; this is not yet the complete asset set and does not mean the assets are all wired into runtime UI. Source snapshot remains the visual source of truth. Still pending: remaining binary asset transfer (including PNGs and .aistudio files), parity implementation of remaining reference views/modals and route mapping, full UI interaction alignment, and frontend build/navigation verification. No ENG phase is closed by this checkpoint; do not infer successful build or visual parity without evidence.
+
+
+## Product Owner execution control — Reference UI/UX parity (2026-10-24)
+
+**This is an execution checklist within existing ENG-P00–ENG-P37 ownership, not a new numbered engineering phase and not a parallel status plan.** The canonical owner phase statuses above remain authoritative. Keep this work frontend-only until the reference component-porting checkpoint is accepted; do not start broad API/DB/backend integration in parallel. Do not build or deploy to Railway. Vercel is the only deployment target when a deployment is explicitly needed.
+
+### Working rule
+
+One checkpoint at a time. Before editing, inspect the reference source and canonical target route. Copy the reference component/style/assets without redesigning them; adapt imports, types, and route boundaries only as necessary for the existing Allpha monorepo. Do not port reference demo data, simulated success, or local-only business actions as production behavior. If a component needs real business data to function, preserve the visual structure and record the integration dependency for its existing owner ENG phase. Do not claim completion until the checkpoint's evidence exists.
+
+### Ordered execution checkpoints
+
+| Order | Checkpoint | Scope and expected output | Exit criteria |
+|---|---|---|---|
+| A | Repository baseline and source inventory | Re-read this fixed plan, Master PRD, ADR-0003, and `docs/ARCHITECTURE/REFERENCE_UI_UX_PARITY_MAP.md`; compare reference `main` against canonical `apps/web`; inventory every route, component, modal, hook, style, font/icon, image, and feature; identify existing target files and owner phase. | Traceable source → target file/route map; duplicate/conflicting files and missing binary assets listed. No broad code edits during this checkpoint. |
+| B | Reference source/assets capture | Preserve source component code and design assets in the repository in a reviewable way. Keep captured reference-only files out of the app TypeScript/build graph. | Source inventory reconciles with the reference tree; all transferable assets have verified paths and checksums where possible; missing assets are explicit. |
+| C | Design foundation and navigation shell | Port exact reference global styles, responsive breakpoints, shared header/navbar, bottom navigation, icons and shell. Apply to canonical routes without replacing their data/service logic. | Correct active-route behavior, responsive layout and reference appearance; no duplicated headers/navigation; no broken links; frontend checks pass. |
+| D | Identity journey and Feed-first composition | Port the reference Splash/Auth onboarding/Agent identity onboarding and Feed composition to the existing canonical routes. Preserve the required journey: Splash → Human Register/Login → AI Agent Identity Onboarding/Register → Feed. | Correct authenticated/unauthenticated routing and loading/error states; Feed is the post-onboarding home; 3D Universe remains a secondary hub. No local/sample business state. |
+| E | Social components copied component-by-component | Port Feed cards and actions, Stories, Create Post, Post Detail, Reels, Explore/Search, Profile, notifications, messages and related modals. Work in small slices, in this order: Feed; Create/Post Detail; Stories; Reels; Explore/Search; Profile; Messages/Notifications. | Each slice lists exact source and target files, keeps the reference hierarchy/interactions, and passes the frontend type/build checks before the next slice starts. |
+| F | Remaining domain views | Port AI Cinema/Film AI, Marketplace, Skills/Challenges/Credits, Allpha Hub, Live Stage, Takeover controls, and spatial/3D views using the same source-first method. | All reference views/features have a source-to-route mapping; visual shells are copied without inventing backend behavior or falsely presenting demo state as production data. |
+| G | UI parity and route audit | Compare every source component against its canonical route and inspect mobile/desktop breakpoints, empty/loading/error/permission states, interactions and assets. | Complete component/route checklist; no missing reference view hidden by a newly designed substitute; frontend CI checks pass. |
+| H | Handoff to domain integration | Produce a separate trace of each UI action to the existing owning ENG phase and canonical API/service/repository/schema contract. Do not implement all domains in this checkpoint. | UI port is accepted as a frontend checkpoint; backend integration work is queued by existing phase owner and dependency order. This does not close those ENG phases or ENG-P37. |
+
+### Per-checkpoint work log required
+
+For each checkpoint, update this fixed plan with: (1) source repository and commit/tree, (2) exact source and target files, (3) files added/changed, (4) any deliberate compatibility adaptation, (5) missing assets or blockers, (6) actual CI/build result and run link, and (7) next checkpoint. Never use “copied everything”, “integrated”, “passed”, or “complete” without evidence supporting that exact claim.
+
+### Current handoff state
+
+- Work remains **in progress**. Previous commits introduced a reference navigation shell and applied it to selected Web routes, and captured reference component sources; this is partial work, not a completed full UI port.
+- The reference repository has more components/features and binary assets than the currently wired canonical routes. The source-to-route inventory and asset reconciliation must be completed before broad feature claims.
+- The latest observed smoke workflow passed on commit `239d69007d2a3ca420fa76e4ea42af08f5d52c23`; this is source-smoke evidence only. The full production Web build after that commit and visual/authenticated route parity are not yet verified in this checkpoint.
+- No API, database, Supabase schema, or backend work is in scope for checkpoints A–G unless a frontend check reveals a strictly necessary compatibility change; such a change must be documented and deferred to the existing owner phase.
+- Next action: execute checkpoint A only—produce the complete component/feature/source-to-target inventory and reconcile the in-progress files against the reference before editing another UI component. Then continue with checkpoint B/C as small, reviewable changes.
