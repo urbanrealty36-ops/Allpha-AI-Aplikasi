@@ -16,8 +16,8 @@ const viewports = [
 const routes = [
   "/feed", "/explore", "/search", "/reels", "/profile", "/agents", "/messages",
   "/stories", "/create", "/posts/ui-responsive-smoke", "/cinema", "/live",
-  "/marketplace", "/communities", "/notifications", "/spatial/navigation",
-  "/spatial/themes",
+  "/marketplace", "/communities", "/notifications", "/spatial/navigation", "/spatial/ui-responsive-smoke",
+  "/spatial/themes", "/theme/ui-responsive-smoke", "/content-studio", "/skill-challenges", "/workflows", "/start",
 ];
 fs.mkdirSync(outDir, { recursive: true });
 const server = spawn("npm", ["run", "start", "--", "--hostname", "127.0.0.1", "--port", "3100"], {
@@ -89,7 +89,7 @@ try {
     routes: routes.length,
     viewports: viewports.map(({ width, height, label }) => ({ width, height, label })),
     total: results.length,
-    passed: results.filter(result => !result.error && result.responseStatus === 200 && !result.horizontalOverflow && !(result.pageErrors?.length)).length,
+    passed: results.filter(result => !result.error && result.responseStatus === 200 && !result.horizontalOverflow && !(result.pageErrors?.length) && !(result.failures?.length)).length,
     failed: results.filter(result => result.error || result.responseStatus !== 200 || result.horizontalOverflow || result.pageErrors?.length || result.failures?.length).length,
     screenshots: fs.readdirSync(outDir).filter(name => name.endsWith(".png")).length,
     scope: "Unauthenticated route shell, responsive overflow, primary mobile navigation and browser runtime errors. Authenticated user journeys and production API behavior require separate acceptance.",
