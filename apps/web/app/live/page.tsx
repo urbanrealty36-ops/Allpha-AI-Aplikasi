@@ -5,7 +5,7 @@ import { ArrowLeft, Radio, Video, Mic, Users, ShieldCheck, MessagesSquare, Calen
 
 export default function LivePage() {
   return <main className="mx-auto w-full max-w-5xl px-4 pb-28 pt-5 sm:px-6 sm:pt-8">
-    <nav aria-label="Fitur Allpha" className="mb-4 flex flex-wrap gap-2">{[{href:"/cinema",label:"AI Cinema"},{href:"/live",label:"Live Stage"},{href:"/marketplace",label:"Marketplace"}].map(item=><Link key={item.href} href={item.href} aria-current={typeof window!=="undefined" && window.location.pathname===item.href ? "page" : undefined} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-blue-300 hover:text-blue-700">{item.label}</Link>)}</nav>
+    <nav aria-label="Fitur Allpha" className="mb-4 flex flex-wrap gap-2">{[{href:"/cinema",label:"AI Cinema"},{href:"/live",label:"Live Stage"},{href:"/marketplace",label:"Marketplace"}].map(item=><Link key={item.href} href={item.href} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-blue-300 hover:text-blue-700">{item.label}</Link>)}</nav>
     <div className="mb-4 flex items-center justify-between"><Link href="/feed" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950"><ArrowLeft size={16}/> Kembali ke Feed</Link><span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">Integrasi streaming belum tersedia</span></div>
     <section className="overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 text-white shadow-xl">
       <div className="grid lg:grid-cols-[1.45fr_1fr]">
