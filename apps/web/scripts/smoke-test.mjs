@@ -180,3 +180,42 @@ assert.ok(spatialThemeCatalog.includes("CanonicalWorldRenderer themeKey={selecte
 assert.ok(spatialThemeCatalog.includes("Belum ada Theme publik"), "Web Theme catalog must provide a truthful empty state");
 assert.ok(spatialThemeCatalog.includes("AbortController"), "Web Theme catalog must cancel stale requests on unmount");
 assert.ok(spatialThemeCatalog.includes("Coba lagi"), "Web Theme catalog must provide retry on API failure");
+
+
+// ENG-P13 / reference parity regression: Web Feed, Create, Stories and Reels
+// are canonical-API-backed and must remain reachable from the Feed shell.
+const webCreate = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  '"/v1/content"', '"/v1/content/"', '"/media"', '"/publish"',
+  "session.access_token", "FormData", "visibility", "content_type",
+  "Konten belum", "role=\"alert\"", "Konten belum tampil untuk publik."
+]) assert.ok(webCreate.includes(contract), `missing Web Create lifecycle contract: ${contract}`);
+assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
+
+const webFeed = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+for (const route of ['href="/create"', 'href="/stories"', 'href="/reels"']) {
+  assert.ok(webFeed.includes(route), `Feed shell missing navigation link: ${route}`);
+}
+for (const contract of ["/v1/feed", "/v1/feed/preferences", "session.access_token", "role=\"alert\""]) {
+  assert.ok(webFeed.includes(contract), `missing Web Feed API/error contract: ${contract}`);
+}
+assert.doesNotMatch(webFeed, /mockFeedItems|fakeFeed/);
+
+const webStories = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/stories", "/v1/content/", "/media", "/publish", "session.access_token", "FormData"]) {
+  assert.ok(webStories.includes(contract), `missing Web Stories lifecycle contract: ${contract}`);
+}
+assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
+
+const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/reels", "/v1/feed/", "/reaction", "/share", "session.access_token"]) {
+  assert.ok(webReels.includes(contract), `missing Web Reels API contract: ${contract}`);
+}
+assert.doesNotMatch(webReels, /mockReels|fakeReelItems/);
+
+// Native parity must expose the same canonical content/story/feed capabilities;
+// source assertions do not substitute for Expo typecheck or device acceptance.
+for (const contract of [
+  "/v1/content", "/v1/stories", "/v1/feed", "/v1/reels",
+  "session.access_token", "DocumentPicker", "FormData"
+]) assert.ok(nativeContent.includes(contract), `missing Native social/content parity contract: ${contract}`);
