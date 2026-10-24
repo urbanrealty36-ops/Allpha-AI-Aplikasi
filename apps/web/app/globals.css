@@ -198,3 +198,26 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-feed-comment-form button{padding:10px 14px;border:0;border-radius:13px;background:#155eef;color:#fff;font-weight:700}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:560px){.allpha-feed-card{border-radius:17px}.allpha-feed-card-meta{padding:12px}.allpha-feed-owner-mark{width:36px;height:36px;flex-basis:36px}.allpha-feed-report select{width:88px}.allpha-feed-report button{padding:6px 3px}.allpha-feed-card-body{padding:13px;font-size:13px}.allpha-feed-actions{padding:10px;gap:5px}.allpha-feed-actions button{font-size:11px;padding:7px 8px}.allpha-feed-comment-form{gap:6px}}
+
+
+/* Reference UI shell parity: preserve the source bottom-navigation layout and safe-area spacing. */
+.allpha-reference-app-content {
+  min-height: 100vh;
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+
+.allpha-reference-app-content > main {
+  scroll-margin-top: 4.25rem;
+}
+
+@supports (height: 100dvh) {
+  .allpha-reference-app-content {
+    min-height: 100dvh;
+  }
+}
+
+@media (max-width: 767px) {
+  .allpha-reference-app-content {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
