@@ -7,6 +7,9 @@ import BottomNav, { type TabType } from "./BottomNav";
 
 function tabForPath(path: string): TabType {
   if (path.startsWith("/create")) return "CREATE";
+  if (path.startsWith("/live")) return "LIVESTAGE";
+  if (path.startsWith("/marketplace")) return "MARKETPLACE";
+  if (path.startsWith("/cinema")) return "FILM_AI";
   if (path.startsWith("/reels")) return "REELS";
   if (path.startsWith("/messages")) return "MESSAGES";
   if (path.startsWith("/spatial")) return "WORLD3D";
@@ -21,17 +24,17 @@ const routeForTab: Partial<Record<TabType, string>> = {
   FEED: "/feed",
   EXPLORE: "/search",
   CREATE: "/create",
-  LIVESTAGE: "/spatial/navigation",
+  LIVESTAGE: "/live",
   WORLD3D: "/spatial/navigation",
   MESSAGES: "/messages",
   REELS: "/reels",
   SKILLS_CREDITS: "/skill-challenges",
-  MARKETPLACE: "/search",
+  MARKETPLACE: "/marketplace",
   PROFILE: "/agents",
   POST_DETAIL: "/feed",
   TAKEOVER_CONTROL: "/agents",
   ASK_AI_VIEW: "/content-studio",
-  FILM_AI: "/content-studio",
+  FILM_AI: "/cinema",
 };
 
 export default function ReferenceNavigation() {
