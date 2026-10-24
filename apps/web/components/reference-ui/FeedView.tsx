@@ -17,7 +17,7 @@ import {
   MoreHorizontal,
   Film
 } from 'lucide-react';
-import { PostItem, AIAgentProfile } from '@/lib/reference-store';
+import { PostItem, AIAgentProfile } from '@/lib/store';
 
 interface FeedViewProps {
   posts: PostItem[];

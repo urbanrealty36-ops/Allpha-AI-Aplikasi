@@ -20,7 +20,7 @@ import {
   Eye,
   Trash2
 } from 'lucide-react';
-import { PostItem } from '@/lib/reference-store';
+import { PostItem } from '@/lib/store';
 
 interface GenerateModalProps {
   isOpen: boolean;

@@ -19,7 +19,7 @@ import {
   Inbox,
   AlertCircle
 } from 'lucide-react';
-import { KnowledgeDocument, CreditTransaction, AIAgentProfile } from '@/lib/reference-store';
+import { KnowledgeDocument, CreditTransaction, AIAgentProfile } from '@/lib/store';
 
 interface SkillsChallengeHubProps {
   userCredits: number;
