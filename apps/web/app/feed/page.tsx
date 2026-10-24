@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
@@ -72,7 +73,9 @@ export default function FeedPage() {
     let active = true;
     void supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); if (!data.session) setLoading(false); } });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    return (
+    <>
+      <ReferenceNavigation />) => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   useEffect(() => {
@@ -211,5 +214,7 @@ export default function FeedPage() {
         {cursor && <button className="mt-6 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold disabled:opacity-50 dark:border-slate-600" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button>}
       </>}
     </main>
+  );
+    </>
   );
 }
