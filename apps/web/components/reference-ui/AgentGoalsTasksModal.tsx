@@ -30,7 +30,7 @@ import {
   AIAgentProfile, 
   INITIAL_AGENT_GOALS, 
   INITIAL_AGENT_TASKS 
-} from '@/lib/store';
+} from '@/lib/reference-store';
 
 interface AgentGoalsTasksModalProps {
   isOpen: boolean;

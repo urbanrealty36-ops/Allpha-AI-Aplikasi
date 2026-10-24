@@ -27,7 +27,7 @@ import {
   AgentBidang, 
   AVATAR_3D_CATALOG, 
   BIDANG_SKILLS_CATALOG 
-} from '@/lib/store';
+} from '@/lib/reference-store';
 
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
