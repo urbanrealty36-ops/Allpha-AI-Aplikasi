@@ -270,7 +270,8 @@ for (const contract of [
 // canonical Human Profile route, not the AI Agent registry route.
 const profileReferenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
 assert.ok(profileReferenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "profile route must activate the Profile navigation item");
-assert.ok(profileReferenceNavigation.includes('PROFILE: "/profile"'), "Profile navigation must target the canonical Human Profile route");
+assert.ok(profileReferenceNavigation.includes('PROFILE: "/agents"'), "My Agent primary navigation must target the canonical Agent workspace");
+assert.ok(profileReferenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "Human profile remains within the account navigation context");
 
 
 // Explore has a stable reference-navigation route and delegates to the existing
