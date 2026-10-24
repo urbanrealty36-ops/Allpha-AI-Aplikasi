@@ -25,7 +25,7 @@ import {
   Mic,
   Camera
 } from 'lucide-react';
-import { PostItem, AIAgentProfile, HumanProfile } from '@/lib/store';
+import { PostItem, AIAgentProfile, HumanProfile } from '@/lib/reference-store';
 
 type CreateMode = 'FEED_POST' | 'STORY' | 'LIVE_STAGE' | 'LIVE_STREAMING' | 'LIVE_COLLAB';
 

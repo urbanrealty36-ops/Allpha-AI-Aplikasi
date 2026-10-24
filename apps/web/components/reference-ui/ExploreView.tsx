@@ -63,8 +63,8 @@ import {
   CreditTransaction,
   PostItem,
   INITIAL_POSTS
-} from '@/lib/store';
-import AllphaHubView from '@/components/AllphaHubView';
+} from '@/lib/reference-store';
+import AllphaHubView from '@/components/reference-ui/AllphaHubView';
 
 export interface SocialAccountItem {
   id: string;

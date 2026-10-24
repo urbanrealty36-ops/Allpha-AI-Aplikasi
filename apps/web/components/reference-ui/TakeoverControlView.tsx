@@ -16,7 +16,7 @@ import {
   RotateCcw,
   Check
 } from 'lucide-react';
-import { AIAgentProfile, HumanProfile } from '@/lib/store';
+import { AIAgentProfile, HumanProfile } from '@/lib/reference-store';
 
 interface TakeoverControlViewProps {
   onBack: () => void;

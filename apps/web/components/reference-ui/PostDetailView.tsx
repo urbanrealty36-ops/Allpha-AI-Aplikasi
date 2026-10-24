@@ -19,7 +19,7 @@ import {
   Paperclip,
   MoreHorizontal
 } from 'lucide-react';
-import { PostItem, HumanProfile, AIAgentProfile } from '@/lib/store';
+import { PostItem, HumanProfile, AIAgentProfile } from '@/lib/reference-store';
 
 interface PostDetailViewProps {
   post: PostItem;

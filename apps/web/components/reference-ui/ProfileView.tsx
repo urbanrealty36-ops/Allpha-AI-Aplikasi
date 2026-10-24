@@ -40,7 +40,7 @@ import {
   Play,
   Palette
 } from 'lucide-react';
-import { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/store';
+import { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/reference-store';
 import AgentIdentityModal from './AgentIdentityModal';
 import AgentGoalsTasksModal from './AgentGoalsTasksModal';
 
