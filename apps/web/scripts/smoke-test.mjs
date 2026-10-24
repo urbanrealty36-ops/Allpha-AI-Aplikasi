@@ -369,3 +369,13 @@ assert.ok(agents.includes("if (!mounted) return <main className=") && agents.inc
 // The shared shell owns global navigation; Create must not render a duplicate header or bottom bar.
 const createRoute = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(createRoute, /ReferenceNavigation|BottomNav|<Navbar/);
+
+
+// Client-only Supabase availability must not change server-rendered first frames; onboarding uses router navigation.
+for (const [file,marker] of [["communities/page.tsx","if(!mounted)return <main"],["workflows/page.tsx","if (!mounted) return <main"]]) {
+  const source = readFileSync(new URL("../app/" + file, import.meta.url), "utf8");
+  assert.ok(source.includes(marker), file + " must avoid Supabase-dependent hydration mismatch");
+}
+const startJourney = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
+assert.ok(startJourney.includes("router.replace(hasAgentIdentity ? \"/feed\" : \"/agents?onboarding=required\")"));
+assert.doesNotMatch(startJourney, /window\.location\.replace/);
