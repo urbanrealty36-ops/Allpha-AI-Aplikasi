@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
@@ -52,6 +54,7 @@ export default function FeedPostCard({
         </div>
       </div>
       {item.body && <p className="allpha-feed-card-body">{item.body}</p>}
+      <div className="px-4 pt-2"><Link href={`/posts/${encodeURIComponent(item.id)}`} className="text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline">Buka detail konten <span aria-hidden="true">↗</span></Link></div>
       {item.media?.map(media => media.preview_url && (
         <div className="allpha-feed-media" key={media.id}>
           {media.media_type.startsWith("video/")
