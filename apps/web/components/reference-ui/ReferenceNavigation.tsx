@@ -32,7 +32,7 @@ const routeForTab: Partial<Record<TabType, string>> = {
   REELS: "/reels",
   SKILLS_CREDITS: "/skill-challenges",
   MARKETPLACE: "/marketplace",
-  PROFILE: "/profile",
+  PROFILE: "/agents",
   POST_DETAIL: "/feed",
   TAKEOVER_CONTROL: "/agents",
   ASK_AI_VIEW: "/content-studio",
