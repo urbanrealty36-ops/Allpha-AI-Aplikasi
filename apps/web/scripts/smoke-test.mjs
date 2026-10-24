@@ -346,3 +346,11 @@ assert.ok(agentWorkspace.includes(': !error && agents.length === 0 ?'), "Agent A
 const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
 assert.ok(storiesPage.includes('!error && active.length === 0'), "Stories API errors must not be shown as an empty active feed");
 assert.ok(storiesPage.includes('!loading && !error && mine.length === 0'), "Stories API errors must not be shown as an empty owned list");
+
+
+// Reels comments must use canonical feed comment endpoints, not reference alert/sample interactions.
+const reelsInteractions = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/feed/" + encodeURIComponent(item.id) + "/comments?limit=30", "/comments\", {", "toggleComments", "submitComment", "aria-expanded={Boolean(commentsOpen[item.id])}", "maxLength={2000}"]) {
+  assert.ok(reelsInteractions.includes(contract), "Reels comment interaction contract missing: " + contract);
+}
+assert.doesNotMatch(reelsInteractions, /alert\(|mockReels|fakeReels/);
