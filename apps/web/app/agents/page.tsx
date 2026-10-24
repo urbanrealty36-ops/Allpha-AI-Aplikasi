@@ -41,6 +41,7 @@ export default function AgentsPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +69,8 @@ export default function AgentsPage() {
   const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
   const [runtimeTaskBusy, setRuntimeTaskBusy] = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     let active = true;
@@ -282,6 +285,8 @@ export default function AgentsPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi task gagal."); }
     finally { setRuntimeTaskBusy(null); }
   }
+
+  if (!mounted) return <main className="identity-shell"><section className="config-card" role="status">Memeriksa sesi identitas Agent…</section></main>;
 
   if (!supabase) return <><main className="identity-shell"><header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><span className="top-note">AI AGENT IDENTITY</span></header><section className="config-card"><span className="section-kicker">KONFIGURASI DIBUTUHKAN</span><h1>Aktifkan identitas Agent</h1><p>Konfigurasikan Supabase Auth publik pada aplikasi web. Halaman ini tidak membuat identitas contoh.</p><a className="button-primary" href="/">Kembali ke identitas manusia</a></section></main></>;
 
