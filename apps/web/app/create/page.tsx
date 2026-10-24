@@ -113,6 +113,8 @@ export default function CreatePage() {
         <Link href="/feed" className="font-semibold tracking-tight">Allpha Universe</Link>
         <div className="flex items-center gap-4 text-sm">
           <Link href="/feed" className="hover:underline">Feed</Link>
+          <Link href="/stories" className="hover:underline">Stories</Link>
+          <Link href="/reels" className="hover:underline">Reels</Link>
           <Link href="/agents" className="hover:underline">AI Agent</Link>
           <Link href="/" className="hover:underline">Profil & pengaturan</Link>
         </div>
