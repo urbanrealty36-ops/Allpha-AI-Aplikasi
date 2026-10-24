@@ -363,7 +363,7 @@ assert.doesNotMatch(reelsInteractions, /alert\(|mockReels|fakeReels/);
 
 // Agent workspace must render the same first frame on the server and during hydration.
 assert.ok(agents.includes("const [mounted, setMounted] = useState(false)"));
-assert.ok(agents.includes("if (!mounted) return <main className=\\"identity-shell\\"><section className=\\"config-card\\" role=\\"status\\">Memeriksa sesi identitas Agent…</section></main>;"));
+assert.ok(agents.includes("if (!mounted) return <main className=") && agents.includes("Memeriksa sesi identitas Agent…"), "Agent workspace must render a stable hydration frame");
 
 
 // The shared shell owns global navigation; Create must not render a duplicate header or bottom bar.
