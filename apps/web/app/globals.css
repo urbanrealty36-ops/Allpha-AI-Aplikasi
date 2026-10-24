@@ -155,3 +155,14 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-search-page form button{padding:11px 18px;border-radius:12px;background:#155eef;color:#fff;font-weight:700}
 .allpha-search-page article,.allpha-search-page>section{border:1px solid #e2e8f7;border-radius:18px;background:#fff;padding:16px;margin:12px 0;box-shadow:0 7px 24px rgba(30,64,175,.04)}
 @media(max-width:700px){.allpha-reels-page{padding-left:8px!important;padding-right:8px!important}.allpha-reels-page>header{top:58px;padding:10px!important}.allpha-messages-page{display:flex!important;flex-direction:column;padding:12px 9px 96px!important}.allpha-messages-page>section{padding:14px!important;border-radius:17px!important}.allpha-search-page form{flex-wrap:wrap}.allpha-search-page form input{flex-basis:100%}.allpha-search-page form button{width:100%}}
+
+.allpha-stories-page{max-width:760px!important;margin:0 auto;padding:18px 12px 100px!important}
+.allpha-stories-page>nav{display:none!important}
+.allpha-stories-page>header{margin:18px 4px 20px!important}
+.allpha-stories-page>section{padding:18px!important;margin-bottom:16px;border:1px solid #e4eaf6!important;border-radius:20px!important;background:#fff!important;box-shadow:0 8px 28px rgba(30,64,175,.045)}
+.allpha-stories-page article{border:1px solid #e7edf9!important;border-radius:16px!important;background:#fbfcff!important;padding:14px!important;margin:10px 0!important}
+.allpha-spatial-page{max-width:1240px!important;padding:22px 14px 100px!important;color:#e8edf7!important}
+.allpha-spatial-page>header{padding:16px 18px;border:1px solid #e1e8f7;border-radius:20px;background:linear-gradient(135deg,#fff,#f0f5ff);color:#172554!important}
+.allpha-spatial-page>header h1{color:#172554!important}
+.allpha-spatial-page :is(section,article){border-radius:18px}
+@media(max-width:700px){.allpha-stories-page{padding:10px 9px 96px!important}.allpha-stories-page>section{padding:13px!important;border-radius:17px!important}.allpha-spatial-page{padding:12px 9px 96px!important}.allpha-spatial-page>header{padding:13px!important}}
