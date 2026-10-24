@@ -58,14 +58,16 @@ try {
         }));
         const result = { route, viewport: viewport.label, responseStatus, ...metrics, pageErrors };
         results.push(result);
-        assert.equal(responseStatus, 200, route + " should return HTTP 200 at " + viewport.label);
-        assert.equal(metrics.horizontalOverflow, false, route + " has horizontal overflow at " + viewport.label + ": " + JSON.stringify(metrics));
-        assert.equal(pageErrors.length, 0, route + " emitted browser errors at " + viewport.label + ": " + pageErrors.join("; "));
+        const assertions = [];
+        if (responseStatus !== 200) assertions.push(route + " returned HTTP " + responseStatus + " at " + viewport.label);
+        if (metrics.horizontalOverflow) assertions.push(route + " has horizontal overflow at " + viewport.label + ": " + JSON.stringify(metrics));
+        if (pageErrors.length) assertions.push(route + " emitted browser errors at " + viewport.label + ": " + pageErrors.join("; "));
+        result.failures = assertions;
         if (route !== "/spatial/navigation" && route !== "/posts/ui-responsive-smoke") {
-          assert.equal(metrics.mainCount > 0, true, route + " must render main content");
+          if (!(metrics.mainCount > 0)) result.failures.push(route + " did not render main content");
         }
         if (viewport.width <= 390 && !["/spatial/navigation", "/posts/ui-responsive-smoke"].includes(route)) {
-          assert.equal(metrics.visiblePrimaryNav, true, route + " should retain primary mobile navigation");
+          if (!metrics.visiblePrimaryNav) result.failures.push(route + " did not retain primary mobile navigation");
         }
         const screenshotPath = path.join(outDir, viewport.label + route.replaceAll("/", "_") + ".png");
         await page.screenshot({ path: screenshotPath, fullPage: true, animations: "disabled", timeout: 15000 }).catch(error => {
@@ -88,7 +90,7 @@ try {
     viewports: viewports.map(({ width, height, label }) => ({ width, height, label })),
     total: results.length,
     passed: results.filter(result => !result.error && result.responseStatus === 200 && !result.horizontalOverflow && !(result.pageErrors?.length)).length,
-    failed: results.filter(result => result.error || result.responseStatus !== 200 || result.horizontalOverflow || result.pageErrors?.length).length,
+    failed: results.filter(result => result.error || result.responseStatus !== 200 || result.horizontalOverflow || result.pageErrors?.length || result.failures?.length).length,
     screenshots: fs.readdirSync(outDir).filter(name => name.endsWith(".png")).length,
     scope: "Unauthenticated route shell, responsive overflow, primary mobile navigation and browser runtime errors. Authenticated user journeys and production API behavior require separate acceptance.",
     results,
