@@ -111,7 +111,7 @@ export default function CreatePage() {
   return (
     <>
       <ReferenceNavigation />
-      <main className="mx-auto min-h-screen w-full max-w-2xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
+      <main className="allpha-page allpha-create-page mx-auto min-h-screen w-full max-w-2xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav aria-label="Navigasi utama" className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
         <Link href="/feed" className="font-semibold tracking-tight">Allpha Universe</Link>
         <div className="flex items-center gap-4 text-sm">

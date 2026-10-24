@@ -110,3 +110,28 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-ref-top-links a.is-active{border-bottom-color:#2563eb}
 @media(max-width:1080px){.allpha-ref-top-links{gap:10px}.allpha-ref-top-links a{font-size:10px}}
 @media(max-width:860px){.allpha-ref-top-links{display:none}}
+
+/* Reference UI/UX parity layer — canonical API-backed pages. */
+.allpha-page{box-sizing:border-box;min-height:calc(100dvh - 64px);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.allpha-page :is(input,textarea,select){min-width:0;max-width:100%;border-color:var(--line);border-radius:13px;background:#fff;color:#172554;outline:none;transition:border-color .15s,box-shadow .15s}
+.allpha-page :is(input,textarea,select):focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.allpha-page :is(button,a):focus-visible{outline:3px solid rgba(59,130,246,.45);outline-offset:2px}
+.allpha-page :is(h1,h2,h3){letter-spacing:-.025em}
+.allpha-page h1{font-size:clamp(25px,4vw,34px);line-height:1.14;font-weight:800;color:#111b3d}
+.allpha-page h2{font-size:19px;line-height:1.3;font-weight:750;color:#172554}
+.allpha-page p{line-height:1.6}
+.allpha-feed-page,.allpha-create-page{max-width:760px!important;margin:0 auto;padding:18px 12px 100px!important}
+.allpha-feed-page>nav,.allpha-create-page>nav{display:none!important}
+.allpha-feed-page>header,.allpha-create-page>header{margin:18px 4px 20px!important}
+.allpha-feed-page>section,.allpha-feed-page article,.allpha-create-page form,.allpha-create-page>section{border:1px solid #e4eaf6!important;border-radius:20px!important;background:#fff!important;box-shadow:0 8px 28px rgba(30,64,175,.045)}
+.allpha-feed-page>section{padding:16px!important;margin-bottom:16px}
+.allpha-feed-page>div{display:grid;gap:16px}
+.allpha-feed-page article{padding:16px!important;margin:0!important;overflow:hidden}
+.allpha-feed-page article>div:first-child{padding-bottom:10px;border-bottom:1px solid #edf1fa}
+.allpha-feed-page article img,.allpha-feed-page article video{border-radius:14px;max-height:520px;object-fit:cover}
+.allpha-feed-page article button,.allpha-create-page button{border-radius:12px}
+.allpha-create-page form{padding:clamp(16px,3vw,26px)!important;display:grid;gap:18px}
+.allpha-create-page form textarea{min-height:170px;resize:vertical;padding:14px}
+.allpha-create-page form input[type=file]{display:block;width:100%;padding:12px;background:#f8faff}
+.allpha-create-page form button[type=submit]{background:#155eef!important;border-color:#155eef!important;box-shadow:0 7px 18px rgba(37,99,235,.18)}
+@media(max-width:700px){.allpha-page{min-height:calc(100dvh - 58px)}.allpha-feed-page,.allpha-create-page{padding:10px 9px 96px!important}.allpha-feed-page article{padding:13px!important;border-radius:17px!important}.allpha-create-page form{padding:14px!important;border-radius:17px!important}}
