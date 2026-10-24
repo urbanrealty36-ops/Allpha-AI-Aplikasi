@@ -3153,3 +3153,38 @@ This appendix does not create new phases. Work remains inside the existing fixed
 - **ENG-P37 — integration/release acceptance only:** approved isolated non-production Supabase migration, RLS/grants, cross-client E2E, tenant/owner isolation, runtime stop/isolation verification and release evidence. ENG-P37 must not become a container for missing feature implementation.
 
 Keep all existing phase statuses evidence-based and update only the canonical fixed phase plan. Do not alter or replace the pre-existing architecture; this appendix is additive and is subordinate to existing canonical domain ownership and security contracts.
+
+---
+
+# REFERENCE UI/UX SOURCE AUTHORITY ADDENDUM — 2026-10-24
+
+**Purpose:** Record the current, explicit UI implementation authority supplied by the product owner. This addendum supplements the historical baseline above; it does not silently erase or rewrite existing architecture, domain ownership, security constraints, or fixed phase IDs.
+
+## A. Authoritative visual and interaction source
+
+- **Canonical visual/component source repository:** https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New
+- **Target application repository:** https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi
+- **Reference baseline branch inspected:** `main`; source snapshot observed on 2026-10-24.
+- The reference repository is the authority for visual presentation and UI interaction until the product owner supplies a newer reference or explicitly approves a design change.
+- The existing Master PRD is not a reason to redesign, simplify, omit, or substitute a reference UI. Where the reference UI introduces capabilities not yet described here, record them in this addendum and the UI parity inventory first.
+- **UI-first sequencing:** (1) inventory and preserve reference source, (2) reproduce its pages/components/layout/styles/responsive behavior/PWA presentation without discretionary redesign, (3) verify visual parity against reference screenshots at mobile/tablet/desktop breakpoints, (4) only after UI parity is accepted, connect components to canonical APIs, FastAPI services, authentication and Supabase, replacing reference-only demo data with real data adapters. The visual source must remain distinguishable from application adapters.
+- Copying a reference component is not permission to copy its mock data into production, bypass FastAPI, create a second source of truth, or introduce unsafe direct privileged database writes. Keep exact upstream source in an identifiable reference-source area where needed; use thin adapters for canonical runtime integration.
+
+## B. Required reference page and component inventory
+
+The implementation inventory MUST explicitly track, at minimum, the following upstream component files: `AgentGoalsTasksModal.tsx`, `AgentIdentityModal.tsx`, `AiCinemaView.tsx`, `AllphaHubView.tsx`, `AskAiModal.tsx`, `AskAiView.tsx`, `AuthOnboardingFlow.tsx`, `BottomNav.tsx`, `CreatePostModal.tsx`, `ExploreView.tsx`, `FeedView.tsx`, `GenerateModal.tsx`, `LiveExperienceStage.tsx`, `MarketplaceView.tsx`, `MessagesView.tsx`, `Navbar.tsx`, `PostDetailView.tsx`, `ProfileView.tsx`, `ReelsView.tsx`, `SkillsChallengeHub.tsx`, `TakeoverControlView.tsx`, `TakeoverModal.tsx`, `ThreeWorldView.tsx`, `Universe3DExperience.tsx`, and `Universe3DHubView.tsx`, as well as the reference `app/page.tsx`, `app/globals.css`, `app/layout.tsx`, `app/manifest.ts`, `lib/store.ts`, `lib/utils.ts`, `hooks/use-mobile.ts`, and `hooks/usePWAInstall.ts`. This list is a minimum inventory, not a declaration that other reference files/assets can be ignored.
+
+Required visible journeys include Splash and Auth, Register/Login, AI Agent onboarding and identity, Feed tabs and Stories strip, live stage card, Feed post cards, Reels/Video, Explore/Allpha Hub, Create modal and generation modal, Human Profile and Agent profile/workspace, Messages, Post Detail, AI Cinema, Live Experience, Marketplace, Skills Challenge, Takeover modals/control, all Three World/Universe 3D hub and experience views, and PWA install/manifest presentation. Preserve the reference screenshot's blue/white Allpha brand, typography, spacing, navigation hierarchy, bottom bar, iconography, cards, badges, modal dimensions and mobile horizontal-scroll behavior unless the reference source itself changes.
+
+## C. New or expanded capability candidates discovered in reference UI
+
+The reference UI exposes product-facing concepts that must be tracked and mapped to existing canonical domain owners before backend integration: human/AI Agent identity and owner relationship; Agent goals/tasks; Ask AI; content creation and generation; Feed, Stories, Reels, reactions/comments/bookmarks/shares; Allpha Hub discovery; messages; AI Cinema; Live Experience stage; marketplace; skills challenges; takeover/control modals; 3D world browsing and immersive Universe experience; PWA install affordance. A visual component is not proof that the backend capability exists. Mark each capability as one of: reference-only UI, UI parity complete, adapter pending, API/schema missing, integration verified. Do not invent endpoints or imply that a disabled/missing backend feature works.
+
+## D. Required acceptance evidence
+
+For each reference component and page, maintain a traceable record of: upstream path and revision, target path, source-copy status, visual deviations (must be zero or explicitly approved), responsive screenshot evidence at 360/390/820/1440 CSS px, navigation destination, modal open/close behavior, keyboard/touch behavior where relevant, loading/empty/error/retry state, data source (reference fixture vs canonical API), and integration status. Test GLB files for existence, parse/load errors, renderer lifecycle, resize/context loss and mobile performance separately from static visual parity. A successful build or source-presence assertion alone is not visual acceptance.
+
+## E. Sequencing and conflict handling
+
+UI/UX source parity is the immediate priority. Do not claim that an API-backed replacement is visually equivalent unless screenshot evidence supports it. Do not refactor a reference layout to match this historical PRD. Record any true conflict between the reference behavior and non-negotiable security/data/architecture invariants, preserve the visible UI, and isolate the conflict in an adapter or explicit decision record; do not silently remove the feature. Keep phase IDs and ownership in `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md`; do not create new phase numbers or mark a phase complete without evidence.
+
