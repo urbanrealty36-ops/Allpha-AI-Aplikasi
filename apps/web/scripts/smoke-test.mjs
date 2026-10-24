@@ -278,9 +278,9 @@ assert.ok(referenceNavigation.includes('PROFILE: "/profile"'), "Profile navigati
 const exploreRoute = readFileSync(new URL("../app/explore/page.tsx", import.meta.url), "utf8");
 assert.ok(exploreRoute.includes('redirect(query ? `/search?q=${encodeURIComponent(query)}` : "/search")'), "Explore must preserve the query while using canonical Search");
 assert.ok(exploreRoute.includes('from "next/navigation"'), "Explore route must use Next.js canonical navigation");
-const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
-assert.ok(referenceNavigation.includes('if (path.startsWith("/explore")) return "EXPLORE"'), "Explore route must activate Explore navigation");
-assert.ok(referenceNavigation.includes('EXPLORE: "/explore"'), "Explore tab must open the Explore route");
+const exploreReferenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+assert.ok(exploreReferenceNavigation.includes('if (path.startsWith("/explore")) return "EXPLORE"'), "Explore route must activate Explore navigation");
+assert.ok(exploreReferenceNavigation.includes('EXPLORE: "/explore"'), "Explore tab must open the Explore route");
 
 
 // Canonical first-visit journey starts with Splash, then offers real Supabase
