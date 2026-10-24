@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import ReferenceNavigation from "../../components/reference-ui/ReferenceNavigation";
 
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
@@ -62,7 +63,9 @@ export default function StoriesPage() {
     let alive = true;
     void supabase.auth.getSession().then(({ data }) => { if (alive) { setSession(data.session); if (!data.session) setLoading(false); } });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (alive) setSession(next); });
-    return () => { alive = false; data.subscription.unsubscribe(); };
+    return (
+    <>
+      <ReferenceNavigation />) => { alive = false; data.subscription.unsubscribe(); };
   }, [supabase]);
   useEffect(() => { if (session) void reload(); }, [session, reload]);
 
@@ -144,5 +147,6 @@ export default function StoriesPage() {
         </section>
       </>}
     </main>
+    </>
   );
 }
