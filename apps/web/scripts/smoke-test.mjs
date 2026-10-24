@@ -364,3 +364,8 @@ assert.doesNotMatch(reelsInteractions, /alert\(|mockReels|fakeReels/);
 // Agent workspace must render the same first frame on the server and during hydration.
 assert.ok(agents.includes("const [mounted, setMounted] = useState(false)"));
 assert.ok(agents.includes("if (!mounted) return <main className=\\"identity-shell\\"><section className=\\"config-card\\" role=\\"status\\">Memeriksa sesi identitas Agent…</section></main>;"));
+
+
+// The shared shell owns global navigation; Create must not render a duplicate header or bottom bar.
+const createRoute = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(createRoute, /ReferenceNavigation|BottomNav|<Navbar/);
