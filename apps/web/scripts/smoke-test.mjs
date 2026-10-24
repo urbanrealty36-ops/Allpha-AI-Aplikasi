@@ -264,3 +264,10 @@ for (const contract of [
   "/v1/content", "/v1/stories", "/v1/feed", "/v1/reels",
   "session.access_token", "DocumentPicker", "FormData"
 ]) assert.ok(nativeContent.includes(contract), `missing Native social/content parity contract: ${contract}`);
+
+
+// Reference UI parity: active profile tab and profile action must target the
+// canonical Human Profile route, not the AI Agent registry route.
+const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+assert.ok(referenceNavigation.includes('if (path.startsWith("/profile")) return "PROFILE"'), "profile route must activate the Profile navigation item");
+assert.ok(referenceNavigation.includes('PROFILE: "/profile"'), "Profile navigation must target the canonical Human Profile route");
