@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/meshopt-fallback-compat.mjs";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 const page = readFileSync(new URL("../app/agents/[agentId]/studio/page.tsx", import.meta.url), "utf8");
 const agents = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
@@ -291,3 +291,23 @@ for (const contract of ["showSplash ? <section", "Satu universe untuk manusia da
 }
 const webStart = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
 assert.ok(webStart.includes('window.location.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required")'), "authenticated journey must gate Feed on canonical Agent identity");
+
+
+// Prevent reference-source inventory drift: every top-level reference UI
+// component copied into the canonical isolated source folder must remain present.
+const referenceComponents = [
+  "AgentGoalsTasksModal.tsx", "AgentIdentityModal.tsx", "AiCinemaView.tsx",
+  "AllphaHubView.tsx", "AskAiModal.tsx", "AskAiView.tsx",
+  "AuthOnboardingFlow.tsx", "BottomNav.tsx", "CreatePostModal.tsx",
+  "ExploreView.tsx", "FeedView.tsx", "GenerateModal.tsx",
+  "LiveExperienceStage.tsx", "MarketplaceView.tsx", "MessagesView.tsx",
+  "Navbar.tsx", "PostDetailView.tsx", "ProfileView.tsx", "ReelsView.tsx",
+  "SkillsChallengeHub.tsx", "TakeoverControlView.tsx", "TakeoverModal.tsx",
+  "ThreeWorldView.tsx", "Universe3DExperience.tsx", "Universe3DHubView.tsx"
+];
+const canonicalReferenceDirectory = new URL("../components/reference-ui/", import.meta.url);
+const canonicalReferenceFiles = new Set(readdirSync(canonicalReferenceDirectory));
+for (const component of referenceComponents) {
+  assert.ok(canonicalReferenceFiles.has(component), "reference UI component missing from canonical source inventory: " + component);
+}
+assert.equal(referenceComponents.length, 25, "reference UI component inventory must cover all 25 top-level components");
