@@ -190,6 +190,9 @@ for (const contract of [
   "session.access_token", "FormData", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
   "Konten belum", "role=\"alert\"", "Konten belum tampil untuk publik."
 ]) assert.ok(webCreate.includes(contract), `missing Web Create lifecycle contract: ${contract}`);
+for (const route of ['href="/feed"', 'href="/stories"', 'href="/reels"']) {
+  assert.ok(webCreate.includes(route), `Create shell missing navigation link: ${route}`);
+}
 assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
 const webFeed = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
@@ -205,11 +208,17 @@ const webStories = readFileSync(new URL("../app/stories/page.tsx", import.meta.u
 for (const contract of ["/v1/stories", "/v1/content/", "/media", "/publish", "session.access_token", "FormData"]) {
   assert.ok(webStories.includes(contract), `missing Web Stories lifecycle contract: ${contract}`);
 }
+for (const route of ['href="/feed"', 'href="/create"', 'href="/reels"']) {
+  assert.ok(webStories.includes(route), `Stories shell missing navigation link: ${route}`);
+}
 assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
 
 const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/reels", "/v1/feed/", "/reaction", "/share", "session.access_token"]) {
   assert.ok(webReels.includes(contract), `missing Web Reels API contract: ${contract}`);
+}
+for (const route of ['href="/feed"', 'href="/create"', 'href="/stories"']) {
+  assert.ok(webReels.includes(route), `Reels shell missing navigation link: ${route}`);
 }
 assert.doesNotMatch(webReels, /mockReels|fakeReelItems/);
 
