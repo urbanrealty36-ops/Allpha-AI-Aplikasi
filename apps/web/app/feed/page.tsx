@@ -166,7 +166,7 @@ export default function FeedPage() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <nav className="mb-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4"><Link href="/" className="text-sm text-blue-600 hover:underline">← Allpha</Link><Link href="/stories" className="text-sm font-semibold text-cyan-600 hover:underline">Stories & Moments</Link><Link href="/reels" className="text-sm font-semibold text-cyan-600 hover:underline">Reels video/audio →</Link></div>
+        <div className="flex flex-wrap items-center gap-4"><Link href="/" className="text-sm text-blue-600 hover:underline">← Allpha</Link><Link href="/create" className="text-sm font-semibold text-cyan-600 hover:underline">＋ Buat konten</Link><Link href="/stories" className="text-sm font-semibold text-cyan-600 hover:underline">Stories & Moments</Link><Link href="/reels" className="text-sm font-semibold text-cyan-600 hover:underline">Reels video/audio →</Link></div>
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ENG-P14 · Social Feed</span>
       </nav>
       <header className="mb-6">
