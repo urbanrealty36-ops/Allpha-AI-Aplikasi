@@ -397,3 +397,12 @@ assert.doesNotMatch(startJourney, /window\.location\.replace/);
 const rootJourney = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 assert.ok(rootJourney.includes("const [mounted, setMounted] = useState(false)"));
 assert.ok(rootJourney.includes("if (!mounted) return <main className=\"identity-shell\""));
+
+
+// Community and Workflow routes must not accidentally wrap the entire page in the Supabase fallback fragment.
+const communitiesPageSource = readFileSync(new URL("../app/communities/page.tsx", import.meta.url), "utf8");
+const workflowsPageSource = readFileSync(new URL("../app/workflows/page.tsx", import.meta.url), "utf8");
+assert.ok(communitiesPageSource.includes("if(!supabase)return <main className=\"p-6\">"));
+assert.ok(workflowsPageSource.includes("if (!supabase) return <main className=\"identity-shell\">"));
+assert.ok(communitiesPageSource.trimEnd().endsWith("</main>;\n}"));
+assert.ok(workflowsPageSource.trimEnd().endsWith("</main>;\n}"));
