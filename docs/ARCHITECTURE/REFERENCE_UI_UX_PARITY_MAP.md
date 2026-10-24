@@ -229,3 +229,12 @@ This exact-copy result is deliberately limited to the source component folder. I
 - Successful sign-in or sign-up with a session continues to `/start`. That route verifies the session and fetches the current user's Agent identities through FastAPI before routing to `/feed` or `/agents?onboarding=required`. If the backend cannot verify the identity list, the flow stays fail-closed and presents a retry state.
 - Added smoke-test source assertions for Splash actions, Supabase sign-in/sign-up, `/start`, and the Agent-identity gate. CI is queued/pending; these assertions are not yet reported as passing.
 - No reference demo state or direct browser business writes were introduced. The full authenticated journey remains unaccepted until CI and browser/API behavior are verified.
+
+
+## Focused parity pass — entry journey and reference inventory guard (2026-10-24)
+
+- Added a Splash/Welcome state to the unauthenticated root before the existing canonical Supabase sign-in/sign-up form. After authentication, `/start` verifies the current Agent identity through FastAPI and routes to Feed or required Agent onboarding; failures remain retryable and fail closed.
+- Added a stable `/explore` entry route that preserves a query and delegates to the existing API-backed `/search` implementation. The reference Explore tab maps to `/explore`; global search remains `/search?q=…`.
+- Extended `apps/web/scripts/smoke-test.mjs` to assert the Splash → Auth → Agent gate journey, Explore route/active state, and presence of all 25 top-level reference UI components in the canonical isolated source folder.
+- CI found a duplicate top-level identifier in the new smoke assertions. The identifier has been renamed in commit `33b4e5b4d17863f90e53e8addf5971047f471b2c`; the fix still requires a fresh smoke run. Do not treat source assertions as passing until the run completes.
+- Remaining scope includes visual/interaction parity for Explore + Allpha Hub, exact responsive comparison across the reference component set, missing binary asset transfer, and route-level validation for all remaining screens. No phase completion is inferred.
