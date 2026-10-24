@@ -359,3 +359,8 @@ for (const contract of [
   assert.ok(reelsInteractions.includes(contract), "Reels comment interaction contract missing: " + contract);
 }
 assert.doesNotMatch(reelsInteractions, /alert\(|mockReels|fakeReels/);
+
+
+// Agent workspace must render the same first frame on the server and during hydration.
+assert.ok(agents.includes("const [mounted, setMounted] = useState(false)"));
+assert.ok(agents.includes("if (!mounted) return <main className=\\"identity-shell\\"><section className=\\"config-card\\" role=\\"status\\">Memeriksa sesi identitas Agent…</section></main>;"));
