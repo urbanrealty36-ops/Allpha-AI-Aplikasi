@@ -47,6 +47,7 @@ try {
       try {
         const response = await page.goto(baseUrl + route, { waitUntil: "domcontentloaded", timeout: 25000 });
         responseStatus = response?.status() ?? null;
+        await page.waitForSelector("main", { state: "attached", timeout: 5000 }).catch(() => {});
         await page.waitForTimeout(350);
         const metrics = await page.evaluate(() => ({
           viewportWidth: window.innerWidth,
