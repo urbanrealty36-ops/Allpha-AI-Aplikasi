@@ -57,6 +57,7 @@ export default function ReferenceNavigation() {
         unreadMessagesCount={0}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        onSearchSubmit={() => { const query = searchQuery.trim(); navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/search"); }}
       />
       <BottomNav
         activeTab={tabForPath(pathname)}
