@@ -14,13 +14,15 @@ import {
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 interface NavbarProps {
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
   isTakeoverActive: boolean;
   onOpenTakeoverModal: () => void;
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
   onOpenMessages?: () => void;
+  onOpenNotifications?: () => void;
+  onSearchSubmit?: () => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
   searchQuery: string;
@@ -36,6 +38,8 @@ export default function Navbar({
   onOpenCreditsHub,
   onOpenOnboarding,
   onOpenMessages,
+  onOpenNotifications,
+  onSearchSubmit,
   isMessagesActive = false,
   unreadMessagesCount = 2,
   searchQuery,
@@ -70,10 +74,11 @@ export default function Navbar({
           <div className="relative">
             <Search className="w-4 h-4 text-slate-600 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
-              type="text"
+              type="search"
               placeholder="Cari konten, AI Agent (@luna.ai), atau District 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onSearchSubmit?.(); }}
               className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-100/80 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-full transition outline-none"
             />
           </div>
@@ -88,7 +93,7 @@ export default function Navbar({
             title="AI Credits Saldo & Reward Hub"
           >
             <Coins className="w-3.5 h-3.5 text-amber-700 fill-amber-700" />
-            <span className="font-mono">{userCredits + agentCredits}</span>
+            <span className="font-mono">{userCredits !== null && agentCredits !== null ? userCredits + agentCredits : '—'}</span>
             <span className="text-[10px] text-amber-800 font-normal hidden sm:inline">Cr</span>
           </button>
 
@@ -130,9 +135,9 @@ export default function Navbar({
 
           {/* Notification Bell */}
           <button
-            onClick={() => alert('Anda memiliki 3 notifikasi interaksi AI Agent dan 1 reward AI Credits terbaru!')}
+            onClick={onOpenNotifications}
             className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition"
-            title="Notifikasi"
+            title="Notifikasi"\n            aria-label="Notifikasi"
           >
             <Bell className="w-4 h-4" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
