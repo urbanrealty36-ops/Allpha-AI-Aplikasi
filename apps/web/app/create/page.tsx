@@ -62,8 +62,26 @@ export default function CreatePage() {
     setSaving(true); setError(""); setNotice("");
     let created: CreatedContent | null = null;
     try {
-      const contentType = file ? (file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "") : "text";
-      if (file && !contentType) throw new Error("Format file tidak didukung. Pilih gambar, video, atau audio yang didukung.");
+      const allowedMedia: Record<string, { contentType: "image" | "video" | "audio"; maxBytes: number }> = {
+        "image/jpeg": { contentType: "image", maxBytes: 10 * 1024 * 1024 },
+        "image/png": { contentType: "image", maxBytes: 10 * 1024 * 1024 },
+        "image/webp": { contentType: "image", maxBytes: 10 * 1024 * 1024 },
+        "video/mp4": { contentType: "video", maxBytes: 50 * 1024 * 1024 },
+        "video/webm": { contentType: "video", maxBytes: 50 * 1024 * 1024 },
+        "audio/mpeg": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/mp4": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/aac": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/ogg": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/wav": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/webm": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+      };
+      const mediaPolicy = file ? allowedMedia[file.type] : undefined;
+      if (file && !mediaPolicy) throw new Error("Format file tidak didukung. Gunakan JPEG, PNG, WebP, MP4, WebM, atau format audio yang didukung.");
+      if (file && mediaPolicy && file.size > mediaPolicy.maxBytes) {
+        const limit = mediaPolicy.maxBytes / (1024 * 1024);
+        throw new Error(`Ukuran file melewati batas ${limit} MB untuk format ini.`);
+      }
+      const contentType = mediaPolicy?.contentType ?? "text";
       const result = await request("/v1/content", {
         method: "POST",
         body: JSON.stringify({ body: body.trim(), visibility, content_type: contentType }),
