@@ -85,8 +85,10 @@ export default function Navbar({
         <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Credits Hub Button */}
           <button
+            disabled={userCredits === null || agentCredits === null}
+            aria-label={userCredits !== null && agentCredits !== null ? "Saldo AI Credits" : "Saldo AI Credits belum tersedia"}
             onClick={onOpenCreditsHub}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs transition"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50"
             title="AI Credits Saldo & Reward Hub"
           >
             <Coins className="w-3.5 h-3.5 text-amber-700 fill-amber-700" />
