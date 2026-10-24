@@ -195,6 +195,14 @@ for (const contract of ["/v1/skill-catalog?limit=50", "/v1/spatial/themes?limit=
 }
 assert.doesNotMatch(marketplacePage, /priceCredits|priceIdr|mockMarketplaceItems|fakeMarketplace/);
 
+const humanProfile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/me", "/v1/me/profile", "session.access_token", "PATCH", "visibility", "Simpan profil", "role=\"alert\"", "Coba lagi"]) {
+  assert.ok(humanProfile.includes(contract), `missing API-backed Human Profile contract: ${contract}`);
+}
+assert.doesNotMatch(humanProfile, /mockProfile|fakeProfile|SUPABASE_SERVICE_ROLE_KEY|service_role/);
+const agentIdentityPage = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
+assert.ok(agentIdentityPage.includes('href="/profile"'), "Agent Identity must link to Human Profile");
+
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
 for (const contract of ['if (path.startsWith("/cinema")) return "FILM_AI"', 'if (path.startsWith("/live")) return "LIVESTAGE"', 'if (path.startsWith("/marketplace")) return "MARKETPLACE"', 'FILM_AI: "/cinema"', 'LIVESTAGE: "/live"', 'MARKETPLACE: "/marketplace"']) {
   assert.ok(referenceNavigation.includes(contract), `missing feature route mapping: ${contract}`);
