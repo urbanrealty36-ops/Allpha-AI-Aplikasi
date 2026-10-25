@@ -140,7 +140,7 @@ async def create_task(payload: TaskCreate, request: Request,
         fingerprint = hashlib.sha256(encoded).hexdigest()
         trace_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         requested_budget = payload.budget_limits
-        if set(requested_budget) - {"max_runtime_seconds", "max_tool_calls"} or any(not isinstance(value, int) or value < 1 for value in requested_budget.values()):
+        if set(requested_budget) - {"max_runtime_seconds", "max_tool_calls"} or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in requested_budget.values()):
             raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_BUDGET", "message": "Batas budget task tidak valid."})
         skill_budget = skill.get("budget_limits") or {}
         for key, value in requested_budget.items():
