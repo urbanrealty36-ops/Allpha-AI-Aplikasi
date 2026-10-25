@@ -50,6 +50,10 @@ create table if not exists public.agent_task_schedules (
   ),
   check (weekdays <@ array[0,1,2,3,4,5,6]::smallint[])
 );
+create unique index if not exists workflow_runs_agent_schedule_trace_uidx
+  on public.workflow_runs(owner_user_id, trace_id)
+  where trace_id like 'agent-task-schedule:%';
+
 create index if not exists agent_task_schedules_due_idx
   on public.agent_task_schedules(next_run_at, id)
   where status = 'active' and next_run_at is not null;
