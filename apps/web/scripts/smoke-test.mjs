@@ -239,9 +239,9 @@ assert.doesNotMatch(webReels, /mockReels|fakeReelItems/);
 // The source reference intentionally switches only the bottom-navigation palette on Reels.
 const referenceBottomNav = readFileSync(new URL("../components/reference-ui/BottomNav.tsx", import.meta.url), "utf8");
 assert.ok(referenceBottomNav.includes("const isReels = activeTab === 'REELS'"), "bottom navigation must detect the active Reels route");
-assert.ok(referenceBottomNav.includes("bg-black/80 backdrop-blur-lg border-t border-white/10"), "Reels must retain the source-reference dark bottom navigation");
-assert.ok(referenceBottomNav.includes("bg-white/95 backdrop-blur border-t border-slate-200"), "non-Reels routes must retain the source-reference light bottom navigation");
-assert.ok(referenceBottomNav.includes("isReels ? 'text-cyan-400 font-bold' : 'text-blue-600 font-bold'"), "active navigation color must match the current route palette");
+assert.ok(referenceBottomNav.includes("bg-black/90 backdrop-blur-lg border-t-2 border-slate-800"), "Reels must retain the source-reference dark bottom navigation");
+assert.ok(referenceBottomNav.includes("bg-white border-t-2 border-slate-900"), "non-Reels routes must retain the source-reference light bottom navigation");
+assert.ok(referenceBottomNav.includes("text-[#0284C7]"), "active navigation color must match the current route palette");
 
 // Shared reference navigation owns route links; page-local duplicate navs are intentionally absent.
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
