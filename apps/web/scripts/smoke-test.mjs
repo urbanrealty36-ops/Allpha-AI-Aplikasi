@@ -307,6 +307,13 @@ assert.ok(askAiRoute.includes('"/v1/me"') && askAiRoute.includes('"/v1/agents"')
 assert.ok(askAiView.includes("onSubmitQuery") && !askAiView.includes("/api/agent/interact"), "Ask AI must not bypass the canonical FastAPI Agent Runtime");
 assert.ok(askAiView.includes("Belum ada percakapan dari Agent Runtime"), "Ask AI must expose an honest empty conversation state");
 
+
+const profileRoute = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+const profileView = readFileSync(new URL("../components/reference-ui/ProfileView.tsx", import.meta.url), "utf8");
+assert.ok(profileRoute.includes('"/v1/me"') && profileRoute.includes('"/v1/agents"'), "Profile route must load canonical identity and Agent catalog");
+assert.ok(!profileView.includes("const ownedAgents = [") && !profileView.includes("Brand 3D Vector") && !profileView.includes("0x7F2b"), "Profile must not seed demo Agents, skills, credits or ledger identity");
+assert.ok(profileView.includes("showCredits && ag.credits != null"), "Profile credit values must only appear when canonical balances are supplied");
+
 // Web PWA metadata and accessibility configuration are source-checked; installability still needs browser/device evidence.
 const pwaManifest = readFileSync(new URL("../app/manifest.ts", import.meta.url), "utf8");
 const webLayout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
