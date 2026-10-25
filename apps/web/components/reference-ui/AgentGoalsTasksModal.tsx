@@ -30,7 +30,7 @@ import {
   AIAgentProfile, 
   INITIAL_AGENT_GOALS, 
   INITIAL_AGENT_TASKS 
-} from '../../lib/reference-store';
+} from '@/lib/store';
 
 interface AgentGoalsTasksModalProps {
   isOpen: boolean;
@@ -206,7 +206,7 @@ export default function AgentGoalsTasksModal({
               <h2 className="text-sm font-black text-slate-900 uppercase">
                 Pusat Target & Tugas Otonom AI Agent
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] font-bold text-slate-500">
                 Berikan tugas mandiri ke {agent.name} ({agent.handle}) sesuai bidang {agent.bidang || 'Kreatif'}
               </p>
             </div>
@@ -223,10 +223,10 @@ export default function AgentGoalsTasksModal({
         <div className="flex p-1 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-black">
           <button
             onClick={() => setActiveTab('TASKS')}
-            className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
               activeTab === 'TASKS'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-[#0284C7] text-white border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a]'
+                : 'text-slate-700 hover:bg-slate-50'
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
@@ -234,10 +234,10 @@ export default function AgentGoalsTasksModal({
           </button>
           <button
             onClick={() => setActiveTab('GOALS')}
-            className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
               activeTab === 'GOALS'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-purple-600 text-white border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a]'
+                : 'text-slate-700 hover:bg-slate-50'
             }`}
           >
             <Target className="w-3.5 h-3.5" />
@@ -253,7 +253,7 @@ export default function AgentGoalsTasksModal({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-black text-slate-900 uppercase">Daftar Tugas Mandiri AI Agent</h3>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] font-bold text-slate-500">
                   Tugas yang dijalankan secara terjadwal atau otonom oleh AI tanpa intervensi manual
                 </p>
               </div>
@@ -267,7 +267,7 @@ export default function AgentGoalsTasksModal({
             </div>
 
             {/* Tasks List */}
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {tasks.map((task) => {
                 const badge = getTypeBadge(task.type);
                 const isRunning = runningTaskId === task.id;
@@ -301,8 +301,8 @@ export default function AgentGoalsTasksModal({
                         onClick={() => handleToggleAutonomous(task.id)}
                         className={`shrink-0 px-2.5 py-1 rounded-xl text-[10px] font-black transition flex items-center gap-1 border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 ${
                           task.autonomousExecution
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-2xs'
-                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                            ? 'bg-emerald-200 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]'
+                            : 'bg-white text-slate-700'
                         }`}
                         title="Klik untuk mengubah mode otonom"
                       >
@@ -312,10 +312,10 @@ export default function AgentGoalsTasksModal({
                     </div>
 
                     {/* Output log / last run */}
-                    <div className="p-2 rounded-xl bg-white border border-slate-200/80 text-[10px] text-slate-600 space-y-1">
-                      <div className="flex justify-between text-slate-400">
-                        <span>Terakhir Dieksekusi: <strong>{task.lastRun || 'Belum pernah'}</strong></span>
-                        <span>Jadwal Berikutnya: <strong>{task.nextRun || 'Sesuai jadwal'}</strong></span>
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-300 text-[10px] text-slate-700 font-medium space-y-1">
+                      <div className="flex justify-between text-slate-500 font-bold">
+                        <span>Terakhir Dieksekusi: <strong className="text-slate-900">{task.lastRun || 'Belum pernah'}</strong></span>
+                        <span>Jadwal Berikutnya: <strong className="text-slate-900">{task.nextRun || 'Sesuai jadwal'}</strong></span>
                       </div>
                       {task.outputSummary && (
                         <p className="text-slate-900 font-bold pt-1 border-t border-slate-100">
@@ -327,7 +327,7 @@ export default function AgentGoalsTasksModal({
                     {/* Action Bar */}
                     <div className="flex items-center justify-between pt-1 text-xs">
                       <span className={`text-[10px] font-black ${
-                        task.status === 'COMPLETED' ? 'text-emerald-600' : 'text-blue-600'
+                        task.status === 'COMPLETED' ? 'text-emerald-700' : 'text-blue-700'
                       }`}>
                         Status: {task.status === 'COMPLETED' ? '✓ Siap / Selesai' : '⏳ Siaga / Menunggu Jadwal'}
                       </span>
@@ -382,12 +382,12 @@ export default function AgentGoalsTasksModal({
                 onClick={() => setIsCreatingGoal(true)}
                 className="px-3.5 py-1.5 rounded-xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-3.5 h-3.5 stroke-[3px]" />
                 <span>Tambah Goal</span>
               </button>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {goals.map((goal) => (
                 <div
                   key={goal.id}
@@ -398,8 +398,8 @@ export default function AgentGoalsTasksModal({
                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                         <span className={`text-[9.5px] px-2.5 py-0.5 rounded-lg font-black border border-slate-900 ${
                           goal.priority === 'HIGH'
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            ? 'bg-rose-200 text-rose-950'
+                            : 'bg-sky-200 text-sky-950'
                         }`}>
                           Prioritas {goal.priority}
                         </span>
@@ -423,8 +423,8 @@ export default function AgentGoalsTasksModal({
                     />
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-slate-500">
-                    <span>Target Selesai: <strong>{goal.targetDate}</strong></span>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
+                    <span>Target: <strong className="text-slate-950">{goal.targetDate}</strong></span>
                     <button
                       onClick={() => {
                         const nextProg = Math.min(100, goal.progress + 15);
@@ -450,15 +450,15 @@ export default function AgentGoalsTasksModal({
         {isCreatingTask && (
           <div className="p-4 rounded-3xl bg-sky-50 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3 animate-fade-in text-xs">
             <div className="flex items-center justify-between">
-              <h4 className="font-black text-slate-900 flex items-center gap-1.5">
+              <h4 className="font-black text-slate-950 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-sky-700 stroke-[2.5px]" />
                 <span>Buat Tugas Mandiri Otonom Baru</span>
               </h4>
               <button
                 onClick={() => setIsCreatingTask(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="w-7 h-7 rounded-xl bg-white border-2 border-slate-900 text-slate-950 font-black flex items-center justify-center cursor-pointer shadow-[1px_1px_0px_#0f172a]"
               >
-                <X className="w-4 h-4" />
+                ✕
               </button>
             </div>
 
@@ -470,7 +470,7 @@ export default function AgentGoalsTasksModal({
                   required
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
-                  placeholder="Misal: Jadwalkan postingan edukasi seputar tips kesehatan di era kerja hybrid"
+                  placeholder="Misal: Jadwalkan postingan tips arsitektur 3D"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white border-2 border-slate-900 font-bold text-slate-950 outline-none shadow-[1.5px_1.5px_0px_#0f172a]"
                 />
               </div>
@@ -481,7 +481,7 @@ export default function AgentGoalsTasksModal({
                   <select
                     value={newTaskType}
                     onChange={(e) => setNewTaskType(e.target.value as AgentTaskItem['type'])}
-                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-900 font-black text-xs text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]"
                   >
                     <option value="SCHEDULING_POST">📅 Scheduling Postingan</option>
                     <option value="BROADCAST_INFO">📢 Broadcast Informasi</option>
@@ -494,7 +494,7 @@ export default function AgentGoalsTasksModal({
                   <select
                     value={newTaskFrequency}
                     onChange={(e) => setNewTaskFrequency(e.target.value as AgentTaskItem['frequency'])}
-                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-900 font-black text-xs text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]"
                   >
                     <option value="Harian">Harian</option>
                     <option value="Mingguan">Mingguan</option>
@@ -512,7 +512,7 @@ export default function AgentGoalsTasksModal({
                     value={newTaskScheduledTime}
                     onChange={(e) => setNewTaskScheduledTime(e.target.value)}
                     placeholder="Contoh: 19:00 WIB"
-                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-900 font-bold text-slate-950 text-xs shadow-[1.5px_1.5px_0px_#0f172a]"
                   />
                 </div>
                 <div className="flex items-center gap-2 pt-5">
@@ -539,7 +539,7 @@ export default function AgentGoalsTasksModal({
                 <button
                   type="button"
                   onClick={() => setIsCreatingTask(false)}
-                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs"
+                  className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 border-2 border-slate-900 text-slate-950 font-black text-xs shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
                 >
                   Batal
                 </button>
@@ -554,15 +554,15 @@ export default function AgentGoalsTasksModal({
         {isCreatingGoal && (
           <div className="p-4 rounded-3xl bg-purple-50 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3 animate-fade-in text-xs">
             <div className="flex items-center justify-between">
-              <h4 className="font-black text-slate-900 flex items-center gap-1.5">
+              <h4 className="font-black text-slate-950 flex items-center gap-1.5">
                 <Target className="w-4 h-4 text-purple-700 stroke-[2.5px]" />
                 <span>Buat Target Strategis (Goal) Baru</span>
               </h4>
               <button
                 onClick={() => setIsCreatingGoal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="w-7 h-7 rounded-xl bg-white border-2 border-slate-900 text-slate-950 font-black flex items-center justify-center cursor-pointer shadow-[1px_1px_0px_#0f172a]"
               >
-                <X className="w-4 h-4" />
+                ✕
               </button>
             </div>
 
@@ -585,7 +585,7 @@ export default function AgentGoalsTasksModal({
                   <select
                     value={newGoalPriority}
                     onChange={(e) => setNewGoalPriority(e.target.value as 'HIGH' | 'MEDIUM' | 'LOW')}
-                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-900 font-black text-xs text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]"
                   >
                     <option value="HIGH">Tinggi (High)</option>
                     <option value="MEDIUM">Sedang (Medium)</option>
@@ -598,7 +598,7 @@ export default function AgentGoalsTasksModal({
                     type="date"
                     value={newGoalTargetDate}
                     onChange={(e) => setNewGoalTargetDate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs"
+                    className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-900 font-bold text-xs text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]"
                   />
                 </div>
               </div>
@@ -613,7 +613,7 @@ export default function AgentGoalsTasksModal({
                 <button
                   type="button"
                   onClick={() => setIsCreatingGoal(false)}
-                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs"
+                  className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 border-2 border-slate-900 text-slate-950 font-black text-xs shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
                 >
                   Batal
                 </button>
