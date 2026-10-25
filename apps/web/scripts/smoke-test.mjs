@@ -289,7 +289,7 @@ const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.
 const reelsPageParity = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
 const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.tsx", import.meta.url), "utf8");
 const nativeApp = nativeContent;
-assert.ok(feedCard.includes("allpha-feed-owner-handle"), "Feed card must show creator identity hierarchy");
+assert.ok(feedCard.includes("ownerHandle") && feedCard.includes("@{ownerHandle}"), "Feed card must show the creator handle hierarchy from canonical owner identity");
 assert.ok(createPage.includes("moderasi: ${moderation}"), "Create must expose API moderation status");
 assert.ok(storiesPage.includes("moderasi: ${moderation}"), "Stories must expose API moderation status");
 assert.ok(reelsPageParity.includes("Coba lagi"), "Reels API failure must offer retry");
