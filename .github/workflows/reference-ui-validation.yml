@@ -20,7 +20,7 @@ jobs:
   validate-web:
     runs-on: ubuntu-latest
     env:
-      AUTH_E2E_CONFIGURED: ${{ secrets.ALLPHA_E2E_EMAIL != '' && secrets.ALLPHA_E2E_PASSWORD != '' && secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY != '' && secrets.NEXT_PUBLIC_API_BASE_URL != '' }}
+      AUTH_E2E_CONFIGURED: ${{ secrets.ALLPHA_E2E_EMAIL != '' && secrets.ALLPHA_E2E_PASSWORD != '' && secrets.ALLPHA_E2E_AGENT_ID != '' && secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY != '' && secrets.NEXT_PUBLIC_API_BASE_URL != '' }}
     defaults:
       run:
         working-directory: apps/web
@@ -73,6 +73,7 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
           ALLPHA_E2E_EMAIL: ${{ secrets.ALLPHA_E2E_EMAIL }}
           ALLPHA_E2E_PASSWORD: ${{ secrets.ALLPHA_E2E_PASSWORD }}
+          ALLPHA_E2E_AGENT_ID: ${{ secrets.ALLPHA_E2E_AGENT_ID }}
       - name: Report missing authenticated test configuration
         if: ${{ env.AUTH_E2E_CONFIGURED != 'true' }}
         run: echo "::warning::Authenticated visual proof was not run because dedicated Supabase E2E credentials/configuration are not configured."
