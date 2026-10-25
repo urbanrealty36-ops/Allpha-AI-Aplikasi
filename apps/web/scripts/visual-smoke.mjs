@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const baseUrl = process.env.ALLPHA_VISUAL_BASE_URL || "http://127.0.0.1:3000";
-const routes = ["/login", "/start", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/spatial/themes", "/ai-cinema", "/marketplace", "/live", "/ask-ai", "/profile", "/skill-challenges", "/content-studio", "/agents", "/communities", "/notifications", "/workflows"];
+const routes = ["/", "/login", "/start", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/spatial/themes", "/spatial/sample-scene", "/theme/sample-theme", "/ai-cinema", "/marketplace", "/live", "/ask-ai", "/profile", "/skill-challenges", "/content-studio", "/agents", "/agents/sample-agent/studio", "/agents/passport/sample-handle", "/communities", "/notifications", "/workflows"];
 const viewports = [
   { width: 360, height: 800, label: "mobile-360" },
   { width: 390, height: 844, label: "mobile-390" },
@@ -46,5 +46,5 @@ if (failures.length) {
   console.error("VISUAL_SMOKE_FAILURES", JSON.stringify(failures, null, 2));
   process.exitCode = 1;
 } else {
-  console.log("Visual route smoke passed: 22 routes × 4 viewports; screenshots captured for every route.");
+  console.log("Visual route smoke passed: 27 routes × 4 viewports; screenshots captured for every route.");
 }
