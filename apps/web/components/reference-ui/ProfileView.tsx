@@ -122,8 +122,8 @@ export default function ProfileView({
       <header className="sticky top-14 z-30 bg-[#F4F7FB]/95 backdrop-blur border-2 border-slate-900 rounded-2xl px-4 py-2.5 mb-3 shadow-[3px_3px_0px_#0f172a] flex items-center justify-between">
         {/* Left: Globe icon & User handle */}
         <div className="flex items-center gap-2">
-          <Globe className="w-4 h-4 text-slate-700" />
-          <span className="font-black text-sm tracking-tight text-slate-900">
+          <Globe className="w-4 h-4 text-slate-800" />
+          <span className="font-black text-sm tracking-tight text-slate-900 uppercase">
             {humanUser.username.replace('@', '')}
           </span>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-black border border-sky-300">
@@ -132,7 +132,7 @@ export default function ProfileView({
         </div>
 
         {/* Right: Share icon & Threads-style Settings Menu (2-line slider button) */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             onClick={() => {
               if (navigator.share) {
@@ -171,7 +171,7 @@ export default function ProfileView({
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             {/* Name + Verified Badge */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h1 className="text-xl font-black tracking-tight text-slate-900">{humanUser.name}</h1>
               {humanVerified && <span className="w-4 h-4 rounded-full bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">✓</span>}
             </div>
@@ -205,16 +205,16 @@ export default function ProfileView({
         {/* Stats Row: Postingan, Pengikut, Mengikuti (Screenshot 8) */}
         {showSocialCounts && <div className="flex items-center gap-6 mt-4 pt-3 border-t-2 border-slate-100 text-xs">
           <div>
-            <span className="font-bold text-slate-900">{humanUser.postsCount}</span>
-            <span className="text-slate-600 ml-1">Postingan</span>
+            <span className="font-black text-slate-900">{humanUser.postsCount}</span>
+            <span className="text-slate-500 font-bold ml-1">Postingan</span>
           </div>
           <div>
-            <span className="font-bold text-slate-900">{(humanUser.followers / 1000).toFixed(1)}K</span>
-            <span className="text-slate-600 ml-1">Pengikut</span>
+            <span className="font-black text-slate-900">{(humanUser.followers / 1000).toFixed(1)}K</span>
+            <span className="text-slate-500 font-bold ml-1">Pengikut</span>
           </div>
           <div>
-            <span className="font-bold text-slate-900">{(humanUser.following / 1000).toFixed(1)}K</span>
-            <span className="text-slate-600 ml-1">Mengikuti</span>
+            <span className="font-black text-slate-900">{(humanUser.following / 1000).toFixed(1)}K</span>
+            <span className="text-slate-500 font-bold ml-1">Mengikuti</span>
           </div>
         </div>}
 
@@ -248,7 +248,7 @@ export default function ProfileView({
               className="text-xs text-blue-700 font-black hover:underline flex items-center gap-1 bg-sky-100 px-2.5 py-1 rounded-xl border border-sky-300"
             >
               <span>Mode Takeover</span>
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="w-4 h-4 text-slate-950" />
             </button>
           </div>
 
@@ -337,7 +337,7 @@ export default function ProfileView({
               }`}
               title="Tampilan Feed List"
             >
-              <List className="w-3.5 h-3.5" />
+              <List className="w-4 h-4 text-slate-950" />
             </button>
             <button
               onClick={() => setContentViewMode('GRID')}
@@ -346,7 +346,7 @@ export default function ProfileView({
               }`}
               title="Tampilan Grid 3x3"
             >
-              <Grid3X3 className="w-3.5 h-3.5" />
+              <Grid3X3 className="w-4 h-4 text-slate-950" />
             </button>
           </div>
         )}
@@ -366,10 +366,10 @@ export default function ProfileView({
                         <img
                           src={post.humanOwner.avatar}
                           alt={post.humanOwner.name}
-                          className="w-3.5 h-3.5"
+                          className="w-4 h-4 text-slate-950"
                         />
                         <div>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-xs text-slate-900">{post.humanOwner.name}</span>
                             <span className="text-[10px] text-slate-600">{post.humanOwner.handle}</span>
                           </div>
@@ -421,7 +421,7 @@ export default function ProfileView({
                             e.stopPropagation();
                             onOpenWorld3D();
                           }}
-                          className="w-3 h-3"
+                          className="w-4 h-4 text-slate-950"
                         >
                           <div className="flex items-center gap-2">
                             <Box className="flex items-center gap-4" />
@@ -430,7 +430,7 @@ export default function ProfileView({
                             </span>
                           </div>
                           <span className="w-4 h-4">
-                            Buka 3D <ArrowUpRight className="w-3 h-3" />
+                            Buka 3D <ArrowUpRight className="w-4 h-4 text-slate-950" />
                           </span>
                         </div>
                       )}
@@ -455,7 +455,7 @@ export default function ProfileView({
                               e.stopPropagation();
                               onSelectPost && onSelectPost(post);
                             }}
-                            className="w-3.5 h-3.5"
+                            className="w-4 h-4 text-slate-950"
                           >
                             <MessageCircle className="w-4 h-4" />
                             <span>{post.commentsCount}</span>
@@ -483,7 +483,7 @@ export default function ProfileView({
                             }}
                             className="aspect-square bg-slate-900 rounded-2xl overflow-hidden relative cursor-pointer group border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
                           >
-                            <Bot className="w-3 h-3" />
+                            <Bot className="w-4 h-4 text-slate-950" />
                             <span>Tanya AI</span>
                           </button>
                         )}
@@ -523,7 +523,7 @@ export default function ProfileView({
                   </div>
                   {post.has3DModel && (
                     <div className="w-4 h-4 text-purple-700">
-                      <Box className="w-3 h-3" />
+                      <Box className="w-4 h-4 text-slate-950" />
                     </div>
                   )}
                 </div>
@@ -539,7 +539,7 @@ export default function ProfileView({
           <div className="p-5 rounded-3xl bg-slate-900 text-white space-y-4 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
             <div>
               <h3 className="flex items-start justify-between gap-3">
-                <Bot className="w-4 h-4 text-purple-600" />
+                <Bot className="w-4 h-4 text-purple-700" />
                 <span>AI Agent Identity & Studio Otonom</span>
               </h3>
               <p className="text-[11px] text-slate-500">
@@ -627,7 +627,7 @@ export default function ProfileView({
                 onClick={() => setIsIdentityModalOpen(true)}
                 className="text-xs text-cyan-300 hover:text-white underline font-black"
               >
-                <Palette className="w-3.5 h-3.5" />
+                <Palette className="w-4 h-4 text-slate-950" />
                 <span>Ubah Bidang & Avatar 3D</span>
               </button>
 
@@ -636,7 +636,7 @@ export default function ProfileView({
                 onClick={() => setIsGoalsTasksModalOpen(true)}
                 className="w-3.5 h-3.5 text-cyan-300"
               >
-                <Target className="w-3.5 h-3.5" />
+                <Target className="w-4 h-4 text-slate-950" />
                 <span>Target & Tugas Otonom</span>
               </button>
             </div>
@@ -644,7 +644,7 @@ export default function ProfileView({
             <div className="flex items-center justify-between">
               <button
                 onClick={onOpenTakeoverModal}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1.5 flex-wrap"
               >
                 Pengaturan Takeover Mode →
               </button>
@@ -665,8 +665,8 @@ export default function ProfileView({
           {/* ======================================================== */}
           <div className="text-xs text-slate-950 font-black hover:underline">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-blue-600" />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Zap className="w-4 h-4 text-slate-950" />
                 <h4 className="font-black text-slate-900 truncate text-xs">
                   Tugas Otonom Terjadwal ({agentProfile.tasks?.length || 0})
                 </h4>
@@ -718,7 +718,7 @@ export default function ProfileView({
                       className="font-mono font-black text-xs text-slate-950 bg-white px-2.5 py-1 rounded-xl border border-slate-900"
                     />
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <h5 className="font-bold text-xs text-slate-900">{ag.name}</h5>
                         <span className="p-4 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-3">
                           {ag.handle}
@@ -729,7 +729,7 @@ export default function ProfileView({
                   </div>
 
                   <div className="text-right shrink-0">
-                    {showCredits && ag.credits != null && <span className="text-xs font-black text-slate-900">+{ag.credits} Cr</span>}
+                    {showCredits && ag.credits != null && <span className="text-xs font-black text-slate-950 uppercase">+{ag.credits} Cr</span>}
                   </div>
                 </div>
               ))}
@@ -759,7 +759,7 @@ export default function ProfileView({
         <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
           <div className="font-black text-slate-900">
             <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-blue-600" />
+              <Shield className="w-4 h-4 text-slate-950" />
               <span>Verifikasi Identitas & Master PRD Contract</span>
             </h4>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
@@ -787,8 +787,8 @@ export default function ProfileView({
             {/* Modal Header */}
             <div className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left">
               <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-blue-600" />
-                <h3 className="font-black text-sm tracking-tight text-slate-900">
+                <Settings className="w-4 h-4 text-slate-950" />
+                <h3 className="font-black text-sm tracking-tight text-slate-900 uppercase">
                   Pengaturan & Akun Threads
                 </h3>
               </div>
@@ -814,9 +814,9 @@ export default function ProfileView({
                 className="w-full py-3 px-3 flex items-center justify-between hover:bg-slate-50 rounded-xl transition text-left"
               >
                 <div className="flex items-center gap-3">
-                  <User className="w-4 h-4 text-blue-600" />
+                  <User className="w-4 h-4 text-slate-950" />
                   <div>
-                    <p className="font-bold text-slate-900">Pengaturan Akun & Profil</p>
+                    <p className="font-black text-slate-900">Pengaturan Akun & Profil</p>
                     <p className="text-[11px] text-slate-500">Ubah nama, bio, avatar, dan identitas human</p>
                   </div>
                 </div>
@@ -829,9 +829,9 @@ export default function ProfileView({
                 className="w-full py-3 px-3 flex items-center justify-between hover:bg-slate-50 rounded-xl transition text-left"
               >
                 <div className="flex items-center gap-3">
-                  <Shield className="w-4 h-4 text-purple-600" />
+                  <Shield className="w-4 h-4 text-purple-700" />
                   <div>
-                    <p className="font-bold text-slate-900">Privasi & Batasan Data AI</p>
+                    <p className="font-black text-slate-900">Privasi & Batasan Data AI</p>
                     <p className="text-[11px] text-slate-500">Isolasi memori pribadi vs pengetahuan publik</p>
                   </div>
                 </div>
@@ -849,7 +849,7 @@ export default function ProfileView({
                 <div className="flex items-center gap-3">
                   <Bot className="font-black text-slate-900" />
                   <div>
-                    <p className="font-bold text-slate-900">Otonomi AI Agent & Takeover</p>
+                    <p className="font-black text-slate-900">Otonomi AI Agent & Takeover</p>
                     <p className="text-[11px] text-slate-500">Batasan auto-reply, kuota respon, dan pengambilalihan</p>
                   </div>
                 </div>
@@ -867,7 +867,7 @@ export default function ProfileView({
                 <div className="flex items-center gap-3">
                   <CreditCard className="font-black text-slate-900" />
                   <div>
-                    <p className="font-bold text-slate-900">Dompet AI Credits & Creator Reward</p>
+                    <p className="font-black text-slate-900">Dompet AI Credits & Creator Reward</p>
                     <p className="text-[11px] text-slate-500">Saldo kredit, riwayat settlement, dan top-up</p>
                   </div>
                 </div>
@@ -882,7 +882,7 @@ export default function ProfileView({
                 <div className="flex items-center gap-3">
                   <Smartphone className="font-black text-slate-900" />
                   <div>
-                    <p className="font-bold text-slate-900">Sesi & Perangkat Terhubung</p>
+                    <p className="font-black text-slate-900">Sesi & Perangkat Terhubung</p>
                     <p className="text-[11px] text-slate-500">Kelola login aktif, 2FA, dan cabut izin akses</p>
                   </div>
                 </div>
@@ -895,9 +895,9 @@ export default function ProfileView({
                 className="w-full py-3 px-3 flex items-center justify-between hover:bg-slate-50 rounded-xl transition text-left"
               >
                 <div className="flex items-center gap-3">
-                  <FileText className="w-4 h-4 text-slate-700" />
+                  <FileText className="w-4 h-4 text-slate-800" />
                   <div>
-                    <p className="font-bold text-slate-900">Master PRD v3.0 Specification</p>
+                    <p className="font-black text-slate-900">Master PRD v3.0 Specification</p>
                     <p className="text-[11px] text-slate-500">Arsitektur 82 domain dan kontrak sistem Allpha</p>
                   </div>
                 </div>
@@ -935,22 +935,22 @@ export default function ProfileView({
             )}
 
             {selectedSettingDetail === 'PRD' && (
-              <div className="p-4 bg-slate-100 border-t border-slate-200 text-xs space-y-1.5">
-                <p className="font-bold text-slate-900">ALLPHA UNIVERSE — Document ID: ALLPHA-MPRD-003</p>
-                <p className="text-slate-600 text-[11px]">
+              <div className="p-4 bg-slate-100 border-t-2 border-slate-900 text-xs space-y-1.5">
+                <p className="font-black text-slate-900">ALLPHA UNIVERSE — Document ID: ALLPHA-MPRD-003</p>
+                <p className="text-slate-700 font-medium text-[11px]">
                   Platform sosial AI terpadu untuk Manusia dan AI Agent. Meliputi Feed Threads, 3D Spatial Living World, Live Stage, dan Creator Economy.
                 </p>
               </div>
             )}
 
             {/* Footer Close */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+            <div className="p-4 border-t-2 border-slate-900 bg-slate-50 flex justify-end">
               <button
                 onClick={() => {
                   setIsSettingsOpen(false);
                   setSelectedSettingDetail(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs"
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5"
               >
                 Tutup
               </button>
