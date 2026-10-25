@@ -14,6 +14,7 @@ export default function AiCinemaPage() {
       userCredits={null}
       catalogItems={[]}
       catalogState="unavailable"
+      productionMode={true}
     />
   );
 }
