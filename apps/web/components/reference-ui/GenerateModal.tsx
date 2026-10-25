@@ -227,7 +227,7 @@ export default function GenerateModal({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Film className="w-3.5 h-3.5 shrink-0" />
+              <Film className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
               <span className="truncate">Reels Dengan Brand</span>
             </button>
             <button
@@ -238,7 +238,7 @@ export default function GenerateModal({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <Sparkles className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
               <span className="truncate">Draf Feed & 3D</span>
             </button>
             <button
@@ -249,7 +249,7 @@ export default function GenerateModal({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <FileText className="w-3.5 h-3.5 shrink-0" />
+              <FileText className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
               <span className="truncate">Dokumen & Proposal</span>
             </button>
             <button
@@ -260,7 +260,7 @@ export default function GenerateModal({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 shrink-0" />
+              <Layers className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
               <span className="truncate">Campaign Suite</span>
             </button>
           </div>
@@ -269,7 +269,7 @@ export default function GenerateModal({
         {/* Challenge & AI Credit Notice */}
         <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-slate-900 text-xs leading-relaxed space-y-1">
           <p className="font-black flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            <Sparkles className="w-4 h-4 text-purple-700 stroke-[2.5px]" />
             <span>Mekanisme Challenge & Transfer Kredit:</span>
           </p>
           <p className="text-[11px] font-medium text-slate-700">
@@ -301,7 +301,7 @@ export default function GenerateModal({
         {/* Form Inputs */}
         <div className="space-y-3.5 text-xs">
           <div>
-            <label className="block text-slate-700 font-bold mb-1">
+            <label className="block text-slate-900 font-black mb-1">
               Nama Brand / Bisnis Anda:
             </label>
             <input
@@ -309,12 +309,12 @@ export default function GenerateModal({
               value={brandName}
               onChange={(e) => setBrandName(e.target.value)}
               placeholder="Contoh: Kopi Nusantara / GlowWear"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-purple-500 outline-none transition"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-900 rounded-2xl outline-none shadow-[2px_2px_0px_#0f172a] focus:bg-white transition font-bold text-slate-950"
             />
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">
+            <label className="block text-slate-900 font-black mb-1">
               Detail Produk / Aset Jasa yang Dipromosikan:
             </label>
             <input
@@ -322,7 +322,7 @@ export default function GenerateModal({
               value={productDetails}
               onChange={(e) => setProductDetails(e.target.value)}
               placeholder="Contoh: Cold Brew Artisan / Jaket Cybernetic 3D"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-purple-500 outline-none transition"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-900 rounded-2xl outline-none shadow-[2px_2px_0px_#0f172a] focus:bg-white transition font-bold text-slate-950"
             />
           </div>
 
@@ -331,22 +331,22 @@ export default function GenerateModal({
           {/* ======================================================== */}
           <div className="p-4 rounded-3xl bg-purple-50 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3">
             <h3 className="font-black text-xs text-slate-950 flex items-center gap-1.5">
-              <Upload className="w-3.5 h-3.5 text-purple-600" />
+              <Upload className="w-4 h-4 text-purple-700 stroke-[2.5px]" />
               <span>Unggah Aset Visual Logo & Produk (Image / Video)</span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* 1. LOGO ASSET PICKER */}
-              <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-2">
+              <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[11px] text-slate-700">1. Logo Brand:</span>
+                  <span className="font-black text-[11px] text-slate-950">1. Logo Brand:</span>
                   {logoMedia && (
                     <button
                       onClick={() => setLogoMedia(null)}
-                      className="text-slate-400 hover:text-rose-600 transition"
+                      className="text-slate-500 hover:text-rose-600 transition cursor-pointer"
                       title="Hapus Logo"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5 stroke-[2.5px]" />
                     </button>
                   )}
                 </div>
@@ -356,10 +356,10 @@ export default function GenerateModal({
                     <img
                       src={logoMedia.url}
                       alt="Logo Brand"
-                      className="w-10 h-10 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
+                      className="w-10 h-10 rounded-xl object-cover border border-slate-900 shrink-0"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-slate-900 truncate">
+                      <p className="text-[11px] font-black text-slate-950 truncate">
                         {logoMedia.name}
                       </p>
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-black">
@@ -370,7 +370,7 @@ export default function GenerateModal({
                 ) : (
                   <div className="text-center py-3 text-slate-400">
                     <ImageIcon className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                    <p className="text-[10px]">Belum ada logo dipilih</p>
+                    <p className="text-[10px] font-bold">Belum ada logo dipilih</p>
                   </div>
                 )}
 
@@ -393,16 +393,16 @@ export default function GenerateModal({
               </div>
 
               {/* 2. PRODUCT ASSET PICKER */}
-              <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-2">
+              <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[11px] text-slate-700">2. Aset Produk:</span>
+                  <span className="font-black text-[11px] text-slate-950">2. Aset Produk:</span>
                   {productMedia && (
                     <button
                       onClick={() => setProductMedia(null)}
-                      className="text-slate-400 hover:text-rose-600 transition"
+                      className="text-slate-500 hover:text-rose-600 transition cursor-pointer"
                       title="Hapus Aset Produk"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5 stroke-[2.5px]" />
                     </button>
                   )}
                 </div>
@@ -412,10 +412,10 @@ export default function GenerateModal({
                     <img
                       src={productMedia.url}
                       alt="Produk"
-                      className="w-10 h-10 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
+                      className="w-10 h-10 rounded-xl object-cover border border-slate-900 shrink-0"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-slate-900 truncate">
+                      <p className="text-[11px] font-black text-slate-950 truncate">
                         {productMedia.name}
                       </p>
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-200 border border-slate-900 text-cyan-950 font-black">
@@ -426,7 +426,7 @@ export default function GenerateModal({
                 ) : (
                   <div className="text-center py-3 text-slate-400">
                     <Video className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                    <p className="text-[10px]">Belum ada produk dipilih</p>
+                    <p className="text-[10px] font-bold">Belum ada produk dipilih</p>
                   </div>
                 )}
 
@@ -459,7 +459,7 @@ export default function GenerateModal({
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">
+            <label className="block text-slate-900 font-black mb-1">
               Catatan / Brief Khusus (Opsional):
             </label>
             <textarea
@@ -526,7 +526,7 @@ export default function GenerateModal({
                 onClick={onClose}
                 className="flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>Buka di Direct Message</span>
               </button>
               <button
