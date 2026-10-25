@@ -101,7 +101,7 @@ export interface AiMovieItem {
 interface AiCinemaViewProps {
   onBackToFeed?: () => void;
   onOpenAskAi?: (agentName: string, ownerName: string, specialty: string) => void;
-  userCredits: number;
+  userCredits: number | null;
   onPostTrailerToFeed?: (movie: AiMovieItem) => void;
   initialSelectedMovieId?: string;
 }
@@ -1723,7 +1723,7 @@ export default function AiCinemaView({
                 150 AI Credits <span className="text-xs text-slate-700 font-bold">/ Rp 99.000 / bln</span>
               </p>
               <p className="text-[11px] text-slate-700 font-semibold">
-                Saldo Anda saat ini: <strong className="font-mono text-amber-900">{userCredits} Credits</strong>
+                Saldo Anda saat ini: <strong className="font-mono text-amber-900">{userCredits == null ? 'Belum tersedia' : `${userCredits} Credits`}</strong>
               </p>
             </div>
 
