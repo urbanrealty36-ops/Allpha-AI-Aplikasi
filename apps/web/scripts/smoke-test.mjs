@@ -291,3 +291,11 @@ assert.ok(authAdapter.includes('apiBase + "/v1/skill-catalog?limit=100&offset="'
 assert.ok(authFlow.includes("await onComplete(") && authFlow.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
 assert.doesNotMatch(authFlow, /picsum\.photos|Bonus Selamat Datang: \+50 AI Credits|INITIAL_USER|INITIAL_AGENT/);
 assert.ok(authFlow.includes("skillsLoading") && authFlow.includes("skillsError") && authFlow.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
+
+
+// Web PWA metadata and accessibility configuration are source-checked; installability still needs browser/device evidence.
+const pwaManifest = readFileSync(new URL("../app/manifest.ts", import.meta.url), "utf8");
+const webLayout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+assert.ok(pwaManifest.includes('display: "standalone"') && pwaManifest.includes('start_url: "/"') && pwaManifest.includes('scope: "/"'), "Web manifest must keep standalone PWA scope");
+assert.ok(pwaManifest.includes('src: "/icon.svg"'), "Web manifest must reference the canonical app icon");
+assert.ok(webLayout.includes("userScalable: true"), "Web viewport must preserve user zoom accessibility");
