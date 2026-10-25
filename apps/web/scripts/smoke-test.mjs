@@ -230,6 +230,15 @@ assert.ok(webSearch.includes("<Suspense"), "Search useSearchParams must be guard
 assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical authenticated Search API");
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
+const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "/v1/messages/conversations", "client_message_id", "postgres_changes",
+  "conversationSearch", "conversationFilter", 'c.kind===conversationFilter',
+  'aria-label="Cari percakapan"', 'aria-label="Filter percakapan"', 'aria-pressed={conversationFilter===tab.id}'
+]) assert.ok(webMessages.includes(contract), "missing API-backed Messages adapter contract: " + contract);
+assert.doesNotMatch(webMessages, /MessagesView|conversations = \[/);
+
+
 
 // Native parity must expose the same canonical content/story/feed capabilities;
 // source assertions do not substitute for Expo typecheck or device acceptance.
