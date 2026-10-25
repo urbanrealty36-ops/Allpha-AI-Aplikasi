@@ -50,20 +50,14 @@ import {
   Flame,
   ArrowRight
 } from 'lucide-react';
-import { 
-  SKILL_BLUEPRINTS_SAMPLE, 
-  SkillBlueprint, 
-  INITIAL_WORKFLOW_NODES, 
+import type {
+  SkillBlueprint,
   WorkflowNodeItem,
-  MEDIA_SURFACES_SAMPLE, 
-  MediaSurfaceItem, 
-  INITIAL_QUESTS, 
+  MediaSurfaceItem,
   QuestItem,
-  INITIAL_TRANSACTIONS,
   CreditTransaction,
   PostItem,
 } from '../../lib/reference-store';
-import AllphaHubView from './AllphaHubView';
 
 export interface SocialAccountItem {
   id: string;
@@ -81,7 +75,9 @@ export interface SocialAccountItem {
   tags: string[];
 }
 
-export const SOCIAL_ACCOUNTS_SAMPLE: SocialAccountItem[] = [
+export const SOCIAL_ACCOUNTS_SAMPLE: SocialAccountItem[] = [];
+/* Reference sample account fixture removed from the production bundle.
+export const SOCIAL_ACCOUNTS_SAMPLE_ARCHIVE: SocialAccountItem[] = [
   {
     id: 'acc-alex',
     name: 'Alex Tamara',
@@ -194,18 +190,8 @@ export const SOCIAL_ACCOUNTS_SAMPLE: SocialAccountItem[] = [
     isLive: false,
     tags: ['#MarketingAI', '#VideotronAds', '#Growth'],
   },
-];
 
-export const POPULAR_HASHTAGS = [
-  { tag: '#CrystalCity', count: '24.8K postingan', trending: true },
-  { tag: '#AllphaUniverse', count: '41.2K postingan', trending: true },
-  { tag: '#3DDistrict', count: '18.5K postingan', trending: true },
-  { tag: '#KesehatanDigital', count: '9.3K postingan', trending: false },
-  { tag: '#WebDev', count: '27.4K postingan', trending: true },
-  { tag: '#TakeoverMode', count: '6.7K postingan', trending: false },
-  { tag: '#LiveStage', count: '12.1K postingan', trending: true },
-  { tag: '#AIAgent', count: '35.6K postingan', trending: true },
-];
+export const POPULAR_HASHTAGS: Array<{ tag: string; count: string; trending: boolean }> = [];
 
 interface ExploreViewProps {
   posts?: PostItem[];
@@ -265,22 +251,22 @@ export default function ExploreView({
   };
 
   // 500 Skill Blueprints state
-  const [blueprints] = useState<SkillBlueprint[]>(productionMode ? [] : SKILL_BLUEPRINTS_SAMPLE);
+  const [blueprints] = useState<SkillBlueprint[]>([]);
   const [selectedBlueprint, setSelectedBlueprint] = useState<SkillBlueprint | null>(null);
 
   // n8n-style Workflow Studio state
-  const [workflowNodes, setWorkflowNodes] = useState<WorkflowNodeItem[]>(productionMode ? [] : INITIAL_WORKFLOW_NODES);
+  const [workflowNodes, setWorkflowNodes] = useState<WorkflowNodeItem[]>([]);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [workflowExecutionLog, setWorkflowExecutionLog] = useState<string | null>(null);
 
   // Videotron Ads State
-  const [mediaSurfaces] = useState<MediaSurfaceItem[]>(productionMode ? [] : MEDIA_SURFACES_SAMPLE);
+  const [mediaSurfaces] = useState<MediaSurfaceItem[]>([]);
 
   // Quests & Reward state
-  const [quests, setQuests] = useState<QuestItem[]>(productionMode ? [] : INITIAL_QUESTS);
+  const [quests, setQuests] = useState<QuestItem[]>([]);
 
   // Creator Settlement Transactions
-  const [transactions] = useState<CreditTransaction[]>(productionMode ? [] : INITIAL_TRANSACTIONS);
+  const [transactions] = useState<CreditTransaction[]>([]);
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -843,16 +829,12 @@ export default function ExploreView({
         {/* SECTION D: MASTER PRD FEATURES & DOMAINS HUB */}
         {/* (Accessible directly via tab 'PRD_HUB' or at bottom of ALL) */}
         {productionMode && activeSearchTab === 'PRD_HUB' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Globe className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Allpha Hub</h3><p className="mt-1 text-xs text-slate-500">Panel ekosistem tetap mengikuti UI referensi; data produksi akan ditampilkan setelah kontrak API Hub tersedia.</p></section>}
-                {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB')) && (
-          <div className="pt-2 border-t border-slate-200">
-            <AllphaHubView
-              onOpenWorld3D={() => onOpenWorld3D()}
-              onOpenFilmAi={onOpenFilmAi}
-              onOpenLiveExperienceStage={onOpenLiveStage}
-              userCredits={userCredits}
-              agentCredits={agentCredits}
-            />
-          </div>
+                {!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB') && (
+          <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center">
+            <Globe className="mx-auto h-6 w-6 text-slate-400" />
+            <h3 className="mt-2 text-sm font-black text-slate-900">Allpha Hub</h3>
+            <p className="mt-1 text-xs text-slate-500">Hub produksi memerlukan kontrak API untuk event, district, dan saldo kanonis; data demo tidak digunakan.</p>
+          </section>
         )}
       </div>
 
