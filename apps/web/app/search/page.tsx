@@ -89,7 +89,12 @@ function SearchPageContent() {
   const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
 
   useEffect(() => {
-    if (!session || !urlQuery || urlQuery.length < 2 || lastUrlQuery.current === urlQuery) return;
+    if (!session) return;
+    if (!urlQuery || urlQuery.length < 2) {
+      lastUrlQuery.current = null;
+      return;
+    }
+    if (lastUrlQuery.current === urlQuery) return;
     lastUrlQuery.current = urlQuery;
     setQuery(urlQuery);
     void runSearch(undefined, urlQuery);
