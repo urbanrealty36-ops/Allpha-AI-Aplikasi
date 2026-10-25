@@ -104,21 +104,21 @@ export default function AskAiModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200 flex flex-col h-[560px] overflow-hidden">
+      <div className="w-full max-w-lg rounded-3xl bg-white shadow-[6px_6px_0px_#0f172a] border-2 border-slate-900 flex flex-col h-[560px] overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+        <div className="p-4 border-b-2 border-slate-900 flex items-center justify-between bg-sky-50">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-sm">
-              <Bot className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-sky-300 border-2 border-slate-900 text-slate-950 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a]">
+              <Bot className="w-5 h-5 stroke-[2.5px]" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm font-bold text-slate-900">{agentName}</h2>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-700 font-bold">
+                <h2 className="text-sm font-black text-slate-900">{agentName}</h2>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-black">
                   AI Agent
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">Milik @{humanOwner.toLowerCase().replace(/\s+/g, '')} · Human Owner</p>
+              <p className="text-[11px] font-semibold text-slate-600">Milik @{humanOwner.toLowerCase().replace(/\s+/g, '')} · Human Owner</p>
             </div>
           </div>
 
@@ -129,15 +129,15 @@ export default function AskAiModal({
             </span>
             <button
               onClick={onClose}
-              className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition"
+              className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 text-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 stroke-[2.5px]" />
             </button>
           </div>
         </div>
 
         {/* Message Thread */}
-        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/40 text-xs">
+        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#F4F7FB] text-xs">
           {messages.map((m, idx) => (
             <div
               key={idx}
@@ -146,12 +146,12 @@ export default function AskAiModal({
               }`}
             >
               {m.sender === 'ai' && (
-                <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 text-xs">
+                <div className="w-8 h-8 rounded-xl bg-sky-300 border-2 border-slate-900 text-slate-950 flex items-center justify-center shrink-0 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a]">
                   AI
                 </div>
               )}
               <div
-                className={`max-w-[80%] p-3 rounded-2xl leading-relaxed whitespace-pre-line shadow-xs ${
+                className={`max-w-[80%] p-3.5 rounded-2xl leading-relaxed whitespace-pre-line border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] font-medium ${
                   m.sender === 'user'
                     ? 'bg-blue-600 text-white rounded-tr-none'
                     : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
@@ -159,7 +159,7 @@ export default function AskAiModal({
               >
                 {m.text}
                 <div
-                  className={`text-[9px] mt-1 text-right ${
+                  className={`text-[9.5px] mt-1.5 text-right font-mono font-bold ${
                     m.sender === 'user' ? 'text-blue-100' : 'text-slate-400'
                   }`}
                 >
@@ -170,20 +170,20 @@ export default function AskAiModal({
           ))}
 
           {isLoading && (
-            <div className="flex items-center gap-2 text-slate-500 text-xs pl-9">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+            <div className="flex items-center gap-2 text-slate-800 text-xs pl-10 font-bold">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-600 stroke-[2.5px]" />
               <span>{agentName} sedang menyusun respon berdasarkan knowledge...</span>
             </div>
           )}
         </div>
 
         {/* Quick Suggestion Chips */}
-        <div className="px-3 py-2 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="px-3 py-2 bg-white border-t-2 border-slate-900/10 flex items-center gap-2 overflow-x-auto no-scrollbar">
           {sampleQuestions.map((sq, i) => (
             <button
               key={i}
               onClick={() => setQuestion(sq)}
-              className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] text-slate-700 whitespace-nowrap transition"
+              className="px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-[11px] font-bold text-slate-900 whitespace-nowrap border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               {sq}
             </button>
@@ -191,7 +191,7 @@ export default function AskAiModal({
         </div>
 
         {/* Input Bar */}
-        <div className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+        <div className="p-3 bg-white border-t-2 border-slate-900 flex items-center gap-2">
           <input
             type="text"
             placeholder={`Tanya ${agentName}...`}
@@ -200,14 +200,14 @@ export default function AskAiModal({
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleSend();
             }}
-            className="flex-1 px-4 py-2.5 text-xs bg-slate-100 border border-slate-200 rounded-full outline-none focus:bg-white focus:border-blue-500 transition"
+            className="flex-1 px-4 py-2.5 text-xs font-bold bg-slate-50 border-2 border-slate-900 rounded-2xl outline-none shadow-[2px_2px_0px_#0f172a] focus:bg-white transition text-slate-900"
           />
           <button
             onClick={handleSend}
             disabled={!question.trim() || isLoading}
-            className="p-2.5 rounded-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white shadow-sm transition"
+            className="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 disabled:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4 stroke-[2.5px]" />
           </button>
         </div>
       </div>
