@@ -78,11 +78,15 @@ export default function StoriesPage() {
         const form = new FormData(); form.append("file", file);
         await request("/v1/content/" + encodeURIComponent(created.item.id) + "/media", { method: "POST", body: form });
       }
-      const submitted = await request("/v1/content/" + encodeURIComponent(created.item.id) + "/publish", { method: "POST" }) as { message?: string };
+      const submitted = await request("/v1/content/" + encodeURIComponent(created.item.id) + "/publish", { method: "POST" }) as { item?: Story; message?: string };
       setBody(""); setFile(null);
       const picker = document.getElementById("story-media") as HTMLInputElement | null;
       if (picker) picker.value = "";
-      setNotice(submitted.message || "Story dikirim untuk moderasi.");
+      const status = submitted.item?.status ?? created.item.status;
+      const moderation = submitted.item?.moderation_status ?? created.item.moderation_status;
+      setNotice(submitted.message
+        ? `${submitted.message} Status: ${status}; moderasi: ${moderation}.`
+        : `Story diterima API. Status: ${status}; moderasi: ${moderation}.`);
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Story tidak dapat disimpan."); }
     finally { setBusy(false); }
