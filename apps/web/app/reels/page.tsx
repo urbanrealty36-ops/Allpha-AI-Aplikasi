@@ -116,8 +116,9 @@ export default function ReelsPage() {
         reels={referenceReels}
         onToggleLike={reel => void toggleLike(reel)}
         onShare={reel => void share(reel)}
+        onOpenComments={reel => router.push("/feed?content=" + encodeURIComponent(reel.id) + "&comments=1")}
         onOpenBrandCustomizer={() => router.push("/create")}
-        onOpenAskAi={(agentName) => router.push("/ask-ai?agent=" + encodeURIComponent(agentName))}
+        onOpenAskAi={(agentName) => router.push(agentName ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai")}
         onBackToFeed={() => router.push("/feed")}
         onOpenLiveStage={() => router.push("/live")}
         onOpenFilmAi={() => router.push("/film-ai")}
