@@ -76,6 +76,8 @@ create table if not exists public.agent_task_schedule_runs (
   status text not null default 'claimed' check (status in ('claimed','waiting_for_approval','queued','running','succeeded','partially_succeeded','failed','timed_out','cancelled','outcome_unknown')),
   idempotency_key text not null check (char_length(idempotency_key) between 8 and 160),
   trace_id text not null check (char_length(trace_id) between 8 and 160),
+  approved_at timestamptz,
+  approved_by uuid references auth.users(id) on delete set null,
   result_summary text check (result_summary is null or char_length(result_summary) <= 2000),
   error_code text,
   started_at timestamptz,
