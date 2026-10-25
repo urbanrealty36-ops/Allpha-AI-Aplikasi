@@ -1068,7 +1068,7 @@ export default function AllphaHubView({
               <div className="h-full bg-amber-400 rounded-full transition-all duration-500" style={{ width: productionMode ? '0%' : '74%' }} />
             </div>
             <p className="text-xs font-semibold text-slate-800">
-              {productionMode ? 'Progress misi, lencana, dan reward tampil setelah tersedia dari layanan Allpha.' : 'Selesaikan 2 misi lagi hari ini untuk membuka lencana eksklusif &quot;Cyber District Pioneer&quot; dan bonus 50 AI Credits.'}
+              {productionMode ? 'Progress misi, lencana, dan reward tampil setelah tersedia dari layanan Allpha.' : 'Selesaikan 2 misi lagi hari ini untuk membuka lencana eksklusif "Cyber District Pioneer" dan bonus 50 AI Credits.'}
             </p>
           </div>
 
