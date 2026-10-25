@@ -6,8 +6,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const email = process.env.ALLPHA_E2E_EMAIL;
 const password = process.env.ALLPHA_E2E_PASSWORD;
+const agentId = process.env.ALLPHA_E2E_AGENT_ID;
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-if (![supabaseUrl, publishableKey, email, password, apiBase].every(Boolean)) {
+if (![supabaseUrl, publishableKey, email, password, agentId, apiBase].every(Boolean)) {
   throw new Error("Authenticated visual capture requires Supabase URL/key, dedicated E2E credentials, and API base URL secrets.");
 }
 
@@ -23,10 +24,14 @@ const meResponse = await fetch(`${apiBase}/v1/me`, {
   headers: { Authorization: `Bearer ${session.access_token}`, Accept: "application/json" },
 });
 if (!meResponse.ok) throw new Error(`Authenticated FastAPI /v1/me check failed with HTTP ${meResponse.status}`);
+const agentResponse = await fetch(`${apiBase}/v1/agents/${encodeURIComponent(agentId)}/skills`, {
+  headers: { Authorization: `Bearer ${session.access_token}`, Accept: "application/json" },
+});
+if (!agentResponse.ok) throw new Error(`E2E Agent Studio access check failed with HTTP ${agentResponse.status}`);
 
 const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
 const storageKey = `sb-${projectRef}-auth-token`;
-const routes = ["/feed", "/agents", "/profile", "/workflows"];
+const routes = ["/feed", "/agents", `/agents/${encodeURIComponent(agentId)}/studio`, "/profile", "/workflows"];
 const viewports = [
   { width: 360, height: 800, label: "mobile-360" },
   { width: 390, height: 844, label: "mobile-390" },
