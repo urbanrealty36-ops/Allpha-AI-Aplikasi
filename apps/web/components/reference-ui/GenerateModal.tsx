@@ -191,34 +191,34 @@ export default function GenerateModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200 p-5 max-h-[92vh] overflow-y-auto space-y-4">
+      <div className="w-full max-w-lg rounded-3xl bg-white shadow-[6px_6px_0px_#0f172a] border-2 border-slate-900 p-5 max-h-[92vh] overflow-y-auto space-y-4">
         {/* Modal Top Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3.5 border-b-2 border-slate-900">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 rounded-2xl bg-purple-300 border-2 border-slate-900 text-slate-950 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a]">
               <Wand2 className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900">
+              <h2 className="text-sm font-black text-slate-900 tracking-tight">
                 AI Content & Reels Studio
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] font-semibold text-slate-600">
                 Didukung oleh {contextPost?.aiAgent.name || 'Luna AI'} (Milik @{contextPost?.humanOwner.handle || 'alextamara'})
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 text-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Target Content Type Segmented Tabs */}
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-700">Pilih Jenis Konten yang Ingin Digenerate:</label>
-          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100 text-xs font-semibold">
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Pilih Jenis Konten yang Ingin Digenerate:</label>
+          <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-slate-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-black">
             <button
               onClick={() => setContentType('REELS_BRAND')}
               className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-center ${
@@ -267,12 +267,12 @@ export default function GenerateModal({
         </div>
 
         {/* Challenge & AI Credit Notice */}
-        <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs leading-relaxed space-y-1">
-          <p className="font-bold flex items-center gap-1.5">
+        <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-slate-900 text-xs leading-relaxed space-y-1">
+          <p className="font-black flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-purple-600" />
             <span>Mekanisme Challenge & Transfer Kredit:</span>
           </p>
-          <p className="text-[11px] text-purple-700">
+          <p className="text-[11px] font-medium text-slate-700">
             AI Agent akan mempelajari Nama Brand, Logo, dan Aset Produk yang Anda unggah, lalu menghasilkan skrip video reels, draf postingan, atau proposal yang selaras dengan identitas brand Anda. Sesi ini memotong 15 AI Credits Anda dan mentransfernya ke pemilik AI Agent.
           </p>
         </div>
@@ -280,8 +280,8 @@ export default function GenerateModal({
         {/* Quick Brand Preset Shortcuts */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="font-bold text-slate-700">Contoh Cepat (Klik untuk Pasang):</span>
-            <span className="text-slate-400">Preset Brand</span>
+            <span className="font-black text-slate-900">Contoh Cepat (Klik untuk Pasang):</span>
+            <span className="text-slate-500 font-bold">Preset Brand</span>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {PRESET_BRANDS.map((b) => (
@@ -289,17 +289,17 @@ export default function GenerateModal({
                 key={b.name}
                 type="button"
                 onClick={() => handleApplyPreset(b)}
-                className="shrink-0 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-purple-50 hover:border-purple-300 text-xs font-medium text-slate-700 transition flex items-center gap-1.5"
+                className="shrink-0 px-3 py-1.5 rounded-2xl border-2 border-slate-900 bg-amber-50 hover:bg-amber-100 text-xs font-black text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-2 cursor-pointer"
               >
-                <img src={b.logoUrl} alt={b.name} className="w-4 h-4 rounded-full object-cover" />
-                <span className="truncate max-w-[120px]">{b.name}</span>
+                <img src={b.logoUrl} alt={b.name} className="w-5 h-5 rounded-full object-cover border border-slate-900" />
+                <span className="truncate max-w-[130px]">{b.name}</span>
               </button>
             ))}
           </div>
         </div>
 
         {/* Form Inputs */}
-        <div className="space-y-3 text-xs">
+        <div className="space-y-3.5 text-xs">
           <div>
             <label className="block text-slate-700 font-bold mb-1">
               Nama Brand / Bisnis Anda:
@@ -329,8 +329,8 @@ export default function GenerateModal({
           {/* ======================================================== */}
           {/* UPLOAD LOGO & PRODUCT ASSET (IMAGE OR VIDEO)            */}
           {/* ======================================================== */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-            <h3 className="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+          <div className="p-4 rounded-3xl bg-purple-50 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3">
+            <h3 className="font-black text-xs text-slate-950 flex items-center gap-1.5">
               <Upload className="w-3.5 h-3.5 text-purple-600" />
               <span>Unggah Aset Visual Logo & Produk (Image / Video)</span>
             </h3>
@@ -362,7 +362,7 @@ export default function GenerateModal({
                       <p className="text-[11px] font-bold text-slate-900 truncate">
                         {logoMedia.name}
                       </p>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 font-mono">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-black">
                         {logoMedia.type === 'video' ? 'Video Logo' : 'Logo Terverifikasi'}
                       </span>
                     </div>
@@ -385,7 +385,7 @@ export default function GenerateModal({
                 <button
                   type="button"
                   onClick={() => logoInputRef.current?.click()}
-                  className="w-full py-1.5 rounded-lg border border-purple-200 bg-purple-50/60 hover:bg-purple-100 text-purple-700 text-[10px] font-bold transition flex items-center justify-center gap-1"
+                  className="w-full py-2 rounded-xl border-2 border-slate-900 bg-purple-100 hover:bg-purple-200 text-purple-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Upload className="w-3 h-3" />
                   <span>Pilih File Logo (JPG/PNG/MP4)</span>
@@ -418,7 +418,7 @@ export default function GenerateModal({
                       <p className="text-[11px] font-bold text-slate-900 truncate">
                         {productMedia.name}
                       </p>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-100 text-cyan-800 font-mono">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-200 border border-slate-900 text-cyan-950 font-black">
                         {productMedia.type === 'video' ? 'Video Produk' : 'Foto Produk Siap'}
                       </span>
                     </div>
@@ -441,7 +441,7 @@ export default function GenerateModal({
                 <button
                   type="button"
                   onClick={() => productInputRef.current?.click()}
-                  className="w-full py-1.5 rounded-lg border border-cyan-200 bg-cyan-50/60 hover:bg-cyan-100 text-cyan-800 text-[10px] font-bold transition flex items-center justify-center gap-1"
+                  className="w-full py-2 rounded-xl border-2 border-slate-900 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Upload className="w-3 h-3" />
                   <span>Pilih File Produk (Foto/Video)</span>
@@ -450,8 +450,8 @@ export default function GenerateModal({
             </div>
 
             {/* AI Vision Badge */}
-            <div className="flex items-center gap-2 p-2 rounded-xl bg-purple-100/60 text-purple-900 text-[11px]">
-              <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-purple-100 border-2 border-slate-900 text-purple-950 text-[11px] shadow-2xs font-semibold">
+              <Sparkles className="w-4 h-4 text-purple-800 shrink-0 stroke-[2.5px]" />
               <span>
                 <strong>AI Vision Engine:</strong> AI Agent membaca logo, nama brand, dan aset produk untuk disematkan otomatis ke naskah dan draf konten.
               </span>
@@ -467,7 +467,7 @@ export default function GenerateModal({
               value={customBrief}
               onChange={(e) => setCustomBrief(e.target.value)}
               placeholder="Contoh: Berikan nuansa futuristik dengan pencahayaan neon cyan dan sertakan ajakan mengunjungi booth 3D."
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-purple-500 outline-none transition resize-none"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-900 rounded-2xl outline-none shadow-[2px_2px_0px_#0f172a] focus:bg-white transition resize-none font-bold text-slate-950"
             />
           </div>
 
@@ -475,11 +475,11 @@ export default function GenerateModal({
           <button
             onClick={handleGenerate}
             disabled={isLoading || !brandName}
-            className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             {isLoading ? (
               <>
-                <Sparkles className="w-4 h-4 animate-spin" />
+                <Sparkles className="w-4 h-4 animate-spin stroke-[2.5px]" />
                 <span>AI Agent Sedang Menganalisis Logo & Menulis Konten...</span>
               </>
             ) : (
@@ -493,19 +493,19 @@ export default function GenerateModal({
 
         {/* Generated Result Output */}
         {result && (
-          <div className="pt-3 border-t border-slate-200 space-y-3 animate-fade-in">
+          <div className="pt-3 border-t-2 border-slate-900 space-y-3 animate-fade-in">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 stroke-[2.5px]" />
                 <span>Hasil Generate Konten & Branding Selesai</span>
               </h4>
               <button
                 onClick={handleCopyResult}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition flex items-center gap-1"
+                className="px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-slate-950 border-2 border-slate-900 text-[11px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
               >
                 {isCopied ? (
                   <>
-                    <Check className="w-3 h-3 text-emerald-600" />
+                    <Check className="w-3 h-3 text-emerald-700 stroke-[3px]" />
                     <span>Tersalin!</span>
                   </>
                 ) : (
@@ -517,14 +517,14 @@ export default function GenerateModal({
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-900 text-slate-100 text-xs font-mono whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto border border-slate-800">
+            <div className="p-4 rounded-2xl bg-slate-950 text-cyan-200 text-xs font-mono whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
               {result}
             </div>
 
             <div className="flex gap-2">
               <button
                 onClick={onClose}
-                className="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Buka di Direct Message</span>
@@ -534,7 +534,7 @@ export default function GenerateModal({
                   setResult(null);
                   handleGenerate();
                 }}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Generate Ulang
               </button>
