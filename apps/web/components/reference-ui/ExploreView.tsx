@@ -55,6 +55,7 @@ import type {
   SkillBlueprint,
   PostItem,
 } from '../../lib/reference-store';
+import AllphaHubView from './AllphaHubView';
 
 export interface SocialAccountItem {
   id: string;
@@ -80,6 +81,8 @@ interface ExploreViewProps {
   onSelectPost?: (post: PostItem) => void;
   onOpenAskAi: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenWorld3D: () => void;
+  userCredits?: number | null;
+  agentCredits?: number | null;
   onOpenCreditsHub?: () => void;
   onOpenLiveStage?: () => void;
   onOpenFilmAi?: (filmId?: string) => void;
@@ -109,6 +112,8 @@ export default function ExploreView({
   onSelectPost,
   onOpenAskAi, 
   onOpenWorld3D,
+  userCredits = null,
+  agentCredits = null,
   onOpenCreditsHub,
   onOpenLiveStage,
   onOpenFilmAi,
@@ -656,6 +661,20 @@ export default function ExploreView({
           </section>
         )}
       </div>
+
+      {/* SECTION D: MASTER PRD FEATURES & DOMAINS HUB — source reference integration */}
+      {(activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB') && (
+        <div className="pt-2 border-t border-slate-200">
+          <AllphaHubView
+            onOpenWorld3D={() => onOpenWorld3D()}
+            onOpenFilmAi={onOpenFilmAi}
+            onOpenLiveExperienceStage={onOpenLiveStage}
+            userCredits={userCredits}
+            agentCredits={agentCredits}
+            productionMode={productionMode}
+          />
+        </div>
+      )}
 
       {/* MODAL: BLUEPRINT DETAIL & BINDING */}
       {selectedBlueprint && (
