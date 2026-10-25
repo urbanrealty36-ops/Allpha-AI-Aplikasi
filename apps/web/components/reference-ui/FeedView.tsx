@@ -209,21 +209,9 @@ export default function FeedView({
           </button>
 
           {/* Right Holographic 3D Crystal 'A' Pyramid & Avatars */}
-          <div className="flex items-center -space-x-2 shrink-0">
-            <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-md">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
-                alt="Alex"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="w-8 h-8 rounded-full border-2 border-cyan-400 overflow-hidden shadow-md">
-              <img
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&q=80"
-                alt="Luna"
-                className="w-full h-full object-cover"
-              />
-            </div>
+          <div className="flex items-center -space-x-2 shrink-0" aria-hidden="true">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-indigo-700 shadow-md"><Sparkles className="h-4 w-4" /></div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-cyan-400 bg-sky-100 text-sky-700 shadow-md"><Bot className="h-4 w-4" /></div>
           </div>
         </div>
 
