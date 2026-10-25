@@ -24,8 +24,9 @@ interface AskAiViewProps {
   agentName: string;
   humanOwner: string;
   specialty: string;
-  onExecuteCreditReward?: (query: string) => void;
   currentUser: HumanProfile;
+  onSubmitQuery?: (query: string) => Promise<string>;
+  availabilityMessage?: string;
 }
 
 export default function AskAiView({
@@ -33,8 +34,9 @@ export default function AskAiView({
   agentName,
   humanOwner,
   specialty,
-  onExecuteCreditReward,
   currentUser,
+  onSubmitQuery,
+  availabilityMessage = 'Interaksi AI belum tersedia karena sesi Agent Runtime kanonis belum terhubung. Pertanyaan belum dikirim.',
 }: AskAiViewProps) {
   const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([
     {
@@ -46,6 +48,7 @@ export default function AskAiView({
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [interactionError, setInteractionError] = useState('');
 
   const exampleQueries = [
     'Buatkan ide konsep event di Crystal City 3D',
@@ -55,59 +58,25 @@ export default function AskAiView({
   ];
 
   const handleSendMessage = async (textToSend?: string) => {
-    const text = textToSend || inputValue;
-    if (!text.trim() || isLoading) return;
-
-    const userMsg = {
-      sender: currentUser.name,
-      text: text.trim(),
-      isAi: false,
-      timestamp: 'Baru saja',
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInputValue('');
+    const text = (textToSend || inputValue).trim();
+    if (!text || isLoading) return;
+    if (!onSubmitQuery) {
+      setInteractionError(availabilityMessage);
+      return;
+    }
     setIsLoading(true);
-
+    setInteractionError('');
     try {
-      const res = await fetch('/api/agent/interact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentName,
-          humanOwner,
-          specialty,
-          userQuery: text.trim(),
-          userName: currentUser.name,
-        }),
-      });
-
-      const data = await res.json();
-      const replyText = data.text || `Tentu! Berdasarkan spesialisasi ${specialty}, berikut rekomendasi solusi terbaik untuk kebutuhan Anda.`;
-
+      const replyText = await onSubmitQuery(text);
+      if (!replyText.trim()) throw new Error('Agent Runtime belum mengembalikan jawaban.');
       setMessages((prev) => [
         ...prev,
-        {
-          sender: agentName,
-          text: replyText,
-          isAi: true,
-          timestamp: 'Baru saja',
-        },
+        { sender: currentUser.name, text, isAi: false, timestamp: 'Baru saja' },
+        { sender: agentName, text: replyText, isAi: true, timestamp: 'Baru saja' },
       ]);
-
-      if (onExecuteCreditReward) {
-        onExecuteCreditReward(text.trim());
-      }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: agentName,
-          text: `Halo ${currentUser.name}! Saya siap membantu Anda di bidang ${specialty}. Silakan diskusikan konsep atau fitur yang ingin Anda eksplorasi.`,
-          isAi: true,
-          timestamp: 'Baru saja',
-        },
-      ]);
+      setInputValue('');
+    } catch (cause) {
+      setInteractionError(cause instanceof Error ? cause.message : 'Agent Runtime tidak tersedia. Pertanyaan belum berhasil diproses.');
     } finally {
       setIsLoading(false);
     }
@@ -131,9 +100,11 @@ export default function AskAiView({
         </div>
 
         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-          Gemini 2.5 Flash
+          Allpha AI Runtime
         </span>
       </header>
+
+      {interactionError && <div role="alert" className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{interactionError}</div>}
 
       {/* Agent Identity Profile Card (Screen 4 Reference) */}
       <div className="p-4 bg-slate-50 border-b border-slate-100 space-y-3">
@@ -141,7 +112,7 @@ export default function AskAiView({
           <div className="relative">
             <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-cyan-400 via-blue-600 to-purple-600 shadow-md">
               <img
-                src="https://picsum.photos/seed/luna-cyber/200/200"
+                src="/icon.svg"
                 alt={agentName}
                 className="w-full h-full rounded-full object-cover border-2 border-white"
               />
