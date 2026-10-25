@@ -62,7 +62,6 @@ import {
   INITIAL_TRANSACTIONS,
   CreditTransaction,
   PostItem,
-  INITIAL_POSTS
 } from '@/lib/store';
 import AllphaHubView from '@/components/AllphaHubView';
 
@@ -231,7 +230,7 @@ interface ExploreViewProps {
 type SearchTab = 'ALL' | 'ACCOUNTS' | 'POSTS' | 'HASHTAGS' | 'PRD_HUB';
 
 export default function ExploreView({ 
-  posts = INITIAL_POSTS,
+  posts = [],
   onSelectPost,
   onOpenAskAi, 
   onOpenWorld3D,
@@ -469,11 +468,11 @@ export default function ExploreView({
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {[
             { id: 'ALL' as SearchTab, label: 'Semua', count: isSearching ? (filteredAccounts.length + filteredPosts.length + filteredHashtags.length) : undefined },
-            { id: 'ACCOUNTS' as SearchTab, label: '👥 Akun (Human & AI)', count: filteredAccounts.length },
+            { id: 'ACCOUNTS' as SearchTab, label: '👥 Akun (Human & AI)', count: productionMode ? undefined : filteredAccounts.length },
             { id: 'POSTS' as SearchTab, label: '📝 Postingan & Caption', count: filteredPosts.length },
-            { id: 'HASHTAGS' as SearchTab, label: '# Hashtags', count: filteredHashtags.length },
+            { id: 'HASHTAGS' as SearchTab, label: '# Hashtags', count: productionMode ? undefined : filteredHashtags.length },
             { id: 'PRD_HUB' as SearchTab, label: '🌐 Allpha Hub', badge: 'Ecosystem' },
-          ].filter(tab => !productionMode || tab.id === 'POSTS').map((tab) => {
+          ].map((tab) => {
             const isActive = activeSearchTab === tab.id;
             return (
               <button
@@ -533,7 +532,8 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION A: TRENDING HASHTAGS CAROUSEL */}
         {/* ======================================================== */}
-        {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'HASHTAGS')) && (
+        {productionMode && activeSearchTab === 'HASHTAGS' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Hash className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Pencarian hashtag</h3><p className="mt-1 text-xs text-slate-500">Data hashtag belum tersedia dari API pencarian yang terhubung.</p></section>}
+                {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'HASHTAGS')) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -577,7 +577,8 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION B: ACCOUNTS RESULTS (HUMAN & AI AGENTS) */}
         {/* ======================================================== */}
-        {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS')) && (
+        {productionMode && activeSearchTab === 'ACCOUNTS' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Users className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Pencarian akun</h3><p className="mt-1 text-xs text-slate-500">Endpoint akun Human dan AI Agent belum tersedia pada kontrak pencarian yang terhubung.</p></section>}
+                {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS')) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -839,7 +840,8 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION D: MASTER PRD FEATURES & DOMAINS HUB */}
         {/* (Accessible directly via tab 'PRD_HUB' or at bottom of ALL) */}
-        {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB')) && (
+        {productionMode && activeSearchTab === 'PRD_HUB' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Globe className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Allpha Hub</h3><p className="mt-1 text-xs text-slate-500">Panel ekosistem tetap mengikuti UI referensi; data produksi akan ditampilkan setelah kontrak API Hub tersedia.</p></section>}
+                {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB')) && (
           <div className="pt-2 border-t border-slate-200">
             <AllphaHubView
               onOpenWorld3D={() => onOpenWorld3D()}
