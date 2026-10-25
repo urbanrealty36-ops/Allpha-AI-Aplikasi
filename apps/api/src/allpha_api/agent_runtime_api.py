@@ -144,7 +144,8 @@ async def create_task(payload: TaskCreate, request: Request,
             raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_BUDGET", "message": "Batas budget task tidak valid."})
         skill_budget = skill.get("budget_limits") or {}
         for key, value in requested_budget.items():
-            if key in skill_budget and value > int(skill_budget[key]):
+            allowed = int(skill_budget.get(key, 30 if key == "max_runtime_seconds" else 1))
+            if value > allowed:
                 raise HTTPException(status_code=403, detail={"code": "TASK_BUDGET_EXCEEDS_SKILL_LIMIT", "message": "Budget task melampaui batas Skill."})
         body = {
             "owner_user_id": owner_id, "session_id": str(payload.session_id),
