@@ -37,6 +37,7 @@ class TaskCreate(BaseModel):
     tool_key: str = Field(min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
     inputs: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
+    budget_limits: dict[str, int] = Field(default_factory=dict)
 
 
 def _store() -> AgentRuntimeStore:
@@ -138,13 +139,20 @@ async def create_task(payload: TaskCreate, request: Request,
             raise HTTPException(status_code=413, detail={"code": "TASK_INPUT_TOO_LARGE", "message": "Input task melebihi 16 KiB."})
         fingerprint = hashlib.sha256(encoded).hexdigest()
         trace_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        requested_budget = payload.budget_limits
+        if set(requested_budget) - {"max_runtime_seconds", "max_tool_calls"} or any(not isinstance(value, int) or value < 1 for value in requested_budget.values()):
+            raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_BUDGET", "message": "Batas budget task tidak valid."})
+        skill_budget = skill.get("budget_limits") or {}
+        for key, value in requested_budget.items():
+            if key in skill_budget and value > int(skill_budget[key]):
+                raise HTTPException(status_code=403, detail={"code": "TASK_BUDGET_EXCEEDS_SKILL_LIMIT", "message": "Budget task melampaui batas Skill."})
         body = {
             "owner_user_id": owner_id, "session_id": str(payload.session_id),
             "agent_id": agent_id, "skill_id": str(payload.skill_id),
             "agent_version": int(agent["version"]), "skill_version": int(skill["version"]),
             "state": "created", "idempotency_key": payload.idempotency_key,
             "request_fingerprint": fingerprint, "tool_key": payload.tool_key,
-            "input_payload": payload.inputs, "event_log": [_event("created", trace_id)],
+            "input_payload": payload.inputs, "task_budget_limits": requested_budget, "event_log": [_event("created", trace_id)],
             "trace_id": trace_id,
         }
         try:
@@ -293,8 +301,11 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau lease tidak tersedia."})
         row = claimed
         limits = skill.get("budget_limits") or {}
-        max_runtime = min(30, max(1, int(limits.get("max_runtime_seconds", 30))))
-        max_calls = min(5, max(1, int(limits.get("max_tool_calls", 1))))
+        task_limits = row.get("task_budget_limits") or {}
+        max_runtime = min(30, max(1, int(limits.get("max_runtime_seconds", 30))),
+                          max(1, int(task_limits.get("max_runtime_seconds", limits.get("max_runtime_seconds", 30)))))
+        max_calls = min(5, max(1, int(limits.get("max_tool_calls", 1))),
+                        max(1, int(task_limits.get("max_tool_calls", limits.get("max_tool_calls", 1)))))
         envelope = AgentTaskEnvelope(
             task_id=str(row["id"]), task_version=int(row["task_version"]),
             requester_id=owner_id, agent_id=str(row["agent_id"]), agent_version=int(row["agent_version"]),
