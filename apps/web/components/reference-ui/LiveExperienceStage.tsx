@@ -196,14 +196,12 @@ export default function LiveExperienceStage({
                 {isHostCameraOn ? (
                   <div className="text-center">
                     <div className="w-24 h-24 mx-auto rounded-full ring-4 ring-sky-300 p-1 bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-2xl">
-                      <img
-                        src="https://picsum.photos/seed/alex-tamara/200/200"
-                        alt="Alex Tamara"
-                        className="w-full h-full rounded-full object-cover border-2 border-slate-900"
-                      />
+                      <div className="w-full h-full rounded-full border-2 border-slate-900 bg-slate-100 flex items-center justify-center">
+                        <User className="w-10 h-10 text-slate-500" aria-label="Human Owner belum tersedia" />
+                      </div>
                     </div>
                     <span className="inline-block mt-3 px-3 py-1 rounded-full bg-white/90 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-2xs">
-                      🎤 Host Microphone Active
+                      Mikrofon tersedia setelah sesi tersambung
                     </span>
                   </div>
                 ) : (
@@ -218,10 +216,10 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between">
                 <span className="px-2.5 py-1 rounded-full bg-white/95 text-slate-950 text-[11px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1.5">
                   <User className="w-3 h-3 text-sky-600 stroke-[2.5px]" />
-                  Alex Tamara · Human Owner
+                  Human Owner · belum terhubung
                 </span>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-200 border border-slate-900 text-sky-950 font-mono font-bold">
-                  1080p 60fps
+                  Kualitas media —
                 </span>
               </div>
 
@@ -265,18 +263,16 @@ export default function LiveExperienceStage({
               <div className="absolute inset-0 bg-gradient-to-tr from-purple-950 via-slate-900 to-indigo-950 flex items-center justify-center">
                 <div className="text-center">
                   <div className={`w-24 h-24 mx-auto rounded-full ring-4 ${isAiAgentSpeaking ? 'ring-purple-300 animate-pulse' : 'ring-purple-500/40'} p-1 bg-gradient-to-tr from-cyan-400 to-purple-500 shadow-2xl`}>
-                    <img
-                      src="https://picsum.photos/seed/luna-cyber/200/200"
-                      alt="Luna AI"
-                      className="w-full h-full rounded-full object-cover border-2 border-slate-900"
-                    />
+                    <div className="w-full h-full rounded-full border-2 border-slate-900 bg-slate-100 flex items-center justify-center">
+                      <Bot className="w-10 h-10 text-purple-700" aria-label="AI Agent belum tersedia" />
+                    </div>
                   </div>
                   <span className={`inline-block mt-3 px-3 py-1 rounded-full text-xs font-black border-2 border-slate-900 shadow-2xs ${
                     isAiAgentSpeaking
                       ? 'bg-purple-200 text-purple-950'
                       : 'bg-white text-slate-800'
                   }`}>
-                    {isAiAgentSpeaking ? '🤖 Luna AI Berbicara...' : 'Luna AI Standby'}
+                    {isAiAgentSpeaking ? 'AI Agent belum terhubung' : 'AI Agent belum terhubung'}
                   </span>
                 </div>
               </div>
@@ -285,10 +281,10 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between">
                 <span className="px-2.5 py-1 rounded-full bg-white/95 text-slate-950 text-[11px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1.5">
                   <Bot className="w-3 h-3 text-purple-700 stroke-[2.5px]" />
-                  Luna AI · AI Agent milik @alextamara
+                  AI Agent · belum terhubung
                 </span>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-mono font-bold">
-                  Neural Audio 48kHz
+                  Audio belum tersedia
                 </span>
               </div>
 
