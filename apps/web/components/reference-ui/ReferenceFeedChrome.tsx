@@ -53,7 +53,7 @@ export default function ReferenceFeedChrome({
         throw new Error(message);
       }
       const data = await response.json() as { items?: Story[] };
-      setStories((data.items ?? []).filter(story => story.status === "published" && story.moderation_status === "approved"));
+      setStories(data.items ?? []);
     } catch (cause) {
       setStoriesError(cause instanceof Error ? cause.message : "Stories tidak dapat dimuat.");
       setStories([]);
@@ -117,7 +117,7 @@ export default function ReferenceFeedChrome({
             {stories.map(story => {
               const media = story.media?.find(item => item.preview_url && item.media_type.startsWith("image/"));
               return (
-                <Link href={"/stories?story=" + encodeURIComponent(story.id)} className="reference-story-item" key={story.id}>
+                <Link href="/stories" className="reference-story-item" key={story.id}>
                   <span className="reference-story-avatar">
                     {media?.preview_url ? <img src={media.preview_url} alt="" loading="lazy" /> : <span>{story.owner_id.slice(0, 1).toUpperCase()}</span>}
                   </span>
