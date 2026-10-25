@@ -203,9 +203,9 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 /* Reference Feed composition: keep source hierarchy, with canonical routes/data. */
 .reference-feed-chrome{width:100%;max-width:760px;margin:0 auto;background:#fff;color:#172033}
 .reference-feed-tabs{display:flex;align-items:stretch;justify-content:space-around;gap:4px;min-height:76px;border-bottom:1px solid #e2e8f0;background:rgba(255,255,255,.97)}
-.reference-feed-tabs>a{position:relative;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px 9px;color:#64748b;font-size:clamp(12px,2.5vw,16px);font-weight:750;text-align:center}
-.reference-feed-tabs>a.is-active{color:#111827}
-.reference-feed-tabs>a.is-active:after{position:absolute;bottom:0;left:12%;right:12%;height:4px;border-radius:4px 4px 0 0;background:#111827;content:""}
+.reference-feed-tabs>a,.reference-feed-tabs>button{position:relative;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px 9px;color:#64748b;font-size:clamp(12px,2.5vw,16px);font-weight:750;text-align:center}
+.reference-feed-tabs>a.is-active,.reference-feed-tabs>button.is-active{color:#111827}
+.reference-feed-tabs>a.is-active:after,.reference-feed-tabs>button.is-active:after{position:absolute;bottom:0;left:12%;right:12%;height:4px;border-radius:4px 4px 0 0;background:#111827;content:""}
 .reference-feed-tabs .reference-feed-reels{color:#374151}
 .reference-feed-reels b{padding:3px 8px;border:1px solid #fbcfe8;border-radius:999px;background:#fff1f2;color:#e11d48;font-size:10px}
 .reference-stories{display:flex;align-items:flex-start;gap:22px;overflow-x:auto;padding:22px 15px 18px;border-bottom:1px solid #e5e7eb;scrollbar-width:thin;scroll-snap-type:x proximity}
@@ -224,4 +224,4 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .reference-live-stage-cta{display:inline-flex;align-items:center;gap:9px;margin-top:20px;padding:12px 17px;border-radius:16px;background:linear-gradient(100deg,#e11d48,#a21caf,#7c3aed);color:#fff;font-weight:800;font-size:14px}
 .allpha-feed-page>header{display:none!important}
 @media(min-width:760px){.reference-live-stage{border-radius:20px;margin:16px 12px 20px}.reference-feed-tabs{border-radius:0}}
-@media(max-width:560px){.reference-feed-tabs{min-height:72px;gap:0}.reference-feed-tabs>a{padding:11px 5px;font-size:12px}.reference-feed-tabs .reference-feed-reels{max-width:118px;flex-wrap:wrap;gap:5px}.reference-stories{gap:17px;padding:17px 12px 14px}.reference-story-add{flex-basis:78px}.reference-story-add>span{width:76px;height:76px}.reference-live-stage{margin:10px 0 14px;padding:19px 15px}.reference-live-stage-cta{width:100%;justify-content:center}}
+@media(max-width:560px){.reference-feed-tabs{min-height:72px;gap:0}.reference-feed-tabs>a,.reference-feed-tabs>button{padding:11px 5px;font-size:12px}.reference-feed-tabs .reference-feed-reels{max-width:118px;flex-wrap:wrap;gap:5px}.reference-stories{gap:17px;padding:17px 12px 14px}.reference-story-add{flex-basis:78px}.reference-story-add>span{width:76px;height:76px}.reference-live-stage{margin:10px 0 14px;padding:19px 15px}.reference-live-stage-cta{width:100%;justify-content:center}}
