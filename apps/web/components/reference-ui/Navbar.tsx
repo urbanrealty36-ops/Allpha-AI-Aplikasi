@@ -34,7 +34,7 @@ export default function Navbar({
   onOpenOnboarding,
   onOpenMessages,
   isMessagesActive = false,
-  unreadMessagesCount = 2,
+  unreadMessagesCount,
   searchQuery,
   setSearchQuery,
   isHidden = false,
@@ -146,7 +146,7 @@ export default function Navbar({
             aria-label="Pesan"
           >
             <MessageCircle className="w-4.5 h-4.5 stroke-[2.2px]" />
-            {unreadMessagesCount > 0 && (
+            {typeof unreadMessagesCount === "number" && unreadMessagesCount > 0 && (
               <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-4.5 h-4.5 rounded-full bg-rose-500 border border-white text-white text-[9px] font-black flex items-center justify-center shadow-2xs">
                 {unreadMessagesCount}
               </span>
