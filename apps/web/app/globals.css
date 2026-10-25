@@ -226,3 +226,14 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-feed-page>header{display:none!important}
 @media(min-width:760px){.reference-live-stage{border-radius:20px;margin:16px 12px 20px}.reference-feed-tabs{border-radius:0}}
 @media(max-width:560px){.reference-feed-tabs{min-height:72px;gap:0}.reference-feed-tabs>a,.reference-feed-tabs>button{padding:11px 5px;font-size:12px}.reference-feed-tabs .reference-feed-reels{max-width:118px;flex-wrap:wrap;gap:5px}.reference-stories{gap:17px;padding:17px 12px 14px}.reference-story-add{flex-basis:78px}.reference-story-add>span{width:76px;height:76px}.reference-live-stage{margin:10px 0 14px;padding:19px 15px}.reference-live-stage-cta{width:100%;justify-content:center}}
+
+
+/* Reference feed story rail: live records only, never demo/sample cards. */
+.reference-stories-list{display:flex;align-items:flex-start;gap:17px;min-width:max-content}
+.reference-story-item{display:flex;flex:0 0 88px;flex-direction:column;align-items:center;gap:7px;scroll-snap-align:start;color:#334155;text-align:center}
+.reference-story-avatar{display:grid;place-items:center;width:86px;height:86px;overflow:hidden;border:4px solid #a78bfa;border-radius:50%;background:linear-gradient(135deg,#dbeafe,#fce7f3);box-shadow:inset 0 0 0 3px #fff;color:#1d4ed8;font-size:26px;font-weight:800}
+.reference-story-avatar img{width:100%;height:100%;object-fit:cover;border:3px solid white;border-radius:50%}
+.reference-story-item strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650}
+.reference-story-item small{display:-webkit-box;max-width:88px;overflow:hidden;color:#64748b;font-size:10px;line-height:1.35;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.reference-stories-empty[role="alert"]{color:#b91c1c}
+@media(max-width:560px){.reference-stories-list{gap:14px}.reference-story-item{flex-basis:78px}.reference-story-avatar{width:76px;height:76px}}
