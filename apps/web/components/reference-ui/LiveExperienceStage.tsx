@@ -98,25 +98,7 @@ export default function LiveExperienceStage({
   const [chatInput, setChatInput] = useState('');
   const [chatMessages] = useState<Array<{ sender: string; handle: string; text: string; isAi?: boolean }>>([]);
 
-  // Audio frequency pulsation effect
-  useEffect(() => {
-    if (!isLive) return;
-    const interval = setInterval(() => {
-      setAudioFreqs((prev) =>
-        prev.map(() => Math.floor(25 + Math.random() * 70))
-      );
-    }, 180);
-    return () => clearInterval(interval);
-  }, [isLive]);
-
-  // AI Agent turn-taking speech simulator
-  useEffect(() => {
-    if (!isLive || isAiAgentMuted) return;
-    const interval = setInterval(() => {
-      setIsAiAgentSpeaking((prev) => !prev);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [isLive, isAiAgentMuted]);
+  // Audio and speech visualizers stay idle until a canonical Live media session is connected.
 
   const isSpeaking = isLive && !isAiAgentMuted && isAiAgentSpeaking;
 
