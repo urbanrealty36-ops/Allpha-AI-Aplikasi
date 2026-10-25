@@ -305,6 +305,7 @@ const cinemaViewParity = readFileSync(new URL("../components/reference-ui/AiCine
 const cinemaRouteParity = readFileSync(new URL("../app/ai-cinema/page.tsx", import.meta.url), "utf8");
 const visualSmoke = readFileSync(new URL("./visual-smoke.mjs", import.meta.url), "utf8");
 assert.ok(feedViewParity.includes("onRetry") && feedViewParity.includes("Coba lagi") && readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8").includes("loadFeed(true)"), "Feed error must offer canonical reload retry");
+assert.ok(feedViewParity.includes("name: 'Tambah'") && feedViewParity.includes("productionMode\n    ? [{ id: 's-tambah'"), "Feed must preserve the source story-add card without seeding production story identities");
 assert.ok(searchViewParity.includes("onRetrySearch") && searchViewParity.includes("onRetryTrends") && searchViewParity.includes("onRetryRecommendations") && searchRouteParity.includes("loadTrends()"), "Explore/Search error states must retry through canonical API loaders");
 const allphaHubViewParity = readFileSync(new URL("../components/reference-ui/AllphaHubView.tsx", import.meta.url), "utf8");
 assert.ok(searchViewParity.includes("AllphaHubView") && searchViewParity.includes("productionMode={productionMode}"), "Explore must retain the source PRD Hub section in production mode");
