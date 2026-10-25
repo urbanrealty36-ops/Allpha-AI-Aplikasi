@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import FeedPostCard from "../../components/feed/FeedPostCard";
-import ReferenceFeedChrome from "../../components/reference-ui/ReferenceFeedChrome";
+import FeedView from "../../components/reference-ui/FeedView";
+import type { PostItem } from "@/lib/store";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
@@ -165,44 +165,68 @@ export default function FeedPage() {
     finally { setBusyKey(""); }
   }
 
+  const postsForReference: PostItem[] = items.map(item => {
+    const image = item.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url;
+    return {
+      id: item.id,
+      humanOwner: { name: "Pengguna " + item.owner_id.slice(0, 8), handle: "@" + item.owner_id.slice(0, 8), avatar: "", verified: false },
+      aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
+      takeoverMode: false,
+      timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
+      content: item.body,
+      tags: [],
+      ...(image ? { image } : {}),
+      has3DModel: false,
+      likes: item.engagement?.likes ?? 0,
+      commentsCount: item.engagement?.comments ?? 0,
+      reposts: item.engagement?.shares ?? 0,
+      isLiked: Boolean(item.viewer_reaction),
+      isBookmarked: Boolean(item.saved),
+      comments: (comments[item.id] ?? []).map(comment => ({
+        id: comment.id, authorName: "Pengguna " + comment.actor_user_id.slice(0, 8),
+        authorHandle: "@" + comment.actor_user_id.slice(0, 8), authorAvatar: "", isAi: false,
+        content: comment.body, timestamp: new Date(comment.created_at).toLocaleString("id-ID"), likes: 0,
+      })),
+    };
+  });
+
+  async function addCommentFromReference(postId: string, body: string) {
+    const item = items.find(row => row.id === postId);
+    if (!item || !body.trim()) return;
+    setBusyKey(postId); setError(""); setNotice("");
+    try {
+      const data = await request("/v1/feed/" + encodeURIComponent(postId) + "/comments", { method: "POST", body: JSON.stringify({ body: body.trim() }) }) as { comment: FeedComment };
+      setComments(current => ({ ...current, [postId]: [...(current[postId] ?? []), data.comment] }));
+      setItems(current => current.map(row => row.id === postId ? { ...row, engagement: { likes: row.engagement?.likes ?? 0, saves: row.engagement?.saves ?? 0, comments: (row.engagement?.comments ?? 0) + 1 } } : row));
+      setNotice("Komentar ditambahkan.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar gagal dikirim."); }
+    finally { setBusyKey(""); }
+  }
+
   return (
-    <>
-      
-      <main className="allpha-page allpha-feed-page mx-auto min-h-screen w-full max-w-3xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
-      <ReferenceFeedChrome mode={mode} onModeChange={nextMode => { void savePreferences(personalizationEnabled, nextMode); }} />
-      {!session ? <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="mb-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="font-semibold text-blue-600 hover:underline" href="/login">Masuk melalui Allpha</Link></section> : <>
-        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-semibold">Kontrol feed</h2><p className="mt-1 text-xs text-slate-500">Matikan personalisasi kapan saja.</p></div>
-          </div>
-          <label className="mt-4 flex items-center gap-3 text-sm"><input type="checkbox" checked={personalizationEnabled} onChange={e => void savePreferences(e.target.checked, mode)} disabled={busyKey === "preferences"} /> Personalisasi feed aktif</label>
-        </section>
-        {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 p-3 text-sm text-red-700 dark:text-red-300">{error}</p>}
-        {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-300 p-3 text-sm text-emerald-800 dark:text-emerald-200">{notice}</p>}
-        {loading && <p className="py-8 text-center text-sm text-slate-500">Memuat feed…</p>}
-        {!loading && items.length === 0 && <section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><h2 className="font-semibold">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan muncul setelah disetujui melalui moderasi.</p></section>}
-        <div className="space-y-4">
-          {items.map(item => <FeedPostCard
-            key={item.id}
-            item={item}
-            comments={comments[item.id] ?? []}
-            commentsOpen={Boolean(commentsOpen[item.id])}
-            commentDraft={commentDrafts[item.id] ?? ""}
-            reportReason={reportReasons[item.id] ?? "other"}
-            busy={busyKey === item.id}
-            onToggleReaction={toggleReaction}
-            onToggleSave={toggleSave}
-            onOpenComments={openComments}
-            onShare={share}
-            onReport={report}
-            onReportReasonChange={reason => setReportReasons(current => ({ ...current, [item.id]: reason }))}
-            onCommentDraftChange={value => setCommentDrafts(current => ({ ...current, [item.id]: value }))}
-            onSubmitComment={submitComment}
-          />)}
-        </div>
-        {cursor && <button className="mt-6 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold disabled:opacity-50 dark:border-slate-600" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button>}
+    <main className="min-h-screen w-full bg-sky-50 px-0 pb-24 pt-2 text-slate-900">
+      {!session ? <section className="mx-auto mt-4 max-w-xl rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-base font-black">Allpha Feed</h1><p className="my-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="inline-flex rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" href="/login">Masuk melalui Allpha</Link></section> : <>
+        {error && <p role="alert" className="mx-auto mb-3 max-w-xl rounded-xl border-2 border-rose-400 bg-white p-3 text-sm font-bold text-rose-700">{error}</p>}
+        {notice && <p role="status" className="mx-auto mb-3 max-w-xl rounded-xl border-2 border-emerald-400 bg-white p-3 text-sm font-bold text-emerald-800">{notice}</p>}
+        {loading && items.length === 0 && <p className="py-8 text-center text-sm font-semibold text-slate-500">Memuat feed…</p>}
+        {!loading && items.length === 0 && <section className="mx-auto max-w-xl p-8 text-center"><h2 className="font-black">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
+        <FeedView
+          posts={postsForReference}
+          storiesData={[]}
+          onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
+          onOpenAskAi={(agentName) => { window.location.assign("/ask-ai?agent=" + encodeURIComponent(agentName)); }}
+          onOpenGenerate={() => { window.location.assign("/create"); }}
+          onOpenWorld3D={() => { window.location.assign("/spatial"); }}
+          onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
+          onSelectPost={() => {}}
+          onOpenReels={() => { window.location.assign("/reels"); }}
+          onOpenLiveStage={() => { window.location.assign("/live"); }}
+          onOpenCreateModal={() => { window.location.assign("/create"); }}
+          onOpenFilmAi={() => { window.location.assign("/film-ai"); }}
+          onOpenMessages={() => { window.location.assign("/messages"); }}
+        />
+        {cursor && <div className="mx-auto max-w-xl px-4 pb-6"><button className="w-full rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black shadow-[3px_3px_0px_#0f172a]" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button></div>}
       </>}
     </main>
-    </>
   );
 }
