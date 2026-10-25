@@ -23,6 +23,24 @@ const taskTypes = [
 ] as const;
 const weekdays = [["0","Senin"],["1","Selasa"],["2","Rabu"],["3","Kamis"],["4","Jumat"],["5","Sabtu"],["6","Minggu"]] as const;
 
+function zonedDateTimeToIso(dateText: string, timeText: string, timeZone: string): string {
+  const [year, month, day] = dateText.split("-").map(Number);
+  const [hour, minute] = timeText.split(":").map(Number);
+  const target = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  let candidate = target;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(candidate)).map(part => [part.type, part.value]));
+    const represented = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second));
+    candidate += target - represented;
+  }
+  return new Date(candidate).toISOString();
+}
+
 async function errorMessage(response: Response) {
   try { const body = await response.json(); return body?.error?.message ?? body?.detail?.message ?? `Permintaan gagal (${response.status}).`; }
   catch { return `Permintaan gagal (${response.status}).`; }
@@ -113,8 +131,7 @@ export default function AgentTaskSchedulePanel({ agentId, session, skills, tools
       };
       if (frequency === "once") {
         if (!runDate) throw new Error("Pilih tanggal dan waktu eksekusi satu kali.");
-        const offset = timezoneName === "Asia/Jakarta" ? "+07:00" : "Z";
-        payload.run_at = `${runDate}:${localTime}:00`.replace("::", ":") + offset;
+        payload.run_at = zonedDateTimeToIso(runDate, localTime, timezoneName);
       }
       const response = await fetch(`${apiBase}/v1/agent-task-schedules`, {
         method: "POST",
