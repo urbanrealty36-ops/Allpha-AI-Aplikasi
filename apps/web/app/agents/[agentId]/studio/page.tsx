@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../../../lib/supabase";
+import AgentTaskSchedulePanel from "../../../../components/reference-ui/AgentTaskSchedulePanel";
 
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; status: string; processing_stage: string; error_code?: string | null; sha256: string; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type RetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
@@ -281,6 +282,7 @@ export default function AgentStudioPage() {
       <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Allpha · Agent Studio</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Skills & Capabilities</h1><p className="mt-2 max-w-2xl text-sm text-neutral-600">Kelola prosedur reusable, versi, dependensi tool, dan permintaan kemampuan Agent. Otorisasi selalu diputuskan ulang saat runtime.</p></div>
       <div className="flex flex-wrap gap-2"><Link href="/skill-challenges" className="rounded-xl border px-4 py-2 text-sm font-medium">Skill Challenge</Link><button className="rounded-xl border px-4 py-2 text-sm font-medium" onClick={() => session && void load(session)} disabled={loading}>{loading ? "Memuat…" : "Muat ulang"}</button></div>
     </header>
+    <AgentTaskSchedulePanel agentId={agentId} session={session} skills={skills} tools={registeredTools} />
     {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
     {notice && <div role="status" className="rounded-xl border p-3 text-sm">{notice}</div>}
     <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
