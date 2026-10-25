@@ -124,7 +124,6 @@ export default function CreatePostModal({
   };
 
   const handleStoryPublish = () => {
-    alert(`Story "${storyCaption || 'Story Baru'}" berhasil diunggah dengan durasi 24 jam!`);
     onClose();
   };
 
@@ -135,11 +134,11 @@ export default function CreatePostModal({
         <div className="px-5 py-3.5 border-b-2 border-slate-900 flex items-center justify-between bg-sky-50">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-2xl bg-sky-300 text-slate-950 flex items-center justify-center border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4.5 h-4.5 stroke-[3px]" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900">Pusat Pembuatan Konten (Create)</h2>
-              <p className="text-[10px] text-slate-500">Postingan, Story, Live Streaming & Stage 3D</p>
+              <h2 className="text-sm font-black text-slate-950 uppercase tracking-tight">Pusat Pembuatan Konten</h2>
+              <p className="text-[10px] font-bold text-slate-600">Postingan, Story, Live Streaming & Stage 3D</p>
             </div>
           </div>
           <button
@@ -154,62 +153,62 @@ export default function CreatePostModal({
         <div className="px-4 py-2.5 border-b-2 border-slate-900 bg-white flex gap-1.5 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setCreateMode('FEED_POST')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`shrink-0 px-3 py-1.5 rounded-2xl text-xs font-black transition border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer ${
               createMode === 'FEED_POST'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-sky-200 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
-            <Box className="w-3.5 h-3.5" />
+            <Box className="w-3.5 h-3.5 stroke-[2.5px]" />
             <span>Postingan Feed</span>
           </button>
 
           <button
             onClick={() => setCreateMode('STORY')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`shrink-0 px-3 py-1.5 rounded-2xl text-xs font-black transition border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer ${
               createMode === 'STORY'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-rose-200 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
-            <Camera className="w-3.5 h-3.5" />
-            <span>Story / Moment</span>
+            <Camera className="w-3.5 h-3.5 stroke-[2.5px]" />
+            <span>Story</span>
           </button>
 
           <button
             onClick={() => setCreateMode('LIVE_STAGE')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`shrink-0 px-3 py-1.5 rounded-2xl text-xs font-black transition border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer ${
               createMode === 'LIVE_STAGE'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-purple-300 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             <Radio className="w-3.5 h-3.5 animate-pulse text-purple-900 stroke-[2.5px]" />
-            <span>Mulai Live Stage 3D</span>
+            <span>Live Stage 3D</span>
             <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-700 text-white font-black border border-slate-900">LIVE</span>
           </button>
 
           <button
             onClick={() => setCreateMode('LIVE_STREAMING')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`shrink-0 px-3 py-1.5 rounded-2xl text-xs font-black transition border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer ${
               createMode === 'LIVE_STREAMING'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-amber-200 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
-            <Video className="w-3.5 h-3.5" />
+            <Video className="w-3.5 h-3.5 text-amber-900 stroke-[2.5px]" />
             <span>Live Streaming</span>
           </button>
 
           <button
             onClick={() => setCreateMode('LIVE_COLLAB')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`shrink-0 px-3 py-1.5 rounded-2xl text-xs font-black transition border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer ${
               createMode === 'LIVE_COLLAB'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-emerald-200 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
-            <Users className="w-3.5 h-3.5" />
+            <Users className="w-3.5 h-3.5 text-emerald-900 stroke-[2.5px]" />
             <span>Live Collab</span>
           </button>
         </div>
@@ -226,8 +225,8 @@ export default function CreatePostModal({
                 <button
                   type="button"
                   onClick={() => setPostAs('CO_POST')}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                    postAs === 'CO_POST' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
+                  className={`px-3 py-1 rounded-xl text-[11px] font-black transition border-2 border-slate-900 cursor-pointer ${
+                    postAs === 'CO_POST' ? 'bg-sky-400 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-white text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   Bersama (Human × AI)
@@ -235,20 +234,20 @@ export default function CreatePostModal({
                 <button
                   type="button"
                   onClick={() => setPostAs('HUMAN')}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                    postAs === 'HUMAN' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
+                  className={`px-3 py-1 rounded-xl text-[11px] font-black transition border-2 border-slate-900 cursor-pointer ${
+                    postAs === 'HUMAN' ? 'bg-sky-400 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-white text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  Human Saja
+                  Human
                 </button>
                 <button
                   type="button"
                   onClick={() => setPostAs('AI_AGENT')}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                    postAs === 'AI_AGENT' ? 'bg-purple-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
+                  className={`px-3 py-1 rounded-xl text-[11px] font-black transition border-2 border-slate-900 cursor-pointer ${
+                    postAs === 'AI_AGENT' ? 'bg-purple-300 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-white text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  AI Agent Saja
+                  AI Agent
                 </button>
               </div>
             </div>
@@ -274,8 +273,8 @@ export default function CreatePostModal({
                   <div
                     key={i}
                     onClick={() => setSelectedImage(selectedImage === img ? null : img)}
-                    className={`relative shrink-0 w-20 h-16 rounded-xl overflow-hidden cursor-pointer border-2 transition ${
-                      selectedImage === img ? 'border-blue-600 ring-2 ring-blue-200' : 'border-slate-200 hover:opacity-80'
+                    className={`relative shrink-0 w-22 h-18 rounded-2xl overflow-hidden cursor-pointer border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 ${
+                      selectedImage === img ? 'ring-3 ring-sky-500 shadow-[3px_3px_0px_#0f172a]' : 'hover:opacity-90 shadow-[1.5px_1.5px_0px_#0f172a]'
                     }`}
                   >
                     <img src={img} alt="Thumb" className="w-full h-full object-cover" />
@@ -318,7 +317,7 @@ export default function CreatePostModal({
                 type="submit"
                 className="px-5 py-2 rounded-xl bg-sky-300 hover:bg-sky-400 text-slate-950 text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>Publikasikan</span>
               </button>
             </div>
@@ -334,7 +333,7 @@ export default function CreatePostModal({
               <span className="text-xs font-black text-rose-700 uppercase tracking-wider">
                 Story 24 Jam
               </span>
-              <h3 className="text-sm font-black text-slate-900">
+              <h3 className="text-sm font-black text-slate-950">
                 Bagikan Momen Singkat bersama AI Agent
               </h3>
               <p className="text-xs font-semibold text-slate-600">
@@ -382,7 +381,7 @@ export default function CreatePostModal({
         {createMode === 'LIVE_STAGE' && (
           <div className="p-5 space-y-4 overflow-y-auto">
             <div className="p-4 rounded-3xl bg-purple-100 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-950 space-y-1">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-rose-600 animate-pulse stroke-[3px]" />
                 <span className="text-xs font-black uppercase tracking-wider text-rose-950">
                   Panggung Virtual 3D
@@ -425,14 +424,14 @@ export default function CreatePostModal({
                   <div
                     key={tmpl.id}
                     onClick={() => setLiveStageTemplate(tmpl.id as typeof liveStageTemplate)}
-                    className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                    className={`p-3 rounded-2xl border-2 border-slate-900 cursor-pointer transition active:translate-x-0.5 active:translate-y-0.5 ${
                       liveStageTemplate === tmpl.id
-                        ? 'bg-purple-50 border-purple-500 text-purple-900 font-bold'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        ? 'bg-purple-200 text-purple-950 shadow-[2px_2px_0px_#0f172a] font-black'
+                        : 'bg-white text-slate-800 hover:bg-slate-50 shadow-[1.5px_1.5px_0px_#0f172a]'
                     }`}
                   >
                     <p className="font-black text-xs text-slate-950">{tmpl.label}</p>
-                    <p className="text-[10px] text-slate-500">{tmpl.desc}</p>
+                    <p className="text-[10px] text-slate-600 font-semibold">{tmpl.desc}</p>
                   </div>
                 ))}
               </div>
@@ -480,7 +479,7 @@ export default function CreatePostModal({
           <div className="p-5 space-y-4 overflow-y-auto">
             <div className="p-4 rounded-3xl bg-amber-100 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-1 text-xs">
               <div className="flex items-center gap-1.5 text-amber-950 font-black">
-                <Video className="w-4 h-4" />
+                <Video className="w-4 h-4 stroke-[2.5px]" />
                 <span>Siaran Langsung Realtime (Live Streaming)</span>
               </div>
               <p className="text-amber-950 leading-relaxed text-[11px] font-semibold">
@@ -533,10 +532,7 @@ export default function CreatePostModal({
 
             <div className="flex gap-2 pt-2">
               <button
-                onClick={() => {
-                  alert('Ruang Kolaborasi 3D telah dibuka!');
-                  onClose();
-                }}
+                onClick={onClose}
                 className="flex-1 py-3.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Buka Ruang Kolaborasi
