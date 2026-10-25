@@ -45,6 +45,7 @@ for (const contract of [
 ]) assert.ok(workflows.includes(contract), `missing Workflow Engine Web contract: ${contract}`);
 assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 assert.ok(workflows.includes("setSupabase(getBrowserSupabase())") && workflows.includes("after hydration"), "Workflow Supabase client must initialize after hydration to avoid duplicate server/client fallback UI");
+assert.ok(workflows.includes("Kunci service-role tidak boleh berada di browser.</p></section></main></>;"), "Workflow fallback fragment must close before the main page return");
 const globalStyles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Workflow configuration keys must wrap at narrow mobile widths");
 
