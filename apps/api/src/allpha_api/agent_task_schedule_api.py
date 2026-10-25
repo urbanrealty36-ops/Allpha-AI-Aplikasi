@@ -222,7 +222,7 @@ async def create_schedule(payload: TaskScheduleCreate,
             "require_approval": payload.require_approval,
             "granted_permission_scopes": payload.granted_permission_scopes,
             "budget_limit": payload.budget_limit,
-            "input_payload": {**payload.input_payload, "instructions": payload.instructions.strip()},
+            "input_payload": payload.input_payload,
             "created_by_agent_version": binding["agent"]["version"],
             "created_by_skill_version": binding["skill"]["version"],
         }
