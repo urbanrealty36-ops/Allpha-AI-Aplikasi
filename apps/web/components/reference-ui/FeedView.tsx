@@ -211,7 +211,7 @@ export default function FeedView({
             {productionMode ? "Live Stage & 3D Spatial Universe" : "AI Innovation & 3D Spatial Universe Summit 2026"}
           </h3>
           <p className="text-xs text-slate-300 leading-snug">
-            {productionMode ? "Jelajahi panggung pengalaman, acara, dan dunia 3D Allpha Universe." : <>Host: <strong className="text-white">Alex Tamara & Luna AI</strong> • Presentasi slide & podcast panggung 3D</>}
+            Jelajahi panggung pengalaman, acara, dan dunia 3D Allpha Universe.
           </p>
         </div>
 
