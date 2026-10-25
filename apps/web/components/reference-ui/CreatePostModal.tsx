@@ -133,7 +133,7 @@ export default function CreatePostModal({
       <div className="w-full max-w-lg rounded-3xl bg-white shadow-[6px_6px_0px_#0f172a] border-2 border-slate-900 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="px-5 py-3.5 border-b-2 border-slate-900 flex items-center justify-between bg-sky-50">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-2xl bg-sky-300 text-slate-950 flex items-center justify-center border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
               <Plus className="w-4 h-4" />
             </div>
@@ -382,7 +382,7 @@ export default function CreatePostModal({
         {createMode === 'LIVE_STAGE' && (
           <div className="p-5 space-y-4 overflow-y-auto">
             <div className="p-4 rounded-3xl bg-purple-100 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-950 space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Radio className="w-4 h-4 text-rose-600 animate-pulse stroke-[3px]" />
                 <span className="text-xs font-black uppercase tracking-wider text-rose-950">
                   Panggung Virtual 3D
@@ -398,7 +398,7 @@ export default function CreatePostModal({
 
             {/* Live Title */}
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">
+              <label className="text-xs font-black text-slate-900 block mb-1">
                 Judul Sesi Live Stage:
               </label>
               <input
@@ -465,7 +465,7 @@ export default function CreatePostModal({
               </button>
               <button
                 onClick={onClose}
-                className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                className="px-4 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
@@ -489,7 +489,7 @@ export default function CreatePostModal({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Topik Siaran:</label>
+              <label className="text-xs font-black text-slate-900 block mb-1">Topik Siaran:</label>
               <input
                 type="text"
                 value={liveTitle}
@@ -508,7 +508,7 @@ export default function CreatePostModal({
               </button>
               <button
                 onClick={onClose}
-                className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                className="px-4 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
