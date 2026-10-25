@@ -26,10 +26,11 @@ interface MessagesViewProps {
   conversations?: ReferenceConversation[];
   loading?: boolean;
   errorMessage?: string;
+  onRetry?: () => void;
   noticeMessage?: string;
 }
 
-export default function MessagesView({ onOpenChat, onBack, conversations: suppliedConversations, loading = false, errorMessage = '', noticeMessage = '' }: MessagesViewProps) {
+export default function MessagesView({ onOpenChat, onBack, conversations: suppliedConversations, loading = false, errorMessage = '', onRetry, noticeMessage = '' }: MessagesViewProps) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'HUMAN' | 'AI_AGENT' | 'GROUP'>('ALL');
   const [search, setSearch] = useState('');
 
@@ -86,7 +87,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
         />
       </div>
 
-      {errorMessage && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700">{errorMessage}</p>}
+      {errorMessage && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700"><span>{errorMessage}</span>{onRetry && <button type="button" onClick={onRetry} disabled={loading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] disabled:opacity-50">Coba lagi</button>}</div>}
       {noticeMessage && <p role="status" className="rounded-xl border-2 border-emerald-400 bg-white p-3 text-xs font-bold text-emerald-800">{noticeMessage}</p>}
 
       {/* Tabs */}
