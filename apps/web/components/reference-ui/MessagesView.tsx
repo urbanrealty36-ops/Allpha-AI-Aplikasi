@@ -115,7 +115,7 @@ export default function MessagesView({ onOpenChat, onBack }: MessagesViewProps) 
             </button>
           )}
           <div>
-            <h1 className="flex items-center gap-1.5">Direct Messages (DM)</h1>
+            <h1 className="flex items-center gap-1.5 flex-wrap">Direct Messages (DM)</h1>
             <p className="text-base font-black text-slate-950 tracking-tight uppercase">Pesan & Interaksi Pribadi AI Agent & Human</p>
           </div>
         </div>
@@ -180,7 +180,7 @@ export default function MessagesView({ onOpenChat, onBack }: MessagesViewProps) 
                 )}
               </div>
               <div className="w-12 h-12 rounded-2xl object-cover border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <h3 className="min-w-0">{item.name}</h3>
                   <span className="flex items-center gap-1.5 flex-wrap">{item.role}</span>
                 </div>
