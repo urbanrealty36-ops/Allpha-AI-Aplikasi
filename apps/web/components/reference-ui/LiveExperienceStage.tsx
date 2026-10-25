@@ -44,21 +44,21 @@ export default function LiveExperienceStage({
   liveStateAvailable = true,
 }: LiveExperienceStageProps) {
   // Live state
-  const [isLive, setIsLive] = useState(true);
+  const [isLive, setIsLive] = useState(false);
   const [isHostMicMuted, setIsHostMicMuted] = useState(false);
   const [isHostCameraOn, setIsHostCameraOn] = useState(true);
-  const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(true);
+  const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(false);
   const [isAiAgentMuted, setIsAiAgentMuted] = useState(false);
-  const [likesCount, setLikesCount] = useState(3840);
-  const [viewerCount, setViewerCount] = useState(2430);
+  const [likesCount, setLikesCount] = useState<number | null>(null);
+  const [viewerCount, setViewerCount] = useState<number | null>(null);
   const [stageToast, setStageToast] = useState<string | null>(null);
 
   // Topics and active slide
-  const [activeTopic, setActiveTopic] = useState('AI Social Universe 2026: Kolaborasi Human & AI Agent');
+  const [activeTopic, setActiveTopic] = useState('');
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   // Audio spectrum simulation
-  const [audioFreqs, setAudioFreqs] = useState<number[]>([40, 65, 80, 55, 90, 70, 45, 85, 60, 75, 50, 65]);
+  const [audioFreqs] = useState<number[]>([]);
 
   // Slides content for Live Presentation Screen
   const slides = [
@@ -96,12 +96,7 @@ export default function LiveExperienceStage({
 
   // Live Chat Stream
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; handle: string; text: string; isAi?: boolean }>>([
-    { sender: 'Raka Pratama', handle: '@raka', text: 'Halo Alex & Luna! Suara dan visual stage podcastnya mantap sekali' },
-    { sender: 'Luna AI', handle: '@luna.ai', text: 'Selamat datang @raka! Hari ini kita membedah konsep live stage spatial di Allpha Universe.', isAi: true },
-    { sender: 'Sari Dewi', handle: '@saridewi', text: 'Keren banget panggung 3D-nya! Presentasi slidenya bisa langsung di-download nanti?' },
-    { sender: 'Dr. Andi Pratama', handle: '@andipratama', text: 'MediAI juga siap berkolaborasi untuk topik nutrisi dan hybrid working nanti sore.' },
-  ]);
+  const [chatMessages] = useState<Array<{ sender: string; handle: string; text: string; isAi?: boolean }>>([]);
 
   // Audio frequency pulsation effect
   useEffect(() => {
@@ -127,31 +122,11 @@ export default function LiveExperienceStage({
 
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim()) return;
-    const newMsg = {
-      sender: 'Alex Tamara (Host)',
-      handle: '@alextamara',
-      text: chatInput.trim(),
-    };
-    setChatMessages((prev) => [...prev, newMsg]);
-    setChatInput('');
-
-    // AI Agent automatic live reaction
-    setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          sender: 'Luna AI',
-          handle: '@luna.ai',
-          text: `Menanggapi host: "Sistem Allpha Universe memproses interaksi ini secara real-time dan ter-sync ke Live Stage."`,
-          isAi: true,
-        },
-      ]);
-    }, 1500);
+    // No canonical Live messaging API is connected yet; never simulate message delivery.
   };
 
   const handleLike = () => {
-    setLikesCount((prev) => prev + 1);
+    // Engagement is unavailable until a canonical Live-session endpoint is wired.
   };
 
   if (!liveStateAvailable) {
@@ -163,7 +138,7 @@ export default function LiveExperienceStage({
             <div><h1 className="text-base font-black">Live Stage</h1><p className="text-xs text-white/70">ALLPHA UNIVERSE</p></div>
           </header>
           <div className="space-y-3 p-5">
-            <p role="status" className="text-sm font-black">Belum ada sesi Live yang tersedia.</p>
+            <p role="status" className="text-sm font-black">Belum ada sesi atau pesan Live.</p>
             <p className="text-xs leading-relaxed text-slate-600">Sesi, jumlah penonton, likes, dan pesan akan ditampilkan setelah tersedia dari layanan Allpha. Tidak ada data simulasi yang ditampilkan.</p>
             <div className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-50 p-3 text-xs font-bold"><span>Penonton</span><span>—</span></div>
             <div className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-50 p-3 text-xs font-bold"><span>Likes</span><span>—</span></div>
@@ -194,7 +169,7 @@ export default function LiveExperienceStage({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
             <Users className="w-3.5 h-3.5" />
-            <span>{viewerCount.toLocaleString()} Penonton</span>
+            <span>{viewerCount == null ? '—' : viewerCount.toLocaleString()} Penonton</span>
           </div>
           <button
             onClick={() => setIsLive(!isLive)}
@@ -418,13 +393,13 @@ export default function LiveExperienceStage({
               className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-200 text-rose-950 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Heart className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
-              <span>{likesCount}</span>
+              <span>{likesCount ?? '—'}</span>
             </button>
           </div>
 
           {/* Messages Stream */}
           <div className="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/50 text-xs">
-            {chatMessages.map((msg, idx) => (
+            {chatMessages.length === 0 ? <p role="status" className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-center text-xs font-bold text-slate-500">Belum ada sesi atau pesan Live.</p> : chatMessages.map((msg, idx) => (
               <div
                 key={idx}
                 className={`p-3 rounded-2xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] ${
