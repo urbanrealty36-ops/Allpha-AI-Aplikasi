@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Sparkles, 
   User, 
@@ -66,7 +66,24 @@ export default function AuthOnboardingFlow({
   const [agentPersona, setAgentPersona] = useState('Ramah & Kreatif');
   const [selectedAgentAvatar, setSelectedAgentAvatar] = useState('');
   const [selectedAvatarCodename, setSelectedAvatarCodename] = useState('');
-  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(true);
+  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
+  const [canonicalSkills, setCanonicalSkills] = useState<Array<{ key: string; name: string; slug: string; category: string }>>([]);
+  const [skillsLoading, setSkillsLoading] = useState(true);
+  const [skillsError, setSkillsError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://api.allpha.web.id' : 'http://localhost:8000')).replace(/\\/$/, '');
+    void Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
+      const response = await fetch(base + '/v1/skill-catalog?limit=100&offset=' + offset, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Katalog Skill gagal dimuat (' + response.status + ').');
+      const data = await response.json() as { items?: Array<{ key: string; name: string; slug: string; category: string }> };
+      return data.items ?? [];
+    })).then((pages) => { if (active) setCanonicalSkills(pages.flat()); })
+      .catch((cause) => { if (active) setSkillsError(cause instanceof Error ? cause.message : 'Katalog Skill tidak dapat dimuat.'); })
+      .finally(() => { if (active) setSkillsLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -569,26 +586,21 @@ export default function AuthOnboardingFlow({
                   Katalog Skills Terpilih ({selectedSkills.length}):
                 </label>
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
-                  {BIDANG_SKILLS_CATALOG[selectedBidang]?.skills.map((skill) => {
-                    const isSelected = selectedSkills.includes(skill);
+                  {skillsLoading && <p className="text-xs text-slate-500">Memuat katalog Skill kanonis…</p>}
+                  {skillsError && <div role="alert" className="text-xs text-red-700">{skillsError} <button type="button" className="underline" onClick={() => window.location.reload()}>Coba lagi</button></div>}
+                  {!skillsLoading && !skillsError && canonicalSkills.map((skill) => {
+                    const isSelected = selectedSkills.includes(skill.name);
                     return (
                       <button
-                        key={skill}
+                        key={skill.key}
                         type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedSkills(selectedSkills.filter(s => s !== skill));
-                          } else {
-                            setSelectedSkills([...selectedSkills, skill]);
-                          }
-                        }}
+                        onClick={() => setSelectedSkills((previous) => isSelected ? previous.filter((value) => value !== skill.name) : [...previous, skill.name])}
                         className={`px-2 py-1 rounded-lg text-[10px] font-medium transition ${
-                          isSelected
-                            ? 'bg-purple-600 text-white font-bold'
-                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          isSelected ? 'bg-purple-600 text-white font-bold' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                         }`}
+                        title={skill.category + ' · ' + skill.slug}
                       >
-                        {isSelected ? `✓ ${skill}` : `+ ${skill}`}
+                        {isSelected ? `✓ ${skill.name}` : `+ ${skill.name}`}
                       </button>
                     );
                   })}
