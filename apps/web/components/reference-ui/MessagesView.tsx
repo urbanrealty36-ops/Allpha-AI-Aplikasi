@@ -17,7 +17,7 @@ import {
 
 export interface ReferenceConversation {
   id: string; name: string; handle: string; role: string; isAi: boolean;
-  lastMessage: string; time: string; unread: number; avatar?: string;
+  lastMessage: string; time: string; unread?: number; avatar?: string;
 }
 
 interface MessagesViewProps {
@@ -67,7 +67,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
           </div>
         </div>
         <span className="text-xs px-3 py-1 rounded-2xl bg-rose-200 text-rose-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-          {conversations.reduce((sum, item) => sum + item.unread, 0)} Baru
+          {conversations.some(item => typeof item.unread === 'number') ? conversations.reduce((sum, item) => sum + (item.unread ?? 0), 0) + ' Baru' : 'INBOX'}
         </span>
       </div>
 
