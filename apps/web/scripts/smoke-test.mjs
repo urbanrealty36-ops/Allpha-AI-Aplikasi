@@ -260,3 +260,20 @@ for (const contract of [
   "/v1/content", "/v1/stories", "/v1/feed", "/v1/reels",
   "session.access_token", "DocumentPicker", "FormData"
 ]) assert.ok(nativeContent.includes(contract), `missing Native social/content parity contract: ${contract}`);
+
+
+// Reference UI parity refinements must retain canonical API state and recoverable UI states.
+const feedCard = readFileSync(new URL("../components/feed/FeedPostCard.tsx", import.meta.url), "utf8");
+const createPage = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
+const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+const reelsPage = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.tsx", import.meta.url), "utf8");
+const nativeApp = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
+assert.ok(feedCard.includes("allpha-feed-owner-handle"), "Feed card must show creator identity hierarchy");
+assert.ok(createPage.includes("moderation: ${moderation}"), "Create must expose API moderation status");
+assert.ok(storiesPage.includes("moderation: ${moderation}"), "Stories must expose API moderation status");
+assert.ok(reelsPage.includes("Coba lagi"), "Reels API failure must offer retry");
+assert.ok(reelsPage.includes("Media belum tersedia"), "Reels must explain unavailable media previews");
+assert.ok(referenceNavbar.includes("onOpenNotifications"), "Navbar notifications must use a real navigation callback");
+assert.doesNotMatch(referenceNavbar, /alert\(['"]Anda memiliki 3 notifikasi/);
+assert.ok(nativeApp.includes('prefixes: ["allpha://"]'), "Native root deep-link prefix must be configured");
