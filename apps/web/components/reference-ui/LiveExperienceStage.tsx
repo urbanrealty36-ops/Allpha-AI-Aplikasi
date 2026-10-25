@@ -321,6 +321,7 @@ export default function LiveExperienceStage({
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  disabled={!liveStateAvailable}
                   onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1))}
                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
                 >
@@ -330,6 +331,7 @@ export default function LiveExperienceStage({
                   {activeSlideIndex + 1} / {slides.length}
                 </span>
                 <button
+                  disabled={!liveStateAvailable}
                   onClick={() => setActiveSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0))}
                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
                 >
