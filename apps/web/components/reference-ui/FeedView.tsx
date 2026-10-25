@@ -35,6 +35,7 @@ interface FeedViewProps {
   onOpenFilmAi?: (filmId?: string) => void;
   onOpenMessages?: () => void;
   storiesData?: Array<{ id: string; name: string; img?: string; isAdd?: boolean; isLive?: boolean; ringColor?: string }>;
+  productionMode?: boolean;
 }
 
 export default function FeedView({
@@ -51,6 +52,7 @@ export default function FeedView({
   onOpenFilmAi,
   onOpenMessages,
   storiesData,
+  productionMode = false,
 }: FeedViewProps) {
   const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
@@ -151,7 +153,7 @@ export default function FeedView({
                 {/* Ring border */}
                 <div className={`w-15 h-15 rounded-full p-0.5 bg-gradient-to-tr ${story.ringColor} shadow-2xs`}>
                   <img
-                    src={story.img}
+                    src={story.img || undefined}
                     alt={story.name}
                     className="w-full h-full rounded-full object-cover border-2 border-white"
                   />
@@ -181,20 +183,18 @@ export default function FeedView({
         <div className="flex items-center justify-between mb-2.5">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-300 text-[10px] font-black uppercase tracking-wider">
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            <span>SEDANG LIVE SEKARANG</span>
+            <span>{productionMode ? "LIVE STAGE" : "SEDANG LIVE SEKARANG"}</span>
           </div>
-          <span className="text-xs font-semibold text-slate-300">
-            2.4K Menonton
-          </span>
+          {!productionMode && <span className="text-xs font-semibold text-slate-300">2.4K Menonton</span>}
         </div>
 
         {/* Title & Host info */}
         <div className="relative z-10 space-y-1 max-w-sm">
           <h3 className="text-base sm:text-lg font-black text-white leading-tight">
-            AI Innovation & 3D Spatial Universe Summit 2026
+            {productionMode ? "Live Stage & 3D Spatial Universe" : "AI Innovation & 3D Spatial Universe Summit 2026"}
           </h3>
           <p className="text-xs text-slate-300 leading-snug">
-            Host: <strong className="text-white">Alex Tamara & Luna AI</strong> • Presentasi slide & podcast panggung 3D
+            {productionMode ? "Jelajahi panggung pengalaman, acara, dan dunia 3D Allpha Universe." : <>Host: <strong className="text-white">Alex Tamara & Luna AI</strong> • Presentasi slide & podcast panggung 3D</>}
           </p>
         </div>
 
@@ -333,7 +333,7 @@ export default function FeedView({
               {post.has3DModel && (
                 <div className="relative rounded-2xl overflow-hidden border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] aspect-[21/9] sm:aspect-[23/9] bg-slate-950 group">
                   <img
-                    src={post.image || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80'}
+                    src={post.image || undefined}
                     alt={post.modelName || '3D District'}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
