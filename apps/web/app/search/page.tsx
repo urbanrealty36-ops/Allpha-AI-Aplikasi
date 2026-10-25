@@ -144,10 +144,9 @@ function SearchPageContent() {
         productionMode
         onSearch={value => { setQuery(value); void runSearch(undefined, value); }}
         onOpenAskAi={(agentName) => { window.location.assign("/ask-ai?agent=" + encodeURIComponent(agentName)); }}
-        onOpenWorld3D={() => { window.location.assign("/spatial"); }}
-        onOpenCreditsHub={() => { window.location.assign("/credits"); }}
+        onOpenWorld3D={() => { window.location.assign("/spatial/navigation"); }}
         onOpenLiveStage={() => { window.location.assign("/live"); }}
-        onOpenFilmAi={() => { window.location.assign("/film-ai"); }}
+        onOpenFilmAi={() => { window.location.assign("/ai-cinema"); }}
       />
       {busy && <p role="status" className="mx-auto max-w-xl px-4 py-3 text-xs font-bold text-slate-600">Mencari konten…</p>}
       {searched && !busy && !error && items.length === 0 && <p role="status" className="mx-auto max-w-xl px-4 pb-8 text-center text-xs font-bold text-slate-600">Belum ada konten yang cocok dengan kata kunci tersebut.</p>}
