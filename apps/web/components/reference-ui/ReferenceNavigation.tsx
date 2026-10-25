@@ -13,6 +13,8 @@ function tabForPath(path: string): TabType {
   if (path.startsWith("/skill-challenges")) return "SKILLS_CREDITS";
   if (path.startsWith("/search") || path.startsWith("/communities")) return "EXPLORE";
   if (path.startsWith("/content-studio")) return "FILM_AI";
+  if (path.startsWith("/marketplace")) return "MARKETPLACE";
+  if (path.startsWith("/stories") || path.startsWith("/feed")) return "FEED";
   if (path.startsWith("/agents")) return "PROFILE";
   return "FEED";
 }
@@ -26,7 +28,7 @@ const routeForTab: Partial<Record<TabType, string>> = {
   MESSAGES: "/messages",
   REELS: "/reels",
   SKILLS_CREDITS: "/skill-challenges",
-  MARKETPLACE: "/search",
+  MARKETPLACE: "/marketplace",
   PROFILE: "/agents",
   POST_DETAIL: "/feed",
   TAKEOVER_CONTROL: "/agents",
