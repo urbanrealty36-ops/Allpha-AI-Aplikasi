@@ -25,13 +25,7 @@ import {
   Scale,
   Music
 } from 'lucide-react';
-import { 
-  AIAgentProfile, 
-  AgentBidang, 
-  AVATAR_3D_CATALOG, 
-  BIDANG_SKILLS_CATALOG,
-  Avatar3DItem 
-} from '@/lib/store';
+import { AVATAR_3D_CATALOG, BIDANG_SKILLS_CATALOG, type AIAgentProfile, type AgentBidang, type Avatar3DItem } from '@/lib/reference-store';
 
 interface AgentIdentityModalProps {
   isOpen: boolean;
