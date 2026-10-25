@@ -198,8 +198,8 @@ export default function FeedPage() {
       isLiked: Boolean(item.viewer_reaction),
       isBookmarked: Boolean(item.saved),
       comments: (comments[item.id] ?? []).map(comment => ({
-        id: comment.id, authorName: "Pengguna " + comment.actor_user_id.slice(0, 8),
-        authorHandle: "@" + comment.actor_user_id.slice(0, 8), authorAvatar: "", isAi: false,
+        id: comment.id, authorName: "Pengguna",
+        authorHandle: "", authorAvatar: "", isAi: false,
         content: comment.body, timestamp: new Date(comment.created_at).toLocaleString("id-ID"), likes: 0,
       })),
     };
