@@ -766,19 +766,13 @@ export default function ExploreView({
                     {/* Author Bar */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <img
-                          src={post.humanOwner.avatar}
-                          alt={post.humanOwner.name}
-                          className="w-8 h-8 rounded-full object-cover border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]"
-                        />
+                        {post.humanOwner.avatar ? <img src={post.humanOwner.avatar} alt={post.humanOwner.name} className="w-8 h-8 rounded-full object-cover border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]" /> : <div aria-label={post.humanOwner.name} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-slate-900 bg-sky-100 text-sky-800 shadow-[1.5px_1.5px_0px_#0f172a]"><User className="h-4 w-4" /></div>}
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-black text-slate-900">
                               {post.humanOwner.name}
                             </span>
-                            <span className="text-[10px] text-slate-600 font-mono font-bold">
-                              × {post.aiAgent.name}
-                            </span>
+                            {(!productionMode || post.aiAgent.name !== "—") && <span className="text-[10px] text-slate-600 font-mono font-bold">× {post.aiAgent.name}</span>}
                           </div>
                           <span className="text-[10px] text-slate-500 font-mono font-semibold">
                             {post.timestamp}
@@ -815,7 +809,7 @@ export default function ExploreView({
                       ))}
                     </div>
 
-                    {/* Engagement Counts */}
+                    {!productionMode && (
                     <div className="pt-2.5 border-t-2 border-slate-900/10 flex items-center justify-between text-[11px] text-slate-700 font-bold">
                       <div className="flex items-center gap-3">
                         <span className="flex items-center gap-1">
@@ -834,7 +828,7 @@ export default function ExploreView({
                       <span className="text-[10.5px] text-slate-900 font-black flex items-center gap-0.5 hover:underline">
                         Lihat Detail →
                       </span>
-                    </div>
+                    </div>                    )}
                   </div>
                 ))}
               </div>
