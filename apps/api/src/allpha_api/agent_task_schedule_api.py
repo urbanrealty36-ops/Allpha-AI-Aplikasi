@@ -156,6 +156,11 @@ async def _verify_runtime_binding(store: AgentRuntimeStore, owner_id: str, paylo
         raise HTTPException(status_code=422, detail={
             "code": "REGISTERED_TOOL_REQUIRED", "message": "Tool tidak terdaftar pada registry kanonis."
         }) from exc
+    if payload.task_type != "SKILL_EXECUTION":
+        raise HTTPException(status_code=409, detail={
+            "code": "TASK_TYPE_TOOL_NOT_IMPLEMENTED",
+            "message": "Jenis Task ini belum memiliki Tool kanonis yang dapat dieksekusi; pilih Eksekusi Skill agar tidak terjadi simulasi.",
+        })
     capability = await store.get_approved_capability(str(payload.agent_id), payload.tool_key)
     if not capability or not capability.get("runtime_policy_id") or not capability.get("policy_version"):
         raise HTTPException(status_code=409, detail={
