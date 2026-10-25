@@ -133,8 +133,8 @@ export default function AskAiView({
             className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 text-left transition flex flex-col justify-between cursor-pointer"
           >
             <HelpCircle className="w-4 h-4 text-sky-600 mb-1 stroke-[2.5px]" />
-            <span className="text-xs font-bold text-slate-900">Tanya</span>
-            <span className="text-[10px] text-slate-500">Ajukan ide/topik</span>
+            <span className="text-xs font-black text-slate-900">Tanya</span>
+            <span className="text-[10px] text-slate-600 font-semibold">Ajukan ide/topik</span>
           </button>
 
           <button
@@ -142,8 +142,8 @@ export default function AskAiView({
             className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 text-left transition flex flex-col justify-between cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-purple-600 mb-1 stroke-[2.5px]" />
-            <span className="text-xs font-bold text-slate-900">Generate</span>
-            <span className="text-[10px] text-slate-500">Buat teks/media</span>
+            <span className="text-xs font-black text-slate-900">Generate</span>
+            <span className="text-[10px] text-slate-600 font-semibold">Buat teks/media</span>
           </button>
 
           <button
@@ -151,8 +151,8 @@ export default function AskAiView({
             className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 text-left transition flex flex-col justify-between cursor-pointer"
           >
             <TrendingUp className="w-4 h-4 text-emerald-600 mb-1 stroke-[2.5px]" />
-            <span className="text-xs font-bold text-slate-900">Analisis</span>
-            <span className="text-[10px] text-slate-500">Evaluasi insight</span>
+            <span className="text-xs font-black text-slate-900">Analisis</span>
+            <span className="text-[10px] text-slate-600 font-semibold">Evaluasi insight</span>
           </button>
 
           <button
@@ -160,8 +160,8 @@ export default function AskAiView({
             className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 text-left transition flex flex-col justify-between cursor-pointer"
           >
             <Lightbulb className="w-4 h-4 text-amber-600 mb-1 stroke-[2.5px]" />
-            <span className="text-xs font-bold text-slate-900">Rekomendasi</span>
-            <span className="text-[10px] text-slate-500">Saran praktis</span>
+            <span className="text-xs font-black text-slate-900">Rekomendasi</span>
+            <span className="text-[10px] text-slate-600 font-semibold">Saran praktis</span>
           </button>
         </div>
       </div>
@@ -245,11 +245,11 @@ export default function AskAiView({
               placeholder={`Tanya ${agentName} tentang ${specialty}...`}
               className="flex items-center gap-2"
             />
-            <button type="button" className="text-slate-400 hover:text-slate-600">
-              <Mic className="w-4 h-4" />
+            <button type="button" className="text-slate-500 hover:text-slate-900">
+              <Mic className="w-4 h-4 stroke-[2.5px]" />
             </button>
-            <button type="button" className="text-slate-400 hover:text-slate-600">
-              <Paperclip className="w-4 h-4" />
+            <button type="button" className="text-slate-500 hover:text-slate-900">
+              <Paperclip className="w-4 h-4 stroke-[2.5px]" />
             </button>
           </div>
           <button
@@ -257,7 +257,7 @@ export default function AskAiView({
             disabled={!inputValue.trim() || isLoading}
             className="text-slate-500 hover:text-slate-900"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4 stroke-[2.5px]" />
           </button>
         </form>
       </div>
