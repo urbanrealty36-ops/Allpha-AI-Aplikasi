@@ -73,7 +73,7 @@ export default function AuthOnboardingFlow({
 
   useEffect(() => {
     let active = true;
-    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://api.allpha.web.id' : 'http://localhost:8000')).replace(/\\/$/, '');
+    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://api.allpha.web.id' : 'http://localhost:8000')).replace(/\/$/, '');
     void Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
       const response = await fetch(base + '/v1/skill-catalog?limit=100&offset=' + offset, { cache: 'no-store' });
       if (!response.ok) throw new Error('Katalog Skill gagal dimuat (' + response.status + ').');
@@ -121,7 +121,7 @@ export default function AuthOnboardingFlow({
     };
 
     const updatedAgent: AIAgentProfile = {
-      id: '', ownerId: '', ownerName: humanName, ownerHandle: humanHandle, creditsEarned: 0, model: '',
+      id: '', ownerId: '', creditsEarned: 0, model: '',
       name: agentName,
       handle: agentHandle.startsWith('@') ? agentHandle : `@${agentHandle}`,
       avatar: selectedAgentAvatar,
