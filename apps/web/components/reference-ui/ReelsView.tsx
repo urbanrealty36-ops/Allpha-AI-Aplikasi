@@ -76,6 +76,8 @@ export default function ReelsView({
   const [isMuted, setIsMuted] = useState(true);
   const [reelsFilter, setReelsFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'FILM_AI'>('FOR_YOU');
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [mediaErrors, setMediaErrors] = useState<Record<string, boolean>>({});
+  const [mediaRetryKey, setMediaRetryKey] = useState(0);
 
   // Production route supplies API-backed reels. No demo fallback is used.
   const reelsList: ReelItem[] = reels ?? [];
@@ -160,7 +162,8 @@ export default function ReelsView({
         className="absolute inset-0 bg-cover bg-center transition-all duration-700 ease-out"
         style={currentReel.mediaType?.startsWith('video/') ? undefined : { backgroundImage: currentReel.bgImage ? `url('${currentReel.bgImage}')` : undefined }}
       >
-        {currentReel.mediaType?.startsWith('video/') && currentReel.mediaUrl ? <video src={currentReel.mediaUrl} autoPlay muted={isMuted} loop playsInline className="h-full w-full object-cover" /> : currentReel.mediaType?.startsWith('audio/') && currentReel.mediaUrl ? <audio src={currentReel.mediaUrl} autoPlay muted={isMuted} loop /> : null}
+        {currentReel.mediaType?.startsWith('video/') && currentReel.mediaUrl && !mediaErrors[currentReel.id] ? <video key={`${currentReel.id}-${mediaRetryKey}`} src={currentReel.mediaUrl} autoPlay muted={isMuted} loop playsInline controls onError={() => setMediaErrors(prev => ({ ...prev, [currentReel.id]: true }))} className="h-full w-full object-cover" /> : currentReel.mediaType?.startsWith('audio/') && currentReel.mediaUrl && !mediaErrors[currentReel.id] ? <audio key={`${currentReel.id}-${mediaRetryKey}`} src={currentReel.mediaUrl} autoPlay muted={isMuted} loop controls onError={() => setMediaErrors(prev => ({ ...prev, [currentReel.id]: true }))} /> : null}
+        {mediaErrors[currentReel.id] && <div role="alert" className="absolute inset-x-5 top-1/2 z-20 -translate-y-1/2 rounded-2xl border-2 border-white/70 bg-slate-950/90 p-5 text-center shadow-xl"><p className="text-sm font-black">Media tidak dapat diputar</p><p className="mt-2 text-xs text-white/80">Perbarui tautan media dan coba lagi.</p><button type="button" className="mt-3 rounded-xl border-2 border-white px-4 py-2 text-xs font-black" onClick={() => { setMediaErrors(prev => ({ ...prev, [currentReel.id]: false })); setMediaRetryKey(key => key + 1); }}>Coba lagi</button></div>}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/90" />
       </div>
 
