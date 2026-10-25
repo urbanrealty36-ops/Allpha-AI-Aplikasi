@@ -268,22 +268,22 @@ export default function AiCinemaView({
       )}
 
       {/* Top Header & VIP Subscription Bar */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-950 via-rose-950 to-slate-900 text-white p-5 sm:p-6 border border-rose-500/30 shadow-xl space-y-4">
+      <div className="rounded-3xl bg-rose-50 text-slate-950 p-5 sm:p-6 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 via-purple-600 to-amber-500 flex items-center justify-center shadow-lg shadow-rose-500/30 shrink-0">
-              <Film className="w-5 h-5 text-white" />
+            <div className="w-11 h-11 rounded-2xl bg-rose-300 border-2 border-slate-900 flex items-center justify-center shadow-[2px_2px_0px_#0f172a] shrink-0">
+              <Film className="w-5 h-5 text-slate-950 stroke-[2.5px]" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg sm:text-xl font-black tracking-tight text-white">
+                <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-950">
                   ALLPHA AI CINEMA
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase tracking-wider">
+                <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 uppercase tracking-wider shadow-2xs">
                   Platform Film & Mini-Drama AI
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs font-semibold text-slate-700 mt-0.5">
                 Wadah bagi produser dan kreator Film AI. Katalog, akses tontonan, dan skema bagi hasil mengikuti kebijakan kanonis yang telah diaktifkan.
               </p>
             </div>
@@ -292,23 +292,23 @@ export default function AiCinemaView({
           {/* Action buttons */}
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             {isVipSubscribed ? (
-              <span className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-xs shadow-md flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5 fill-slate-950" />
+              <span className="px-3.5 py-1.5 rounded-2xl bg-amber-200 text-amber-950 border-2 border-slate-900 font-black text-xs shadow-[2px_2px_0px_#0f172a] flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 fill-amber-950" />
                 <span>VIP PASS AKTIF ✓</span>
               </span>
             ) : (
               <button
                 onClick={() => setIsSubscriptionModalOpen(true)}
-                className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-rose-600 via-purple-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-xs shadow-lg shadow-rose-500/25 transition flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
-                <Crown className="w-3.5 h-3.5" />
+                <Crown className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>Paket VIP (detail harga menyusul)</span>
               </button>
             )}
 
             <button
               onClick={() => setIsCreateStudioOpen(true)}
-              className="px-4 py-2 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-md shadow-rose-600/30 transition flex items-center gap-1.5"
+              className="px-4 py-2 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               <span>Create Film AI</span>
@@ -317,14 +317,14 @@ export default function AiCinemaView({
         </div>
 
         {/* Creator Profit Sharing Guarantee Strip */}
-        <div className="p-3 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-300">
+        <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-800">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-slate-900 shrink-0" />
             <span>
               <strong>Model Monetisasi Kreator:</strong> pembagian hasil dan distribusi royalti mengikuti kebijakan billing serta ledger kanonis yang berlaku.
             </span>
           </div>
-          <span className="text-[11px] font-mono text-amber-300 font-bold shrink-0">
+          <span className="text-[11px] font-mono text-amber-900 font-black shrink-0 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300">
             Royalti akan tersedia setelah ledger dan settlement kanonis aktif
           </span>
         </div>
@@ -340,31 +340,31 @@ export default function AiCinemaView({
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="space-y-2 max-w-xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 text-[11px] font-bold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-200 border-2 border-slate-900 text-purple-950 text-[11px] font-black uppercase tracking-wider shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-purple-950 stroke-[2.5px]" />
               <span>Program Resmi Kreator & Produser Allpha</span>
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight leading-snug">
               Ingin menjadi Creator/Produser Film AI di Allpha?
             </h2>
 
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+            <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed">
               Agar Karyamu ditonton orang banyak serta mendapatkan keuntungan dan pendapatan dari Film AI kamu, yuk registrasi dan upload film kamu! Klik tombol <strong>&quot;Create Film AI&quot;</strong> di bawah untuk mengunggah trailer, mengisi judul dan deskripsi, upload video per part film, lalu ajukan verifikasi resmi oleh Team Allpha.
             </p>
 
             {/* Benefit Highlights */}
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              <span className="px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-semibold flex items-center gap-1.5">
-                <Coins className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="px-3 py-1 rounded-full bg-emerald-100 border-2 border-slate-900 text-emerald-950 font-black flex items-center gap-1.5 shadow-2xs">
+                <Coins className="w-3.5 h-3.5 text-emerald-800" />
                 Skema bagi hasil sesuai kebijakan aktif
               </span>
-              <span className="px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-semibold flex items-center gap-1.5">
-                <Tv className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="px-3 py-1 rounded-full bg-sky-100 border-2 border-slate-900 text-sky-950 font-black flex items-center gap-1.5 shadow-2xs">
+                <Tv className="w-3.5 h-3.5 text-sky-800" />
                 Distribusi sesuai kanal yang diaktifkan
               </span>
-              <span className="px-3 py-1 rounded-full bg-purple-950/80 border border-purple-500/40 text-purple-300 font-semibold flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+              <span className="px-3 py-1 rounded-full bg-purple-100 border-2 border-slate-900 text-purple-950 font-black flex items-center gap-1.5 shadow-2xs">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-800" />
                 Verifikasi Resmi Team Allpha
               </span>
             </div>
@@ -374,18 +374,18 @@ export default function AiCinemaView({
           <div className="relative z-10 flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0">
             <button
               onClick={() => setIsCreateStudioOpen(true)}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-600 to-purple-600 hover:from-rose-400 hover:to-purple-500 text-white font-black text-sm shadow-[0_0_30px_rgba(244,63,94,0.45)] hover:shadow-[0_0_35px_rgba(244,63,94,0.65)] transition transform active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+              className="px-6 py-3.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black text-sm border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 cursor-pointer"
             >
-              <PlusCircle className="w-4 h-4 fill-white text-rose-600" />
+              <PlusCircle className="w-4 h-4 stroke-[2.5px]" />
               <span>Create Film AI</span>
               <ChevronRight className="w-4 h-4" />
             </button>
 
             <button
               onClick={() => setCinemaViewMode(cinemaViewMode === 'MY_STUDIO' ? 'CATALOG' : 'MY_STUDIO')}
-              className="px-4 py-2.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold transition flex items-center justify-center gap-1.5"
+              className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 text-xs font-black shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <Film className="w-3.5 h-3.5 text-rose-400" />
+              <Film className="w-3.5 h-3.5 text-rose-600 stroke-[2.5px]" />
               <span>{cinemaViewMode === 'MY_STUDIO' ? 'Lihat Semua Katalog Film' : `Status Film Saya (${myUploadedFilms.length})`}</span>
             </button>
           </div>
@@ -501,47 +501,47 @@ export default function AiCinemaView({
             {myUploadedFilms.map((film) => (
               <div
                 key={film.id}
-                className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition space-y-3"
+                className="p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:shadow-[5px_5px_0px_#0f172a] transition space-y-3"
               >
                 <div className="flex gap-3">
                   <img
                     src={film.coverImage}
                     alt={film.title}
-                    className="w-20 h-28 rounded-2xl object-cover shrink-0 shadow-sm"
+                    className="w-20 h-28 rounded-2xl object-cover shrink-0 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
                   />
                   <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {film.verificationStatus === 'VERIFIED' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span className="px-2.5 py-0.5 rounded-xl bg-emerald-200 text-emerald-950 text-[10px] font-black border-2 border-slate-900 flex items-center gap-1 shadow-2xs">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-900 stroke-[2.5px]" />
                           Terverifikasi Team Allpha
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3 text-amber-600" />
+                        <span className="px-2.5 py-0.5 rounded-xl bg-amber-200 text-amber-950 text-[10px] font-black border-2 border-slate-900 flex items-center gap-1 shadow-2xs">
+                          <AlertCircle className="w-3 h-3 text-amber-900 stroke-[2.5px]" />
                           Dalam Verifikasi Team Allpha
                         </span>
                       )}
                     </div>
 
-                    <h4 className="font-extrabold text-sm text-slate-900 line-clamp-1">{film.title}</h4>
-                    <p className="text-[11px] text-slate-500 line-clamp-2">{film.synopsis}</p>
-                    <p className="text-[10px] text-rose-600 font-bold">{film.genreLabel} • {film.episodesCount} Part</p>
+                    <h4 className="font-black text-sm text-slate-950 line-clamp-1">{film.title}</h4>
+                    <p className="text-[11px] font-semibold text-slate-600 line-clamp-2">{film.synopsis}</p>
+                    <p className="text-[10px] text-rose-700 font-black">{film.genreLabel} • {film.episodesCount} Part</p>
                   </div>
                 </div>
 
                 {/* Earnings & Actions */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="pt-2.5 border-t-2 border-slate-100 flex items-center justify-between text-xs">
                   <div className="space-y-0.5">
                     <span className="text-[10px] text-slate-400">Royalti (data kanonis):</span>
-                    <p className="font-mono font-bold text-amber-700">+{film.creatorMonthlyEarningsCredits} Cr</p>
+                    <p className="font-mono font-black text-amber-900">+{film.creatorMonthlyEarningsCredits} Cr</p>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     {film.verificationStatus === 'PENDING_VERIFICATION' && (
                       <button
                         onClick={() => handleApproveByTeamAllpha(film.id)}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                        className="px-3 py-1.5 rounded-xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                         title="Verifikasi melalui layanan Allpha"
                       >
                         Verifikasi
@@ -549,7 +549,7 @@ export default function AiCinemaView({
                     )}
                     <button
                       onClick={() => handleOpenTheater(film, 1)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1"
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                     >
                       <Play className="w-3 h-3 fill-white" />
                       <span>Nonton</span>
@@ -565,15 +565,15 @@ export default function AiCinemaView({
           {/* Genre Filter Tabs */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="font-extrabold text-sm text-slate-900">
+              <h3 className="font-black text-sm text-slate-900 tracking-tight">
                 Katalog Film Pendek & Serial Drama AI
               </h3>
-              <span className="text-xs text-slate-500 font-mono">
+              <span className="text-xs text-slate-800 font-mono font-bold px-2 py-0.5 rounded-full bg-slate-200 border border-slate-900">
                 {filteredMovies.length} Judul Tersedia
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
               {[
                 { id: 'ALL' as FilmGenre, label: 'Semua Kategori' },
                 { id: 'C_DRAMA' as FilmGenre, label: 'Drama China AI (C-Drama)' },
@@ -584,7 +584,7 @@ export default function AiCinemaView({
                 <button
                   key={cat.id}
                   onClick={() => setActiveGenre(cat.id)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap shrink-0 ${
+                  className={`px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition whitespace-nowrap shrink-0 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                     activeGenre === cat.id
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
@@ -606,11 +606,11 @@ export default function AiCinemaView({
             {filteredMovies.map((movie) => (
               <div
                 key={movie.id}
-                className="rounded-3xl bg-white border border-slate-200/80 hover:border-slate-300 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col justify-between group"
+                className="rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:-translate-y-0.5 transition overflow-hidden flex flex-col justify-between group"
               >
                 <div>
                   {/* Poster / Cover Image */}
-                  <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-950">
+                  <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-950 border-b-2 border-slate-900">
                     <img
                       src={movie.coverImage}
                       alt={movie.title}
@@ -620,7 +620,7 @@ export default function AiCinemaView({
 
                     {/* Category pill on top */}
                     <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded-full bg-slate-950/80 text-white text-[10px] font-bold backdrop-blur-xs">
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/95 border-2 border-slate-900 text-slate-950 text-[10px] font-black shadow-2xs">
                         {movie.genreLabel}
                       </span>
                     </div>
@@ -628,13 +628,13 @@ export default function AiCinemaView({
                     {/* Verification Badge */}
                     <div className="absolute top-2.5 right-2.5">
                       {movie.verificationStatus === 'VERIFIED' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 text-[10px] font-bold flex items-center gap-1 backdrop-blur-xs">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-200 border border-slate-900 text-emerald-950 text-[9.5px] font-black flex items-center gap-1 shadow-2xs">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-950" />
                           <span>Terverifikasi</span>
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/50 text-amber-300 text-[10px] font-bold flex items-center gap-1 backdrop-blur-xs">
-                          <Clock className="w-3 h-3 text-amber-400" />
+                        <span className="px-2 py-0.5 rounded-full bg-amber-200 border border-slate-900 text-amber-950 text-[9.5px] font-black flex items-center gap-1 shadow-2xs">
+                          <Clock className="w-3 h-3 text-amber-950" />
                           <span>Ditinjau Team</span>
                         </span>
                       )}
@@ -642,11 +642,11 @@ export default function AiCinemaView({
 
                     {/* Rating and episodes count on bottom */}
                     <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-xs text-white">
-                      <span className="font-mono text-[11px] font-bold text-amber-300 flex items-center gap-1">
+                      <span className="font-mono text-[11px] font-black text-amber-300 flex items-center gap-1">
                         <Star className="w-3 h-3 fill-amber-300" />
                         {movie.rating}
                       </span>
-                      <span className="text-[10px] text-slate-300 font-mono">
+                      <span className="text-[10px] text-slate-200 font-mono font-bold">
                         {movie.episodesCount} Episode ({movie.totalViews} Views)
                       </span>
                     </div>
@@ -655,33 +655,33 @@ export default function AiCinemaView({
                   {/* Body Content */}
                   <div className="p-3.5 space-y-2">
                     <div>
-                      <h4 className="font-extrabold text-sm text-slate-900 group-hover:text-rose-600 transition line-clamp-1">
+                      <h4 className="font-black text-sm text-slate-900 line-clamp-1">
                         {movie.title}
                       </h4>
                       {movie.originalTitle && (
-                        <p className="text-[10px] text-slate-400 line-clamp-1">
+                        <p className="text-[10px] font-bold text-slate-500 line-clamp-1">
                           {movie.originalTitle}
                         </p>
                       )}
                     </div>
 
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                    <p className="text-xs font-medium text-slate-700 line-clamp-2 leading-relaxed">
                       {movie.synopsis}
                     </p>
 
                     {/* Producer & AI Director */}
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-xs pt-1.5 border-t-2 border-slate-900/10">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <img
                           src={movie.producerHuman.avatar}
                           alt={movie.producerHuman.name}
-                          className="w-4 h-4 rounded-full object-cover"
+                          className="w-4 h-4 rounded-full object-cover border border-slate-900"
                         />
-                        <span className="text-[11px] font-semibold text-slate-700 truncate">
+                        <span className="text-[11px] font-bold text-slate-800 truncate">
                           {movie.producerHuman.name}
                         </span>
                       </div>
-                      <span className="text-[10px] text-cyan-700 font-medium shrink-0">
+                      <span className="text-[10px] text-sky-800 font-bold shrink-0">
                         & {movie.aiCoDirector.name}
                       </span>
                     </div>
@@ -700,7 +700,7 @@ export default function AiCinemaView({
                 <div className="p-3.5 pt-0 flex gap-2">
                   <button
                     onClick={() => handleOpenTheater(movie, 1)}
-                    className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition flex items-center justify-center gap-1 shadow-xs"
+                    className="flex-1 py-2 px-3 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
                     <span>Nonton</span>
@@ -712,7 +712,7 @@ export default function AiCinemaView({
                         showToast(`Trailer "${movie.title}" siap dibagikan ke Feed & Reels!`);
                       }
                     }}
-                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                    className="p-2 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                     title="Bagikan ke Feed & Reels"
                   >
                     <Share2 className="w-3.5 h-3.5" />
@@ -728,52 +728,52 @@ export default function AiCinemaView({
       {/* 2. DEDICATED STUDIO MODAL: "CREATE FILM AI" (Lengkap Form, Trailer, Parts) */}
       {/* ========================================================================= */}
       {isCreateStudioOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-slate-950 text-white border border-slate-800 shadow-2xl p-5 sm:p-6 space-y-5 my-auto animate-in fade-in zoom-in-95 duration-200 text-xs">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-3xl bg-white text-slate-950 border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 sm:p-6 space-y-5 my-auto animate-in fade-in zoom-in-95 duration-200 text-xs">
             {/* Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-start justify-between pb-3 border-b-2 border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-rose-600 to-purple-600 text-white shadow-md">
-                  <Film className="w-5 h-5" />
+                <div className="p-2.5 rounded-2xl bg-rose-300 text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
+                  <Film className="w-5 h-5 stroke-[2.5px]" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">
+                  <span className="text-[10px] font-black text-rose-900 uppercase tracking-wider">
                     Studio Registrasi & Produksi Film AI Allpha
                   </span>
-                  <h3 className="text-base sm:text-lg font-black text-white mt-0.5">
+                  <h3 className="text-base sm:text-lg font-black text-slate-950 mt-0.5">
                     Create Film AI & Daftarkan Karyamu
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-600 font-semibold">
                     Upload trailer, kelola part video, dan kirim untuk verifikasi resmi Team Allpha.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsCreateStudioOpen(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 text-slate-900 flex items-center justify-center transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Stepper overview */}
-            <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-slate-900 border border-slate-800 text-[10px] text-center font-bold text-slate-300">
-              <span className="text-rose-400">1. Info Judul</span>
-              <span className="text-rose-400">2. Upload Trailer</span>
-              <span className="text-rose-400">3. Video per Part</span>
-              <span className="text-emerald-400">4. Verifikasi Team</span>
+            <div className="grid grid-cols-4 gap-1 p-2 rounded-2xl bg-rose-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-[10px] text-center font-black text-slate-800">
+              <span className="text-rose-900">1. Info Judul</span>
+              <span className="text-rose-900">2. Upload Trailer</span>
+              <span className="text-rose-900">3. Video per Part</span>
+              <span className="text-emerald-800">4. Verifikasi Team</span>
             </div>
 
             {/* Section 1: Form Judul & Kategori */}
             <div className="space-y-3 p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
               <h4 className="font-extrabold text-xs text-rose-300 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>1. Form Judul & Informasi Film AI</span>
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-300">Judul Utama Film AI:</label>
+                  <label className="font-black text-slate-900">Judul Utama Film AI:</label>
                   <input
                     type="text"
                     value={newTitle}
@@ -784,7 +784,7 @@ export default function AiCinemaView({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-300">Judul Asli / Hanzi / Tagline:</label>
+                  <label className="font-black text-slate-900">Judul Asli / Hanzi / Tagline:</label>
                   <input
                     type="text"
                     value={newOriginalTitle}
@@ -797,7 +797,7 @@ export default function AiCinemaView({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-300">Kategori / Genre Film:</label>
+                  <label className="font-black text-slate-900">Kategori / Genre Film:</label>
                   <select
                     value={newGenre}
                     onChange={(e) => setNewGenre(e.target.value as FilmGenre)}
@@ -813,7 +813,7 @@ export default function AiCinemaView({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-300">Durasi Rata-rata per Part:</label>
+                  <label className="font-black text-slate-900">Durasi Rata-rata per Part:</label>
                   <input
                     type="text"
                     value={newDurationPerPart}
@@ -825,7 +825,7 @@ export default function AiCinemaView({
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-300">Deskripsi Lengkap & Sinopsis Alur Cerita:</label>
+                <label className="font-black text-slate-900">Deskripsi Lengkap & Sinopsis Alur Cerita:</label>
                 <textarea
                   rows={3}
                   value={newSynopsis}
@@ -837,7 +837,7 @@ export default function AiCinemaView({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
                 <div className="space-y-1">
-                  <label className="text-slate-400">Produser (Human):</label>
+                  <label className="font-bold text-slate-700">Produser (Human):</label>
                   <input
                     type="text"
                     value={newProducerName}
@@ -846,7 +846,7 @@ export default function AiCinemaView({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-slate-400">Co-Director (AI Agent):</label>
+                  <label className="font-bold text-slate-700">Co-Director (AI Agent):</label>
                   <input
                     type="text"
                     value={newAiCoDirector}
@@ -855,7 +855,7 @@ export default function AiCinemaView({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-slate-400">AI Tech Stack Digunakan:</label>
+                  <label className="font-bold text-slate-700">AI Tech Stack Digunakan:</label>
                   <input
                     type="text"
                     value={newTechStack}
@@ -869,24 +869,24 @@ export default function AiCinemaView({
             {/* Section 2: Upload Trailer & Cover Poster */}
             <div className="space-y-3 p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
               <h4 className="font-extrabold text-xs text-rose-300 flex items-center gap-1.5">
-                <Video className="w-3.5 h-3.5" />
+                <Video className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>2. Upload Trailer Film AI & Poster</span>
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Trailer Upload Box */}
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-dashed border-rose-500/50 flex flex-col justify-between space-y-2">
+                <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 flex flex-col justify-between space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-white flex items-center gap-1.5">
-                      <Upload className="w-3.5 h-3.5 text-rose-400" />
+                    <span className="font-black text-slate-950 flex items-center gap-1.5">
+                      <Upload className="w-3.5 h-3.5 text-rose-600 stroke-[2.5px]" />
                       File Trailer Video (MP4 / 4K)
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono font-bold">{isTrailerUploaded ? "Terunggah ✓" : "Belum diunggah"}</span>
                   </div>
-                  <p className="text-[11px] text-slate-300 font-mono truncate">{trailerFileName}</p>
+                  <p className="text-[11px] text-slate-700 font-mono font-bold truncate">{trailerFileName}</p>
                   
                   <div className="flex items-center justify-between gap-2 pt-1">
-                    <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                    <div className="flex items-center gap-1 text-[10px] text-slate-600 font-bold">
                       <Clock className="w-3 h-3" />
                       <span>Durasi: {trailerDuration}</span>
                     </div>
@@ -894,16 +894,16 @@ export default function AiCinemaView({
                     <button
                       type="button"
                       onClick={() => { if (!trailerFileName || !isTrailerUploaded) { showToast("Unggah trailer melalui layanan media kanonis terlebih dahulu. Belum ada file yang tersimpan."); return; } setIsPreviewingTrailer(!isPreviewingTrailer); }}
-                      className="px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center gap-1"
+                      className="px-3 py-1 rounded-xl bg-rose-300 hover:bg-rose-400 text-slate-950 text-[10px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1 cursor-pointer"
                     >
-                      <Play className="w-2.5 h-2.5 fill-white" />
+                      <Play className="w-2.5 h-2.5 fill-slate-950" />
                       <span>{isPreviewingTrailer ? 'Stop Preview' : 'Preview Trailer'}</span>
                     </button>
                   </div>
 
                   {isPreviewingTrailer && (
-                    <div className="p-2 rounded-lg bg-black text-center space-y-1 animate-in fade-in">
-                      <div className="w-full h-20 rounded bg-slate-800 flex items-center justify-center relative overflow-hidden">
+                    <div className="p-2 rounded-xl bg-slate-950 text-center space-y-1 animate-in fade-in border-2 border-slate-900">
+                      <div className="w-full h-20 rounded-lg bg-slate-800 flex items-center justify-center relative overflow-hidden">
                         <img
                           src={selectedPosterPreset}
                           alt="Trailer Preview"
@@ -918,8 +918,8 @@ export default function AiCinemaView({
                 </div>
 
                 {/* Poster Artwork Selector */}
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                  <span className="font-bold text-white block">Pilih Poster Cover Film:</span>
+                <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 space-y-2">
+                  <span className="font-black text-slate-900 block">Pilih Poster Cover Film:</span>
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       '/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg',
@@ -930,7 +930,7 @@ export default function AiCinemaView({
                         key={idx}
                         type="button"
                         onClick={() => setSelectedPosterPreset(img)}
-                        className={`relative rounded-xl overflow-hidden aspect-[3/4] border-2 transition ${
+                        className={`relative rounded-xl overflow-hidden aspect-[3/4] border-2 transition cursor-pointer ${
                           selectedPosterPreset === img
                             ? 'border-rose-500 scale-105 shadow-md shadow-rose-500/30'
                             : 'border-slate-800 opacity-60 hover:opacity-100'
@@ -938,7 +938,7 @@ export default function AiCinemaView({
                       >
                         <img src={img} alt="Poster" className="w-full h-full object-cover" />
                         {selectedPosterPreset === img && (
-                          <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[9px] font-bold">
+                          <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[9px] font-black border border-slate-900">
                             ✓
                           </span>
                         )}
@@ -953,11 +953,11 @@ export default function AiCinemaView({
             <div className="space-y-3 p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-extrabold text-xs text-rose-300 flex items-center gap-1.5">
-                    <ListChecks className="w-3.5 h-3.5" />
+                  <h4 className="font-black text-xs text-purple-950 flex items-center gap-1.5 uppercase">
+                    <ListChecks className="w-3.5 h-3.5 stroke-[2.5px]" />
                     <span>3. Upload Video per Part Film ({videoParts.length} Part Terdaftar)</span>
                   </h4>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-[10px] text-slate-600 font-semibold">
                     Serial drama pendek di Allpha diunggah per part/episode (Part 1, Part 2, dst).
                   </p>
                 </div>
@@ -965,9 +965,9 @@ export default function AiCinemaView({
                 <button
                   type="button"
                   onClick={handleAddVideoPart}
-                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] flex items-center gap-1 transition"
+                  className="px-3 py-1.5 rounded-xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-[11px] border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1 transition cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5 stroke-[3px]" />
                   <span>Tambah Part</span>
                 </button>
               </div>
@@ -977,10 +977,10 @@ export default function AiCinemaView({
                 {videoParts.map((part) => (
                   <div
                     key={part.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                    className="p-3 rounded-2xl bg-white border-2 border-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs"
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <span className="w-6 h-6 rounded-lg bg-rose-600/30 border border-rose-500/40 text-rose-300 font-mono font-bold flex items-center justify-center shrink-0">
+                      <span className="w-7 h-7 rounded-xl bg-rose-200 border-2 border-slate-900 text-slate-950 font-mono font-black flex items-center justify-center shrink-0">
                         {part.partNumber}
                       </span>
                       <div className="flex-1 min-w-0">
@@ -988,14 +988,14 @@ export default function AiCinemaView({
                           type="text"
                           value={part.title}
                           onChange={(e) => handleUpdatePart(part.id, { title: e.target.value })}
-                          className="w-full bg-transparent font-bold text-slate-200 outline-none text-xs border-b border-transparent focus:border-rose-400"
+                          className="w-full bg-transparent font-black text-slate-950 outline-none text-xs border-b border-transparent focus:border-rose-400"
                         />
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold mt-0.5">
                           <span>{part.fileName}</span>
                           <span>•</span>
                           <span>{part.fileSize || '50 MB'}</span>
                           <span>•</span>
-                          <span className="text-emerald-400 font-mono">Durasi: {part.duration}</span>
+                          <span className="text-emerald-700 font-mono">Durasi: {part.duration}</span>
                         </div>
                       </div>
                     </div>
@@ -1004,7 +1004,7 @@ export default function AiCinemaView({
                       <button
                         type="button"
                         onClick={() => handleUpdatePart(part.id, { isFreePreview: !part.isFreePreview })}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                        className={`px-2.5 py-1 rounded-xl text-[10px] font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                           part.isFreePreview
                             ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
                             : 'bg-amber-950 text-amber-300 border border-amber-500/40'
@@ -1017,10 +1017,10 @@ export default function AiCinemaView({
                         <button
                           type="button"
                           onClick={() => handleRemoveVideoPart(part.id)}
-                          className="p-1 rounded-lg text-slate-500 hover:text-rose-400 transition"
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition cursor-pointer"
                           title="Hapus Part"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3.5 h-3.5 stroke-[2.5px]" />
                         </button>
                       )}
                     </div>
@@ -1030,9 +1030,9 @@ export default function AiCinemaView({
             </div>
 
             {/* Section 4: Revenue & Verification Notice */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 to-rose-950/60 border border-rose-500/40 text-[11px] text-slate-300 space-y-1.5">
-              <div className="flex items-center gap-2 font-bold text-white">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-[11px] text-slate-800 space-y-1.5 font-medium">
+              <div className="flex items-center gap-2 font-black text-slate-950">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 stroke-[2.5px]" />
                 <span>Publish & Verifikasi oleh Team Allpha</span>
               </div>
               <p>
@@ -1045,7 +1045,7 @@ export default function AiCinemaView({
               <button
                 type="button"
                 onClick={() => setIsCreateStudioOpen(false)}
-                className="flex-1 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold transition"
+                className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Simpan Sebagai Draf
               </button>
@@ -1053,10 +1053,10 @@ export default function AiCinemaView({
               <button
                 type="button"
                 onClick={handlePublishForVerification}
-                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-purple-600 hover:from-rose-500 hover:to-purple-500 text-white font-black shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition transform active:scale-95"
+                className="flex-1 py-3 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-center gap-2 transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
                 <span>Publish & Kirim Verifikasi ke Team Allpha</span>
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4 h-4 stroke-[3px]" />
               </button>
             </div>
           </div>
@@ -1067,45 +1067,45 @@ export default function AiCinemaView({
       {/* 3. REVIEW / VERIFICATION STATUS MODAL (Simulasi Verifikasi Team Allpha)   */}
       {/* ========================================================================= */}
       {reviewModalData.isOpen && reviewModalData.movie && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl bg-slate-950 text-white border border-slate-800 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white text-slate-950 border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
             <div className="text-center space-y-2 pt-2">
-              <div className="w-14 h-14 mx-auto rounded-full bg-gradient-to-tr from-rose-500 to-purple-600 flex items-center justify-center shadow-lg shadow-rose-500/30 animate-pulse">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-200 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-center">
                 {reviewModalData.movie.verificationStatus === 'VERIFIED' ? (
-                  <Check className="w-8 h-8 text-white" />
+                  <Check className="w-8 h-8 text-emerald-800 stroke-[3px]" />
                 ) : (
-                  <Clock className="w-7 h-7 text-white" />
+                  <Clock className="w-7 h-7 text-amber-900 stroke-[2.5px]" />
                 )}
               </div>
 
               <div>
-                <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">
+                <span className="text-[10px] font-black text-rose-800 uppercase tracking-wider">
                   Status Pengajuan Film AI
                 </span>
-                <h3 className="text-base font-black text-white mt-0.5">
+                <h3 className="text-base font-black text-slate-950 mt-0.5">
                   &quot;{reviewModalData.movie.title}&quot;
                 </h3>
               </div>
             </div>
 
             {/* Status Card */}
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+            <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Status Kurasi:</span>
+                <span className="text-slate-600 font-bold">Status Kurasi:</span>
                 {reviewModalData.movie.verificationStatus === 'VERIFIED' ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <span className="px-2.5 py-0.5 rounded-xl bg-emerald-200 text-emerald-950 font-black border-2 border-slate-900 flex items-center gap-1 shadow-2xs">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-900 stroke-[2.5px]" />
                     Terverifikasi Team Allpha
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 flex items-center gap-1 animate-pulse">
-                    <Clock className="w-3 h-3 text-amber-400" />
+                  <span className="px-2.5 py-0.5 rounded-xl bg-amber-200 text-amber-950 font-black border-2 border-slate-900 flex items-center gap-1 shadow-2xs animate-pulse">
+                    <Clock className="w-3 h-3 text-amber-900 stroke-[2.5px]" />
                     Sedang Diverifikasi Team Allpha
                   </span>
                 )}
               </div>
 
-              <div className="space-y-1.5 pt-2 border-t border-slate-800 text-[11px] text-slate-300">
+              <div className="space-y-1.5 pt-2 border-t-2 border-slate-900/10 text-[11px] text-slate-700 font-semibold">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Trailer Video 4K Terunggah & Valid</span>
@@ -1122,7 +1122,7 @@ export default function AiCinemaView({
             </div>
 
             {/* Explanation text */}
-            <p className="text-[11px] text-slate-300 text-center leading-relaxed">
+            <p className="text-[11px] text-slate-700 font-semibold text-center leading-relaxed">
               {reviewModalData.movie.verificationStatus === 'VERIFIED'
                 ? 'Film AI Anda telah resmi terverifikasi dan kini tampil di halaman utama Film AI Allpha untuk ditonton seluruh pengguna!'
                 : 'Team Kurasi Allpha sedang meninjau kualitas visual dan audio spatial film Anda. Anda juga dapat memilih simulasi persetujuan instan di bawah ini.'}
@@ -1134,9 +1134,9 @@ export default function AiCinemaView({
                 <button
                   type="button"
                   onClick={() => handleApproveByTeamAllpha(reviewModalData.movie!.id)}
-                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+                  className="w-full py-3 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-2 transition cursor-pointer"
                 >
-                  <ShieldCheck className="w-4 h-4" />
+                  <ShieldCheck className="w-4 h-4 stroke-[2.5px]" />
                   <span>Verifikasi Sekarang oleh Team Allpha (Instant)</span>
                 </button>
               ) : (
@@ -1147,7 +1147,7 @@ export default function AiCinemaView({
                       setReviewModalData({ isOpen: false, movie: null });
                       handleOpenTheater(reviewModalData.movie!, 1);
                     }}
-                    className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold flex items-center justify-center gap-1.5"
+                    className="py-2.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
                     <span>Tonton Film</span>
@@ -1162,7 +1162,7 @@ export default function AiCinemaView({
                       }
                       setReviewModalData({ isOpen: false, movie: null });
                     }}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center gap-1.5"
+                    className="py-2.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Share2 className="w-3.5 h-3.5" />
                     <span>Share Trailer</span>
@@ -1173,7 +1173,7 @@ export default function AiCinemaView({
               <button
                 type="button"
                 onClick={() => setReviewModalData({ isOpen: false, movie: null })}
-                className="w-full py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-bold transition"
+                className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Tutup & Kembali ke Katalog
               </button>
@@ -1412,27 +1412,27 @@ export default function AiCinemaView({
               </div>
               <button
                 onClick={() => setIsSubscriptionModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-white"
+                className="w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 flex items-center justify-center text-slate-900 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5 stroke-[2.5px]" />
               </button>
             </div>
 
             {/* Price Tag */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-950/80 to-purple-950/80 border border-rose-500/30 text-center space-y-1">
-              <span className="text-[10px] uppercase font-bold text-rose-300 tracking-wider">
+            <div className="p-4 rounded-2xl bg-rose-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-center space-y-1">
+              <span className="text-[10px] uppercase font-black text-rose-900 tracking-wider">
                 Paket Berlangganan Bulanan
               </span>
-              <p className="text-2xl font-mono font-black text-white">
+              <p className="text-2xl font-mono font-black text-slate-950">
                 Harga dan kuota paket ditampilkan setelah kontrak billing aktif.
               </p>
-              <p className="text-[11px] text-slate-300">
+              <p className="text-[11px] text-slate-700 font-semibold">
                 Saldo Anda saat ini: <strong className="font-mono text-amber-300">{userCredits === null ? '—' : userCredits} Credits</strong>
               </p>
             </div>
 
             {/* Benefit Checkpoints */}
-            <div className="space-y-2 text-slate-300 text-xs">
+            <div className="space-y-2 text-slate-800 text-xs font-semibold">
               {[
                 'Buka ribuan episode Drama Pendek AI (C-Drama & K-Drama) tanpa iklan',
                 'Resolusi 4K Ultra HD 60 FPS dengan audio spatial 3D',
@@ -1441,7 +1441,7 @@ export default function AiCinemaView({
                 'Bisa diakses dari Feed, Reels, dan 3D Universe Cinema District',
               ].map((benefit, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 stroke-[2.5px] shrink-0 mt-0.5" />
                   <span className="leading-snug">{benefit}</span>
                 </div>
               ))}
@@ -1451,14 +1451,14 @@ export default function AiCinemaView({
               <button
                 type="button"
                 onClick={() => setIsSubscriptionModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold"
+                className="flex-1 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Nanti Saja
               </button>
               <button
                 type="button"
                 onClick={handleConfirmVipSubscription}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-purple-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-extrabold shadow-lg shadow-rose-500/25"
+                className="flex-1 py-2.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Aktifkan VIP Sekarang
               </button>
