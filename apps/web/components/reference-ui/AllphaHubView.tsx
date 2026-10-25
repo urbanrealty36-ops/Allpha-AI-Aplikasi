@@ -619,7 +619,7 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {activeHubSection === 'STAGE' && (
         <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
             <div>
               <div className="flex items-center gap-2">
                 <Radio className="w-8 h-8 rounded-xl bg-rose-200 border-2 border-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a]" />
@@ -799,7 +799,7 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {activeHubSection === 'WORLDS' && (
         <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
             <div>
               <div className="flex items-center gap-2">
                 <Box className="flex items-center gap-2" />
@@ -894,7 +894,7 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {activeHubSection === 'VIDEOTRON' && (
         <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
             <div>
               <div className="flex items-center gap-2">
                 <Tv className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]" />
@@ -1021,7 +1021,7 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {activeHubSection === 'QUESTS' && (
         <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
             <div>
               <div className="flex items-center gap-2">
                 <Award className="px-3.5 py-1.5 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer" />
@@ -1130,7 +1130,7 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {activeHubSection === 'LEDGER' && (
         <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
             <div>
               <div className="flex items-center gap-2">
                 <Receipt className="w-full sm:w-auto px-4 py-2 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer" />
@@ -1341,15 +1341,15 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {selectedVideotron && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
-            <div className="flex items-start justify-between pb-2 border-b border-slate-100">
+          <div className="w-full max-w-md rounded-3xl bg-white border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
+            <div className="flex items-start justify-between pb-2 border-b-2 border-slate-100">
               <div>
                 <span className="text-[10px] font-black text-purple-900 uppercase">Pemesanan Media Surface</span>
                 <h3 className="font-black text-sm text-slate-950 mt-0.5">{selectedVideotron.name}</h3>
               </div>
               <button
                 onClick={() => setSelectedVideotron(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-700"
+                className="w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 flex items-center justify-center text-slate-900 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1401,7 +1401,7 @@ export default function AllphaHubView({
             <div className="space-y-1.5">
               <button
                 onClick={() => setSelectedVideotron(null)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                className="flex-1 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
@@ -1425,7 +1425,7 @@ export default function AllphaHubView({
             onSubmit={handleExecuteSettlement}
             className="w-full max-w-md rounded-3xl bg-white border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs"
           >
-            <div className="flex items-start justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-2 border-b-2 border-slate-100">
               <div>
                 <span className="text-[10px] font-black text-indigo-900 uppercase">Settlement Royalti Kreator</span>
                 <h3 className="font-black text-sm text-slate-950 mt-0.5">Tarik Saldo Royalti 70%</h3>
@@ -1433,7 +1433,7 @@ export default function AllphaHubView({
               <button
                 type="button"
                 onClick={() => setIsSettlementModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-700"
+                className="w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 flex items-center justify-center text-slate-900 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1494,7 +1494,7 @@ export default function AllphaHubView({
               <button
                 type="button"
                 onClick={() => setIsSettlementModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                className="flex-1 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
@@ -1514,15 +1514,15 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {isCreateEventModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
-            <div className="flex items-start justify-between pb-2 border-b border-slate-100">
+          <div className="w-full max-w-md rounded-3xl bg-white border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
+            <div className="flex items-start justify-between pb-2 border-b-2 border-slate-100">
               <div>
                 <span className="text-[10px] font-black text-sky-900 uppercase">Panggung Virtual</span>
                 <h3 className="font-black text-sm text-slate-950 mt-0.5">Buat Event Stage Baru</h3>
               </div>
               <button
                 onClick={() => setIsCreateEventModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-700"
+                className="w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 flex items-center justify-center text-slate-900 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1565,7 +1565,7 @@ export default function AllphaHubView({
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsCreateEventModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                className="flex-1 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
