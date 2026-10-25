@@ -38,18 +38,12 @@ export default function AgentGoalsTasksModal({
   isOpen,
   onClose,
   agent,
-  onUpdateAgent,
   onToast,
 }: AgentGoalsTasksModalProps) {
   const [activeTab, setActiveTab] = useState<'TASKS' | 'GOALS'>('TASKS');
 
-  const [goals, setGoals] = useState<AgentGoalItem[]>(
-    agent.goals ?? []
-  );
-
-  const [tasks, setTasks] = useState<AgentTaskItem[]>(
-    agent.tasks ?? []
-  );
+  const [goals] = useState<AgentGoalItem[]>(agent.goals ?? []);
+  const [tasks] = useState<AgentTaskItem[]>(agent.tasks ?? []);
 
   // New Task Form Modal State
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -65,8 +59,7 @@ export default function AgentGoalsTasksModal({
   const [newGoalPriority, setNewGoalPriority] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('HIGH');
   const [newGoalTargetDate, setNewGoalTargetDate] = useState('2026-11-30');
 
-  // Running task state simulator
-  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  // Runtime execution is owned by the canonical Agent Runtime service, not local component state.
 
   if (!isOpen) return null;
 
@@ -191,7 +184,7 @@ export default function AgentGoalsTasksModal({
             <div className="space-y-3">
               {tasks.map((task) => {
                 const badge = getTypeBadge(task.type);
-                const isRunning = runningTaskId === task.id;
+                const isRunning = false;
 
                 return (
                   <div
