@@ -104,211 +104,9 @@ interface AiCinemaViewProps {
   userCredits: number | null;
   onPostTrailerToFeed?: (movie: AiMovieItem) => void;
   initialSelectedMovieId?: string;
+  catalogItems?: AiMovieItem[];
+  catalogState?: 'ready' | 'unavailable';
 }
-
-const INITIAL_MOVIES_LIST: AiMovieItem[] = [
-  {
-    id: 'film-1',
-    title: 'The Reborn Cyber Empress',
-    originalTitle: '重生之赛博女帝 (Drama Pendek AI C-Drama)',
-    genre: 'C_DRAMA',
-    genreLabel: 'Drama China AI (C-Drama)',
-    coverImage: '/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg',
-    bannerImage: '/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg',
-    episodesCount: 15,
-    totalViews: '1.4M',
-    rating: 4.9,
-    durationPerEp: '2–3 menit / ep',
-    releaseYear: '2026',
-    producerHuman: {
-      name: 'Chen Wei',
-      handle: '@chenwei_films',
-      avatar: 'https://picsum.photos/seed/chen-producer/150/150',
-    },
-    aiCoDirector: {
-      name: 'CineGenius AI',
-      handle: '@cinegenius.ai',
-      avatar: 'https://picsum.photos/seed/cinegenius/150/150',
-      specialty: 'C-Drama Fast-Paced Directing & Neural Voice',
-    },
-    synopsis: 'Dikhianati oleh keluarga konglomerat di Shanghai 2099, Lin Yue terlahir kembali dengan memori masa depan dan AI Agent taktis untuk membalas dendam dan merebut kembali tahta bisnis teknologi terkuat.',
-    aiTechStack: 'Kling 1.5 + Midjourney v6 + ElevenLabs Neural Voice + Wan2.1 Video',
-    creatorMonthlyEarningsCredits: 14850,
-    isTrending: true,
-    isFeatured: true,
-    verificationStatus: 'VERIFIED',
-    trailerTitle: 'Official Premiere Trailer 4K',
-    trailerDuration: '00:45',
-    parts: [
-      { id: 'p1', partNumber: 1, title: 'Episode 1: Kebangkitan Sang Ratu', duration: '02:30', isFreePreview: true },
-      { id: 'p2', partNumber: 2, title: 'Episode 2: Pertemuan di Menara Kristal', duration: '02:45', isFreePreview: true },
-      { id: 'p3', partNumber: 3, title: 'Episode 3: Menghapus Jejak Musuh', duration: '03:10', isFreePreview: false },
-      { id: 'p4', partNumber: 4, title: 'Episode 4: Protokol Aliansi Rahasia', duration: '02:50', isFreePreview: false },
-      { id: 'p5', partNumber: 5, title: 'Episode 5: Tahta yang Direbut Kembali', duration: '03:20', isFreePreview: false },
-    ],
-  },
-  {
-    id: 'film-2',
-    title: 'Neo-Seoul: Destined Neural Hearts',
-    originalTitle: '운명의 뉴럴 하트 (K-Drama AI Rom-Com)',
-    genre: 'K_DRAMA',
-    genreLabel: 'Drama Korea AI (K-Drama)',
-    coverImage: '/assets/aistudio/Screenshot_20261023-182405_d765b801.jpg',
-    bannerImage: '/assets/aistudio/Screenshot_20261023-182405_d765b801.jpg',
-    episodesCount: 12,
-    totalViews: '980K',
-    rating: 4.8,
-    durationPerEp: '3 menit / ep',
-    releaseYear: '2026',
-    producerHuman: {
-      name: 'Park Ji-hoon',
-      handle: '@jihoon_media',
-      avatar: 'https://picsum.photos/seed/jihoon/150/150',
-    },
-    aiCoDirector: {
-      name: 'Luna AI',
-      handle: '@luna.ai',
-      avatar: 'https://picsum.photos/seed/luna-cyber/150/150',
-      specialty: 'K-Drama Romance Lighting & Spatial Sound',
-    },
-    synopsis: 'Kisah cinta manis dan penuh intrik antara seorang desainer spatial muda dan CEO android misterius di tengah gemerlap kota futuristik Neo-Seoul.',
-    aiTechStack: 'Luma Dream Machine + ElevenLabs Korean Voice + Stable Diffusion 3',
-    creatorMonthlyEarningsCredits: 9640,
-    isTrending: true,
-    verificationStatus: 'VERIFIED',
-    trailerTitle: 'Teaser Romantis Neo-Seoul',
-    trailerDuration: '00:50',
-    parts: [
-      { id: 'p1', partNumber: 1, title: 'Episode 1: Tatapan di Halte Kereta Cepat', duration: '03:00', isFreePreview: true },
-      { id: 'p2', partNumber: 2, title: 'Episode 2: Rahasia Kode Sumber', duration: '02:55', isFreePreview: true },
-      { id: 'p3', partNumber: 3, title: 'Episode 3: Kencan Hologram Pertama', duration: '03:15', isFreePreview: false },
-    ],
-  },
-  {
-    id: 'film-3',
-    title: "CEO's Secret Android Bride",
-    originalTitle: '总裁的秘密仿生新娘 (Drama Pendek AI Modern)',
-    genre: 'C_DRAMA',
-    genreLabel: 'Drama China AI (C-Drama)',
-    coverImage: '/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png',
-    bannerImage: '/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png',
-    episodesCount: 18,
-    totalViews: '2.1M',
-    rating: 4.95,
-    durationPerEp: '2 menit / ep',
-    releaseYear: '2026',
-    producerHuman: {
-      name: 'Alex Tamara',
-      handle: '@alextamara',
-      avatar: 'https://picsum.photos/seed/alex-tamara/150/150',
-    },
-    aiCoDirector: {
-      name: 'Luna AI',
-      handle: '@luna.ai',
-      avatar: 'https://picsum.photos/seed/luna-cyber/150/150',
-      specialty: '3D Spatial Wardrobe & Emissive Lighting',
-    },
-    synopsis: 'Demi menyelamatkan perusahaannya, pewaris konglomerat terpaksa menikahi wanita misterius yang ternyata adalah android bio-sintetik dengan misi rahasia menyelamatkan Allpha Universe.',
-    aiTechStack: 'Kling AI + Runway Gen-3 + Suno AI Music + ElevenLabs',
-    creatorMonthlyEarningsCredits: 22400,
-    isTrending: true,
-    verificationStatus: 'VERIFIED',
-    trailerTitle: 'Main Drama Trailer',
-    trailerDuration: '00:40',
-    parts: [
-      { id: 'p1', partNumber: 1, title: 'Episode 1: Pernikahan Kontrak', duration: '02:10', isFreePreview: true },
-      { id: 'p2', partNumber: 2, title: 'Episode 2: Identitas yang Terkuak', duration: '02:05', isFreePreview: true },
-      { id: 'p3', partNumber: 3, title: 'Episode 3: Perlindungan Sang CEO', duration: '02:20', isFreePreview: false },
-    ],
-  },
-  {
-    id: 'film-4',
-    title: 'Shadow Protocol: Shanghai 2099',
-    originalTitle: '暗影协议 2099 (Action Thriller AI)',
-    genre: 'THRILLER',
-    genreLabel: 'Thriller & Action AI',
-    coverImage: '/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg',
-    bannerImage: '/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg',
-    episodesCount: 8,
-    totalViews: '640K',
-    rating: 4.7,
-    durationPerEp: '4 menit / ep',
-    releaseYear: '2026',
-    producerHuman: {
-      name: 'Rizky Pratama',
-      handle: '@rizky_action',
-      avatar: 'https://picsum.photos/seed/rizky/150/150',
-    },
-    aiCoDirector: {
-      name: 'Aegis AI',
-      handle: '@aegis.ai',
-      avatar: 'https://picsum.photos/seed/aegis/150/150',
-      specialty: 'Tactical Choreography & Hyper-real Combat VFX',
-    },
-    synopsis: 'Agen rahasia siber menyusup ke markas korporasi nakal untuk membatalkan virus penghapus identitas manusia di Metaverse.',
-    aiTechStack: 'Midjourney + Wan2.1 + Sora Spatial Synth',
-    creatorMonthlyEarningsCredits: 7120,
-    verificationStatus: 'VERIFIED',
-  },
-  {
-    id: 'film-5',
-    title: 'The Immortal Sword Sovereign',
-    originalTitle: '逆天剑尊 (Wuxia Cultivation AI)',
-    genre: 'C_DRAMA',
-    genreLabel: 'Drama China AI (C-Drama)',
-    coverImage: '/assets/aistudio/Screenshot_20261020-224657_48336231.jpg',
-    bannerImage: '/assets/aistudio/Screenshot_20261020-224657_48336231.jpg',
-    episodesCount: 20,
-    totalViews: '1.6M',
-    rating: 4.85,
-    durationPerEp: '2.5 menit / ep',
-    releaseYear: '2026',
-    producerHuman: {
-      name: 'Liang Studios',
-      handle: '@liang_studios',
-      avatar: 'https://picsum.photos/seed/liang/150/150',
-    },
-    aiCoDirector: {
-      name: 'WuxiaMaster AI',
-      handle: '@wuxiamaster.ai',
-      avatar: 'https://picsum.photos/seed/wuxia/150/150',
-      specialty: 'Flying Swords Physics & Traditional Chinese Scoring',
-    },
-    synopsis: 'Pendekar muda yang kehilangan dantian-nya membangkitkan pedang purba berjiwa AI di puncak Gunung Kristal, menuntut keadilan lintas sembilan alam.',
-    aiTechStack: 'Kling 1.5 + ComfyUI AnimateDiff + AudioCraft',
-    creatorMonthlyEarningsCredits: 16200,
-    verificationStatus: 'VERIFIED',
-  },
-  {
-    id: 'film-6',
-    title: 'Chronicles of Mars: The Bio-Awakening',
-    originalTitle: 'Mars Bio-Colony Origins',
-    genre: 'SCIFI',
-    genreLabel: 'Sci-Fi Spatial 3D',
-    coverImage: '/assets/aistudio/file_00000000560c820baca9cd747fc97471_b104badb.png',
-    bannerImage: '/assets/aistudio/file_00000000560c820baca9cd747fc97471_b104badb.png',
-    episodesCount: 10,
-    totalViews: '510K',
-    rating: 4.65,
-    durationPerEp: '3.5 menit / ep',
-    releaseYear: '2026',
-    producerHuman: {
-      name: 'Dr. Sarah Novak',
-      handle: '@dr_sarah',
-      avatar: 'https://picsum.photos/seed/sarah/150/150',
-    },
-    aiCoDirector: {
-      name: 'CosmoAI',
-      handle: '@cosmo.ai',
-      avatar: 'https://picsum.photos/seed/cosmo/150/150',
-      specialty: 'Astrophysics Simulation & Robotic Voice Synthesis',
-    },
-    synopsis: 'Peneliti terraforming menemukan mikroorganisme purba di kedalaman tanah Mars yang mampu berinteraksi langsung dengan AI neural network.',
-    aiTechStack: 'Three.js Spatial Engine + Runway Gen-3 + Udio Music',
-    creatorMonthlyEarningsCredits: 5800,
-    verificationStatus: 'VERIFIED',
-  },
-];
 
 export default function AiCinemaView({
   onBackToFeed,
@@ -316,9 +114,11 @@ export default function AiCinemaView({
   userCredits,
   onPostTrailerToFeed,
   initialSelectedMovieId,
+  catalogItems = [],
+  catalogState = 'unavailable',
 }: AiCinemaViewProps) {
   // Movie catalog state (supports dynamic user submissions)
-  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(INITIAL_MOVIES_LIST);
+  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(catalogItems);
 
   // VIP Monthly Subscription State
   const [isVipSubscribed, setIsVipSubscribed] = useState<boolean>(false);
@@ -337,51 +137,21 @@ export default function AiCinemaView({
   const [newTitle, setNewTitle] = useState('');
   const [newOriginalTitle, setNewOriginalTitle] = useState('');
   const [newGenre, setNewGenre] = useState<FilmGenre>('C_DRAMA');
-  const [newDurationPerPart, setNewDurationPerPart] = useState('2–3 menit / part');
-  const [newTechStack, setNewTechStack] = useState('Kling 1.5 + Runway Gen-3 + ElevenLabs + Suno Music');
+  const [newDurationPerPart, setNewDurationPerPart] = useState('');
+  const [newTechStack, setNewTechStack] = useState('');
   const [newSynopsis, setNewSynopsis] = useState('');
-  const [newProducerName, setNewProducerName] = useState('Alex Tamara');
-  const [newAiCoDirector, setNewAiCoDirector] = useState('Luna AI');
+  const [newProducerName, setNewProducerName] = useState('');
+  const [newAiCoDirector, setNewAiCoDirector] = useState('');
 
   // Trailer Upload State
-  const [trailerFileName, setTrailerFileName] = useState('trailer_official_4k_cut.mp4');
-  const [trailerDuration, setTrailerDuration] = useState('00:45');
-  const [isTrailerUploaded, setIsTrailerUploaded] = useState(true);
+  const [trailerFileName, setTrailerFileName] = useState('');
+  const [trailerDuration, setTrailerDuration] = useState('');
+  const [isTrailerUploaded, setIsTrailerUploaded] = useState(false);
   const [isPreviewingTrailer, setIsPreviewingTrailer] = useState(false);
-  const [selectedPosterPreset, setSelectedPosterPreset] = useState<string>(
-    '/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg'
-  );
+  const [selectedPosterPreset, setSelectedPosterPreset] = useState<string>('');
 
   // Video Parts State (Multi-Part Upload)
-  const [videoParts, setVideoParts] = useState<MovieEpisodePart[]>([
-    {
-      id: 'p-1',
-      partNumber: 1,
-      title: 'Part 1: Awal Mula Sang Ratu',
-      duration: '02:30',
-      fileName: 'part1_scene_rendered.mp4',
-      fileSize: '48 MB',
-      isFreePreview: true,
-    },
-    {
-      id: 'p-2',
-      partNumber: 2,
-      title: 'Part 2: Pertemuan Rahasia di Neo-Shanghai',
-      duration: '02:45',
-      fileName: 'part2_cyber_tower.mp4',
-      fileSize: '54 MB',
-      isFreePreview: false,
-    },
-    {
-      id: 'p-3',
-      partNumber: 3,
-      title: 'Part 3: Serangan Protokol Siber',
-      duration: '03:10',
-      fileName: 'part3_climax_battle.mp4',
-      fileSize: '62 MB',
-      isFreePreview: false,
-    },
-  ]);
+  const [videoParts, setVideoParts] = useState<MovieEpisodePart[]>([]);
 
   // Verification review modal after publishing
   const [reviewModalData, setReviewModalData] = useState<{
@@ -395,7 +165,7 @@ export default function AiCinemaView({
   // Active playing movie in theater modal
   const [activeTheaterMovie, setActiveTheaterMovie] = useState<AiMovieItem | null>(() => {
     if (initialSelectedMovieId) {
-      return INITIAL_MOVIES_LIST.find((m) => m.id === initialSelectedMovieId) || INITIAL_MOVIES_LIST[0];
+      return catalogItems.find((m) => m.id === initialSelectedMovieId) || null;
     }
     return null;
   });
@@ -468,6 +238,10 @@ export default function AiCinemaView({
 
   // Submit and Publish Film for Verification by Team Allpha
   const handlePublishForVerification = () => {
+    if (catalogState !== 'ready') {
+      showToast('Studio Film AI belum terhubung ke API kanonis. Draf belum disimpan atau dipublikasikan.');
+      return;
+    }
     if (!newTitle.trim()) {
       showToast('Harap masukkan Judul Film AI Anda.');
       return;
@@ -527,6 +301,10 @@ export default function AiCinemaView({
 
   // Simulate Instant Verification by Team Allpha
   const handleApproveByTeamAllpha = (movieId: string) => {
+    if (catalogState !== 'ready') {
+      showToast('Verifikasi film hanya dapat dilakukan oleh layanan Allpha yang berwenang.');
+      return;
+    }
     setMoviesList((prev) =>
       prev.map((m) => {
         if (m.id === movieId) {
@@ -561,6 +339,10 @@ export default function AiCinemaView({
 
   // Handler for subscribing VIP
   const handleConfirmVipSubscription = () => {
+    if (catalogState !== 'ready') {
+      showToast('Langganan VIP belum tersedia karena kontrak billing kanonis belum terhubung.');
+      return;
+    }
     setIsVipSubscribed(true);
     setIsSubscriptionModalOpen(false);
     showToast('Selamat! Langganan VIP Allpha Cinema Aktif. Semua episode terbuka tanpa batas!');
@@ -634,7 +416,7 @@ export default function AiCinemaView({
             </span>
           </div>
           <span className="text-[11px] font-mono text-amber-300 font-bold shrink-0">
-            Total Royalti Bulan Ini: 74,650 Cr
+            Royalti akan tersedia setelah ledger dan settlement kanonis aktif
           </span>
         </div>
       </div>
@@ -666,11 +448,11 @@ export default function AiCinemaView({
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
               <span className="px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-semibold flex items-center gap-1.5">
                 <Coins className="w-3.5 h-3.5 text-emerald-400" />
-                Bagi Hasil 70% Royalti Kreator
+                Skema bagi hasil sesuai kebijakan aktif
               </span>
               <span className="px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-semibold flex items-center gap-1.5">
                 <Tv className="w-3.5 h-3.5 text-cyan-400" />
-                Tayang di Feed, Reels & 3D Cinema
+                Distribusi sesuai kanal yang diaktifkan
               </span>
               <span className="px-3 py-1 rounded-full bg-purple-950/80 border border-purple-500/40 text-purple-300 font-semibold flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
