@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
+from allpha_api.agent_task_schedule_api import router as agent_task_schedule_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
 from allpha_api.model_router import TextGenerationRouterUnavailable
 from allpha_api.workflow_api import router as workflow_router
@@ -1204,6 +1205,7 @@ app.include_router(operator_security_router)
 app.include_router(knowledge_router)
 app.include_router(knowledge_retrieval_router)
 app.include_router(agent_runtime_router)
+app.include_router(agent_task_schedule_router)
 app.include_router(workflow_router)
 app.include_router(skill_challenge_router)
 app.include_router(skill_challenge_execution_router)
