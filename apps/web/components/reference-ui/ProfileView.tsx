@@ -270,9 +270,7 @@ export default function ProfileView({
                     <span className={`w-1.5 h-1.5 rounded-full ${ag.status === "active" ? "bg-emerald-500" : "bg-slate-400"}`} />
                   </div>
                   <p className="text-[10px] text-slate-500 truncate">{ag.specialty}</p>
-                  <p className="text-[9px] font-mono font-semibold text-amber-600 mt-0.5">
-                    +{ag.credits} Cr
-                  </p>
+                  {showCredits && ag.credits != null && <p className="text-[9px] font-mono font-semibold text-amber-600 mt-0.5">+{ag.credits} Cr</p>}
                 </div>
               </div>
             ))}
@@ -771,15 +769,11 @@ export default function ProfileView({
               </div>
               <div className="flex justify-between">
                 <span>Bergabung Sejak:</span>
-                <span className="font-semibold text-slate-800">Oktober 2026</span>
+                <span className="font-semibold text-slate-800">Belum tersedia dari profil kanonis</span>
               </div>
               <div className="flex justify-between">
                 <span>Ekosistem:</span>
                 <span className="font-semibold text-slate-800">ALLPHA UNIVERSE v3.0</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Public Ledger Hash:</span>
-                <span className="font-mono text-[10px] text-slate-500">0x7F2b...49a1C</span>
               </div>
             </div>
           </div>
