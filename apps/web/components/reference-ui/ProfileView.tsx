@@ -765,7 +765,7 @@ export default function ProfileView({
             <div className="text-xs text-slate-600 space-y-1.5">
               <div className="flex justify-between">
                 <span>Status Identitas:</span>
-                <span className="font-semibold text-emerald-600">Belum diverifikasi oleh layanan identitas kanonis</span>
+                <span className="font-semibold text-emerald-600">Status verifikasi belum dimuat dari layanan identitas</span>
               </div>
               <div className="flex justify-between">
                 <span>Bergabung Sejak:</span>
