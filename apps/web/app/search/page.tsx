@@ -157,7 +157,7 @@ function SearchPageContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<main className="allpha-page allpha-search-page" role="status">Menyiapkan pencarian…</main>}>
+    <Suspense fallback={<main className="min-h-[70dvh] bg-sky-50 px-4 py-8 text-center text-sm font-semibold text-slate-600" role="status">Menyiapkan pencarian…</main>}>
       <SearchPageContent />
     </Suspense>
   );
