@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Radio, 
   Play, 
@@ -47,7 +47,7 @@ export default function LiveExperienceStage({
   const [isLive, setIsLive] = useState(false);
   const [isHostMicMuted, setIsHostMicMuted] = useState(false);
   const [isHostCameraOn, setIsHostCameraOn] = useState(true);
-  const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(false);
+  const [isAiAgentSpeaking] = useState(false);
   const [isAiAgentMuted, setIsAiAgentMuted] = useState(false);
   const [likesCount] = useState<number | null>(null);
   const [viewerCount] = useState<number | null>(null);
