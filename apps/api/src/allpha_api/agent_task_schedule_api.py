@@ -293,7 +293,7 @@ async def approve_schedule_run(schedule_id: uuid.UUID, run_id: uuid.UUID,
         released = await store.request("PATCH", "agent_task_schedule_runs", params={
             "id": f"eq.{run_id}", "schedule_id": f"eq.{schedule_id}",
             "owner_user_id": f"eq.{owner_id}", "status": "eq.waiting_for_approval",
-        }, body={"status": "claimed"}, prefer="return=representation")
+        }, body={"status": "claimed", "approved_at": datetime.now(timezone.utc).isoformat(), "approved_by": owner_id}, prefer="return=representation")
         if not released:
             raise HTTPException(status_code=409, detail={
                 "code": "SCHEDULE_RUN_STATE_CHANGED", "message": "Status eksekusi berubah; muat ulang sebelum menyetujui."
