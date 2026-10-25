@@ -43,6 +43,10 @@ interface FeedViewProps {
   onLoadComments?: (postId: string) => void;
   onReportPost?: (postId: string, reason: FeedReportReason) => void;
   initialCommentsPostId?: string | null;
+  loading?: boolean;
+  errorMessage?: string;
+  noticeMessage?: string;
+  emptyState?: boolean;
 }
 
 export default function FeedView({
@@ -65,6 +69,10 @@ export default function FeedView({
   onLoadComments,
   onReportPost,
   initialCommentsPostId,
+  loading = false,
+  errorMessage = '',
+  noticeMessage = '',
+  emptyState = false,
 }: FeedViewProps) {
   const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
@@ -246,6 +254,10 @@ export default function FeedView({
       {/* 4. FEED POSTS STREAM (Neo-Brutalist Soft Pastel Cards Sesuai Referensi)     */}
       {/* ========================================================================= */}
       <div className="space-y-4.5">
+        {errorMessage && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-sm font-bold text-rose-700">{errorMessage}</p>}
+        {noticeMessage && <p role="status" className="rounded-xl border-2 border-emerald-400 bg-white p-3 text-sm font-bold text-emerald-800">{noticeMessage}</p>}
+        {loading && visiblePosts.length === 0 && <p role="status" className="py-8 text-center text-sm font-semibold text-slate-500">Memuat feed…</p>}
+        {emptyState && !loading && !errorMessage && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-8 text-center"><h2 className="font-black text-slate-900">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
         {productionMode && feedFilter !== 'FOR_YOU' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><p className="text-sm font-black text-slate-900">{feedFilter === 'FOLLOWING' ? 'Feed Mengikuti belum tersedia' : 'Feed AI Agents belum tersedia'}</p><p className="mt-1 text-xs text-slate-500">{feedFilter === 'FOLLOWING' ? 'API feed belum menyediakan filter relasi mengikuti. Konten tidak diganti dengan feed umum.' : 'API konten belum mengembalikan atribusi AI Agent yang terverifikasi.'}</p></section>}
         {visiblePosts.map((post) => {
           const isCommentsOpen = expandedCommentsPostId === post.id;
