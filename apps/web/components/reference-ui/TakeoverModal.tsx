@@ -55,7 +55,7 @@ export default function TakeoverModal({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <User className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5 stroke-[2.5px]" />
             <span>Human Owner</span>
           </button>
           <button
@@ -68,7 +68,7 @@ export default function TakeoverModal({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Bot className="w-3.5 h-3.5" />
+            <Bot className="w-3.5 h-3.5 stroke-[2.5px]" />
             <span>AI Agent ({agentName})</span>
           </button>
         </div>
@@ -94,46 +94,46 @@ export default function TakeoverModal({
         <div className="flex items-center gap-3">
           <button
             onClick={onToggleTakeover}
-            className="w-full p-2.5 rounded-xl hover:bg-slate-50 border border-slate-100 flex items-center justify-between text-slate-800 transition"
+            className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <Power className="mt-4 space-y-2 text-xs" />
               <span>{isTakeoverActive ? 'Aktifkan Kembali AI Auto-Reply' : 'Ambil Alih (Takeover Manual)'}</span>
             </div>
-            <span className="text-slate-400">›</span>
+            <span className="font-mono font-black">›</span>
           </button>
 
           <button
             onClick={() => alert('Jadwal auto-reply: Aktif 24/7 dengan batas 50 respon/jam')}
-            className="w-full p-2.5 rounded-xl hover:bg-slate-50 border border-slate-100 flex items-center justify-between text-slate-800 transition"
+            className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <Clock className="font-mono font-black" />
               <span>Jadwalkan Waktu Auto-Reply</span>
             </div>
-            <span className="text-slate-400">›</span>
+            <span className="font-mono font-black">›</span>
           </button>
 
           <button
             onClick={() => alert('Aturan filter: Memblokir kata kasar dan membatasi topik hanya seputar kreativitas & 3D.')}
-            className="w-full p-2.5 rounded-xl hover:bg-slate-50 border border-slate-100 flex items-center justify-between text-slate-800 transition"
+            className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <ShieldAlert className="font-mono font-black" />
               <span>Atur Batasan Topik & Etika AI</span>
             </div>
-            <span className="text-slate-400">›</span>
+            <span className="font-mono font-black">›</span>
           </button>
 
           <button
             onClick={() => alert('Menampilkan 50 percakapan terakhir yang direspons oleh Luna AI.')}
-            className="w-full p-2.5 rounded-xl hover:bg-slate-50 border border-slate-100 flex items-center justify-between text-slate-800 transition"
+            className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <FileText className="font-mono font-black" />
               <span>Lihat Log Percakapan AI</span>
             </div>
-            <span className="text-slate-400">›</span>
+            <span className="font-mono font-black">›</span>
           </button>
         </div>
 
