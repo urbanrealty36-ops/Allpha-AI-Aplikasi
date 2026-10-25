@@ -27,14 +27,12 @@ import {
   AgentBidang, 
   AVATAR_3D_CATALOG, 
   BIDANG_SKILLS_CATALOG 
-} from '@/lib/store';
+} from '@/lib/reference-store';
 
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (user: HumanProfile, agent: AIAgentProfile) => Promise<void>;
-  currentUser: HumanProfile;
-  currentAgent: AIAgentProfile;
+  onComplete: (payload: { user: HumanProfile; agent: AIAgentProfile; email: string; password: string; authMode: 'REGISTER' | 'LOGIN'; interests: string[]; persona: string }) => Promise<void>;
 }
 
 export type OnboardingStep = 'SPLASH' | 'HUMAN_REGISTER' | 'AGENT_ONBOARDING' | 'SUCCESS';
@@ -43,8 +41,6 @@ export default function AuthOnboardingFlow({
   isOpen,
   onClose,
   onComplete,
-  currentUser,
-  currentAgent,
 }: AuthOnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('SPLASH');
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
@@ -52,47 +48,30 @@ export default function AuthOnboardingFlow({
   const [submissionError, setSubmissionError] = useState('');
 
   // Human Identity Form State
-  const [humanName, setHumanName] = useState(currentUser.name);
-  const [humanHandle, setHumanHandle] = useState(currentUser.username);
+  const [humanName, setHumanName] = useState('');
+  const [humanHandle, setHumanHandle] = useState('');
   const [humanEmail, setHumanEmail] = useState('');
   const [humanPassword, setHumanPassword] = useState('');
-  const [humanBio, setHumanBio] = useState(currentUser.bio);
-  const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([
-    'Kesehatan',
-    'IT & Teknologi',
-    '3D Spatial',
-    'Kreator Konten'
-  ]);
+  const [humanBio, setHumanBio] = useState('');
+  const [selectedAvatar, setSelectedAvatar] = useState('');
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
 
   // AI Agent Identity Form State
-  const [agentName, setAgentName] = useState(currentAgent.name);
-  const [agentHandle, setAgentHandle] = useState(currentAgent.handle);
-  const [selectedBidang, setSelectedBidang] = useState<AgentBidang>(
-    (currentAgent.bidang as AgentBidang) || 'Desain Grafis'
-  );
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(
-    currentAgent.skills || ['Brand Identity & Custom Logo 3D Vector', 'Desain Feed & Storyboard Reels Dinamis']
-  );
-  const [agentSpecialty, setAgentSpecialty] = useState(currentAgent.specialty);
+  const [agentName, setAgentName] = useState('');
+  const [agentHandle, setAgentHandle] = useState('');
+  const [selectedBidang, setSelectedBidang] = useState<AgentBidang>('Desain Grafis');
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [agentSpecialty, setAgentSpecialty] = useState('');
   const [agentCategory, setAgentCategory] = useState<'Kesehatan' | 'IT & Teknologi' | 'Marketing' | 'Kreativitas' | 'Gaming & 3D'>('Kreativitas');
   const [agentPersona, setAgentPersona] = useState('Ramah & Kreatif');
-  const [selectedAgentAvatar, setSelectedAgentAvatar] = useState(
-    currentAgent.avatar3DImage || currentAgent.avatar || AVATAR_3D_CATALOG[0].image
-  );
-  const [selectedAvatarCodename, setSelectedAvatarCodename] = useState(
-    currentAgent.avatar3DCodename || AVATAR_3D_CATALOG[0].id
-  );
+  const [selectedAgentAvatar, setSelectedAgentAvatar] = useState('');
+  const [selectedAvatarCodename, setSelectedAvatarCodename] = useState('');
   const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(true);
 
   if (!isOpen) return null;
 
   const humanAvatars = [
-    { label: 'Alex (Tech & Spatial)', url: 'https://picsum.photos/seed/alex-tamara/200/200' },
-    { label: 'Raka (Builder & Product)', url: 'https://picsum.photos/seed/raka/200/200' },
-    { label: 'Sari (Fashion & 3D)', url: 'https://picsum.photos/seed/sari/200/200' },
-    { label: 'Mika (Digital Artist)', url: 'https://picsum.photos/seed/mika/200/200' },
-    { label: 'Dr. Andi (Medical Health)', url: 'https://picsum.photos/seed/drandi/200/200' },
+
   ];
 
   const availableInterests = [
@@ -117,7 +96,7 @@ export default function AuthOnboardingFlow({
     setSubmitting(true);
     setSubmissionError('');
     const updatedHuman: HumanProfile = {
-      ...currentUser,
+      id: '', followers: 0, following: 0, postsCount: 0, badge: '',
       name: humanName,
       username: humanHandle.startsWith('@') ? humanHandle : `@${humanHandle}`,
       avatar: selectedAvatar,
@@ -125,7 +104,7 @@ export default function AuthOnboardingFlow({
     };
 
     const updatedAgent: AIAgentProfile = {
-      ...currentAgent,
+      id: '', ownerId: '', ownerName: humanName, ownerHandle: humanHandle, creditsEarned: 0, model: '',
       name: agentName,
       handle: agentHandle.startsWith('@') ? agentHandle : `@${agentHandle}`,
       avatar: selectedAgentAvatar,
@@ -141,7 +120,10 @@ export default function AuthOnboardingFlow({
     };
 
     try {
-      await onComplete(updatedHuman, updatedAgent);
+      if (authMode === 'REGISTER' && (!humanName.trim() || !humanHandle.trim())) throw new Error('Nama lengkap dan username wajib diisi.');
+      if (!humanEmail.trim() || !humanPassword) throw new Error('Email dan password wajib diisi.');
+      if (authMode === 'REGISTER' && selectedSkills.length === 0) throw new Error('Pilih minimal satu Skill untuk Agent.');
+      await onComplete({ user: updatedHuman, agent: updatedAgent, email: humanEmail.trim(), password: humanPassword, authMode, interests: selectedInterests, persona: agentPersona });
       setStep('SUCCESS');
     } catch (cause) {
       setSubmissionError(cause instanceof Error ? cause.message : 'Onboarding gagal disimpan. Silakan coba lagi.');
@@ -651,15 +633,7 @@ export default function AuthOnboardingFlow({
               </div>
 
               {/* Bonus Gift Card */}
-              <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-sm">
-                  🎁
-                </div>
-                <div className="text-xs">
-                  <p className="font-bold text-amber-900">Bonus Selamat Datang: +50 AI Credits</p>
-                  <p className="text-[10px] text-amber-700">Langsung aktif untuk modal interaksi pertama Anda!</p>
-                </div>
-              </div>
+        
             </div>
 
             {/* Navigation Buttons */}
@@ -697,7 +671,7 @@ export default function AuthOnboardingFlow({
               Identitas Human <strong className="text-slate-900">{humanName}</strong> dan AI Agent <strong className="text-purple-600">{agentName}</strong> siap menjelajahi Universe.
             </p>
             <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-              +50 AI Credits Dikreditkan
+              Identitas berhasil disimpan
             </span>
           </div>
         )}
