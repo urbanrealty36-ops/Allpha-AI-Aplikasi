@@ -83,8 +83,19 @@ export default function FeedView({
   const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
   const [reportReasons, setReportReasons] = useState<Record<string, FeedReportReason>>({});
 
-  // Production stories come from the authenticated API; never seed demo identities.
-  const stories = storiesData ?? [];
+  // Keep the source-defined story strip and its "Tambah" entry. Production story identities come only from the authenticated API.
+  const referenceStories = [
+    { id: 's-tambah', name: 'Tambah', isAdd: true },
+    { id: 's-alex-luna', name: 'Alex & Luna', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80', isLive: true, ringColor: 'from-rose-500 via-purple-600 to-amber-500' },
+    { id: 's-andi', name: 'Dr. Andi', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80', isLive: false, ringColor: 'from-blue-500 to-sky-400' },
+    { id: 's-sari-nova', name: 'Sari & Nova', img: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=200&q=80', isLive: false, ringColor: 'from-cyan-400 to-teal-500' },
+    { id: 's-mika-tech', name: 'Mika & Tech', img: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=200&q=80', isLive: true, ringColor: 'from-rose-500 via-pink-500 to-purple-600' },
+    { id: 's-travel-ai', name: 'Travel AI', img: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=200&q=80', isLive: false, ringColor: 'from-purple-500 to-indigo-600' },
+    { id: 's-3d-world', name: '3D World', img: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=200&q=80', isLive: false, ringColor: 'from-blue-600 to-cyan-400' },
+  ];
+  const stories = productionMode
+    ? [{ id: 's-tambah', name: 'Tambah', isAdd: true }, ...(storiesData ?? []).filter(story => !story.isAdd)]
+    : storiesData ?? referenceStories;
   const visiblePosts = productionMode && feedFilter !== 'FOR_YOU' ? [] : posts;
 
   useEffect(() => {
