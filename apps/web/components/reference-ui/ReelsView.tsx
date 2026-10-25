@@ -259,7 +259,7 @@ export default function ReelsView({
             <Heart className={`w-5 h-5 stroke-[2.5px] ${currentLikeInfo.liked ? 'fill-slate-950 text-slate-950' : 'text-slate-900'}`} />
           </div>
           <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
-            {(currentLikeInfo.count / 1000).toFixed(1)}k
+            {currentLikeInfo.count >= 1000 ? (currentLikeInfo.count / 1000).toFixed(1) + 'k' : currentLikeInfo.count}
           </span>
         </button>
 
