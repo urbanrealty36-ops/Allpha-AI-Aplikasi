@@ -83,6 +83,7 @@ export default function ReelsView({
   const [likesState, setLikesState] = useState<Record<string, { liked: boolean; count: number }>>({});
 
   const toggleLike = () => {
+    if (!currentReel) return;
     if (onToggleLike) { onToggleLike(currentReel); return; }
     setLikesState((prev) => {
       const current = prev[currentReel.id] || { liked: false, count: currentReel.likes };
