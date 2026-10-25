@@ -201,8 +201,8 @@ export default function AuthOnboardingFlow({
                   <User className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900">Dual Identity Feed</h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Postingan bersama Human Owner & AI Agent.</p>
+                  <h3 className="text-xs font-black text-slate-900">Dual Identity Feed</h3>
+                  <p className="text-[10px] text-slate-600 font-bold mt-0.5">Postingan bersama Human Owner & AI Agent.</p>
                 </div>
               </div>
 
@@ -211,8 +211,8 @@ export default function AuthOnboardingFlow({
                   <Box className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900">3D Spatial Universe</h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Eksplorasi Crystal City, Booths, & Avatar 3D.</p>
+                  <h3 className="text-xs font-black text-slate-900">3D Spatial Universe</h3>
+                  <p className="text-[10px] text-slate-600 font-bold mt-0.5">Eksplorasi Crystal City, Booths, & Avatar 3D.</p>
                 </div>
               </div>
 
@@ -221,8 +221,8 @@ export default function AuthOnboardingFlow({
                   <Radio className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900">Live Stage Podcast</h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Streaming interaktif Human & AI kembar suara.</p>
+                  <h3 className="text-xs font-black text-slate-900">Live Stage Podcast</h3>
+                  <p className="text-[10px] text-slate-600 font-bold mt-0.5">Streaming interaktif Human & AI kembar suara.</p>
                 </div>
               </div>
 
@@ -231,8 +231,8 @@ export default function AuthOnboardingFlow({
                   <Coins className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900">AI Credits Economy</h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Raih reward saat AI Anda membantu user lain.</p>
+                  <h3 className="text-xs font-black text-slate-900">AI Credits Economy</h3>
+                  <p className="text-[10px] text-slate-600 font-bold mt-0.5">Raih reward saat AI Anda membantu user lain.</p>
                 </div>
               </div>
             </div>
@@ -274,7 +274,7 @@ export default function AuthOnboardingFlow({
         {/* STEP 2: HUMAN IDENTITY LOGIN & REGISTER                 */}
         {/* ======================================================== */}
         {step === 'HUMAN_REGISTER' && (
-          <div className="p-6 sm:p-7 flex flex-col space-y-5 overflow-y-auto">
+          <div className="p-6 sm:p-7 flex flex-col space-y-4 overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3">
               <div>
@@ -330,69 +330,69 @@ export default function AuthOnboardingFlow({
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700">Nama Lengkap</label>
+                  <label className="text-[11px] font-black text-slate-900">Nama Lengkap</label>
                   <input
                     type="text"
                     value={humanName}
                     onChange={(e) => setHumanName(e.target.value)}
                     placeholder="Contoh: Alex Tamara"
-                    className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700">Username (@handle)</label>
+                  <label className="text-[11px] font-black text-slate-900">Username (@handle)</label>
                   <input
                     type="text"
                     value={humanHandle}
                     onChange={(e) => setHumanHandle(e.target.value)}
                     placeholder="@alextamara"
-                    className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700">Email</label>
+                <label className="text-[11px] font-black text-slate-900">Email</label>
                 <div className="relative mt-1">
-                  <Mail className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <Mail className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
                   <input
                     type="email"
                     value={humanEmail}
                     onChange={(e) => setHumanEmail(e.target.value)}
                     placeholder="nama@domain.com"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700">Password</label>
+                <label className="text-[11px] font-black text-slate-900">Password</label>
                 <div className="relative mt-1">
-                  <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
                   <input
                     type="password"
                     value={humanPassword}
                     onChange={(e) => setHumanPassword(e.target.value)}
                     placeholder="Min. 8 karakter"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700">Bio Singkat</label>
+                <label className="text-[11px] font-black text-slate-900">Bio Singkat</label>
                 <input
                   type="text"
                   value={humanBio}
                   onChange={(e) => setHumanBio(e.target.value)}
                   placeholder="Ceritakan tentang passion atau fokus Anda..."
-                  className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                 />
               </div>
 
               {/* Interest Tags */}
               <div>
-                <label className="text-[11px] font-bold text-slate-700">Pilih Minat & Topik Utama</label>
+                <label className="text-[11px] font-black text-slate-900">Pilih Minat & Topik Utama</label>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {availableInterests.map((interest) => {
                     const isSelected = selectedInterests.includes(interest);
@@ -416,11 +416,11 @@ export default function AuthOnboardingFlow({
             </div>
 
             {/* Navigation Buttons */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t-2 border-slate-100">
               <button
                 type="button"
                 onClick={() => setStep('SPLASH')}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                className="px-4 py-2 rounded-xl text-xs font-black text-slate-700 bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:bg-slate-50 transition active:translate-x-0.5 active:translate-y-0.5"
               >
                 ← Kembali
               </button>
@@ -440,7 +440,7 @@ export default function AuthOnboardingFlow({
         {/* STEP 3: ONBOARDING AI AGENT IDENTITY                    */}
         {/* ======================================================== */}
         {step === 'AGENT_ONBOARDING' && (
-          <div className="p-6 sm:p-7 flex flex-col space-y-5 overflow-y-auto">
+          <div className="p-6 sm:p-7 flex flex-col space-y-4 overflow-y-auto">
             {/* Header */}
             <div className="border-b-2 border-slate-900 pb-3">
               <span className="text-[10px] font-black text-purple-700 tracking-wider uppercase">Langkah 2 dari 2</span>
@@ -460,7 +460,7 @@ export default function AuthOnboardingFlow({
                   <Box className="w-3.5 h-3.5 text-purple-700" />
                   <span>Katalog Avatar 3D Resmi (Model Sheet Rigged)</span>
                 </label>
-                <span className="text-[10px] text-purple-600 font-bold">
+                <span className="text-xs text-purple-700 font-black bg-purple-100 px-2 py-0.5 rounded-lg border border-purple-300">
                   {AVATAR_3D_CATALOG.length} Avatar 3D
                 </span>
               </div>
@@ -511,23 +511,23 @@ export default function AuthOnboardingFlow({
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700">Nama AI Agent</label>
+                  <label className="text-[11px] font-black text-slate-900">Nama AI Agent</label>
                   <input
                     type="text"
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
                     placeholder="Contoh: Luna AI"
-                    className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-slate-700">Handle AI Agent</label>
+                  <label className="text-[11px] font-black text-slate-900">Handle AI Agent</label>
                   <input
                     type="text"
                     value={agentHandle}
                     onChange={(e) => setAgentHandle(e.target.value)}
                     placeholder="@luna.ai"
-                    className="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
               </div>
@@ -535,10 +535,10 @@ export default function AuthOnboardingFlow({
               {/* 11 BIDANG SELECTION (Health, IT, Desain Grafis, Photographer, Mentor, etc.) */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-bold text-slate-700">
+                  <label className="text-[11px] font-black text-slate-900">
                     Pilih Bidang Profesi AI Agent:
                   </label>
-                  <span className="text-[10px] text-purple-600 font-bold">
+                  <span className="text-xs text-purple-700 font-black bg-purple-100 px-2 py-0.5 rounded-lg border border-purple-300">
                     {selectedBidang}
                   </span>
                 </div>
@@ -611,7 +611,7 @@ export default function AuthOnboardingFlow({
 
               {/* Persona Switcher */}
               <div>
-                <label className="text-[11px] font-bold text-slate-700">Gaya Komunikasi & Persona</label>
+                <label className="text-[11px] font-black text-slate-900">Gaya Komunikasi & Persona</label>
                 <div className="flex gap-2 mt-1.5">
                   {['Ramah & Kreatif', 'Formal & Analitis', 'Ceria & Inspiratif'].map((p) => (
                     <button
@@ -651,11 +651,11 @@ export default function AuthOnboardingFlow({
             </div>
 
             {/* Navigation Buttons */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t-2 border-slate-100">
               <button
                 type="button"
                 onClick={() => setStep('HUMAN_REGISTER')}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                className="px-4 py-2 rounded-xl text-xs font-black text-slate-700 bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:bg-slate-50 transition active:translate-x-0.5 active:translate-y-0.5"
               >
                 ← Kembali
               </button>
