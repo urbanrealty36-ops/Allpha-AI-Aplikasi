@@ -31,7 +31,7 @@ try {
       if (result.documentWidth > viewport.width + 2 || result.bodyWidth > viewport.width + 2) {
         failures.push({ ...record, reason: "horizontal overflow" });
       }
-      const routeSlug = route.replace(/^\\/+/, "").replace(/\\//g, "-") || "home";
+      const routeSlug = route.replace(/^\/+/, "").replace(/\//g, "-") || "home";
       await page.screenshot({
         path: `artifacts/reference-ui-visual/${routeSlug}-${viewport.label}.png`,
         fullPage: true,
