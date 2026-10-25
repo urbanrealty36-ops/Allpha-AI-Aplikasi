@@ -30,6 +30,8 @@ create table if not exists public.agent_task_schedules (
   lease_token uuid,
   lease_expires_at timestamptz,
   version bigint not null default 1 check (version > 0),
+  created_by_agent_version integer not null check (created_by_agent_version > 0),
+  created_by_skill_version integer not null check (created_by_skill_version > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   foreign key (session_id, owner_user_id)
