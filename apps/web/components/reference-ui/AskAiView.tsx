@@ -17,7 +17,7 @@ import {
   Paperclip,
   Check
 } from 'lucide-react';
-import { HumanProfile, AIAgentProfile } from '@/lib/store';
+import type { HumanProfile } from '@/lib/reference-store';
 
 interface AskAiViewProps {
   onBack: () => void;
@@ -26,6 +26,7 @@ interface AskAiViewProps {
   specialty: string;
   onExecuteCreditReward?: (query: string) => void;
   currentUser: HumanProfile;
+  availabilityMessage?: string;
 }
 
 export default function AskAiView({
@@ -35,6 +36,7 @@ export default function AskAiView({
   specialty,
   onExecuteCreditReward,
   currentUser,
+  availabilityMessage = 'Percakapan AI belum tersedia dari layanan Allpha.',
 }: AskAiViewProps) {
   const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([
     {
