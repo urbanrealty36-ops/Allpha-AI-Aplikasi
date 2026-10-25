@@ -108,7 +108,7 @@ export default function FeedView({
         {/* User requirement: Video/Reels positioned at top header alongside Untuk Anda, Mengikuti, Trending */}
         <button
           onClick={onOpenReels}
-          className="py-3.5 px-3 relative transition text-slate-700 hover:text-blue-600 flex items-center gap-1.5 group"
+          className="px-4 py-2 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border-2 border-rose-300 hover:bg-rose-100 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-2xs"
           title="Buka Video & 3D Spatial Reels"
         >
           <Film className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20 group-hover:scale-110 transition" />
@@ -131,7 +131,7 @@ export default function FeedView({
                 onOpenLiveStage();
               }
             }}
-            className="flex flex-col items-center gap-1 shrink-0 cursor-pointer group"
+            className="flex flex-col items-center gap-1 shrink-0 cursor-pointer group active:scale-95 transition"
           >
             {s.isAdd ? (
               <div className="w-14 h-14 rounded-full border-2 border-dashed border-blue-400 bg-blue-50 flex items-center justify-center text-blue-600 group-hover:scale-105 transition shadow-2xs">
@@ -412,7 +412,7 @@ export default function FeedView({
                       post.isLiked ? 'text-rose-600 font-semibold' : ''
                     }`}
                   >
-                    <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-600 text-rose-600' : ''}`} />
+                    <Heart className={`w-4.5 h-4.5 ${post.isLiked ? 'fill-rose-500 text-rose-500' : 'text-slate-700 hover:text-rose-500'}`} />
                     <span>{post.likes}</span>
                   </button>
 
@@ -428,7 +428,7 @@ export default function FeedView({
                     onClick={() => alert('Postingan berhasil dibagikan ulang ke jaringan Allpha!')}
                     className="flex items-center gap-1.5 hover:text-emerald-600 transition"
                   >
-                    <Repeat2 className="w-4 h-4" />
+                    <Repeat2 className="w-4.5 h-4.5 text-slate-700 hover:text-emerald-600" />
                     <span>{post.reposts}</span>
                   </button>
 
@@ -436,7 +436,7 @@ export default function FeedView({
                     onClick={() => alert('Postingan disimpan ke arsip!')}
                     className="p-1 hover:text-slate-900 transition"
                   >
-                    <Bookmark className="w-4 h-4" />
+                    <Share2 className="w-4.5 h-4.5 text-slate-700" />
                   </button>
                 </div>
 
@@ -458,7 +458,7 @@ export default function FeedView({
                             </div>
                             <span className="text-[10px] text-slate-600">{c.timestamp}</span>
                           </div>
-                          <p className="text-slate-700 leading-relaxed">{c.content}</p>
+                          <p className="text-slate-700 mt-0.5">{c.content}</p>
                         </div>
                       ))}
                     </div>
