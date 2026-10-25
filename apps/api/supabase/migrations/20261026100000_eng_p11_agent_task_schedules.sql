@@ -84,7 +84,8 @@ create table if not exists public.agent_task_schedule_runs (
   completed_at timestamptz,
   created_at timestamptz not null default now(),
   unique (schedule_id, scheduled_for),
-  unique (owner_user_id, idempotency_key)
+  unique (owner_user_id, idempotency_key),
+  check ((approved_at is null and approved_by is null) or (approved_at is not null and approved_by is not null))
 );
 create index if not exists agent_task_schedule_runs_owner_idx
   on public.agent_task_schedule_runs(owner_user_id, created_at desc);
