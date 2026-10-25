@@ -344,7 +344,7 @@ export default function FeedView({
                 <div className="relative rounded-2xl overflow-hidden border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] aspect-[21/9] sm:aspect-[23/9] bg-slate-950 group">
                   <img
                     src={post.image || undefined}
-                    alt={post.modelName || '3D District'}
+                    alt={post.modelName || 'Model 3D'}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-black/20" />
@@ -356,10 +356,10 @@ export default function FeedView({
                     </div>
                     <div>
                       <h5 className="font-extrabold text-xs text-slate-900 leading-tight">
-                        {post.modelName || 'Crystal District'}
+                        {post.modelName || 'Model 3D'}
                       </h5>
                       <p className="text-[10px] text-slate-500 font-medium">
-                        {post.modelSub || 'Pusat Kreator & Inovasi'}
+                        {post.modelSub || 'Konten spasial'}
                       </p>
                     </div>
                   </div>
