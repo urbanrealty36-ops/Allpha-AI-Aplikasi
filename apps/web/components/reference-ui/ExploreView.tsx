@@ -62,8 +62,8 @@ import {
   INITIAL_TRANSACTIONS,
   CreditTransaction,
   PostItem,
-} from '@/lib/store';
-import AllphaHubView from '@/components/AllphaHubView';
+} from '../../lib/reference-store';
+import AllphaHubView from './AllphaHubView';
 
 export interface SocialAccountItem {
   id: string;
