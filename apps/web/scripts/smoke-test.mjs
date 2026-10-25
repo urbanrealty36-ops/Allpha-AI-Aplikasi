@@ -312,6 +312,10 @@ const agentGoalsModal = readFileSync(new URL("../components/reference-ui/AgentGo
 const agentIdentityModal = readFileSync(new URL("../components/reference-ui/AgentIdentityModal.tsx", import.meta.url), "utf8");
 assert.ok(agentGoalsModal.includes("Agent Runtime API belum dihubungkan") && agentGoalsModal.includes("kontrak penyimpanan goal Agent belum dihubungkan"), "Agent Goals/Tasks UI must fail closed until canonical task/goal APIs are wired");
 assert.doesNotMatch(agentGoalsModal, /setTimeout\(|Eksekusi otonom berhasil!|Tugas berhasil dihapus\.|Target strategis baru berhasil ditetapkan/);
+const sourceStoryRail = feedViewParity.slice(feedViewParity.indexOf("{stories.map((story) => ("), feedViewParity.indexOf("{/* ========================================================================= */}", feedViewParity.indexOf("{stories.map((story) => (")) );
+assert.ok(sourceStoryRail.includes("story.isAdd && onOpenCreateModal") && sourceStoryRail.includes("story.isLive && onOpenLiveStage") && sourceStoryRail.includes("story.id === 's-3d-world'"), "Story rail must preserve exactly the reference-defined Add/Live/3D actions");
+assert.doesNotMatch(sourceStoryRail, /onOpenStory|openStoryViewer|setActiveStory|story\.id\s*\?\s*\//, "Do not invent a viewer interaction absent from the reference component");
+
 assert.ok(agentIdentityModal.includes("onSaveAgent(updated)") && agentIdentityModal.includes("AVATAR_3D_CATALOG"), "Agent Identity must preserve source catalog and delegate persistence to its adapter");
 
 assert.ok(feedViewParity.includes("onRetry") && feedViewParity.includes("Coba lagi") && readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8").includes("loadFeed(true)"), "Feed error must offer canonical reload retry");
