@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 from allpha_api.auth import current_user
 from allpha_api.tool_registry import UnknownToolError, get_tool
+from allpha_api.workflow_engine import WorkflowDefinition, WorkflowNode
+from allpha_api.workflow_store import WorkflowPersistenceError, WorkflowStore
 
 router = APIRouter(prefix="/v1/agent-task-schedules", tags=["agent-task-schedules"])
 
@@ -166,8 +168,29 @@ async def create_schedule(payload: TaskScheduleCreate,
         binding = await _verify_runtime_binding(store, owner_id, payload)
         now = datetime.now(timezone.utc)
         next_run = _next_occurrence(payload, now)
-        row = {
+        schedule_id = str(uuid.uuid4())
+        definition = WorkflowDefinition(
+            workflow_key=f"agent-task-schedule-{schedule_id.replace('-', '')}",
+            version=1,
+            nodes=[WorkflowNode(key="execute-agent-task", kind="agent_task",
+                                config={"schedule_id": schedule_id}, timeout_seconds=30)],
+            edges=[],
+            max_runtime_seconds=60,
+            max_retries=0,
+        )
+        workflow_store = WorkflowStore.from_environment()
+        workflow_definition = await workflow_store.create_definition({
             "owner_user_id": owner_id,
+            "workflow_key": definition.workflow_key,
+            "version": definition.version,
+            "definition": definition.model_dump(mode="json"),
+            "digest": definition.digest(),
+            "status": "active",
+        })
+        row = {
+            "id": schedule_id,
+            "owner_user_id": owner_id,
+                "workflow_definition_id": workflow_definition["id"],
             "agent_id": str(payload.agent_id),
             "session_id": str(payload.session_id),
             "skill_id": str(payload.skill_id),
@@ -196,6 +219,8 @@ async def create_schedule(payload: TaskScheduleCreate,
         return {"schedule": rows[0], "execution_dispatched": False}
     except AgentRuntimePersistenceError as exc:
         raise _storage_error(exc) from exc
+    except WorkflowPersistenceError as exc:
+        raise HTTPException(status_code=503, detail={"code": "WORKFLOW_STORAGE_UNAVAILABLE", "message": "Definisi Workflow tidak dapat disimpan."}) from exc
 
 
 @router.get("")
