@@ -129,12 +129,12 @@ export default function CreatePostModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-lg rounded-3xl bg-white shadow-[6px_6px_0px_#0f172a] border-2 border-slate-900 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+        <div className="px-5 py-3.5 border-b-2 border-slate-900 flex items-center justify-between bg-sky-50">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+            <div className="w-9 h-9 rounded-2xl bg-sky-300 text-slate-950 flex items-center justify-center border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
               <Plus className="w-4 h-4" />
             </div>
             <div>
@@ -144,14 +144,14 @@ export default function CreatePostModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-800 hover:bg-slate-200 transition"
+            className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] text-slate-950 flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 stroke-[2.5px]" />
           </button>
         </div>
 
         {/* Create Mode Switcher Tabs */}
-        <div className="px-4 py-2 border-b border-slate-100 bg-white flex gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="px-4 py-2.5 border-b-2 border-slate-900 bg-white flex gap-1.5 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setCreateMode('FEED_POST')}
             className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -184,9 +184,9 @@ export default function CreatePostModal({
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            <Radio className="w-3.5 h-3.5 animate-pulse text-amber-300" />
+            <Radio className="w-3.5 h-3.5 animate-pulse text-purple-900 stroke-[2.5px]" />
             <span>Mulai Live Stage 3D</span>
-            <span className="text-[9px] px-1 rounded-full bg-white/20 text-white">LIVE</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-700 text-white font-black border border-slate-900">LIVE</span>
           </button>
 
           <button
@@ -220,9 +220,9 @@ export default function CreatePostModal({
         {createMode === 'FEED_POST' && (
           <form onSubmit={handlePostSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Identity Switcher */}
-            <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
-              <span className="text-xs font-bold text-slate-700">Posting sebagai:</span>
-              <div className="flex gap-1">
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
+              <span className="text-xs font-black text-slate-950">Posting sebagai:</span>
+              <div className="flex gap-1.5">
                 <button
                   type="button"
                   onClick={() => setPostAs('CO_POST')}
@@ -259,14 +259,14 @@ export default function CreatePostModal({
               onChange={(e) => setContent(e.target.value)}
               placeholder="Tulis sesuatu tentang ide, pemikiran 3D, atau kolaborasi AI Anda..."
               rows={4}
-              className="w-full p-3.5 rounded-2xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-xs leading-relaxed resize-none transition"
+              className="w-full p-3.5 rounded-2xl border-2 border-slate-900 bg-slate-50 focus:bg-white outline-none text-xs leading-relaxed resize-none transition shadow-[2px_2px_0px_#0f172a] font-bold text-slate-950"
               required
             />
 
             {/* Media Image Selection */}
             <div>
-              <p className="text-[11px] font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+              <p className="text-[11px] font-black text-slate-950 mb-1.5 flex items-center gap-1">
+                <ImageIcon className="w-3.5 h-3.5 text-sky-700 stroke-[2.5px]" />
                 <span>Lampirkan Gambar atau Pratinjau 3D:</span>
               </p>
               <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
@@ -280,7 +280,7 @@ export default function CreatePostModal({
                   >
                     <img src={img} alt="Thumb" className="w-full h-full object-cover" />
                     {selectedImage === img && (
-                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">
+                      <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-sky-400 text-slate-950 flex items-center justify-center text-[10px] font-black border border-slate-900">
                         ✓
                       </span>
                     )}
@@ -290,33 +290,33 @@ export default function CreatePostModal({
             </div>
 
             {/* 3D Model Attachment */}
-            <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+            <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Box className="w-4 h-4 text-cyan-400" />
+                <Box className="w-4 h-4 text-amber-700 stroke-[2.5px]" />
                 <div>
-                  <p className="text-xs font-bold text-white">Sematkan Objek 3D Crystal City</p>
-                  <p className="text-[10px] text-slate-300">Format Three.js GLB / RoomEnvironment PBR</p>
+                  <p className="text-xs font-black text-slate-950">Sematkan Objek 3D Crystal City</p>
+                  <p className="text-[10px] font-semibold text-slate-600">Format Three.js GLB / RoomEnvironment PBR</p>
                 </div>
               </div>
               <input
                 type="checkbox"
                 checked={has3D}
                 onChange={(e) => setHas3D(e.target.checked)}
-                className="w-4 h-4 accent-cyan-400 cursor-pointer"
+                className="w-4.5 h-4.5 accent-amber-500 cursor-pointer border-2 border-slate-900 rounded"
               />
             </div>
 
-            <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+            <div className="pt-2 flex justify-end gap-2 border-t-2 border-slate-900">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                className="px-4 py-2 rounded-xl border-2 border-slate-900 bg-white text-xs font-black text-slate-900 hover:bg-slate-50 transition cursor-pointer shadow-[1.5px_1.5px_0px_#0f172a]"
               >
                 Batal
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md"
+                className="px-5 py-2 rounded-xl bg-sky-300 hover:bg-sky-400 text-slate-950 text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Publikasikan</span>
@@ -331,21 +331,21 @@ export default function CreatePostModal({
         {createMode === 'STORY' && (
           <div className="p-5 space-y-4 overflow-y-auto">
             <div className="text-center space-y-1">
-              <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">
+              <span className="text-xs font-black text-rose-700 uppercase tracking-wider">
                 Story 24 Jam
               </span>
               <h3 className="text-sm font-black text-slate-900">
                 Bagikan Momen Singkat bersama AI Agent
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs font-semibold text-slate-600">
                 Story akan muncul di lingkaran atas header beranda selama 24 jam
               </p>
             </div>
 
-            <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 relative h-48 flex items-center justify-center">
-              <img src={storyMedia} alt="Story Media" className="w-full h-full object-cover opacity-80" />
+            <div className="rounded-2xl overflow-hidden border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] bg-slate-950 relative h-48 flex items-center justify-center">
+              <img src={storyMedia} alt="Story Media" className="w-full h-full object-cover opacity-85" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
-                <p className="text-white text-xs font-bold truncate">
+                <p className="text-white text-xs font-black truncate">
                   {storyCaption || 'Pratinjau Story Anda...'}
                 </p>
               </div>
@@ -356,19 +356,19 @@ export default function CreatePostModal({
               value={storyCaption}
               onChange={(e) => setStoryCaption(e.target.value)}
               placeholder="Tambahkan teks/caption story..."
-              className="w-full p-3 rounded-xl border border-slate-200 text-xs outline-none focus:border-rose-500"
+              className="w-full p-3.5 rounded-2xl border-2 border-slate-900 bg-slate-50 focus:bg-white text-xs font-bold text-slate-950 outline-none shadow-[2px_2px_0px_#0f172a]"
             />
 
             <div className="flex gap-2">
               <button
                 onClick={handleStoryPublish}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 text-white font-bold text-xs shadow-md transition"
+                className="flex-1 py-3 rounded-2xl bg-rose-300 hover:bg-rose-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Kirim ke Story
               </button>
               <button
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs"
+                className="px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
@@ -381,17 +381,17 @@ export default function CreatePostModal({
         {/* ========================================================= */}
         {createMode === 'LIVE_STAGE' && (
           <div className="p-5 space-y-4 overflow-y-auto">
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 text-white space-y-1">
+            <div className="p-4 rounded-3xl bg-purple-100 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-950 space-y-1">
               <div className="flex items-center gap-2">
-                <Radio className="w-4 h-4 text-rose-400 animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-rose-300">
+                <Radio className="w-4 h-4 text-rose-600 animate-pulse stroke-[3px]" />
+                <span className="text-xs font-black uppercase tracking-wider text-rose-950">
                   Panggung Virtual 3D
                 </span>
               </div>
-              <h3 className="text-sm font-black text-white">
+              <h3 className="text-sm font-black text-slate-950">
                 Mulai Live Stage 3D dengan AI Co-Presenter
               </h3>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
+              <p className="text-[11px] text-slate-700 font-semibold leading-relaxed">
                 Audiens dapat menyaksikan avatar 3D Anda dan AI Agent berdiskusi di panggung, membedah slide presentasi, dan menjawab pertanyaan penonton.
               </p>
             </div>
@@ -406,13 +406,13 @@ export default function CreatePostModal({
                 value={liveTitle}
                 onChange={(e) => setLiveTitle(e.target.value)}
                 placeholder="Contoh: Podcast Ekosistem Masa Depan..."
-                className="w-full p-3 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-purple-500"
+                className="w-full p-3.5 rounded-2xl border-2 border-slate-900 bg-slate-50 focus:bg-white text-xs font-bold text-slate-950 outline-none shadow-[2px_2px_0px_#0f172a]"
               />
             </div>
 
             {/* Template selector */}
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+              <label className="text-xs font-black text-slate-900 block mb-1.5">
                 Pilih Layout Stage 3D:
               </label>
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -431,7 +431,7 @@ export default function CreatePostModal({
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <p className="font-bold text-xs">{tmpl.label}</p>
+                    <p className="font-black text-xs text-slate-950">{tmpl.label}</p>
                     <p className="text-[10px] text-slate-500">{tmpl.desc}</p>
                   </div>
                 ))}
@@ -439,15 +439,15 @@ export default function CreatePostModal({
             </div>
 
             {/* AI Agent Role */}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
+            <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs flex items-center justify-between">
               <div>
-                <p className="font-bold text-slate-900">Peran AI Agent ({agentProfile.name}):</p>
-                <p className="text-[11px] text-slate-500">Sinkronisasi suara & bibir (viseme) aktif</p>
+                <p className="font-black text-slate-950">Peran AI Agent ({agentProfile.name}):</p>
+                <p className="text-[11px] text-slate-600 font-semibold">Sinkronisasi suara & bibir (viseme) aktif</p>
               </div>
               <select
                 value={aiRoleInLive}
                 onChange={(e) => setAiRoleInLive(e.target.value as typeof aiRoleInLive)}
-                className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-semibold bg-white"
+                className="px-3 py-1.5 rounded-xl border-2 border-slate-900 text-xs font-black bg-white text-slate-950 shadow-[1px_1px_0px_#0f172a]"
               >
                 <option value="CO_HOST">Co-Host Pendamping</option>
                 <option value="PRESENTER">Presenter Utama Slide</option>
@@ -458,9 +458,9 @@ export default function CreatePostModal({
             <div className="pt-2 flex gap-2">
               <button
                 onClick={handleLaunchLive}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white font-black text-xs shadow-lg transition flex items-center justify-center gap-2 hover:scale-[1.01]"
+                className="flex-1 py-3.5 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Radio className="w-4 h-4 text-rose-300 animate-pulse" />
+                <Radio className="w-4 h-4 text-rose-600 animate-pulse stroke-[3px]" />
                 <span>🚀 Luncurkan Live Stage Sekarang</span>
               </button>
               <button
@@ -478,12 +478,12 @@ export default function CreatePostModal({
         {/* ========================================================= */}
         {createMode === 'LIVE_STREAMING' && (
           <div className="p-5 space-y-4 overflow-y-auto">
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 space-y-1 text-xs">
-              <div className="flex items-center gap-1.5 text-rose-700 font-bold">
+            <div className="p-4 rounded-3xl bg-amber-100 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-1 text-xs">
+              <div className="flex items-center gap-1.5 text-amber-950 font-black">
                 <Video className="w-4 h-4" />
                 <span>Siaran Langsung Realtime (Live Streaming)</span>
               </div>
-              <p className="text-rose-900 leading-relaxed text-[11px]">
+              <p className="text-amber-950 leading-relaxed text-[11px] font-semibold">
                 Saat Anda live, lencana <strong>🔴 LIVE</strong> akan otomatis muncul di lingkaran stories profil Anda pada header beranda, linimasa feed, dan scrolling reels!
               </p>
             </div>
@@ -494,16 +494,16 @@ export default function CreatePostModal({
                 type="text"
                 value={liveTitle}
                 onChange={(e) => setLiveTitle(e.target.value)}
-                className="w-full p-3 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-rose-500"
+                className="w-full p-3.5 rounded-2xl border-2 border-slate-900 bg-slate-50 focus:bg-white text-xs font-bold text-slate-950 outline-none shadow-[2px_2px_0px_#0f172a]"
               />
             </div>
 
             <div className="flex gap-2 pt-2">
               <button
                 onClick={handleLaunchLive}
-                className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                className="flex-1 py-3.5 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Radio className="w-4 h-4 animate-pulse" />
+                <Radio className="w-4 h-4 animate-pulse stroke-[3px]" />
                 <span>Mulai Siaran Live Streaming</span>
               </button>
               <button
@@ -521,12 +521,12 @@ export default function CreatePostModal({
         {/* ========================================================= */}
         {createMode === 'LIVE_COLLAB' && (
           <div className="p-5 space-y-4 overflow-y-auto text-xs">
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-1">
-              <p className="font-bold flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-emerald-600" />
+            <div className="p-4 rounded-3xl bg-emerald-100 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-emerald-950 space-y-1">
+              <p className="font-black flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-emerald-800 stroke-[2.5px]" />
                 <span>Ruang Kolaborasi 3D Multi-User</span>
               </p>
-              <p className="text-[11px] leading-relaxed">
+              <p className="text-[11px] leading-relaxed font-semibold">
                 Bekerja bersama di kanvas 3D, menyusun workflow n8n secara serentak, atau mengedit dokumen RAG bersama rekan dan AI Agent Anda.
               </p>
             </div>
@@ -537,13 +537,13 @@ export default function CreatePostModal({
                   alert('Ruang Kolaborasi 3D telah dibuka!');
                   onClose();
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md"
+                className="flex-1 py-3.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Buka Ruang Kolaborasi
               </button>
               <button
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                className="px-4 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
