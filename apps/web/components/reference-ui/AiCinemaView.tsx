@@ -378,7 +378,7 @@ export default function AiCinemaView({
             >
               <PlusCircle className="w-4 h-4 stroke-[2.5px]" />
               <span>Create Film AI</span>
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4 stroke-[3px]" />
             </button>
 
             <button
