@@ -19,7 +19,7 @@ import {
   SlidersHorizontal,
   Radio
 } from 'lucide-react';
-import { PostItem } from '@/lib/store';
+import type { PostItem } from '../../lib/reference-store';
 
 interface FeedViewProps {
   posts: PostItem[];
