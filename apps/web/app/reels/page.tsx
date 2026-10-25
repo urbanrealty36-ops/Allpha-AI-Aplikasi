@@ -83,7 +83,7 @@ export default function ReelsPage() {
   }
 
   async function share(reel: Pick<ReferenceReel, 'id'>) {
-    setBusy(reel.id); setError(""); setNotice("");
+    setBusy(reel.id); setError(""); setLoadError(false); setNotice("");
     try {
       const result = await request("/v1/feed/" + encodeURIComponent(reel.id) + "/share", {
         method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
