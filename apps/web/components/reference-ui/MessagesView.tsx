@@ -25,9 +25,11 @@ interface MessagesViewProps {
   onBack?: () => void;
   conversations?: ReferenceConversation[];
   loading?: boolean;
+  errorMessage?: string;
+  noticeMessage?: string;
 }
 
-export default function MessagesView({ onOpenChat, onBack, conversations: suppliedConversations, loading = false }: MessagesViewProps) {
+export default function MessagesView({ onOpenChat, onBack, conversations: suppliedConversations, loading = false, errorMessage = '', noticeMessage = '' }: MessagesViewProps) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'HUMAN' | 'AI_AGENT' | 'GROUP'>('ALL');
   const [search, setSearch] = useState('');
 
@@ -82,6 +84,9 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
           className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl text-xs font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:bg-sky-50 transition"
         />
       </div>
+
+      {errorMessage && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700">{errorMessage}</p>}
+      {noticeMessage && <p role="status" className="rounded-xl border-2 border-emerald-400 bg-white p-3 text-xs font-bold text-emerald-800">{noticeMessage}</p>}
 
       {/* Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
