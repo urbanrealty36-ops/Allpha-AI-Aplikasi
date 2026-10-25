@@ -6,7 +6,7 @@ import ReferenceNavigation from "./reference-ui/ReferenceNavigation";
 
 export default function ReferenceAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/";
-  const hideNavigation = pathname === "/" || pathname === "/start" || pathname === "/login";
+  const hideNavigation = pathname === "/" || pathname === "/start" || pathname === "/login" || pathname === "/account";
 
   return (
     <>
