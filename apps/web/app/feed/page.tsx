@@ -222,6 +222,7 @@ export default function FeedPage() {
         {loading && items.length === 0 && <p className="py-8 text-center text-sm font-semibold text-slate-500">Memuat feed…</p>}
         {!loading && items.length === 0 && <section className="mx-auto max-w-xl p-8 text-center"><h2 className="font-black">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
         <FeedView
+          productionMode
           posts={postsForReference}
           storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: story.owner_id.slice(0, 8), img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
