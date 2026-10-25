@@ -235,13 +235,13 @@ export default function FeedPage() {
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
           onOpenAskAi={(agentName) => { window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
           onOpenGenerate={() => { window.location.assign("/create"); }}
-          onOpenWorld3D={() => { window.location.assign("/spatial"); }}
+          onOpenWorld3D={() => { window.location.assign("/spatial/navigation"); }}
           onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
-          onSelectPost={() => {}}
+          onSelectPost={post => { window.location.assign("/feed?content=" + encodeURIComponent(post.id)); }}
           onOpenReels={() => { window.location.assign("/reels"); }}
           onOpenLiveStage={() => { window.location.assign("/live"); }}
           onOpenCreateModal={() => { window.location.assign("/create"); }}
-          onOpenFilmAi={() => { window.location.assign("/film-ai"); }}
+          onOpenFilmAi={() => { window.location.assign("/ai-cinema"); }}
           onOpenMessages={() => { window.location.assign("/messages"); }}
         />
         {cursor && <div className="mx-auto max-w-xl px-4 pb-6"><button className="w-full rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black shadow-[3px_3px_0px_#0f172a]" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button></div>}
