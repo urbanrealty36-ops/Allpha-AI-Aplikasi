@@ -173,7 +173,7 @@ export default function AuthOnboardingFlow({
       return;
     }
     if (!humanName.trim() || !humanHandle.trim() || !agentName.trim() || !agentHandle.trim() || selectedSkills.length === 0) {
-      setSubmitError('Lengkapi identitas Human, identitas Agent, dan pilih minimal satu Skill.');
+      setSubmissionError('Lengkapi identitas Human, identitas Agent, dan pilih minimal satu Skill.');
       return;
     }
     const updatedHuman: HumanProfile = {
@@ -204,7 +204,7 @@ export default function AuthOnboardingFlow({
       setStep('SUCCESS');
       setTimeout(() => onClose(), 1800);
     } catch (cause) {
-      setSubmitError(cause instanceof Error ? cause.message : 'Pendaftaran tidak dapat diselesaikan.');
+      setSubmissionError(cause instanceof Error ? cause.message : 'Pendaftaran tidak dapat diselesaikan.');
     } finally {
       setIsSubmitting(false);
     }
