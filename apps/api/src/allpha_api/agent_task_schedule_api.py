@@ -375,7 +375,7 @@ async def update_schedule_status(schedule_id: uuid.UUID, payload: ScheduleStatus
     try:
         rows = await store.request("PATCH", "agent_task_schedules", params={
             "select": "*", "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
-            "status": "in.(active,paused)",
+            "status": "in.(active,paused,needs_approval)",
         }, body={"status": payload.status, "updated_at": datetime.now(timezone.utc).isoformat()},
             prefer="return=representation")
         if not rows:
