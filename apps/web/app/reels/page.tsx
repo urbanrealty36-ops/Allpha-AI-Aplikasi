@@ -69,7 +69,7 @@ export default function ReelsPage() {
 
   useEffect(() => { if (session) void load(true); }, [session, load]);
 
-  async function toggleLike(reel: ReferenceReel) {
+  async function toggleLike(reel: Pick<ReferenceReel, 'id'>) {
     setBusy(reel.id); setError(""); setNotice("");
     try {
       const item = items.find(row => row.id === reel.id);
@@ -81,7 +81,7 @@ export default function ReelsPage() {
     finally { setBusy(""); }
   }
 
-  async function share(reel: ReferenceReel) {
+  async function share(reel: Pick<ReferenceReel, 'id'>) {
     setBusy(reel.id); setError(""); setNotice("");
     try {
       const result = await request("/v1/feed/" + encodeURIComponent(reel.id) + "/share", {
