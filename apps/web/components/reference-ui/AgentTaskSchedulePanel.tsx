@@ -54,6 +54,7 @@ export default function AgentTaskSchedulePanel({ agentId, session, skills, tools
   const [selectedTool, setSelectedTool] = useState("");
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [toolInputJson, setToolInputJson] = useState("{}");
   const [taskType, setTaskType] = useState<(typeof taskTypes)[number][0]>("SKILL_EXECUTION");
   const [frequency, setFrequency] = useState<"once" | "daily" | "weekly">("daily");
   const [localTime, setLocalTime] = useState("18:00");
@@ -127,7 +128,7 @@ export default function AgentTaskSchedulePanel({ agentId, session, skills, tools
         require_approval: requireApproval,
         granted_permission_scopes: selectedScopes,
         budget_limit: { max_runtime_seconds: 30, max_tool_calls: 1 },
-        input_payload: { human_owner_instructions: instructions.trim() },
+        input_payload: JSON.parse(toolInputJson),
       };
       if (frequency === "once") {
         if (!runDate) throw new Error("Pilih tanggal dan waktu eksekusi satu kali.");
@@ -139,7 +140,7 @@ export default function AgentTaskSchedulePanel({ agentId, session, skills, tools
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error(await errorMessage(response));
-      setTitle(""); setInstructions(""); setNotice("Jadwal tersimpan di backend. Eksekusi hanya dimulai worker setelah policy dan izin lolos.");
+      setTitle(""); setInstructions(""); setToolInputJson("{}"); setNotice("Jadwal tersimpan di backend. Eksekusi hanya dimulai worker setelah policy dan izin lolos.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Task Schedule tidak dapat disimpan."); }
     finally { setSaving(false); }
@@ -189,7 +190,8 @@ export default function AgentTaskSchedulePanel({ agentId, session, skills, tools
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label><span className={labelClass}>Nama Task</span><input required maxLength={160} value={title} onChange={e => setTitle(e.target.value)} className={inputClass} placeholder="Contoh: Laporan analitik harian" /></label>
         <label><span className={labelClass}>Jenis Task</span><select value={taskType} onChange={e => setTaskType(e.target.value as typeof taskType)} className={inputClass}>{taskTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="sm:col-span-2"><span className={labelClass}>Instruksi Human Owner</span><textarea required maxLength={8000} value={instructions} onChange={e => setInstructions(e.target.value)} rows={3} className={inputClass} placeholder="Instruksi, batasan, sumber yang boleh dipakai, dan hasil yang diharapkan." /></label>
+        <label className="sm:col-span-2"><span className={labelClass}>Instruksi Human Owner (catatan kebijakan task)</span><textarea required maxLength={8000} value={instructions} onChange={e => setInstructions(e.target.value)} rows={3} className={inputClass} placeholder="Tujuan, batasan, sumber yang diizinkan, dan hasil yang diharapkan." /></label>
+        <label className="sm:col-span-2"><span className={labelClass}>Input Tool (JSON tervalidasi Runtime)</span><textarea required value={toolInputJson} onChange={e => setToolInputJson(e.target.value)} rows={4} className={inputClass + " font-mono"} placeholder="{ &quot;field&quot;: &quot;nilai&quot; }" /><span className="text-[10px] text-slate-500">Hanya payload JSON ini yang dikirim ke Tool. Instruksi disimpan sebagai konteks jadwal; tool/runtime tetap menentukan apakah input sesuai schema.</span></label>
         <label><span className={labelClass}>Skill Terpublikasi</span><select required value={selectedSkill} onChange={e => setSelectedSkill(e.target.value)} className={inputClass}><option value="">Pilih Skill</option>{activeSkills.map(item => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}</select></label>
         <label><span className={labelClass}>Tool Terdaftar</span><select required value={selectedTool} onChange={e => setSelectedTool(e.target.value)} className={inputClass}><option value="">Pilih Tool</option>{availableTools.map(item => <option key={item.key} value={item.key}>{item.name} ({item.key})</option>)}</select></label>
         <label><span className={labelClass}>Frekuensi</span><select value={frequency} onChange={e => setFrequency(e.target.value as typeof frequency)} className={inputClass}><option value="once">Sekali</option><option value="daily">Harian</option><option value="weekly">Mingguan</option></select></label>
