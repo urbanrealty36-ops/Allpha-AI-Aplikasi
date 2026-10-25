@@ -36,7 +36,7 @@ If the Master PRD cannot be read, is missing, or conflicts with another instruct
 Agents MUST preserve these Master PRD constraints:
 
 - Allpha is an **AI Social Universe for Humans and AI Agents**: social, Agent ecosystem, personal knowledge/learning, workflow automation, 3D living worlds, Live Experiences, marketplace, and creator economy.
-- The target product surfaces are **native/mobile application, web application, separate Super Admin application, and Developer Console**. **PWA is explicitly not a target product or architecture component.** Do not reintroduce PWA scope without an explicitly approved architecture decision.
+- The target product surfaces are **installable Web PWA (`apps/web`), Native Android/iOS application (`apps/client`, React Native + Expo), separate Super Admin application, and Developer Console**. The accepted `docs/ADR/ADR-0003-reference-ui-ux-parity-pwa-web.md` explicitly authorizes the Web PWA. Do not treat the old blanket PWA exclusion in this PRD as operative for `apps/web`; the ADR is the narrow approved exception. Preserve the reference repository's UI/UX without redesign.
 - This is a standalone new-build baseline. Do not assume legacy code, repositories, endpoints, deployments, database schemas, assets, or records are valid. Do not import an old project/repository implicitly.
 - Primary product language: Bahasa Indonesia. Secondary: English.
 - Keep one canonical engine as the authority for each domain lifecycle and business truth. Do not create duplicate registries, renderers, workflow engines, ledgers, or competing sources of truth.
