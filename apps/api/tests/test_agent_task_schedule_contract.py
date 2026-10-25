@@ -1,51 +1,52 @@
+from pathlib import Path
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import ValidationError
 
 from allpha_api.agent_task_schedule_api import TaskScheduleCreate, _next_occurrence
+from allpha_api.workflow_engine import WorkflowDefinition
 
 
-def base_payload(**overrides):
-    payload = {
+def schedule_payload(**overrides):
+    value = {
         "agent_id": "00000000-0000-4000-8000-000000000001",
         "session_id": "00000000-0000-4000-8000-000000000002",
         "skill_id": "00000000-0000-4000-8000-000000000003",
         "tool_key": "content.generate",
-        "title": "Jadwalkan ringkasan",
-        "instructions": "Buat ringkasan berdasarkan sumber yang diizinkan.",
+        "title": "Laporan harian",
+        "instructions": "Buat ringkasan dari sumber yang diizinkan.",
         "task_type": "ANALYTICS_REPORT",
         "schedule_kind": "daily",
         "timezone_name": "Asia/Jakarta",
         "local_time": "18:00",
     }
-    payload.update(overrides)
-    return payload
+    value.update(overrides)
+    return value
 
 
-def test_daily_schedule_computes_next_occurrence_in_iana_timezone():
-    payload = TaskScheduleCreate.model_validate(base_payload())
+def test_daily_schedule_uses_owner_timezone():
+    parsed = TaskScheduleCreate.model_validate(schedule_payload())
     now = datetime(2026, 10, 26, 10, 0, tzinfo=timezone.utc)
-    next_run = _next_occurrence(payload, now)
-    assert next_run is not None
-    assert datetime.fromisoformat(next_run).astimezone(timezone.utc).hour == 11
+    assert _next_occurrence(parsed, now) == "2026-10-26T11:00:00+00:00"
 
 
-def test_weekly_schedule_respects_local_weekday_and_timezone():
-    payload = TaskScheduleCreate.model_validate(base_payload(
-        schedule_kind="weekly", weekdays=[0], local_time="18:00",
-    ))
+def test_weekly_schedule_respects_weekday_and_timezone():
+    parsed = TaskScheduleCreate.model_validate(schedule_payload(schedule_kind="weekly", weekdays=[0]))
     now = datetime(2026, 10, 26, 10, 0, tzinfo=timezone.utc)
-    next_run = datetime.fromisoformat(_next_occurrence(payload, now))
+    next_run = datetime.fromisoformat(_next_occurrence(parsed, now))
     assert next_run.astimezone(timezone.utc) > now
+    assert next_run.astimezone(ZoneInfo("Asia/Jakarta")).weekday() == 0
 
 
-def test_one_time_schedule_requires_offset_and_future_run_is_selected():
-    payload = TaskScheduleCreate.model_validate(base_payload(
-        schedule_kind="once", run_at="2026-10-27T18:00:00+07:00",
-    ))
-    next_run = _next_occurrence(payload, datetime(2026, 10, 26, tzinfo=timezone.utc))
-    assert next_run == datetime(2026, 10, 27, 11, 0, tzinfo=timezone.utc).isoformat()
+def test_once_schedule_requires_offset_and_future_timestamp():
+    parsed = TaskScheduleCreate.model_validate(schedule_payload(
+        schedule_kind="once", run_at="2026-10-27T18:00:00+07:00"))
+    assert _next_occurrence(parsed, datetime(2026, 10, 26, tzinfo=timezone.utc)) == "2026-10-27T11:00:00+00:00"
+    with pytest.raises(ValidationError):
+        TaskScheduleCreate.model_validate(schedule_payload(
+            schedule_kind="once", run_at="2026-10-27T18:00:00"))
 
 
 @pytest.mark.parametrize("overrides", [
@@ -58,4 +59,29 @@ def test_one_time_schedule_requires_offset_and_future_run_is_selected():
 ])
 def test_invalid_schedule_shapes_fail_closed(overrides):
     with pytest.raises(ValidationError):
-        TaskScheduleCreate.model_validate(base_payload(**overrides))
+        TaskScheduleCreate.model_validate(schedule_payload(**overrides))
+
+
+def test_agent_task_node_is_explicitly_bound_to_a_schedule():
+    valid = WorkflowDefinition.model_validate({
+        "workflow_key": "agent-task-contract", "version": 1,
+        "nodes": [{"key": "execute-agent-task", "kind": "agent_task",
+                   "config": {"schedule_id": "00000000-0000-4000-8000-000000000001"}}],
+    })
+    assert valid.nodes[0].kind == "agent_task"
+    with pytest.raises(ValidationError):
+        WorkflowDefinition.model_validate({
+            "workflow_key": "agent-task-contract", "version": 1,
+            "nodes": [{"key": "execute-agent-task", "kind": "agent_task", "config": {}}],
+        })
+
+
+def test_schedule_migration_has_atomic_claims_and_idempotent_occurrences():
+    migration = (Path(__file__).resolve().parents[1] / "supabase" / "migrations" /
+                 "20261026100000_eng_p11_agent_task_schedules.sql").read_text(encoding="utf-8")
+    assert "for update skip locked" in migration.lower()
+    assert "unique (schedule_id, scheduled_for)" in migration
+    assert "claim_due_agent_task_schedules" in migration
+    assert "enable row level security" in migration
+    assert "from public, anon, authenticated" in migration
+    assert "workflow_runs_agent_schedule_trace_uidx" in migration
