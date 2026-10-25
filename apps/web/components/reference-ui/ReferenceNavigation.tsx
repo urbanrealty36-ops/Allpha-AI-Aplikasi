@@ -59,7 +59,7 @@ export default function ReferenceNavigation() {
         isMessagesActive={pathname.startsWith("/messages")}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onSearch={query => navigate("/search?q=" + encodeURIComponent(query))}
+        onSearch={(query: string) => navigate("/search?q=" + encodeURIComponent(query))}
       />
       <BottomNav
         activeTab={tabForPath(pathname)}
