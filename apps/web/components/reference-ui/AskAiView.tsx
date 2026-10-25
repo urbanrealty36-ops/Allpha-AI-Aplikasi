@@ -24,6 +24,7 @@ interface AskAiViewProps {
   agentName: string;
   humanOwner: string;
   specialty: string;
+  onSubmitQuery?: (query: string) => Promise<void>;
   onExecuteCreditReward?: (query: string) => void;
   currentUser: HumanProfile;
   availabilityMessage?: string;
@@ -34,11 +35,11 @@ export default function AskAiView({
   agentName,
   humanOwner,
   specialty,
-  onExecuteCreditReward,
+  onSubmitQuery,
   currentUser,
   availabilityMessage = 'Percakapan AI belum tersedia dari layanan Allpha.',
 }: AskAiViewProps) {
-  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
+  const [messages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [requestError, setRequestError] = useState('');
@@ -51,9 +52,22 @@ export default function AskAiView({
   ];
 
   const handleSendMessage = async (textToSend?: string) => {
-    const text = textToSend || inputValue;
-    if (!text.trim() || isLoading) return;
-    setRequestError(availabilityMessage || 'Percakapan AI belum tersedia dari Agent Runtime Allpha.');
+    const text = (textToSend ?? inputValue).trim();
+    if (!text || isLoading) return;
+    if (!onSubmitQuery) {
+      setRequestError(availabilityMessage || 'Percakapan AI belum tersedia dari Agent Runtime Allpha.');
+      return;
+    }
+    setIsLoading(true);
+    setRequestError('');
+    try {
+      await onSubmitQuery(text);
+      setInputValue('');
+    } catch (cause) {
+      setRequestError(cause instanceof Error ? cause.message : 'Pertanyaan belum dapat dikirim ke Agent Runtime.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -74,7 +88,7 @@ export default function AskAiView({
         </div>
 
         <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-200 border-2 border-slate-900 text-purple-950 shadow-2xs">
-          Gemini 2.5 Flash
+          Allpha Agent Runtime
         </span>
       </header>
 
@@ -83,13 +97,11 @@ export default function AskAiView({
         <div className="flex items-start gap-3">
           <div className="relative shrink-0">
             <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-              <img
-                src="https://picsum.photos/seed/luna-cyber/200/200"
-                alt={agentName}
-                className="w-full h-full object-cover"
-              />
+              <div className="w-full h-full bg-purple-100 flex items-center justify-center">
+                <Bot className="w-8 h-8 text-purple-700" aria-label="Avatar Agent" />
+              </div>
             </div>
-            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900" />
+            
           </div>
 
           <div className="flex-1 min-w-0">
