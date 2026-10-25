@@ -277,3 +277,17 @@ assert.ok(reelsPageParity.includes("Media belum tersedia"), "Reels must explain 
 assert.ok(referenceNavbar.includes("onOpenNotifications"), "Navbar notifications must use a real navigation callback");
 assert.doesNotMatch(referenceNavbar, /alert\(['"]Anda memiliki 3 notifikasi/);
 assert.ok(nativeApp.includes('prefixes: ["allpha://"]'), "Native root deep-link prefix must be configured");
+
+
+// UI-COPY-02 identity journey must use the source onboarding flow with real Auth/API boundaries.
+const authRoute = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
+const authAdapter = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
+const authFlow = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+assert.ok(authRoute.includes("AuthOnboardingRoute"), "Login must use the reference onboarding adapter");
+assert.ok(authAdapter.includes("supabase.auth.signUp") && authAdapter.includes("supabase.auth.signInWithPassword"), "Onboarding must use Supabase Auth");
+assert.ok(authAdapter.includes('apiBase + "/v1/me"') && authAdapter.includes('apiBase + "/v1/me/profile"'), "Onboarding must provision and update canonical profile through FastAPI");
+assert.ok(authAdapter.includes('apiBase + "/v1/agents"') && authAdapter.includes('method: "POST"'), "Agent creation must use canonical FastAPI");
+assert.ok(authAdapter.includes('apiBase + "/v1/skill-catalog?limit=100&offset="'), "Agent Skill selection must use the canonical paginated catalog");
+assert.ok(authFlow.includes("await onComplete(") && authFlow.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
+assert.doesNotMatch(authFlow, /picsum\.photos|Bonus Selamat Datang: \+50 AI Credits|INITIAL_USER|INITIAL_AGENT/);
+assert.ok(authFlow.includes("skillsLoading") && authFlow.includes("skillsError") && authFlow.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
