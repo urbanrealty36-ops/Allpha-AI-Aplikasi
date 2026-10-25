@@ -23,7 +23,7 @@ export default function MessagesPage(){
   const title = conversation.title?.trim() || (conversation.kind === "agent" ? "Percakapan AI Agent" : "Percakapan Human");
   const lastMessage = conversation.last_message?.body || "";
   const time = conversation.last_message?.created_at ? new Date(conversation.last_message.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
-  return { id: conversation.id, name: title, handle: conversation.id, role: conversation.kind === "agent" ? "AI Agent" : "Human", isAi: conversation.kind === "agent", lastMessage: lastMessage || "Belum ada pesan", time, unread: 0, avatar: undefined };
+  return { id: conversation.id, name: title, handle: conversation.id, role: conversation.kind === "agent" ? "AI Agent" : "Human", isAi: conversation.kind === "agent", lastMessage: lastMessage || "Belum ada pesan", time, avatar: undefined };
  });
  if(!session)return <main className="min-h-[70dvh] bg-sky-50 px-4 py-8"><div className="mx-auto max-w-xl rounded-3xl border-2 border-slate-900 bg-white p-6 text-center shadow-[3px_3px_0px_#0f172a]"><h1 className="text-lg font-black text-slate-950">Pesan Langsung (DM)</h1><p className="my-3 text-sm text-slate-600">Masuk untuk melihat percakapan Human dan AI Agent.</p><a href="/login" className="inline-flex rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]">Masuk</a></div></main>;
  return <main className="min-h-screen bg-sky-50 pb-24 pt-4">
