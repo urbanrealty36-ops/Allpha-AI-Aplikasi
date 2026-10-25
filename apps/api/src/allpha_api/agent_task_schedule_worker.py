@@ -133,53 +133,6 @@ async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: i
             summary["dispatched"] += 1
             continue
 
-            runtime_task_id = occurrence.get("runtime_task_id")
-            if not runtime_task_id:
-                payload = TaskCreate(
-                    session_id=schedule["session_id"], skill_id=schedule["skill_id"],
-                    tool_key=schedule["tool_key"],
-                    inputs={**(schedule.get("input_payload") or {}),
-                            "instructions": schedule["instructions"],
-                            "task_type": schedule["task_type"],
-                            "scheduled_for": scheduled_for,
-                            "schedule_id": schedule_id},
-                    idempotency_key=occurrence_key,
-                )
-                created = await create_task(payload, _request(occurrence["trace_id"]), {"id": owner_id})
-                runtime_task_id = str(created["task"]["id"])
-                await store.request("PATCH", "agent_task_schedule_runs", params={
-                    "id": f"eq.{occurrence['id']}", "owner_user_id": f"eq.{owner_id}",
-                    "status": "eq.claimed",
-                }, body={"runtime_task_id": runtime_task_id, "status": "running",
-                         "started_at": now.isoformat()}, prefer="return=representation")
-
-            result = await execute_task(uuid.UUID(runtime_task_id), {"id": owner_id})
-            runtime_task = result.get("task") or {}
-            state = runtime_task.get("state", "outcome_unknown")
-            status_map = {
-                "succeeded": "succeeded", "partially_succeeded": "partially_succeeded",
-                "failed": "failed", "timed_out": "timed_out", "cancelled": "cancelled",
-                "budget_exhausted": "failed", "waiting_for_approval": "waiting_for_approval",
-            }
-            occurrence_status = status_map.get(state, "outcome_unknown")
-            output = runtime_task.get("output_payload") or {}
-            summary_text = output.get("summary") if isinstance(output, dict) else None
-            await store.request("PATCH", "agent_task_schedule_runs", params={
-                "id": f"eq.{occurrence['id']}", "owner_user_id": f"eq.{owner_id}",
-            }, body={"status": occurrence_status, "completed_at": datetime.now(timezone.utc).isoformat(),
-                     "result_summary": summary_text if isinstance(summary_text, str) else None,
-                     "error_code": runtime_task.get("error_code")}, prefer="return=representation")
-            next_run = _next_run(schedule, datetime.now(timezone.utc))
-            schedule_status = "active" if next_run else "completed"
-            await store.request("PATCH", "agent_task_schedules", params={
-                "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
-                "lease_token": f"eq.{lease_token}",
-            }, body={"status": schedule_status, "next_run_at": next_run,
-                     "last_run_at": datetime.now(timezone.utc).isoformat(),
-                     "last_runtime_task_id": runtime_task_id, "run_count": int(schedule.get("run_count") or 0) + 1,
-                     "lease_token": None, "lease_expires_at": None,
-                     "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
-            summary["dispatched"] += 1
         except Exception:
             log.exception("Scheduled Agent task dispatch failed; schedule_id=%s", schedule_id)
             summary["failed"] += 1
