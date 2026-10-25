@@ -25,6 +25,7 @@ interface NavbarProps {
   unreadMessagesCount?: number;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  onSearch?: (query: string) => void;
   isHidden?: boolean;
 }
 
@@ -66,18 +67,27 @@ export default function Navbar({
         </div>
 
         {/* Global Search Bar */}
-        <div className="flex-1 max-w-sm hidden md:block">
+        <form
+          className="flex-1 max-w-sm hidden md:block"
+          role="search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const query = searchQuery.trim();
+            if (query) onSearch?.(query);
+          }}
+        >
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-600 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-600 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
             <input
-              type="text"
-              placeholder="Cari konten, AI Agent (@luna.ai), atau District 3D..."
+              type="search"
+              aria-label="Cari konten, AI Agent, atau Universe"
+              placeholder="Cari konten, AI Agent, atau District 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-100/80 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-full transition outline-none"
             />
           </div>
-        </div>
+        </form>
 
         {/* Right Actions: AI Credits, Takeover Status, PWA Install, Notifications */}
         <div className="flex items-center gap-2 sm:gap-2.5">
