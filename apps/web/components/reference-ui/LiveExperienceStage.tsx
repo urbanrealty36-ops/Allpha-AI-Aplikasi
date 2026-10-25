@@ -34,28 +34,30 @@ interface LiveExperienceStageProps {
   onBackToFeed: () => void;
   userCredits: number;
   agentCredits: number;
+  liveStateAvailable?: boolean;
 }
 
 export default function LiveExperienceStage({
   onBackToFeed,
   userCredits,
   agentCredits,
+  liveStateAvailable = false,
 }: LiveExperienceStageProps) {
   // Live state
-  const [isLive, setIsLive] = useState(true);
+  const [isLive, setIsLive] = useState(false);
   const [isHostMicMuted, setIsHostMicMuted] = useState(false);
-  const [isHostCameraOn, setIsHostCameraOn] = useState(true);
-  const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(true);
+  const [isHostCameraOn, setIsHostCameraOn] = useState(false);
+  const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(false);
   const [isAiAgentMuted, setIsAiAgentMuted] = useState(false);
-  const [likesCount, setLikesCount] = useState(3840);
-  const [viewerCount, setViewerCount] = useState(2430);
+  const [likesCount, setLikesCount] = useState(0);
+  const [viewerCount, setViewerCount] = useState(0);
 
   // Topics and active slide
-  const [activeTopic, setActiveTopic] = useState('AI Social Universe 2026: Kolaborasi Human & AI Agent');
+  const [activeTopic, setActiveTopic] = useState('');
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   // Audio spectrum simulation
-  const [audioFreqs, setAudioFreqs] = useState<number[]>([40, 65, 80, 55, 90, 70, 45, 85, 60, 75, 50, 65]);
+  const [audioFreqs, setAudioFreqs] = useState<number[]>([]);
 
   // Slides content for Live Presentation Screen
   const slides = [
@@ -93,38 +95,33 @@ export default function LiveExperienceStage({
 
   // Live Chat Stream
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; handle: string; text: string; isAi?: boolean }>>([
-    { sender: 'Raka Pratama', handle: '@raka', text: 'Halo Alex & Luna! Suara dan visual stage podcastnya mantap sekali' },
-    { sender: 'Luna AI', handle: '@luna.ai', text: 'Selamat datang @raka! Hari ini kita membedah konsep live stage spatial di Allpha Universe.', isAi: true },
-    { sender: 'Sari Dewi', handle: '@saridewi', text: 'Keren banget panggung 3D-nya! Presentasi slidenya bisa langsung di-download nanti?' },
-    { sender: 'Dr. Andi Pratama', handle: '@andipratama', text: 'MediAI juga siap berkolaborasi untuk topik nutrisi dan hybrid working nanti sore.' },
-  ]);
+  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; handle: string; text: string; isAi?: boolean }>>([]);
 
   // Audio frequency pulsation effect
   useEffect(() => {
-    if (!isLive) return;
+    if (!liveStateAvailable || !isLive) return;
     const interval = setInterval(() => {
       setAudioFreqs((prev) =>
         prev.map(() => Math.floor(25 + Math.random() * 70))
       );
     }, 180);
     return () => clearInterval(interval);
-  }, [isLive]);
+  }, [isLive, liveStateAvailable]);
 
   // AI Agent turn-taking speech simulator
   useEffect(() => {
-    if (!isLive || isAiAgentMuted) return;
+    if (!liveStateAvailable || !isLive || isAiAgentMuted) return;
     const interval = setInterval(() => {
       setIsAiAgentSpeaking((prev) => !prev);
     }, 4000);
     return () => clearInterval(interval);
-  }, [isLive, isAiAgentMuted]);
+  }, [isLive, isAiAgentMuted, liveStateAvailable]);
 
   const isSpeaking = isLive && !isAiAgentMuted && isAiAgentSpeaking;
 
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim()) return;
+    if (!liveStateAvailable || !chatInput.trim()) return;
     const newMsg = {
       sender: 'Alex Tamara (Host)',
       handle: '@alextamara',
@@ -148,6 +145,7 @@ export default function LiveExperienceStage({
   };
 
   const handleLike = () => {
+    if (!liveStateAvailable) return;
     setLikesCount((prev) => prev + 1);
   };
 
@@ -160,20 +158,21 @@ export default function LiveExperienceStage({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs px-2 py-0.5 rounded-full bg-rose-600 font-bold uppercase tracking-wider">
-                LIVE STAGE
+                {liveStateAvailable ? 'LIVE STAGE' : 'LIVE STAGE · BELUM TERHUBUNG'}
               </span>
               <h1 className="text-sm font-black text-white">Podcast & Live Experience Arena</h1>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">{activeTopic}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{activeTopic || 'Sesi live dan data peserta akan ditampilkan setelah layanan Live terhubung.'}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-mono text-emerald-400">
             <Users className="w-3.5 h-3.5" />
-            <span>{viewerCount.toLocaleString()} Penonton</span>
+            <span>{liveStateAvailable ? viewerCount.toLocaleString() : '—'} Penonton</span>
           </div>
           <button
+            disabled={!liveStateAvailable}
             onClick={() => setIsLive(!isLive)}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 shadow ${
               isLive ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
@@ -195,12 +194,12 @@ export default function LiveExperienceStage({
             <div className="relative h-64 rounded-3xl bg-slate-950 overflow-hidden border border-slate-800 shadow-xl flex flex-col justify-between p-4 group">
               {/* Camera background simulation */}
               <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center">
-                {isHostCameraOn ? (
+                {isHostCameraOn && liveStateAvailable ? (
                   <div className="text-center">
                     <div className="w-24 h-24 mx-auto rounded-full ring-4 ring-blue-500/40 p-1 bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-2xl">
                       <img
-                        src="https://picsum.photos/seed/alex-tamara/200/200"
-                        alt="Alex Tamara"
+                        src="/icon.svg"
+                        alt="Host"
                         className="w-full h-full rounded-full object-cover"
                       />
                     </div>
@@ -220,7 +219,7 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between">
                 <span className="px-2.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-bold border border-slate-700 flex items-center gap-1.5">
                   <User className="w-3 h-3 text-blue-400" />
-                  Alex Tamara · Human Owner
+                  {liveStateAvailable ? 'Host terhubung' : 'Slot Host'}
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-600/30 text-blue-300 font-mono">
                   1080p 60fps
@@ -231,6 +230,7 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between pt-2">
                 <div className="flex items-center gap-1.5">
                   <button
+                    disabled={!liveStateAvailable}
                     onClick={() => setIsHostMicMuted(!isHostMicMuted)}
                     className={`p-2 rounded-xl transition ${
                       isHostMicMuted ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
@@ -240,6 +240,7 @@ export default function LiveExperienceStage({
                     {isHostMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                   </button>
                   <button
+                    disabled={!liveStateAvailable}
                     onClick={() => setIsHostCameraOn(!isHostCameraOn)}
                     className={`p-2 rounded-xl transition ${
                       !isHostCameraOn ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
@@ -268,8 +269,8 @@ export default function LiveExperienceStage({
                 <div className="text-center">
                   <div className={`w-24 h-24 mx-auto rounded-full ring-4 ${isSpeaking ? 'ring-cyan-400 animate-pulse' : 'ring-purple-500/40'} p-1 bg-gradient-to-tr from-cyan-500 to-purple-600 shadow-2xl`}>
                     <img
-                      src="https://picsum.photos/seed/luna-cyber/200/200"
-                      alt="Luna AI"
+                      src="/icon.svg"
+                      alt="AI Agent"
                       className="w-full h-full rounded-full object-cover"
                     />
                   </div>
@@ -287,7 +288,7 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between">
                 <span className="px-2.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-bold border border-purple-500/40 flex items-center gap-1.5">
                   <Bot className="w-3 h-3 text-cyan-400" />
-                  Luna AI · AI Agent milik @alextamara
+                  {liveStateAvailable ? 'AI Agent terhubung' : 'Slot AI Agent'}
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-300 font-mono">
                   Neural Audio 48kHz
@@ -298,6 +299,7 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between pt-2">
                 <div className="flex items-center gap-1.5">
                   <button
+                    disabled={!liveStateAvailable}
                     onClick={() => setIsAiAgentMuted(!isAiAgentMuted)}
                     className={`p-2 rounded-xl transition ${
                       isAiAgentMuted ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
@@ -307,6 +309,7 @@ export default function LiveExperienceStage({
                     {isAiAgentMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                   </button>
                   <button
+                    disabled={!liveStateAvailable}
                     onClick={() => alert('Takeover Mikrofon aktif: Human Owner mengambil alih suara')}
                     className="px-2.5 py-1.5 rounded-xl bg-slate-800/90 text-cyan-300 hover:bg-slate-700 text-xs font-bold transition"
                   >
@@ -355,7 +358,7 @@ export default function LiveExperienceStage({
             </div>
 
             {/* Slide Body */}
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-2.5">
+            {!liveStateAvailable ? <div role="status" className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300">Materi presentasi akan dimuat dari sesi Live kanonis. Belum ada dokumen atau slide yang terhubung.</div> :             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-2.5">
               <span className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider">
                 {slides[activeSlideIndex].subtitle}
               </span>
@@ -373,7 +376,7 @@ export default function LiveExperienceStage({
               <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-500/20 text-cyan-200 font-mono text-[11px] mt-2">
                 {slides[activeSlideIndex].diagram}
               </div>
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -384,10 +387,11 @@ export default function LiveExperienceStage({
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-slate-900">Live Chat Pemirsa</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
-                Aktif
+                {liveStateAvailable ? 'Aktif' : 'Belum tersedia'}
               </span>
             </div>
             <button
+              disabled={!liveStateAvailable}
               onClick={handleLike}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold hover:scale-105 transition"
             >
@@ -398,6 +402,7 @@ export default function LiveExperienceStage({
 
           {/* Messages Stream */}
           <div className="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/40 text-xs">
+            {!liveStateAvailable && <p role="status" className="rounded-xl border border-slate-200 bg-white p-3 text-slate-500">Belum ada sesi atau pesan Live yang dapat ditampilkan dari layanan kanonis.</p>}
             {chatMessages.map((msg, idx) => (
               <div
                 key={idx}
@@ -427,6 +432,7 @@ export default function LiveExperienceStage({
           <form onSubmit={handleSendChat} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
             <input
               type="text"
+              disabled={!liveStateAvailable}
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               placeholder="Tulis pesan atau pertanyaan ke host..."
@@ -434,7 +440,7 @@ export default function LiveExperienceStage({
             />
             <button
               type="submit"
-              disabled={!chatInput.trim()}
+              disabled={!liveStateAvailable || !chatInput.trim()}
               className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white transition shadow"
             >
               <Send className="w-4 h-4" />
