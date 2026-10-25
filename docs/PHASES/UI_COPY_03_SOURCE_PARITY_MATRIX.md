@@ -18,10 +18,19 @@ This is a source-to-domain implementation tracker, not a declaration of completi
 | `ThreeWorldView.tsx`, `Universe3DExperience.tsx`, `Universe3DHubView.tsx` | `/spatial/navigation`, `/spatial/[sceneKey]`, `/spatial/themes` | Sources copied; route-by-route source parity not complete | Wire to canonical World/District/Zone/Booth engine; Marketplace Booth 3D must reuse canonical Booth identity |
 | `LiveExperienceStage.tsx` | Existing spatial navigation / live surfaces | Copied; dedicated source-faithful route mapping incomplete | Existing Live Experience owner phase; use canonical sessions and explicit unavailable states |
 | `SkillsChallengeHub.tsx` | `/skill-challenges` | Copied; route uses canonical skill-challenge APIs | Compare reference screen composition and all actions; no fake rewards/results |
-| `AiCinemaView.tsx`, `AskAiView.tsx`, `GenerateModal.tsx`, `AskAiModal.tsx` | `/content-studio` and Agent interaction surfaces | Copied; not all reference flows have dedicated routes | Existing content-generation/Agent runtime owner phases; fail closed without job/credit contracts |
+| `AiCinemaView.tsx` | `/ai-cinema` | Dedicated route wired to the copied reference component; sample catalog removed; empty/unavailable state only; publish, approval and VIP billing fail closed | Existing content/media pipeline, Agent Runtime, moderation and billing owner phases: typed catalog/create/upload/verification/subscription/ledger contracts; no demo film, rating, views, credit balance or fake publish success |
+| `AskAiView.tsx`, `GenerateModal.tsx`, `AskAiModal.tsx` | `/content-studio` and Agent interaction surfaces | Copied; not all reference flows have dedicated routes | Existing content-generation/Agent runtime owner phases; fail closed without job/credit contracts |
 | `TakeoverControlView.tsx`, `TakeoverModal.tsx`, `AgentIdentityModal.tsx`, `AgentGoalsTasksModal.tsx` | Agent routes / account | Copied; full interaction mapping incomplete | Existing Agent runtime, permission and identity owner phases |
 | `Navbar.tsx`, `BottomNav.tsx` | `ReferenceNavigation.tsx` | Copied and wired to routes; Marketplace now targets `/marketplace` | Check every nav action has an appropriate canonical route; no dead or misdirected items |
 | `app/globals.css`, `app/layout.tsx`, `app/manifest.ts`, icon/public assets | Target Web layout, CSS, manifest and public tree | Partial parity; inventory shows binary asset and config gaps remain | UI-COPY-01/05: compare dependencies, CSS, metadata, fonts/icons, exact public asset paths and manifest/install hooks |
+
+## Execution update — UI-COPY-03 (2026-10-25)
+
+- The reference `AiCinemaView.tsx` is now routed at `/ai-cinema`, and the `FILM_AI` navigation entry resolves to that dedicated route; `/content-studio` remains the canonical content studio route.
+- Removed the source component's hard-coded initial film catalog and fake starter episode files. The screen receives an empty catalog until the canonical API exists. Static royalty/balance claims were removed or made explicitly dependent on canonical ledger/billing state.
+- Publish, verification and VIP subscription actions remain fail-closed while `catalogState="unavailable"`; they do not create local business records or report success.
+- This is UI route/component wiring only. AI Cinema backend architecture, media job lifecycle, moderation/verification, subscription, payment and royalty settlement remain feature gaps to record under existing domain owners; no new ENG phase is created.
+- Checks so far: GitHub blob-SHA parity audit confirms 23 of 27 reference component files checked are byte-identical in the target; `AuthOnboardingFlow.tsx`, `MarketplaceView.tsx`, and `Navbar.tsx` differ intentionally or require adapter review; global CSS and store/assets still require a complete inventory. No build or CI run has yet been executed for this change.
 
 ## Hard boundaries
 
