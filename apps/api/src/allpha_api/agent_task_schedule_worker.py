@@ -15,8 +15,9 @@ from zoneinfo import ZoneInfo
 
 from starlette.requests import Request
 
-from allpha_api.agent_runtime_api import TaskCreate, create_task, execute_task
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
+from allpha_api.workflow_engine import WorkflowDefinition
+from allpha_api.workflow_store import WorkflowPersistenceError, WorkflowStore
 
 log = logging.getLogger("allpha.agent_task_scheduler")
 
@@ -95,6 +96,42 @@ async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: i
                          "updated_at": now.isoformat()}, prefer="return=representation")
                 summary["waiting_for_approval"] += 1
                 continue
+
+            # Dispatch through the canonical Workflow Engine; its agent_task node
+            # delegates to the existing Agent Runtime adapter after policy checks.
+            workflow_store = WorkflowStore.from_environment()
+            trace_id = f"agent-task-schedule:{occurrence['id']}"
+            workflow_run = None
+            if occurrence.get("workflow_run_id"):
+                workflow_run = await workflow_store.get_run(owner_id, str(occurrence["workflow_run_id"]))
+            if not workflow_run:
+                matches = await workflow_store.request("GET", "workflow_runs", params={
+                    "select": "*", "owner_user_id": f"eq.{owner_id}", "trace_id": f"eq.{trace_id}", "limit": "1",
+                })
+                workflow_run = matches[0] if matches else None
+            if not workflow_run:
+                definition = await workflow_store.get_definition(owner_id, str(schedule["workflow_definition_id"]))
+                if not definition:
+                    raise WorkflowPersistenceError("schedule workflow definition is missing")
+                if WorkflowDefinition.model_validate(definition["definition"]).digest() != definition.get("digest"):
+                    raise WorkflowPersistenceError("schedule workflow definition digest mismatch")
+                workflow_run = await workflow_store.create_run(owner_id, definition,
+                    {"schedule_id": schedule_id, "schedule_run_id": str(occurrence["id"])}, trace_id)
+            await store.request("PATCH", "agent_task_schedule_runs", params={
+                "id": f"eq.{occurrence['id']}", "owner_user_id": f"eq.{owner_id}",
+            }, body={"workflow_run_id": workflow_run["id"], "status": "running",
+                     "started_at": occurrence.get("started_at") or datetime.now(timezone.utc).isoformat()},
+                prefer="return=representation")
+            next_run = _next_run(schedule, datetime.now(timezone.utc))
+            await store.request("PATCH", "agent_task_schedules", params={
+                "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
+                "lease_token": f"eq.{lease_token}",
+            }, body={"status": "active" if next_run else "completed", "next_run_at": next_run,
+                     "last_workflow_run_id": workflow_run["id"], "run_count": int(schedule.get("run_count") or 0) + 1,
+                     "lease_token": None, "lease_expires_at": None,
+                     "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
+            summary["dispatched"] += 1
+            continue
 
             runtime_task_id = occurrence.get("runtime_task_id")
             if not runtime_task_id:
