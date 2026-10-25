@@ -1,4 +1,7 @@
 -- ENG-P11 extension: durable Human Owner task schedules.
+alter table public.agent_runtime_tasks
+  add column if not exists task_budget_limits jsonb not null default '{}'::jsonb
+  check (jsonb_typeof(task_budget_limits) = 'object');
 -- Source-only migration. Apply only through the approved ENG-P37 database acceptance gate.
 -- This extends the canonical Workflow Engine + Agent Runtime; it is not a parallel queue.
 
