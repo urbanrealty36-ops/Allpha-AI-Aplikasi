@@ -123,8 +123,8 @@ export default function AskAiModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 font-mono font-bold flex items-center gap-1">
-              <Coins className="w-3 h-3 text-amber-700 fill-amber-700" />
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 font-mono font-black flex items-center gap-1 shadow-[1.5px_1.5px_0px_#0f172a]">
+              <Coins className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 text-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer" />
               15 Cr/sesi
             </span>
             <button
