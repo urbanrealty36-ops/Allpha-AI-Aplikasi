@@ -51,7 +51,7 @@ export default function LiveExperienceStage({
   const [isAiAgentMuted, setIsAiAgentMuted] = useState(false);
   const [likesCount] = useState<number | null>(null);
   const [viewerCount] = useState<number | null>(null);
-  const [stageToast, setStageToast] = useState<string | null>(null);
+  const [stageToast] = useState<string | null>(null);
 
   // Topics and active slide
   const [activeTopic] = useState('');
