@@ -29,13 +29,13 @@ def schedule_payload(**overrides):
 def test_daily_schedule_uses_owner_timezone():
     parsed = TaskScheduleCreate.model_validate(schedule_payload())
     now = datetime(2026, 10, 26, 10, 0, tzinfo=timezone.utc)
-    assert _next_occurrence(parsed, now) == "2026-10-26T11:00:00+00:00"
+    assert _next_occurrence(parsed, now) == datetime(2026, 10, 26, 11, 0, tzinfo=timezone.utc)
 
 
 def test_weekly_schedule_respects_weekday_and_timezone():
     parsed = TaskScheduleCreate.model_validate(schedule_payload(schedule_kind="weekly", weekdays=[0]))
     now = datetime(2026, 10, 26, 10, 0, tzinfo=timezone.utc)
-    next_run = datetime.fromisoformat(_next_occurrence(parsed, now))
+    next_run = _next_occurrence(parsed, now)
     assert next_run.astimezone(timezone.utc) > now
     assert next_run.astimezone(ZoneInfo("Asia/Jakarta")).weekday() == 0
 
@@ -43,7 +43,7 @@ def test_weekly_schedule_respects_weekday_and_timezone():
 def test_once_schedule_requires_offset_and_future_timestamp():
     parsed = TaskScheduleCreate.model_validate(schedule_payload(
         schedule_kind="once", run_at="2026-10-27T18:00:00+07:00"))
-    assert _next_occurrence(parsed, datetime(2026, 10, 26, tzinfo=timezone.utc)) == "2026-10-27T11:00:00+00:00"
+    assert _next_occurrence(parsed, datetime(2026, 10, 26, tzinfo=timezone.utc)) == datetime(2026, 10, 27, 11, 0, tzinfo=timezone.utc)
     with pytest.raises(ValidationError):
         TaskScheduleCreate.model_validate(schedule_payload(
             schedule_kind="once", run_at="2026-10-27T18:00:00"))
