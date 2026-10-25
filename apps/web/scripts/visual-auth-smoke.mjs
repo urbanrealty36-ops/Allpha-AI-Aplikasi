@@ -3,17 +3,17 @@ import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const email = process.env.ALLPHA_E2E_EMAIL;
 const password = process.env.ALLPHA_E2E_PASSWORD;
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-if (![supabaseUrl, anonKey, email, password, apiBase].every(Boolean)) {
+if (![supabaseUrl, publishableKey, email, password, apiBase].every(Boolean)) {
   throw new Error("Authenticated visual capture requires Supabase URL/key, dedicated E2E credentials, and API base URL secrets.");
 }
 
 const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
   method: "POST",
-  headers: { apikey: anonKey, "Content-Type": "application/json" },
+  headers: { apikey: publishableKey, "Content-Type": "application/json" },
   body: JSON.stringify({ email, password }),
 });
 if (!authResponse.ok) throw new Error(`Supabase E2E sign-in failed with HTTP ${authResponse.status}; credentials are not logged.`);
