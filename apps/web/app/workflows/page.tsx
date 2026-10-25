@@ -163,7 +163,7 @@ export default function WorkflowsPage() {
     finally { setSaving(false); }
   }
 
-  if (!supabase) return <><main className="identity-shell"><section className="config-card"><span className="section-kicker">WORKFLOW ENGINE / KONFIGURASI</span><h1>Konfigurasi autentikasi belum tersedia.</h1><p>Atur NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY untuk mengaktifkan sesi login. Kunci service-role tidak boleh berada di browser.</p></section></main>;
+  if (!supabase) return <><main className="identity-shell"><section className="config-card"><span className="section-kicker">WORKFLOW ENGINE / KONFIGURASI</span><h1>Konfigurasi autentikasi belum tersedia.</h1><p>Atur NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY untuk mengaktifkan sesi login. Kunci service-role tidak boleh berada di browser.</p></section></main></>;
 
   return <main className="identity-shell">
     <header className="identity-topbar">
