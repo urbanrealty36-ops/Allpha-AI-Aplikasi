@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const baseUrl = process.env.ALLPHA_VISUAL_BASE_URL || "http://127.0.0.1:3000";
-const routes = ["/login", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/ai-cinema", "/live"];
+const routes = ["/login", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/ai-cinema", "/live", "/ask-ai"];
 const viewports = [
   { width: 360, height: 800, label: "mobile-360" },
   { width: 390, height: 844, label: "mobile-390" },
