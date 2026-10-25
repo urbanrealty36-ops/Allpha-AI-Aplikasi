@@ -64,6 +64,9 @@ try {
       console.log(JSON.stringify(record));
       if (!response || response.status() >= 400) failures.push({ ...record, reason: "authenticated route returned HTTP 4xx/5xx" });
       if (!result.sessionPresent) failures.push({ ...record, reason: "browser session was not present" });
+      if (route.endsWith("/studio") && !result.bodyText.includes("Task Scheduling AI Agent")) {
+        failures.push({ ...record, reason: "authenticated Agent Studio schedule panel did not render" });
+      }
       if (/Konfigurasi autentikasi belum tersedia|Masuk terlebih dahulu untuk membuka/i.test(result.bodyText)) {
         failures.push({ ...record, reason: "route rendered unauthenticated/configuration fallback" });
       }
