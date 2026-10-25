@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from allpha_api.workflow_store import WorkflowPersistenceError
+from allpha_api.agent_runtime_api import TaskCreate, create_task, execute_task
+from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
+from starlette.requests import Request
 
 TERMINAL_RUN_STATES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 TERMINAL_STEP_STATES = frozenset({"succeeded", "failed", "cancelled", "skipped"})
@@ -106,6 +109,106 @@ def _step_from_run(run: dict[str, Any], step_id: str) -> dict[str, Any] | None:
     return next((step for step in (run.get("steps") or []) if str(step.get("id")) == str(step_id)), None)
 
 
+
+
+def _internal_request(trace_id: str) -> Request:
+    return Request({
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": "/internal/workflow-agent-task",
+        "raw_path": b"/internal/workflow-agent-task", "query_string": b"",
+        "headers": [(b"x-request-id", trace_id.encode("ascii"))],
+        "server": ("localhost", 80), "client": ("127.0.0.1", 0),
+    })
+
+
+async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], owner_id: str) -> dict[str, Any]:
+    """Execute one scheduled occurrence through Agent Runtime with durable linkage."""
+    config = step.get("node_config") or {}
+    schedule_id = config.get("schedule_id")
+    run_input = run.get("input_payload") or {}
+    schedule_run_id = run_input.get("schedule_run_id")
+    if not isinstance(schedule_id, str) or not isinstance(schedule_run_id, str):
+        raise WorkflowNodeError("agent task node requires schedule_id and schedule_run_id")
+    runtime_store = AgentRuntimeStore.from_environment()
+    schedules = await runtime_store.request("GET", "agent_task_schedules", params={
+        "select": "*", "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}", "limit": "1",
+    })
+    if not schedules:
+        raise WorkflowNodeError("scheduled Agent task is not owned by workflow owner")
+    schedule = schedules[0]
+    occurrences = await runtime_store.request("GET", "agent_task_schedule_runs", params={
+        "select": "*", "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+        "owner_user_id": f"eq.{owner_id}", "limit": "1",
+    })
+    if not occurrences:
+        raise WorkflowNodeError("schedule occurrence is not owned by workflow owner")
+    occurrence = occurrences[0]
+    if schedule.get("require_approval") or occurrence.get("status") not in {"claimed", "running"}:
+        raise WorkflowNodeError("schedule occurrence has not passed the owner approval gate")
+    runtime_task_id = occurrence.get("runtime_task_id")
+    try:
+        if not runtime_task_id:
+            payload = TaskCreate(
+                session_id=schedule["session_id"], skill_id=schedule["skill_id"],
+                tool_key=schedule["tool_key"],
+                inputs={**(schedule.get("input_payload") or {}), "instructions": schedule["instructions"],
+                        "task_type": schedule["task_type"], "scheduled_for": occurrence["scheduled_for"],
+                        "schedule_id": schedule_id},
+                idempotency_key=occurrence["idempotency_key"],
+            )
+            created = await create_task(payload, _internal_request(occurrence["trace_id"]), {"id": owner_id})
+            runtime_task_id = str(created["task"]["id"])
+            saved = await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
+                "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+                "owner_user_id": f"eq.{owner_id}", "status": "in.(claimed,running)",
+            }, body={"runtime_task_id": runtime_task_id, "status": "running",
+                     "started_at": occurrence.get("started_at") or datetime.now(timezone.utc).isoformat()},
+                prefer="return=representation")
+            if not saved:
+                raise AgentRuntimePersistenceError("runtime task link could not be persisted")
+        execution = await execute_task(uuid.UUID(str(runtime_task_id)), {"id": owner_id})
+        runtime_task = execution.get("task") or {}
+        state = runtime_task.get("state")
+        output = runtime_task.get("output_payload")
+        status_map = {
+            "succeeded": "succeeded", "partially_succeeded": "partially_succeeded",
+            "failed": "failed", "timed_out": "timed_out", "cancelled": "cancelled",
+            "budget_exhausted": "failed", "waiting_for_approval": "waiting_for_approval",
+            "waiting_for_input": "waiting_for_approval",
+        }
+        await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
+            "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+            "owner_user_id": f"eq.{owner_id}",
+        }, body={"runtime_task_id": str(runtime_task_id), "status": status_map.get(state, "outcome_unknown"),
+                 "completed_at": datetime.now(timezone.utc).isoformat(),
+                 "result_summary": output.get("summary") if isinstance(output, dict) and isinstance(output.get("summary"), str) else None,
+                 "error_code": runtime_task.get("error_code")}, prefer="return=representation")
+        await runtime_store.request("PATCH", "agent_task_schedules", params={
+            "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
+        }, body={"last_runtime_task_id": str(runtime_task_id), "last_run_at": datetime.now(timezone.utc).isoformat(),
+                 "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
+        if state != "succeeded":
+            raise WorkflowNodeError(f"Agent Runtime ended in state {state or 'unknown'}")
+        return {
+            "output_payload": {"schedule_run_id": schedule_run_id, "runtime_task_id": str(runtime_task_id),
+                               "runtime_state": state, "result": output if isinstance(output, dict) else {}},
+            "checkpoint": {"node_key": step.get("node_key"), "schedule_run_id": schedule_run_id,
+                           "runtime_task_id": str(runtime_task_id), "runtime_state": state},
+        }
+    except WorkflowNodeError:
+        raise
+    except Exception as exc:
+        try:
+            await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
+                "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+                "owner_user_id": f"eq.{owner_id}",
+            }, body={"status": "outcome_unknown", "error_code": type(exc).__name__},
+                prefer="return=representation")
+        except Exception:
+            pass
+        raise WorkflowNodeError("Agent Runtime outcome is unknown; automatic side-effect replay is blocked") from exc
+
+
 async def process_next_step(
     store: Any, *, owner_id: str, run_id: str, lease_seconds: int = 30,
     now: datetime | None = None,
@@ -153,7 +256,10 @@ async def process_next_step(
         return {"outcome": "terminal", "run_status": (run or {}).get("status", "unknown")}
 
     try:
-        result = evaluate_deterministic_node(step, run)
+        if step.get("node_kind") == "agent_task":
+            result = await execute_agent_task_node(step, run, owner_id)
+        else:
+            result = evaluate_deterministic_node(step, run)
         final_state, error_code = "succeeded", None
     except WorkflowNodeError as exc:
         result = {"output_payload": None, "checkpoint": {"node_key": step.get("node_key"), "failed": True}}
