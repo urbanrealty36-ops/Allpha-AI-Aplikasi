@@ -86,6 +86,9 @@ interface ExploreViewProps {
   onLikePost?: (postId: string) => void;
   productionMode?: boolean;
   onSearch?: (query: string) => void;
+  onRetrySearch?: () => void;
+  onRetryTrends?: () => void;
+  onRetryRecommendations?: () => void;
   trendsData?: Array<{ topic: string; content_count: number }>;
   recommendationsData?: PostItem[];
   recommendationsLoading?: boolean;
@@ -112,6 +115,9 @@ export default function ExploreView({
   onLikePost,
   productionMode = false,
   onSearch,
+  onRetrySearch,
+  onRetryTrends,
+  onRetryRecommendations,
   trendsData = [],
   recommendationsData = [],
   recommendationsLoading = false,
@@ -299,7 +305,7 @@ export default function ExploreView({
       </div>
 
       <div className="p-4 space-y-6">
-        {activeSearchTab === 'POSTS' && searchError && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700">{searchError}</p>}
+        {activeSearchTab === 'POSTS' && searchError && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700"><span>{searchError}</span>{onRetrySearch && <button type="button" onClick={onRetrySearch} disabled={searchLoading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] disabled:opacity-50">Coba lagi</button>}</div>}
         {activeSearchTab === 'POSTS' && searchLoading && <p role="status" className="rounded-xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-600">Mencari konten…</p>}
         {activeSearchTab === 'POSTS' && searchEmpty && !searchLoading && !searchError && <p role="status" className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Belum ada konten yang cocok dengan kata kunci tersebut.</p>}
         {activeSearchTab === 'POSTS' && searchPrompt && !searchLoading && !searchError && <p className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-600">Tekan Enter setelah memasukkan kata kunci untuk mencari konten yang dapat Anda akses.</p>}
@@ -313,7 +319,7 @@ export default function ExploreView({
               <button key={trend.topic} type="button" onClick={() => { setSearchQuery(trend.topic); onSearch?.(trend.topic); }} className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5">
                 #{trend.topic} <span className="ml-1 text-slate-500">({trend.content_count})</span>
               </button>
-            ))}</div> : <p className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">{trendsLoading ? "Memuat tren…" : trendsError || "Tren akan tampil saat tersedia konten publik yang dapat diakses."}</p>}
+            ))}</div> : <div className="flex items-center justify-between gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500"><span>{trendsLoading ? "Memuat tren…" : trendsError || "Tren akan tampil saat tersedia konten publik yang dapat diakses."}</span>{trendsError && onRetryTrends && <button type="button" onClick={onRetryTrends} disabled={trendsLoading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 disabled:opacity-50">Coba lagi</button>}</div>}
           </section>
         )}
         {productionMode && (
@@ -322,7 +328,7 @@ export default function ExploreView({
               <h2 className="text-sm font-black text-slate-900">Rekomendasi untuk Anda</h2>
               <span className="text-[10px] font-bold text-slate-500">Ranking personal</span>
             </div>
-            {recommendationsLoading ? <p role="status" className="rounded-2xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Memuat rekomendasi…</p> : recommendationsError ? <p role="alert" className="rounded-2xl border-2 border-rose-300 bg-white p-4 text-xs font-semibold text-rose-700">{recommendationsError}</p> : recommendationsData.length ? recommendationsData.map(post => (
+            {recommendationsLoading ? <p role="status" className="rounded-2xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Memuat rekomendasi…</p> : recommendationsError ? <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border-2 border-rose-300 bg-white p-4 text-xs font-semibold text-rose-700"><span>{recommendationsError}</span>{onRetryRecommendations && <button type="button" onClick={onRetryRecommendations} disabled={recommendationsLoading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 disabled:opacity-50">Coba lagi</button>}</div> : recommendationsData.length ? recommendationsData.map(post => (
               <article key={post.id} className="space-y-3 rounded-[28px] border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]">
                 <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-slate-900 bg-sky-100 text-sky-800"><User className="h-5 w-5" /></div><div className="min-w-0"><p className="truncate text-xs font-black text-slate-900">{post.humanOwner.name}</p><p className="truncate text-[10px] font-semibold text-slate-500">{post.timestamp}</p></div></div>
                 <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{post.content}</p>
