@@ -110,7 +110,7 @@ export default function TakeoverControlView({
                 className="w-12 h-12 rounded-2xl object-cover border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
               />
               <div>
-                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5 flex-wrap">
                   <span>{humanUser.name}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-black border border-sky-300">
                     Human Owner
@@ -132,7 +132,7 @@ export default function TakeoverControlView({
                 className="w-12 h-12 rounded-2xl object-cover border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
               />
               <div>
-                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5 flex-wrap">
                   <span>{agentProfile.name}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-black border border-purple-300">
                     AI Agent · {agentProfile.specialty}
@@ -169,8 +169,8 @@ export default function TakeoverControlView({
               )}
             </div>
             <div>
-              <h4 className="font-extrabold text-xs">AI Auto</h4>
-              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              <h4 className="font-black text-xs text-slate-900 uppercase">AI Auto</h4>
+              <p className="text-[11px] text-slate-600 mt-1 font-medium leading-relaxed">
                 Agent merespons komentar dan pesan secara otomatis.
               </p>
             </div>
@@ -187,7 +187,7 @@ export default function TakeoverControlView({
           >
             <div className="flex items-center justify-between w-full mb-3">
               <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-black text-xs border border-slate-900">
-                <User className="w-4 h-4" />
+                <User className="w-4 h-4 stroke-[2.5px]" />
               </div>
               {!autoReplyEnabled && (
                 <span className="w-6 h-6 rounded-lg bg-emerald-400 text-slate-950 flex items-center justify-center font-black text-xs border border-slate-900">
@@ -196,8 +196,8 @@ export default function TakeoverControlView({
               )}
             </div>
             <div>
-              <h4 className="font-extrabold text-xs">Takeover Human</h4>
-              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              <h4 className="font-black text-xs text-slate-900 uppercase">Takeover Human</h4>
+              <p className="text-[11px] text-slate-600 mt-1 font-medium leading-relaxed">
                 Anda yang merespons langsung sebagai Human Owner.
               </p>
             </div>
@@ -219,17 +219,17 @@ export default function TakeoverControlView({
           <button
             type="button"
             onClick={() => setAutoReplyEnabled(!autoReplyEnabled)}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left"
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 border-2 border-slate-900 flex items-center justify-center">
-                <ShieldAlert className="w-4 h-4" />
+                <ShieldAlert className="w-4 h-4 stroke-[2.5px]" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900">
+                <h4 className="text-xs font-black text-slate-900">
                   {autoReplyEnabled ? 'Matikan Auto-Reply' : 'Nyalakan Auto-Reply'}
                 </h4>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] font-medium text-slate-500">
                   {autoReplyEnabled ? 'Hentikan respons otomatis AI' : 'Aktifkan respons otomatis AI'}
                 </p>
               </div>
@@ -243,15 +243,15 @@ export default function TakeoverControlView({
               setAutoReplyEnabled(false);
               alert('Mode Takeover langsung diaktifkan!');
             }}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left"
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 border-2 border-slate-900 flex items-center justify-center">
-                <User className="w-4 h-4" />
+                <User className="w-4 h-4 stroke-[2.5px]" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900">Ambil Alih (Takeover)</h4>
-                <p className="text-[11px] text-slate-500">Jawab pesan masuk langsung atas nama Human</p>
+                <h4 className="text-xs font-black text-slate-900">Ambil Alih (Takeover)</h4>
+                <p className="text-[11px] font-medium text-slate-500">Jawab pesan masuk langsung atas nama Human</p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -260,15 +260,15 @@ export default function TakeoverControlView({
           <button
             type="button"
             onClick={() => alert('Jadwal Auto-Reply: Aktif 24/7. Anda dapat mengatur rentang waktu operasional AI.')}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left"
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 border-2 border-slate-900 flex items-center justify-center">
-                <Clock className="w-4 h-4" />
+                <Clock className="w-4 h-4 stroke-[2.5px]" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900">Jadwalkan Auto-Reply</h4>
-                <p className="text-[11px] text-slate-500">Atur jam operasional aktif AI Agent</p>
+                <h4 className="text-xs font-black text-slate-900">Jadwalkan Auto-Reply</h4>
+                <p className="text-[11px] font-medium text-slate-500">Atur jam operasional aktif AI Agent</p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -277,15 +277,15 @@ export default function TakeoverControlView({
           <button
             type="button"
             onClick={() => alert('Batasan Topik: AI dibatasi hanya menjawab seputar Kesehatan, 3D, dan Marketing.')}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left"
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 border-2 border-slate-900 flex items-center justify-center">
-                <SlidersHorizontal className="w-4 h-4" />
+                <SlidersHorizontal className="w-4 h-4 stroke-[2.5px]" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900">Atur Batasan Topik</h4>
-                <p className="text-[11px] text-slate-500">Tentukan topik yang boleh dijawab AI</p>
+                <h4 className="text-xs font-black text-slate-900">Atur Batasan Topik</h4>
+                <p className="text-[11px] font-medium text-slate-500">Tentukan topik yang boleh dijawab AI</p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -294,15 +294,15 @@ export default function TakeoverControlView({
           <button
             type="button"
             onClick={() => alert('Panduan Gaya Komunikasi: Ramah, Ringkas, menggunakan Bahasa Indonesia santun.')}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left"
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-800 border-2 border-slate-900 flex items-center justify-center">
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-4 h-4 stroke-[2.5px]" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900">Panduan Gaya Komunikasi</h4>
-                <p className="text-[11px] text-slate-500">Sesuaikan nada bicara dan etiket respons AI</p>
+                <h4 className="text-xs font-black text-slate-900">Panduan Gaya Komunikasi</h4>
+                <p className="text-[11px] font-medium text-slate-500">Sesuaikan nada bicara dan etiket respons AI</p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -311,15 +311,15 @@ export default function TakeoverControlView({
           <button
             type="button"
             onClick={() => alert('Riwayat Percakapan: 142 sesi interaksi berhasil dijawab AI bulan ini.')}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left"
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition text-left cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 stroke-[3px]">
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4 stroke-[2.5px]" />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-slate-900">Lihat Log Percakapan</h4>
-                <p className="text-[11px] text-slate-500">Audit pesan yang telah dijawab otomatis</p>
+                <h4 className="text-xs font-black text-slate-900">Lihat Log Percakapan</h4>
+                <p className="text-[11px] font-medium text-slate-500">Audit pesan yang telah dijawab otomatis</p>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -334,7 +334,7 @@ export default function TakeoverControlView({
             className="text-xs text-slate-800 font-medium leading-relaxed"
           >
             <span>Simpan Pengaturan</span>
-            <Check className="w-4 h-4" />
+            <Check className="w-4 h-4 stroke-[2.5px]" />
           </button>
         </div>
       </div>
