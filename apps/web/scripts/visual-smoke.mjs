@@ -31,9 +31,11 @@ try {
       if (result.documentWidth > viewport.width + 2 || result.bodyWidth > viewport.width + 2) {
         failures.push({ ...record, reason: "horizontal overflow" });
       }
-      if (route === "/feed") {
-        await page.screenshot({ path: `artifacts/reference-ui-visual/feed-${viewport.label}.png`, fullPage: true });
-      }
+      const routeSlug = route.replace(/^\\/+/, "").replace(/\\//g, "-") || "home";
+      await page.screenshot({
+        path: `artifacts/reference-ui-visual/${routeSlug}-${viewport.label}.png`,
+        fullPage: true,
+      });
     }
     await page.close();
   }
@@ -44,5 +46,5 @@ if (failures.length) {
   console.error("VISUAL_SMOKE_FAILURES", JSON.stringify(failures, null, 2));
   process.exitCode = 1;
 } else {
-  console.log("Visual route smoke passed: 7 routes × 4 viewports; Feed screenshots captured.");
+  console.log("Visual route smoke passed: 7 routes × 4 viewports; screenshots captured for every route.");
 }
