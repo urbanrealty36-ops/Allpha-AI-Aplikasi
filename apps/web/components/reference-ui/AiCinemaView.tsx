@@ -257,17 +257,6 @@ export default function AiCinemaView({
     setIsPlaying(true);
   };
 
-  // Handler for subscribing VIP
-  const handleConfirmVipSubscription = () => {
-    if (catalogState !== 'ready') {
-      showToast('Langganan VIP belum tersedia karena kontrak billing kanonis belum terhubung.');
-      return;
-    }
-    setIsVipSubscribed(true);
-    setIsSubscriptionModalOpen(false);
-    showToast('Selamat! Langganan VIP Allpha Cinema Aktif. Semua episode terbuka tanpa batas!');
-  };
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 space-y-6 pb-28 text-slate-900 font-sans">
       {/* Toast Notification */}
