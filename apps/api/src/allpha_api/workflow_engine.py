@@ -1,7 +1,8 @@
 """Canonical ENG-P11 declarative workflow contracts and validation.
 
-Definitions are data, never executable code. This module intentionally supports
-only deterministic, no-side-effect node types in the first implementation slice.
+Definitions are validated declarative data, never executable code. Pure nodes are
+interpreted locally; the Agent task node delegates only to the canonical Agent Runtime
+adapter, which revalidates owner, policy, scope, budget, timeout and idempotency.
 """
 from __future__ import annotations
 
