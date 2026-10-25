@@ -137,6 +137,7 @@ function SearchPageContent() {
         posts={postsForReference}
         trendsData={trends}
         trendsLoading={trendsBusy}
+        trendsError={trendsError}
         recommendationsData={recommendationsForReference}
         recommendationsLoading={recommendationsBusy}
         recommendationsError={recommendationsError}
