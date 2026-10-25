@@ -245,14 +245,14 @@ assert.ok(referenceBottomNav.includes("text-[#0284C7]"), "active navigation colo
 
 // Shared reference navigation owns route links; page-local duplicate navs are intentionally absent.
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
-const referenceFeedChrome = readFileSync(new URL("../components/reference-ui/ReferenceFeedChrome.tsx", import.meta.url), "utf8");
+const referenceFeedView = readFileSync(new URL("../components/reference-ui/FeedView.tsx", import.meta.url), "utf8");
 for (const route of ['FEED: "/feed"', 'CREATE: "/create"', 'MESSAGES: "/messages"', 'REELS: "/reels"', 'WORLD3D: "/spatial/navigation"', 'LIVESTAGE: "/live"']) {
   assert.ok(referenceNavigation.includes(route), "global reference navigation missing route mapping: " + route);
 }
-for (const route of ['href="/stories"', 'href="/reels"', 'href="/spatial/navigation"']) {
-  assert.ok(referenceFeedChrome.includes(route), "reference Feed chrome missing route: " + route);
+for (const route of ["onOpenReels", "onOpenWorld3D", "onOpenLiveStage", "onOpenCreateModal"]) {
+  assert.ok(referenceFeedView.includes(route), "reference Feed view missing navigation callback: " + route);
 }
-assert.ok(referenceNavigation.includes('onSearch={query => navigate("/search?q=" + encodeURIComponent(query))}'));
+assert.ok(referenceNavigation.includes('onSearch={(query: string) => navigate("/search?q=" + encodeURIComponent(query))}'));
 
 const webSearch = readFileSync(new URL("../app/search/page.tsx", import.meta.url), "utf8");
 assert.ok(webSearch.includes("useSearchParams"), "Search must react to global navbar query updates");
