@@ -17,7 +17,7 @@ import {
   Paperclip,
   Check
 } from 'lucide-react';
-import { HumanProfile, AIAgentProfile } from '@/lib/store';
+import { HumanProfile } from '@/lib/store';
 
 interface AskAiViewProps {
   onBack: () => void;
@@ -38,14 +38,7 @@ export default function AskAiView({
   onSubmitQuery,
   availabilityMessage = 'Interaksi AI belum tersedia karena sesi Agent Runtime kanonis belum terhubung. Pertanyaan belum dikirim.',
 }: AskAiViewProps) {
-  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([
-    {
-      sender: agentName,
-      text: `Halo ${currentUser.name}! Saya ${agentName}, asisten cerdas spesialis ${specialty} di ekosistem ALLPHA UNIVERSE. Ada yang bisa saya bantu atau buatkan untuk Anda hari ini?`,
-      isAi: true,
-      timestamp: 'Baru saja',
-    },
-  ]);
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [interactionError, setInteractionError] = useState('');
@@ -111,11 +104,7 @@ export default function AskAiView({
         <div className="flex items-start gap-3">
           <div className="relative">
             <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-cyan-400 via-blue-600 to-purple-600 shadow-md">
-              <img
-                src="/icon.svg"
-                alt={agentName}
-                className="w-full h-full rounded-full object-cover border-2 border-white"
-              />
+              <Bot className="w-full h-full rounded-full border-2 border-white bg-slate-950 p-4 text-white" aria-label="AI Agent" />
             </div>
             <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-white" />
           </div>

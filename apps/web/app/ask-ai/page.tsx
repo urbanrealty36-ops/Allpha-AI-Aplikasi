@@ -9,7 +9,7 @@ import type { HumanProfile } from "../../lib/reference-store";
 
 type MeResponse = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string; avatar_url?: string | null; bio?: string } | null };
 type Agent = { id: string; handle: string; display_name: string; description: string; status: string };
-const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\\/$/, "");
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 export default function AskAiPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
