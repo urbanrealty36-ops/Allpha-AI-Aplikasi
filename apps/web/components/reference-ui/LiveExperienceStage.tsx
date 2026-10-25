@@ -114,11 +114,11 @@ export default function LiveExperienceStage({
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
-      <div className="flex items-center justify-between bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 ${liveStateAvailable ? "bg-rose-500 animate-pulse" : "bg-slate-400"}`} />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-200 border-2 border-slate-900 font-black uppercase tracking-wider text-rose-950 shadow-2xs">
                 LIVE STAGE
               </span>
@@ -128,7 +128,7 @@ export default function LiveExperienceStage({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
             <Users className="w-3.5 h-3.5" />
             <span>{viewerCount == null ? '—' : viewerCount.toLocaleString()} Penonton</span>
