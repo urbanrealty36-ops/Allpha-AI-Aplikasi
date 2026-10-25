@@ -237,3 +237,45 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .reference-story-item small{display:-webkit-box;max-width:88px;overflow:hidden;color:#64748b;font-size:10px;line-height:1.35;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .reference-stories-empty[role="alert"]{color:#b91c1c}
 @media(max-width:560px){.reference-stories-list{gap:14px}.reference-story-item{flex-basis:78px}.reference-story-avatar{width:76px;height:76px}}
+
+
+/* Reference screenshot alignment: canonical web shell and creator surfaces */
+.allpha-reference-navbar{border-bottom:1px solid #e2e8f0;box-shadow:0 1px 0 rgba(15,23,42,.025)}
+.allpha-reference-navbar-inner{min-height:76px;height:auto;gap:12px;padding-top:10px;padding-bottom:10px}
+.allpha-reference-brand-mark{width:48px;height:48px;flex:0 0 48px;border-radius:15px;box-shadow:0 5px 14px rgba(37,99,235,.2)}
+.allpha-reference-navbar .account-menu{gap:10px}
+.allpha-reference-navbar button[aria-label="Direct Messages"],.allpha-reference-navbar button[title="Notifikasi"]{width:42px;height:42px;display:grid;place-items:center}
+.reference-feed-chrome{max-width:100%;border-bottom:1px solid #e2e8f0}
+.reference-feed-tabs{min-height:82px}
+.reference-feed-tabs>a,.reference-feed-tabs>button{font-size:clamp(13px,2.8vw,17px);line-height:1.35}
+.reference-live-stage{min-height:240px;display:flex;flex-direction:column;justify-content:center}
+.reference-live-stage-cta{align-self:flex-start}
+.allpha-create-page,.allpha-stories-page{max-width:760px;padding-top:26px}
+.allpha-create-page header h1,.allpha-stories-page header h1{font-size:clamp(27px,5vw,36px);letter-spacing:-.04em}
+.allpha-create-page form,.allpha-stories-page form{border-radius:22px;box-shadow:0 8px 28px rgba(15,23,42,.045)}
+.allpha-create-page textarea,.allpha-stories-page textarea,.allpha-create-page input[type="text"],.allpha-stories-page input[type="text"]{min-height:48px;border-radius:14px}
+.allpha-create-page button[type="submit"],.allpha-stories-page button[type="submit"]{min-height:46px;border-radius:14px;font-weight:750}
+.allpha-create-page [role="alert"],.allpha-stories-page [role="alert"]{border-radius:12px}
+.allpha-reels-page{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.allpha-reels-page>header{min-height:62px}
+.allpha-reels-page article{min-height:min(760px,76dvh);border-radius:24px}
+.allpha-reels-page article video{object-fit:contain;background:#020617}
+.allpha-reels-page article audio{accent-color:#22d3ee}
+.allpha-reels-page article button{transition:background .16s ease,border-color .16s ease}
+.allpha-reels-page article button:hover{background:rgba(255,255,255,.08);border-color:rgba(103,232,249,.65)}
+@media(max-width:560px){
+ .allpha-reference-navbar-inner{min-height:68px;padding:8px 12px;gap:8px}
+ .allpha-reference-brand-mark{width:42px;height:42px;flex-basis:42px}
+ .allpha-reference-navbar .font-extrabold.text-base{font-size:15px}
+ .allpha-reference-navbar .text-\[10px\].font-bold{font-size:9px}
+ .allpha-reference-navbar .account-menu{gap:4px}
+ .reference-feed-tabs{min-height:82px}
+ .reference-feed-tabs>a,.reference-feed-tabs>button{padding:10px 5px}
+ .reference-live-stage{min-height:230px}
+ .allpha-reels-page article{min-height:70dvh}
+ .allpha-create-page,.allpha-stories-page{padding-top:18px}
+}
+@media(min-width:760px){
+ .allpha-reels-page article{min-height:720px}
+ .allpha-reels-page>div{max-width:680px}
+}
