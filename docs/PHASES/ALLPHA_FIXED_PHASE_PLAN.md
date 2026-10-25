@@ -1,3 +1,8 @@
+**Execution update (2026-10-25, UI-COPY-03 CI-driven correction):**
+- The first Web build on commit `79ccbc3e0185416295ebf2c8ec9006a51f3a79dd` failed with a duplicate `handleConfirmVipSubscription` declaration in `AiCinemaView.tsx`. The duplicate was removed in [`3f3cda2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/3f3cda28ed2e4c46e2816e570fe913ea76c7484b).
+- Added `/ai-cinema` to the existing Playwright visual route smoke matrix (10 routes × 4 viewports) in [`a5d95d9`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/a5d95d93e89e816692944840e0fc3bb78457e4ae).
+- The corrected build and expanded route check are pending on the latest commit at the time of this note. Do not mark UI-COPY-03 passed until those checks complete successfully. Vercel deployment statuses previously reported `build-rate-limit`; that is separate from GitHub Actions validation.
+
 **Execution update (2026-10-25, UI-COPY-03 AI Cinema route slice):**
 - Source repo: [Allpha-Front-End-UI-New](https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New), latest inspected source commit `5184f44e9f6c4e641cbe37e9f743583cf40d785e` (AI Cinema component/navigation and film metadata changes).
 - Target repo: `apps/web` in this monorepo; the existing fixed phase hierarchy remains authoritative. `apps/client` stays React Native + Expo; the Web app remains the approved PWA.
