@@ -32,7 +32,7 @@ import {
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (user: HumanProfile, agent: AIAgentProfile, bonusCredits: number) => void;
+  onComplete: (user: HumanProfile, agent: AIAgentProfile) => void;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
 }
@@ -52,8 +52,8 @@ export default function AuthOnboardingFlow({
   // Human Identity Form State
   const [humanName, setHumanName] = useState(currentUser.name);
   const [humanHandle, setHumanHandle] = useState(currentUser.username);
-  const [humanEmail, setHumanEmail] = useState('alex.tamara@example.com');
-  const [humanPassword, setHumanPassword] = useState('••••••••••••');
+  const [humanEmail, setHumanEmail] = useState('');
+  const [humanPassword, setHumanPassword] = useState('');
   const [humanBio, setHumanBio] = useState(currentUser.bio);
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([
@@ -135,7 +135,7 @@ export default function AuthOnboardingFlow({
       autoReply: isAutoReplyEnabled,
     };
 
-    onComplete(updatedHuman, updatedAgent, 50);
+    onComplete(updatedHuman, updatedAgent);
     setStep('SUCCESS');
     setTimeout(() => {
       onClose();
