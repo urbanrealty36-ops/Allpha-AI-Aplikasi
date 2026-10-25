@@ -62,11 +62,6 @@ export default function SkillsChallengeHub({
     creditsRewarded: number;
   } | null>(null);
 
-  // Manual document upload form
-  const [docTitle, setDocTitle] = useState('');
-  const [docType, setDocType] = useState<'EBOOK_PDF' | 'PLUGIN_JSON'>('EBOOK_PDF');
-  const [docSkill, setDocSkill] = useState('');
-
   // Preset quick upload samples
   const handleInstallPreset = (presetName: string, type: 'EBOOK_PDF' | 'PLUGIN_JSON', skills: string[], size: string) => {
     const newDoc: KnowledgeDocument = {
@@ -116,7 +111,6 @@ export default function SkillsChallengeHub({
 
       const data = await res.json();
 
-      // Trigger the real credits transfer from the asking Human to the AI Agent Owner!
       onExecuteCreditTransfer(
         '@budi_creative (Human Lain)',
         `${agentProfile.name} (Milik ${agentProfile.ownerHandle})`,
@@ -135,7 +129,6 @@ export default function SkillsChallengeHub({
         creditsRewarded: 15,
       });
     } catch {
-      // Fallback transfer even if network glitches
       onExecuteCreditTransfer(
         '@budi_creative (Human Lain)',
         `${agentProfile.name} (Milik ${agentProfile.ownerHandle})`,
@@ -158,20 +151,20 @@ export default function SkillsChallengeHub({
 
   return (
     <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 py-4 pb-28 font-sans">
-      {/* Header Banner: Clarified Challenge & Rewards Definition */}
+      {/* Header Banner (Playful Neo-Brutalist Soft Pastel) */}
       <div className="p-5 sm:p-6 rounded-3xl bg-amber-50 text-slate-950 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] mb-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-full bg-amber-300 text-slate-950 text-[10px] font-black uppercase tracking-wider border-2 border-slate-900 shadow-2xs">
-                Resmi Allpha Hub
+                ALLPHA HUB OFFICIAL
               </span>
               <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-950 uppercase">
-                Skills Challenge & AI Credits Economy
+                Skills Challenge & AI Credits
               </h1>
             </div>
             <p className="text-xs text-slate-700 max-w-xl leading-relaxed font-semibold">
-              Tingkatkan kapabilitas AI Agent Anda melalui upload dokumen Ebook atau Plugin. Raih reward AI Credits saat Human lain bertanya atau meminta AI Agent Anda mengenerate konten / reels ber-brand!
+              Tingkatkan kemampuan AI Agent Anda lewat Ebook atau Plugin. Raih reward AI Credits saat pengguna lain berkonsultasi atau membuat reels ber-brand!
             </p>
           </div>
 
@@ -181,7 +174,7 @@ export default function SkillsChallengeHub({
               <Coins className="w-5 h-5 stroke-[2.5px]" />
             </div>
             <div>
-              <p className="text-[10px] uppercase font-black text-slate-700">Total Reward AI Agent</p>
+              <p className="text-[10px] uppercase font-black text-slate-700">Total Reward Agent</p>
               <p className="text-lg font-black text-slate-950 font-mono">
                 +{agentCredits} <span className="text-xs font-bold text-slate-700">Cr</span>
               </p>
@@ -193,45 +186,43 @@ export default function SkillsChallengeHub({
         <div className="flex items-center gap-2 mt-5 pt-4 border-t-2 border-slate-900/15 text-xs font-black overflow-x-auto pb-1">
           <button
             onClick={() => setActiveTab('SIMULATOR')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-2xl transition flex items-center gap-1.5 border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
               activeTab === 'SIMULATOR'
-                ? 'bg-white text-blue-900 shadow font-bold'
-                : 'text-slate-300 hover:text-white hover:bg-white/10'
+                ? 'bg-amber-300 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-800 hover:bg-slate-100 shadow-[1.5px_1.5px_0px_#0f172a]'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Simulasi Challenge & Transfer Kredit</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-700 stroke-[2.5px]" />
+            <span>Simulasi Challenge & Transfer</span>
           </button>
 
           <button
             onClick={() => setActiveTab('UPGRADE')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-2xl transition flex items-center gap-1.5 border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
               activeTab === 'UPGRADE'
-                ? 'bg-white text-blue-900 shadow font-bold'
-                : 'text-slate-300 hover:text-white hover:bg-white/10'
+                ? 'bg-sky-300 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-800 hover:bg-slate-100 shadow-[1.5px_1.5px_0px_#0f172a]'
             }`}
           >
-            <Upload className="w-3.5 h-3.5" />
+            <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
             <span>Upgrade Knowledge & Plugin ({knowledgeDocs.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('LEDGER')}
-            className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-2xl transition flex items-center gap-1.5 border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
               activeTab === 'LEDGER'
-                ? 'bg-white text-blue-900 shadow font-bold'
-                : 'text-slate-300 hover:text-white hover:bg-white/10'
+                ? 'bg-emerald-300 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                : 'bg-white text-slate-800 hover:bg-slate-100 shadow-[1.5px_1.5px_0px_#0f172a]'
             }`}
           >
-            <Coins className="w-3.5 h-3.5" />
+            <Coins className="w-3.5 h-3.5 stroke-[2.5px]" />
             <span>Audit Buku Besar ({transactions.length})</span>
           </button>
         </div>
       </div>
 
-      {/* ======================================================== */}
-      {/* TAB 1: SIMULATOR CHALLENGE & CREDIT TRANSFER             */}
-      {/* ======================================================== */}
+      {/* TAB 1: SIMULATOR CHALLENGE & CREDIT TRANSFER */}
       {activeTab === 'SIMULATOR' && (
         <div className="space-y-5">
           <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
@@ -242,7 +233,7 @@ export default function SkillsChallengeHub({
               </h2>
             </div>
             <p className="text-xs text-slate-600 mb-4 leading-relaxed font-semibold">
-              Uji skenario persis yang Anda jelaskan: Ketika Human lain melihat reels/feed dan ingin membuat konten serupa dengan brand & logo mereka, AI Agent Anda akan merespons, mengirim file ke Direct Message, dan sistem secara otomatis memotong kredit penanya (-15 Cr) lalu menambahkannya ke saldo AI Agent Anda (+15 Cr).
+              Uji skenario: Ketika pengguna lain memesan reels ber-brand kustom, AI Agent Anda merespons, mengirim file ke Direct Message, dan sistem memotong kredit penanya (-15 Cr) lalu menambahkannya ke saldo AI Agent Anda (+15 Cr).
             </p>
 
             {/* Scenario Picker */}
@@ -250,40 +241,40 @@ export default function SkillsChallengeHub({
               <button
                 type="button"
                 onClick={() => setSimScenario('REELS_BRAND')}
-                className={`p-3.5 rounded-xl border text-left transition ${
+                className={`p-3.5 rounded-2xl border-2 border-slate-900 text-left transition active:translate-x-0.5 active:translate-y-0.5 ${
                   simScenario === 'REELS_BRAND'
-                    ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+                    ? 'bg-sky-100 shadow-[3px_3px_0px_#0f172a]'
+                    : 'bg-slate-50 hover:bg-slate-100 shadow-[1px_1px_0px_#0f172a]'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-black text-slate-900">Contoh 1: Reels Kustom Brand Sendiri</span>
+                  <span className="text-xs font-black text-slate-900">1: Reels Kustom Brand Sendiri</span>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-sky-200 text-sky-900 border border-slate-900">
-                    Reward +15 Cr
+                    +15 Cr
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 font-medium">
-                  Human lain: &ldquo;Bagaimana cara membuat reels seperti ini, tetapi dengan logo &amp; produk saya?&rdquo;
+                  Pengguna lain: &ldquo;Buat reels seperti ini dengan logo & produk saya.&rdquo;
                 </p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSimScenario('HEALTH_ASK')}
-                className={`p-3.5 rounded-xl border text-left transition ${
+                className={`p-3.5 rounded-2xl border-2 border-slate-900 text-left transition active:translate-x-0.5 active:translate-y-0.5 ${
                   simScenario === 'HEALTH_ASK'
-                    ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-500/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+                    ? 'bg-emerald-100 shadow-[3px_3px_0px_#0f172a]'
+                    : 'bg-slate-50 hover:bg-slate-100 shadow-[1px_1px_0px_#0f172a]'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-black text-slate-900">Contoh 2: Tanya Kesehatan & Nutrisi</span>
+                  <span className="text-xs font-black text-slate-900">2: Tanya Kesehatan & Nutrisi</span>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-200 text-emerald-900 border border-slate-900">
-                    Reward +15 Cr
+                    +15 Cr
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 font-medium">
-                  Human lain bertanya rekomendasi nutrisi kerja hybrid kepada AI Agent Anda.
+                  Pengguna lain berkonsultasi rekomendasi nutrisi kerja hybrid ke AI Agent Anda.
                 </p>
               </button>
             </div>
@@ -325,25 +316,25 @@ export default function SkillsChallengeHub({
               {isProcessing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin stroke-[2.5px]" />
-                  <span>AI Agent Sedang Menganalisis Knowledge & Mengenerate Konten...</span>
+                  <span>AI Agent Menganalisis Knowledge & Mengenerate Konten...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 text-amber-700 stroke-[2.5px]" />
-                  <span>Jalankan AI Agent, Generate File ke DM & Transfer +15 AI Credits</span>
+                  <span>Jalankan AI Agent, Kirim File ke DM & Transfer +15 AI Credits</span>
                 </>
               )}
             </button>
           </div>
 
-          {/* Results Box with File DM delivery & Credit Ledger Settlement */}
+          {/* Results Box */}
           {lastSimResult && (
             <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
               <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                   <span className="font-black text-sm text-slate-900">
-                    AI Challenge Berhasil Selesai & Kredit Terdistribusi!
+                    Challenge Berhasil & Kredit Terdistribusi!
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -356,7 +347,7 @@ export default function SkillsChallengeHub({
                 </div>
               </div>
 
-              {/* Direct Message Dispatch Notice (as explicitly requested) */}
+              {/* Direct Message Dispatch Notice */}
               <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-3">
                 <Inbox className="w-5 h-5 text-[#0284C7] shrink-0 mt-0.5" />
                 <div className="text-xs font-medium">
@@ -374,30 +365,27 @@ export default function SkillsChallengeHub({
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 2: UPGRADE KNOWLEDGE & PLUGINS (DOCUMENTS / EBOOKS) */}
-      {/* ======================================================== */}
+      {/* TAB 2: UPGRADE KNOWLEDGE & PLUGINS */}
       {activeTab === 'UPGRADE' && (
         <div className="space-y-5">
-          {/* Quick Preset Install Cards */}
           <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
             <h3 className="text-sm font-black text-slate-900 mb-1 uppercase">
-              Pilihan Cepat: Dokumen Ebook & Plugin Siap Install
+              Dokumen Ebook & Plugin Siap Pasang
             </h3>
             <p className="text-xs text-slate-600 mb-4 font-medium">
-              Klik salah satu dokumen/plugin di bawah untuk langsung menambah kemampuan dan wawasan baru pada {agentProfile.name}:
+              Klik salah satu dokumen/plugin di bawah untuk langsung menambah kemampuan baru pada {agentProfile.name}:
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-sky-700 mb-1">
-                    <FileText className="w-4 h-4 stroke-[2.5px]" />
+                    <FileText className="w-4 h-4" />
                     <span className="text-[10px] font-black uppercase">Ebook PDF</span>
                   </div>
                   <h4 className="text-xs font-black text-slate-900">Pedoman Nutrisi Klinis 2026.pdf</h4>
                   <p className="text-[11px] text-slate-600 mt-1 font-medium">
-                    Menambah keahlian: Diagnosis preventif, pola makan hybrid, dan kalkulasi nutrisi.
+                    Diagnosis preventif, nutrisi kerja hybrid, kalkulasi kalori.
                   </p>
                 </div>
                 <button
@@ -411,11 +399,11 @@ export default function SkillsChallengeHub({
                   }
                   className="mt-3 py-2 px-3 rounded-2xl bg-sky-300 hover:bg-sky-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
                 >
-                  + Install Dokumen Ebook
+                  + Install Dokumen
                 </button>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-purple-900 mb-1">
                     <Cpu className="w-4 h-4 stroke-[2.5px]" />
@@ -423,7 +411,7 @@ export default function SkillsChallengeHub({
                   </div>
                   <h4 className="text-xs font-black text-slate-900">Brand Logo Reels Generator v2.5</h4>
                   <p className="text-[11px] text-slate-600 mt-1 font-medium">
-                    Menambah kemampuan: Rendering logo otomatis pada adegan 3D dan dispatch file DM.
+                    Rendering logo otomatis pada adegan 3D & dispatch file DM.
                   </p>
                 </div>
                 <button
@@ -441,7 +429,7 @@ export default function SkillsChallengeHub({
                 </button>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-amber-900 mb-1">
                     <FileCode className="w-4 h-4 stroke-[2.5px]" />
@@ -449,7 +437,7 @@ export default function SkillsChallengeHub({
                   </div>
                   <h4 className="text-xs font-black text-slate-900">Three.js WebGL Shader Pack</h4>
                   <p className="text-[11px] text-slate-600 mt-1 font-medium">
-                    Menambah kemampuan: Procedural neon shaders, emissive glow, dan district building scripts.
+                    Procedural neon shaders, emissive glow, spatial district.
                   </p>
                 </div>
                 <button
@@ -463,17 +451,17 @@ export default function SkillsChallengeHub({
                   }
                   className="mt-3 py-2 px-3 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
                 >
-                  + Install Spatial Pack
+                  + Install Spatial
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Active Knowledge & Installed Plugins List */}
+          {/* Active Knowledge List */}
           <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
             <h3 className="text-sm font-black text-slate-900 mb-3 flex items-center gap-2 uppercase">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Daftar Knowledge & Plugin Aktif Milik {agentProfile.name}</span>
+              <span>Knowledge & Plugin Aktif Milik {agentProfile.name}</span>
             </h3>
 
             <div className="divide-y-2 divide-slate-100">
@@ -481,7 +469,7 @@ export default function SkillsChallengeHub({
                 <div key={doc.id} className="py-3.5 flex items-start justify-between gap-3 text-xs">
                   <div className="flex items-start gap-3">
                     <div className="w-9 h-9 rounded-xl bg-slate-100 border-2 border-slate-900 flex items-center justify-center text-slate-800 shrink-0">
-                      {doc.type === 'EBOOK_PDF' ? <FileText className="w-4 h-4 stroke-[2.5px]" /> : <Cpu className="w-4 h-4 stroke-[2.5px]" />}
+                      {doc.type === 'EBOOK_PDF' ? <FileText className="w-4 h-4" /> : <Cpu className="w-4 h-4" />}
                     </div>
                     <div>
                       <p className="font-black text-slate-900">{doc.title}</p>
@@ -504,7 +492,7 @@ export default function SkillsChallengeHub({
                   </div>
 
                   <span className="px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-[10px] font-black border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a] shrink-0">
-                    Terindeks & Siap
+                    Aktif
                   </span>
                 </div>
               ))}
@@ -513,20 +501,18 @@ export default function SkillsChallengeHub({
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 3: AUDIT BUKU BESAR TRANSAKSI (CREDIT LEDGER)       */}
-      {/* ======================================================== */}
+      {/* TAB 3: AUDIT BUKU BESAR TRANSAKSI */}
       {activeTab === 'LEDGER' && (
         <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <h3 className="text-sm font-black text-slate-900 uppercase">Buku Besar Transaksi AI Credits Reward</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-sm font-black text-slate-900 uppercase">Buku Besar Transaksi AI Credits</h3>
+              <p className="text-xs text-slate-500 font-semibold">
                 Pencatatan transparan transfer kredit dari penanya ke AI Agent pemilik
               </p>
             </div>
             <div className="text-right">
-              <span className="text-xs text-slate-500">Akumulasi Reward:</span>
+              <span className="text-xs text-slate-500 font-bold">Akumulasi Reward:</span>
               <p className="text-base font-black text-amber-600 font-mono">+{agentCredits} AI Credits</p>
             </div>
           </div>
@@ -536,10 +522,10 @@ export default function SkillsChallengeHub({
               <thead className="bg-[#F4F7FB] text-slate-900 font-black border-b-2 border-slate-900">
                 <tr>
                   <th className="p-3">Waktu</th>
-                  <th className="p-3">Penanya (Human Lain)</th>
-                  <th className="p-3">Penerima Reward (AI Agent & Pemilik)</th>
-                  <th className="p-3">Keterangan / Query</th>
-                  <th className="p-3 text-right">Perpindahan Kredit</th>
+                  <th className="p-3">Penanya</th>
+                  <th className="p-3">Penerima</th>
+                  <th className="p-3">Keterangan</th>
+                  <th className="p-3 text-right">Kredit</th>
                   <th className="p-3 text-center">Status</th>
                 </tr>
               </thead>
