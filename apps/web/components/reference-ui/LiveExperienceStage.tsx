@@ -111,26 +111,6 @@ export default function LiveExperienceStage({
     // Engagement is unavailable until a canonical Live-session endpoint is wired.
   };
 
-  if (!liveStateAvailable) {
-    return (
-      <main className="min-h-[100dvh] bg-slate-50 px-4 py-6 text-slate-900">
-        <section className="mx-auto max-w-xl overflow-hidden rounded-3xl border-2 border-slate-900 bg-white shadow-[4px_4px_0px_#0f172a]">
-          <header className="flex items-center gap-3 border-b-2 border-slate-900 bg-slate-950 p-4 text-white">
-            <Radio className="h-5 w-5 text-rose-400" />
-            <div><h1 className="text-base font-black">Live Stage</h1><p className="text-xs text-white/70">ALLPHA UNIVERSE</p></div>
-          </header>
-          <div className="space-y-3 p-5">
-            <p role="status" className="text-sm font-black">Belum ada sesi atau pesan Live.</p>
-            <p className="text-xs leading-relaxed text-slate-600">Sesi, jumlah penonton, likes, dan pesan akan ditampilkan setelah tersedia dari layanan Allpha. Tidak ada data simulasi yang ditampilkan.</p>
-            <div className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-50 p-3 text-xs font-bold"><span>Penonton</span><span>—</span></div>
-            <div className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-50 p-3 text-xs font-bold"><span>Likes</span><span>—</span></div>
-            <button type="button" onClick={onBackToFeed} className="w-full rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-3 text-sm font-black shadow-[2px_2px_0px_#0f172a]">Kembali ke Feed</button>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
@@ -144,7 +124,7 @@ export default function LiveExperienceStage({
               </span>
               <h1 className="text-sm font-black text-slate-950">Podcast & Live Experience Arena</h1>
             </div>
-            <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{activeTopic}</p>
+            <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{activeTopic || "Sesi belum tersedia"}</p>
           </div>
         </div>
 
@@ -155,6 +135,7 @@ export default function LiveExperienceStage({
           </div>
           <button
             onClick={() => setIsLive(!isLive)}
+            disabled={!liveStateAvailable}
             className={`px-4 py-1.5 rounded-2xl text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
               isLive ? 'bg-rose-400 hover:bg-rose-500 text-slate-950' : 'bg-emerald-300 hover:bg-emerald-400 text-slate-950'
             }`}
@@ -210,6 +191,7 @@ export default function LiveExperienceStage({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setIsHostMicMuted(!isHostMicMuted)}
+                    disabled={!liveStateAvailable}
                     className={`p-2 rounded-xl transition ${
                       isHostMicMuted ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
                     }`}
@@ -219,6 +201,7 @@ export default function LiveExperienceStage({
                   </button>
                   <button
                     onClick={() => setIsHostCameraOn(!isHostCameraOn)}
+                    disabled={!liveStateAvailable}
                     className={`p-2 rounded-xl transition ${
                       !isHostCameraOn ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
                     }`}
@@ -275,6 +258,7 @@ export default function LiveExperienceStage({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setIsAiAgentMuted(!isAiAgentMuted)}
+                    disabled={!liveStateAvailable}
                     className={`p-2 rounded-2xl border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer ${
                       isAiAgentMuted ? 'bg-rose-500 text-white' : 'bg-white text-slate-900 hover:bg-slate-100'
                     }`}
@@ -317,6 +301,7 @@ export default function LiveExperienceStage({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1))}
+                  disabled={!liveStateAvailable}
                   className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.5px]" />
@@ -326,6 +311,7 @@ export default function LiveExperienceStage({
                 </span>
                 <button
                   onClick={() => setActiveSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0))}
+                  disabled={!liveStateAvailable}
                   className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   <ChevronRight className="w-4 h-4 stroke-[2.5px]" />
@@ -333,25 +319,26 @@ export default function LiveExperienceStage({
               </div>
             </div>
 
-            {/* Slide Body */}
+            {/* Slide Body — source container/styles retained; no sample deck is shown without a canonical Live session. */}
             <div className="p-4 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs space-y-2.5">
-              <span className="text-[10px] text-sky-700 font-mono font-black uppercase tracking-wider block">
-                {slides[activeSlideIndex].subtitle}
-              </span>
-              <h3 className="text-base font-black text-slate-950">
-                {slides[activeSlideIndex].title}
-              </h3>
-              <ul className="space-y-1.5 text-slate-800 font-semibold pt-1">
-                {slides[activeSlideIndex].bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="text-sky-600 font-black">•</span>
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="p-3 rounded-xl bg-sky-100 border-2 border-slate-900 text-slate-950 font-mono font-bold text-[11px] mt-2">
-                {slides[activeSlideIndex].diagram}
-              </div>
+              {!liveStateAvailable ? (
+                <p role="status" className="font-bold text-slate-600">Belum ada presentasi aktif dari layanan Live Allpha.</p>
+              ) : (
+                <>
+                  <span className="text-[10px] text-sky-700 font-mono font-black uppercase tracking-wider block">
+                    {slides[activeSlideIndex].subtitle}
+                  </span>
+                  <h3 className="text-base font-black text-slate-950">{slides[activeSlideIndex].title}</h3>
+                  <ul className="space-y-1.5 text-slate-800 font-semibold pt-1">
+                    {slides[activeSlideIndex].bullets.map((b, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-sky-600 font-black">•</span><span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="p-3 rounded-xl bg-sky-100 border-2 border-slate-900 text-slate-950 font-mono font-bold text-[11px] mt-2">{slides[activeSlideIndex].diagram}</div>
+                </>
+              )}
             </div>
           </div>
         </div>
