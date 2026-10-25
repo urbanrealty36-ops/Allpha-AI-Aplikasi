@@ -158,7 +158,7 @@ export default function ReelsView({
         className="absolute inset-0 bg-cover bg-center transition-all duration-700 ease-out"
         style={currentReel.mediaType?.startsWith('video/') ? undefined : { backgroundImage: currentReel.bgImage ? `url('${currentReel.bgImage}')` : undefined }}
       >
-        {currentReel.mediaType?.startsWith('video/') && currentReel.mediaUrl ? <video src={currentReel.mediaUrl} autoPlay muted={isMuted} loop playsInline controls className="h-full w-full object-cover" /> : null}
+        {currentReel.mediaType?.startsWith('video/') && currentReel.mediaUrl ? <video src={currentReel.mediaUrl} autoPlay muted={isMuted} loop playsInline className="h-full w-full object-cover" /> : currentReel.mediaType?.startsWith('audio/') && currentReel.mediaUrl ? <audio src={currentReel.mediaUrl} autoPlay muted={isMuted} loop /> : null}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/90" />
       </div>
 
