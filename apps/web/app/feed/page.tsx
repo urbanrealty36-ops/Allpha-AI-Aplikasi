@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import FeedView from "../../components/reference-ui/FeedView";
-import type { PostItem } from "@/lib/store";
+import type { PostItem } from "../../lib/reference-store";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
