@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Sparkles, 
   User, 
@@ -28,6 +28,17 @@ import {
   AVATAR_3D_CATALOG, 
   BIDANG_SKILLS_CATALOG 
 } from '@/lib/reference-store';
+
+type SkillCatalogEntry = {
+  key: string;
+  name: string;
+  slug: string;
+  category: string;
+  catalog_version?: string;
+  source?: { kind?: string };
+  character_profile?: Record<string, unknown>;
+};
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://api.allpha.web.id' : 'http://localhost:8000')).replace(/\/$/, '');
 
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
@@ -86,16 +97,49 @@ export default function AuthOnboardingFlow({
   );
   const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [submissionError, setSubmissionError] = useState('');
+  const [skillsLoading, setSkillsLoading] = useState(true);
+  const [skillsError, setSkillsError] = useState('');
+  const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const loadSkills = async () => {
+      setSkillsLoading(true);
+      setSkillsError('');
+      try {
+        const pages = await Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
+          const response = await fetch(apiBase + '/v1/skill-catalog?limit=100&offset=' + offset, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`Katalog Skill tidak tersedia (HTTP ${response.status}).`);
+          return await response.json() as { items?: SkillCatalogEntry[] };
+        }));
+        const unique = new Map<string, SkillCatalogEntry>();
+        for (const item of pages.flatMap(page => page.items ?? [])) {
+          const key = item.key?.trim();
+          if (key && item.name?.trim()) unique.set(key, item);
+        }
+        if (active) {
+          setAvailableSkills(Array.from(unique.values()));
+          if (!unique.size) setSkillsError('Katalog Skill kanonis belum memiliki item yang dapat dipilih.');
+        }
+      } catch (cause) {
+        if (active) setSkillsError(cause instanceof Error ? cause.message : 'Katalog Skill gagal dimuat.');
+      } finally {
+        if (active) setSkillsLoading(false);
+      }
+    };
+    void loadSkills();
+    return () => { active = false; };
+  }, []);
 
   if (!isOpen) return null;
 
   const humanAvatars = [
-    { label: 'Alex (Tech & Spatial)', url: 'https://picsum.photos/seed/alex-tamara/200/200' },
-    { label: 'Raka (Builder & Product)', url: 'https://picsum.photos/seed/raka/200/200' },
-    { label: 'Sari (Fashion & 3D)', url: 'https://picsum.photos/seed/sari/200/200' },
-    { label: 'Mika (Digital Artist)', url: 'https://picsum.photos/seed/mika/200/200' },
-    { label: 'Dr. Andi (Medical Health)', url: 'https://picsum.photos/seed/drandi/200/200' },
+    { label: 'Alex (Tech & Spatial)', url: '/icon.svg' },
+    { label: 'Raka (Builder & Product)', url: '/icon.svg' },
+    { label: 'Sari (Fashion & 3D)', url: '/icon.svg' },
+    { label: 'Mika (Digital Artist)', url: '/icon.svg' },
+    { label: 'Dr. Andi (Medical Health)', url: '/icon.svg' },
   ];
 
   const availableInterests = [
@@ -117,14 +161,14 @@ export default function AuthOnboardingFlow({
 
   const handleFinishOnboarding = async () => {
     if (isSubmitting) return;
-    setSubmitError('');
+    setSubmissionError('');
     if (!humanEmail.trim() || !humanPassword) {
-      setSubmitError('Masukkan email dan password untuk melanjutkan.');
+      setSubmissionError('Masukkan email dan password untuk melanjutkan.');
       setStep('HUMAN_REGISTER');
       return;
     }
     if (authMode === 'REGISTER' && humanPassword.length < 8) {
-      setSubmitError('Password pendaftaran minimal 8 karakter.');
+      setSubmissionError('Password pendaftaran minimal 8 karakter.');
       setStep('HUMAN_REGISTER');
       return;
     }
@@ -169,7 +213,7 @@ export default function AuthOnboardingFlow({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-[6px_6px_0px_#0f172a] border-3 border-slate-900 overflow-hidden flex flex-col max-h-[92vh]">
-        {submitError && <p role="alert" className="mx-4 mt-4 rounded-xl border-2 border-rose-500 bg-white p-3 text-xs font-bold text-rose-700">{submitError}</p>}
+        {submissionError && <p role="alert" className="mx-4 mt-4 rounded-xl border-2 border-rose-500 bg-white p-3 text-xs font-bold text-rose-700">{submissionError}</p>}
         {/* Top Dismiss Button */}
         <button
           onClick={onClose}
@@ -579,7 +623,7 @@ export default function AuthOnboardingFlow({
                         type="button"
                         onClick={() => {
                           setSelectedBidang(b);
-                          setSelectedSkills(BIDANG_SKILLS_CATALOG[b]?.skills.slice(0, 3) || []);
+                          setSelectedSkills([]);
                           setAgentSpecialty(BIDANG_SKILLS_CATALOG[b]?.label || b);
                         }}
                         className={`py-1.5 px-2 rounded-xl text-[11px] font-black border-2 border-slate-900 transition text-center truncate active:translate-x-0.5 active:translate-y-0.5 ${
@@ -604,12 +648,18 @@ export default function AuthOnboardingFlow({
                   Katalog Skills Terpilih ({selectedSkills.length}):
                 </label>
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 bg-slate-50 rounded-2xl border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
-                  {BIDANG_SKILLS_CATALOG[selectedBidang]?.skills.map((skill) => {
+                  {skillsLoading ? (
+                    <p role="status" className="p-2 text-[10px] font-bold text-slate-600">Memuat katalog Skill kanonis…</p>
+                  ) : skillsError ? (
+                    <p role="alert" className="p-2 text-[10px] font-bold text-rose-700">{skillsError}</p>
+                  ) : availableSkills.map((item) => {
+                    const skill = item.name;
                     const isSelected = selectedSkills.includes(skill);
                     return (
                       <button
-                        key={skill}
+                        key={item.key}
                         type="button"
+                        aria-pressed={isSelected}
                         onClick={() => {
                           if (isSelected) {
                             setSelectedSkills(selectedSkills.filter(s => s !== skill));
@@ -691,7 +741,7 @@ export default function AuthOnboardingFlow({
               <button
                 type="button"
                 onClick={() => void handleFinishOnboarding()}
-                disabled={isSubmitting}
+                disabled={isSubmitting || skillsLoading || Boolean(skillsError) || availableSkills.length === 0}
                 className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50"
               >
                 <span>{isSubmitting ? 'Memproses…' : 'Selesai & Masuk ke Universe 🚀'}</span>
