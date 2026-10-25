@@ -881,7 +881,7 @@ export default function AiCinemaView({
                       <Upload className="w-3.5 h-3.5 text-rose-400" />
                       File Trailer Video (MP4 / 4K)
                     </span>
-                    <span className="text-[10px] text-emerald-400 font-mono font-bold">Terunggah ✓</span>
+                    <span className="text-[10px] text-slate-400 font-mono font-bold">{isTrailerUploaded ? "Terunggah ✓" : "Belum diunggah"}</span>
                   </div>
                   <p className="text-[11px] text-slate-300 font-mono truncate">{trailerFileName}</p>
                   
@@ -893,7 +893,7 @@ export default function AiCinemaView({
 
                     <button
                       type="button"
-                      onClick={() => setIsPreviewingTrailer(!isPreviewingTrailer)}
+                      onClick={() => { if (!trailerFileName || !isTrailerUploaded) { showToast("Unggah trailer melalui layanan media kanonis terlebih dahulu. Belum ada file yang tersimpan."); return; } setIsPreviewingTrailer(!isPreviewingTrailer); }}
                       className="px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center gap-1"
                     >
                       <Play className="w-2.5 h-2.5 fill-white" />
