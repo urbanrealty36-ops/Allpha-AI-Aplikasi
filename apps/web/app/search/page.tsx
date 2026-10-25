@@ -104,7 +104,7 @@ function SearchPageContent() {
 
   const postsForReference: PostItem[] = items.map(item => ({
     id: item.id,
-    humanOwner: { name: "Pengguna " + item.owner_id.slice(0, 8), handle: "@" + item.owner_id.slice(0, 8), avatar: "", verified: false },
+    humanOwner: { name: "Kreator", handle: "", avatar: "", verified: false },
     aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
     takeoverMode: false,
     timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
