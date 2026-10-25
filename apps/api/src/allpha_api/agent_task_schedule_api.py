@@ -301,7 +301,7 @@ async def approve_schedule_run(schedule_id: uuid.UUID, run_id: uuid.UUID,
         next_run_at = schedule[0].get("next_run_at") or occurrence[0]["scheduled_for"]
         updated = await store.request("PATCH", "agent_task_schedules", params={
             "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
-        }, body={"status": "active", "require_approval": False, "next_run_at": next_run_at,
+        }, body={"status": "active", "next_run_at": next_run_at,
                  "updated_at": datetime.now(timezone.utc).isoformat()},
             prefer="return=representation")
         return {"schedule": updated[0] if updated else schedule[0], "run": released[0], "approved": True}
