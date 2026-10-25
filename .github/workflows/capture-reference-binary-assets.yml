@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/capture-reference-binary-assets.yml"
+      - "docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md"
   workflow_dispatch:
 
 permissions:
@@ -46,7 +47,7 @@ jobs:
               with urllib.request.urlopen(request, timeout=90) as response:
                   data = response.read()
               actual_size = len(data)
-              git_sha = hashlib.sha1(b"blob " + str(actual_size).encode() + b"\\0" + data).hexdigest()
+              git_sha = hashlib.sha1(b"blob " + str(actual_size).encode() + b"\0" + data).hexdigest()
               sha256 = hashlib.sha256(data).hexdigest()
               if actual_size != expected_size:
                   raise SystemExit(f"SIZE MISMATCH {relpath}: expected {expected_size}, got {actual_size}")
