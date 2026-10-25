@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
@@ -11,6 +12,7 @@ const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV =
 
 export default function SearchPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
+  const searchParams = useSearchParams();
   const [session, setSession] = useState<Session | null>(null);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<SearchItem[]>([]);
@@ -23,7 +25,7 @@ export default function SearchPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
-  const initialQueryHandled = useRef(false);
+  const lastUrlQuery = useRef<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -84,18 +86,17 @@ export default function SearchPage() {
     } finally { setBusy(false); }
   }, [query, session]);
 
+  const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
+
   useEffect(() => {
-    if (!session || initialQueryHandled.current) return;
-    const initialQuery = new URLSearchParams(window.location.search).get("q")?.trim().slice(0, 100);
-    initialQueryHandled.current = true;
-    if (!initialQuery || initialQuery.length < 2) return;
-    setQuery(initialQuery);
-    void runSearch(undefined, initialQuery);
-  }, [session, runSearch]);
+    if (!session || !urlQuery || urlQuery.length < 2 || lastUrlQuery.current === urlQuery) return;
+    lastUrlQuery.current = urlQuery;
+    setQuery(urlQuery);
+    void runSearch(undefined, urlQuery);
+  }, [session, urlQuery, runSearch]);
 
   return <>
     <main className="allpha-page allpha-search-page" style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
-    <a href="/" style={{ color: "inherit", textDecoration: "none" }}>← Allpha</a>
     <h1 style={{ fontSize: 32, marginBottom: 8 }}>Search & Discovery</h1>
     <p style={{ lineHeight: 1.6, opacity: .75 }}>Temukan konten yang sudah dipublikasikan dan disetujui. Hasil mengikuti aturan visibilitas, follow, block, dan mute akun Anda.</p>
     {!session && <p role="status">Masuk ke Allpha untuk menggunakan pencarian dan tren personal.</p>}
