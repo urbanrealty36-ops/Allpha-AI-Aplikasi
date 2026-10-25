@@ -7,6 +7,7 @@ published skill, tool registration, policy, approvals and budget.
 from __future__ import annotations
 
 import uuid
+import json
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -44,6 +45,17 @@ class TaskScheduleCreate(BaseModel):
     granted_permission_scopes: list[str] = Field(default_factory=list, max_length=40)
     budget_limit: dict[str, Any] = Field(default_factory=dict)
     input_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("input_payload")
+    @classmethod
+    def validate_input_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError) as exc:
+            raise ValueError("input_payload must be finite JSON data") from exc
+        if len(encoded) > 16_384:
+            raise ValueError("input_payload exceeds 16 KiB")
+        return value
 
     @field_validator("weekdays")
     @classmethod
