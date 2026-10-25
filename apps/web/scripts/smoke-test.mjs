@@ -194,6 +194,13 @@ for (const contract of [
 ]) assert.ok(webCreate.includes(contract), "missing Web Create lifecycle contract: " + contract);
 assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
+assert.doesNotMatch(webCreate, /aria-label="Navigasi utama"/, "Create must use shared global navigation without a duplicate local nav");
+const webStoriesShell = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(webStoriesShell, /mb-6 flex items-center justify-between gap-3/, "Stories must use shared global navigation without duplicate route links");
+const webReelsShell = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(webReelsShell, /href="\/feed"[^>]*>← Feed/, "Reels must not render duplicate page-local route navigation");
+
+
 const webFeed = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/feed", "/v1/feed/preferences", "session.access_token", 'role="alert"']) {
   assert.ok(webFeed.includes(contract), "missing Web Feed API/error contract: " + contract);
