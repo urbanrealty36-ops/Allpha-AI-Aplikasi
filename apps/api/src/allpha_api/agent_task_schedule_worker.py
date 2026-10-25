@@ -70,7 +70,7 @@ async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: i
             })
             if existing:
                 occurrence = existing[0]
-                if occurrence["status"] in {"succeeded", "partially_succeeded", "failed", "timed_out", "cancelled", "waiting_for_approval"}:
+                if occurrence["status"] in {"succeeded", "partially_succeeded", "failed", "timed_out", "cancelled"} or (occurrence["status"] == "waiting_for_approval" and schedule.get("require_approval")):
                     summary["skipped"] += 1
                     continue
             else:
