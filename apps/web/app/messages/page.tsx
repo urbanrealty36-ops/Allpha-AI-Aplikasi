@@ -29,7 +29,7 @@ export default function MessagesPage(){
  return <main className="min-h-screen bg-sky-50 pb-24 pt-4">
   {!active ? <MessagesView conversations={referenceConversations} loading={busy} errorMessage={error} onRetry={() => { void load(); }} noticeMessage={notice} onBack={() => { window.location.assign("/feed"); }} onOpenChat={(_name, conversationId) => { const conversation = items.find(item => item.id === conversationId); if (conversation) void open(conversation); }} /> :
   <section className="mx-auto flex min-h-[70dvh] max-w-xl flex-col px-3 sm:px-4">
-   {error && <p role="alert" className="rounded-xl border-2 border-rose-500 bg-white p-3 text-sm font-bold text-rose-700">{error}</p>}
+   {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border-2 border-rose-500 bg-white p-3 text-sm font-bold text-rose-700"><span>{error}</span><button type="button" onClick={() => { void open(active); }} disabled={busy} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] disabled:opacity-50">Coba lagi</button></div>}
    {notice && <p role="status" className="rounded-xl border-2 border-emerald-500 bg-white p-3 text-sm font-bold text-emerald-700">{notice}</p>}
    <header className="mb-4 flex items-center gap-3 rounded-3xl border-2 border-slate-900 bg-sky-50 p-4 shadow-[3px_3px_0px_#0f172a]">
     <button type="button" onClick={() => { setActive(null); setMessages([]); }} className="rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]">Kembali</button>
