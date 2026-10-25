@@ -198,3 +198,30 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-feed-comment-form button{padding:10px 14px;border:0;border-radius:13px;background:#155eef;color:#fff;font-weight:700}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:560px){.allpha-feed-card{border-radius:17px}.allpha-feed-card-meta{padding:12px}.allpha-feed-owner-mark{width:36px;height:36px;flex-basis:36px}.allpha-feed-report select{width:88px}.allpha-feed-report button{padding:6px 3px}.allpha-feed-card-body{padding:13px;font-size:13px}.allpha-feed-actions{padding:10px;gap:5px}.allpha-feed-actions button{font-size:11px;padding:7px 8px}.allpha-feed-comment-form{gap:6px}}
+
+
+/* Reference Feed composition: keep source hierarchy, with canonical routes/data. */
+.reference-feed-chrome{width:100%;max-width:760px;margin:0 auto;background:#fff;color:#172033}
+.reference-feed-tabs{display:flex;align-items:stretch;justify-content:space-around;gap:4px;min-height:76px;border-bottom:1px solid #e2e8f0;background:rgba(255,255,255,.97)}
+.reference-feed-tabs>a{position:relative;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px 9px;color:#64748b;font-size:clamp(12px,2.5vw,16px);font-weight:750;text-align:center}
+.reference-feed-tabs>a.is-active{color:#111827}
+.reference-feed-tabs>a.is-active:after{position:absolute;bottom:0;left:12%;right:12%;height:4px;border-radius:4px 4px 0 0;background:#111827;content:""}
+.reference-feed-tabs .reference-feed-reels{color:#374151}
+.reference-feed-reels b{padding:3px 8px;border:1px solid #fbcfe8;border-radius:999px;background:#fff1f2;color:#e11d48;font-size:10px}
+.reference-stories{display:flex;align-items:flex-start;gap:22px;overflow-x:auto;padding:22px 15px 18px;border-bottom:1px solid #e5e7eb;scrollbar-width:thin;scroll-snap-type:x proximity}
+.reference-story-add{display:flex;flex:0 0 88px;flex-direction:column;align-items:center;gap:8px;color:#475569;scroll-snap-align:start}
+.reference-story-add>span{display:grid;place-items:center;width:86px;height:86px;border:4px dashed #60a5fa;border-radius:50%;background:#eff6ff;color:#2563eb}
+.reference-story-add strong{font-size:14px;font-weight:600}
+.reference-stories-empty{display:flex;align-items:center;gap:10px;min-width:210px;max-width:260px;color:#64748b;font-size:12px;line-height:1.5}
+.reference-story-empty-icon{display:grid;place-items:center;flex:0 0 54px;width:54px;height:54px;border:3px solid #bfdbfe;border-radius:50%;color:#2563eb;background:#eff6ff}
+.reference-live-stage{display:block;margin:12px 0 18px;padding:22px 20px;border-radius:0;background:linear-gradient(115deg,#3b0764 0%,#111827 54%,#1e1b4b 100%);color:#fff}
+.reference-live-stage-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.reference-live-stage-top>span,.reference-live-stage-top small{display:inline-flex;align-items:center;gap:7px}
+.reference-live-stage-top>span{padding:7px 12px;border:1px solid #be185d;border-radius:999px;background:#83184380;color:#fda4af;font-size:11px;font-weight:850;letter-spacing:.08em}
+.reference-live-stage-top small{color:#c7d2fe;font-size:11px}
+.reference-live-stage h2{margin:19px 0 8px;color:#fff;font-size:clamp(20px,4vw,28px);line-height:1.25;font-weight:850}
+.reference-live-stage p{margin:0;color:#d1d5db;font-size:14px;line-height:1.6}
+.reference-live-stage-cta{display:inline-flex;align-items:center;gap:9px;margin-top:20px;padding:12px 17px;border-radius:16px;background:linear-gradient(100deg,#e11d48,#a21caf,#7c3aed);color:#fff;font-weight:800;font-size:14px}
+.allpha-feed-page>header{display:none!important}
+@media(min-width:760px){.reference-live-stage{border-radius:20px;margin:16px 12px 20px}.reference-feed-tabs{border-radius:0}}
+@media(max-width:560px){.reference-feed-tabs{min-height:72px;gap:0}.reference-feed-tabs>a{padding:11px 5px;font-size:12px}.reference-feed-tabs .reference-feed-reels{max-width:118px;flex-wrap:wrap;gap:5px}.reference-stories{gap:17px;padding:17px 12px 14px}.reference-story-add{flex-basis:78px}.reference-story-add>span{width:76px;height:76px}.reference-live-stage{margin:10px 0 14px;padding:19px 15px}.reference-live-stage-cta{width:100%;justify-content:center}}
