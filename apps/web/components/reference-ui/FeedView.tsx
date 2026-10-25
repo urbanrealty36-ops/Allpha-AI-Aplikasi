@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import type { PostItem } from '../../lib/reference-store';
 
+type FeedReportReason = 'spam' | 'harassment' | 'privacy' | 'misinformation' | 'other';
+
 interface FeedViewProps {
   posts: PostItem[];
   onLikePost: (postId: string) => void;
@@ -39,6 +41,7 @@ interface FeedViewProps {
   onSharePost?: (postId: string) => void;
   onRepostPost?: (postId: string) => void;
   onLoadComments?: (postId: string) => void;
+  onReportPost?: (postId: string, reason: FeedReportReason) => void;
   initialCommentsPostId?: string | null;
 }
 
@@ -60,12 +63,15 @@ export default function FeedView({
   onSharePost,
   onRepostPost,
   onLoadComments,
+  onReportPost,
   initialCommentsPostId,
 }: FeedViewProps) {
   const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
   const [initialCommentsHandled, setInitialCommentsHandled] = useState(false);
+  const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
+  const [reportReasons, setReportReasons] = useState<Record<string, FeedReportReason>>({});
 
   // Production stories come from the authenticated API; never seed demo identities.
   const stories = storiesData ?? [];
@@ -272,9 +278,24 @@ export default function FeedView({
                   <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black uppercase tracking-wider">
                     {productionMode ? "KREATOR" : "HUMAN OWNER"}
                   </span>
-                  <button className="text-slate-400 hover:text-slate-800 p-1">
-                    <MoreHorizontal className="w-4.5 h-4.5" />
-                  </button>
+                  <div className="relative">
+                    <button type="button" aria-label="Menu postingan" aria-expanded={openPostMenuId === post.id} onClick={() => setOpenPostMenuId(current => current === post.id ? null : post.id)} className="text-slate-400 hover:text-slate-800 p-1">
+                      <MoreHorizontal className="w-4.5 h-4.5" />
+                    </button>
+                    {openPostMenuId === post.id && (
+                      <div className="absolute right-0 top-8 z-40 w-56 rounded-2xl border-2 border-slate-900 bg-white p-3 shadow-[3px_3px_0px_#0f172a]">
+                        <p className="mb-2 text-xs font-black text-slate-900">Laporkan konten</p>
+                        <select aria-label="Alasan laporan" value={reportReasons[post.id] ?? 'other'} onChange={event => setReportReasons(current => ({ ...current, [post.id]: event.target.value as FeedReportReason }))} className="w-full rounded-xl border-2 border-slate-900 bg-white px-2 py-2 text-xs font-semibold text-slate-900">
+                          <option value="spam">Spam</option>
+                          <option value="harassment">Pelecehan</option>
+                          <option value="privacy">Privasi</option>
+                          <option value="misinformation">Misinformasi</option>
+                          <option value="other">Lainnya</option>
+                        </select>
+                        <button type="button" disabled={!onReportPost} onClick={() => { onReportPost?.(post.id, reportReasons[post.id] ?? 'other'); setOpenPostMenuId(null); }} className="mt-2 w-full rounded-xl border-2 border-slate-900 bg-rose-200 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">Kirim laporan</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
