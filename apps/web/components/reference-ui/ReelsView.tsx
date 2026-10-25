@@ -54,6 +54,7 @@ interface ReelsViewProps {
   onOpenLiveStage?: () => void;
   onOpenFilmAi?: (filmId?: string) => void;
   reels?: ReelItem[];
+  loading?: boolean;
   onToggleLike?: (reel: ReelItem) => void;
   onShare?: (reel: ReelItem) => void;
   onOpenComments?: (reel: ReelItem) => void;
@@ -66,6 +67,7 @@ export default function ReelsView({
   onOpenLiveStage,
   onOpenFilmAi,
   reels,
+  loading = false,
   onToggleLike,
   onShare,
   onOpenComments,
@@ -144,7 +146,7 @@ export default function ReelsView({
     setTouchStartY(null);
   };
 
-  if (!currentReel) return <div className="relative flex min-h-[70dvh] w-full items-center justify-center bg-black px-6 text-center text-white"><div><p className="text-lg font-black">Belum ada Reels</p><p className="mt-2 text-sm text-white/70">Konten video/audio akan tampil setelah tersedia dari layanan Allpha.</p></div></div>;
+  if (!currentReel) return <div className="relative flex min-h-[70dvh] w-full items-center justify-center bg-black px-6 text-center text-white"><div>{loading ? <p role="status" className="text-sm text-white/70">Memuat Reels…</p> : <><p className="text-lg font-black">Belum ada Reels</p><p className="mt-2 text-sm text-white/70">Konten video/audio akan tampil setelah tersedia dari layanan Allpha.</p></>}</div></div>;
 
   return (
     <div 
