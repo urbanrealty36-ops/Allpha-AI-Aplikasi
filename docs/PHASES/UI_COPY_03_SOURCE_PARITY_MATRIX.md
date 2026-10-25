@@ -143,3 +143,35 @@ A direct source/target comparison was performed for the 25 top-level React compo
 - Public asset inventory: the reference repository has 23 files under `public/`; the target has 22 corresponding files under `apps/web/public/`. The one source asset not yet copied is `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png`. Binary transfer was not available through the current repository-file path, so it remains an explicit WP-01 asset-parity blocker rather than being silently omitted or replaced with invented artwork.
 - Separately, the reference manifest points to `/icon-192.png` and `/icon-512.png`, which are absent from the reference public tree. The target's `/icon.svg` remains the existing valid icon; do not switch the manifest to missing PNG paths.
 - UI-COPY-03 remains `in_progress`; WP-02 remains next in sequence and blocked by WP-01 acceptance evidence.
+
+
+## WP-01 continuation — production error recovery, catalog fail-closed behavior, and visual coverage (2026-10-26)
+
+### Route error/retry recovery
+
+- Feed: added a source-styled **Coba lagi** action connected to `loadFeed(true)`; this retries the canonical authenticated Feed request.
+- Explore/Search: added retry actions for search results, trends, and recommendations, each calling its existing canonical API loader.
+- Messages: added retry actions for conversation-list load and active conversation load. The handlers reuse the existing authenticated messaging API, not local success simulation.
+- Reels: retained the source-styled media-unavailable state and API-load retry button; retry does not invent a playable URL.
+- Live: synthetic audio-spectrum and Agent turn-taking timers were removed. The route remains fail-closed until a canonical Live session exists; viewer/like counts and chat identities remain empty.
+- AI Cinema and Marketplace: fixed route/component contract mismatches by adding optional canonical catalog props to the existing reference components. Production routes explicitly enable `productionMode`, pass empty catalog arrays and `catalogState="unavailable"`, and do not display the reference repository's demo movies/listings. Purchase, local publish, and local approval simulation remain unavailable in production mode. Existing reference layout classes and component structure are retained.
+
+### Expanded automated evidence
+
+- `apps/web/scripts/visual-smoke.mjs` now covers 22 existing routes at 360×800, 390×844, 820×1000, and 1440×1000; this is 88 route/viewport captures when the workflow completes.
+- HTTP responses with status 400 or above now fail the visual route check, in addition to navigation failures and horizontal overflow.
+- `apps/web/scripts/smoke-test.mjs` now guards the Feed/Search/Messages retry contracts, production-safe AI Cinema and Marketplace catalogs, and the four required viewport widths.
+- Workflow: [Reference UI Validation](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/workflows/reference-ui-validation.yml).
+
+### Configuration reconciliation (source-derived facts)
+
+- Reference `app/globals.css` and target `apps/web/reference-source/app/globals.css` are byte-identical (both only import Tailwind CSS and `tw-animate-css`). Target `apps/web/app/globals.css` contains additional existing application styles; replacing it wholesale would remove required monorepo/auth shell styling, so it is not overwritten blindly.
+- Reference `postcss.config.mjs` includes `@tailwindcss/postcss` and `autoprefixer`; target uses Tailwind CSS v4's `@tailwindcss/postcss` plugin. This is a toolchain difference, not an omitted visual component; adding or replacing dependencies without build evidence is deferred.
+- Target Next configuration preserves monorepo standalone output and `poweredByHeader: false`; reference-only remote `picsum.photos` allowance is not copied because production UI must not depend on demo avatars.
+- Target PWA manifest keeps standalone mode, `start_url` and `scope` at `/`, and the existing `/icon.svg`. The source manifest's `/icon-192.png` and `/icon-512.png` do not exist in the source public tree, so those broken paths are not adopted.
+
+### Remaining WP-01 acceptance blockers
+
+- The source image `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` is still missing from target. The current GitHub connector cannot read the binary body through its UTF-8-only fetch path, so the exact source bytes could not be copied safely in this execution. It remains open; no substitute image was invented.
+- Visual screenshots, final Web typecheck/build, and the final visual workflow outcome must be inspected after the latest commit. The previous CI attempt exposed a type contract mismatch in AI Cinema, then catalog prop mismatches in Marketplace and a stale Live simulator setter; fixes are committed, but a later green run is required to prove them.
+- UI-COPY-03 remains `in_progress` until the workflow passes, artifacts are confirmed, and the missing source binary is reconciled. WP-02 remains blocked.
