@@ -178,8 +178,8 @@ async def _verify_runtime_binding(store: AgentRuntimeStore, owner_id: str, paylo
     skill_budget = skill.get("budget_limits") or {}
     for key in ("max_runtime_seconds", "max_tool_calls"):
         requested = payload.budget_limit.get(key)
-        allowed = skill_budget.get(key)
-        if requested is not None and allowed is not None and (not isinstance(requested, int) or requested < 1 or requested > int(allowed)):
+        allowed = skill_budget.get(key, 30 if key == "max_runtime_seconds" else 1)
+        if requested is not None and (not isinstance(requested, int) or isinstance(requested, bool) or requested < 1 or requested > int(allowed)):
             raise HTTPException(status_code=403, detail={
                 "code": "TASK_BUDGET_EXCEEDS_SKILL_LIMIT", "message": "Budget Task melampaui batas Skill yang dipublikasikan."
             })
@@ -247,6 +247,8 @@ async def create_schedule(payload: TaskScheduleCreate,
         raise _storage_error(exc) from exc
     except WorkflowPersistenceError as exc:
         raise HTTPException(status_code=503, detail={"code": "WORKFLOW_STORAGE_UNAVAILABLE", "message": "Definisi Workflow tidak dapat disimpan."}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"code": "WORKFLOW_NOT_CONFIGURED", "message": "Penyimpanan Workflow Engine belum dikonfigurasi."}) from exc
 
 
 @router.get("")
