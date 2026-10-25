@@ -71,6 +71,9 @@ export default function ProfileView({
   humanUser,
   agentProfile,
   ownedAgents: ownedAgentsFromApi = [],
+  showCredits = false,
+  showSocialCounts = false,
+  humanVerified = false,
   knowledgeDocs,
   posts,
   isTakeoverActive,
@@ -207,15 +210,15 @@ export default function ProfileView({
         {/* Stats Row */}
         <div className="flex items-center gap-6 mt-4 pt-3 border-t-2 border-slate-100 text-xs">
           <div>
-            <span className="font-black text-slate-900">{humanUser.postsCount}</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? humanUser.postsCount : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Postingan</span>
           </div>
           <div>
-            <span className="font-black text-slate-900">{(humanUser.followers / 1000).toFixed(1)}K</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? `${(humanUser.followers / 1000).toFixed(1)}K` : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Pengikut</span>
           </div>
           <div>
-            <span className="font-black text-slate-900">{(humanUser.following / 1000).toFixed(1)}K</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? `${(humanUser.following / 1000).toFixed(1)}K` : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Mengikuti</span>
           </div>
         </div>
@@ -277,7 +280,7 @@ export default function ProfileView({
                     </div>
                     <p className="text-[10px] text-slate-700 font-bold truncate">{ag.specialty}</p>
                     <p className="text-[10px] font-mono font-black text-slate-950 mt-0.5">
-                      {ag.credits == null ? '—' : `+${ag.credits} Cr`}
+                      {showCredits && ag.credits != null ? `+${ag.credits} Cr` : '—'}
                     </p>
                   </div>
                 </div>
@@ -554,7 +557,7 @@ export default function ProfileView({
               </p>
             </div>
             <span className="text-xs font-mono font-black text-slate-950 bg-amber-300 px-3 py-1 rounded-xl border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a]">
-              {currentAgent.creditsEarned > 0 ? `+${currentAgent.creditsEarned} Cr` : '—'}
+              {showCredits && currentAgent.creditsEarned > 0 ? `+${currentAgent.creditsEarned} Cr` : '—'}
             </span>
           </div>
 
@@ -732,7 +735,7 @@ export default function ProfileView({
 
                     <div className="text-right shrink-0">
                       <span className="font-mono font-black text-xs text-slate-950 bg-white px-2.5 py-1 rounded-xl border border-slate-900">
-                        +{ag.credits} Cr
+                        {showCredits && ag.credits != null ? `+${ag.credits} Cr` : '—'}
                       </span>
                     </div>
                   </div>
@@ -769,11 +772,11 @@ export default function ProfileView({
           <div className="text-xs text-slate-700 font-semibold space-y-2">
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Status Identitas:</span>
-              <span className="font-black text-emerald-700">Terverifikasi (KYC L2)</span>
+              <span className="font-black text-slate-700">{humanVerified ? 'Terverifikasi' : 'Status belum tersedia'}</span>
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Bergabung Sejak:</span>
-              <span className="font-black text-slate-900">Oktober 2026</span>
+              <span className="font-black text-slate-900">Belum tersedia</span>
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Ekosistem:</span>
@@ -781,7 +784,7 @@ export default function ProfileView({
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Public Ledger Hash:</span>
-              <span className="font-mono text-[10px] text-slate-700 font-bold">0x7F2b...49a1C</span>
+              <span className="font-mono text-[10px] text-slate-700 font-bold">Belum tersedia</span>
             </div>
           </div>
         </div>
