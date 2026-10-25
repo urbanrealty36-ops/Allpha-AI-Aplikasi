@@ -205,11 +205,16 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
         }
     except WorkflowNodeError as exc:
         try:
-            await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
-                "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
-                "owner_user_id": f"eq.{owner_id}",
-            }, body={"status": "failed", "completed_at": datetime.now(timezone.utc).isoformat(),
-                     "error_code": "WORKFLOW_AGENT_TASK_BLOCKED"}, prefer="return=representation")
+            latest = await runtime_store.request("GET", "agent_task_schedule_runs", params={
+                "select": "status", "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+                "owner_user_id": f"eq.{owner_id}", "limit": "1",
+            })
+            if latest and latest[0].get("status") in {"claimed", "running"}:
+                await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
+                    "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+                    "owner_user_id": f"eq.{owner_id}",
+                }, body={"status": "failed", "completed_at": datetime.now(timezone.utc).isoformat(),
+                         "error_code": "WORKFLOW_AGENT_TASK_BLOCKED"}, prefer="return=representation")
         except Exception:
             pass
         raise
