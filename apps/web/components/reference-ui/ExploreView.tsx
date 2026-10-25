@@ -225,6 +225,7 @@ interface ExploreViewProps {
   recommendationsLoading?: boolean;
   recommendationsError?: string;
   trendsLoading?: boolean;
+  trendsError?: string;
 }
 
 type SearchTab = 'ALL' | 'ACCOUNTS' | 'POSTS' | 'HASHTAGS' | 'PRD_HUB';
@@ -247,6 +248,7 @@ export default function ExploreView({
   recommendationsLoading = false,
   recommendationsError = "",
   trendsLoading = false,
+  trendsError = "",
 }: ExploreViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchTab, setActiveSearchTab] = useState<SearchTab>(productionMode ? 'POSTS' : 'ALL');
@@ -512,7 +514,7 @@ export default function ExploreView({
               <button key={trend.topic} type="button" onClick={() => { setSearchQuery(trend.topic); onSearch?.(trend.topic); }} className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5">
                 #{trend.topic} <span className="ml-1 text-slate-500">({trend.content_count})</span>
               </button>
-            ))}</div> : <p className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">{trendsLoading ? "Memuat tren…" : "Tren akan tampil saat tersedia konten publik yang dapat diakses."}</p>}
+            ))}</div> : <p className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">{trendsLoading ? "Memuat tren…" : trendsError || "Tren akan tampil saat tersedia konten publik yang dapat diakses."}</p>}
           </section>
         )}
         {productionMode && (
