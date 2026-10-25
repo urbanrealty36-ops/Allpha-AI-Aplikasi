@@ -320,21 +320,19 @@ export default function ReelsView({
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* RIGHT ACTION ICONS SIDEBAR (TikTok / Instagram Style)    */}
-      {/* ======================================================== */}
+      {/* RIGHT ACTION ICONS SIDEBAR (Neo-Brutalist Soft Pastel Style) */}
       <div className="absolute right-2.5 sm:right-4 bottom-24 sm:bottom-28 z-30 flex flex-col items-center gap-3.5">
         {/* Like Button */}
         <button
           onClick={toggleLike}
           className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
         >
-          <div className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-2xl backdrop-blur-sm ${
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] ${
             currentLikeInfo.liked
-              ? 'bg-rose-600 text-white scale-110'
-              : 'bg-black/50 text-white hover:bg-black/70 border border-white/10'
+              ? 'bg-rose-400 text-slate-950 scale-105'
+              : 'bg-white text-slate-900 hover:bg-slate-100'
           }`}>
-            <Heart className={`w-5 h-5 ${currentLikeInfo.liked ? 'fill-white' : ''}`} />
+            <Heart className={`w-5 h-5 stroke-[2.5px] ${currentLikeInfo.liked ? 'fill-slate-950 text-slate-950' : 'text-slate-900'}`} />
           </div>
           <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
             {(currentLikeInfo.count / 1000).toFixed(1)}k
@@ -343,7 +341,7 @@ export default function ReelsView({
 
         {/* Comment Button */}
         <button
-          onClick={() => alert(`Membuka 320 komentar untuk: "${currentReel.title}"`)}
+          onClick={() => alert(`Membuka komentar untuk: "${currentReel.title}"`)}
           className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
         >
           <div className="w-12 h-12 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 flex items-center justify-center transition shadow-[2px_2px_0px_#0f172a]">
@@ -383,7 +381,7 @@ export default function ReelsView({
             <Bot className="w-5 h-5 stroke-[2.5px]" />
           </div>
           <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
-            Tanya
+            Tanya AI
           </span>
         </button>
 
