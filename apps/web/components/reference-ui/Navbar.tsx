@@ -21,6 +21,7 @@ interface NavbarProps {
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
   onOpenMessages?: () => void;
+  onOpenNotifications?: () => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
   searchQuery: string;
@@ -37,6 +38,7 @@ export default function Navbar({
   onOpenCreditsHub,
   onOpenOnboarding,
   onOpenMessages,
+  onOpenNotifications,
   isMessagesActive = false,
   unreadMessagesCount = 2,
   searchQuery,
@@ -49,11 +51,11 @@ export default function Navbar({
   if (isHidden) return null;
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
-      <div className="max-w-5xl mx-auto px-4 h-15 flex items-center justify-between gap-3">
+    <header className="allpha-reference-navbar sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
+      <div className="allpha-reference-navbar-inner max-w-5xl mx-auto px-4 h-15 flex items-center justify-between gap-3">
         {/* Brand Logo Lockup */}
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-sky-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20">
+          <div className="allpha-reference-brand-mark w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-sky-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20">
             <span className="text-white font-black text-xl tracking-tighter">A</span>
           </div>
           <div>
@@ -143,12 +145,12 @@ export default function Navbar({
 
           {/* Notification Bell */}
           <button
-            onClick={() => alert('Anda memiliki 3 notifikasi interaksi AI Agent dan 1 reward AI Credits terbaru!')}
+            onClick={onOpenNotifications}
             className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition"
             title="Notifikasi"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
+
           </button>
 
           {/* Onboarding / Account Switcher Button */}
