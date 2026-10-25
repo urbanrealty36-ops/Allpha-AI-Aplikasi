@@ -48,9 +48,10 @@ def _request(trace_id: str) -> Request:
     })
 
 
-async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: int = 60) -> dict[str, int]:
+async def process_due_schedules(store: Any, workflow_store: Any | None = None, *, limit: int = 25, lease_seconds: int = 60) -> dict[str, int]:
     if not 1 <= limit <= 100 or not 5 <= lease_seconds <= 300:
         raise ValueError("scheduler batch or lease bounds are invalid")
+    workflows = workflow_store or WorkflowStore.from_environment()
     lease_token = str(uuid.uuid4())
     claimed = await store.request("POST", "rpc/claim_due_agent_task_schedules", body={
         "p_lease_token": lease_token, "p_limit": limit, "p_lease_seconds": lease_seconds,
@@ -99,23 +100,22 @@ async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: i
 
             # Dispatch through the canonical Workflow Engine; its agent_task node
             # delegates to the existing Agent Runtime adapter after policy checks.
-            workflow_store = WorkflowStore.from_environment()
             trace_id = f"agent-task-schedule:{occurrence['id']}"
             workflow_run = None
             if occurrence.get("workflow_run_id"):
-                workflow_run = await workflow_store.get_run(owner_id, str(occurrence["workflow_run_id"]))
+                workflow_run = await workflows.get_run(owner_id, str(occurrence["workflow_run_id"]))
             if not workflow_run:
-                matches = await workflow_store.request("GET", "workflow_runs", params={
+                matches = await workflows.request("GET", "workflow_runs", params={
                     "select": "*", "owner_user_id": f"eq.{owner_id}", "trace_id": f"eq.{trace_id}", "limit": "1",
                 })
                 workflow_run = matches[0] if matches else None
             if not workflow_run:
-                definition = await workflow_store.get_definition(owner_id, str(schedule["workflow_definition_id"]))
+                definition = await workflows.get_definition(owner_id, str(schedule["workflow_definition_id"]))
                 if not definition:
                     raise WorkflowPersistenceError("schedule workflow definition is missing")
                 if WorkflowDefinition.model_validate(definition["definition"]).digest() != definition.get("digest"):
                     raise WorkflowPersistenceError("schedule workflow definition digest mismatch")
-                workflow_run = await workflow_store.create_run(owner_id, definition,
+                workflow_run = await workflows.create_run(owner_id, definition,
                     {"schedule_id": schedule_id, "schedule_run_id": str(occurrence["id"])}, trace_id)
             await store.request("PATCH", "agent_task_schedule_runs", params={
                 "id": f"eq.{occurrence['id']}", "owner_user_id": f"eq.{owner_id}",
