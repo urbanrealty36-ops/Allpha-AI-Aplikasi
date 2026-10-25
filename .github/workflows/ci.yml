@@ -47,3 +47,5 @@ jobs:
         run: npm test
       - working-directory: apps/client
         run: npm run typecheck
+      - working-directory: apps/client
+        run: npx expo export --platform android
