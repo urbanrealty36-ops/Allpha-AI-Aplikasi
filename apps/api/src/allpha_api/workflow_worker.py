@@ -151,9 +151,7 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
             payload = TaskCreate(
                 session_id=schedule["session_id"], skill_id=schedule["skill_id"],
                 tool_key=schedule["tool_key"],
-                inputs={**(schedule.get("input_payload") or {}), "instructions": schedule["instructions"],
-                        "task_type": schedule["task_type"], "scheduled_for": occurrence["scheduled_for"],
-                        "schedule_id": schedule_id},
+                inputs=(schedule.get("input_payload") or {}),
                 idempotency_key=occurrence["idempotency_key"],
             )
             created = await create_task(payload, _internal_request(occurrence["trace_id"]), {"id": owner_id})
