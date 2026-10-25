@@ -110,16 +110,6 @@ export default function CreatePage() {
   return (
     <>
       <main className="allpha-page allpha-create-page mx-auto min-h-screen w-full max-w-2xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
-      <nav aria-label="Navigasi utama" className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
-        <Link href="/feed" className="font-semibold tracking-tight">Allpha Universe</Link>
-        <div className="flex items-center gap-4 text-sm">
-          <Link href="/feed" className="hover:underline">Feed</Link>
-          <Link href="/stories" className="hover:underline">Stories</Link>
-          <Link href="/reels" className="hover:underline">Reels</Link>
-          <Link href="/agents" className="hover:underline">AI Agent</Link>
-          <Link href="/" className="hover:underline">Profil & pengaturan</Link>
-        </div>
-      </nav>
       <header className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">Creator</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Buat konten</h1>
