@@ -20,7 +20,7 @@ class WorkflowValidationError(ValueError):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     key: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$")
-    kind: Literal["input", "constant", "pass_through", "concat", "merge"]
+    kind: Literal["input", "constant", "pass_through", "concat", "merge", "agent_task"]
     config: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=5, ge=1, le=30)
 
@@ -77,6 +77,8 @@ class WorkflowDefinition(BaseModel):
                 raise ValueError("input nodes require config.field")
             if node.kind == "constant" and "value" not in node.config:
                 raise ValueError("constant nodes require config.value")
+            if node.kind == "agent_task" and not isinstance(node.config.get("schedule_id"), str):
+                raise ValueError("agent_task nodes require config.schedule_id")
             if node.kind == "concat" and node.config.get("separator", "") is not None and not isinstance(node.config.get("separator", ""), str):
                 raise ValueError("concat separator must be a string")
         return self
