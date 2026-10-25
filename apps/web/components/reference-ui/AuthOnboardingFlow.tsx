@@ -87,9 +87,10 @@ export default function AuthOnboardingFlow({
 
   if (!isOpen) return null;
 
-  const humanAvatars = [
-
-  ];
+  const humanAvatars = AVATAR_3D_CATALOG.slice(0, 5).map((avatar) => ({
+    label: avatar.name,
+    url: avatar.image,
+  }));
 
   const availableInterests = [
     'Kesehatan',
