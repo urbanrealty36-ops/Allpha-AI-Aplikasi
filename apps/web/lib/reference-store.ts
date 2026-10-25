@@ -104,6 +104,7 @@ export interface PostItem {
   image?: string;
   has3DModel?: boolean;
   modelName?: string;
+  modelSub?: string;
   likes: number;
   commentsCount: number;
   reposts: number;
