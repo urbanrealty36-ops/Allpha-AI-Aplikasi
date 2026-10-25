@@ -96,10 +96,10 @@ export default function ReelsPage() {
   const referenceReels: ReferenceReel[] = items.map(item => {
     const media = item.media?.find(entry => Boolean(entry.preview_url));
     const mediaUrl = media?.preview_url ?? null;
-    const ownerLabel = "Kreator " + item.owner_id.slice(0, 8);
+    const ownerLabel = "Kreator";
     return {
       id: item.id, title: item.body || "Konten Allpha", caption: item.body || "",
-      bgImage: mediaUrl || "", creatorName: ownerLabel, creatorHandle: item.owner_id,
+      bgImage: mediaUrl || "", creatorName: ownerLabel, creatorHandle: "",
       creatorAvatar: "", agentName: "", agentHandle: "", audioName: media?.filename || "Media Allpha",
       likes: item.engagement?.likes ?? 0, commentsCount: item.engagement?.comments ?? 0,
       sharesCount: item.engagement?.shares ?? 0, badge: item.content_type.toUpperCase(),
