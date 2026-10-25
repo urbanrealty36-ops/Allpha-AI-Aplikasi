@@ -414,7 +414,7 @@ export default function FeedView({
                     className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Repeat2 className="w-4.5 h-4.5 text-slate-700 hover:text-emerald-600" />
-                    <span>{post.reposts}</span>
+                    {!productionMode && <span>{post.reposts}</span>}
                   </button>
 
                   {/* Share Button */}
