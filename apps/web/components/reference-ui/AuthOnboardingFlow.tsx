@@ -723,7 +723,7 @@ export default function AuthOnboardingFlow({
                   🎁
                 </div>
                 <div className="text-xs">
-                  <p className="font-black text-slate-950">Bonus Selamat Datang: +50 AI Credits</p>
+
                   <p className="text-[10px] text-slate-800 font-bold">Langsung aktif untuk modal interaksi pertama Anda!</p>
                 </div>
               </div>
