@@ -4,6 +4,8 @@ import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState 
 import { useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import ExploreView from "../../components/reference-ui/ExploreView";
+import type { PostItem } from "@/lib/store";
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
@@ -100,37 +102,37 @@ function SearchPageContent() {
     void runSearch(undefined, urlQuery);
   }, [session, urlQuery, runSearch]);
 
+  const postsForReference: PostItem[] = items.map(item => ({
+    id: item.id,
+    humanOwner: { name: "Pengguna " + item.owner_id.slice(0, 8), handle: "@" + item.owner_id.slice(0, 8), avatar: "", verified: false },
+    aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
+    takeoverMode: false,
+    timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
+    content: item.body,
+    tags: [],
+    likes: 0,
+    commentsCount: 0,
+    reposts: 0,
+    comments: [],
+  }));
+
   return <>
-    <main className="allpha-page allpha-search-page" style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px", color: "var(--foreground, #172033)" }}>
-    <h1 style={{ fontSize: 32, marginBottom: 8 }}>Search & Discovery</h1>
-    <p style={{ lineHeight: 1.6, opacity: .75 }}>Temukan konten yang sudah dipublikasikan dan disetujui. Hasil mengikuti aturan visibilitas, follow, block, dan mute akun Anda.</p>
-    {!session && <p role="status">Masuk ke Allpha untuk menggunakan pencarian dan tren personal.</p>}
-    <form onSubmit={event => void runSearch(event)} style={{ display: "flex", gap: 8, margin: "22px 0" }}>
-      <input aria-label="Cari konten" value={query} onChange={event => setQuery(event.target.value)} minLength={2} maxLength={100} placeholder="Cari topik atau kata kunci…" style={{ flex: 1, minWidth: 0, padding: 14, borderRadius: 12, border: "1px solid #c8cfda", background: "transparent", color: "inherit" }}/>
-      <button disabled={busy || !session} type="submit" style={{ padding: "0 18px", borderRadius: 12, border: 0, fontWeight: 700 }}>{busy ? "Mencari…" : "Cari"}</button>
-    </form>
-    {error && <p role="alert">{error}</p>}
-    {searched && !busy && !error && items.length === 0 && <p>Belum ada konten yang cocok dengan kata kunci tersebut.</p>}
-    <section aria-label="Hasil pencarian">
-      {items.map(item => <article key={item.id} style={{ padding: "16px 0", borderBottom: "1px solid #d8dce5" }}>
-        <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65, margin: "0 0 8px" }}>{item.body}</p>
-        <small style={{ opacity: .65 }}>{item.content_type} · {item.published_at ? new Date(item.published_at).toLocaleString() : new Date(item.created_at).toLocaleString()}</small>
-      </article>)}
-    </section>
-    <section style={{ marginTop: 36 }}>
-      <h2 style={{ fontSize: 22 }}>Tren dari konten terbaru</h2>
-      <p style={{ opacity: .7, lineHeight: 1.5 }}>Topik dihitung dari konten nyata yang dapat Anda lihat, bukan data tren buatan. Cakupan saat ini adalah konten, belum profil atau Agent.</p>
-      {trendsBusy ? <p role="status">Memuat tren…</p> : trendsError ? <p role="alert">{trendsError} <button type="button" onClick={() => void loadTrends()}>Coba lagi</button></p> : trends.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{trends.map(item =>
-        <button key={item.topic} type="button" onClick={() => { setQuery(item.topic); void runSearch(undefined, item.topic); }} style={{ border: "1px solid #c8cfda", background: "transparent", color: "inherit", borderRadius: 999, padding: "9px 13px", cursor: "pointer" }}>
-          #{item.topic} <small>({item.content_count})</small>
-        </button>)}</div> : <p style={{ opacity: .7 }}>Tren akan muncul saat tersedia konten publik yang sesuai dan dapat diakses.</p>}
-    </section>
-    <section style={{ marginTop: 36 }} aria-label="Rekomendasi konten">
-      <h2 style={{ fontSize: 22 }}>Rekomendasi untuk Anda</h2>
-      <p style={{ opacity: .7, lineHeight: 1.5 }}>Mengikuti ranking feed kanonis dan pengaturan personalisasi akun Anda.</p>
-      {recommendationsBusy ? <p role="status">Memuat rekomendasi…</p> : recommendationsError ? <p role="alert">{recommendationsError} <button type="button" onClick={() => void loadRecommendations()}>Coba lagi</button></p> : recommendations.length ? recommendations.map(item => <article key={item.id} style={{ padding: "16px 0", borderBottom: "1px solid #d8dce5" }}><p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65, margin: "0 0 8px" }}>{item.body}</p><small style={{ opacity: .65 }}>{item.content_type} · {item.published_at ? new Date(item.published_at).toLocaleString() : new Date(item.created_at).toLocaleString()}</small></article>) : <p style={{ opacity: .7 }}>Belum ada rekomendasi yang dapat ditampilkan.</p>}
-    </section>
-  </main>
+    {error && <p role="alert" className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-xl rounded-xl border-2 border-rose-400 bg-white p-3 text-sm font-bold text-rose-700 shadow">{error}</p>}
+    {!session ? <main className="min-h-[70dvh] bg-sky-50 px-4 py-8"><div className="mx-auto max-w-xl rounded-3xl border-2 border-slate-900 bg-white p-6 text-center shadow-[3px_3px_0px_#0f172a]"><h1 className="text-base font-black text-slate-950">Jelajahi & Cari</h1><p className="my-3 text-sm text-slate-600">Masuk untuk mencari konten, melihat tren, dan rekomendasi personal.</p><a href="/login" className="inline-flex rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]">Masuk</a></div></main> : <>
+      <ExploreView
+        posts={postsForReference}
+        productionMode
+        onSearch={value => { setQuery(value); void runSearch(undefined, value); }}
+        onOpenAskAi={(agentName) => { window.location.assign("/ask-ai?agent=" + encodeURIComponent(agentName)); }}
+        onOpenWorld3D={() => { window.location.assign("/spatial"); }}
+        onOpenCreditsHub={() => { window.location.assign("/credits"); }}
+        onOpenLiveStage={() => { window.location.assign("/live"); }}
+        onOpenFilmAi={() => { window.location.assign("/film-ai"); }}
+      />
+      {busy && <p role="status" className="mx-auto max-w-xl px-4 py-3 text-xs font-bold text-slate-600">Mencari konten…</p>}
+      {searched && !busy && !error && items.length === 0 && <p role="status" className="mx-auto max-w-xl px-4 pb-8 text-center text-xs font-bold text-slate-600">Belum ada konten yang cocok dengan kata kunci tersebut.</p>}
+      {!searched && !busy && <section className="mx-auto max-w-xl px-4 pb-8 text-xs font-semibold text-slate-600">Tekan Enter setelah memasukkan kata kunci untuk mencari konten yang dapat Anda akses.</section>}
+    </>}
   </>;
 }
 
