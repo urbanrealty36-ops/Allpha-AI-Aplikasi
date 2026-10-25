@@ -1,0 +1,98 @@
+name: Capture Reference Binary Assets
+
+on:
+  push:
+    paths:
+      - ".github/workflows/capture-reference-binary-assets.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout canonical repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download and verify the eight source blobs
+        env:
+          SOURCE_COMMIT: "5184f44e9f6c4e641cbe37e9f743583cf40d785e"
+        run: |
+          python - <<'PY'
+          import hashlib
+          import pathlib
+          import urllib.request
+
+          source_commit = "5184f44e9f6c4e641cbe37e9f743583cf40d785e"
+          assets = [
+              ("public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md", 129536, "ff7b7b14b1245da0d6e6510dea4f033d8099c1a9"),
+              ("public/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg", 1105749, "808ddbb761676c06e91ba6e092244511e1d1e899"),
+              ("public/assets/aistudio/Screenshot_20261023-185525_22a42efd.jpg", 1104144, "8e58ed3ef6c1562c027ad45ff56f265e357e2d77"),
+              ("public/assets/aistudio/file_000000000124820cac0b31096f36996d_47c73336.png", 2284057, "12d6c93d1f47e22017355db24d5c5f9d650eac64"),
+              ("public/assets/aistudio/file_00000000560c820baca9cd747fc97471_b104badb.png", 2070206, "b0cbd91174768e7eb979f9920b85f637f7d920f4"),
+              ("public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png", 2092646, "e89cac55c852fc19a76c53427fe79ba42426ef50"),
+              ("public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png", 2674422, "7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66"),
+              ("public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png", 2663435, "749060b67cf8d143fc360c6c45e7742b849c27ab"),
+          ]
+          verified = []
+          for relpath, expected_size, expected_git_sha in assets:
+              url = f"https://raw.githubusercontent.com/urbanrealty36-ops/Allpha-Front-End-UI-New/{source_commit}/{relpath}"
+              request = urllib.request.Request(url, headers={"User-Agent": "Allpha-Reference-Asset-Capture"})
+              with urllib.request.urlopen(request, timeout=90) as response:
+                  data = response.read()
+              actual_size = len(data)
+              git_sha = hashlib.sha1(b"blob " + str(actual_size).encode() + b"\\0" + data).hexdigest()
+              sha256 = hashlib.sha256(data).hexdigest()
+              if actual_size != expected_size:
+                  raise SystemExit(f"SIZE MISMATCH {relpath}: expected {expected_size}, got {actual_size}")
+              if git_sha != expected_git_sha:
+                  raise SystemExit(f"GIT BLOB SHA MISMATCH {relpath}: expected {expected_git_sha}, got {git_sha}")
+              verified.append((relpath, data, actual_size, git_sha, sha256))
+              print(f"VERIFIED {relpath} bytes={actual_size} git_blob_sha1={git_sha} sha256={sha256}")
+
+          for relpath, data, *_ in verified:
+              target = pathlib.Path("apps/web") / relpath
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(data)
+
+          manifest_path = pathlib.Path("docs/ARCHITECTURE/REFERENCE_UI_UX_SOURCE_CAPTURE_MANIFEST.md")
+          manifest = manifest_path.read_text()
+          for relpath, _, size, git_sha, sha256 in verified:
+              row_prefix = f"| `{relpath}` | {size} | `{git_sha}` |"
+              replacement = row_prefix + f" verified at `apps/web/{relpath}`; bytes={size}; Git blob SHA-1={git_sha}; SHA-256={sha256} |"
+              old_prefix = f"| `{relpath}` | {size} | `{git_sha}` | missing at canonical path |"
+              if old_prefix not in manifest:
+                  raise SystemExit(f"Manifest row not found or already changed: {relpath}")
+              manifest = manifest.replace(old_prefix, replacement, 1)
+
+          manifest = manifest.replace(
+              "Public assets under `public/assets/aistudio/`: 19; 11 exact-path copies exist in canonical `apps/web/public/`, 8 are missing at exact canonical path.",
+              "Public assets under `public/assets/aistudio/`: 19; all 19 exact-path copies exist in canonical `apps/web/public/` after binary capture and checksum verification."
+          )
+          manifest = manifest.replace(
+              "Checkpoint B: text/source capture is present, but binary capture is **incomplete** until the missing public assets are copied and hash-verified. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.",
+              "Checkpoint B: text/source capture and all 19 public assets are present at exact canonical paths. The eight previously missing assets were copied from the pinned reference source commit and verified by expected byte size, source Git blob SHA-1, and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established."
+          )
+          manifest = manifest.replace(
+              "The GitHub connector successfully exposes source tree metadata (path, byte size and Git blob SHA) and text files, but binary blob retrieval fails UTF-8 decoding and base64 fetch for binary files returns no content. The execution container also has no network DNS access to fetch raw GitHub binary assets. Therefore, missing binary files are explicitly inventoried and must not be claimed as copied. The available source evidence supports the file hashes/sizes above, not byte-for-byte transfer of the missing assets.",
+              "Historical limitation (resolved by the verified capture workflow): direct connector binary decoding was unavailable, so the eight assets are fetched by GitHub Actions from the pinned source commit. The workflow refuses to commit if any byte size or source Git blob SHA-1 differs, then records SHA-256 for each target file in this manifest."
+          )
+          manifest_path.write_text(manifest)
+          PY
+
+      - name: Commit verified assets and manifest evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/public/assets/aistudio docs/ARCHITECTURE/REFERENCE_UI_UX_SOURCE_CAPTURE_MANIFEST.md
+          if git diff --cached --quiet; then
+            echo "No binary asset changes to commit."
+            exit 0
+          fi
+          git commit -m "Capture and checksum missing reference UI assets"
+          git push origin HEAD:main
