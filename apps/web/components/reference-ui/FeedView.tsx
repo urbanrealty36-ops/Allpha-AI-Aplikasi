@@ -349,7 +349,7 @@ export default function FeedView({
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-black/20" />
 
-                  {/* Floating badge on top left: [A] Crystal District / Pusat Kreator & Inovasi */}
+                  {/* Floating badge for the published 3D content */}
                   <div className="absolute top-3 left-3 flex items-center gap-2 p-1.5 pr-3 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-sm">
                     <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-xs">
                       A
