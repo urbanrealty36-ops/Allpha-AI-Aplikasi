@@ -176,6 +176,10 @@ export default function FeedPage() {
     finally { setBusyKey(""); }
   }
 
+  const initialCommentsPostId = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("comments") === "1"
+    ? new URLSearchParams(window.location.search).get("content")
+    : null;
+
   const postsForReference: PostItem[] = items.map(item => {
     const image = item.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url;
     return {
@@ -224,6 +228,9 @@ export default function FeedPage() {
         <FeedView
           productionMode
           posts={postsForReference}
+          initialCommentsPostId={initialCommentsPostId}
+          onLoadComments={postId => { const item = items.find(row => row.id === postId); if (item) void openComments(item); }}
+          onSharePost={postId => { const item = items.find(row => row.id === postId); if (item) void share(item); }}
           storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: story.owner_id.slice(0, 8), img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
           onOpenAskAi={(agentName) => { window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
