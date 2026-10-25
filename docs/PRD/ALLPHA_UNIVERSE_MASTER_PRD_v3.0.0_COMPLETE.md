@@ -3153,3 +3153,45 @@ This appendix does not create new phases. Work remains inside the existing fixed
 - **ENG-P37 — integration/release acceptance only:** approved isolated non-production Supabase migration, RLS/grants, cross-client E2E, tenant/owner isolation, runtime stop/isolation verification and release evidence. ENG-P37 must not become a container for missing feature implementation.
 
 Keep all existing phase statuses evidence-based and update only the canonical fixed phase plan. Do not alter or replace the pre-existing architecture; this appendix is additive and is subordinate to existing canonical domain ownership and security contracts.
+
+
+---
+
+# PRODUCT OWNER ADDENDUM — REFERENCE UI/UX PARITY CONTRACT (2026-10-25)
+**Scope:** UI/UX source-of-truth amendment and frontend-first delivery order. This addendum records the current Product Owner direction and does not silently rewrite unrelated domain, security, data, or engine contracts.
+
+## 1. Current UI/UX authority
+- Canonical visual and interaction source for the current frontend parity effort: https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New (branch `main`).
+- The reference repository is authoritative for its existing visual hierarchy, component composition, page layouts, responsive behavior, navigation, typography, iconography, styles, and visible feature affordances. The supplied mobile screenshot is a visual acceptance reference for the Feed screen.
+- The previous Master PRD baseline is not sufficient evidence to redesign or simplify the reference UI. For this parity effort, **copy the source component and its style first; do not invent a replacement layout or reinterpret the design to fit an older PRD description**.
+- The reference is the UI source of truth, not a replacement for canonical backend business truth. Its demo/sample state, local-only actions, simulated success, and provider calls are not to be promoted as production behavior.
+
+## 2. Mandatory frontend-first order
+1. Inventory the exact reference commit/tree, all routes/pages, top-level and nested components, hooks/stores/types, styles/config/fonts/icons, public binary assets and feature interactions.
+2. Preserve and transfer reference source and assets byte-for-byte where applicable; record source path, target path, source commit/blob SHA, byte size and checksum. Keep archival-only source out of the runtime build graph.
+3. Copy the original components, layout, CSS/styles, responsive breakpoints, navigation and page composition into the existing Allpha monorepo. Add a target component/file only when the canonical structure lacks a corresponding component. Adapt only imports, typing, route boundaries, and unavoidable framework compatibility; do not redesign the component.
+4. Map every reference view and interaction to an existing canonical route or an explicitly documented missing route. Maintain the reference's visible UI while separating demo state from production state.
+5. Complete the frontend source-copy and visual-parity checkpoints before broad domain integration. Do not start broad API, database, or Supabase work in parallel with this copy checkpoint, except for a strictly necessary compatibility fix that is documented and kept within the existing owning ENG phase.
+6. After UI source parity is accepted, integrate real actions through the existing canonical FastAPI contracts and domain engines, using the canonical Supabase database as source of truth. Do not bypass FastAPI for business operations, create a second database/registry, fabricate business data, or put secrets in clients.
+
+## 3. Reference Feed and navigation contract
+- The mobile Feed reference includes the Allpha/Universe brand header, AI Credits balance affordance, messages and notification affordances, the tabs “Untuk Anda”, “Mengikuti”, “Trending”, Reels/Video with HD marker, horizontally scrollable Stories with add/live states, a prominent Live Stage card, social Feed content cards with owner/Agent attribution, and the fixed bottom navigation: Beranda, Film AI, Create, Dunia 3D, Allpha Hub, My Agent.
+- Preserve the reference order, spacing, hierarchy, typography, icon treatment, badges, colors, card shapes, borders and responsive behavior. The screenshot is a parity oracle; it is not authorization to invent or hard-code a user's credit balance, unread count, view count, live status, story ownership, or post data.
+- Keep the established journey Splash → Human Register/Login → AI Agent Identity Onboarding/Register → Feed. The 3D Universe is a secondary destination, not the post-onboarding home.
+- Port all views present in the reference repository (including Feed/social views, Explore/Search, Profile, Messages/Notifications, Reels, AI Cinema/Film AI, Marketplace, Skills/Challenges/Credits, Allpha Hub, Live Stage, Takeover controls, Universe 3D and Agent Identity) through source-to-target mapping. Do not declare a feature implemented merely because its navigation label or visual shell exists.
+
+## 4. PWA and application boundaries
+- The approved ADR-0003 is the narrow exception permitting an installable PWA for `apps/web`; this reference-parity addendum affirms that exception for the Web experience. It does not replace `apps/client` as the canonical native Android/iOS application, `apps/api` as the FastAPI business boundary, or `apps/super-admin` as the separate operator console.
+- Web and Native may share contracts and visual intent, but native platform implementation remains in `apps/client`; do not claim native parity based only on a Web/PWA screenshot.
+
+## 5. Acceptance and evidence
+- For each component/page, record reference source path + source tree/commit, canonical target path, route, interactions/states, exact asset dependencies, and existing ENG owner phase.
+- Verify source parity for copied files by blob SHA or content checksum where possible. Binary assets must be checked by exact size and checksum; an inventory entry alone is not a transfer.
+- Required UI states include loading, empty, error, permission/disabled, retry/recovery and real-data states where relevant. Never replace real business state with static sample data to make the screenshot look correct.
+- Validate mobile and desktop layouts, navigation, overflow, accessibility and frontend type/build/lint checks. Record actual commands and results; do not claim visual parity, a successful build, deployment, or authenticated integration without observed evidence.
+- UI parity is a frontend checkpoint under the existing ENG-P00–ENG-P37 plan, not a new numbered engineering phase. Keep the owning phase `in_progress` until its acceptance evidence exists. Only after the copy/parity checkpoint is accepted should domain integration continue in dependency order under existing phase ownership.
+
+## 6. Current known limitations at addendum creation
+- The phase-plan snapshot records 25/25 top-level React component source blobs matching the reference tree at the captured checkpoint, but this proves source-copy only, not runtime wiring or visual acceptance.
+- The same snapshot records 19 public binary assets with only 11 present at the exact target paths; 8 are still missing. Eight temporary `.aistudio/**/.tempmediaStorage/*` images are inventoried but not promoted to runtime.
+- Therefore, binary asset capture and full component/page wiring remain incomplete. Do not label the full UI/UX refactor complete until the missing transferable assets and source-to-route parity are verified.
