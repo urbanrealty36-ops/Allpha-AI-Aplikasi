@@ -16,7 +16,7 @@ type Skill = {
   tool_dependencies: string[]; version: number; status: "draft" | "published" | "archived";
   changelog?: string; updated_at?: string;
 };
-type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean };
+type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean; input_schema?: Record<string, unknown> };
 type Capability = {
   id: string; capability_key: string; description: string; risk_level: string;
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
