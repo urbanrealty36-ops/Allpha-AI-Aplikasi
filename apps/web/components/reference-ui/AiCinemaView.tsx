@@ -541,7 +541,7 @@ export default function AiCinemaView({
   // Simulate Instant Verification by Team Allpha
   const handleApproveByTeamAllpha = (movieId: string) => {
     if (productionMode) return;
-    setMoviesList((prev) => {
+    setMoviesList((prev) =>
       prev.map((m) => {
         if (m.id === movieId) {
           return {
