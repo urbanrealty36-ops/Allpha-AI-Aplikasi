@@ -128,6 +128,7 @@ export default function AuthOnboardingFlow({
       avatar: selectedAgentAvatar,
       avatar3DImage: selectedAgentAvatar,
       avatar3DCodename: selectedAvatarCodename,
+      bio: agentSpecialty.trim(),
       ownerName: updatedHuman.name,
       ownerHandle: updatedHuman.username,
       specialty: BIDANG_SKILLS_CATALOG[selectedBidang]?.label || agentSpecialty,
