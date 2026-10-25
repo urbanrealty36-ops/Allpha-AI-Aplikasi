@@ -175,3 +175,30 @@ A direct source/target comparison was performed for the 25 top-level React compo
 - The source image `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` is still missing from target. The current GitHub connector cannot read the binary body through its UTF-8-only fetch path, so the exact source bytes could not be copied safely in this execution. It remains open; no substitute image was invented.
 - Visual screenshots, final Web typecheck/build, and the final visual workflow outcome must be inspected after the latest commit. The previous CI attempt exposed a type contract mismatch in AI Cinema, then catalog prop mismatches in Marketplace and a stale Live simulator setter; fixes are committed, but a later green run is required to prove them.
 - UI-COPY-03 remains `in_progress` until the workflow passes, artifacts are confirmed, and the missing source binary is reconciled. WP-02 remains blocked.
+
+
+## WP-01 final CI evidence checkpoint — 2026-10-26
+
+### Latest accepted automated evidence
+
+- Latest validated commit: `1b29d674c6d94581dcf27255f7bb3337191dd0b7`.
+- [Reference UI Validation run](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40219142266) completed successfully. Smoke assertions, TypeScript typecheck, Next.js build, route viewport checks, and artifact upload all passed.
+- [Allpha Smoke run](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40219142342) completed successfully, including web-build, native-client-checks, and API tests.
+- Final visual artifact: [Download 108 route/viewport screenshots](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40219142266/artifacts/12609106579). Artifact ID `12609106579`, 5,470,357 bytes, retained by GitHub Actions for 14 days from upload.
+- The workflow log explicitly reports: `Visual route smoke passed: 27 routes × 4 viewports; screenshots captured for every route.`
+- Specific `/workflows` check at 360 px: HTTP 200, viewport width 360, documentWidth 360, bodyWidth 360. No horizontal overflow was reported.
+
+### Modal source-to-target reconciliation
+
+The reference repository contains six modal components and the target contains all six matching filenames under `apps/web/components/reference-ui/`.
+
+- Byte-identical by Git blob SHA: `AskAiModal.tsx`, `CreatePostModal.tsx`, `GenerateModal.tsx`, `TakeoverModal.tsx`.
+- Adapted, not byte-identical: `AgentGoalsTasksModal.tsx`, `AgentIdentityModal.tsx`. Their differences must be reviewed as production-contract adapters, not treated as proof of exact source parity. Keep source structure/style and do not reintroduce sample balances, seeded identities, or simulated business success.
+- Feed Story viewer remains source-contract limited: source Feed does not define an on-open callback for every non-Live Story card. The UI must not claim that a viewer opened without a canonical viewer route/session contract. The source-defined Add Story entry and existing Live/3D entry behavior remain intact.
+
+### Scope and phase decision
+
+- The user explicitly excluded searching for or transferring the missing binary asset; it is not a blocker for this checkpoint and no substitute image was created.
+- Real/staging testing and deployment were not performed, per product-owner instruction.
+- This checkpoint proves automated route smoke, typecheck, build, and screenshot artifact availability for the listed commit. It does not prove external production integrations or every modal action's backend contract.
+- WP-01 / UI-COPY-03 should only be marked complete after the two adapted modal contracts and remaining source-to-route interactions are explicitly reconciled. WP-02 remains blocked until then.
