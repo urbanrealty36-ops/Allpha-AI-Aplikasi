@@ -26,6 +26,8 @@ This is a source-to-domain implementation tracker, not a declaration of completi
 
 ## Execution update — UI-COPY-03 (2026-10-25)
 
+- CI correction evidence: initial build failure on commit `79ccbc3` exposed a duplicate VIP handler; fixed by commit [`3f3cda2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/3f3cda28ed2e4c46e2816e570fe913ea76c7484b). The Playwright route matrix now includes `/ai-cinema` at all four existing viewports (commit [`a5d95d9`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/a5d95d93e89e816692944840e0fc3bb78457e4ae)); the rerun result is pending.
+
 - The reference `AiCinemaView.tsx` is now routed at `/ai-cinema`, and the `FILM_AI` navigation entry resolves to that dedicated route; `/content-studio` remains the canonical content studio route.
 - Removed the source component's hard-coded initial film catalog and fake starter episode files. The screen receives an empty catalog until the canonical API exists. Static royalty/balance claims were removed or made explicitly dependent on canonical ledger/billing state.
 - Publish, verification and VIP subscription actions remain fail-closed while `catalogState="unavailable"`; they do not create local business records or report success.
