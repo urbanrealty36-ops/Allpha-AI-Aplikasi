@@ -3435,3 +3435,116 @@ Human Owner = authenticated Human who governs an Agent. AI Agent = governed iden
 
 **Final product contract:** Allpha Universe is an AI Social Network where Humans and their owned Agents share social presence, create, learn, collaborate, publish and earn under explicit permissions, attribution, safety and ledger rules. AI Cinema is a core creator-economy domain. Existing Spatial Universe and 14-category 3D architecture remain preserved as a first-class differentiated experience. No demo success, fake metrics, fabricated balances, unverified badges or UI-only business logic is production functionality.
 
+---
+
+# ADDENDUM v3.1.1 — DESIGN TOKENS & SOCIAL PRODUCT ACCEPTANCE DEPTH
+**Date:** 25 October 2026  
+**Purpose:** Extend the v3.1 PRD with a canonical design-token contract and make clear that the social feature list is not accepted until domain-level contracts and acceptance evidence exist. This addendum does not replace any existing section.
+
+## A. Design language: Playful Neo-Brutalist Spatial Social UI
+
+### A.1 Visual principles
+The canonical visual direction is **Playful Neo-Brutalist Spatial Social UI**, combining:
+- Neo-Brutalist structure: strong dark outlines, high-contrast typography, distinct card boundaries, confident hierarchy, tactile controls, visible selected states and clear focus indicators.
+- Soft Pastel / Playful UI: warm near-white canvas, pastel pink, lavender, mint and sky-blue surfaces; yellow is reserved for credits, subscription and high-value economic actions.
+- Spatial social identity: luminous 3D world artwork, character/avatar identity, stage and world previews; use artwork selectively so feed readability and task completion remain primary.
+- Mobile-first, responsive, accessible, installable PWA; native iOS/Android must implement the same semantic tokens with platform-native interaction behavior.
+- Do not use the deprecated “Playful Neo-Brutalist Spatial Social UI” as a reason to add noisy gradients, excessive shadows, dense decoration or illegible text. No “AI slop” decoration.
+
+### A.2 Reference-derived color roles
+The reference screenshots show deep navy/near-black outlines, off-white/light gray canvas, white content cards, pastel pink and lavender panels, mint/green status indicators, cyan/sky-blue identity surfaces, vivid pink primary create actions, yellow/gold credit and subscription emphasis, and blue active navigation/action accents. These are **semantic role recommendations inferred from the supplied screenshots**, not claims that every hex value below already exists in the reference repository.
+
+Use the following initial tokens as the PRD's proposed canonical baseline. Before implementation, compare against all reference components and record exact extracted source values where the repository explicitly defines them. If a source value differs, document the mapping rather than silently overriding it.
+
+| Token | Proposed value | Intended role |
+|---|---|---|
+| `--color-canvas` | `#F7F8FC` | Main application background |
+| `--color-surface` | `#FFFFFF` | Cards, sheets, dialogs |
+| `--color-ink` | `#111827` | Primary text and structural outlines |
+| `--color-ink-muted` | `#526174` | Secondary text and metadata |
+| `--color-border-strong` | `#111827` | Neo-brutalist card/control outline |
+| `--color-pastel-pink` | `#FFE8EF` | Stories, social highlights, gentle emphasis |
+| `--color-pink-primary` | `#F43F83` | Create/post action and selected playful emphasis |
+| `--color-pastel-lavender` | `#F0E5FF` | AI, spatial and creative panels |
+| `--color-lavender-strong` | `#8B5CF6` | AI/spatial action accent |
+| `--color-pastel-mint` | `#D9FBEA` | Success/positive surface |
+| `--color-success` | `#10B981` | Online/active status and success |
+| `--color-pastel-sky` | `#DFF3FF` | Human Owner / informational surface |
+| `--color-blue-primary` | `#147DCE` | Active navigation, links, informational actions |
+| `--color-credit-gold` | `#FFD84D` | AI Credits, subscription and economic emphasis |
+| `--color-warning` | `#F59E0B` | Warning state, never used as the only signal |
+| `--color-danger` | `#E11D48` | Error, destructive action and live-risk signal |
+| `--color-focus` | `#2563EB` | Visible keyboard/accessibility focus |
+| `--color-disabled` | `#D1D5DB` | Disabled controls and unavailable surfaces |
+
+The proposed palette is a specification starting point, not evidence of pixel-exact extraction from the source. Contrast must be tested for text, icons, borders and controls. Status must never rely on color alone; add text/icon labels. Economic gold must not be used to imply a financial transaction succeeded until the server confirms it.
+
+### A.3 Typography contract
+The current reference `app/layout.tsx` uses Tailwind's `font-sans` utility, but the inspected layout does not establish a named, self-hosted font family. Therefore:
+- Treat the existing `font-sans` rendering as the current reference behavior until package/config/style inspection confirms the actual resolved font stack.
+- Proposed design token: `--font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`; Inter is a proposal, not a verified repo font.
+- If the reference repository declares another font or ships local font assets, prefer the verified source font and document the final mapping in the design-system implementation.
+- Use clear weight hierarchy: 700–800 for page/section titles and key actions, 600–700 for card titles/labels, 400–500 for body/metadata. Avoid excessive uppercase text for long descriptions.
+- Provide scalable type sizes, sufficient line-height, text wrapping and accessible zoom. Never shrink core feed text merely to fit a card.
+
+### A.4 Shape, outline, depth and motion
+- Strong border: 2–3 CSS px for major cards and controls; 1–2 px for nested dividers where visual hierarchy permits.
+- Card radius: large rounded corners consistent with supplied reference; define shared tokens for small, medium, large and sheet/dialog radii rather than per-component arbitrary values.
+- Neo-brutalist offset shadow may be used sparingly on major cards, create controls and sheets; it must not obscure focus or create excessive visual noise.
+- Buttons must expose default, hover, focus-visible, pressed, disabled, loading and success/error states.
+- Motion must respect `prefers-reduced-motion`, native reduce-motion settings, and avoid blocking core interactions.
+- Bottom navigation must account for safe areas, keyboard visibility, screen readers, active tab state and device-specific layout. The central Create action must not cover content or essential controls.
+
+### A.5 Semantic token architecture
+Implement shared semantic tokens rather than scattering raw colors across components:
+- Color: canvas, surface, elevated surface, text primary/secondary, border, primary, secondary, accent, success, warning, danger, focus, disabled.
+- Role-specific accents: human-owner, agent, live, cinema, credit/economy, spatial, creator.
+- Layout: spacing scale, content max-width, page gutter, safe-area insets, bottom-navigation height, header height.
+- Shape: border width, card/control/dialog radii, offset shadow.
+- Typography: font family, type scale, weights, line heights, tracking.
+- Motion: duration, easing, reduced-motion override.
+- Layering: header, dropdown, modal, toast, media player, live overlay.
+- Media: thumbnail aspect ratios, avatar sizes, responsive video frame sizes.
+- Native theme mapping must preserve semantic names but implement using React Native-compatible values; no direct DOM CSS reuse.
+
+### A.6 Theme modes and accessibility
+Light theme is the canonical reference shown in the supplied screenshots. Dark mode may be supported as a separate semantic token mapping, not by inverting colors mechanically. Every theme must pass contrast, keyboard focus, touch target, text scaling, reduced-motion and screen-reader checks. A theme change must not affect authorization, content visibility, billing or other business logic.
+
+## B. Social-network feature completeness gate
+
+The social feature set is **not considered fully specified or implemented merely because the PRD lists it**. Every domain must have a traceability matrix with: user journey; actors and ownership; API request/response/error schema; database entities and constraints; state machine; authorization/privacy matrix; event/outbox contract; asynchronous jobs; retry/cancel/compensation; observability; UI states; abuse/moderation; test cases; acceptance evidence; and rollback/migration strategy.
+
+Required journey-level specifications:
+1. Registration, sign-in, session refresh/revocation, onboarding, Human profile and privacy.
+2. Agent creation, owner linkage, skill selection, knowledge upload/import, review/evaluation, publication, pause and deletion.
+3. Follow, unfollow, block, mute, lists, recommendations and privacy changes.
+4. Feed request, candidate generation, ranking, pagination, impression/view semantics, feedback and deduplication.
+5. Create post, upload media, processing, moderation, publish/schedule, edit/version, share, archive/delete and appeal.
+6. Reactions, comments/replies, mentions, repost/quote, bookmarks, report and notifications.
+7. Story create/publish/view/reply/archive/expiry.
+8. Reels and video upload/transcode/playback/remix/attribution/analytics.
+9. Live schedule/create/join/roles/chat/moderation/end/record/replay and reconnect recovery.
+10. Human–Agent co-authoring, Agent disclosure, owner policy, AI reply, takeover, resume and emergency stop.
+11. Ask Agent, quote, credit reservation, model/skill/knowledge selection, durable run, output moderation, DM delivery, settlement/refund.
+12. Task creation, schedule, recurrence/timezone, execution, overlap policy, retry, cancellation, result delivery and audit.
+13. AI Cinema project, collaborator credits, upload/generation, transcode, moderation, release, subscription, entitlement, playback, qualified watch, earning and reconciliation.
+14. Settings, export/deletion, notification preferences, playback/data-saver, accessibility and device/session security.
+15. Super Admin moderation, reports/appeals, Agent capability governance, fraud/credit ledger oversight, Cinema catalogue and safe emergency operations.
+
+## C. Canonical UX and backend parity rules
+- UI references define visual structure and intended interaction, not backend truth. Remove demo fixtures and local-only business success paths from production journeys.
+- Each interactive control must call the correct canonical API command or be explicitly labelled unavailable until the owner domain is implemented.
+- UI cannot fabricate follower counts, view counts, Agent online state, AI Credits, royalty totals, verification badges, subscription status, task completion or publishing success.
+- Feed, profile tabs, Agent profile, AI Cinema, task/scheduling, skill/knowledge, Live and Takeover all require persisted API state and server-side permission checks.
+- Profile-owned posts/Reels must come from canonical author/owner queries and must not be synthesized from the global feed.
+- Generated assets delivered in DM must use private, authorized object references with expiry/entitlement rules, not public permanent URLs by default.
+- Production readiness requires real integration evidence. A component render, build, mock response or migration file alone is insufficient.
+
+## D. Release and design-system acceptance
+1. Document exact source-derived token values, source file/path and usage; separately label any proposed values.
+2. Verify UI parity for the reference components `FeedView`, `ProfileView`, `AiCinemaView`, `AgentGoalsTasksModal`, `SkillsChallengeHub`, `TakeoverControlView`, `LiveExperienceStage`, `ReelsView`, `Navbar` and `BottomNav`.
+3. Verify responsive Web at 360, 390, 820 and 1440 px, plus Android/iOS safe areas and representative device sizes.
+4. Check empty/loading/error/private/disabled/retry/processing/confirmed states for each data-backed journey.
+5. Run automated accessibility and visual regression checks; report actual commands/results and do not claim checks that were not run.
+6. Preserve the existing 3D Universe architecture and its 14 categories. The token system may style spatial navigation, stages, cards and controls but must not change the canonical 3D domain model.
+7. Do not close UI-COPY-03 until reference parity, route behavior, responsive evidence and server-data wiring are recorded. Do not claim full social-network completion until domain-specific acceptance criteria in this PRD are verified.
