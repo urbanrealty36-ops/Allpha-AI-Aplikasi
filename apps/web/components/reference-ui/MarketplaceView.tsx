@@ -13,83 +13,32 @@ import {
   Filter 
 } from 'lucide-react';
 
-interface MarketplaceViewProps {
-  onBuyItem: (title: string, priceCredits: number) => void;
-  userCredits: number;
+export interface MarketplaceListing {
+  id: string;
+  title: string;
+  category: 'AI_AGENT' | '3D_ASSET' | 'SERVICES';
+  categoryLabel: string;
+  priceIdr: string;
+  priceCredits: number;
+  likes: number;
+  avatar: string;
+  description: string;
 }
 
-export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceViewProps) {
+interface MarketplaceViewProps {
+  onBuyItem: (title: string, priceCredits: number) => void;
+  userCredits: number | null;
+  items?: MarketplaceListing[];
+  catalogState?: 'ready' | 'unavailable';
+}
+
+export default function MarketplaceView({ onBuyItem, userCredits, items: propsItems = [], catalogState = 'unavailable' }: MarketplaceViewProps) {
   const [filterTab, setFilterTab] = useState<'ALL' | 'AI_AGENT' | '3D_ASSET' | 'SERVICES'>('ALL');
   const [search, setSearch] = useState('');
 
-  const items = [
-    {
-      id: 'it-1',
-      title: 'Crystal City Pack',
-      category: '3D_ASSET',
-      categoryLabel: '3D Asset',
-      priceIdr: 'Rp 250.000',
-      priceCredits: 50,
-      likes: 1240,
-      avatar: 'https://picsum.photos/seed/crystal-pack/300/200',
-      description: 'Paket modular bangunan pencakar langit, skywalk, dan neon billboards Three.js.',
-    },
-    {
-      id: 'it-2',
-      title: 'AI Character Pack',
-      category: 'AI_AGENT',
-      categoryLabel: 'AI Agent',
-      priceIdr: 'Rp 350.000',
-      priceCredits: 70,
-      likes: 980,
-      avatar: 'https://picsum.photos/seed/luna-cyber/300/200',
-      description: 'Rig avatar 3D cybernetic lengkap dengan 12 animasi emote dan voice sync.',
-    },
-    {
-      id: 'it-3',
-      title: 'Futuristic Building V2',
-      category: '3D_ASSET',
-      categoryLabel: '3D Asset',
-      priceIdr: 'Rp 150.000',
-      priceCredits: 30,
-      likes: 670,
-      avatar: 'https://picsum.photos/seed/building-pack/300/200',
-      description: 'Model gedung pencakar langit dengan material PBR kaca dan pantulan real-time.',
-    },
-    {
-      id: 'it-4',
-      title: 'Space Vehicle Speeder',
-      category: '3D_ASSET',
-      categoryLabel: '3D Asset',
-      priceIdr: 'Rp 200.000',
-      priceCredits: 40,
-      likes: 856,
-      avatar: 'https://picsum.photos/seed/vehicle-pack/300/200',
-      description: 'Kendaraan masa depan melayang dengan lampu neon ground underglow.',
-    },
-    {
-      id: 'it-5',
-      title: 'Marketing AI Pro Agent',
-      category: 'AI_AGENT',
-      categoryLabel: 'AI Agent',
-      priceIdr: 'Rp 300.000 / bln',
-      priceCredits: 60,
-      likes: 1540,
-      avatar: 'https://picsum.photos/seed/marketing-ai/300/200',
-      description: 'AI Agent otomatis untuk menyusun strategi reels dan campaign brand 2026.',
-    },
-    {
-      id: 'it-6',
-      title: 'Design AI Spatial Assistant',
-      category: 'AI_AGENT',
-      categoryLabel: 'AI Agent',
-      priceIdr: 'Rp 250.000 / bln',
-      priceCredits: 50,
-      likes: 890,
-      avatar: 'https://picsum.photos/seed/design-ai/300/200',
-      description: 'AI Companion untuk 3D modeling, shader tuning, dan render stage lighting.',
-    },
-  ];
+  // Production listings must come from the canonical Marketplace API.
+  // An absent adapter intentionally renders an empty catalog, never demo commerce data.
+  const items = propsItems;
 
   const filtered = items.filter((it) => {
     const matchesSearch = it.title.toLowerCase().includes(search.toLowerCase());
@@ -107,7 +56,7 @@ export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceV
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-900 font-mono text-xs font-bold">
           <Coins className="w-3.5 h-3.5 text-amber-700 fill-amber-700" />
-          <span>{userCredits} Cr</span>
+          <span>{userCredits === null ? '—' : userCredits} Cr</span>
         </div>
       </div>
 
@@ -144,6 +93,12 @@ export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceV
           </button>
         ))}
       </div>
+
+      {catalogState === 'unavailable' && (
+        <div role="status" className="rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-600">
+          Katalog Marketplace belum tersedia dari layanan kanonis. Listing dan harga akan ditampilkan setelah kontrak API Marketplace dan Booth/Tenant tersedia.
+        </div>
+      )}
 
       {/* Grid of Marketplace Items */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
