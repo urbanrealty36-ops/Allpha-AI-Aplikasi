@@ -190,7 +190,7 @@ const webCreate = readFileSync(new URL("../app/create/page.tsx", import.meta.url
 for (const contract of [
   '"/v1/content"', '"/v1/content/"', '"/media"', '"/publish"',
   "session.access_token", "FormData", "visibility", "content_type", "allowedMedia", "maxBytes", "file.size",
-  "Konten belum", 'role="alert"', "Konten belum tampil untuk publik."
+  "Konten belum", 'role="alert"', "moderation === \"approved\""
 ]) assert.ok(webCreate.includes(contract), "missing Web Create lifecycle contract: " + contract);
 assert.doesNotMatch(webCreate, /SUPABASE_SERVICE_ROLE_KEY|service_role|mockContentItems|fakeFeed/);
 
