@@ -52,6 +52,7 @@ export default function ReferenceNavigation() {
         onOpenCreditsHub={() => navigate("/skill-challenges")}
         onOpenOnboarding={() => navigate("/agents?onboarding=required")}
         onOpenMessages={() => navigate("/messages")}
+        onOpenNotifications={() => navigate("/notifications")}
         isMessagesActive={pathname.startsWith("/messages")}
         unreadMessagesCount={0}
         searchQuery={searchQuery}
