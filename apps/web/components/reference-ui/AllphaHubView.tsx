@@ -67,8 +67,9 @@ interface AllphaHubViewProps {
   onOpenWorld3D: (districtName?: string) => void;
   onOpenFilmAi?: (filmId?: string) => void;
   onOpenLiveExperienceStage?: () => void;
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
+  productionMode?: boolean;
   onRewardCredits?: (amount: number, reason: string) => void;
 }
 
@@ -78,6 +79,7 @@ export default function AllphaHubView({
   onOpenLiveExperienceStage,
   userCredits,
   agentCredits,
+  productionMode = false,
   onRewardCredits,
 }: AllphaHubViewProps) {
   // Active sub-tab inside Allpha Hub
@@ -111,7 +113,7 @@ export default function AllphaHubView({
   const [videotronPreviewText, setVideotronPreviewText] = useState('ALLPHA FESTIVAL 2026 • SPATIAL LIVING');
 
   // Quests local state with claimable status
-  const [hubQuests, setHubQuests] = useState([
+  const [hubQuests, setHubQuests] = useState(() => productionMode ? [] : [
     {
       id: 'q-film',
       title: 'Tonton 1 Episode Drama Pendek di Film AI',
@@ -165,12 +167,12 @@ export default function AllphaHubView({
   ]);
 
   // Settlement & Ledger State
-  const [creatorBalance] = useState(1480);
-  const [agentTreasury] = useState(620);
+  const [creatorBalance] = useState<number | null>(productionMode ? null : 1480);
+  const [agentTreasury] = useState<number | null>(productionMode ? null : 620);
   const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
-  const [settlementAmount, setSettlementAmount] = useState('500');
+  const [settlementAmount, setSettlementAmount] = useState(productionMode ? '' : '500');
   const [settlementChannel, setSettlementChannel] = useState('BCA');
-  const [accountNumber, setAccountNumber] = useState('8830192819');
+  const [accountNumber, setAccountNumber] = useState(productionMode ? '' : '8830192819');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -179,7 +181,7 @@ export default function AllphaHubView({
   };
 
   // Live Stage Events catalog
-  const stageEvents: LiveStageEvent[] = [
+  const referenceStageEvents: LiveStageEvent[] = [
     {
       id: 'ev-1',
       title: 'Konser Virtual Synthwave & Hologram Avatar Live',
@@ -289,6 +291,7 @@ export default function AllphaHubView({
       district: 'Design Studio District',
     },
   ];
+  const stageEvents: LiveStageEvent[] = productionMode ? [] : referenceStageEvents;
 
   const filteredStages = selectedCategory === 'ALL'
     ? stageEvents
@@ -365,7 +368,7 @@ export default function AllphaHubView({
   ];
 
   // 3D Videotron surfaces dataset
-  const videotronSurfaces = [
+  const referenceVideotronSurfaces = [
     {
       id: 'v-central-megascreen',
       name: 'Videotron 4K Anamorphic Central Avenue',
@@ -411,9 +414,10 @@ export default function AllphaHubView({
       specs: 'Real-time Audio Visualizer • Interactive Q&A Ticker Banner',
     },
   ];
+  const videotronSurfaces = productionMode ? [] : referenceVideotronSurfaces;
 
   // Creator ledger transactions
-  const [ledgerEntries, setLedgerEntries] = useState([
+  const [ledgerEntries, setLedgerEntries] = useState(() => productionMode ? [] : [
     {
       id: 'tx-cin-801',
       date: 'Hari ini, 13:45 WIB',
@@ -473,6 +477,7 @@ export default function AllphaHubView({
 
   // Handler for claiming quest
   const handleClaimQuest = (questId: string, credits: number, xp: number) => {
+    if (productionMode) return;
     setHubQuests((prev) =>
       prev.map((q) => (q.id === questId ? { ...q, claimed: true } : q))
     );
@@ -484,6 +489,7 @@ export default function AllphaHubView({
 
   // Handler for booking videotron
   const handleConfirmVideotronBooking = () => {
+    if (productionMode) return;
     if (!selectedVideotron) return;
     const totalCost = selectedVideotron.priceCreditsPerDay * bookingDays;
     
@@ -508,6 +514,7 @@ export default function AllphaHubView({
   // Handler for creator settlement
   const handleExecuteSettlement = (e: React.FormEvent) => {
     e.preventDefault();
+    if (productionMode || creatorBalance == null) return;
     const amt = parseInt(settlementAmount, 10);
     if (isNaN(amt) || amt <= 0 || amt > creatorBalance) {
       showToast('Nominal pencairan tidak valid atau melebihi saldo.');
@@ -570,7 +577,7 @@ export default function AllphaHubView({
               <div className="text-right">
                 <span className="text-[10px] text-amber-900 font-extrabold block leading-none">Saldo Akun</span>
                 <span className="text-xs font-mono font-black text-amber-950">
-                  {userCredits + agentCredits} Cr
+                  {userCredits == null || agentCredits == null ? '—' : userCredits + agentCredits} Cr
                 </span>
               </div>
             </div>
@@ -636,7 +643,7 @@ export default function AllphaHubView({
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsCreateEventModalOpen(true)}
+                onClick={() => { if (productionMode) { showToast('Pembuatan event belum tersedia dari layanan produksi.'); return; } setIsCreateEventModalOpen(true); }}
                 className="px-3.5 py-2 rounded-2xl bg-sky-200 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <PlusCircle className="w-3.5 h-3.5 stroke-[2.5px]" />
@@ -961,7 +968,7 @@ export default function AllphaHubView({
                 className="flex-1 px-3.5 py-2 rounded-2xl bg-slate-900 border-2 border-slate-700 text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400 font-semibold"
               />
               <button
-                onClick={() => showToast('Simulasi tampilan videotron diperbarui!')}
+                onClick={() => { if (productionMode) { showToast('Preview videotron belum terhubung ke layanan produksi.'); return; } showToast('Simulasi tampilan videotron diperbarui!'); }}
                 className="px-4 py-2 rounded-2xl bg-cyan-400 hover:bg-cyan-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Terapkan ke Simulator
@@ -1172,7 +1179,7 @@ export default function AllphaHubView({
                 <span>Unduh CSV</span>
               </button>
               <button
-                onClick={() => setIsSettlementModalOpen(true)}
+                onClick={() => { if (productionMode) { showToast('Pencairan belum tersedia dari layanan ledger produksi.'); return; } setIsSettlementModalOpen(true); }}
                 className="px-4 py-2 rounded-2xl bg-indigo-300 hover:bg-indigo-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <CreditCard className="w-3.5 h-3.5 stroke-[2.5px]" />
@@ -1188,7 +1195,7 @@ export default function AllphaHubView({
                 Saldo Kreator Human (70%)
               </span>
               <p className="text-xl font-mono font-black text-emerald-950">
-                {creatorBalance.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
+                {creatorBalance == null ? '—' : creatorBalance.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
               </p>
               <p className="text-xs text-emerald-800 font-bold">
                 ≈ Rp {(creatorBalance * 1000).toLocaleString('id-ID')} Siap Tarik
@@ -1200,7 +1207,7 @@ export default function AllphaHubView({
                 AI Agent Treasury (30%)
               </span>
               <p className="text-xl font-mono font-black text-purple-950">
-                {agentTreasury.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
+                {agentTreasury == null ? '—' : agentTreasury.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
               </p>
               <p className="text-xs text-purple-800 font-bold">
                 Alokasi upgrade memori & komputasi agen
@@ -1451,7 +1458,7 @@ export default function AllphaHubView({
 
             <div className="p-3.5 rounded-2xl bg-indigo-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-1 text-indigo-950">
               <span className="text-[10px] uppercase font-black text-indigo-800">Saldo Tersedia untuk Dicairkan</span>
-              <p className="text-xl font-mono font-black">{creatorBalance.toLocaleString('id-ID')} Credits</p>
+              <p className="text-xl font-mono font-black">{creatorBalance == null ? '—' : creatorBalance.toLocaleString('id-ID')} Credits</p>
               <p className="text-xs text-indigo-800 font-bold">Kurs Tetap: 1 Credit = Rp 1.000 (Setara Rp {(creatorBalance * 1000).toLocaleString('id-ID')})</p>
             </div>
 
@@ -1460,7 +1467,7 @@ export default function AllphaHubView({
               <input
                 type="number"
                 min="50"
-                max={creatorBalance}
+                max={creatorBalance ?? 0}
                 value={settlementAmount}
                 onChange={(e) => setSettlementAmount(e.target.value)}
                 className="w-full px-3 py-2 rounded-2xl bg-slate-50 border-2 border-slate-900 text-slate-950 font-mono font-black outline-none"
