@@ -15,7 +15,7 @@ import {
 
 interface MarketplaceViewProps {
   onBuyItem: (title: string, priceCredits: number) => void;
-  userCredits: number;
+  userCredits: number | null;
 }
 
 export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceViewProps) {
@@ -113,7 +113,7 @@ export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceV
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 font-mono text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a]">
           <span>🪙</span>
-          <span>{userCredits} Cr</span>
+          <span>{userCredits == null ? '—' : `${userCredits} Cr`}</span>
         </div>
       </div>
 
