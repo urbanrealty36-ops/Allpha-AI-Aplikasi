@@ -49,12 +49,12 @@ export default function LiveExperienceStage({
   const [isHostCameraOn, setIsHostCameraOn] = useState(true);
   const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(false);
   const [isAiAgentMuted, setIsAiAgentMuted] = useState(false);
-  const [likesCount, setLikesCount] = useState<number | null>(null);
-  const [viewerCount, setViewerCount] = useState<number | null>(null);
+  const [likesCount] = useState<number | null>(null);
+  const [viewerCount] = useState<number | null>(null);
   const [stageToast, setStageToast] = useState<string | null>(null);
 
   // Topics and active slide
-  const [activeTopic, setActiveTopic] = useState('');
+  const [activeTopic] = useState('');
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   // Audio spectrum simulation
@@ -390,7 +390,8 @@ export default function LiveExperienceStage({
             </div>
             <button
               onClick={handleLike}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-200 text-rose-950 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
+              disabled={likesCount == null}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-200 disabled:opacity-50 text-rose-950 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Heart className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
               <span>{likesCount ?? '—'}</span>
@@ -430,12 +431,13 @@ export default function LiveExperienceStage({
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Tulis pesan atau pertanyaan..."
+              disabled
+              placeholder="Chat Live belum tersedia"
               className="flex-1 px-3.5 py-2 text-xs font-bold bg-slate-50 border-2 border-slate-900 rounded-2xl outline-none shadow-[1.5px_1.5px_0px_#0f172a] focus:bg-white"
             />
             <button
               type="submit"
-              disabled={!chatInput.trim()}
+              disabled
               className="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 disabled:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Send className="w-4 h-4 stroke-[2.5px]" />
