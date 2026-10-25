@@ -196,7 +196,7 @@ export default function GenerateModal({
         <div className="flex items-center justify-between pb-3.5 border-b-2 border-slate-900">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-purple-300 border-2 border-slate-900 text-slate-950 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a]">
-              <Wand2 className="w-4 h-4" />
+              <Wand2 className="w-5 h-5 stroke-[2.5px]" />
             </div>
             <div>
               <h2 className="text-sm font-black text-slate-900 tracking-tight">
@@ -211,7 +211,7 @@ export default function GenerateModal({
             onClick={onClose}
             className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 text-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 stroke-[2.5px]" />
           </button>
         </div>
 
@@ -221,10 +221,10 @@ export default function GenerateModal({
           <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-slate-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-black">
             <button
               onClick={() => setContentType('REELS_BRAND')}
-              className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-center ${
+              className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 text-center cursor-pointer ${
                 contentType === 'REELS_BRAND'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-purple-300 text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]'
+                  : 'text-slate-700 hover:text-slate-950'
               }`}
             >
               <Film className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
@@ -232,10 +232,10 @@ export default function GenerateModal({
             </button>
             <button
               onClick={() => setContentType('FEED_POST')}
-              className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-center ${
+              className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 text-center cursor-pointer ${
                 contentType === 'FEED_POST'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-purple-300 text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]'
+                  : 'text-slate-700 hover:text-slate-950'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
@@ -243,10 +243,10 @@ export default function GenerateModal({
             </button>
             <button
               onClick={() => setContentType('DOCUMENT_PROPOSAL')}
-              className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-center ${
+              className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 text-center cursor-pointer ${
                 contentType === 'DOCUMENT_PROPOSAL'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-purple-300 text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]'
+                  : 'text-slate-700 hover:text-slate-950'
               }`}
             >
               <FileText className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
@@ -254,10 +254,10 @@ export default function GenerateModal({
             </button>
             <button
               onClick={() => setContentType('CAMPAIGN_SUITE')}
-              className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 text-center ${
+              className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 text-center cursor-pointer ${
                 contentType === 'CAMPAIGN_SUITE'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-purple-300 text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]'
+                  : 'text-slate-700 hover:text-slate-950'
               }`}
             >
               <Layers className="w-3.5 h-3.5 shrink-0 stroke-[2.5px]" />
@@ -273,15 +273,15 @@ export default function GenerateModal({
             <span>Mekanisme Challenge & Transfer Kredit:</span>
           </p>
           <p className="text-[11px] font-medium text-slate-700">
-            AI Agent akan mempelajari Nama Brand, Logo, dan Aset Produk yang Anda unggah, lalu menghasilkan skrip video reels, draf postingan, atau proposal yang selaras dengan identitas brand Anda. Sesi ini memotong 15 AI Credits Anda dan mentransfernya ke pemilik AI Agent.
+            AI Agent mempelajari Nama Brand, Logo, dan Aset Produk yang Anda unggah untuk membuat konten yang selaras. Sesi ini memotong 15 AI Credits Anda dan mentransfernya ke pemilik AI Agent.
           </p>
         </div>
 
         {/* Quick Brand Preset Shortcuts */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="font-black text-slate-900">Contoh Cepat (Klik untuk Pasang):</span>
-            <span className="text-slate-500 font-bold">Preset Brand</span>
+            <span className="font-black text-slate-900">Contoh Cepat Preset Brand:</span>
+            <span className="text-slate-500 font-bold">1-Klik Pasang</span>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {PRESET_BRANDS.map((b) => (
@@ -346,13 +346,13 @@ export default function GenerateModal({
                       className="text-slate-500 hover:text-rose-600 transition cursor-pointer"
                       title="Hapus Logo"
                     >
-                      <Trash2 className="w-3.5 h-3.5 stroke-[2.5px]" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
 
                 {logoMedia ? (
-                  <div className="flex items-center gap-2.5 p-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-purple-50 border-2 border-slate-900">
                     <img
                       src={logoMedia.url}
                       alt="Logo Brand"
@@ -387,7 +387,7 @@ export default function GenerateModal({
                   onClick={() => logoInputRef.current?.click()}
                   className="w-full py-2 rounded-xl border-2 border-slate-900 bg-purple-100 hover:bg-purple-200 text-purple-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Upload className="w-3 h-3" />
+                  <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
                   <span>Pilih File Logo (JPG/PNG/MP4)</span>
                 </button>
               </div>
@@ -402,13 +402,13 @@ export default function GenerateModal({
                       className="text-slate-500 hover:text-rose-600 transition cursor-pointer"
                       title="Hapus Aset Produk"
                     >
-                      <Trash2 className="w-3.5 h-3.5 stroke-[2.5px]" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
 
                 {productMedia ? (
-                  <div className="flex items-center gap-2.5 p-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-cyan-50 border-2 border-slate-900">
                     <img
                       src={productMedia.url}
                       alt="Produk"
@@ -443,7 +443,7 @@ export default function GenerateModal({
                   onClick={() => productInputRef.current?.click()}
                   className="w-full py-2 rounded-xl border-2 border-slate-900 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Upload className="w-3 h-3" />
+                  <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
                   <span>Pilih File Produk (Foto/Video)</span>
                 </button>
               </div>
@@ -484,7 +484,7 @@ export default function GenerateModal({
               </>
             ) : (
               <>
-                <Wand2 className="w-4 h-4" />
+                <Wand2 className="w-4 h-4 stroke-[2.5px]" />
                 <span>Generate & Kirim File ke DM (-15 Cr)</span>
               </>
             )}
@@ -510,7 +510,7 @@ export default function GenerateModal({
                   </>
                 ) : (
                   <>
-                    <Copy className="w-3 h-3" />
+                    <Copy className="w-3 h-3 stroke-[2.5px]" />
                     <span>Salin Teks</span>
                   </>
                 )}
