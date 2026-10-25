@@ -411,18 +411,18 @@ export default function ExploreView({
         </div>
       )}
 
-      {/* STICKY TOP SEARCH HEADER (Instagram & Threads Style) */}
+      {/* STICKY TOP SEARCH HEADER (Playful Neo-Brutalist Soft Pastel Style) */}
       <div className="sticky top-15 z-30 bg-[#F4F7FB]/95 backdrop-blur border-b-2 border-slate-900 px-4 pt-3 pb-3 space-y-3 shadow-xs">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-base font-black tracking-tight text-slate-900 flex items-center gap-1.5">
               <span>Jelajahi & Cari</span>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-sky-200 border-2 border-slate-900 text-sky-950 uppercase shadow-2xs">
-                Social Hub
+                SOCIAL HUB
               </span>
             </h1>
             <p className="text-[11px] font-semibold text-slate-700">
-              Cari akun Human, AI Agent, konten, caption, hashtag & ekosistem Allpha
+              Cari akun Human, AI Agent, konten, caption, #hashtag & ekosistem Allpha
             </p>
           </div>
           <button
@@ -449,7 +449,7 @@ export default function ExploreView({
               onClick={() => setSearchQuery('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-800"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4 stroke-[2.5px]" />
             </button>
           )}
         </div>
@@ -458,30 +458,30 @@ export default function ExploreView({
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {[
             { id: 'ALL' as SearchTab, label: 'Semua', count: isSearching ? (filteredAccounts.length + filteredPosts.length + filteredHashtags.length) : undefined },
-            { id: 'ACCOUNTS' as SearchTab, label: 'Akun (Human & AI)', count: filteredAccounts.length },
-            { id: 'POSTS' as SearchTab, label: 'Postingan & Caption', count: filteredPosts.length },
-            { id: 'HASHTAGS' as SearchTab, label: 'Hashtags (#)', count: filteredHashtags.length },
-            { id: 'PRD_HUB' as SearchTab, label: 'Allpha Hub', badge: 'Ecosystem' },
+            { id: 'ACCOUNTS' as SearchTab, label: '👥 Akun (Human & AI)', count: filteredAccounts.length },
+            { id: 'POSTS' as SearchTab, label: '📝 Postingan & Caption', count: filteredPosts.length },
+            { id: 'HASHTAGS' as SearchTab, label: '# Hashtags', count: filteredHashtags.length },
+            { id: 'PRD_HUB' as SearchTab, label: '🌐 Allpha Hub', badge: 'Ecosystem' },
           ].map((tab) => {
             const isActive = activeSearchTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveSearchTab(tab.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`shrink-0 px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-sky-400 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                    : 'bg-white text-slate-800 hover:bg-slate-100 shadow-[1.5px_1.5px_0px_#0f172a]'
                 }`}
               >
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-mono font-black border ${isActive ? 'bg-white text-slate-950 border-slate-900' : 'bg-slate-200 text-slate-800 border-slate-400'}`}>
                     {tab.count}
                   </span>
                 )}
                 {tab.badge && (
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'}`}>
+                  <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black border border-slate-900 ${isActive ? 'bg-amber-200 text-amber-950' : 'bg-emerald-200 text-emerald-950'}`}>
                     {tab.badge}
                   </span>
                 )}
@@ -493,7 +493,7 @@ export default function ExploreView({
 
       <div className="p-4 space-y-6">
         {/* ======================================================== */}
-        {/* SECTION A: TRENDING HASHTAGS CAROUSEL (When not filtered or when on HASHTAGS) */}
+        {/* SECTION A: TRENDING HASHTAGS CAROUSEL */}
         {/* ======================================================== */}
         {(activeSearchTab === 'ALL' || activeSearchTab === 'HASHTAGS') && (
           <section className="space-y-3">
@@ -514,10 +514,10 @@ export default function ExploreView({
                 <button
                   key={h.tag}
                   onClick={() => setSearchQuery(h.tag)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                     searchQuery === h.tag
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                      : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'
+                      ? 'bg-sky-400 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                      : 'bg-white text-slate-900 hover:bg-sky-50 shadow-[1.5px_1.5px_0px_#0f172a]'
                   }`}
                 >
                   <span className="text-sky-700">{h.tag}</span>
@@ -547,32 +547,36 @@ export default function ExploreView({
                 <span>Akun Human & AI Agent ({filteredAccounts.length})</span>
               </h2>
               {!isSearching && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 font-black">Disarankan</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 font-black">
+                  ⭐ Disarankan
+                </span>
               )}
             </div>
 
             {filteredAccounts.length === 0 ? (
-              <div className="p-6 text-center bg-white rounded-2xl border border-slate-200 text-slate-500 text-xs">
+              <div className="p-6 text-center bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-600 text-xs font-bold">
                 Tidak ada akun yang cocok dengan kata kunci &quot;{searchQuery}&quot;
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredAccounts.map((acc) => {
+                {filteredAccounts.map((acc, idx) => {
                   const isFollowed = followedAccounts[acc.handle] || false;
+                  const bgColors = ['bg-white', 'bg-sky-50/50', 'bg-emerald-50/50', 'bg-amber-50/50', 'bg-purple-50/50'];
+                  const cardBg = bgColors[idx % bgColors.length];
 
                   return (
                     <div
                       key={acc.id}
-                      className="flex items-start justify-between gap-3"
+                      className={`p-4 rounded-3xl ${cardBg} border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3 transition`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3">
                           {/* Avatar with Live Indicator Ring */}
-                          <div className="cursor-pointer p-0.5 rounded-full bg-gradient-to-tr from-rose-500 via-purple-600 to-amber-500 border-2 border-slate-900 animate-pulse">
+                          <div className="relative shrink-0">
                             {acc.isLive ? (
                               <div 
                                 onClick={onOpenLiveStage}
-                                className="w-12 h-12 rounded-full object-cover border-2 border-white"
+                                className="cursor-pointer p-0.5 rounded-full bg-gradient-to-tr from-rose-500 via-purple-600 to-amber-500 border-2 border-slate-900 animate-pulse"
                               >
                                 <img
                                   src={acc.avatar}
@@ -584,14 +588,14 @@ export default function ExploreView({
                               <img
                                 src={acc.avatar}
                                 alt={acc.name}
-                                className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded-full bg-rose-600 border border-slate-900 text-white font-mono font-black text-[8px] flex items-center gap-0.5 shadow-xs cursor-pointer animate-pulse"
+                                className="w-12 h-12 rounded-full object-cover border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]"
                               />
                             )}
 
                             {acc.isLive && (
                               <span 
                                 onClick={onOpenLiveStage}
-                                className="w-2 h-2 text-white animate-spin"
+                                className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded-full bg-rose-600 border border-slate-900 text-white font-mono font-black text-[8px] flex items-center gap-0.5 shadow-xs cursor-pointer animate-pulse"
                               >
                                 <Radio className="w-2 h-2 text-white animate-spin" />
                                 LIVE
@@ -601,32 +605,32 @@ export default function ExploreView({
 
                           {/* Profile Details */}
                           <div className="space-y-0.5">
-                            <div className="text-xs sm:text-sm font-black text-slate-900">
-                              <h3 className="w-4 h-4 rounded-full bg-sky-500 border border-slate-900 text-white flex items-center justify-center text-[8px] font-black shadow-2xs">{acc.name}</h3>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h3 className="text-xs sm:text-sm font-black text-slate-900">{acc.name}</h3>
                               {acc.verified && (
-                                <span className="text-[11px] text-slate-700 font-mono font-bold">
+                                <span className="w-4 h-4 rounded-full bg-sky-500 border border-slate-900 text-white flex items-center justify-center text-[8px] font-black shadow-2xs">
                                   ✓
                                 </span>
                               )}
-                              <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border-2 border-slate-900 ${
                                 acc.isAi 
-                                  ? 'bg-purple-100 text-purple-700 border border-purple-200' 
-                                  : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                  ? 'bg-purple-200 text-purple-950' 
+                                  : 'bg-emerald-200 text-emerald-950'
                               }`}>
                                 {acc.isAi ? '🤖 AI Agent' : '👤 Human Owner'}
                               </span>
                             </div>
 
-                            <p className="text-slate-600 font-sans ml-1">
+                            <p className="text-[11px] text-slate-700 font-mono font-bold">
                               {acc.handle}
                               {acc.ownerName && (
-                                <span className="text-[11px] text-slate-800 font-semibold line-clamp-2 pt-0.5 leading-snug">
+                                <span className="text-slate-600 font-sans ml-1">
                                   • Milik <strong>{acc.ownerName}</strong>
                                 </span>
                               )}
                             </p>
 
-                            <p className="w-3.5 h-3.5 text-emerald-800 stroke-[3px]">
+                            <p className="text-[11px] text-slate-800 font-semibold line-clamp-2 pt-0.5 leading-snug">
                               {acc.bio}
                             </p>
                           </div>
@@ -635,20 +639,20 @@ export default function ExploreView({
                         {/* Follow Button */}
                         <button
                           onClick={() => toggleFollow(acc.handle)}
-                          className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                          className={`shrink-0 px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                             isFollowed
-                              ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-xs'
+                              ? 'bg-slate-200 text-slate-800 shadow-[1.5px_1.5px_0px_#0f172a]'
+                              : 'bg-amber-300 hover:bg-amber-400 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
                           }`}
                         >
                           {isFollowed ? (
                             <>
-                              <Check className="w-3.5 h-3.5 stroke-[2.5px]" />
+                              <Check className="w-3.5 h-3.5 text-emerald-800 stroke-[3px]" />
                               <span>Mengikuti</span>
                             </>
                           ) : (
                             <>
-                              <UserPlus className="w-3.5 h-3.5" />
+                              <UserPlus className="w-3.5 h-3.5 stroke-[2.5px]" />
                               <span>Ikuti</span>
                             </>
                           )}
@@ -656,14 +660,14 @@ export default function ExploreView({
                       </div>
 
                       {/* Bottom action bar */}
-                      <div className="flex items-center gap-2 text-slate-700 font-bold">
-                        <div className="font-mono text-slate-900">
-                          <span className="text-sky-700 font-extrabold truncate max-w-[140px]">
+                      <div className="pt-2.5 border-t-2 border-slate-900/10 flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-2 text-slate-700 font-bold">
+                          <span className="font-mono text-slate-900">
                             {acc.followers.toLocaleString()}
                           </span>
                           <span>pengikut</span>
                           <span>•</span>
-                          <span className="flex items-center gap-1.5">
+                          <span className="text-sky-700 font-extrabold truncate max-w-[140px]">
                             {acc.specialty}
                           </span>
                         </div>
@@ -672,18 +676,18 @@ export default function ExploreView({
                           {acc.isAi && (
                             <button
                               onClick={() => onOpenAskAi(acc.name, acc.ownerName || 'Alex Tamara', acc.specialty)}
-                              className="w-3 h-3 text-sky-900 stroke-[2.5px]"
+                              className="px-2.5 py-1 rounded-xl bg-sky-200 hover:bg-sky-300 text-sky-950 text-[10.5px] font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                             >
-                              <Bot className="px-2.5 py-1 rounded-xl bg-rose-200 hover:bg-rose-300 text-rose-950 text-[10.5px] font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer" />
+                              <Bot className="w-3 h-3 text-sky-900 stroke-[2.5px]" />
                               <span>Tanya AI</span>
                             </button>
                           )}
                           {acc.isLive && onOpenLiveStage && (
                             <button
                               onClick={onOpenLiveStage}
-                              className="w-3 h-3 text-rose-900 stroke-[2.5px]"
+                              className="px-2.5 py-1 rounded-xl bg-rose-200 hover:bg-rose-300 text-rose-950 text-[10.5px] font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                             >
-                              <Radio className="space-y-3" />
+                              <Radio className="w-3 h-3 text-rose-900 stroke-[2.5px]" />
                               <span>Tonton Live</span>
                             </button>
                           )}
@@ -703,8 +707,8 @@ export default function ExploreView({
         {(activeSearchTab === 'ALL' || activeSearchTab === 'POSTS') && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-sky-600 stroke-[2.5px]" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
                 <span>Postingan & Caption ({filteredPosts.length})</span>
               </h2>
             </div>
@@ -719,7 +723,7 @@ export default function ExploreView({
                   <div
                     key={post.id}
                     onClick={() => onSelectPost && onSelectPost(post)}
-                    className="flex items-center justify-between"
+                    className="p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:-translate-y-0.5 transition space-y-2.5 cursor-pointer"
                   >
                     {/* Author Bar */}
                     <div className="flex items-center justify-between">
@@ -727,38 +731,38 @@ export default function ExploreView({
                         <img
                           src={post.humanOwner.avatar}
                           alt={post.humanOwner.name}
-                          className="flex items-center gap-1.5"
+                          className="w-8 h-8 rounded-full object-cover border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]"
                         />
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-black text-slate-900">
                               {post.humanOwner.name}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
+                            <span className="text-[10px] text-slate-600 font-mono font-bold">
                               × {post.aiAgent.name}
                             </span>
                           </div>
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-500 font-mono font-semibold">
                             {post.timestamp}
                           </span>
                         </div>
                       </div>
 
                       {post.has3DModel && (
-                        <span className="w-3 h-3 text-cyan-900 stroke-[2.5px]">
-                          <Box className="text-xs font-medium text-slate-800 leading-relaxed line-clamp-3" />
+                        <span className="text-[9.5px] px-2.5 py-0.5 rounded-full bg-cyan-200 text-cyan-950 font-black border-2 border-slate-900 flex items-center gap-1 shadow-2xs">
+                          <Box className="w-3 h-3 text-cyan-900 stroke-[2.5px]" />
                           3D Model
                         </span>
                       )}
                     </div>
 
                     {/* Caption snippet */}
-                    <p className="flex flex-wrap gap-1.5">
+                    <p className="text-xs font-medium text-slate-800 leading-relaxed line-clamp-3">
                       {post.content}
                     </p>
 
                     {/* Tags */}
-                    <div className="text-[10.5px] font-mono font-black text-sky-700 px-2 py-0.5 rounded-xl bg-sky-50 border border-slate-300 hover:bg-sky-100 cursor-pointer">
+                    <div className="flex flex-wrap gap-1.5">
                       {post.tags.map((t) => (
                         <span
                           key={t}
@@ -766,7 +770,7 @@ export default function ExploreView({
                             e.stopPropagation();
                             setSearchQuery(t);
                           }}
-                          className="pt-2.5 border-t-2 border-slate-900/10 flex items-center justify-between text-[11px] text-slate-700 font-bold"
+                          className="text-[10.5px] font-mono font-black text-sky-700 px-2 py-0.5 rounded-xl bg-sky-50 border border-slate-300 hover:bg-sky-100 cursor-pointer"
                         >
                           {t}
                         </span>
@@ -774,23 +778,23 @@ export default function ExploreView({
                     </div>
 
                     {/* Engagement Counts */}
-                    <div className="flex items-center gap-3">
+                    <div className="pt-2.5 border-t-2 border-slate-900/10 flex items-center justify-between text-[11px] text-slate-700 font-bold">
                       <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1.5">
-                          <Heart className="flex items-center gap-1.5" />
+                        <span className="flex items-center gap-1">
+                          <Heart className="w-3.5 h-3.5 text-rose-600 fill-rose-200 stroke-[2.2px]" />
                           {post.likes}
                         </span>
-                        <span className="flex items-center gap-1.5">
-                          <MessageCircle className="flex items-center gap-1.5" />
+                        <span className="flex items-center gap-1">
+                          <MessageCircle className="w-3.5 h-3.5 text-sky-600 stroke-[2.2px]" />
                           {post.commentsCount}
                         </span>
-                        <span className="flex items-center gap-1.5">
-                          <Repeat2 className="text-[10.5px] text-slate-900 font-black flex items-center gap-0.5 hover:underline" />
+                        <span className="flex items-center gap-1">
+                          <Repeat2 className="w-3.5 h-3.5 text-emerald-600 stroke-[2.2px]" />
                           {post.reposts}
                         </span>
                       </div>
-                      <span className="pt-2 border-t border-slate-200">
-                        Lihat Postingan →
+                      <span className="text-[10.5px] text-slate-900 font-black flex items-center gap-0.5 hover:underline">
+                        Lihat Detail →
                       </span>
                     </div>
                   </div>
@@ -814,429 +818,34 @@ export default function ExploreView({
             />
           </div>
         )}
-
-        {/* Legacy PRD content disabled in favor of dedicated AllphaHubView */}
-        {false && (
-          <div className="w-full max-w-md bg-white rounded-3xl p-5 border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            {/* 1. 500 AI AGENT SKILL BLUEPRINTS */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <Bot className="w-4 h-4 text-blue-600" />
-                    <span>500 AI Agent Skill Blueprints</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                      Master PRD App. B
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Katalog blueprint terstruktur lintas 25 domain siap pasang ke AI Agent Anda
-                  </p>
-                </div>
-                <span className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs space-y-2">
-                  {filteredBlueprints.length} Tersedia
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                {filteredBlueprints.map((bp) => (
-                  <div
-                    key={bp.key}
-                    onClick={() => setSelectedBlueprint(bp)}
-                    className="text-slate-600 font-bold"
-                  >
-                    <div className="font-black text-slate-950">
-                      <span className="flex justify-between">
-                        {bp.key}
-                      </span>
-                      <span
-                        className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${
-                          bp.readiness === 'Execution-ready'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {bp.readiness}
-                      </span>
-                    </div>
-
-                    <h4 className="text-slate-600 font-bold">
-                      {bp.name}
-                    </h4>
-                    <p className="font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-lg border border-slate-900">
-                      {bp.description}
-                    </p>
-
-                    <div className="flex justify-between">
-                      <span>Peran: <strong className="text-slate-600 font-bold">{bp.suggestedRole}</strong></span>
-                      <span className="font-black text-slate-950">
-                        {bp.costEstimateCredits} Cr/run
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* 2. VISUAL WORKFLOW STUDIO (n8n-style) */}
-            <section className="flex justify-between">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Workflow className="pt-2 flex gap-2" />
-                    <h3 className="flex-1 py-2.5 rounded-2xl bg-sky-300 hover:bg-sky-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer">
-                      Visual Workflow Studio (n8n-Style)
-                    </h3>
-                  </div>
-                  <p className="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer">
-                    Eksekusi otomatis DAG node graf multi-agent dengan durable checkpointing (PRD §26)
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleRunWorkflow}
-                  disabled={isWorkflowRunning}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg transition flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {isWorkflowRunning ? (
-                    <>
-                      <RotateCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Mengeksekusi...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5 fill-white" />
-                      <span>Uji Jalankan DAG</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                {workflowNodes.map((node, index) => (
-                  <div
-                    key={node.id}
-                    className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="w-6 h-6 rounded-full bg-slate-700 text-cyan-300 font-mono text-xs flex items-center justify-center font-bold">
-                        {index + 1}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-bold text-white">{node.name}</p>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 font-mono">
-                            {node.type}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 line-clamp-1">{node.description}</p>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono ${
-                        node.status === 'SUCCESS'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                          : node.status === 'CHECKPOINT'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'bg-slate-700 text-slate-400'
-                      }`}
-                    >
-                      {node.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {workflowExecutionLog && (
-                <div className="p-3 rounded-xl bg-black/60 border border-slate-800 font-mono text-[11px] text-cyan-300">
-                  {workflowExecutionLog}
-                </div>
-              )}
-            </section>
-
-            {/* 3. 3D WORLDS DIRECTORY */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <Box className="w-4 h-4 text-blue-600" />
-                    <span>Jelajahi Dunia 3D (Worlds Directory)</span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Daftar dunia virtual, distrik kota, dan area publik Allpha Universe
-                  </p>
-                </div>
-                <button
-                  onClick={onOpenWorld3D}
-                  className="text-xs text-blue-600 font-bold hover:underline"
-                >
-                  Buka Peta 3D →
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {worlds3D.map((w) => (
-                  <div
-                    key={w.id}
-                    className="rounded-3xl overflow-hidden bg-white border border-slate-200 shadow-xs hover:shadow-md transition group"
-                  >
-                    <div className="relative h-28 bg-slate-900 overflow-hidden">
-                      <img
-                        src={w.img}
-                        alt={w.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                      />
-                      <div className="absolute top-2 left-2 flex gap-1">
-                        <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[9px]">
-                          {w.badge}
-                        </span>
-                      </div>
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[9px] bg-black/50 backdrop-blur px-2 py-0.5 rounded-lg">
-                        <span className="flex items-center gap-1.5">
-                          <Users className="w-3 h-3 text-cyan-400" />
-                          {w.online}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="w-3 h-3 text-amber-400" />
-                          {w.events}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="p-3 space-y-1.5">
-                      <h4 className="font-extrabold text-xs text-slate-900">{w.name}</h4>
-                      <p className="text-[10px] text-slate-600 line-clamp-1">{w.tagline}</p>
-                      <button
-                        onClick={onOpenWorld3D}
-                        className="w-full py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center justify-center gap-1"
-                      >
-                        <span>Masuk 3D</span>
-                        <ArrowUpRight className="w-3 h-3 text-cyan-400" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* 4. 3D VIDEOTRON & MEDIA SURFACES (PRD §51) */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <Tv className="w-4 h-4 text-purple-600" />
-                    <span>3D Videotron & Media Surfaces Engine</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                      PRD §51
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Pasang iklan dan pesan brand pada videotron 4K di Crystal City
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {mediaSurfaces.map((surf) => (
-                  <div
-                    key={surf.id}
-                    className="p-3.5 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between shadow-xs hover:border-purple-300 transition"
-                  >
-                    <div className="flex items-start gap-3">
-                      <img
-                        src={surf.previewImage}
-                        alt={surf.name}
-                        className="w-14 h-14 rounded-2xl object-cover shrink-0 ring-1 ring-slate-200"
-                      />
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="font-bold text-xs text-slate-900">{surf.name}</h4>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 font-bold">
-                            {surf.type}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          {surf.district} • {surf.location}
-                        </p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-600 mt-0.5">
-                          <span>Impresi: <strong>{surf.dailyImpressions}</strong></span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="w-full sm:w-auto flex sm:flex-col items-center sm:items-end justify-between gap-1 border-t sm:border-t-0 pt-2 sm:pt-0">
-                      <span className="font-mono font-bold text-xs text-amber-600">
-                        {surf.priceCreditsPerDay} Cr/hari
-                      </span>
-                      <button
-                        onClick={() => triggerToast(`Slot "${surf.name}" siap dijadwalkan!`)}
-                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow-xs"
-                      >
-                        Pesan Slot Iklan
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* 5. QUEST & XP REWARDS */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <Award className="w-4 h-4 text-amber-600" />
-                    <span>Quest Harian & Reward XP</span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Selesaikan misi harian untuk mendapatkan bonus AI Credits dan XP
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {quests.map((q) => {
-                  const isCompleted = q.progress >= q.maxProgress;
-
-                  return (
-                    <div
-                      key={q.id}
-                      className="p-3 rounded-2xl bg-white border border-slate-200 flex items-center justify-between gap-3 shadow-xs"
-                    >
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="font-bold text-xs text-slate-900">{q.title}</h4>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 font-bold">
-                            {q.type}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500">{q.description}</p>
-
-                        <div className="flex items-center gap-2 max-w-xs pt-0.5">
-                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                              style={{
-                                width: `${Math.min(100, (q.progress / q.maxProgress) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="font-mono text-[9px] text-slate-600 font-semibold">
-                            {q.progress}/{q.maxProgress}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0 space-y-1">
-                        <div className="text-[10px] font-mono font-bold text-emerald-600">
-                          +{q.rewardCredits} Cr
-                        </div>
-                        <button
-                          onClick={() => handleClaimQuest(q.id)}
-                          disabled={!isCompleted || q.isClaimed}
-                          className={`px-3 py-1 rounded-xl text-xs font-bold transition ${
-                            q.isClaimed
-                              ? 'bg-slate-100 text-slate-400 cursor-default'
-                              : isCompleted
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs'
-                              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                          }`}
-                        >
-                          {q.isClaimed ? 'Diklaim' : isCompleted ? 'Klaim' : 'Berjalan'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* 6. SETTLEMENT LEDGER */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <CreditCard className="w-4 h-4 text-emerald-600" />
-                    <span>Buku Besar Mutasi & Settlement Creator</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                      PRD §64
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Catatan audit transparan dari reward pertanyaan AI dan brand share
-                  </p>
-                </div>
-                {onOpenCreditsHub && (
-                  <button
-                    onClick={onOpenCreditsHub}
-                    className="text-xs text-blue-600 font-bold hover:underline"
-                  >
-                    Dompet →
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {transactions.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="p-3 rounded-2xl bg-white border border-slate-200 flex items-start justify-between gap-3 shadow-2xs"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[9px] text-blue-600 font-bold">
-                          {tx.id}
-                        </span>
-                        <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                          {tx.status}
-                        </span>
-                      </div>
-                      <p className="text-xs font-black text-slate-900">{tx.querySummary}</p>
-                      <p className="text-[10px] text-slate-500">
-                        {tx.fromUser} → {tx.toAgent} ({tx.timestamp})
-                      </p>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="font-mono font-black text-emerald-600 text-xs">
-                        +{tx.amount} Cr
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
       </div>
 
       {/* MODAL: BLUEPRINT DETAIL & BINDING */}
       {selectedBlueprint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white rounded-3xl p-5 border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between pb-2 border-b-2 border-slate-100">
               <div>
-                <span className="font-mono text-xs font-bold text-blue-600">
+                <span className="font-mono text-xs font-black text-sky-900 bg-sky-100 px-2 py-0.5 rounded-lg border border-slate-900">
                   {selectedBlueprint.key}
                 </span>
-                <h3 className="font-black text-sm text-slate-900 mt-0.5">
+                <h3 className="font-black text-sm text-slate-950 mt-1.5">
                   {selectedBlueprint.name}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedBlueprint(null)}
-                className="p-1 text-slate-400 hover:text-slate-900 transition"
+                className="w-7 h-7 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 flex items-center justify-center text-slate-900 cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-3.5 h-3.5 stroke-[2.5px]" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-700 leading-relaxed">
+            <p className="text-xs text-slate-700 font-semibold leading-relaxed">
               {selectedBlueprint.description}
             </p>
 
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+            <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs space-y-2">
               <div className="flex justify-between">
                 <span className="text-slate-600 font-bold">Domain:</span>
                 <span className="font-black text-slate-950">{selectedBlueprint.domain}</span>
