@@ -97,7 +97,7 @@ export default function ReelsPage() {
       <button className="text-sm text-slate-300" onClick={() => void load(true)} disabled={loading}>Muat ulang</button>
     </header>
     {!session ? <section className="mx-auto max-w-md p-8 text-center"><p className="mb-4">Masuk untuk menonton video pendek dan audio.</p><Link href="/" className="text-cyan-300 underline">Masuk melalui Allpha</Link></section> : <>
-      {error && <p role="alert" className="mx-auto max-w-xl p-3 text-sm text-red-300">{error}</p>}
+      {error && <div role="alert" className="mx-auto flex max-w-xl items-center justify-between gap-3 p-3 text-sm text-red-300"><p>{error}</p><button type="button" className="shrink-0 rounded-full border border-red-300/40 px-3 py-2 font-semibold" disabled={loading} onClick={() => void load(true)}>Coba lagi</button></div>}
       {notice && <p role="status" className="mx-auto max-w-xl p-3 text-sm text-emerald-300">{notice}</p>}
       {loading && items.length === 0 && <p className="p-10 text-center text-slate-400">Memuat Reels…</p>}
       {!loading && items.length === 0 && <section className="mx-auto max-w-md p-10 text-center"><h2 className="font-semibold">Belum ada Reels</h2><p className="mt-2 text-sm text-slate-400">Video/audio akan tampil setelah konten disetujui dan dipublikasikan.</p></section>}
@@ -111,6 +111,7 @@ export default function ReelsPage() {
               : media.media_type.startsWith("audio/")
                 ? <div key={media.id} className="rounded-2xl bg-slate-800 p-4"><p className="mb-3 text-sm font-medium">{media.filename}</p><audio controls preload="metadata" src={media.preview_url} className="w-full" aria-label={media.filename} onError={() => setMediaErrors(current => ({ ...current, [media.id]: true }))} />{mediaErrors[media.id] && <p role="alert" className="mt-2 text-sm text-amber-300">Audio gagal diputar atau tautan media kedaluwarsa.</p>}</div>
                 : null))}
+            {(!item.media || item.media.length === 0 || !item.media.some(media => media.preview_url)) && <p className="rounded-xl border border-white/10 p-4 text-center text-sm text-slate-400">Media belum tersedia atau tautan pratinjau tidak diberikan API.</p>}
           </div>
           <div className="flex items-center justify-between gap-3 px-4 py-3"><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void toggleLike(item)}>{item.viewer_reaction ? "♥ Disukai" : "♡ Suka"} · {item.engagement?.likes ?? 0}</button><span className="text-xs text-slate-400">{item.engagement?.comments ?? 0} komentar</span><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void share(item)}>Bagikan</button></div>
         </article>)}
