@@ -2,11 +2,16 @@
 -- Source-only migration. Apply only through the approved ENG-P37 database acceptance gate.
 -- This extends the canonical Workflow Engine + Agent Runtime; it is not a parallel queue.
 
+alter table public.workflow_steps drop constraint if exists workflow_steps_node_kind_check;
+alter table public.workflow_steps add constraint workflow_steps_node_kind_check
+  check (node_kind in ('input','constant','pass_through','concat','merge','agent_task'));
+
 create table if not exists public.agent_task_schedules (
   id uuid primary key default gen_random_uuid(),
   owner_user_id uuid not null references auth.users(id) on delete cascade,
   agent_id uuid not null references public.ai_agents(id) on delete cascade,
   session_id uuid not null,
+  workflow_definition_id uuid not null references public.workflow_definitions(id) on delete restrict,
   skill_id uuid not null,
   tool_key text not null check (tool_key ~ '^[a-z][a-z0-9_.:-]{2,99}$'),
   title text not null check (char_length(title) between 1 and 160),
