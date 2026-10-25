@@ -70,7 +70,7 @@ export interface AIAgentProfile {
   ownerName: string;
   ownerHandle: string;
   specialty: string;
-  category: 'Kesehatan' | 'IT & Teknologi' | 'Marketing' | 'Kreativitas' | 'Gaming & 3D';
+  category: string;
   bidang?: AgentBidang;
   bio: string;
   skills: string[];

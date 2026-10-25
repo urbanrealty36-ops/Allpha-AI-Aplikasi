@@ -46,7 +46,13 @@ import AgentGoalsTasksModal from './AgentGoalsTasksModal';
 
 interface ProfileViewProps {
   humanUser: HumanProfile;
-  agentProfile: AIAgentProfile;
+  agentProfile: AIAgentProfile | null;
+  ownedAgents?: Array<{ name: string; handle: string; specialty: string; avatar: string; status: string; credits?: number | null }>;
+  showCredits?: boolean;
+  showSocialCounts?: boolean;
+  humanVerified?: boolean;
+  agentStatusLabel?: string;
+  onOpenAccountSettings?: () => void;
   knowledgeDocs: KnowledgeDocument[];
   posts: PostItem[];
   isTakeoverActive: boolean;
@@ -64,6 +70,12 @@ interface ProfileViewProps {
 export default function ProfileView({
   humanUser,
   agentProfile,
+  ownedAgents = [],
+  showCredits = false,
+  showSocialCounts = false,
+  humanVerified = false,
+  agentStatusLabel,
+  onOpenAccountSettings,
   knowledgeDocs,
   posts,
   isTakeoverActive,
@@ -102,36 +114,7 @@ export default function ProfileView({
     (p) => p.humanOwner.name === humanUser.name || p.humanOwner.handle === humanUser.username
   );
 
-  // Sub-agents list owned by Alex Tamara (as shown in reference screenshot 8)
-  const ownedAgents = [
-    {
-      name: 'Luna AI',
-      handle: '@luna.ai',
-      specialty: 'Asisten Kreatif & Desain 3D',
-      badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-      credits: 480,
-      avatar: 'https://picsum.photos/seed/luna-cyber/120/120',
-      status: isTakeoverActive ? 'Takeover Human' : 'AI Auto-Reply',
-    },
-    {
-      name: 'Nova AI',
-      handle: '@nova.ai',
-      specialty: '3D Spatial Architect',
-      badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
-      credits: 210,
-      avatar: 'https://picsum.photos/seed/technova/120/120',
-      status: 'AI Auto-Reply',
-    },
-    {
-      name: 'Travel AI',
-      handle: '@travel.ai',
-      specialty: 'Travel Planner & Worlds Guide',
-      badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
-      credits: 115,
-      avatar: 'https://picsum.photos/seed/district/120/120',
-      status: 'AI Auto-Reply',
-    },
-  ];
+
 
   return (
     <div className="w-full max-w-xl mx-auto pb-28 min-h-screen bg-slate-50">
@@ -170,7 +153,7 @@ export default function ProfileView({
 
           {/* Threads Settings List Trigger */}
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => onOpenAccountSettings ? onOpenAccountSettings() : setIsSettingsOpen(true)}
             className="p-2 text-slate-900 hover:bg-slate-100 rounded-full transition relative group"
             title="Pengaturan Akun & Privasi Threads"
           >
@@ -190,9 +173,7 @@ export default function ProfileView({
             {/* Name + Verified Badge */}
             <div className="flex items-center gap-1.5">
               <h1 className="text-xl font-black tracking-tight text-slate-900">{humanUser.name}</h1>
-              <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">
-                ✓
-              </span>
+              {humanVerified && <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">✓</span>}
             </div>
 
             {/* Handle & Badge */}
@@ -222,7 +203,7 @@ export default function ProfileView({
         </div>
 
         {/* Stats Row: Postingan, Pengikut, Mengikuti (Screenshot 8) */}
-        <div className="flex items-center gap-6 mt-4 pt-3 border-t border-slate-100 text-xs">
+        {showSocialCounts && <div className="flex items-center gap-6 mt-4 pt-3 border-t border-slate-100 text-xs">
           <div>
             <span className="font-bold text-slate-900">{humanUser.postsCount}</span>
             <span className="text-slate-600 ml-1">Postingan</span>
@@ -235,7 +216,7 @@ export default function ProfileView({
             <span className="font-bold text-slate-900">{(humanUser.following / 1000).toFixed(1)}K</span>
             <span className="text-slate-600 ml-1">Mengikuti</span>
           </div>
-        </div>
+        </div>}
 
         {/* Action Button: Edit Profil */}
         <div className="mt-4 flex gap-2">
@@ -286,7 +267,7 @@ export default function ProfileView({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
                     <p className="text-xs font-bold text-slate-900 truncate">{ag.name}</p>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span className={`w-1.5 h-1.5 rounded-full ${ag.status === "active" ? "bg-emerald-500" : "bg-slate-400"}`} />
                   </div>
                   <p className="text-[10px] text-slate-500 truncate">{ag.specialty}</p>
                   <p className="text-[9px] font-mono font-semibold text-amber-600 mt-0.5">
@@ -556,7 +537,7 @@ export default function ProfileView({
 
       {/* TAB 2: AI AGENT (3) DETAIL CARDS & 3D IDENTITY STUDIO */}
       {activeProfileTab === 'AGENTS' && (
-        <div className="p-4 space-y-4 bg-white">
+        agentProfile ? <div className="p-4 space-y-4 bg-white">
           <div className="flex items-center justify-between mb-1">
             <div>
               <h3 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
@@ -568,7 +549,7 @@ export default function ProfileView({
               </p>
             </div>
             <span className="text-[11px] font-mono font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-              +{agentProfile.creditsEarned} AI Credits
+              {showCredits ? `+${agentProfile.creditsEarned} AI Credits` : "Kredit mengikuti ledger kanonis"}
             </span>
           </div>
 
@@ -596,10 +577,10 @@ export default function ProfileView({
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-black text-sm text-white">{agentProfile.name}</h4>
                     <span className="text-[10px] px-2 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 font-bold border border-cyan-400/30">
-                      {agentProfile.bidang || 'Desain Grafis'}
+                      {agentProfile.bidang || 'Belum ditentukan'}
                     </span>
                     <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-white/10 text-slate-300 font-mono">
-                      {agentProfile.avatar3DCodename || 'LV-01'}
+                      {agentProfile.avatar3DCodename || 'Belum dipetakan'}
                     </span>
                   </div>
 
@@ -618,7 +599,7 @@ export default function ProfileView({
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
                     : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 }`}>
-                  {isTakeoverActive ? 'Takeover Human' : 'Auto-Reply Aktif'}
+                  {agentStatusLabel || (isTakeoverActive ? 'Takeover Human' : 'Status Agent belum diverifikasi')}
                 </span>
               </div>
             </div>
@@ -629,7 +610,7 @@ export default function ProfileView({
                 Katalog Skills Aktif ({agentProfile.skills?.length || 0}):
               </span>
               <div className="flex flex-wrap gap-1">
-                {(agentProfile.skills || ['Brand 3D Vector', 'Shader Neon', 'Reels Scripting']).map((sk) => (
+                {(agentProfile.skills || []).map((sk) => (
                   <span
                     key={sk}
                     className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800/80 text-cyan-200 border border-slate-700 font-medium"
@@ -637,12 +618,14 @@ export default function ProfileView({
                     ✓ {sk}
                   </span>
                 ))}
+                {(!agentProfile.skills || agentProfile.skills.length === 0) && <span className="text-[10px] text-slate-400">Belum ada skill terhubung dari katalog kanonis.</span>}
               </div>
             </div>
 
             {/* Core Action Buttons */}
             <div className="pt-2 flex flex-wrap gap-2">
               <button
+                disabled={!onUpdateAgent}
                 onClick={() => setIsIdentityModalOpen(true)}
                 className="flex-1 min-w-[140px] py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/30"
               >
@@ -651,6 +634,7 @@ export default function ProfileView({
               </button>
 
               <button
+                disabled={!onUpdateAgent}
                 onClick={() => setIsGoalsTasksModalOpen(true)}
                 className="flex-1 min-w-[140px] py-2 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/30"
               >
@@ -686,7 +670,7 @@ export default function ProfileView({
               <div className="flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-blue-600" />
                 <h4 className="text-xs font-black text-slate-900">
-                  Tugas Otonom Terjadwal ({agentProfile.tasks?.length || 4})
+                  Tugas Otonom Terjadwal ({agentProfile.tasks?.length || 0})
                 </h4>
               </div>
               <button
@@ -714,6 +698,7 @@ export default function ProfileView({
                   </span>
                 </div>
               ))}
+              {(!agentProfile.tasks || agentProfile.tasks.length === 0) && <p className="text-[11px] text-slate-500">Belum ada tugas dari Agent Runtime kanonis.</p>}
             </div>
           </div>
 
@@ -746,15 +731,13 @@ export default function ProfileView({
                   </div>
 
                   <div className="text-right shrink-0">
-                    <span className="font-mono font-bold text-xs text-amber-600">
-                      +{ag.credits} Cr
-                    </span>
+                    {showCredits && ag.credits != null && <span className="font-mono font-bold text-xs text-amber-600">+{ag.credits} Cr</span>}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </div> : <div role="status" className="p-5 bg-white text-sm text-slate-600">Belum ada AI Agent aktif untuk ditampilkan. Buat atau aktifkan Agent melalui Studio kanonis.</div>
       )}
 
       {/* TAB 3: DISUKAI */}
@@ -784,7 +767,7 @@ export default function ProfileView({
             <div className="text-xs text-slate-600 space-y-1.5">
               <div className="flex justify-between">
                 <span>Status Identitas:</span>
-                <span className="font-semibold text-emerald-600">Terverifikasi (KYC L2)</span>
+                <span className="font-semibold text-emerald-600">Belum diverifikasi oleh layanan identitas kanonis</span>
               </div>
               <div className="flex justify-between">
                 <span>Bergabung Sejak:</span>
@@ -991,7 +974,7 @@ export default function ProfileView({
       )}
 
       {/* AI Agent Identity Modal (Bidang, Skills Catalog, 3D Avatar Catalog) */}
-      <AgentIdentityModal
+      {agentProfile && <AgentIdentityModal
         isOpen={isIdentityModalOpen}
         onClose={() => setIsIdentityModalOpen(false)}
         agent={agentProfile}
@@ -999,10 +982,10 @@ export default function ProfileView({
           if (onUpdateAgent) onUpdateAgent(updated);
           showToast(`Identitas ${updated.name} berhasil diperbarui!`);
         }}
-      />
+      />}
 
       {/* Autonomous Goals & Tasks Modal */}
-      <AgentGoalsTasksModal
+      {agentProfile && <AgentGoalsTasksModal
         isOpen={isGoalsTasksModalOpen}
         onClose={() => setIsGoalsTasksModalOpen(false)}
         agent={agentProfile}
@@ -1010,7 +993,7 @@ export default function ProfileView({
           if (onUpdateAgent) onUpdateAgent(updated);
         }}
         onToast={(msg) => showToast(msg)}
-      />
+      />}
     </div>
   );
 }
