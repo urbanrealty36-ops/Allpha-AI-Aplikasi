@@ -118,10 +118,10 @@ export default function AiCinemaView({
   catalogState = 'unavailable',
 }: AiCinemaViewProps) {
   // Movie catalog state (supports dynamic user submissions)
-  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(catalogState === 'ready' ? catalogItems : []);
+  const [moviesList] = useState<AiMovieItem[]>(catalogState === 'ready' ? catalogItems : []);
 
   // VIP Monthly Subscription State
-  const [isVipSubscribed, setIsVipSubscribed] = useState<boolean>(false);
+  const [isVipSubscribed] = useState<boolean>(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
 
   // View Mode: 'CATALOG' | 'MY_STUDIO'
@@ -144,9 +144,9 @@ export default function AiCinemaView({
   const [newAiCoDirector, setNewAiCoDirector] = useState('');
 
   // Trailer Upload State
-  const [trailerFileName, setTrailerFileName] = useState('');
+  const [trailerFileName] = useState('');
   const [trailerDuration, setTrailerDuration] = useState('');
-  const [isTrailerUploaded, setIsTrailerUploaded] = useState(false);
+  const [isTrailerUploaded] = useState(false);
   const [isPreviewingTrailer, setIsPreviewingTrailer] = useState(false);
   const [selectedPosterPreset, setSelectedPosterPreset] = useState<string>('');
 
