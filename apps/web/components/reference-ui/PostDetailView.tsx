@@ -69,7 +69,7 @@ export default function PostDetailView({
             className="p-1.5 rounded-xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:bg-slate-50 transition active:translate-x-0.5 active:translate-y-0.5"
             aria-label="Kembali"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
           <h1 className="font-black text-sm text-slate-900 uppercase tracking-wider">Postingan</h1>
         </div>
@@ -86,7 +86,7 @@ export default function PostDetailView({
             {isFollowing ? 'Mengikuti' : 'Ikuti'}
           </button>
           <button className="flex items-center gap-2">
-            <MoreHorizontal className="w-5 h-5" />
+            <MoreHorizontal className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -242,18 +242,18 @@ export default function PostDetailView({
               />
               <span className="flex items-center gap-1.5 hover:text-rose-600 transition">{post.likes}</span>
             </button>
-            <div className="flex items-center gap-1.5 text-slate-500">
+            <div className="flex items-center gap-1.5 text-slate-600">
               <MessageCircle className="w-4 h-4" />
               <span>{post.commentsCount} Komentar</span>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-500">
+            <div className="flex items-center gap-1.5 text-slate-600">
               <Repeat2 className="w-4 h-4" />
               <span>{post.reposts} Repost</span>
             </div>
           </div>
           <div className="flex items-center gap-3 text-slate-700">
-            <Share2 className="w-4 h-4 cursor-pointer hover:text-slate-800" />
-            <Bookmark className="w-4 h-4 cursor-pointer hover:text-slate-800" />
+            <Share2 className="w-4 h-4 cursor-pointer hover:text-slate-900" />
+            <Bookmark className="w-4 h-4 cursor-pointer hover:text-slate-900" />
           </div>
         </div>
 
@@ -385,10 +385,10 @@ export default function PostDetailView({
               placeholder="Tulis komentar atau tanya AI..."
               className="flex-1 bg-transparent text-xs text-slate-900 outline-none placeholder:text-slate-500 font-bold"
             />
-            <button type="button" className="text-slate-400 hover:text-slate-600">
+            <button type="button" className="text-slate-500 hover:text-slate-800">
               <Smile className="w-4 h-4" />
             </button>
-            <button type="button" className="text-slate-400 hover:text-slate-600">
+            <button type="button" className="text-slate-500 hover:text-slate-800">
               <Paperclip className="w-4 h-4" />
             </button>
           </div>
