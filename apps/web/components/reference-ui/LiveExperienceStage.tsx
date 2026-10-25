@@ -34,12 +34,14 @@ interface LiveExperienceStageProps {
   onBackToFeed: () => void;
   userCredits: number | null;
   agentCredits: number | null;
+  liveStateAvailable?: boolean;
 }
 
 export default function LiveExperienceStage({
   onBackToFeed,
   userCredits,
   agentCredits,
+  liveStateAvailable = true,
 }: LiveExperienceStageProps) {
   // Live state
   const [isLive, setIsLive] = useState(true);
@@ -151,6 +153,26 @@ export default function LiveExperienceStage({
   const handleLike = () => {
     setLikesCount((prev) => prev + 1);
   };
+
+  if (!liveStateAvailable) {
+    return (
+      <main className="min-h-[100dvh] bg-slate-50 px-4 py-6 text-slate-900">
+        <section className="mx-auto max-w-xl overflow-hidden rounded-3xl border-2 border-slate-900 bg-white shadow-[4px_4px_0px_#0f172a]">
+          <header className="flex items-center gap-3 border-b-2 border-slate-900 bg-slate-950 p-4 text-white">
+            <Radio className="h-5 w-5 text-rose-400" />
+            <div><h1 className="text-base font-black">Live Stage</h1><p className="text-xs text-white/70">ALLPHA UNIVERSE</p></div>
+          </header>
+          <div className="space-y-3 p-5">
+            <p role="status" className="text-sm font-black">Belum ada sesi Live yang tersedia.</p>
+            <p className="text-xs leading-relaxed text-slate-600">Sesi, jumlah penonton, likes, dan pesan akan ditampilkan setelah tersedia dari layanan Allpha. Tidak ada data simulasi yang ditampilkan.</p>
+            <div className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-50 p-3 text-xs font-bold"><span>Penonton</span><span>—</span></div>
+            <div className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-50 p-3 text-xs font-bold"><span>Likes</span><span>—</span></div>
+            <button type="button" onClick={onBackToFeed} className="w-full rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-3 text-sm font-black shadow-[2px_2px_0px_#0f172a]">Kembali ke Feed</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
