@@ -118,7 +118,7 @@ export default function AiCinemaView({
   catalogState = 'unavailable',
 }: AiCinemaViewProps) {
   // Movie catalog state (supports dynamic user submissions)
-  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(catalogItems);
+  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(catalogState === 'ready' ? catalogItems : []);
 
   // VIP Monthly Subscription State
   const [isVipSubscribed, setIsVipSubscribed] = useState<boolean>(false);
@@ -165,7 +165,7 @@ export default function AiCinemaView({
   // Active playing movie in theater modal
   const [activeTheaterMovie, setActiveTheaterMovie] = useState<AiMovieItem | null>(() => {
     if (initialSelectedMovieId) {
-      return catalogItems.find((m) => m.id === initialSelectedMovieId) || null;
+      return catalogState === 'ready' ? catalogItems.find((m) => m.id === initialSelectedMovieId) || null : null;
     }
     return null;
   });
@@ -493,6 +493,11 @@ export default function AiCinemaView({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {myUploadedFilms.length === 0 && (
+              <div role="status" className="sm:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-relaxed text-slate-600">
+                Data film milik Anda belum tersedia dari layanan AI Cinema kanonis. Tidak ada film contoh atau status unggahan simulasi yang ditampilkan.
+              </div>
+            )}
             {myUploadedFilms.map((film) => (
               <div
                 key={film.id}
@@ -537,9 +542,9 @@ export default function AiCinemaView({
                       <button
                         onClick={() => handleApproveByTeamAllpha(film.id)}
                         className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
-                        title="Simulasi Verifikasi Cepat"
+                        title="Verifikasi melalui layanan Allpha"
                       >
-                        ⚡ Setujui Sekarang
+                        Verifikasi
                       </button>
                     )}
                     <button
@@ -593,6 +598,11 @@ export default function AiCinemaView({
 
           {/* Film Catalog Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {filteredMovies.length === 0 && (
+              <div role="status" className="sm:col-span-2 md:col-span-3 rounded-2xl border border-slate-200 bg-white p-5 text-sm leading-relaxed text-slate-600">
+                Katalog AI Cinema belum tersedia dari layanan kanonis. Film, rating, jumlah penonton, dan data royalti akan muncul setelah API katalog terhubung dan datanya tersedia.
+              </div>
+            )}
             {filteredMovies.map((movie) => (
               <div
                 key={movie.id}
