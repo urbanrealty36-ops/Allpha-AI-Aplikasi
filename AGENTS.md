@@ -306,3 +306,17 @@ Do not create a new Supabase project or branch merely to satisfy this sequence. 
 - Do not claim integration_verified, acceptance_passed, or production_verified for a real integration merely because source code, mock tests, a green build, or CI smoke tests exist.
 - Keep the phase status evidence-based and update the fixed phase plan. The next phase may proceed according to the dependency order while deferred staging evidence remains explicitly open for ENG-P37, provided the implementation is present and no known safety-critical defect blocks the work.
 
+
+
+---
+
+## Product Owner UI source-copy rule — 2026-10-25
+For the current reference UI/UX parity task, the canonical source is `urbanrealty36-ops/Allpha-Front-End-UI-New` on `main`, as recorded in the Master PRD addendum and ADR-0003.
+
+- **Copy first; do not redesign.** Copy original components, nested views, layouts, styles, responsive breakpoints, icons, feature affordances and assets into the existing monorepo structure. Create a new target component only if no corresponding canonical component exists. Restrict adaptations to imports, type/framework compatibility, and canonical route boundaries.
+- Do not change visual hierarchy or compose a new substitute layout to conform to the older Master PRD. If the reference and a non-UI product/security contract conflict, preserve the reference appearance and record the behavior/integration conflict explicitly; do not bypass security, authorization, privacy, licensing, or canonical API rules.
+- Keep reference demo/sample data and local-only action handlers from becoming business truth. Retain the same visual component while routing real behavior through the existing authenticated FastAPI/domain contracts after the source-copy/parity checkpoint is accepted.
+- The required order is source/tree inventory → component/style/asset copy → source-to-route wiring and visual parity → frontend checks/evidence → domain/API integration under existing ENG phase owners. Do not run broad backend/Supabase integration in parallel with the frontend-only copy checkpoint.
+- Verify source/target blob SHA or checksum for exact copies. Binary inventory is not proof of transfer. Do not mark the checkpoint complete while transferable referenced assets are missing or the route/component map has unresolved gaps.
+- The screenshot provided for the Feed is a visual acceptance reference: preserve its brand header, credits affordance, messages/notifications, Feed tabs, Stories row, Live Stage card, post composition and fixed bottom navigation. Dynamic numbers/status/content must still come from authorized real state, not hard-coded screenshot values.
+- This is a scoped implementation rule, not a new ENG phase and not permission to change canonical architecture. Update the single fixed phase plan with exact files, commit/tree, evidence, gaps and next checkpoint.
