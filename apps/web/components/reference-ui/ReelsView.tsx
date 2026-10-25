@@ -58,6 +58,7 @@ interface ReelsViewProps {
   onToggleLike?: (reel: ReelItem) => void;
   onShare?: (reel: ReelItem) => void;
   onOpenComments?: (reel: ReelItem) => void;
+  mediaUnavailableMessage?: string;
 }
 
 export default function ReelsView({
@@ -71,6 +72,7 @@ export default function ReelsView({
   onToggleLike,
   onShare,
   onOpenComments,
+  mediaUnavailableMessage = "Media belum tersedia",
 }: ReelsViewProps) {
   const [currentReelIndex, setCurrentReelIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
@@ -163,6 +165,7 @@ export default function ReelsView({
         style={currentReel.mediaType?.startsWith('video/') ? undefined : { backgroundImage: currentReel.bgImage ? `url('${currentReel.bgImage}')` : undefined }}
       >
         {currentReel.mediaType?.startsWith('video/') && currentReel.mediaUrl && !mediaErrors[currentReel.id] ? <video key={`${currentReel.id}-${mediaRetryKey}`} src={currentReel.mediaUrl} autoPlay muted={isMuted} loop playsInline controls onError={() => setMediaErrors(prev => ({ ...prev, [currentReel.id]: true }))} className="h-full w-full object-cover" /> : currentReel.mediaType?.startsWith('audio/') && currentReel.mediaUrl && !mediaErrors[currentReel.id] ? <audio key={`${currentReel.id}-${mediaRetryKey}`} src={currentReel.mediaUrl} autoPlay muted={isMuted} loop controls onError={() => setMediaErrors(prev => ({ ...prev, [currentReel.id]: true }))} /> : null}
+         {!mediaErrors[currentReel.id] && (!currentReel.mediaUrl || (!currentReel.mediaType?.startsWith("video/") && !currentReel.mediaType?.startsWith("audio/"))) && <div role="status" className="absolute inset-x-5 top-1/2 z-20 -translate-y-1/2 rounded-2xl border-2 border-white/70 bg-slate-950/90 p-5 text-center shadow-xl"><p className="text-sm font-black">{mediaUnavailableMessage}</p><p className="mt-2 text-xs text-white/80">Konten ini belum menyediakan media video atau audio yang dapat diputar.</p></div>}
         {mediaErrors[currentReel.id] && <div role="alert" className="absolute inset-x-5 top-1/2 z-20 -translate-y-1/2 rounded-2xl border-2 border-white/70 bg-slate-950/90 p-5 text-center shadow-xl"><p className="text-sm font-black">Media tidak dapat diputar</p><p className="mt-2 text-xs text-white/80">Perbarui tautan media dan coba lagi.</p><button type="button" className="mt-3 rounded-xl border-2 border-white px-4 py-2 text-xs font-black" onClick={() => { setMediaErrors(prev => ({ ...prev, [currentReel.id]: false })); setMediaRetryKey(key => key + 1); }}>Coba lagi</button></div>}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/90" />
       </div>
