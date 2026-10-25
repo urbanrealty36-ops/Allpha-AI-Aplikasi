@@ -78,6 +78,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
         <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[2.5px]" />
         <input
           type="text"
+          aria-label="Cari percakapan"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Cari percakapan atau nama agent..."
@@ -89,7 +90,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
       {noticeMessage && <p role="status" className="rounded-xl border-2 border-emerald-400 bg-white p-3 text-xs font-bold text-emerald-800">{noticeMessage}</p>}
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" aria-label="Filter percakapan">
         {[
           { id: 'ALL', label: 'Semua' },
           { id: 'HUMAN', label: '👤 Human' },
@@ -98,6 +99,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
         ].map((tab) => (
           <button
             key={tab.id}
+            aria-pressed={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id as 'ALL' | 'HUMAN' | 'AI_AGENT' | 'GROUP')}
             className={`px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 whitespace-nowrap cursor-pointer ${
               activeTab === tab.id
