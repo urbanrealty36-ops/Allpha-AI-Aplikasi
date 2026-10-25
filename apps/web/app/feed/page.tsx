@@ -175,7 +175,7 @@ export default function FeedPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Feed sosial</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Konten publik yang telah disetujui, dengan ranking yang dapat Anda kendalikan.</p>
       </header>
-      {!session ? <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="mb-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="font-semibold text-blue-600 hover:underline" href="/">Masuk melalui Allpha</Link></section> : <>
+      {!session ? <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="mb-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="font-semibold text-blue-600 hover:underline" href="/login">Masuk melalui Allpha</Link></section> : <>
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="font-semibold">Kontrol feed</h2><p className="mt-1 text-xs text-slate-500">Matikan personalisasi kapan saja.</p></div>
