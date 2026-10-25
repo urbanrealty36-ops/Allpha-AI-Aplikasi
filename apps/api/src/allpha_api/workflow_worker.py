@@ -143,10 +143,19 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
     if not occurrences:
         raise WorkflowNodeError("schedule occurrence is not owned by workflow owner")
     occurrence = occurrences[0]
-    if schedule.get("require_approval") or occurrence.get("status") not in {"claimed", "running"}:
+    if (schedule.get("require_approval") and not occurrence.get("approved_at")) or occurrence.get("status") not in {"claimed", "running"}:
         raise WorkflowNodeError("schedule occurrence has not passed the owner approval gate")
     runtime_task_id = occurrence.get("runtime_task_id")
     try:
+        agent = await runtime_store.get_agent(owner_id, str(schedule["agent_id"]))
+        skill = await runtime_store.get_skill(owner_id, str(schedule["agent_id"]), str(schedule["skill_id"]))
+        if not agent or not skill or skill.get("status") != "published":
+            raise WorkflowNodeError("Agent ownership or published Skill is no longer valid")
+        if int(agent["version"]) != int(schedule["created_by_agent_version"]) or int(skill["version"]) != int(schedule["created_by_skill_version"]):
+            raise WorkflowNodeError("Agent or Skill version changed; Human Owner must review and reschedule")
+        capability = await runtime_store.get_approved_capability(str(schedule["agent_id"]), str(schedule["tool_key"]))
+        if not capability or (capability.get("risk_level") in {"high", "critical"} and not occurrence.get("approved_at")):
+            raise WorkflowNodeError("Runtime capability/policy is no longer approved for this occurrence")
         if not runtime_task_id:
             payload = TaskCreate(
                 session_id=schedule["session_id"], skill_id=schedule["skill_id"],
@@ -194,7 +203,15 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
             "checkpoint": {"node_key": step.get("node_key"), "schedule_run_id": schedule_run_id,
                            "runtime_task_id": str(runtime_task_id), "runtime_state": state},
         }
-    except WorkflowNodeError:
+    except WorkflowNodeError as exc:
+        try:
+            await runtime_store.request("PATCH", "agent_task_schedule_runs", params={
+                "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
+                "owner_user_id": f"eq.{owner_id}",
+            }, body={"status": "failed", "completed_at": datetime.now(timezone.utc).isoformat(),
+                     "error_code": "WORKFLOW_AGENT_TASK_BLOCKED"}, prefer="return=representation")
+        except Exception:
+            pass
         raise
     except Exception as exc:
         try:
