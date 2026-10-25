@@ -191,7 +191,7 @@ export default function LiveExperienceStage({
                 ) : (
                   <div className="text-center text-slate-500 text-xs">
                     <VideoOff className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                    <span>Kamera Host Dimatikan</span>
+                    <span>{liveStateAvailable ? 'Kamera Host Dimatikan' : 'Menunggu sesi Host'}</span>
                   </div>
                 )}
               </div>
