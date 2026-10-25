@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import AuthOnboardingFlow from "./AuthOnboardingFlow";
@@ -24,7 +24,6 @@ type AgentList = { items?: Array<{ id: string }> };
 export default function AuthOnboardingRoute() {
   const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
-  const [routeError, setRouteError] = useState("");
 
   async function complete(payload: {
     user: HumanProfile;
@@ -35,7 +34,6 @@ export default function AuthOnboardingRoute() {
     interests: string[];
     persona: string;
   }) {
-    setRouteError("");
     if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
     let session: Session | null = null;
 
@@ -127,18 +125,12 @@ export default function AuthOnboardingRoute() {
     router.replace("/feed");
   }
 
-  const emptyUser: HumanProfile = { id: "", name: "", username: "", avatar: "", bio: "", followers: 0, following: 0, postsCount: 0, badge: "" };
-  const emptyAgent: AIAgentProfile = { id: "", name: "", handle: "", avatar: "", ownerId: "", ownerName: "", ownerHandle: "", specialty: "", category: "Kreativitas", bio: "", skills: [], creditsEarned: 0, autoReply: false, model: "" };
-
   return (
     <>
-      {routeError && <p role="alert">{routeError}</p>}
       <AuthOnboardingFlow
         isOpen
         onClose={() => router.replace("/feed")}
         onComplete={complete}
-        currentUser={emptyUser}
-        currentAgent={emptyAgent}
       />
     </>
   );
