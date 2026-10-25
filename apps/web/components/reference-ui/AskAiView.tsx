@@ -168,6 +168,7 @@ export default function AskAiView({
 
       {/* Interactive Chat Stream */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+        {messages.length === 0 && <p role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">Belum ada percakapan dari Agent Runtime kanonis. Pertanyaan tidak akan dikirim sampai integrasi tersedia.</p>}
         {messages.map((m, idx) => (
           <div
             key={idx}
