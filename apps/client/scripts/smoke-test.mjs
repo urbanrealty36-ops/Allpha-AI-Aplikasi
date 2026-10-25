@@ -135,3 +135,7 @@ delete invalidMeshoptFallback.buffers[1].extensions.EXT_meshopt_compression.fall
 assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
   { index: 1, reasons: ["fallback_flag_missing"] }
 ], "URI-less nonzero buffer without fallback marker must be rejected");
+
+
+assert.match(app,/linking=\{\{ prefixes: \["allpha:\/\/"\]/);
+assert.match(app,/Welcome: "", Auth: "auth", Profile: "profile"/);
