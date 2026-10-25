@@ -278,13 +278,8 @@ export default function ReelsView({
 
         {/* Share Button */}
         <button
-          onClick={() => {
-            if (onShare) { onShare(currentReel); return; }
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(window.location.href);
-              alert('Tautan Reels disalin ke papan klip!');
-            }
-          }}
+          onClick={() => { if (onShare) onShare(currentReel); }}
+          disabled={!onShare}
           className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           title="Salin Tautan"
         >
