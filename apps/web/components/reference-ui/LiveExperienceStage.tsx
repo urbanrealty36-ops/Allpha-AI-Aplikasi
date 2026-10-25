@@ -138,17 +138,17 @@ export default function LiveExperienceStage({
           <div className="w-3 h-3 shrink-0 rounded-full bg-rose-500 animate-pulse" />
           <div>
             <div className="flex flex-wrap items-center gap-2 min-w-0">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-rose-600 font-bold uppercase tracking-wider">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-200 border-2 border-slate-900 font-black uppercase tracking-wider text-rose-950 shadow-2xs">
                 {liveStateAvailable ? 'LIVE STAGE' : 'LIVE STAGE · BELUM TERHUBUNG'}
               </span>
               <h1 className="min-w-0 break-words text-sm font-black text-white">Podcast & Live Experience Arena</h1>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">{activeTopic || 'Sesi live dan data peserta akan ditampilkan setelah layanan Live terhubung.'}</p>
+            <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{activeTopic || 'Sesi live dan data peserta akan ditampilkan setelah layanan Live terhubung.'}</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-mono text-emerald-400">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
             <Users className="w-3.5 h-3.5" />
             <span>{liveStateAvailable ? viewerCount.toLocaleString() : '—'} Penonton</span>
           </div>
@@ -172,24 +172,24 @@ export default function LiveExperienceStage({
           {/* Dual Speaker Video Slots (Human Owner ⟷ AI Agent) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Slot 1: Human Owner (Host Camera Slot) */}
-            <div className="relative h-64 rounded-3xl bg-slate-950 overflow-hidden border border-slate-800 shadow-xl flex flex-col justify-between p-4 group">
+            <div className="relative h-64 rounded-3xl bg-slate-950 overflow-hidden border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex flex-col justify-between p-4 group">
               {/* Camera background simulation */}
               <div className="absolute inset-0 bg-gradient-to-tr from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center">
                 {isHostCameraOn && liveStateAvailable ? (
                   <div className="text-center">
-                    <div className="w-24 h-24 mx-auto rounded-full ring-4 ring-blue-500/40 p-1 bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-2xl">
+                    <div className="w-24 h-24 mx-auto rounded-full ring-4 ring-sky-300 p-1 bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-2xl">
                       <img
                         src="/icon.svg"
                         alt="Host"
                         className="w-full h-full rounded-full object-cover"
                       />
                     </div>
-                    <span className="inline-block mt-3 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-400/30">
+                    <span className="inline-block mt-3 px-3 py-1 rounded-full bg-white/90 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-2xs">
                       Host Microphone Active
                     </span>
                   </div>
                 ) : (
-                  <div className="text-center text-slate-500 text-xs">
+                  <div className="text-center text-slate-400 text-xs font-bold">
                     <VideoOff className="w-8 h-8 mx-auto mb-1 opacity-50" />
                     <span>{liveStateAvailable ? 'Kamera Host Dimatikan' : 'Menunggu sesi Host'}</span>
                   </div>
@@ -198,11 +198,11 @@ export default function LiveExperienceStage({
 
               {/* Top tag */}
               <div className="relative z-10 flex items-center justify-between">
-                <span className="px-2.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-bold border border-slate-700 flex items-center gap-1.5">
-                  <User className="w-3 h-3 text-blue-400" />
+                <span className="px-2.5 py-1 rounded-full bg-white/95 text-slate-950 text-[11px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1.5">
+                  <User className="w-3 h-3 text-sky-600 stroke-[2.5px]" />
                   {liveStateAvailable ? 'Host terhubung' : 'Slot Host'}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-600/30 text-blue-300 font-mono">
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-200 border border-slate-900 text-sky-950 font-mono font-bold">
                   1080p 60fps
                 </span>
               </div>
@@ -244,7 +244,7 @@ export default function LiveExperienceStage({
             </div>
 
             {/* Slot 2: AI Agent (Holographic Virtual Camera / Avatar Feed) */}
-            <div className="relative h-64 rounded-3xl bg-slate-950 overflow-hidden border border-purple-500/40 shadow-xl flex flex-col justify-between p-4 group">
+            <div className="relative h-64 rounded-3xl bg-slate-950 overflow-hidden border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex flex-col justify-between p-4 group">
               {/* 3D Holographic AI Agent Simulator */}
               <div className="absolute inset-0 bg-gradient-to-tr from-purple-950 via-slate-900 to-indigo-950 flex items-center justify-center">
                 <div className="text-center">
@@ -267,11 +267,11 @@ export default function LiveExperienceStage({
 
               {/* Top tag */}
               <div className="relative z-10 flex items-center justify-between">
-                <span className="px-2.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-bold border border-purple-500/40 flex items-center gap-1.5">
-                  <Bot className="w-3 h-3 text-cyan-400" />
+                <span className="px-2.5 py-1 rounded-full bg-white/95 text-slate-950 text-[11px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1.5">
+                  <Bot className="w-3 h-3 text-purple-700 stroke-[2.5px]" />
                   {liveStateAvailable ? 'AI Agent terhubung' : 'Slot AI Agent'}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-300 font-mono">
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-mono font-bold">
                   Neural Audio 48kHz
                 </span>
               </div>
@@ -292,7 +292,7 @@ export default function LiveExperienceStage({
                   <button
                     disabled={!liveStateAvailable}
                     onClick={() => alert('Takeover Mikrofon aktif: Human Owner mengambil alih suara')}
-                    className="px-2.5 py-1.5 rounded-xl bg-slate-800/90 text-cyan-300 hover:bg-slate-700 text-xs font-bold transition"
+                    className="px-3 py-1.5 rounded-2xl bg-sky-300 hover:bg-sky-400 border-2 border-slate-900 text-slate-950 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                   >
                     Takeover Mic
                   </button>
@@ -301,7 +301,7 @@ export default function LiveExperienceStage({
                   {audioFreqs.slice(6, 11).map((f, i) => (
                     <span
                       key={i}
-                      className="w-1 bg-purple-400 rounded-full transition-all duration-150"
+                      className="w-1.5 bg-purple-400 rounded-full transition-all duration-150 border border-slate-900"
                       style={{ height: `${f * 0.28}px` }}
                     />
                   ))}
@@ -311,11 +311,11 @@ export default function LiveExperienceStage({
           </div>
 
           {/* Shared Stage Presentation Screen (Document / Slide Viewer on Stage) */}
-          <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-xl space-y-3">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="p-5 rounded-3xl bg-sky-50 border-2 border-slate-900 text-slate-950 shadow-[4px_4px_0px_#0f172a] space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-slate-900/15">
               <div className="flex items-center gap-2">
-                <Presentation className="w-4 h-4 text-cyan-400" />
-                <span className="font-bold text-xs text-slate-200">
+                <Presentation className="w-4 h-4 text-sky-700 stroke-[2.5px]" />
+                <span className="font-black text-xs text-slate-950">
                   Layar Presentasi Stage 3D (Dokumen Interaktif)
                 </span>
               </div>
@@ -327,7 +327,7 @@ export default function LiveExperienceStage({
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="text-xs font-mono text-cyan-300">
+                <span className="text-xs font-mono font-black text-slate-900 px-2">
                   {activeSlideIndex + 1} / {slides.length}
                 </span>
                 <button
@@ -341,22 +341,22 @@ export default function LiveExperienceStage({
             </div>
 
             {/* Slide Body */}
-            {!liveStateAvailable ? <div role="status" className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300">Materi presentasi akan dimuat dari sesi Live kanonis. Belum ada dokumen atau slide yang terhubung.</div> :             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-2.5">
-              <span className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider">
+            {!liveStateAvailable ? <div role="status" className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300">Materi presentasi akan dimuat dari sesi Live kanonis. Belum ada dokumen atau slide yang terhubung.</div> :             <div className="p-4 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs space-y-2.5">
+              <span className="text-[10px] text-sky-700 font-mono font-black uppercase tracking-wider block">
                 {slides[activeSlideIndex].subtitle}
               </span>
-              <h3 className="text-base font-black text-white">
+              <h3 className="text-base font-black text-slate-950">
                 {slides[activeSlideIndex].title}
               </h3>
-              <ul className="space-y-1.5 text-slate-300 pt-1">
+              <ul className="space-y-1.5 text-slate-800 font-semibold pt-1">
                 {slides[activeSlideIndex].bullets.map((b, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-cyan-400 font-bold">•</span>
+                    <span className="text-sky-600 font-black">•</span>
                     <span>{b}</span>
                   </li>
                 ))}
               </ul>
-              <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-500/20 text-cyan-200 font-mono text-[11px] mt-2">
+              <div className="p-3 rounded-xl bg-sky-100 border-2 border-slate-900 text-slate-950 font-mono font-bold text-[11px] mt-2">
                 {slides[activeSlideIndex].diagram}
               </div>
             </div>}
@@ -364,27 +364,27 @@ export default function LiveExperienceStage({
         </div>
 
         {/* Right Column: Live Chat & Audience Feedback */}
-        <div className="flex flex-col h-[520px] rounded-3xl bg-white border border-slate-200 shadow-xl overflow-hidden">
+        <div className="flex flex-col h-[520px] rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] overflow-hidden">
           {/* Live Chat Header */}
-          <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div className="p-3.5 border-b-2 border-slate-900 flex items-center justify-between bg-amber-50">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs text-slate-900">Live Chat Pemirsa</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+              <span className="font-black text-xs text-slate-950">Live Chat Pemirsa</span>
+              <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-200 border border-slate-900 text-emerald-950 font-black">
                 {liveStateAvailable ? 'Aktif' : 'Belum tersedia'}
               </span>
             </div>
             <button
               disabled={!liveStateAvailable}
               onClick={handleLike}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold hover:scale-105 transition"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-200 text-rose-950 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
-              <Heart className="w-3.5 h-3.5 fill-rose-500" />
+              <Heart className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
               <span>{likesCount}</span>
             </button>
           </div>
 
           {/* Messages Stream */}
-          <div className="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/40 text-xs">
+          <div className="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/50 text-xs">
             {!liveStateAvailable && <p role="status" className="rounded-xl border border-slate-200 bg-white p-3 text-slate-500">Belum ada sesi atau pesan Live yang dapat ditampilkan dari layanan kanonis.</p>}
             {chatMessages.map((msg, idx) => (
               <div
@@ -395,36 +395,36 @@ export default function LiveExperienceStage({
                     : 'bg-white border border-slate-200 text-slate-800'
                 }`}
               >
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="font-bold text-[11px]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-black text-[11px]">
                     {msg.sender}
                     {msg.isAi && (
-                      <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-purple-200 text-purple-800 font-semibold">
+                      <span className="ml-1 text-[9px] px-1.5 py-0.2 rounded-full bg-purple-300 border border-purple-800 text-purple-950 font-black">
                         AI Agent
                       </span>
                     )}
                   </span>
-                  <span className="text-[10px] text-slate-400">{msg.handle}</span>
+                  <span className="text-[10px] text-slate-500 font-mono font-bold">{msg.handle}</span>
                 </div>
-                <p className="leading-relaxed text-[11px]">{msg.text}</p>
+                <p className="leading-relaxed text-[11.5px] font-semibold">{msg.text}</p>
               </div>
             ))}
           </div>
 
           {/* Chat Input */}
-          <form onSubmit={handleSendChat} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+          <form onSubmit={handleSendChat} className="p-3 bg-white border-t-2 border-slate-900 flex items-center gap-2">
             <input
               type="text"
               disabled={!liveStateAvailable}
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               placeholder="Tulis pesan atau pertanyaan ke host..."
-              className="flex-1 px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-500"
+              className="flex-1 px-3.5 py-2 text-xs font-bold bg-slate-50 border-2 border-slate-900 rounded-2xl outline-none shadow-[1.5px_1.5px_0px_#0f172a] focus:bg-white"
             />
             <button
               type="submit"
               disabled={!liveStateAvailable || !chatInput.trim()}
-              className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white transition shadow"
+              className="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 disabled:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Send className="w-4 h-4" />
             </button>
