@@ -121,27 +121,8 @@ export default function LiveExperienceStage({
 
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!liveStateAvailable || !chatInput.trim()) return;
-    const newMsg = {
-      sender: 'Alex Tamara (Host)',
-      handle: '@alextamara',
-      text: chatInput.trim(),
-    };
-    setChatMessages((prev) => [...prev, newMsg]);
-    setChatInput('');
-
-    // AI Agent automatic live reaction
-    setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          sender: 'Luna AI',
-          handle: '@luna.ai',
-          text: `Menanggapi host: "Sistem Allpha Universe memproses interaksi ini secara real-time dan ter-sync ke Live Stage."`,
-          isAi: true,
-        },
-      ]);
-    }, 1500);
+    if (!liveStateAvailable) return;
+    // Chat submission is intentionally disabled until a canonical Live chat API adapter is supplied.
   };
 
   const handleLike = () => {
@@ -279,7 +260,7 @@ export default function LiveExperienceStage({
                       ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400'
                       : 'bg-purple-500/20 text-purple-300 border-purple-400/30'
                   }`}>
-                    {isSpeaking ? 'Luna AI Sedang Berbicara...' : 'Luna AI Standby'}
+                    {isSpeaking ? 'AI Agent sedang berbicara...' : 'AI Agent Standby'}
                   </span>
                 </div>
               </div>

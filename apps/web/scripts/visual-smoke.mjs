@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const baseUrl = process.env.ALLPHA_VISUAL_BASE_URL || "http://127.0.0.1:3000";
-const routes = ["/login", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/ai-cinema"];
+const routes = ["/login", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/ai-cinema", "/live"];
 const viewports = [
   { width: 360, height: 800, label: "mobile-360" },
   { width: 390, height: 844, label: "mobile-390" },
@@ -46,5 +46,5 @@ if (failures.length) {
   console.error("VISUAL_SMOKE_FAILURES", JSON.stringify(failures, null, 2));
   process.exitCode = 1;
 } else {
-  console.log("Visual route smoke passed: 10 routes × 4 viewports; screenshots captured for every route.");
+  console.log("Visual route smoke passed: 11 routes × 4 viewports; screenshots captured for every route.");
 }

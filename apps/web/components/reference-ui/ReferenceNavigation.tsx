@@ -10,6 +10,7 @@ function tabForPath(path: string): TabType {
   if (path.startsWith("/reels")) return "REELS";
   if (path.startsWith("/messages")) return "MESSAGES";
   if (path.startsWith("/live")) return "LIVESTAGE";
+  if (path.startsWith("/live")) return "LIVESTAGE";
   if (path.startsWith("/spatial")) return "WORLD3D";
   if (path.startsWith("/skill-challenges")) return "SKILLS_CREDITS";
   if (path.startsWith("/search") || path.startsWith("/communities")) return "EXPLORE";

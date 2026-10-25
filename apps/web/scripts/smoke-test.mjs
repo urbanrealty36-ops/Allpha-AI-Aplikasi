@@ -229,7 +229,7 @@ assert.ok(referenceBottomNav.includes("isReels ? 'text-cyan-400 font-bold' : 'te
 // Shared reference navigation owns route links; page-local duplicate navs are intentionally absent.
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
 const referenceFeedChrome = readFileSync(new URL("../components/reference-ui/ReferenceFeedChrome.tsx", import.meta.url), "utf8");
-for (const route of ['FEED: "/feed"', 'CREATE: "/create"', 'MESSAGES: "/messages"', 'REELS: "/reels"', 'WORLD3D: "/spatial/navigation"']) {
+for (const route of ['FEED: "/feed"', 'CREATE: "/create"', 'MESSAGES: "/messages"', 'REELS: "/reels"', 'WORLD3D: "/spatial/navigation"', 'LIVESTAGE: "/live"']) {
   assert.ok(referenceNavigation.includes(route), "global reference navigation missing route mapping: " + route);
 }
 for (const route of ['href="/stories"', 'href="/reels"', 'href="/spatial/navigation"']) {
@@ -292,6 +292,13 @@ assert.ok(authFlow.includes("await onComplete(") && authFlow.includes("setStep('
 assert.doesNotMatch(authFlow, /picsum\.photos|Bonus Selamat Datang: \+50 AI Credits|INITIAL_USER|INITIAL_AGENT/);
 assert.ok(authFlow.includes("skillsLoading") && authFlow.includes("skillsError") && authFlow.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
 
+
+
+const liveStageRoute = readFileSync(new URL("../app/live/page.tsx", import.meta.url), "utf8");
+const liveStageComponent = readFileSync(new URL("../components/reference-ui/LiveExperienceStage.tsx", import.meta.url), "utf8");
+assert.ok(liveStageRoute.includes("liveStateAvailable={false}"), "Live Stage route must remain fail-closed until canonical session API is wired");
+assert.ok(liveStageComponent.includes("Belum ada sesi atau pesan Live"), "Live Stage must show a canonical empty state rather than sample chat");
+assert.doesNotMatch(liveStageComponent, /picsum\.photos|2430|3840|Raka Pratama/, "Live Stage must not seed demo viewers, likes or chat identities");
 
 // Web PWA metadata and accessibility configuration are source-checked; installability still needs browser/device evidence.
 const pwaManifest = readFileSync(new URL("../app/manifest.ts", import.meta.url), "utf8");
