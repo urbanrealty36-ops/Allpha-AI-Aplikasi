@@ -54,6 +54,17 @@ export default function AuthOnboardingRoute() {
     if (!session) throw new Error("Sesi Supabase tidak tersedia. Silakan coba masuk kembali.");
 
     const headers = { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" };
+    const existingResponse = await fetch(apiBase + "/v1/agents", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
+    if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
+    const existing = await existingResponse.json() as AgentList;
+    if (existing.items?.length) {
+      router.replace("/feed");
+      return;
+    }
+
+    if (!payload.user.name.trim() || !payload.user.username.replace(/^@/, "").trim()) {
+      throw new Error("Lengkapi nama dan username Human sebelum membuat Agent.");
+    }
     const identityResponse = await fetch(apiBase + "/v1/me/profile", {
       method: "PATCH",
       headers,
@@ -76,19 +87,13 @@ export default function AuthOnboardingRoute() {
       if (!response.ok) throw new Error(await responseError(response));
     }
 
-    const existingResponse = await fetch(apiBase + "/v1/agents", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
-    if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
-    const existing = await existingResponse.json() as AgentList;
-    if (existing.items?.length) {
-      router.replace("/feed");
-      return;
-    }
-
-    const catalogResponse = await fetch(apiBase + "/v1/skill-catalog?limit=100&offset=0", { cache: "no-store" });
-    if (!catalogResponse.ok) throw new Error(await responseError(catalogResponse));
-    const catalog = await catalogResponse.json() as { items?: SkillItem[] };
+    const catalogPages = await Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
+      const response = await fetch(apiBase + "/v1/skill-catalog?limit=100&offset=" + offset, { cache: "no-store" });
+      if (!response.ok) throw new Error(await responseError(response));
+      return await response.json() as { items?: SkillItem[] };
+    }));
     const selectedSkillNames = new Set(payload.agent.skills.map((skill) => skill.trim().toLocaleLowerCase()));
-    const selectedSkill = (catalog.items ?? []).find((item) =>
+    const selectedSkill = catalogPages.flatMap((page) => page.items ?? []).find((item) =>
       selectedSkillNames.has(item.name.trim().toLocaleLowerCase()) ||
       selectedSkillNames.has(item.slug.trim().toLocaleLowerCase()) ||
       selectedSkillNames.has(item.key.trim().toLocaleLowerCase())
