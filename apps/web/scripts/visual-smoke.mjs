@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const baseUrl = process.env.ALLPHA_VISUAL_BASE_URL || "http://127.0.0.1:3000";
-const routes = ["/login", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/ai-cinema", "/live", "/ask-ai", "/profile"];
+const routes = ["/login", "/start", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/spatial/themes", "/ai-cinema", "/marketplace", "/live", "/ask-ai", "/profile", "/skill-challenges", "/content-studio", "/agents", "/communities", "/notifications", "/workflows"];
 const viewports = [
   { width: 360, height: 800, label: "mobile-360" },
   { width: 390, height: 844, label: "mobile-390" },
@@ -27,7 +27,7 @@ try {
       }));
       const record = { viewport: viewport.label, route, status: response?.status() ?? null, ...result };
       console.log(JSON.stringify(record));
-      if (!response || response.status() >= 500) failures.push({ ...record, reason: "HTTP 5xx or navigation failure" });
+      if (!response || response.status() >= 400) failures.push({ ...record, reason: "HTTP 4xx/5xx or navigation failure" });
       if (result.documentWidth > viewport.width + 2 || result.bodyWidth > viewport.width + 2) {
         failures.push({ ...record, reason: "horizontal overflow" });
       }
@@ -46,5 +46,5 @@ if (failures.length) {
   console.error("VISUAL_SMOKE_FAILURES", JSON.stringify(failures, null, 2));
   process.exitCode = 1;
 } else {
-  console.log("Visual route smoke passed: 13 routes × 4 viewports; screenshots captured for every route.");
+  console.log("Visual route smoke passed: 22 routes × 4 viewports; screenshots captured for every route.");
 }
