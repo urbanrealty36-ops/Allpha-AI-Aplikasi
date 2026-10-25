@@ -212,7 +212,7 @@ export default function FeedPage() {
         {!loading && items.length === 0 && <section className="mx-auto max-w-xl p-8 text-center"><h2 className="font-black">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
         <FeedView
           posts={postsForReference}
-          storiesData={[]}
+          storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
           onOpenAskAi={(agentName) => { window.location.assign("/ask-ai?agent=" + encodeURIComponent(agentName)); }}
           onOpenGenerate={() => { window.location.assign("/create"); }}
