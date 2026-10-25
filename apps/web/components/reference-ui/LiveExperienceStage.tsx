@@ -116,7 +116,7 @@ export default function LiveExperienceStage({
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
       <div className="flex items-center justify-between bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
         <div className="flex items-center gap-3">
-          <div className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-slate-900 animate-pulse" />
+          <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 ${liveStateAvailable ? "bg-rose-500 animate-pulse" : "bg-slate-400"}`} />
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-200 border-2 border-slate-900 font-black uppercase tracking-wider text-rose-950 shadow-2xs">
@@ -136,12 +136,12 @@ export default function LiveExperienceStage({
           <button
             onClick={() => setIsLive(!isLive)}
             disabled={!liveStateAvailable}
-            className={`px-4 py-1.5 rounded-2xl text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
+            className={`px-4 py-1.5 rounded-2xl text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer disabled:opacity-50 ${
               isLive ? 'bg-rose-400 hover:bg-rose-500 text-slate-950' : 'bg-emerald-300 hover:bg-emerald-400 text-slate-950'
             }`}
           >
             {isLive ? <Pause className="w-3.5 h-3.5 stroke-[3px]" /> : <Play className="w-3.5 h-3.5 stroke-[3px]" />}
-            <span>{isLive ? 'Hentikan Siaran' : 'Mulai Siaran'}</span>
+            <span>{!liveStateAvailable ? 'Siaran belum tersedia' : isLive ? 'Hentikan Siaran' : 'Mulai Siaran'}</span>
           </button>
         </div>
       </div>
@@ -267,10 +267,8 @@ export default function LiveExperienceStage({
                     {isAiAgentMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                   </button>
                   <button
-                    onClick={() => {
-                      setStageToast('Takeover Mikrofon aktif: Human Owner mengambil alih siaran panggung!');
-                      setTimeout(() => setStageToast(null), 3500);
-                    }}
+                    disabled
+                    title="Takeover Mic belum terhubung ke kontrak Live Session API"
                     className="px-3 py-1.5 rounded-2xl bg-sky-300 hover:bg-sky-400 border-2 border-slate-900 text-slate-950 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                   >
                     Takeover Mic
