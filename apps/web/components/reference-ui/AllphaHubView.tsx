@@ -110,7 +110,7 @@ export default function AllphaHubView({
     type: string;
   } | null>(null);
   const [bookingDays, setBookingDays] = useState(3);
-  const [videotronPreviewText, setVideotronPreviewText] = useState('ALLPHA FESTIVAL 2026 • SPATIAL LIVING');
+  const [videotronPreviewText, setVideotronPreviewText] = useState(productionMode ? '' : 'ALLPHA FESTIVAL 2026 • SPATIAL LIVING');
 
   // Quests local state with claimable status
   const [hubQuests, setHubQuests] = useState(() => productionMode ? [] : [
@@ -586,7 +586,7 @@ export default function AllphaHubView({
           {/* Hub Modules Tab Bar */}
           <div className="pt-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar border-t-2 border-slate-900/15">
             {[
-              { id: 'STAGE', label: 'Event Stage Live', icon: Radio, count: stageEvents.filter(e => e.isLive).length + ' Live' },
+              { id: 'STAGE', label: 'Event Stage Live', icon: Radio, count: productionMode ? '— Live' : stageEvents.filter(e => e.isLive).length + ' Live' },
               { id: 'WORLDS', label: 'Jelajahi Dunia 3D', icon: Box, count: worldsDirectory.length + ' Dunia' },
               { id: 'VIDEOTRON', label: '3D Videotron', icon: Tv, count: '4 Slot' },
               { id: 'QUESTS', label: 'Quest & XP', icon: Award, count: hubQuests.filter(q => !q.claimed && q.current >= q.target).length + ' Klaim' },
@@ -689,6 +689,7 @@ export default function AllphaHubView({
 
           {/* Stage Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {productionMode && filteredStages.length === 0 && <p role="status" className="col-span-full rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Belum ada sesi Stage dari layanan produksi.</p>}
             {filteredStages.map((stage) => (
               <div
                 key={stage.id}
@@ -855,11 +856,11 @@ export default function AllphaHubView({
                     <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-white text-[10px]">
                       <span className="flex items-center gap-1 font-mono font-bold bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-700 text-cyan-300">
                         <Users className="w-3 h-3" />
-                        <span>{world.onlineUsers} Pengguna Aktif</span>
+                        <span>{productionMode ? '—' : world.onlineUsers} Pengguna Aktif</span>
                       </span>
                       <span className="flex items-center gap-1 font-mono font-bold bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-700 text-amber-300">
                         <Radio className="w-3 h-3" />
-                        <span>{world.liveEventsCount} Stage Aktif</span>
+                        <span>{productionMode ? '—' : world.liveEventsCount} Stage Aktif</span>
                       </span>
                     </div>
                   </div>
@@ -983,6 +984,7 @@ export default function AllphaHubView({
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {productionMode && videotronSurfaces.length === 0 && <p role="status" className="col-span-full rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Slot Videotron belum tersedia dari layanan produksi.</p>}
               {videotronSurfaces.map((surf) => (
                 <div
                   key={surf.id}
@@ -1059,19 +1061,20 @@ export default function AllphaHubView({
           {/* Level Progress Card */}
           <div className="p-5 rounded-3xl bg-amber-100 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3">
             <div className="flex items-center justify-between text-xs font-black text-slate-950">
-              <span className="uppercase tracking-wide">Level 8 — Spatial Architect</span>
-              <span className="font-mono bg-white px-2.5 py-0.5 rounded-xl border-2 border-slate-900">1,850 / 2,500 XP</span>
+              <span className="uppercase tracking-wide">{productionMode ? 'Level —' : 'Level 8 — Spatial Architect'}</span>
+              <span className="font-mono bg-white px-2.5 py-0.5 rounded-xl border-2 border-slate-900">{productionMode ? '— / — XP' : '1,850 / 2,500 XP'}</span>
             </div>
             <div className="w-full h-3 rounded-full bg-white border-2 border-slate-900 overflow-hidden p-0.5">
-              <div className="h-full bg-amber-400 rounded-full transition-all duration-500" style={{ width: '74%' }} />
+              <div className="h-full bg-amber-400 rounded-full transition-all duration-500" style={{ width: productionMode ? '0%' : '74%' }} />
             </div>
             <p className="text-xs font-semibold text-slate-800">
-              Selesaikan 2 misi lagi hari ini untuk membuka lencana eksklusif &quot;Cyber District Pioneer&quot; dan bonus 50 AI Credits.
+              {productionMode ? 'Progress misi, lencana, dan reward tampil setelah tersedia dari layanan Allpha.' : 'Selesaikan 2 misi lagi hari ini untuk membuka lencana eksklusif &quot;Cyber District Pioneer&quot; dan bonus 50 AI Credits.'}
             </p>
           </div>
 
           {/* Quests List */}
           <div className="space-y-3">
+            {productionMode && hubQuests.length === 0 && <p role="status" className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Misi dan reward akan tampil setelah statusnya tersedia dari layanan produksi.</p>}
             {hubQuests.map((quest) => {
               const isCompleted = quest.current >= quest.target;
 
@@ -1163,6 +1166,7 @@ export default function AllphaHubView({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
+                  if (productionMode) { showToast('Ekspor tersedia setelah data ledger produksi tersedia.'); return; }
                   const csvData = "Tanggal,Judul,Kategori,Nominal,Status\n" + ledgerEntries.map(e => `"${e.date}","${e.title}","${e.category}",${e.amount},"${e.status}"`).join("\n");
                   const blob = new Blob([csvData], { type: 'text/csv' });
                   const url = window.URL.createObjectURL(blob);
@@ -1198,7 +1202,7 @@ export default function AllphaHubView({
                 {creatorBalance == null ? '—' : creatorBalance.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
               </p>
               <p className="text-xs text-emerald-800 font-bold">
-                ≈ Rp {(creatorBalance * 1000).toLocaleString('id-ID')} Siap Tarik
+                {creatorBalance == null ? 'Nilai belum tersedia' : `≈ Rp ${(creatorBalance * 1000).toLocaleString('id-ID')} Siap Tarik`}
               </p>
             </div>
 
@@ -1222,7 +1226,7 @@ export default function AllphaHubView({
                 {ledgerEntries.length} <span className="text-xs font-bold text-slate-600">Transaksi</span>
               </p>
               <p className="text-xs text-sky-800 font-bold">
-                Audit otomatis terverifikasi
+                {productionMode ? 'Status audit dari ledger produksi' : 'Audit otomatis terverifikasi'}
               </p>
             </div>
           </div>
@@ -1235,6 +1239,7 @@ export default function AllphaHubView({
             </div>
 
             <div className="divide-y-2 divide-slate-100">
+              {productionMode && ledgerEntries.length === 0 && <p role="status" className="p-5 text-center text-xs font-bold text-slate-500">Belum ada mutasi ledger yang tersedia dari layanan produksi.</p>}
               {ledgerEntries.map((item) => (
                 <div
                   key={item.id}
@@ -1459,7 +1464,7 @@ export default function AllphaHubView({
             <div className="p-3.5 rounded-2xl bg-indigo-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-1 text-indigo-950">
               <span className="text-[10px] uppercase font-black text-indigo-800">Saldo Tersedia untuk Dicairkan</span>
               <p className="text-xl font-mono font-black">{creatorBalance == null ? '—' : creatorBalance.toLocaleString('id-ID')} Credits</p>
-              <p className="text-xs text-indigo-800 font-bold">Kurs Tetap: 1 Credit = Rp 1.000 (Setara Rp {(creatorBalance * 1000).toLocaleString('id-ID')})</p>
+              <p className="text-xs text-indigo-800 font-bold">{creatorBalance == null ? 'Kurs dan nilai pencairan belum tersedia dari ledger produksi.' : `Kurs Tetap: 1 Credit = Rp 1.000 (Setara Rp ${(creatorBalance * 1000).toLocaleString('id-ID')})`}</p>
             </div>
 
             <div className="space-y-1.5">
