@@ -978,7 +978,7 @@ export default function ProfileView({
       <AgentIdentityModal
         isOpen={isIdentityModalOpen}
         onClose={() => setIsIdentityModalOpen(false)}
-        agent={agentProfile}
+        agent={currentAgent}
         onSaveAgent={(updated) => {
           if (onUpdateAgent) onUpdateAgent(updated);
           showToast(`Identitas ${updated.name} berhasil diperbarui!`);
@@ -989,7 +989,7 @@ export default function ProfileView({
       <AgentGoalsTasksModal
         isOpen={isGoalsTasksModalOpen}
         onClose={() => setIsGoalsTasksModalOpen(false)}
-        agent={agentProfile}
+        agent={currentAgent}
         onUpdateAgent={(updated) => {
           if (onUpdateAgent) onUpdateAgent(updated);
         }}
