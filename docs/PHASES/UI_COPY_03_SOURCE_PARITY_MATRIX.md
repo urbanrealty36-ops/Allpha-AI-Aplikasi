@@ -140,5 +140,6 @@ A direct source/target comparison was performed for the 25 top-level React compo
 
 - Not yet verified by this source audit: build, typecheck, lint, automated tests, browser rendering, visual screenshots at 360/390/820/1440 px, install/offline/error PWA behavior, and all route-level interactions.
 - The known Feed story viewer route/callback gap remains open. Do not fake a story-open success; reconcile it against a canonical API/route contract.
-- Missing reference PNGs remain an upstream asset discrepancy, not a reason to invent replacement artwork.
+- Public asset inventory: the reference repository has 23 files under `public/`; the target has 22 corresponding files under `apps/web/public/`. The one source asset not yet copied is `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png`. Binary transfer was not available through the current repository-file path, so it remains an explicit WP-01 asset-parity blocker rather than being silently omitted or replaced with invented artwork.
+- Separately, the reference manifest points to `/icon-192.png` and `/icon-512.png`, which are absent from the reference public tree. The target's `/icon.svg` remains the existing valid icon; do not switch the manifest to missing PNG paths.
 - UI-COPY-03 remains `in_progress`; WP-02 remains next in sequence and blocked by WP-01 acceptance evidence.
