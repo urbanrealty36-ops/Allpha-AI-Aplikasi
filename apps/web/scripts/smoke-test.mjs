@@ -262,14 +262,15 @@ assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must us
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+const webMessagesView = readFileSync(new URL("../components/reference-ui/MessagesView.tsx", import.meta.url), "utf8");
+const webMessagesContract = webMessages + "\\n" + webMessagesView;
 for (const contract of [
   "/v1/messages/conversations", "client_message_id", "postgres_changes",
-  "conversationSearch", "conversationFilter", 'c.kind===conversationFilter',
-  'aria-label="Cari percakapan"', 'aria-label="Filter percakapan"', 'aria-pressed={conversationFilter===tab.id}'
-]) assert.ok(webMessages.includes(contract), "missing API-backed Messages adapter contract: " + contract);
-assert.doesNotMatch(webMessages, /MessagesView|conversations = \[/);
-
-
+  "const [search, setSearch]", "const [activeTab, setActiveTab]", "conversations.filter",
+  'aria-label="Cari percakapan"', 'aria-label="Filter percakapan"', "aria-pressed={activeTab === tab.id}"
+]) assert.ok(webMessagesContract.includes(contract), "missing API-backed Messages adapter contract: " + contract);
+assert.ok(webMessages.includes("MessagesView"), "Messages route must mount the copied source inbox component");
+assert.doesNotMatch(webMessages, /conversations = \[/);
 
 // Native parity must expose the same canonical content/story/feed capabilities;
 // source assertions do not substitute for Expo typecheck or device acceptance.
