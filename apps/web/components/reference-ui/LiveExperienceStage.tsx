@@ -149,7 +149,7 @@ export default function LiveExperienceStage({
 
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
-            <Users className="w-3.5 h-3.5" />
+            <Users className="w-3.5 h-3.5 stroke-[3px]" />
             <span>{liveStateAvailable ? viewerCount.toLocaleString() : '—'} Penonton</span>
           </div>
           <button
@@ -159,7 +159,7 @@ export default function LiveExperienceStage({
               isLive ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
-            {isLive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            {isLive ? <Pause className="w-3.5 h-3.5 stroke-[3px]" /> : <Play className="w-3.5 h-3.5 stroke-[3px]" />}
             <span>{isLive ? 'Hentikan Siaran' : 'Mulai Siaran'}</span>
           </button>
         </div>
@@ -181,7 +181,7 @@ export default function LiveExperienceStage({
                       <img
                         src="/icon.svg"
                         alt="Host"
-                        className="w-full h-full rounded-full object-cover"
+                        className="w-full h-full rounded-full object-cover border-2 border-slate-900"
                       />
                     </div>
                     <span className="inline-block mt-3 px-3 py-1 rounded-full bg-white/90 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-2xs">
@@ -218,7 +218,7 @@ export default function LiveExperienceStage({
                     }`}
                     title={isHostMicMuted ? 'Nyalakan Mic' : 'Matikan Mic'}
                   >
-                    {isHostMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    {isHostMicMuted ? <MicOff className="w-4 h-4 stroke-[2.5px]" /> : <Mic className="w-4 h-4 stroke-[2.5px]" />}
                   </button>
                   <button
                     disabled={!liveStateAvailable}
@@ -228,7 +228,7 @@ export default function LiveExperienceStage({
                     }`}
                     title={isHostCameraOn ? 'Matikan Kamera' : 'Nyalakan Kamera'}
                   >
-                    {isHostCameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+                    {isHostCameraOn ? <Video className="w-4 h-4 stroke-[2.5px]" /> : <VideoOff className="w-4 h-4 stroke-[2.5px]" />}
                   </button>
                 </div>
                 <div className="flex items-center gap-1">
@@ -252,7 +252,7 @@ export default function LiveExperienceStage({
                     <img
                       src="/icon.svg"
                       alt="AI Agent"
-                      className="w-full h-full rounded-full object-cover"
+                      className="w-full h-full rounded-full object-cover border-2 border-slate-900"
                     />
                   </div>
                   <span className={`inline-block mt-3 px-3 py-1 rounded-full text-xs font-bold border ${
@@ -287,7 +287,7 @@ export default function LiveExperienceStage({
                     }`}
                     title={isAiAgentMuted ? 'Nyalakan Audio AI' : 'Mute AI Agent'}
                   >
-                    {isAiAgentMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                    {isAiAgentMuted ? <VolumeX className="w-4 h-4 stroke-[2.5px]" /> : <Volume2 className="w-4 h-4 stroke-[2.5px]" />}
                   </button>
                   <button
                     disabled={!liveStateAvailable}
@@ -323,9 +323,9 @@ export default function LiveExperienceStage({
                 <button
                   disabled={!liveStateAvailable}
                   onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1))}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-4 h-4 stroke-[2.5px]" />
                 </button>
                 <span className="text-xs font-mono font-black text-slate-900 px-2">
                   {activeSlideIndex + 1} / {slides.length}
@@ -333,9 +333,9 @@ export default function LiveExperienceStage({
                 <button
                   disabled={!liveStateAvailable}
                   onClick={() => setActiveSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0))}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4 stroke-[2.5px]" />
                 </button>
               </div>
             </div>
@@ -426,7 +426,7 @@ export default function LiveExperienceStage({
               disabled={!liveStateAvailable || !chatInput.trim()}
               className="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 disabled:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-4 h-4 stroke-[2.5px]" />
             </button>
           </form>
         </div>
