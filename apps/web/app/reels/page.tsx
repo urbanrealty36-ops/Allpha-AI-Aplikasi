@@ -25,6 +25,7 @@ export default function ReelsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState(false);
   const [notice, setNotice] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -40,14 +41,14 @@ export default function ReelsPage() {
 
   const load = useCallback(async (reset = true, nextCursor?: string | null) => {
     if (!session) return;
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setLoadError(false);
     try {
       const params = new URLSearchParams({ limit: "20", mode: "recent" });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/reels?" + params.toString()) as { items?: Reel[]; next_cursor?: string | null };
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels gagal dimuat."); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels gagal dimuat."); setLoadError(true); }
     finally { setLoading(false); }
   }, [request, session]);
 
@@ -70,7 +71,7 @@ export default function ReelsPage() {
   useEffect(() => { if (session) void load(true); }, [session, load]);
 
   async function toggleLike(reel: Pick<ReferenceReel, 'id'>) {
-    setBusy(reel.id); setError(""); setNotice("");
+    setBusy(reel.id); setError(""); setLoadError(false); setNotice("");
     try {
       const item = items.find(row => row.id === reel.id);
       if (!item) return;
@@ -109,7 +110,7 @@ export default function ReelsPage() {
   });
 
   return <>
-    {error && <p role="alert" className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-xl rounded-xl border border-red-300 bg-white p-3 text-sm text-red-700 shadow">{error}</p>}
+    {error && <div role="alert" className="fixed left-3 right-3 top-3 z-50 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-xl border border-red-300 bg-white p-3 text-sm text-red-700 shadow"><span>{error}</span>{loadError && <button type="button" className="shrink-0 rounded-lg border-2 border-slate-900 bg-white px-3 py-1 font-black text-slate-900" disabled={loading} onClick={() => void load(true)}>Coba lagi</button>}</div>}
     {notice && <p role="status" className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-xl rounded-xl border border-emerald-300 bg-white p-3 text-sm text-emerald-800 shadow">{notice}</p>}
     {!session ? <main className="flex min-h-[70dvh] items-center justify-center bg-black px-6 text-center text-white"><div><h1 className="text-xl font-black">Allpha Reels</h1><p className="my-3 text-sm text-white/70">Masuk untuk menonton video pendek dan audio yang dipublikasikan.</p><button className="rounded-xl border-2 border-white px-4 py-2 font-bold" onClick={() => router.push("/login")}>Masuk</button></div></main> : <>
       <ReelsView
