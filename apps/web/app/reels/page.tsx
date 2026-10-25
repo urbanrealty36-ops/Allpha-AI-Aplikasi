@@ -121,7 +121,7 @@ export default function ReelsPage() {
         onOpenAskAi={(agentName) => router.push(agentName ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai")}
         onBackToFeed={() => router.push("/feed")}
         onOpenLiveStage={() => router.push("/live")}
-        onOpenFilmAi={() => router.push("/film-ai")}
+        onOpenFilmAi={() => router.push("/ai-cinema")}
       />}
       {cursor && <div className="fixed bottom-3 left-3 right-3 z-40 mx-auto max-w-sm"><button className="w-full rounded-xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-[3px_3px_0px_#0f172a]" disabled={loading} onClick={() => void load(false, cursor)}>Muat Reels berikutnya</button></div>}
     </>}
