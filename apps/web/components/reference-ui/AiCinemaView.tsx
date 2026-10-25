@@ -458,7 +458,7 @@ export default function AiCinemaView({
                 </button>
 
                 <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                  <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                  <Bot className="w-3.5 h-3.5 text-sky-800" />
                   <span>Disutradarai oleh {featuredMovie.producerHuman.name} × {featuredMovie.aiCoDirector.name}</span>
                 </div>
               </div>
@@ -563,7 +563,7 @@ export default function AiCinemaView({
       ) : (
         <>
           {/* Genre Filter Tabs */}
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-sm text-slate-900 tracking-tight">
                 Katalog Film Pendek & Serial Drama AI
@@ -702,7 +702,7 @@ export default function AiCinemaView({
                     onClick={() => handleOpenTheater(movie, 1)}
                     className="flex-1 py-2 px-3 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Play className="w-3.5 h-3.5 fill-white" />
+                    <Play className="w-3.5 h-3.5 fill-slate-950" />
                     <span>Nonton</span>
                   </button>
                   <button
@@ -842,7 +842,7 @@ export default function AiCinemaView({
                     type="text"
                     value={newProducerName}
                     onChange={(e) => setNewProducerName(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border-2 border-slate-900 text-slate-950 font-bold"
                   />
                 </div>
                 <div className="space-y-1">
@@ -851,7 +851,7 @@ export default function AiCinemaView({
                     type="text"
                     value={newAiCoDirector}
                     onChange={(e) => setNewAiCoDirector(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border-2 border-slate-900 text-slate-950 font-bold"
                   />
                 </div>
                 <div className="space-y-1">
@@ -860,7 +860,7 @@ export default function AiCinemaView({
                     type="text"
                     value={newTechStack}
                     onChange={(e) => setNewTechStack(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white border-2 border-slate-900 text-slate-950 font-bold"
                   />
                 </div>
               </div>
@@ -1149,7 +1149,7 @@ export default function AiCinemaView({
                     }}
                     className="py-2.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Play className="w-3.5 h-3.5 fill-white" />
+                    <Play className="w-3.5 h-3.5 fill-slate-950" />
                     <span>Tonton Film</span>
                   </button>
 
@@ -1308,9 +1308,9 @@ export default function AiCinemaView({
               </div>
 
               {/* Part & Trailer Switcher */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-300">Pilih Trailer & Video Part:</span>
+                  <span className="font-black text-slate-900">Pilih Trailer & Video Part:</span>
                   {!isVipSubscribed && (
                     <span className="text-[11px] text-amber-400">
                       Trailer & Part 1 Gratis • Part Lainnya Khusus VIP
