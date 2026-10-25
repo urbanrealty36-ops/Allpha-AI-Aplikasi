@@ -70,21 +70,21 @@ async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: i
             })
             if existing:
                 occurrence = existing[0]
-                if occurrence["status"] in {"succeeded", "partially_succeeded", "failed", "timed_out", "cancelled"} or (occurrence["status"] == "waiting_for_approval" and schedule.get("require_approval")):
+                if occurrence["status"] in {"succeeded", "partially_succeeded", "failed", "timed_out", "cancelled"} :
                     summary["skipped"] += 1
                     continue
             else:
                 trace_id = str(uuid.uuid4())
                 rows = await store.request("POST", "agent_task_schedule_runs", params={"select": "*"},
                     body={"schedule_id": schedule_id, "owner_user_id": owner_id,
-                          "scheduled_for": scheduled_for, "status": "claimed",
+                          "scheduled_for": scheduled_for, "status": "waiting_for_approval" if schedule.get("require_approval") else "claimed",
                           "idempotency_key": occurrence_key, "trace_id": trace_id},
                     prefer="return=representation")
                 if not rows:
                     raise AgentRuntimePersistenceError("schedule occurrence insert was not confirmed")
                 occurrence = rows[0]
 
-            if schedule.get("require_approval"):
+            if schedule.get("require_approval") and occurrence.get("status") == "waiting_for_approval":
                 await store.request("PATCH", "agent_task_schedule_runs", params={
                     "id": f"eq.{occurrence['id']}", "owner_user_id": f"eq.{owner_id}",
                 }, body={"status": "waiting_for_approval"}, prefer="return=representation")
