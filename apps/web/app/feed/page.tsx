@@ -34,7 +34,6 @@ export default function FeedPage() {
   const [comments, setComments] = useState<Record<string, FeedComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentsOpen, setCommentsOpen] = useState<Record<string, boolean>>({});
-  const [reportReasons, setReportReasons] = useState<Record<string, "spam" | "harassment" | "privacy" | "misinformation" | "other">>({});
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
@@ -151,10 +150,10 @@ export default function FeedPage() {
     finally { setBusyKey(""); }
   }
 
-  async function report(item: FeedItem) {
+  async function report(item: FeedItem, reason: "spam" | "harassment" | "privacy" | "misinformation" | "other" = "other") {
     setBusyKey(item.id); setError(""); setNotice("");
     try {
-      await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason: reportReasons[item.id] ?? "other" }) });
+      await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason }) });
       setNotice("Laporan diterima untuk ditinjau.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Laporan gagal dikirim."); }
     finally { setBusyKey(""); }
@@ -231,6 +230,7 @@ export default function FeedPage() {
           initialCommentsPostId={initialCommentsPostId}
           onLoadComments={postId => { const item = items.find(row => row.id === postId); if (item) void openComments(item); }}
           onSharePost={postId => { const item = items.find(row => row.id === postId); if (item) void share(item); }}
+          onReportPost={(postId, reason) => { const item = items.find(row => row.id === postId); if (item) void report(item, reason); }}
           storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: "Momen", img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
           onOpenAskAi={(agentName) => { window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
