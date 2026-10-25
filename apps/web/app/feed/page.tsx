@@ -179,9 +179,6 @@ export default function FeedPage() {
         <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="font-semibold">Kontrol feed</h2><p className="mt-1 text-xs text-slate-500">Matikan personalisasi kapan saja.</p></div>
-            <select aria-label="Mode ranking feed" className="rounded-xl border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-600" value={mode} onChange={e => void savePreferences(personalizationEnabled, e.target.value as "for_you" | "recent")} disabled={busyKey === "preferences"}>
-              <option value="for_you">Untuk Anda</option><option value="recent">Terbaru</option>
-            </select>
           </div>
           <label className="mt-4 flex items-center gap-3 text-sm"><input type="checkbox" checked={personalizationEnabled} onChange={e => void savePreferences(e.target.checked, mode)} disabled={busyKey === "preferences"} /> Personalisasi feed aktif</label>
         </section>
