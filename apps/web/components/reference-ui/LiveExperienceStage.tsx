@@ -32,8 +32,8 @@ import {
 
 interface LiveExperienceStageProps {
   onBackToFeed: () => void;
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
   liveStateAvailable?: boolean;
 }
 
@@ -379,7 +379,7 @@ export default function LiveExperienceStage({
               className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-200 text-rose-950 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Heart className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
-              <span>{likesCount}</span>
+              <span>{liveStateAvailable ? likesCount.toLocaleString() : '—'}</span>
             </button>
           </div>
 
