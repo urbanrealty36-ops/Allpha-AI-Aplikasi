@@ -109,3 +109,36 @@ This is a source-to-domain implementation tracker, not a declaration of completi
 
 
 - **Auth credit-claim correction (2026-10-25):** Removed the remaining `Bonus Selamat Datang: +50 AI Credits` claim from the copied onboarding success panel. The flow now has no hard-coded credit bonus message; any future balance must be rendered only from canonical credit-ledger state. Commit: [ce03e85](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/ce03e85f11149fcd2dadb7b3b265b49d42aaa1c5). Source assertion check confirms no `picsum.photos`, no +50-credit success claim, awaited adapter completion, skill loading/error states, and Supabase Auth/FastAPI route calls; this is source inspection, not a run of the smoke script or build.
+
+## Execution update — 2026-10-26: reference component class audit and Navbar correction
+
+Reference source baseline: `urbanrealty36-ops/Allpha-Front-End-UI-New@aad317c1f651163f065cd42b9ae35267d18f354a`.
+
+### Source-to-target component audit
+
+A direct source/target comparison was performed for the 25 top-level React components in the reference repository. The comparison extracted static/template `className` tokens from each source and target component; this is a source-level styling inventory, not a browser-rendered pixel-parity claim.
+
+- All 25 target component files exist under `apps/web/components/reference-ui/`.
+- The target retained every detected source class token in the audited component set after the Navbar correction. Some target files intentionally differ in handlers, props, API adapters, or demo-data removal; those differences must not be “fixed” by blindly copying source business state.
+- 12 files were byte-identical at this audit checkpoint: `CreatePostModal.tsx`, `GenerateModal.tsx`, `SkillsChallengeHub.tsx`, `ThreeWorldView.tsx`, `Universe3DExperience.tsx`, `Universe3DHubView.tsx`, `BottomNav.tsx`, `AskAiModal.tsx`, `AllphaHubView.tsx`, `PostDetailView.tsx`, `TakeoverControlView.tsx`, and `TakeoverModal.tsx`.
+- The other 13 are production-adapted or differ from the reference and still require route/interaction review; 100% class-token presence alone does not prove identical layout, conditional rendering, typography, motion, or behavior.
+
+### Code correction committed
+
+- Restored the reference red notification dot in `apps/web/components/reference-ui/Navbar.tsx` using the original source classes `absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 border border-white`.
+- The notification dot is purely visual and does not introduce a fabricated unread count. The target's canonical notification callback and API-backed unread-message count remain intact.
+- Commit: [61e7045](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/61e7045eefd54a9b390bec4d64af1eb4893973be).
+
+### PWA and route findings
+
+- Reference and target both define `start_url: '/'`, `scope: '/'`, standalone display, and the same theme/background colors.
+- The reference manifest names `/icon-192.png` and `/icon-512.png`, but those PNGs are absent from the reference repository tree. The target's existing `/icon.svg` remains the verified icon rather than copying broken manifest paths.
+- Production routes `/feed`, `/search`, `/reels`, and `/messages` mount their corresponding reference UI components and use canonical authenticated API flows. The route adapters intentionally suppress demo identities, fake credit balances, sample transactions and simulated success.
+- The canonical source phase plan contains WP-01 and WP-02 as ordered work packages, not separate phase-document files. WP-01 is the current UI-COPY-03 source/design-system reconciliation checkpoint; WP-02 is the next package for shared shell, identity, navigation and profile parity. WP-02 must not be marked started/complete until WP-01's exit gates pass.
+
+### Acceptance status — still open
+
+- Not yet verified by this source audit: build, typecheck, lint, automated tests, browser rendering, visual screenshots at 360/390/820/1440 px, install/offline/error PWA behavior, and all route-level interactions.
+- The known Feed story viewer route/callback gap remains open. Do not fake a story-open success; reconcile it against a canonical API/route contract.
+- Missing reference PNGs remain an upstream asset discrepancy, not a reason to invent replacement artwork.
+- UI-COPY-03 remains `in_progress`; WP-02 remains next in sequence and blocked by WP-01 acceptance evidence.
