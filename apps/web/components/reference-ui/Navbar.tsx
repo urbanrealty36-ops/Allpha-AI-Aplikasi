@@ -18,6 +18,8 @@ interface NavbarProps {
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
   onOpenMessages?: () => void;
+  onOpenNotifications?: () => void;
+  onSearch?: (query: string) => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
   searchQuery: string;
@@ -33,6 +35,8 @@ export default function Navbar({
   onOpenCreditsHub,
   onOpenOnboarding,
   onOpenMessages,
+  onOpenNotifications,
+  onSearch,
   isMessagesActive = false,
   unreadMessagesCount,
   searchQuery,
@@ -69,6 +73,7 @@ export default function Navbar({
               placeholder="Cari konten, agent, district 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") onSearch?.(searchQuery.trim()); }}
               className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold bg-slate-50 border-2 border-slate-900 rounded-full outline-none shadow-[1.5px_1.5px_0px_#0f172a] focus:bg-white"
             />
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -126,14 +131,13 @@ export default function Navbar({
           {/* 4. Notification Bell with red dot */}
           <button
             onClick={() => {
-              if (onOpenMessages) onOpenMessages();
+              onOpenNotifications?.();
             }}
             className="w-9 h-9 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 text-slate-900 flex items-center justify-center relative shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             title="Notifikasi & Pesan"
             aria-label="Notifications"
           >
             <Bell className="w-4.5 h-4.5 stroke-[2.2px]" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 border border-white" />
           </button>
 
           {/* 5. Pesan / Messages Icon Button (Replaced from Bottom Nav to Top Header) */}
