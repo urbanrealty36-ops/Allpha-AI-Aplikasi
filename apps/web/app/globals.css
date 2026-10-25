@@ -315,3 +315,21 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
  .allpha-feed-page .allpha-feed-card{padding-left:max(0px,calc((100vw - 1000px)/2));padding-right:max(0px,calc((100vw - 1000px)/2))}
  .allpha-feed-page .reference-stories{padding-left:max(24px,calc((100vw - 1000px)/2));padding-right:max(24px,calc((100vw - 1000px)/2))}
 }
+
+
+/* Desktop/tablet screenshot review: defeat legacy max-w-3xl utility on the Feed page itself. */
+main.allpha-feed-page.mx-auto.max-w-3xl{
+  width:100%!important;
+  max-width:none!important;
+  margin-left:0!important;
+  margin-right:0!important;
+}
+.allpha-feed-page .reference-feed-chrome,
+.allpha-feed-page .reference-feed-tabs,
+.allpha-feed-page .reference-live-stage{
+  width:100%;
+  max-width:none;
+}
+.allpha-feed-page .reference-live-stage{
+  box-sizing:border-box;
+}
