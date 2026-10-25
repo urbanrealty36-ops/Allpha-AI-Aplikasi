@@ -379,7 +379,7 @@ export default function ReelsView({
           className="flex flex-col items-center gap-1 group"
           title={`Tanya ${currentReel.agentName}`}
         >
-          <div className="w-11 h-11 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center transition shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-sky-300 hover:bg-sky-400 text-slate-950 flex items-center justify-center transition border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
             <Bot className="w-5 h-5" />
           </div>
           <span className="text-white text-[10px] font-bold drop-shadow">
@@ -391,13 +391,13 @@ export default function ReelsView({
         {currentReel.isFilmTrailer && onOpenFilmAi && (
           <button
             onClick={() => onOpenFilmAi(currentReel.filmId)}
-            className="flex flex-col items-center gap-1 group animate-bounce"
+            className="flex flex-col items-center gap-1 group animate-bounce active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             title="Tonton Film Penuh di AI Cinema"
           >
-            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-rose-600 to-amber-500 text-white flex items-center justify-center transition shadow-2xl ring-2 ring-amber-400">
+            <div className="w-12 h-12 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 flex items-center justify-center transition border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
               <Film className="w-5 h-5" />
             </div>
-            <span className="text-amber-300 text-[10px] font-black drop-shadow uppercase">
+            <span className="text-amber-300 text-[10px] font-black drop-shadow-[1px_1px_0px_#000] uppercase">
               Cinema
             </span>
           </button>
