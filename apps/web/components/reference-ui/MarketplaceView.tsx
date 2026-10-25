@@ -13,16 +13,22 @@ import {
   Filter 
 } from 'lucide-react';
 
+type MarketplaceItem = { id: string; title: string; category: 'AI_AGENT' | '3D_ASSET' | 'SERVICES'; categoryLabel: string; priceIdr: string; priceCredits: number; likes: number; avatar: string; description: string };
+
 interface MarketplaceViewProps {
   onBuyItem: (title: string, priceCredits: number) => void;
   userCredits: number | null;
+  catalogItems?: MarketplaceItem[];
+  catalogState?: 'loading' | 'ready' | 'unavailable';
+  productionMode?: boolean;
+  purchaseAvailable?: boolean;
 }
 
-export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceViewProps) {
+export default function MarketplaceView({ onBuyItem, userCredits, catalogItems, catalogState = 'ready', productionMode = false, purchaseAvailable = true }: MarketplaceViewProps) {
   const [filterTab, setFilterTab] = useState<'ALL' | 'AI_AGENT' | '3D_ASSET' | 'SERVICES'>('ALL');
   const [search, setSearch] = useState('');
 
-  const items = [
+  const referenceItems: MarketplaceItem[] = [
     {
       id: 'it-1',
       title: 'Crystal City Pack',
@@ -90,6 +96,7 @@ export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceV
       description: 'AI Companion untuk 3D modeling, shader tuning, dan render stage lighting.',
     },
   ];
+  const items = catalogItems ?? (productionMode ? [] : referenceItems);
 
   const filtered = items.filter((it) => {
     const matchesSearch = it.title.toLowerCase().includes(search.toLowerCase());
@@ -153,6 +160,7 @@ export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceV
 
       {/* Grid of Marketplace Items */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {filtered.length === 0 && <div role="status" className="col-span-full rounded-3xl border-2 border-dashed border-slate-300 bg-white p-6 text-center text-sm font-bold text-slate-600">{catalogState === 'loading' ? 'Memuat Marketplace…' : catalogState === 'unavailable' ? 'Katalog Marketplace belum tersedia dari layanan produksi.' : 'Belum ada item Marketplace yang dipublikasikan.'}</div>}
         {filtered.map((item, idx) => {
           const bgColors = ['bg-sky-50', 'bg-emerald-50', 'bg-amber-50', 'bg-purple-50', 'bg-rose-50', 'bg-blue-50'];
           const cardBg = bgColors[idx % bgColors.length];
@@ -192,6 +200,7 @@ export default function MarketplaceView({ onBuyItem, userCredits }: MarketplaceV
                   </div>
                   <button
                     onClick={() => onBuyItem(item.title, item.priceCredits)}
+              disabled={!purchaseAvailable || (productionMode && userCredits == null)}
                     className="px-3.5 py-1.5 rounded-2xl bg-sky-400 hover:bg-sky-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                   >
                     Beli Item
