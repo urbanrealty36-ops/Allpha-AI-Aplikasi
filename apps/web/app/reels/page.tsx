@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "../../lib/supabase";
+import ReelsView from "../../components/reference-ui/ReelsView";
+
 type ReelsMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Reel = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: ReelsMedia[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
+type ReferenceReel = { id: string; title: string; caption: string; bgImage: string; creatorName: string; creatorHandle: string; creatorAvatar: string; agentName: string; agentHandle: string; audioName: string; likes: number; commentsCount: number; sharesCount: number; badge: string; ownerId: string; mediaUrl: string | null; mediaType: string | null; createdAt: string; liked: boolean };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function messageFor(response: Response) {
@@ -14,6 +17,7 @@ async function messageFor(response: Response) {
 }
 
 export default function ReelsPage() {
+  const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [items, setItems] = useState<Reel[]>([]);
@@ -22,7 +26,6 @@ export default function ReelsPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [mediaErrors, setMediaErrors] = useState<Record<string, boolean>>({});
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     if (!session) throw new Error("Masuk terlebih dahulu untuk membuka Reels.");
@@ -36,6 +39,7 @@ export default function ReelsPage() {
   }, [session]);
 
   const load = useCallback(async (reset = true, nextCursor?: string | null) => {
+    if (!session) return;
     setLoading(true); setError("");
     try {
       const params = new URLSearchParams({ limit: "20", mode: "recent" });
@@ -43,10 +47,9 @@ export default function ReelsPage() {
       const data = await request("/v1/reels?" + params.toString()) as { items?: Reel[]; next_cursor?: string | null };
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
-      if (reset) setMediaErrors({});
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels gagal dimuat."); }
     finally { setLoading(false); }
-  }, [request]);
+  }, [request, session]);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -66,21 +69,22 @@ export default function ReelsPage() {
 
   useEffect(() => { if (session) void load(true); }, [session, load]);
 
-  async function toggleLike(item: Reel) {
-    setBusy(item.id); setError(""); setNotice("");
+  async function toggleLike(reel: ReferenceReel) {
+    setBusy(reel.id); setError(""); setNotice("");
     try {
+      const item = items.find(row => row.id === reel.id);
+      if (!item) return;
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/reaction", item.viewer_reaction
-        ? { method: "DELETE" }
-        : { method: "PUT", body: JSON.stringify({ reaction: "like" }) });
+        ? { method: "DELETE" } : { method: "PUT", body: JSON.stringify({ reaction: "like" }) });
       await load(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Reaksi gagal disimpan."); }
     finally { setBusy(""); }
   }
 
-  async function share(item: Reel) {
-    setBusy(item.id); setError(""); setNotice("");
+  async function share(reel: ReferenceReel) {
+    setBusy(reel.id); setError(""); setNotice("");
     try {
-      const result = await request("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
+      const result = await request("/v1/feed/" + encodeURIComponent(reel.id) + "/share", {
         method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
       }) as { share_url: string };
       try { await navigator.clipboard.writeText(result.share_url); setNotice("Tautan Reels disalin."); }
@@ -89,36 +93,36 @@ export default function ReelsPage() {
     finally { setBusy(""); }
   }
 
+  const referenceReels: ReferenceReel[] = items.map(item => {
+    const media = item.media?.find(entry => Boolean(entry.preview_url));
+    const mediaUrl = media?.preview_url ?? null;
+    const ownerLabel = "Kreator " + item.owner_id.slice(0, 8);
+    return {
+      id: item.id, title: item.body || "Konten Allpha", caption: item.body || "",
+      bgImage: mediaUrl || "", creatorName: ownerLabel, creatorHandle: item.owner_id,
+      creatorAvatar: "", agentName: "", agentHandle: "", audioName: media?.filename || "Media Allpha",
+      likes: item.engagement?.likes ?? 0, commentsCount: item.engagement?.comments ?? 0,
+      sharesCount: item.engagement?.shares ?? 0, badge: item.content_type.toUpperCase(),
+      ownerId: item.owner_id, mediaUrl, mediaType: media?.media_type ?? null,
+      createdAt: item.published_at ?? item.created_at, liked: Boolean(item.viewer_reaction),
+    };
+  });
+
   return <>
-    <main className="allpha-page allpha-reels-page min-h-screen bg-slate-950 text-white">
-    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur">
-      <div className="text-sm font-semibold">Allpha Reels</div>
-      <div className="text-center"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">ALLPHA UNIVERSE</p><h1 className="text-lg font-semibold">Reels</h1></div>
-      <button className="text-sm text-slate-300" onClick={() => void load(true)} disabled={loading}>Muat ulang</button>
-    </header>
-    {!session ? <section className="mx-auto max-w-md p-8 text-center"><p className="mb-4">Masuk untuk menonton video pendek dan audio.</p><Link href="/" className="text-cyan-300 underline">Masuk melalui Allpha</Link></section> : <>
-      {error && <div role="alert" className="mx-auto flex max-w-xl items-center justify-between gap-3 p-3 text-sm text-red-300"><p>{error}</p><button type="button" className="shrink-0 rounded-full border border-red-300/40 px-3 py-2 font-semibold" disabled={loading} onClick={() => void load(true)}>Coba lagi</button></div>}
-      {notice && <p role="status" className="mx-auto max-w-xl p-3 text-sm text-emerald-300">{notice}</p>}
-      {loading && items.length === 0 && <p className="p-10 text-center text-slate-400">Memuat Reels…</p>}
-      {!loading && items.length === 0 && <section className="mx-auto max-w-md p-10 text-center"><h2 className="font-semibold">Belum ada Reels</h2><p className="mt-2 text-sm text-slate-400">Video/audio akan tampil setelah konten disetujui dan dipublikasikan.</p></section>}
-      <div className="mx-auto flex max-w-xl snap-y snap-mandatory flex-col items-center gap-4 px-3 py-4">
-        {items.map(item => <article key={item.id} className="flex min-h-[72vh] w-full snap-start flex-col justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900">
-          <div className="flex items-center justify-between px-4 py-3 text-xs text-slate-400"><span>Creator · {item.owner_id.slice(0, 8)}</span><time>{new Date(item.published_at ?? item.created_at).toLocaleDateString()}</time></div>
-          {item.body && <p className="whitespace-pre-wrap px-4 pb-3 text-sm leading-6">{item.body}</p>}
-          <div className="flex flex-1 flex-col justify-center gap-3 bg-black px-3 py-4">
-            {item.media?.map(media => media.preview_url && (media.media_type.startsWith("video/")
-              ? <div key={media.id} className="space-y-2"><video src={media.preview_url} controls playsInline preload="metadata" className="max-h-[60vh] w-full rounded-2xl bg-black" aria-label={media.filename} onError={() => setMediaErrors(current => ({ ...current, [media.id]: true }))} />{mediaErrors[media.id] && <p role="alert" className="text-sm text-amber-300">Video gagal diputar atau tautan media kedaluwarsa.</p>}</div>
-              : media.media_type.startsWith("audio/")
-                ? <div key={media.id} className="rounded-2xl bg-slate-800 p-4"><p className="mb-3 text-sm font-medium">{media.filename}</p><audio controls preload="metadata" src={media.preview_url} className="w-full" aria-label={media.filename} onError={() => setMediaErrors(current => ({ ...current, [media.id]: true }))} />{mediaErrors[media.id] && <p role="alert" className="mt-2 text-sm text-amber-300">Audio gagal diputar atau tautan media kedaluwarsa.</p>}</div>
-                : null))}
-            {(!item.media || item.media.length === 0 || !item.media.some(media => media.preview_url)) && <p className="rounded-xl border border-white/10 p-4 text-center text-sm text-slate-400">Media belum tersedia atau tautan pratinjau tidak diberikan API.</p>}
-          </div>
-          <div className="flex items-center justify-between gap-3 px-4 py-3"><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void toggleLike(item)}>{item.viewer_reaction ? "♥ Disukai" : "♡ Suka"} · {item.engagement?.likes ?? 0}</button><span className="text-xs text-slate-400">{item.engagement?.comments ?? 0} komentar</span><button className="rounded-full border border-white/20 px-4 py-2 text-sm" disabled={busy === item.id} onClick={() => void share(item)}>Bagikan</button></div>
-        </article>)}
-      </div>
-      {Object.values(mediaErrors).some(Boolean) && <div className="mx-auto max-w-xl px-3 pb-4"><button className="w-full rounded-xl border border-amber-400/40 p-3 text-sm text-amber-200 disabled:opacity-50" disabled={loading} onClick={() => { setMediaErrors({}); setNotice("Memperbarui tautan media…"); void load(true); }}>Perbarui tautan media dan coba lagi</button></div>}
-      {cursor && <div className="mx-auto max-w-xl px-3 pb-8"><button className="w-full rounded-xl border border-white/20 p-3 text-sm font-semibold disabled:opacity-50" disabled={loading} onClick={() => void load(false, cursor)}>Muat Reels berikutnya</button></div>}
+    {error && <p role="alert" className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-xl rounded-xl border border-red-300 bg-white p-3 text-sm text-red-700 shadow">{error}</p>}
+    {notice && <p role="status" className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-xl rounded-xl border border-emerald-300 bg-white p-3 text-sm text-emerald-800 shadow">{notice}</p>}
+    {!session ? <main className="flex min-h-[70dvh] items-center justify-center bg-black px-6 text-center text-white"><div><h1 className="text-xl font-black">Allpha Reels</h1><p className="my-3 text-sm text-white/70">Masuk untuk melihat konten Reels yang dipublikasikan.</p><button className="rounded-xl border-2 border-white px-4 py-2 font-bold" onClick={() => router.push("/login")}>Masuk</button></div></main> : <>
+      {loading && referenceReels.length === 0 ? <main className="flex min-h-[70dvh] items-center justify-center bg-black text-sm text-white/70">Memuat Reels…</main> : <ReelsView
+        reels={referenceReels}
+        onToggleLike={reel => void toggleLike(reel)}
+        onShare={reel => void share(reel)}
+        onOpenBrandCustomizer={() => router.push("/create")}
+        onOpenAskAi={(agentName) => router.push("/ask-ai?agent=" + encodeURIComponent(agentName))}
+        onBackToFeed={() => router.push("/feed")}
+        onOpenLiveStage={() => router.push("/live")}
+        onOpenFilmAi={() => router.push("/film-ai")}
+      />}
+      {cursor && <div className="fixed bottom-3 left-3 right-3 z-40 mx-auto max-w-sm"><button className="w-full rounded-xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-[3px_3px_0px_#0f172a]" disabled={loading} onClick={() => void load(false, cursor)}>Muat Reels berikutnya</button></div>}
     </>}
-  </main>
   </>;
 }
