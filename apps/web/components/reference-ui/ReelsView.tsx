@@ -56,6 +56,7 @@ interface ReelsViewProps {
   reels?: ReelItem[];
   onToggleLike?: (reel: ReelItem) => void;
   onShare?: (reel: ReelItem) => void;
+  onOpenComments?: (reel: ReelItem) => void;
 }
 
 export default function ReelsView({
@@ -67,6 +68,7 @@ export default function ReelsView({
   reels,
   onToggleLike,
   onShare,
+  onOpenComments,
 }: ReelsViewProps) {
   const [currentReelIndex, setCurrentReelIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
@@ -263,7 +265,7 @@ export default function ReelsView({
 
         {/* Comment Button */}
         <button
-          onClick={() => alert(`Membuka komentar untuk: "${currentReel.title}"`)}
+          onClick={() => onOpenComments?.(currentReel)}
           className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
         >
           <div className="w-12 h-12 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 flex items-center justify-center transition shadow-[2px_2px_0px_#0f172a]">
@@ -353,11 +355,7 @@ export default function ReelsView({
       <div className="relative z-20 px-4 pt-4 pb-20 sm:pb-20 space-y-2.5 max-w-xl bg-gradient-to-t from-black/95 via-black/70 to-transparent">
         {/* Creator Info Lockup */}
         <div className="flex items-center gap-2.5">
-          <img
-            src={currentReel.creatorAvatar}
-            alt={currentReel.creatorName}
-            className="w-10 h-10 rounded-full object-cover ring-2 ring-white/80 shrink-0"
-          />
+          {currentReel.creatorAvatar ? <img src={currentReel.creatorAvatar} alt={currentReel.creatorName} className="w-10 h-10 rounded-full object-cover ring-2 ring-white/80 shrink-0" /> : <div aria-label={currentReel.creatorName} className="w-10 h-10 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center ring-2 ring-white/80 shrink-0"><Sparkles className="w-5 h-5" /></div>}
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-bold text-white text-xs">{currentReel.creatorName}</span>
@@ -368,7 +366,7 @@ export default function ReelsView({
             </div>
             <div className="flex items-center gap-1 text-[11px] text-cyan-300 font-medium">
               <Bot className="w-3 h-3 text-cyan-400" />
-              <span>{currentReel.agentName} · AI Co-Director</span>
+              {currentReel.agentName && <span>{currentReel.agentName} · AI Co-Director</span>}
             </div>
           </div>
         </div>
