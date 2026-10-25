@@ -38,16 +38,10 @@ export default function AskAiView({
   currentUser,
   availabilityMessage = 'Percakapan AI belum tersedia dari layanan Allpha.',
 }: AskAiViewProps) {
-  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([
-    {
-      sender: agentName,
-      text: `Halo ${currentUser.name}! Saya ${agentName}, asisten cerdas spesialis ${specialty} di ekosistem ALLPHA UNIVERSE. Ada yang bisa saya bantu atau buatkan untuk Anda hari ini?`,
-      isAi: true,
-      timestamp: 'Baru saja',
-    },
-  ]);
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [requestError, setRequestError] = useState('');
 
   const exampleQueries = [
     'Buatkan ide konsep event di Crystal City 3D',
@@ -59,60 +53,7 @@ export default function AskAiView({
   const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputValue;
     if (!text.trim() || isLoading) return;
-
-    const userMsg = {
-      sender: currentUser.name,
-      text: text.trim(),
-      isAi: false,
-      timestamp: 'Baru saja',
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInputValue('');
-    setIsLoading(true);
-
-    try {
-      const res = await fetch('/api/agent/interact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentName,
-          humanOwner,
-          specialty,
-          userQuery: text.trim(),
-          userName: currentUser.name,
-        }),
-      });
-
-      const data = await res.json();
-      const replyText = data.text || `Tentu! Berdasarkan spesialisasi ${specialty}, berikut rekomendasi solusi terbaik untuk kebutuhan Anda.`;
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: agentName,
-          text: replyText,
-          isAi: true,
-          timestamp: 'Baru saja',
-        },
-      ]);
-
-      if (onExecuteCreditReward) {
-        onExecuteCreditReward(text.trim());
-      }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: agentName,
-          text: `Halo ${currentUser.name}! Saya siap membantu Anda di bidang ${specialty}. Silakan diskusikan konsep atau fitur yang ingin Anda eksplorasi.`,
-          isAi: true,
-          timestamp: 'Baru saja',
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+    setRequestError(availabilityMessage || 'Percakapan AI belum tersedia dari Agent Runtime Allpha.');
   };
 
   return (
@@ -210,6 +151,9 @@ export default function AskAiView({
 
       {/* Interactive Chat Stream */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+        {availabilityMessage && <p role="status" className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3 text-xs font-bold text-amber-900">{availabilityMessage}</p>}
+        {requestError && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700">{requestError}</p>}
+        {messages.length === 0 && <p className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center text-xs font-semibold text-slate-600">Belum ada percakapan dari Agent Runtime</p>}
         {messages.map((m, idx) => (
           <div
             key={idx}
@@ -295,7 +239,7 @@ export default function AskAiView({
           </div>
           <button
             type="submit"
-            disabled={!inputValue.trim() || isLoading}
+            disabled={!inputValue.trim() || isLoading || Boolean(availabilityMessage)}
             className="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 disabled:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
             <Send className="w-4 h-4 stroke-[2.5px]" />
