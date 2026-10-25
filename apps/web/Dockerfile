@@ -7,6 +7,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN mkdir -p /tools/3d-assets && cp ./tools/3d-assets/meshopt-fallback-compat.mjs /tools/3d-assets/meshopt-fallback-compat.mjs
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ARG NEXT_PUBLIC_SUPABASE_URL=
 ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
