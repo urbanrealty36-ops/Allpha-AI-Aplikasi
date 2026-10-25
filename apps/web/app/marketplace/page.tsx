@@ -11,9 +11,11 @@ import MarketplaceView from "../../components/reference-ui/MarketplaceView";
 export default function MarketplacePage() {
   return (
     <MarketplaceView
-      items={[]}
+      catalogItems={[]}
       userCredits={null}
       catalogState="unavailable"
+      productionMode={true}
+      purchaseAvailable={false}
       onBuyItem={() => {
         // Fail closed until the canonical purchase contract is implemented.
       }}
