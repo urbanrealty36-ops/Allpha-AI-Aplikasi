@@ -68,6 +68,8 @@ class TaskScheduleCreate(BaseModel):
                 raise ValueError("once schedules require run_at and no weekdays")
             if self.run_at.tzinfo is None:
                 raise ValueError("run_at must include a timezone offset")
+            if self.run_at.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+                raise ValueError("run_at must be in the future")
         elif self.schedule_kind == "daily":
             if self.run_at is not None or self.weekdays:
                 raise ValueError("daily schedules use local_time and no run_at/weekdays")
@@ -153,10 +155,22 @@ async def _verify_runtime_binding(store: AgentRuntimeStore, owner_id: str, paylo
             "code": "APPROVED_RUNTIME_POLICY_REQUIRED", "message": "Policy runtime aktif tidak ditemukan atau versinya tidak cocok."
         })
     allowed_scopes = set(policy.get("required_permission_scopes") or [])
-    if not set(payload.granted_permission_scopes).issubset(allowed_scopes):
+    if not set(payload.granted_permission_scopes).issubset(allowed_scopes) or not set(payload.granted_permission_scopes).issubset(set(skill.get("required_permission_scopes") or [])):
         raise HTTPException(status_code=403, detail={
             "code": "SCHEDULE_PERMISSION_SCOPE_DENIED", "message": "Izin task melampaui scope policy yang disetujui."
         })
+    if capability.get("risk_level") in {"high", "critical"} and not payload.require_approval:
+        raise HTTPException(status_code=403, detail={
+            "code": "HIGH_RISK_TASK_REQUIRES_APPROVAL", "message": "Task berisiko tinggi/kritis wajib memerlukan persetujuan Human Owner."
+        })
+    skill_budget = skill.get("budget_limits") or {}
+    for key in ("max_runtime_seconds", "max_tool_calls"):
+        requested = payload.budget_limit.get(key)
+        allowed = skill_budget.get(key)
+        if requested is not None and allowed is not None and (not isinstance(requested, int) or requested < 1 or requested > int(allowed)):
+            raise HTTPException(status_code=403, detail={
+                "code": "TASK_BUDGET_EXCEEDS_SKILL_LIMIT", "message": "Budget Task melampaui batas Skill yang dipublikasikan."
+            })
     return {"agent": agent, "skill": skill, "capability": capability, "policy": policy}
 
 
