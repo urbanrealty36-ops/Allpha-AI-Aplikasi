@@ -233,11 +233,11 @@ export default function SkillsChallengeHub({
       {/* TAB 1: SIMULATOR CHALLENGE & CREDIT TRANSFER             */}
       {/* ======================================================== */}
       {activeTab === 'SIMULATOR' && (
-        <div className="space-y-6">
-          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div className="space-y-5">
+          <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-5 h-5 text-[#0284C7]" />
-              <h2 className="text-sm font-bold text-slate-900">
+              <h2 className="text-sm font-black text-slate-900 uppercase">
                 Simulasi Interaksi Nyata: Human Lain Bertanya ke AI Agent Anda
               </h2>
             </div>
@@ -256,13 +256,13 @@ export default function SkillsChallengeHub({
                     : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-blue-900">Contoh 1: Reels Kustom Brand Sendiri</span>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-black text-slate-900">Contoh 1: Reels Kustom Brand Sendiri</span>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-sky-200 text-sky-900 border border-slate-900">
                     Reward +15 Cr
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
+                <p className="text-[11px] text-slate-600 font-medium">
                   Human lain: &ldquo;Bagaimana cara membuat reels seperti ini, tetapi dengan logo &amp; produk saya?&rdquo;
                 </p>
               </button>
@@ -276,13 +276,13 @@ export default function SkillsChallengeHub({
                     : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-blue-900">Contoh 2: Tanya Kesehatan & Nutrisi</span>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-black text-slate-900">Contoh 2: Tanya Kesehatan & Nutrisi</span>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-200 text-emerald-900 border border-slate-900">
                     Reward +15 Cr
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
+                <p className="text-[11px] text-slate-600 font-medium">
                   Human lain bertanya rekomendasi nutrisi kerja hybrid kepada AI Agent Anda.
                 </p>
               </button>
@@ -293,22 +293,22 @@ export default function SkillsChallengeHub({
               <div className="p-4 rounded-2xl bg-[#F4F7FB] border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-3 mb-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Nama Brand / Logo Pemohon:</label>
+                    <label className="block text-slate-800 font-black mb-1">Nama Brand / Logo Pemohon:</label>
                     <input
                       type="text"
                       value={simBrandName}
                       onChange={(e) => setSimBrandName(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                      className="w-full px-3 py-2 bg-white border-2 border-slate-900 rounded-xl outline-none font-bold text-slate-900"
                       placeholder="Contoh: Kopi Nusantara / NeoFashion"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Detail Produk / Aset 3D:</label>
+                    <label className="block text-slate-800 font-black mb-1">Detail Produk / Aset 3D:</label>
                     <input
                       type="text"
                       value={simProductDetails}
                       onChange={(e) => setSimProductDetails(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                      className="w-full px-3 py-2 bg-white border-2 border-slate-900 rounded-xl outline-none font-bold text-slate-900"
                       placeholder="Contoh: Cold Brew Botol 250ml"
                     />
                   </div>
@@ -378,9 +378,9 @@ export default function SkillsChallengeHub({
       {/* TAB 2: UPGRADE KNOWLEDGE & PLUGINS (DOCUMENTS / EBOOKS) */}
       {/* ======================================================== */}
       {activeTab === 'UPGRADE' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Quick Preset Install Cards */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
             <h3 className="text-sm font-black text-slate-900 mb-1 uppercase">
               Pilihan Cepat: Dokumen Ebook & Plugin Siap Install
             </h3>
@@ -392,11 +392,11 @@ export default function SkillsChallengeHub({
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-sky-700 mb-1">
-                    <FileText className="w-4 h-4" />
-                    <span className="text-[10px] font-bold uppercase">Ebook PDF</span>
+                    <FileText className="w-4 h-4 stroke-[2.5px]" />
+                    <span className="text-[10px] font-black uppercase">Ebook PDF</span>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900">Pedoman Nutrisi Klinis 2026.pdf</h4>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <h4 className="text-xs font-black text-slate-900">Pedoman Nutrisi Klinis 2026.pdf</h4>
+                  <p className="text-[11px] text-slate-600 mt-1 font-medium">
                     Menambah keahlian: Diagnosis preventif, pola makan hybrid, dan kalkulasi nutrisi.
                   </p>
                 </div>
@@ -418,11 +418,11 @@ export default function SkillsChallengeHub({
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-purple-900 mb-1">
-                    <Cpu className="w-4 h-4" />
-                    <span className="text-[10px] font-bold uppercase">Plugin JSON</span>
+                    <Cpu className="w-4 h-4 stroke-[2.5px]" />
+                    <span className="text-[10px] font-black uppercase">Plugin JSON</span>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900">Brand Logo Reels Generator v2.5</h4>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <h4 className="text-xs font-black text-slate-900">Brand Logo Reels Generator v2.5</h4>
+                  <p className="text-[11px] text-slate-600 mt-1 font-medium">
                     Menambah kemampuan: Rendering logo otomatis pada adegan 3D dan dispatch file DM.
                   </p>
                 </div>
@@ -444,11 +444,11 @@ export default function SkillsChallengeHub({
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 text-amber-900 mb-1">
-                    <FileCode className="w-4 h-4" />
-                    <span className="text-[10px] font-bold uppercase">3D Spatial Plugin</span>
+                    <FileCode className="w-4 h-4 stroke-[2.5px]" />
+                    <span className="text-[10px] font-black uppercase">3D Spatial Plugin</span>
                   </div>
-                  <h4 className="text-xs font-bold text-slate-900">Three.js WebGL Shader Pack</h4>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <h4 className="text-xs font-black text-slate-900">Three.js WebGL Shader Pack</h4>
+                  <p className="text-[11px] text-slate-600 mt-1 font-medium">
                     Menambah kemampuan: Procedural neon shaders, emissive glow, dan district building scripts.
                   </p>
                 </div>
@@ -470,7 +470,7 @@ export default function SkillsChallengeHub({
           </div>
 
           {/* Active Knowledge & Installed Plugins List */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
             <h3 className="text-sm font-black text-slate-900 mb-3 flex items-center gap-2 uppercase">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span>Daftar Knowledge & Plugin Aktif Milik {agentProfile.name}</span>
@@ -481,7 +481,7 @@ export default function SkillsChallengeHub({
                 <div key={doc.id} className="py-3.5 flex items-start justify-between gap-3 text-xs">
                   <div className="flex items-start gap-3">
                     <div className="w-9 h-9 rounded-xl bg-slate-100 border-2 border-slate-900 flex items-center justify-center text-slate-800 shrink-0">
-                      {doc.type === 'EBOOK_PDF' ? <FileText className="w-4 h-4" /> : <Cpu className="w-4 h-4" />}
+                      {doc.type === 'EBOOK_PDF' ? <FileText className="w-4 h-4 stroke-[2.5px]" /> : <Cpu className="w-4 h-4 stroke-[2.5px]" />}
                     </div>
                     <div>
                       <p className="font-black text-slate-900">{doc.title}</p>
@@ -520,7 +520,7 @@ export default function SkillsChallengeHub({
         <div className="p-5 rounded-3xl bg-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Buku Besar Transaksi AI Credits Reward</h3>
+              <h3 className="text-sm font-black text-slate-900 uppercase">Buku Besar Transaksi AI Credits Reward</h3>
               <p className="text-xs text-slate-500">
                 Pencatatan transparan transfer kredit dari penanya ke AI Agent pemilik
               </p>
