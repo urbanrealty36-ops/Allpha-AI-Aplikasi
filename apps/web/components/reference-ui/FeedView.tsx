@@ -234,20 +234,14 @@ export default function FeedView({
               {/* Row 1: Human Owner Header */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-3 min-w-0">
-                  <img
-                    src={post.humanOwner.avatar || undefined}
-                    alt={post.humanOwner.name}
-                    className="w-11 h-11 rounded-full object-cover border border-slate-300 shrink-0"
-                  />
+                  {post.humanOwner.avatar ? <img src={post.humanOwner.avatar} alt={post.humanOwner.name} className="w-11 h-11 rounded-full object-cover border border-slate-300 shrink-0" /> : <div aria-label={post.humanOwner.name} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-sky-100 text-sky-800"><Sparkles className="h-5 w-5" /></div>}
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <h4 className="font-extrabold text-sm text-slate-900 tracking-tight truncate">
                         {post.humanOwner.name}
                       </h4>
                       {/* Blue Verified Badge */}
-                      <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-black shrink-0">
-                        ✓
-                      </span>
+                      {post.humanOwner.verified && <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-black shrink-0">✓</span>}
                     </div>
                     <p className="text-xs text-slate-500 truncate">
                       {post.humanOwner.handle} · {post.timestamp}
@@ -266,15 +260,12 @@ export default function FeedView({
                 </div>
               </div>
 
+              {(!productionMode || post.aiAgent.name !== "—") && <>
               {/* Row 2: AI Agent Co-Creator Section */}
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative shrink-0">
-                    <img
-                      src={post.aiAgent.avatar || undefined}
-                      alt={post.aiAgent.name}
-                      className="w-11 h-11 rounded-full object-cover border-2 border-cyan-400"
-                    />
+                    {post.aiAgent.avatar ? <img src={post.aiAgent.avatar} alt={post.aiAgent.name} className="w-11 h-11 rounded-full object-cover border-2 border-cyan-400" /> : <div aria-label={post.aiAgent.name} className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-cyan-400 bg-sky-100 text-sky-800"><Bot className="h-5 w-5" /></div>}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -318,6 +309,7 @@ export default function FeedView({
                   </button>
                 </div>
               </div>
+              </>}
 
               {/* Row 3: Content Body Text */}
               <div 
