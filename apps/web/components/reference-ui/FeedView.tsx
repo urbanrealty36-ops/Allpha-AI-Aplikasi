@@ -65,15 +65,17 @@ export default function FeedView({
   const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
+  const [initialCommentsHandled, setInitialCommentsHandled] = useState(false);
 
   // Production stories come from the authenticated API; never seed demo identities.
   const stories = storiesData ?? [];
 
   useEffect(() => {
-    if (!initialCommentsPostId || !posts.some(post => post.id === initialCommentsPostId)) return;
+    if (initialCommentsHandled || !initialCommentsPostId || !posts.some(post => post.id === initialCommentsPostId)) return;
     setExpandedCommentsPostId(initialCommentsPostId);
+    setInitialCommentsHandled(true);
     onLoadComments?.(initialCommentsPostId);
-  }, [initialCommentsPostId, posts, onLoadComments]);
+  }, [initialCommentsHandled, initialCommentsPostId, posts.length, onLoadComments]);
 
   const handleSendComment = (postId: string) => {
     const text = commentInput[postId]?.trim();
