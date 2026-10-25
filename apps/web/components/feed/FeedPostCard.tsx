@@ -37,9 +37,9 @@ export default function FeedPostCard({
     <article className="allpha-feed-card">
       <div className="allpha-feed-card-meta">
         <div className="allpha-feed-owner">
-          <span className="allpha-feed-owner-mark" aria-hidden="true">A</span>
-          <div>
-            <strong>Creator · {item.owner_id.slice(0, 8)}</strong>
+          <span className="allpha-feed-owner-mark" aria-hidden="true">{item.owner_id.slice(0, 1).toUpperCase()}</span>
+          <div className="allpha-feed-owner-identity">
+            <strong>Creator <span className="allpha-feed-owner-handle">@{item.owner_id.slice(0, 8)}</span></strong>
             <time dateTime={timestamp.toISOString()}>{timestamp.toLocaleString("id-ID")}</time>
           </div>
         </div>
