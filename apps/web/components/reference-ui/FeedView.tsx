@@ -252,7 +252,7 @@ export default function FeedView({
                 <div className="flex items-center gap-2 shrink-0">
                   {/* Pastel Blue Pill: HUMAN OWNER */}
                   <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black uppercase tracking-wider">
-                    HUMAN OWNER
+                    {productionMode ? "KREATOR" : "HUMAN OWNER"}
                   </span>
                   <button className="text-slate-400 hover:text-slate-800 p-1">
                     <MoreHorizontal className="w-4.5 h-4.5" />
