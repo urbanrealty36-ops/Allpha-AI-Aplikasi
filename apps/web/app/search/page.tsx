@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -10,7 +10,7 @@ type Recommendation = SearchItem;
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
-export default function SearchPage() {
+function SearchPageContent() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const searchParams = useSearchParams();
   const [session, setSession] = useState<Session | null>(null);
@@ -127,4 +127,12 @@ export default function SearchPage() {
     </section>
   </main>
   </>;
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<main className="allpha-page allpha-search-page" role="status">Menyiapkan pencarian…</main>}>
+      <SearchPageContent />
+    </Suspense>
+  );
 }
