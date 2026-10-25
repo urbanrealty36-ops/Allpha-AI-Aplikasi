@@ -32,7 +32,7 @@ import {
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (user: HumanProfile, agent: AIAgentProfile) => void;
+  onComplete: (user: HumanProfile, agent: AIAgentProfile) => Promise<void>;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
 }
@@ -48,6 +48,8 @@ export default function AuthOnboardingFlow({
 }: AuthOnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('SPLASH');
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
+  const [submitting, setSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
 
   // Human Identity Form State
   const [humanName, setHumanName] = useState(currentUser.name);
@@ -110,7 +112,10 @@ export default function AuthOnboardingFlow({
     );
   };
 
-  const handleFinishOnboarding = () => {
+  const handleFinishOnboarding = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmissionError('');
     const updatedHuman: HumanProfile = {
       ...currentUser,
       name: humanName,
@@ -135,11 +140,14 @@ export default function AuthOnboardingFlow({
       autoReply: isAutoReplyEnabled,
     };
 
-    onComplete(updatedHuman, updatedAgent);
-    setStep('SUCCESS');
-    setTimeout(() => {
-      onClose();
-    }, 1800);
+    try {
+      await onComplete(updatedHuman, updatedAgent);
+      setStep('SUCCESS');
+    } catch (cause) {
+      setSubmissionError(cause instanceof Error ? cause.message : 'Onboarding gagal disimpan. Silakan coba lagi.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -665,14 +673,16 @@ export default function AuthOnboardingFlow({
               </button>
               <button
                 type="button"
-                onClick={handleFinishOnboarding}
+                onClick={() => void handleFinishOnboarding()} disabled={submitting}
                 className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-xs font-bold shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition"
               >
-                <span>Selesai & Masuk ke Universe 🚀</span>
+                <span>{submitting ? "Menyimpan..." : "Selesai & Masuk ke Universe"} 🚀</span>
               </button>
             </div>
           </div>
         )}
+
+        {submissionError && <div role="alert" className="mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submissionError}</div>}
 
         {/* ======================================================== */}
         {/* STEP 4: SUCCESS CONGRATULATIONS                          */}
