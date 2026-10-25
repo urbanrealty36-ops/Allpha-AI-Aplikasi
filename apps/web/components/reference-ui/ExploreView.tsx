@@ -82,8 +82,6 @@ interface ExploreViewProps {
   onOpenCreditsHub?: () => void;
   onOpenLiveStage?: () => void;
   onOpenFilmAi?: (filmId?: string) => void;
-  userCredits?: number;
-  agentCredits?: number;
   onLikePost?: (postId: string) => void;
   productionMode?: boolean;
   onSearch?: (query: string) => void;
@@ -105,8 +103,6 @@ export default function ExploreView({
   onOpenCreditsHub,
   onOpenLiveStage,
   onOpenFilmAi,
-  userCredits = 250,
-  agentCredits = 480,
   onLikePost,
   productionMode = false,
   onSearch,
@@ -503,7 +499,7 @@ export default function ExploreView({
                         <div className="flex items-center gap-1.5">
                           {acc.isAi && (
                             <button
-                              onClick={() => onOpenAskAi(acc.name, acc.ownerName || 'Alex Tamara', acc.specialty)}
+                              onClick={() => onOpenAskAi(acc.name, acc.ownerName || 'Pemilik Agent', acc.specialty)}
                               className="px-2.5 py-1 rounded-xl bg-sky-200 hover:bg-sky-300 text-sky-950 text-[10.5px] font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                             >
                               <Bot className="w-3 h-3 text-sky-900 stroke-[2.5px]" />
