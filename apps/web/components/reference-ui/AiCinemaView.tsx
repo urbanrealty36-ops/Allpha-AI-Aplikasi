@@ -238,95 +238,15 @@ export default function AiCinemaView({
 
   // Submit and Publish Film for Verification by Team Allpha
   const handlePublishForVerification = () => {
-    if (catalogState !== 'ready') {
-      showToast('Studio Film AI belum terhubung ke API kanonis. Draf belum disimpan atau dipublikasikan.');
-      return;
-    }
-    if (!newTitle.trim()) {
-      showToast('Harap masukkan Judul Film AI Anda.');
-      return;
-    }
-    if (!newSynopsis.trim()) {
-      showToast('Harap masukkan Deskripsi & Sinopsis Film.');
-      return;
-    }
-
-    const createdMovie: AiMovieItem = {
-      id: `film-${Date.now()}`,
-      title: newTitle.trim(),
-      originalTitle: newOriginalTitle.trim() || undefined,
-      genre: newGenre,
-      genreLabel: genreLabels[newGenre] || 'Film AI Allpha',
-      coverImage: selectedPosterPreset,
-      bannerImage: selectedPosterPreset,
-      episodesCount: videoParts.length,
-      totalViews: '0',
-      rating: 5.0,
-      durationPerEp: newDurationPerPart,
-      releaseYear: '2026',
-      producerHuman: {
-        name: newProducerName || 'Alex Tamara',
-        handle: `@${(newProducerName || 'Alex Tamara').toLowerCase().replace(/\s+/g, '')}`,
-        avatar: 'https://picsum.photos/seed/alex-producer/150/150',
-      },
-      aiCoDirector: {
-        name: newAiCoDirector || 'Luna AI',
-        handle: `@${(newAiCoDirector || 'Luna AI').toLowerCase().replace(/\s+/g, '')}`,
-        avatar: 'https://picsum.photos/seed/luna-cyber/150/150',
-        specialty: '3D Directing & Spatial Sound Synthesis',
-      },
-      synopsis: newSynopsis.trim(),
-      aiTechStack: newTechStack || 'Kling 1.5 + Runway Gen-3 + ElevenLabs',
-      creatorMonthlyEarningsCredits: 0,
-      isTrending: true,
-      trailerTitle: 'Official Trailer 4K',
-      trailerDuration: trailerDuration || '00:45',
-      verificationStatus: 'PENDING_VERIFICATION',
-      isUserUploaded: true,
-      parts: videoParts,
-    };
-
-    // Add to movies list
-    setMoviesList([createdMovie, ...moviesList]);
-    setIsCreateStudioOpen(false);
-
-    // Open review & verification dialog
-    setReviewModalData({
-      isOpen: true,
-      movie: createdMovie,
-    });
-
-    showToast(`Film "${createdMovie.title}" berhasil di-publish & dikirim ke antrean Verifikasi Team Allpha!`);
+    showToast('Studio Film AI belum terhubung ke API kanonis. Tidak ada film yang disimpan atau dipublikasikan.');
   };
 
-  // Simulate Instant Verification by Team Allpha
-  const handleApproveByTeamAllpha = (movieId: string) => {
-    if (catalogState !== 'ready') {
-      showToast('Verifikasi film hanya dapat dilakukan oleh layanan Allpha yang berwenang.');
-      return;
-    }
-    setMoviesList((prev) =>
-      prev.map((m) => {
-        if (m.id === movieId) {
-          return {
-            ...m,
-            verificationStatus: 'VERIFIED',
-            totalViews: '1.2K',
-            creatorMonthlyEarningsCredits: 1200,
-          };
-        }
-        return m;
-      })
-    );
+  const handleApproveByTeamAllpha = (_movieId: string) => {
+    showToast('Verifikasi hanya dapat dilakukan melalui layanan Allpha yang berwenang. Tidak ada status yang diubah di browser.');
+  };
 
-    if (reviewModalData.movie?.id === movieId) {
-      setReviewModalData((prev) => ({
-        ...prev,
-        movie: prev.movie ? { ...prev.movie, verificationStatus: 'VERIFIED' } : null,
-      }));
-    }
-
-    showToast('🎉 Selamat! Film AI Anda TELAH TERVERIFIKASI oleh Team Allpha dan kini tayang publik!');
+  const handleConfirmVipSubscription = () => {
+    showToast('Langganan VIP belum tersedia sampai kontrak billing, payment dan entitlement kanonis terhubung. Tidak ada langganan yang diaktifkan.');
   };
 
   // Handler for opening a movie in theater modal
@@ -375,7 +295,7 @@ export default function AiCinemaView({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Wadah resmi Produser & Kreator Film AI. Tonton Drama Pendek (C-Drama, K-Drama, Sci-Fi) dengan ekosistem bagi hasil 70% ke kreator.
+                Wadah bagi produser dan kreator Film AI. Katalog, akses tontonan, dan skema bagi hasil mengikuti kebijakan kanonis yang telah diaktifkan.
               </p>
             </div>
           </div>
@@ -393,7 +313,7 @@ export default function AiCinemaView({
                 className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-rose-600 via-purple-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-xs shadow-lg shadow-rose-500/25 transition flex items-center gap-1.5"
               >
                 <Crown className="w-3.5 h-3.5" />
-                <span>Langganan VIP (150 Cr / Bln)</span>
+                <span>Paket VIP (detail harga menyusul)</span>
               </button>
             )}
 
@@ -412,7 +332,7 @@ export default function AiCinemaView({
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
             <span>
-              <strong>Model Monetisasi Kreator:</strong> 70% dari seluruh biaya langganan bulanan & pembelian tiket episode langsung didistribusikan ke Produser & AI Agent pembuat film.
+              <strong>Model Monetisasi Kreator:</strong> pembagian hasil dan distribusi royalti mengikuti kebijakan billing serta ledger kanonis yang berlaku.
             </span>
           </div>
           <span className="text-[11px] font-mono text-amber-300 font-bold shrink-0">
@@ -570,7 +490,7 @@ export default function AiCinemaView({
                 </span>
               </h3>
               <p className="text-xs text-slate-500">
-                Kelola status verifikasi dari Team Allpha, tontonan penonton, dan royalti 70%.
+                Kelola status verifikasi, statistik tontonan, dan royalti berdasarkan data layanan kanonis.
               </p>
             </div>
 
@@ -619,7 +539,7 @@ export default function AiCinemaView({
                 {/* Earnings & Actions */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div className="space-y-0.5">
-                    <span className="text-[10px] text-slate-400">Total Royalti (70%):</span>
+                    <span className="text-[10px] text-slate-400">Royalti (data kanonis):</span>
                     <p className="font-mono font-bold text-amber-700">+{film.creatorMonthlyEarningsCredits} Cr</p>
                   </div>
 
@@ -769,7 +689,7 @@ export default function AiCinemaView({
 
                     {/* Profit Royalty Badge */}
                     <div className="p-2 rounded-xl bg-amber-50/80 border border-amber-200/60 flex items-center justify-between text-[10px] text-amber-900">
-                      <span>Royalti Kreator (70%):</span>
+                      <span>Royalti Kreator:</span>
                       <span className="font-mono font-bold">
                         +{movie.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr/bln
                       </span>
@@ -1117,7 +1037,7 @@ export default function AiCinemaView({
                 <span>Publish & Verifikasi oleh Team Allpha</span>
               </div>
               <p>
-                Setelah menekan tombol di bawah, film AI Anda akan masuk ke antrean verifikasi Team Allpha. Setelah terverifikasi, film akan otomatis tampil di katalog dan dapat ditonton oleh seluruh pengguna Allpha, serta mendatangkan <strong>70% royalti AI Credits</strong> langsung ke dompet kreator Anda.
+                Setelah menekan tombol di bawah, film AI Anda akan masuk ke antrean verifikasi Team Allpha. Setelah terverifikasi, film akan otomatis tampil di katalog dan dapat ditonton oleh seluruh pengguna Allpha, serta mendatangkan <strong>sesuai kebijakan aktif royalti AI Credits</strong> langsung ke dompet kreator Anda.
               </p>
             </div>
 
@@ -1197,7 +1117,7 @@ export default function AiCinemaView({
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Sistem Royalti 70% Terhubung ke Dompet Anda</span>
+                  <span>Sistem Royalti sesuai kebijakan aktif Terhubung ke Dompet Anda</span>
                 </div>
               </div>
             </div>
@@ -1505,7 +1425,7 @@ export default function AiCinemaView({
                 Paket Berlangganan Bulanan
               </span>
               <p className="text-2xl font-mono font-black text-white">
-                150 AI Credits <span className="text-xs text-slate-400 font-normal">/ Rp 99.000 / bln</span>
+                Harga dan kuota paket ditampilkan setelah kontrak billing aktif.
               </p>
               <p className="text-[11px] text-slate-300">
                 Saldo Anda saat ini: <strong className="font-mono text-amber-300">{userCredits === null ? '—' : userCredits} Credits</strong>
@@ -1518,7 +1438,7 @@ export default function AiCinemaView({
                 'Buka ribuan episode Drama Pendek AI (C-Drama & K-Drama) tanpa iklan',
                 'Resolusi 4K Ultra HD 60 FPS dengan audio spatial 3D',
                 'Akses premiere episode baru 24 jam lebih awal',
-                '70% biaya langganan disalurkan langsung sebagai royalti untuk Produser Film AI',
+                'Skema royalti mengikuti kebijakan yang disahkan dan settlement kanonis',
                 'Bisa diakses dari Feed, Reels, dan 3D Universe Cinema District',
               ].map((benefit, i) => (
                 <div key={i} className="flex items-start gap-2">
