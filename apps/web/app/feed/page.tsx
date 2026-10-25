@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import FeedPostCard from "../../components/feed/FeedPostCard";
+import ReferenceFeedChrome from "../../components/reference-ui/ReferenceFeedChrome";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
@@ -168,10 +169,7 @@ export default function FeedPage() {
     <>
       
       <main className="allpha-page allpha-feed-page mx-auto min-h-screen w-full max-w-3xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
-      <nav className="mb-6 flex items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-4"><Link href="/" className="text-sm text-blue-600 hover:underline">← Allpha</Link><Link href="/create" className="text-sm font-semibold text-cyan-600 hover:underline">＋ Buat konten</Link><Link href="/stories" className="text-sm font-semibold text-cyan-600 hover:underline">Stories & Moments</Link><Link href="/reels" className="text-sm font-semibold text-cyan-600 hover:underline">Reels video/audio →</Link></div>
-        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ENG-P14 · Social Feed</span>
-      </nav>
+      <ReferenceFeedChrome mode={mode} onModeChange={nextMode => { void savePreferences(personalizationEnabled, nextMode); }} />
       <header className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">Allpha Universe</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Feed sosial</h1>
