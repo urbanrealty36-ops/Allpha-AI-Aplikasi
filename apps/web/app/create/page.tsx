@@ -95,8 +95,14 @@ export default function CreatePage() {
       }
       const published = await request("/v1/content/" + encodeURIComponent(created.id) + "/publish", { method: "POST" }) as ContentResponse;
       setBody(""); setFile(null);
-      const status = published.item?.status ?? "review";
-      setNotice(published.message ?? (status === "review" ? "Konten masuk antrean moderasi. Konten belum tampil untuk publik." : "Permintaan publikasi diterima; periksa status konten."));
+      const status = published.item?.status ?? created.status;
+      const moderation = published.item?.moderation_status ?? created.moderation_status;
+      const apiMessage = published.message;
+      setNotice(apiMessage
+        ? `${apiMessage} Status: ${status}; moderasi: ${moderation}.`
+        : status === "published" && moderation === "approved"
+          ? "Konten telah disetujui dan dipublikasikan oleh API."
+          : `Konten diterima API. Status: ${status}; moderasi: ${moderation}. Konten belum dianggap publik sampai API menyatakan published dan approved.`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Konten belum berhasil dikirim.";
       setError(created ? `Draft ${created.id} sudah dibuat. ${message} Draft tidak dianggap terpublikasi; periksa statusnya sebelum mencoba ulang.` : message);
