@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { 
   Search, 
   Bot, 
@@ -91,6 +91,11 @@ interface ExploreViewProps {
   recommendationsError?: string;
   trendsLoading?: boolean;
   trendsError?: string;
+  initialSearchQuery?: string;
+  searchLoading?: boolean;
+  searchError?: string;
+  searchEmpty?: boolean;
+  searchPrompt?: boolean;
 }
 
 type SearchTab = 'ALL' | 'ACCOUNTS' | 'POSTS' | 'HASHTAGS' | 'PRD_HUB';
@@ -112,8 +117,14 @@ export default function ExploreView({
   recommendationsError = "",
   trendsLoading = false,
   trendsError = "",
+  initialSearchQuery = '',
+  searchLoading = false,
+  searchError = '',
+  searchEmpty = false,
+  searchPrompt = false,
 }: ExploreViewProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  useEffect(() => { setSearchQuery(initialSearchQuery); }, [initialSearchQuery]);
   const [activeSearchTab, setActiveSearchTab] = useState<SearchTab>(productionMode ? 'POSTS' : 'ALL');
 
   // Follow states for accounts
@@ -287,6 +298,10 @@ export default function ExploreView({
       </div>
 
       <div className="p-4 space-y-6">
+        {activeSearchTab === 'POSTS' && searchError && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-xs font-bold text-rose-700">{searchError}</p>}
+        {activeSearchTab === 'POSTS' && searchLoading && <p role="status" className="rounded-xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-600">Mencari konten…</p>}
+        {activeSearchTab === 'POSTS' && searchEmpty && !searchLoading && !searchError && <p role="status" className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Belum ada konten yang cocok dengan kata kunci tersebut.</p>}
+        {activeSearchTab === 'POSTS' && searchPrompt && !searchLoading && !searchError && <p className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-600">Tekan Enter setelah memasukkan kata kunci untuk mencari konten yang dapat Anda akses.</p>}
         {productionMode && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
