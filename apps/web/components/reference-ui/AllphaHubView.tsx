@@ -542,34 +542,34 @@ export default function AllphaHubView({
       )}
 
       {/* Main Allpha Hub Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 text-white p-5 sm:p-6 border border-blue-500/30 shadow-xl">
-        <div className="relative z-10 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="relative overflow-hidden rounded-3xl bg-sky-50 text-slate-950 p-5 sm:p-6 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a]">
+        <div className="relative z-10 space-y-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-                <Sparkles className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-2xl bg-sky-300 border-2 border-slate-900 flex items-center justify-center shadow-[2px_2px_0px_#0f172a] shrink-0">
+                <Sparkles className="w-5 h-5 text-slate-950 stroke-[2.5px]" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-lg sm:text-xl font-black tracking-tight text-white">
+                  <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-950">
                     ALLPHA HUB
                   </h1>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 uppercase tracking-wider">
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 uppercase tracking-wider shadow-2xs">
                     Ecosystem Center
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 mt-0.5">
+                <p className="text-xs font-semibold text-slate-700 mt-0.5">
                   Pusat Operasional Terpadu: Event Stage Live, Dunia 3D, Videotron, Quests, & Settlement Kreator
                 </p>
               </div>
             </div>
 
             {/* Quick Balance Status */}
-            <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-2xl border border-slate-700/80 backdrop-blur-sm">
-              <Coins className="w-4 h-4 text-amber-400" />
+            <div className="flex items-center gap-2 bg-amber-100 px-3.5 py-1.5 rounded-2xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
+              <span className="text-sm">🪙</span>
               <div className="text-right">
-                <span className="text-[10px] text-slate-400 block leading-none">Saldo Akun</span>
-                <span className="text-xs font-mono font-bold text-amber-300">
+                <span className="text-[10px] text-amber-900 font-extrabold block leading-none">Saldo Akun</span>
+                <span className="text-xs font-mono font-black text-amber-950">
                   {userCredits + agentCredits} Cr
                 </span>
               </div>
@@ -577,7 +577,7 @@ export default function AllphaHubView({
           </div>
 
           {/* Hub Modules Tab Bar */}
-          <div className="pt-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-slate-800">
+          <div className="pt-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar border-t-2 border-slate-900/15">
             {[
               { id: 'STAGE', label: 'Event Stage Live', icon: Radio, count: stageEvents.filter(e => e.isLive).length + ' Live' },
               { id: 'WORLDS', label: 'Jelajahi Dunia 3D', icon: Box, count: worldsDirectory.length + ' Dunia' },
@@ -592,16 +592,16 @@ export default function AllphaHubView({
                 <button
                   key={tab.id}
                   onClick={() => setActiveHubSection(tab.id as typeof activeHubSection)}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold transition whitespace-nowrap shrink-0 ${
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-black transition whitespace-nowrap shrink-0 border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                     isActive
                       ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
                       : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-slate-950 stroke-[2.5px]' : 'text-slate-700'}`} />
                   <span>{tab.label}</span>
                   {tab.count && (
-                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono ${
+                    <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-mono font-black border ${
                       isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
                     }`}>
                       {tab.count}
@@ -635,17 +635,17 @@ export default function AllphaHubView({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsCreateEventModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-2xl bg-sky-200 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
-                <PlusCircle className="w-3.5 h-3.5" />
+                <PlusCircle className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>Buat Event Stage</span>
               </button>
               {onOpenLiveExperienceStage && (
                 <button
                   onClick={onOpenLiveExperienceStage}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 transition flex items-center gap-1.5"
+                  className="px-3.5 py-2 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Flame className="w-3.5 h-3.5" />
+                  <Flame className="w-3.5 h-3.5 stroke-[2.5px]" />
                   <span>Masuk Stage Utama</span>
                 </button>
               )}
@@ -653,7 +653,7 @@ export default function AllphaHubView({
           </div>
 
           {/* Categories Filter Strip */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
             {[
               { id: 'ALL' as EventCategory, label: 'Semua Event' },
               { id: 'MUSIK' as EventCategory, label: 'Musik & Konser' },
@@ -667,7 +667,7 @@ export default function AllphaHubView({
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap shrink-0 ${
+                className={`px-3.5 py-1.5 rounded-2xl text-xs font-black transition whitespace-nowrap shrink-0 border-2 border-slate-900 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${
                   selectedCategory === cat.id
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
@@ -683,11 +683,11 @@ export default function AllphaHubView({
             {filteredStages.map((stage) => (
               <div
                 key={stage.id}
-                className="rounded-3xl bg-white border border-slate-200 overflow-hidden shadow-xs hover:shadow-md hover:border-blue-300 transition group flex flex-col justify-between"
+                className="rounded-3xl bg-white border-2 border-slate-900 overflow-hidden shadow-[3px_3px_0px_#0f172a] hover:shadow-[5px_5px_0px_#0f172a] transition group flex flex-col justify-between"
               >
                 <div>
                   {/* Stage Visual Thumbnail */}
-                  <div className="relative h-36 bg-slate-900 overflow-hidden">
+                  <div className="relative h-40 bg-slate-900 overflow-hidden border-b-2 border-slate-900">
                     <img
                       src={stage.coverImage}
                       alt={stage.title}
@@ -697,16 +697,16 @@ export default function AllphaHubView({
 
                     {/* Top Badges */}
                     <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900/80 backdrop-blur-sm text-cyan-300 font-bold text-[10px] border border-cyan-500/30">
+                      <span className="px-2.5 py-1 rounded-xl bg-sky-200 text-slate-950 font-black text-[10px] border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
                         {stage.categoryLabel}
                       </span>
                       {stage.isLive ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm animate-pulse">
-                          <Radio className="w-3 h-3" />
+                        <span className="px-2.5 py-1 rounded-xl bg-rose-400 text-slate-950 font-black text-[10px] flex items-center gap-1 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] animate-pulse">
+                          <Radio className="w-3 h-3 stroke-[3px]" />
                           <span>LIVE</span>
                         </span>
                       ) : (
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-800/80 backdrop-blur-sm text-amber-300 font-semibold text-[10px]">
+                        <span className="px-2.5 py-1 rounded-xl bg-amber-200 text-slate-950 font-black text-[10px] border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
                           {stage.scheduledTime}
                         </span>
                       )}
@@ -714,45 +714,45 @@ export default function AllphaHubView({
 
                     {/* Bottom Metadata inside thumbnail */}
                     <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-white text-[10px]">
-                      <span className="flex items-center gap-1 font-mono">
+                      <span className="flex items-center gap-1 font-mono font-bold bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-700">
                         <Users className="w-3 h-3 text-cyan-400" />
                         <span>{stage.viewers.toLocaleString('id-ID')} Penonton</span>
                       </span>
-                      <span className="text-slate-300 truncate max-w-[130px]">
+                      <span className="bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-700 text-slate-200 truncate max-w-[130px] font-bold">
                         📍 {stage.district}
                       </span>
                     </div>
                   </div>
 
                   {/* Stage Body */}
-                  <div className="p-3.5 space-y-2.5">
-                    <h3 className="font-extrabold text-xs sm:text-sm text-slate-900 group-hover:text-blue-600 transition line-clamp-2 leading-snug">
+                  <div className="p-4 space-y-2.5">
+                    <h3 className="font-black text-sm text-slate-950 group-hover:text-blue-600 transition line-clamp-2 leading-snug">
                       {stage.title}
                     </h3>
-                    <p className="text-slate-500 text-[11px] line-clamp-2 leading-relaxed">
+                    <p className="text-slate-600 text-xs font-semibold line-clamp-2 leading-relaxed">
                       {stage.description}
                     </p>
 
                     {/* Host & AI Co-Host Duo */}
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center justify-between pt-2 border-t-2 border-slate-100 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <div className="relative">
                           <img
                             src={stage.hostAvatar}
                             alt={stage.hostName}
-                            className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200"
+                            className="w-8 h-8 rounded-xl object-cover border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]"
                           />
                           <img
                             src={stage.aiAgentAvatar}
                             alt={stage.aiAgentName}
-                            className="w-4 h-4 rounded-full object-cover ring-1 ring-white absolute -bottom-1 -right-1"
+                            className="w-4 h-4 rounded-full object-cover border border-slate-900 absolute -bottom-1 -right-1"
                           />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-800 text-[11px] truncate">
+                          <p className="font-black text-slate-950 text-xs truncate">
                             {stage.hostName}
                           </p>
-                          <p className="text-[10px] text-cyan-600 font-medium truncate">
+                          <p className="text-[10px] text-cyan-700 font-bold truncate">
                             & {stage.aiAgentName} (AI Co-Host)
                           </p>
                         </div>
@@ -762,10 +762,10 @@ export default function AllphaHubView({
                 </div>
 
                 {/* Stage CTA Action */}
-                <div className="p-3 pt-0 flex gap-2">
+                <div className="p-4 pt-0 flex gap-2">
                   <button
                     onClick={() => setActiveStageModal(stage)}
-                    className="flex-1 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition text-center"
+                    className="flex-1 py-2 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition text-center cursor-pointer"
                   >
                     Detail Panggung
                   </button>
@@ -779,7 +779,7 @@ export default function AllphaHubView({
                         onOpenWorld3D(stage.district);
                       }
                     }}
-                    className={`py-2 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 ${
+                    className={`py-2 px-4 rounded-2xl font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       stage.isLive
                         ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
                         : 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -813,10 +813,10 @@ export default function AllphaHubView({
             </div>
             <button
               onClick={() => onOpenWorld3D('Central Hub')}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5 self-start sm:self-auto"
+              className="px-4 py-2 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
             >
               <span>Buka Canvas 3D Universe</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
+              <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5px]" />
             </button>
           </div>
 
@@ -824,10 +824,10 @@ export default function AllphaHubView({
             {worldsDirectory.map((world) => (
               <div
                 key={world.id}
-                className="rounded-3xl bg-white border border-slate-200 overflow-hidden shadow-xs hover:shadow-md hover:border-cyan-400 transition group flex flex-col justify-between"
+                className="rounded-3xl bg-white border-2 border-slate-900 overflow-hidden shadow-[3px_3px_0px_#0f172a] hover:shadow-[5px_5px_0px_#0f172a] transition group flex flex-col justify-between"
               >
                 <div>
-                  <div className="relative h-36 bg-slate-950 overflow-hidden">
+                  <div className="relative h-40 bg-slate-950 overflow-hidden border-b-2 border-slate-900">
                     <img
                       src={world.image}
                       alt={world.name}
@@ -836,17 +836,17 @@ export default function AllphaHubView({
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
                     
                     <div className="absolute top-2.5 left-2.5">
-                      <span className="px-2.5 py-0.5 rounded-full bg-cyan-600 text-white font-bold text-[10px] shadow-sm">
+                      <span className="px-2.5 py-1 rounded-xl bg-sky-200 text-slate-950 font-black text-[10px] border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
                         {world.badge}
                       </span>
                     </div>
 
                     <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-white text-[10px]">
-                      <span className="flex items-center gap-1 font-mono font-bold text-cyan-300">
+                      <span className="flex items-center gap-1 font-mono font-bold bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-700 text-cyan-300">
                         <Users className="w-3 h-3" />
                         <span>{world.onlineUsers} Pengguna Aktif</span>
                       </span>
-                      <span className="flex items-center gap-1 font-mono text-amber-300">
+                      <span className="flex items-center gap-1 font-mono font-bold bg-slate-900/80 px-2 py-0.5 rounded-lg border border-slate-700 text-amber-300">
                         <Radio className="w-3 h-3" />
                         <span>{world.liveEventsCount} Stage Aktif</span>
                       </span>
@@ -854,10 +854,10 @@ export default function AllphaHubView({
                   </div>
 
                   <div className="p-4 space-y-2.5">
-                    <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-blue-600 transition">
+                    <h3 className="font-black text-sm text-slate-950 group-hover:text-blue-600 transition">
                       {world.name}
                     </h3>
-                    <p className="text-slate-600 text-xs leading-relaxed">
+                    <p className="text-slate-600 text-xs font-semibold leading-relaxed">
                       {world.desc}
                     </p>
 
@@ -865,7 +865,7 @@ export default function AllphaHubView({
                       {world.features.map((feat) => (
                         <span
                           key={feat}
-                          className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-medium"
+                          className="text-[10px] font-black px-2.5 py-0.5 rounded-xl bg-purple-50 text-purple-900 border border-slate-900 shadow-2xs"
                         >
                           {feat}
                         </span>
@@ -877,10 +877,10 @@ export default function AllphaHubView({
                 <div className="p-4 pt-0">
                   <button
                     onClick={() => onOpenWorld3D(world.district)}
-                    className="w-full py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 active:bg-cyan-600 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <span>Masuk ke {world.name}</span>
-                    <ArrowUpRight className="w-3.5 h-3.5 text-cyan-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5px]" />
                   </button>
                 </div>
               </div>
@@ -906,17 +906,17 @@ export default function AllphaHubView({
                 Engine penayangan materi iklan, video trailer, dan kampanye brand pada layar 4K & videotron anamorphic di Crystal City.
               </p>
             </div>
-            <span className="text-xs font-mono font-bold text-purple-700 bg-purple-50 px-3 py-1.5 rounded-xl border border-purple-200 self-start sm:self-auto">
+            <span className="text-xs font-mono font-black text-purple-950 bg-purple-100 px-3 py-1.5 rounded-2xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] self-start sm:self-auto">
               Total Impresi Harian: 141.9K
             </span>
           </div>
 
           {/* Interactive Videotron Live Simulator Card */}
-          <div className="p-5 rounded-3xl bg-slate-950 text-white border border-purple-500/30 shadow-xl space-y-4">
+          <div className="p-5 rounded-3xl bg-slate-950 text-white border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                <h3 className="font-bold text-xs text-purple-200 uppercase tracking-wider">
+                <h3 className="font-black text-xs text-purple-200 uppercase tracking-wider">
                   Live Videotron Screen Simulator
                 </h3>
               </div>
@@ -926,21 +926,21 @@ export default function AllphaHubView({
             </div>
 
             {/* Simulated 3D Billboard Screen Display */}
-            <div className="relative rounded-2xl h-44 bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 overflow-hidden border border-purple-400/50 flex flex-col items-center justify-center p-4 text-center shadow-2xl">
+            <div className="relative rounded-2xl h-44 bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 overflow-hidden border-2 border-purple-400/50 flex flex-col items-center justify-center p-4 text-center shadow-2xl">
               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
               <div className="relative z-10 space-y-2 max-w-md">
-                <span className="text-[10px] font-mono tracking-widest text-cyan-300 uppercase px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/40">
+                <span className="text-[10px] font-mono font-black tracking-widest text-cyan-300 uppercase px-2.5 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40">
                   4K 60FPS ANAMORPHIC SURFACE
                 </span>
                 <h4 className="text-base sm:text-lg font-black text-white tracking-wide drop-shadow-md">
                   {videotronPreviewText}
                 </h4>
-                <p className="text-[11px] text-slate-300">
+                <p className="text-[11px] font-medium text-slate-300">
                   Iklan Anda dilihat oleh 45,800 avatar pengguna dan AI Agent yang melintas di Central Avenue setiap harinya.
                 </p>
               </div>
 
-              <div className="absolute bottom-2 right-2 text-[9px] font-mono text-slate-400 bg-black/60 px-2 py-0.5 rounded">
+              <div className="absolute bottom-2 right-2 text-[9px] font-mono font-bold text-slate-300 bg-black/70 px-2 py-0.5 rounded border border-slate-700">
                 Loop: 15s • Spatial Audio 5.1
               </div>
             </div>
@@ -952,11 +952,11 @@ export default function AllphaHubView({
                 value={videotronPreviewText}
                 onChange={(e) => setVideotronPreviewText(e.target.value)}
                 placeholder="Tulis pesan promosi atau nama brand Anda di simulator..."
-                className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                className="flex-1 px-3.5 py-2 rounded-2xl bg-slate-900 border-2 border-slate-700 text-xs text-white placeholder:text-slate-500 outline-none focus:border-cyan-400 font-semibold"
               />
               <button
                 onClick={() => showToast('Simulasi tampilan videotron diperbarui!')}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition"
+                className="px-4 py-2 rounded-2xl bg-cyan-400 hover:bg-cyan-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Terapkan ke Simulator
               </button>
@@ -965,18 +965,18 @@ export default function AllphaHubView({
 
           {/* List of Available Media Surfaces */}
           <div className="space-y-3">
-            <h3 className="font-bold text-sm text-slate-900">
+            <h3 className="font-black text-sm text-slate-950">
               Pilihan Slot Videotron & Media Surfaces Tersedia
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {videotronSurfaces.map((surf) => (
                 <div
                   key={surf.id}
-                  className="p-4 rounded-3xl bg-white border border-slate-200 shadow-xs hover:shadow-md hover:border-purple-300 transition flex flex-col justify-between space-y-3"
+                  className="p-4 rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:shadow-[5px_5px_0px_#0f172a] transition flex flex-col justify-between space-y-3"
                 >
-                  <div className="space-y-2">
-                    <div className="relative h-28 rounded-2xl overflow-hidden bg-slate-900">
+                  <div className="space-y-2.5">
+                    <div className="relative h-32 rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-900">
                       <img
                         src={surf.previewImage}
                         alt={surf.name}
@@ -989,22 +989,22 @@ export default function AllphaHubView({
                     </div>
 
                     <div>
-                      <h4 className="font-bold text-xs text-slate-900">{surf.name}</h4>
-                      <p className="text-[11px] text-slate-500">{surf.district} • {surf.location}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">{surf.specs}</p>
+                      <h4 className="font-black text-xs text-slate-950">{surf.name}</h4>
+                      <p className="text-[11px] font-semibold text-slate-600 mt-0.5">{surf.district} • {surf.location}</p>
+                      <p className="text-[10px] font-medium text-slate-500 mt-1">{surf.specs}</p>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <div className="pt-2.5 border-t-2 border-slate-100 flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] text-slate-500 block">Tarif Slot</span>
-                      <span className="text-xs font-mono font-bold text-amber-600">
+                      <span className="text-[10px] font-bold text-slate-500 block">Tarif Slot</span>
+                      <span className="text-xs font-mono font-black text-amber-900">
                         {surf.priceCreditsPerDay} AI Credits / hari
                       </span>
                     </div>
                     <button
                       onClick={() => setSelectedVideotron(surf)}
-                      className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow-xs"
+                      className="px-3.5 py-1.5 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                     >
                       Pesan Slot Iklan
                     </button>
@@ -1035,22 +1035,22 @@ export default function AllphaHubView({
             </div>
 
             {/* Streak Counter */}
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold self-start sm:self-auto">
-              <Flame className="w-4 h-4 text-amber-600 fill-amber-600 animate-bounce" />
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-amber-200 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-slate-950 text-xs font-black self-start sm:self-auto">
+              <Flame className="w-4 h-4 text-amber-700 fill-amber-500 animate-bounce" />
               <span>Streak 5 Hari Beruntun 🔥</span>
             </div>
           </div>
 
           {/* Level Progress Card */}
-          <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-extrabold tracking-wide uppercase">Level 8 — Spatial Architect</span>
-              <span className="font-mono font-bold">1,850 / 2,500 XP</span>
+          <div className="p-5 rounded-3xl bg-amber-100 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3">
+            <div className="flex items-center justify-between text-xs font-black text-slate-950">
+              <span className="uppercase tracking-wide">Level 8 — Spatial Architect</span>
+              <span className="font-mono bg-white px-2.5 py-0.5 rounded-xl border-2 border-slate-900">1,850 / 2,500 XP</span>
             </div>
-            <div className="w-full h-2.5 rounded-full bg-black/25 overflow-hidden">
-              <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: '74%' }} />
+            <div className="w-full h-3 rounded-full bg-white border-2 border-slate-900 overflow-hidden p-0.5">
+              <div className="h-full bg-amber-400 rounded-full transition-all duration-500" style={{ width: '74%' }} />
             </div>
-            <p className="text-[11px] text-white/90">
+            <p className="text-xs font-semibold text-slate-800">
               Selesaikan 2 misi lagi hari ini untuk membuka lencana eksklusif &quot;Cyber District Pioneer&quot; dan bonus 50 AI Credits.
             </p>
           </div>
@@ -1063,19 +1063,19 @@ export default function AllphaHubView({
               return (
                 <div
                   key={quest.id}
-                  className="p-4 rounded-3xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs hover:border-slate-300 transition"
+                  className="p-4 rounded-3xl bg-white border-2 border-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[3px_3px_0px_#0f172a] hover:shadow-[4px_4px_0px_#0f172a] transition"
                 >
-                  <div className="space-y-1.5 flex-1">
+                  <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600">
+                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-xl bg-sky-100 text-sky-950 border border-slate-900">
                         {quest.category}
                       </span>
-                      <h4 className="font-bold text-xs text-slate-900">{quest.title}</h4>
+                      <h4 className="font-black text-xs text-slate-950">{quest.title}</h4>
                     </div>
 
                     {/* Progress Bar */}
                     <div className="flex items-center gap-3">
-                      <div className="flex-1 max-w-xs h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="flex-1 max-w-xs h-2 rounded-full bg-slate-100 border border-slate-900 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-300 ${
                             isCompleted ? 'bg-emerald-500' : 'bg-blue-500'
@@ -1083,17 +1083,17 @@ export default function AllphaHubView({
                           style={{ width: `${Math.min(100, (quest.current / quest.target) * 100)}%` }}
                         />
                       </div>
-                      <span className="text-[11px] font-mono text-slate-500 font-medium">
+                      <span className="text-[11px] font-mono text-slate-800 font-black">
                         {quest.current}/{quest.target}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600">
-                      <span className="text-amber-600 flex items-center gap-1">
-                        <Coins className="w-3 h-3" />
+                    <div className="flex items-center gap-3 text-[11px] font-black text-slate-800">
+                      <span className="text-amber-900 flex items-center gap-1 bg-amber-100 px-2 py-0.5 rounded-lg border border-slate-900">
+                        <Coins className="w-3 h-3 text-amber-700" />
                         +{quest.credits} Credits
                       </span>
-                      <span className="text-blue-600">
+                      <span className="text-purple-900 bg-purple-100 px-2 py-0.5 rounded-lg border border-slate-900">
                         +{quest.xp} XP
                       </span>
                     </div>
@@ -1101,19 +1101,19 @@ export default function AllphaHubView({
 
                   <div>
                     {quest.claimed ? (
-                      <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 text-slate-400 font-bold text-xs inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="px-3.5 py-2 rounded-2xl bg-slate-100 text-slate-500 font-black text-xs border-2 border-slate-400 inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5px]" />
                         Telah Diklaim
                       </span>
                     ) : isCompleted ? (
                       <button
                         onClick={() => handleClaimQuest(quest.id, quest.credits, quest.xp)}
-                        className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-md shadow-emerald-500/20 transition animate-pulse"
+                        className="w-full sm:w-auto px-4 py-2 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                       >
                         Klaim Hadiah 🎁
                       </button>
                     ) : (
-                      <span className="px-3 py-1.5 rounded-xl bg-slate-50 text-slate-400 font-medium text-xs">
+                      <span className="px-3.5 py-2 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs border-2 border-slate-300">
                         Sedang Berjalan
                       </span>
                     )}
@@ -1155,17 +1155,17 @@ export default function AllphaHubView({
                   a.click();
                   showToast('Laporan Rekening Koran CSV berhasil diunduh!');
                 }}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
                 title="Download CSV"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>Unduh CSV</span>
               </button>
               <button
                 onClick={() => setIsSettlementModalOpen(true)}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-extrabold text-xs shadow-md shadow-indigo-500/20 transition flex items-center gap-1.5"
+                className="px-4 py-2 rounded-2xl bg-indigo-300 hover:bg-indigo-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
-                <CreditCard className="w-3.5 h-3.5" />
+                <CreditCard className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>Tarik Saldo / Settlement</span>
               </button>
             </div>
@@ -1178,9 +1178,9 @@ export default function AllphaHubView({
                 Saldo Kreator Human (70%)
               </span>
               <p className="text-xl font-mono font-black text-slate-900">
-                {creatorBalance.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">Credits</span>
+                {creatorBalance.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
               </p>
-              <p className="text-[11px] text-emerald-600 font-medium">
+              <p className="text-xs text-emerald-800 font-bold">
                 ≈ Rp {(creatorBalance * 1000).toLocaleString('id-ID')} Siap Tarik
               </p>
             </div>
@@ -1189,8 +1189,8 @@ export default function AllphaHubView({
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 AI Agent Treasury (30%)
               </span>
-              <p className="text-xl font-mono font-black text-indigo-700">
-                {agentTreasury.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">Credits</span>
+              <p className="text-xl font-mono font-black text-purple-950">
+                {agentTreasury.toLocaleString('id-ID')} <span className="text-xs font-bold text-slate-600">Credits</span>
               </p>
               <p className="text-[11px] text-slate-500">
                 Alokasi upgrade memori & komputasi agen
@@ -1202,45 +1202,45 @@ export default function AllphaHubView({
                 Total Mutasi Tercatat
               </span>
               <p className="text-xl font-mono font-black text-slate-900">
-                {ledgerEntries.length} <span className="text-xs font-normal text-slate-500">Transaksi</span>
+                {ledgerEntries.length} <span className="text-xs font-bold text-slate-600">Transaksi</span>
               </p>
-              <p className="text-[11px] text-blue-600 font-medium">
+              <p className="text-xs text-sky-800 font-bold">
                 Audit otomatis terverifikasi
               </p>
             </div>
           </div>
 
           {/* Ledger Table */}
-          <div className="rounded-3xl bg-white border border-slate-200 overflow-hidden shadow-xs">
-            <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
+          <div className="rounded-3xl bg-white border-2 border-slate-900 overflow-hidden shadow-[3px_3px_0px_#0f172a]">
+            <div className="p-3.5 bg-slate-100 border-b-2 border-slate-900 flex items-center justify-between text-xs font-black text-slate-950">
               <span>Mutasi Transaksi & Riwayat Pembayaran</span>
-              <span className="text-slate-500 font-normal">Real-time settlement</span>
+              <span className="text-slate-600 font-bold">Real-time settlement</span>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y-2 divide-slate-100">
               {ledgerEntries.map((item) => (
                 <div
                   key={item.id}
-                  className="p-3.5 sm:p-4 hover:bg-slate-50/80 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                  className="p-3.5 sm:p-4 hover:bg-slate-50 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
                 >
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 font-mono">{item.date}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
+                      <span className="text-[10px] text-slate-500 font-mono font-bold">{item.date}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-800 font-mono font-black border border-slate-300">
                         {item.refCode}
                       </span>
                     </div>
-                    <p className="font-bold text-slate-900">{item.title}</p>
-                    <p className="text-[11px] text-slate-500">{item.split}</p>
+                    <p className="font-black text-slate-950">{item.title}</p>
+                    <p className="text-[11px] text-slate-600 font-medium">{item.split}</p>
                   </div>
 
                   <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1">
-                    <span className={`font-mono font-bold text-sm ${
+                    <span className={`font-mono font-black text-sm ${
                       item.amount > 0 ? 'text-emerald-600' : 'text-slate-900'
                     }`}>
                       {item.amount > 0 ? `+${item.amount}` : item.amount} Cr
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono ${
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-xl font-black font-mono border-2 border-slate-900 shadow-2xs ${
                       item.status === 'SETTLED'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -1260,8 +1260,8 @@ export default function AllphaHubView({
       {/* ======================================================== */}
       {activeStageModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="relative h-44 bg-slate-950">
+          <div className="w-full max-w-lg rounded-3xl bg-white border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative h-44 bg-slate-950 border-b-2 border-slate-900">
               <img
                 src={activeStageModal.coverImage}
                 alt={activeStageModal.title}
@@ -1270,46 +1270,46 @@ export default function AllphaHubView({
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
               <button
                 onClick={() => setActiveStageModal(null)}
-                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition"
+                className="absolute top-3 right-3 w-8 h-8 rounded-xl bg-white/90 hover:bg-white text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] flex items-center justify-center transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
               <div className="absolute bottom-3 left-4 right-4 text-white">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-600 font-bold uppercase">
+                <span className="text-[10px] px-2.5 py-0.5 rounded-xl bg-rose-400 text-slate-950 border-2 border-slate-900 font-black uppercase shadow-2xs">
                   {activeStageModal.categoryLabel}
                 </span>
-                <h3 className="font-extrabold text-base mt-1 line-clamp-1">{activeStageModal.title}</h3>
+                <h3 className="font-black text-base mt-1 line-clamp-1">{activeStageModal.title}</h3>
               </div>
             </div>
 
             <div className="p-5 space-y-4 text-xs">
-              <p className="text-slate-600 leading-relaxed">
+              <p className="text-slate-700 font-semibold leading-relaxed">
                 {activeStageModal.description}
               </p>
 
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Lokasi Panggung:</span>
-                  <span className="font-bold text-slate-800">📍 {activeStageModal.district}</span>
+                  <span className="text-slate-600 font-bold">Lokasi Panggung:</span>
+                  <span className="font-black text-slate-950">📍 {activeStageModal.district}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Host Utama:</span>
-                  <span className="font-bold text-slate-800">{activeStageModal.hostName}</span>
+                  <span className="text-slate-600 font-bold">Host Utama:</span>
+                  <span className="font-black text-slate-950">{activeStageModal.hostName}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">AI Agent Co-Host:</span>
-                  <span className="font-bold text-cyan-600">{activeStageModal.aiAgentName}</span>
+                  <span className="text-slate-600 font-bold">AI Agent Co-Host:</span>
+                  <span className="font-black text-cyan-800">{activeStageModal.aiAgentName}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Penonton Saat Ini:</span>
-                  <span className="font-mono font-bold text-slate-800">{activeStageModal.viewers.toLocaleString('id-ID')} Orang</span>
+                  <span className="text-slate-600 font-bold">Penonton Saat Ini:</span>
+                  <span className="font-mono font-black text-slate-950">{activeStageModal.viewers.toLocaleString('id-ID')} Orang</span>
                 </div>
               </div>
 
               <div className="flex gap-2.5 pt-2">
                 <button
                   onClick={() => setActiveStageModal(null)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                  className="flex-1 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   Tutup
                 </button>
@@ -1325,9 +1325,9 @@ export default function AllphaHubView({
                       onOpenWorld3D(st.district);
                     }
                   }}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-500 hover:to-purple-500 text-white font-extrabold shadow-md flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Radio className="w-3.5 h-3.5" />
+                  <Radio className="w-3.5 h-3.5 stroke-[2.5px]" />
                   <span>Masuk ke Panggung Live</span>
                 </button>
               </div>
@@ -1344,8 +1344,8 @@ export default function AllphaHubView({
           <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
             <div className="flex items-start justify-between pb-2 border-b border-slate-100">
               <div>
-                <span className="text-[10px] font-bold text-purple-600 uppercase">Pemesanan Media Surface</span>
-                <h3 className="font-extrabold text-sm text-slate-900 mt-0.5">{selectedVideotron.name}</h3>
+                <span className="text-[10px] font-black text-purple-900 uppercase">Pemesanan Media Surface</span>
+                <h3 className="font-black text-sm text-slate-950 mt-0.5">{selectedVideotron.name}</h3>
               </div>
               <button
                 onClick={() => setSelectedVideotron(null)}
@@ -1355,21 +1355,21 @@ export default function AllphaHubView({
               </button>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-[11px]">
+            <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-1.5 text-[11px] font-semibold text-slate-800">
               <p>📍 <strong>Lokasi:</strong> {selectedVideotron.location} ({selectedVideotron.district})</p>
               <p>👥 <strong>Estimasi Impresi:</strong> {selectedVideotron.dailyImpressions} avatar/hari</p>
               <p>🪙 <strong>Tarif:</strong> {selectedVideotron.priceCreditsPerDay} AI Credits / hari</p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Durasi Penayangan (Hari):</label>
+              <label className="font-black text-slate-900">Durasi Penayangan (Hari):</label>
               <div className="flex gap-2">
                 {[1, 3, 7, 14, 30].map((d) => (
                   <button
                     key={d}
                     type="button"
                     onClick={() => setBookingDays(d)}
-                    className={`flex-1 py-1.5 rounded-xl font-bold transition ${
+                    className={`flex-1 py-1.5 rounded-xl font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                       bookingDays === d
                         ? 'bg-purple-600 text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -1382,17 +1382,17 @@ export default function AllphaHubView({
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Teks / Pesan Kampanye:</label>
+              <label className="font-black text-slate-900">Teks / Pesan Kampanye:</label>
               <input
                 type="text"
                 value={videotronPreviewText}
                 onChange={(e) => setVideotronPreviewText(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 outline-none"
+                className="w-full px-3 py-2 rounded-2xl bg-slate-50 border-2 border-slate-900 text-slate-950 font-bold outline-none"
               />
             </div>
 
-            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between text-amber-900">
-              <span className="font-medium">Total Biaya ({bookingDays} hari):</span>
+            <div className="p-3.5 rounded-2xl bg-amber-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-between text-amber-950">
+              <span className="font-bold text-xs">Total Biaya ({bookingDays} hari):</span>
               <span className="font-mono font-black text-sm">
                 {selectedVideotron.priceCreditsPerDay * bookingDays} AI Credits
               </span>
@@ -1407,7 +1407,7 @@ export default function AllphaHubView({
               </button>
               <button
                 onClick={handleConfirmVideotronBooking}
-                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold shadow-md shadow-purple-500/20"
+                className="flex-1 py-2.5 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Konfirmasi & Bayar
               </button>
@@ -1423,12 +1423,12 @@ export default function AllphaHubView({
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <form
             onSubmit={handleExecuteSettlement}
-            className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs"
+            className="w-full max-w-md rounded-3xl bg-white border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs"
           >
             <div className="flex items-start justify-between pb-2 border-b border-slate-100">
               <div>
-                <span className="text-[10px] font-bold text-indigo-600 uppercase">Settlement Royalti Kreator</span>
-                <h3 className="font-extrabold text-sm text-slate-900 mt-0.5">Tarik Saldo Royalti 70%</h3>
+                <span className="text-[10px] font-black text-indigo-900 uppercase">Settlement Royalti Kreator</span>
+                <h3 className="font-black text-sm text-slate-950 mt-0.5">Tarik Saldo Royalti 70%</h3>
               </div>
               <button
                 type="button"
@@ -1439,36 +1439,36 @@ export default function AllphaHubView({
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1 text-indigo-950">
-              <span className="text-[10px] uppercase font-bold text-indigo-700">Saldo Tersedia untuk Dicairkan</span>
-              <p className="text-lg font-mono font-black">{creatorBalance.toLocaleString('id-ID')} Credits</p>
-              <p className="text-[11px] text-indigo-700">Kurs Tetap: 1 Credit = Rp 1.000 (Setara Rp {(creatorBalance * 1000).toLocaleString('id-ID')})</p>
+            <div className="p-3.5 rounded-2xl bg-indigo-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-1 text-indigo-950">
+              <span className="text-[10px] uppercase font-black text-indigo-800">Saldo Tersedia untuk Dicairkan</span>
+              <p className="text-xl font-mono font-black">{creatorBalance.toLocaleString('id-ID')} Credits</p>
+              <p className="text-xs text-indigo-800 font-bold">Kurs Tetap: 1 Credit = Rp 1.000 (Setara Rp {(creatorBalance * 1000).toLocaleString('id-ID')})</p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Jumlah Credits yang Dicairkan:</label>
+              <label className="font-black text-slate-900">Jumlah Credits yang Dicairkan:</label>
               <input
                 type="number"
                 min="50"
                 max={creatorBalance}
                 value={settlementAmount}
                 onChange={(e) => setSettlementAmount(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-900 font-mono font-bold outline-none"
+                className="w-full px-3 py-2 rounded-2xl bg-slate-50 border-2 border-slate-900 text-slate-950 font-mono font-black outline-none"
               />
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-600 font-bold">
                 Nilai yang diterima: Rp {(parseInt(settlementAmount || '0', 10) * 1000).toLocaleString('id-ID')}
               </p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Metode Pencairan (Bank / e-Wallet):</label>
+              <label className="font-black text-slate-900">Metode Pencairan (Bank / e-Wallet):</label>
               <div className="grid grid-cols-4 gap-2">
                 {['BCA', 'Mandiri', 'GoPay', 'OVO'].map((ch) => (
                   <button
                     key={ch}
                     type="button"
                     onClick={() => setSettlementChannel(ch)}
-                    className={`py-1.5 rounded-xl font-bold transition ${
+                    className={`py-1.5 rounded-xl font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                       settlementChannel === ch
                         ? 'bg-indigo-600 text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -1481,12 +1481,12 @@ export default function AllphaHubView({
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Nomor Rekening / Akun Tujuan:</label>
+              <label className="font-black text-slate-900">Nomor Rekening / Akun Tujuan:</label>
               <input
                 type="text"
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-900 font-mono outline-none"
+                className="w-full px-3 py-2 rounded-2xl bg-slate-50 border-2 border-slate-900 text-slate-950 font-mono font-bold outline-none"
               />
             </div>
 
@@ -1500,7 +1500,7 @@ export default function AllphaHubView({
               </button>
               <button
                 type="submit"
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-extrabold shadow-md shadow-indigo-500/20"
+                className="flex-1 py-2.5 rounded-2xl bg-indigo-300 hover:bg-indigo-400 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Kirim Pengajuan
               </button>
@@ -1517,8 +1517,8 @@ export default function AllphaHubView({
           <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
             <div className="flex items-start justify-between pb-2 border-b border-slate-100">
               <div>
-                <span className="text-[10px] font-bold text-blue-600 uppercase">Panggung Virtual</span>
-                <h3 className="font-extrabold text-sm text-slate-900 mt-0.5">Buat Event Stage Baru</h3>
+                <span className="text-[10px] font-black text-sky-900 uppercase">Panggung Virtual</span>
+                <h3 className="font-black text-sm text-slate-950 mt-0.5">Buat Event Stage Baru</h3>
               </div>
               <button
                 onClick={() => setIsCreateEventModalOpen(false)}
@@ -1529,22 +1529,22 @@ export default function AllphaHubView({
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Judul Event Stage:</label>
+              <label className="font-black text-slate-900">Judul Event Stage:</label>
               <input
                 type="text"
                 value={newEventTitle}
                 onChange={(e) => setNewEventTitle(e.target.value)}
                 placeholder="Contoh: Screening Film AI Drama Korea & Q&A Sutradara..."
-                className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-900 outline-none"
+                className="w-full px-3 py-2 rounded-2xl bg-slate-50 border-2 border-slate-900 text-slate-950 font-bold outline-none"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">Kategori Event:</label>
+              <label className="font-black text-slate-900">Kategori Event:</label>
               <select
                 value={newEventCategory}
                 onChange={(e) => setNewEventCategory(e.target.value as EventCategory)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 outline-none font-medium"
+                className="w-full px-3 py-2 rounded-2xl bg-slate-50 border-2 border-slate-900 text-slate-950 font-black outline-none"
               >
                 <option value="MUSIK">Musik & Konser Virtual</option>
                 <option value="FILM_AI">Film Berbasis AI Screening</option>
@@ -1556,8 +1556,8 @@ export default function AllphaHubView({
               </select>
             </div>
 
-            <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-[11px] text-blue-900 space-y-1">
-              <p className="font-bold">✨ Keuntungan Event Stage di Allpha Hub:</p>
+            <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-[11px] text-sky-950 space-y-1 font-semibold">
+              <p className="font-black">✨ Keuntungan Event Stage di Allpha Hub:</p>
               <p>• AI Co-Host Anda otomatis aktif menemani & berdialog dengan audiens.</p>
               <p>• Royalti tiket atau donasi 70% langsung masuk ke saldo settlement Anda.</p>
             </div>
@@ -1579,7 +1579,7 @@ export default function AllphaHubView({
                   setIsCreateEventModalOpen(false);
                   setNewEventTitle('');
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-md shadow-blue-500/20"
+                className="flex-1 py-2.5 rounded-2xl bg-sky-300 hover:bg-sky-400 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Publikasikan Event
               </button>
