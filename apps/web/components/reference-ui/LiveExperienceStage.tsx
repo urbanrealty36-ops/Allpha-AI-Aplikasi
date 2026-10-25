@@ -133,21 +133,21 @@ export default function LiveExperienceStage({
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
       {/* Top Header Live Stage bar */}
-      <div className="flex items-center justify-between bg-slate-900 text-white p-4 rounded-3xl shadow-xl border border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0 bg-slate-900 text-white p-4 rounded-3xl shadow-xl border border-slate-800">
+        <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+          <div className="w-3 h-3 shrink-0 rounded-full bg-rose-500 animate-pulse" />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               <span className="text-xs px-2 py-0.5 rounded-full bg-rose-600 font-bold uppercase tracking-wider">
                 {liveStateAvailable ? 'LIVE STAGE' : 'LIVE STAGE · BELUM TERHUBUNG'}
               </span>
-              <h1 className="text-sm font-black text-white">Podcast & Live Experience Arena</h1>
+              <h1 className="min-w-0 break-words text-sm font-black text-white">Podcast & Live Experience Arena</h1>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">{activeTopic || 'Sesi live dan data peserta akan ditampilkan setelah layanan Live terhubung.'}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-mono text-emerald-400">
             <Users className="w-3.5 h-3.5" />
             <span>{liveStateAvailable ? viewerCount.toLocaleString() : '—'} Penonton</span>
