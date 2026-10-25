@@ -308,6 +308,12 @@ const marketplaceRouteParity = readFileSync(new URL("../app/marketplace/page.tsx
 const cinemaViewParity = readFileSync(new URL("../components/reference-ui/AiCinemaView.tsx", import.meta.url), "utf8");
 const cinemaRouteParity = readFileSync(new URL("../app/ai-cinema/page.tsx", import.meta.url), "utf8");
 const visualSmoke = readFileSync(new URL("./visual-smoke.mjs", import.meta.url), "utf8");
+const agentGoalsModal = readFileSync(new URL("../components/reference-ui/AgentGoalsTasksModal.tsx", import.meta.url), "utf8");
+const agentIdentityModal = readFileSync(new URL("../components/reference-ui/AgentIdentityModal.tsx", import.meta.url), "utf8");
+assert.ok(agentGoalsModal.includes("Agent Runtime API belum dihubungkan") && agentGoalsModal.includes("kontrak penyimpanan goal Agent belum dihubungkan"), "Agent Goals/Tasks UI must fail closed until canonical task/goal APIs are wired");
+assert.doesNotMatch(agentGoalsModal, /setTimeout\(|Eksekusi otonom berhasil!|Tugas berhasil dihapus\.|Target strategis baru berhasil ditetapkan/);
+assert.ok(agentIdentityModal.includes("onSaveAgent(updated)") && agentIdentityModal.includes("AVATAR_3D_CATALOG"), "Agent Identity must preserve source catalog and delegate persistence to its adapter");
+
 assert.ok(feedViewParity.includes("onRetry") && feedViewParity.includes("Coba lagi") && readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8").includes("loadFeed(true)"), "Feed error must offer canonical reload retry");
 assert.ok(feedViewParity.includes("name: 'Tambah'") && feedViewParity.includes("productionMode\n    ? [{ id: 's-tambah'"), "Feed must preserve the source story-add card without seeding production story identities");
 assert.ok(searchViewParity.includes("onRetrySearch") && searchViewParity.includes("onRetryTrends") && searchViewParity.includes("onRetryRecommendations") && searchRouteParity.includes("loadTrends()"), "Explore/Search error states must retry through canonical API loaders");
