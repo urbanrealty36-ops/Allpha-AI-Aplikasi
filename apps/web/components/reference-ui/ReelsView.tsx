@@ -40,6 +40,11 @@ interface ReelItem {
   liveViewers?: string;
   isFilmTrailer?: boolean;
   filmId?: string;
+  ownerId?: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  createdAt?: string;
+  liked?: boolean;
 }
 
 interface ReelsViewProps {
@@ -48,6 +53,9 @@ interface ReelsViewProps {
   onBackToFeed?: () => void;
   onOpenLiveStage?: () => void;
   onOpenFilmAi?: (filmId?: string) => void;
+  reels?: ReelItem[];
+  onToggleLike?: (reel: ReelItem) => void;
+  onShare?: (reel: ReelItem) => void;
 }
 
 export default function ReelsView({
@@ -56,118 +64,26 @@ export default function ReelsView({
   onBackToFeed,
   onOpenLiveStage,
   onOpenFilmAi,
+  reels,
+  onToggleLike,
+  onShare,
 }: ReelsViewProps) {
   const [currentReelIndex, setCurrentReelIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [reelsFilter, setReelsFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'FILM_AI'>('FOR_YOU');
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
-  // Reels items dataset (including active Live Stage streaming and Film AI trailers!)
-  const reelsList: ReelItem[] = [
-    {
-      id: 'r-film-1',
-      title: '🎬 TRAILER RESMI: The Reborn Cyber Empress (Drama Pendek AI)',
-      caption: 'Lin Yue terlahir kembali dengan AI Agent pelindung di Shanghai 2099! Tonton 15 episode lengkap di Allpha AI Cinema dengan royalti 70% untuk kreator.',
-      bgImage: '/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg',
-      creatorName: 'Chen Wei',
-      creatorHandle: '@chenwei_films',
-      creatorAvatar: 'https://picsum.photos/seed/chen-producer/100/100',
-      agentName: 'CineGenius AI',
-      agentHandle: '@cinegenius.ai',
-      audioName: 'CineGenius AI · Cyber Empress Theme OST 4K',
-      likes: 48200,
-      commentsCount: 1420,
-      sharesCount: 3800,
-      badge: '🎬 FILM AI TRAILER • C-DRAMA',
-      isLive: false,
-      isFilmTrailer: true,
-      filmId: 'film-1',
-    },
-    {
-      id: 'r-1',
-      title: 'Eksplorasi Crystal City Central Avenue di Malam Hari 🌌',
-      caption: 'AI dan manusia bisa membangun dunia spatial yang lebih baik bersama di Allpha Universe.',
-      bgImage: '/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg',
-      creatorName: 'Alex Tamara',
-      creatorHandle: '@alextamara',
-      creatorAvatar: 'https://picsum.photos/seed/alex-tamara/100/100',
-      agentName: 'Luna AI',
-      agentHandle: '@luna.ai',
-      audioName: 'Luna AI & Alex Tamara · Original Audio',
-      likes: 24500,
-      commentsCount: 320,
-      sharesCount: 1200,
-      badge: '3D SPATIAL REEL • 60 FPS',
-      isLive: false,
-    },
-    {
-      id: 'r-2',
-      title: '🔴 SEDANG LIVE: AI Innovation & Spatial Stage Summit',
-      caption: 'Siaran langsung dari Live Stage Arena 3D. Diskusi panggung virtual bersama AI Agent!',
-      bgImage: '/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg',
-      creatorName: 'Alex Tamara',
-      creatorHandle: '@alextamara',
-      creatorAvatar: 'https://picsum.photos/seed/alex-tamara/100/100',
-      agentName: 'Luna AI',
-      agentHandle: '@luna.ai',
-      audioName: 'Live Stage Audio Broadcast • Spatial Mic',
-      likes: 31200,
-      commentsCount: 890,
-      sharesCount: 2400,
-      badge: '🔴 LIVE STAGE ARENA',
-      isLive: true,
-      liveViewers: '2.4K Menonton',
-    },
-    {
-      id: 'r-film-2',
-      title: '🎬 TRAILER K-DRAMA AI: Neo-Seoul Destined Neural Hearts',
-      caption: 'Desainer spatial muda bertemu CEO android misterius di Neo-Seoul. Serial 12 episode penuh tayang eksklusif di Allpha Cinema!',
-      bgImage: '/assets/aistudio/Screenshot_20261023-182405_d765b801.jpg',
-      creatorName: 'Park Ji-hoon',
-      creatorHandle: '@jihoon_media',
-      creatorAvatar: 'https://picsum.photos/seed/jihoon/100/100',
-      agentName: 'Luna AI',
-      agentHandle: '@luna.ai',
-      audioName: 'Neo-Seoul Lo-Fi Beats · Neural OST',
-      likes: 39500,
-      commentsCount: 940,
-      sharesCount: 2100,
-      badge: '🎬 FILM AI TRAILER • K-DRAMA',
-      isLive: false,
-      isFilmTrailer: true,
-      filmId: 'film-2',
-    },
-    {
-      id: 'r-3',
-      title: 'Neo-Kyoto Digital Atrium & Cyberwear Fashion 🥽',
-      caption: 'Showcase kostum avatar cybernetic dengan dynamic bloom emissive dan haptic feedback.',
-      bgImage: '/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png',
-      creatorName: 'Mika Tanaka',
-      creatorHandle: '@mikatanaka',
-      creatorAvatar: 'https://picsum.photos/seed/mika-tanaka/100/100',
-      agentName: 'TechNova',
-      agentHandle: '@technova',
-      audioName: 'Synthwave Night Ride (Spatial Audio)',
-      likes: 18900,
-      commentsCount: 215,
-      sharesCount: 850,
-      badge: 'DIGITAL FASHION 3D',
-      isLive: false,
-    },
-  ];
+  // Production route supplies API-backed reels. No demo fallback is used.
+  const reelsList: ReelItem[] = reels ?? [];
 
-  const currentReel = reelsList[currentReelIndex] || reelsList[0];
+  const currentReel = reelsList[currentReelIndex];
+  useEffect(() => { setCurrentReelIndex(index => Math.min(index, Math.max(0, reelsList.length - 1))); }, [reelsList.length]);
 
-  // Like state map
-  const [likesState, setLikesState] = useState<Record<string, { liked: boolean; count: number }>>({
-    'r-film-1': { liked: true, count: 48200 },
-    'r-1': { liked: false, count: 24500 },
-    'r-2': { liked: true, count: 31200 },
-    'r-film-2': { liked: true, count: 39500 },
-    'r-3': { liked: false, count: 18900 },
-  });
+  // Initial likes are taken from the authenticated API response, never seeded with demo values.
+  const [likesState, setLikesState] = useState<Record<string, { liked: boolean; count: number }>>({});
 
   const toggleLike = () => {
+    if (onToggleLike) { onToggleLike(currentReel); return; }
     setLikesState((prev) => {
       const current = prev[currentReel.id] || { liked: false, count: currentReel.likes };
       const newLiked = !current.liked;
@@ -181,13 +97,15 @@ export default function ReelsView({
     });
   };
 
-  const currentLikeInfo = likesState[currentReel.id] || { liked: false, count: currentReel.likes };
+  const currentLikeInfo = currentReel ? (likesState[currentReel.id] || { liked: Boolean(currentReel.liked), count: currentReel.likes }) : { liked: false, count: 0 };
 
   const handleNextReel = () => {
+    if (!reelsList.length) return;
     setCurrentReelIndex((prev) => (prev < reelsList.length - 1 ? prev + 1 : 0));
   };
 
   const handlePrevReel = () => {
+    if (!reelsList.length) return;
     setCurrentReelIndex((prev) => (prev > 0 ? prev - 1 : reelsList.length - 1));
   };
 
@@ -222,6 +140,8 @@ export default function ReelsView({
     }
     setTouchStartY(null);
   };
+
+  if (!currentReel) return <div className="relative flex min-h-[70dvh] w-full items-center justify-center bg-black px-6 text-center text-white"><div><p className="text-lg font-black">Belum ada Reels</p><p className="mt-2 text-sm text-white/70">Konten video/audio akan tampil setelah tersedia dari layanan Allpha.</p></div></div>;
 
   return (
     <div 
@@ -355,6 +275,7 @@ export default function ReelsView({
         {/* Share Button */}
         <button
           onClick={() => {
+            if (onShare) { onShare(currentReel); return; }
             if (navigator.clipboard) {
               navigator.clipboard.writeText(window.location.href);
               alert('Tautan Reels disalin ke papan klip!');
