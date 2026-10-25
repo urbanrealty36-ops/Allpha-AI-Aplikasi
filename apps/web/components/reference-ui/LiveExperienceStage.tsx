@@ -32,8 +32,8 @@ import {
 
 interface LiveExperienceStageProps {
   onBackToFeed: () => void;
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
 }
 
 export default function LiveExperienceStage({
