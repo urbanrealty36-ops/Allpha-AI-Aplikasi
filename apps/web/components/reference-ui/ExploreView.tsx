@@ -21,6 +21,7 @@ import {
   MapPin,
   Building2,
   Users,
+  User,
   Workflow,
   Shield,
   CreditCard,
