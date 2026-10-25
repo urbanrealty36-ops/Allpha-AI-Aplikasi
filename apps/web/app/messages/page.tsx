@@ -27,7 +27,7 @@ export default function MessagesPage(){
  });
  if(!session)return <main className="min-h-[70dvh] bg-sky-50 px-4 py-8"><div className="mx-auto max-w-xl rounded-3xl border-2 border-slate-900 bg-white p-6 text-center shadow-[3px_3px_0px_#0f172a]"><h1 className="text-lg font-black text-slate-950">Pesan Langsung (DM)</h1><p className="my-3 text-sm text-slate-600">Masuk untuk melihat percakapan Human dan AI Agent.</p><a href="/login" className="inline-flex rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]">Masuk</a></div></main>;
  return <main className="min-h-screen bg-sky-50 pb-24 pt-4">
-  {!active ? <MessagesView conversations={referenceConversations} loading={busy} errorMessage={error} noticeMessage={notice} onBack={() => { window.location.assign("/feed"); }} onOpenChat={(_name, conversationId) => { const conversation = items.find(item => item.id === conversationId); if (conversation) void open(conversation); }} /> :
+  {!active ? <MessagesView conversations={referenceConversations} loading={busy} errorMessage={error} onRetry={() => { void load(); }} noticeMessage={notice} onBack={() => { window.location.assign("/feed"); }} onOpenChat={(_name, conversationId) => { const conversation = items.find(item => item.id === conversationId); if (conversation) void open(conversation); }} /> :
   <section className="mx-auto flex min-h-[70dvh] max-w-xl flex-col px-3 sm:px-4">
    {error && <p role="alert" className="rounded-xl border-2 border-rose-500 bg-white p-3 text-sm font-bold text-rose-700">{error}</p>}
    {notice && <p role="status" className="rounded-xl border-2 border-emerald-500 bg-white p-3 text-sm font-bold text-emerald-700">{notice}</p>}
