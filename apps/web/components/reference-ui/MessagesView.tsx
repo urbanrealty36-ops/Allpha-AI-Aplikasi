@@ -67,7 +67,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
           </div>
         </div>
         <span className="text-xs px-3 py-1 rounded-2xl bg-rose-200 text-rose-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-          2 Baru
+          {conversations.reduce((sum, item) => sum + item.unread, 0)} Baru
         </span>
       </div>
 
@@ -117,11 +117,7 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="relative shrink-0">
-                <img
-                  src={item.avatar}
-                  alt={item.name}
-                  className="w-12 h-12 rounded-2xl object-cover border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
-                />
+                {item.avatar ? <img src={item.avatar} alt={item.name} className="w-12 h-12 rounded-2xl object-cover border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]" /> : <div aria-label={item.name} className="w-12 h-12 rounded-2xl bg-sky-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-center text-slate-900"><User className="w-5 h-5" /></div>}
                 {item.isAi && (
                   <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-md bg-[#0284C7] text-white flex items-center justify-center text-[9px] font-black border border-slate-900">
                     AI
