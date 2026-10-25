@@ -224,6 +224,7 @@ export default function FeedPage() {
           productionMode
           loading={loading}
           errorMessage={error}
+          onRetry={() => { void loadFeed(true); }}
           noticeMessage={notice}
           emptyState={!loading && !error && items.length === 0}
           posts={postsForReference}
