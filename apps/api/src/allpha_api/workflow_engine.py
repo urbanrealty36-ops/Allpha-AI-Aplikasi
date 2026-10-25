@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from collections import defaultdict, deque
 from typing import Any, Literal
 
@@ -78,8 +79,14 @@ class WorkflowDefinition(BaseModel):
                 raise ValueError("input nodes require config.field")
             if node.kind == "constant" and "value" not in node.config:
                 raise ValueError("constant nodes require config.value")
-            if node.kind == "agent_task" and not isinstance(node.config.get("schedule_id"), str):
-                raise ValueError("agent_task nodes require config.schedule_id")
+            if node.kind == "agent_task":
+                schedule_id = node.config.get("schedule_id")
+                if set(node.config) != {"schedule_id"} or not isinstance(schedule_id, str):
+                    raise ValueError("agent_task nodes require only config.schedule_id")
+                try:
+                    uuid.UUID(schedule_id)
+                except ValueError as exc:
+                    raise ValueError("agent_task config.schedule_id must be a UUID") from exc
             if node.kind == "concat" and node.config.get("separator", "") is not None and not isinstance(node.config.get("separator", ""), str):
                 raise ValueError("concat separator must be a string")
         return self
