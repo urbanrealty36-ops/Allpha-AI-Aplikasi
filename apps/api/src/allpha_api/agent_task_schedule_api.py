@@ -270,6 +270,46 @@ async def approve_schedule_run(schedule_id: uuid.UUID, run_id: uuid.UUID,
         raise _storage_error(exc) from exc
 
 
+
+@router.post("/{schedule_id}/runs/{run_id}/approve")
+async def approve_schedule_run(schedule_id: uuid.UUID, run_id: uuid.UUID,
+                               user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Explicit owner approval releases one held occurrence to the scheduler worker."""
+    store, owner_id = _store(), str(user["id"])
+    try:
+        schedule = await store.request("GET", "agent_task_schedules", params={
+            "select": "id,status,require_approval,next_run_at",
+            "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}", "limit": "1",
+        })
+        if not schedule:
+            raise HTTPException(status_code=404, detail={"code": "SCHEDULE_NOT_FOUND", "message": "Jadwal tidak ditemukan."})
+        occurrence = await store.request("GET", "agent_task_schedule_runs", params={
+            "select": "*", "id": f"eq.{run_id}", "schedule_id": f"eq.{schedule_id}",
+            "owner_user_id": f"eq.{owner_id}", "status": "eq.waiting_for_approval", "limit": "1",
+        })
+        if not occurrence:
+            raise HTTPException(status_code=409, detail={
+                "code": "SCHEDULE_RUN_NOT_WAITING_APPROVAL", "message": "Eksekusi tidak sedang menunggu persetujuan."
+            })
+        released = await store.request("PATCH", "agent_task_schedule_runs", params={
+            "id": f"eq.{run_id}", "schedule_id": f"eq.{schedule_id}",
+            "owner_user_id": f"eq.{owner_id}", "status": "eq.waiting_for_approval",
+        }, body={"status": "claimed"}, prefer="return=representation")
+        if not released:
+            raise HTTPException(status_code=409, detail={
+                "code": "SCHEDULE_RUN_STATE_CHANGED", "message": "Status eksekusi berubah; muat ulang sebelum menyetujui."
+            })
+        next_run_at = schedule[0].get("next_run_at") or occurrence[0]["scheduled_for"]
+        updated = await store.request("PATCH", "agent_task_schedules", params={
+            "id": f"eq.{schedule_id}", "owner_user_id": f"eq.{owner_id}",
+        }, body={"status": "active", "require_approval": False, "next_run_at": next_run_at,
+                 "updated_at": datetime.now(timezone.utc).isoformat()},
+            prefer="return=representation")
+        return {"schedule": updated[0] if updated else schedule[0], "run": released[0], "approved": True}
+    except AgentRuntimePersistenceError as exc:
+        raise _storage_error(exc) from exc
+
+
 @router.patch("/{schedule_id}/status")
 async def update_schedule_status(schedule_id: uuid.UUID, payload: ScheduleStatusUpdate,
                                  user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
