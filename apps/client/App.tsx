@@ -1523,7 +1523,7 @@ function Navigator() {
   }, []);
 
   if (!ready || (session && !journeyReady)) return <View style={s.loading}><ActivityIndicator size="large" color="#A5B4FC"/><Text style={s.muted}>Menyiapkan sesi dan memeriksa identitas AI Agent…</Text></View>;
-  return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: { Welcome: "", Auth: "auth", Profile: "profile" } } }><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <Stack.Screen name="Profile">{() => <Profile session={session} initialTab={journeyTab}/>}</Stack.Screen> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
+  return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: { Welcome: "", Auth: "auth", Profile: "profile" } } }}><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <Stack.Screen name="Profile">{() => <Profile session={session} initialTab={journeyTab}/>}</Stack.Screen> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
