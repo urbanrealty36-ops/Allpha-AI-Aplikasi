@@ -5,19 +5,21 @@ import {
   Heart, 
   MessageCircle, 
   Repeat2, 
-  Bookmark, 
   Share2, 
   Bot, 
-  UserCheck, 
   Sparkles, 
   Send, 
-  Wand2, 
   Box, 
-  ArrowUpRight,
+  ArrowRight,
   MoreHorizontal,
-  Film
+  Film,
+  Users,
+  CheckCircle2,
+  ChevronRight,
+  SlidersHorizontal,
+  Radio
 } from 'lucide-react';
-import { PostItem, AIAgentProfile } from '@/lib/store';
+import { PostItem } from '@/lib/store';
 
 interface FeedViewProps {
   posts: PostItem[];
@@ -32,6 +34,7 @@ interface FeedViewProps {
   onOpenCreateModal?: () => void;
   onOpenFilmAi?: (filmId?: string) => void;
   onOpenMessages?: () => void;
+  storiesData?: Array<{ id: string; name: string; img?: string; isAdd?: boolean; isLive?: boolean; ringColor?: string }>;
 }
 
 export default function FeedView({
@@ -47,19 +50,14 @@ export default function FeedView({
   onOpenCreateModal,
   onOpenFilmAi,
   onOpenMessages,
+  storiesData,
 }: FeedViewProps) {
-  const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'TRENDING'>('FOR_YOU');
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
+  const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
 
-  const stories = [
-    { id: 's-1', name: 'Tambah', isAdd: true },
-    { id: 's-2', name: 'Alex & Luna', owner: 'Alex', agent: 'Luna AI', img: 'https://picsum.photos/seed/alex-tamara/120/120', isLive: true },
-    { id: 's-3', name: 'Dr. Andi', owner: 'Andi', agent: 'MediAI', img: 'https://picsum.photos/seed/andi-doc/120/120', isLive: false },
-    { id: 's-4', name: 'Sari & Nova', owner: 'Sari', agent: 'MarketNova', img: 'https://picsum.photos/seed/sari/120/120', isLive: false },
-    { id: 's-5', name: 'Mika & Tech', owner: 'Mika', agent: 'TechNova', img: 'https://picsum.photos/seed/mika/120/120', isLive: true },
-    { id: 's-6', name: 'Crystal 3D', owner: 'Universe', agent: 'Live Stage', img: 'https://picsum.photos/seed/district/120/120', isLive: true },
-  ];
+  // Production stories come from the authenticated API; never seed demo identities.
+  const stories = storiesData ?? [];
 
   const handleSendComment = (postId: string) => {
     const text = commentInput[postId]?.trim();
@@ -69,428 +67,450 @@ export default function FeedView({
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto pb-24">
-      {/* Feed Category Tabs (Threads Style with Video/Reels Header integration) */}
-      <div className="sticky top-15 z-30 bg-white/95 backdrop-blur border-b border-slate-200 flex items-center justify-around text-xs font-semibold px-2">
+    <div className="w-full max-w-xl mx-auto px-3.5 sm:px-4 pt-3.5 pb-24 space-y-4 font-sans">
+      
+      {/* ========================================================================= */}
+      {/* 1. NEO-BRUTALIST CATEGORY TABS (Sesuai Gambar Referensi)                   */}
+      {/* ========================================================================= */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+        {/* '✨ Untuk Anda' (Active / Dark Pill) */}
         <button
           onClick={() => setFeedFilter('FOR_YOU')}
-          className={`py-3.5 px-3 relative transition ${
-            feedFilter === 'FOR_YOU' ? 'text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-800'
+          className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            feedFilter === 'FOR_YOU'
+              ? 'bg-slate-900 text-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]'
+              : 'bg-white text-slate-800 border-2 border-slate-900 hover:bg-slate-50'
           }`}
         >
-          Untuk Anda
-          {feedFilter === 'FOR_YOU' && (
-            <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-slate-900 rounded-full" />
-          )}
+          <Sparkles className="w-3.5 h-3.5 text-white" />
+          <span>Untuk Anda</span>
         </button>
+
+        {/* '👥 Mengikuti' */}
         <button
           onClick={() => setFeedFilter('FOLLOWING')}
-          className={`py-3.5 px-3 relative transition ${
-            feedFilter === 'FOLLOWING' ? 'text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-800'
+          className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            feedFilter === 'FOLLOWING'
+              ? 'bg-slate-900 text-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]'
+              : 'bg-white text-slate-800 border-2 border-slate-900 hover:bg-slate-50'
           }`}
         >
-          Mengikuti
-          {feedFilter === 'FOLLOWING' && (
-            <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-slate-900 rounded-full" />
-          )}
+          <Users className="w-3.5 h-3.5 text-slate-700" />
+          <span>Mengikuti</span>
         </button>
+
+        {/* '🤖 AI Agents' */}
         <button
-          onClick={() => setFeedFilter('TRENDING')}
-          className={`py-3.5 px-3 relative transition ${
-            feedFilter === 'TRENDING' ? 'text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-800'
+          onClick={() => setFeedFilter('AI_AGENTS')}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            feedFilter === 'AI_AGENTS'
+              ? 'bg-slate-900 text-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]'
+              : 'bg-white text-slate-800 border-2 border-slate-900 hover:bg-slate-50'
           }`}
         >
-          Trending
-          {feedFilter === 'TRENDING' && (
-            <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-slate-900 rounded-full" />
-          )}
+          <Bot className="w-3.5 h-3.5 text-slate-700" />
+          <span>AI Agents</span>
         </button>
-        {/* User requirement: Video/Reels positioned at top header alongside Untuk Anda, Mengikuti, Trending */}
+
+        {/* '🎞️ Reels / Video' (Soft Pastel Pink/Rose Pill) */}
         <button
           onClick={onOpenReels}
           className="px-4 py-2 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border-2 border-rose-300 hover:bg-rose-100 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-2xs"
           title="Buka Video & 3D Spatial Reels"
         >
-          <Film className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20 group-hover:scale-110 transition" />
-          <span className="font-semibold">Reels / Video</span>
-          <span className="px-1.5 py-0.2 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-[9px] font-bold">
-            HD
-          </span>
+          <Film className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+          <span>Reels / Video</span>
         </button>
       </div>
 
-      {/* Stories / Moments Horizontal Reel (Instagram Live style header) */}
-      <div className="px-4 py-3 bg-white border-b border-slate-100 overflow-x-auto no-scrollbar flex items-center gap-3.5">
-        {stories.map((s) => (
+      {/* ========================================================================= */}
+      {/* 2. STORIES / AVATARS HORIZONTAL REEL (Sesuai Gambar Referensi)            */}
+      {/* ========================================================================= */}
+      <div className="flex items-center gap-3.5 overflow-x-auto no-scrollbar py-2 px-1">
+        {stories.map((story) => (
           <div
-            key={s.id}
+            key={story.id}
             onClick={() => {
-              if (s.isAdd && onOpenCreateModal) {
+              if (story.isAdd && onOpenCreateModal) {
                 onOpenCreateModal();
-              } else if (s.isLive && onOpenLiveStage) {
+              } else if (story.isLive && onOpenLiveStage) {
                 onOpenLiveStage();
+              } else if (story.id === 's-3d-world') {
+                onOpenWorld3D();
               }
             }}
             className="flex flex-col items-center gap-1 shrink-0 cursor-pointer group active:scale-95 transition"
           >
-            {s.isAdd ? (
-              <div className="w-14 h-14 rounded-full border-2 border-dashed border-blue-400 bg-blue-50 flex items-center justify-center text-blue-600 group-hover:scale-105 transition shadow-2xs">
-                <span className="text-xl font-bold">+</span>
+            {story.isAdd ? (
+              /* '+' Tambah Story circle with blue dashed border */
+              <div className="w-15 h-15 rounded-full border-2 border-dashed border-blue-400 bg-blue-50/70 flex items-center justify-center text-blue-600 shadow-2xs group-hover:bg-blue-100 transition">
+                <span className="text-2xl font-light leading-none">+</span>
               </div>
             ) : (
               <div className="relative">
-                {/* Instagram Live animated gradient ring */}
-                <div
-                  className={`w-14 h-14 rounded-full p-0.5 group-hover:scale-105 transition shadow-sm ${
-                    s.isLive
-                      ? 'bg-gradient-to-tr from-rose-500 via-purple-600 to-amber-500 animate-pulse'
-                      : 'bg-gradient-to-tr from-cyan-400 via-blue-600 to-purple-600'
-                  }`}
-                >
+                {/* Ring border */}
+                <div className={`w-15 h-15 rounded-full p-0.5 bg-gradient-to-tr ${story.ringColor} shadow-2xs`}>
                   <img
-                    src={s.img}
-                    alt={s.name}
+                    src={story.img}
+                    alt={story.name}
                     className="w-full h-full rounded-full object-cover border-2 border-white"
                   />
                 </div>
 
-                {/* Instagram Live icon badge at bottom of circle */}
-                {s.isLive && (
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-rose-600 to-purple-600 text-white text-[8px] font-black uppercase tracking-wider ring-1.5 ring-white shadow-xs">
+                {/* Pink 'LIVE' badge pill if live */}
+                {story.isLive && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-2 py-0.2 rounded-full bg-rose-600 text-white text-[8px] font-black uppercase tracking-wider ring-2 ring-white shadow-xs">
                     LIVE
                   </span>
                 )}
               </div>
             )}
-            <span className="text-[11px] text-slate-700 font-medium truncate max-w-[66px] mt-0.5">
-              {s.name}
+            <span className="text-[11px] font-semibold text-slate-800 truncate max-w-[68px] mt-0.5">
+              {story.name}
             </span>
           </div>
         ))}
       </div>
 
-      {/* PROMINENT LIVE STAGE IN FEED (User request: munculkan jika ada pengguna yang sedang live di Feed) */}
-      {onOpenLiveStage && (
-        <div className="p-3.5 bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 text-white border-b border-purple-900/50">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
-              </span>
-              <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase tracking-wider">
-                SEDANG LIVE SEKARANG
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-300 font-medium">
-              2.4K Menonton
-            </span>
+      {/* ========================================================================= */}
+      {/* 3. PROMINENT LIVE STAGE HERO BANNER (Sesuai Gambar Referensi)              */}
+      {/* ========================================================================= */}
+      <div className="relative rounded-3xl overflow-hidden border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] bg-gradient-to-r from-purple-950 via-indigo-950 to-slate-950 text-white p-4.5 sm:p-5">
+        
+        {/* Top Badges Row */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-300 text-[10px] font-black uppercase tracking-wider">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span>SEDANG LIVE SEKARANG</span>
           </div>
+          <span className="text-xs font-semibold text-slate-300">
+            2.4K Menonton
+          </span>
+        </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-            <div>
-              <h3 className="font-extrabold text-sm text-white">
-                AI Innovation & 3D Spatial Universe Summit 2026
-              </h3>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Host: <strong className="text-cyan-300">Alex Tamara</strong> & <strong className="text-purple-300">Luna AI</strong> • Presentasi slide & podcast panggung 3D
-              </p>
+        {/* Title & Host info */}
+        <div className="relative z-10 space-y-1 max-w-sm">
+          <h3 className="text-base sm:text-lg font-black text-white leading-tight">
+            AI Innovation & 3D Spatial Universe Summit 2026
+          </h3>
+          <p className="text-xs text-slate-300 leading-snug">
+            Host: <strong className="text-white">Alex Tamara & Luna AI</strong> • Presentasi slide & podcast panggung 3D
+          </p>
+        </div>
+
+        {/* Join Button & Background Graphics */}
+        <div className="flex items-center justify-between mt-3.5 pt-1 relative z-10">
+          <button
+            onClick={onOpenLiveStage}
+            className="px-4 py-2 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-xs shadow-md border border-pink-400/40 flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
+          >
+            <span>🎙️ Gabung Live Stage</span>
+            <span className="text-sm">↗</span>
+          </button>
+
+          {/* Right Holographic 3D Crystal 'A' Pyramid & Avatars */}
+          <div className="flex items-center -space-x-2 shrink-0">
+            <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-md">
+              <img
+                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"
+                alt="Alex"
+                className="w-full h-full object-cover"
+              />
             </div>
-
-            <button
-              onClick={onOpenLiveStage}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg transition flex items-center gap-1.5 shrink-0"
-            >
-              <span>🎙️ Gabung Live Stage</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="w-8 h-8 rounded-full border-2 border-cyan-400 overflow-hidden shadow-md">
+              <img
+                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&q=80"
+                alt="Luna"
+                className="w-full h-full object-cover"
+              />
+            </div>
           </div>
         </div>
-      )}
 
-      {/* Posts Stream */}
-      <div className="divide-y divide-slate-100 bg-white">
+        {/* Ambient background glow */}
+        <div className="absolute right-0 top-0 bottom-0 w-44 bg-gradient-to-l from-cyan-500/20 via-purple-500/10 to-transparent pointer-events-none" />
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. FEED POSTS STREAM (Neo-Brutalist Soft Pastel Cards Sesuai Referensi)     */}
+      {/* ========================================================================= */}
+      <div className="space-y-4.5">
         {posts.map((post) => {
-          const isExpanded = expandedPostId === post.id;
+          const isCommentsOpen = expandedCommentsPostId === post.id;
 
           return (
-            <article key={post.id} className="p-4 hover:bg-slate-50/50 transition">
-              {/* Post Header: Dual Identity (Human Owner + AI Agent) */}
-              <div className="flex items-start justify-between gap-3 mb-2.5">
-                <div className="flex items-center gap-2.5">
-                  {/* Human Avatar */}
-                  <div className="relative">
-                    <img
-                      src={post.humanOwner.avatar}
-                      alt={post.humanOwner.name}
-                      className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-100"
-                    />
-                    {/* Small nested AI badge */}
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold ring-2 ring-white" title={post.aiAgent.name}>
-                      AI
-                    </div>
-                  </div>
-
-                  <div>
+            <article
+              key={post.id}
+              className="bg-white rounded-[28px] p-4.5 sm:p-5 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3.5 transition"
+            >
+              {/* Row 1: Human Owner Header */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={post.humanOwner.avatar || undefined}
+                    alt={post.humanOwner.name}
+                    className="w-11 h-11 rounded-full object-cover border border-slate-300 shrink-0"
+                  />
+                  <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-slate-900 text-sm">{post.humanOwner.name}</span>
-                      <span className="text-xs text-slate-600">{post.humanOwner.handle}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                        Human Owner
+                      <h4 className="font-extrabold text-sm text-slate-900 tracking-tight truncate">
+                        {post.humanOwner.name}
+                      </h4>
+                      {/* Blue Verified Badge */}
+                      <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-black shrink-0">
+                        ✓
                       </span>
                     </div>
-
-                    {/* AI Agent affiliation link */}
-                    <div className="flex items-center gap-1 text-[11px] text-blue-600 font-medium mt-0.5">
-                      <Bot className="w-3 h-3 text-blue-500" />
-                      <span>{post.aiAgent.name}</span>
-                      <span className="text-slate-600">· AI Agent</span>
-                      <span className="text-slate-600">({post.aiAgent.specialty})</span>
-                    </div>
+                    <p className="text-xs text-slate-500 truncate">
+                      {post.humanOwner.handle} · {post.timestamp}
+                    </p>
                   </div>
                 </div>
 
-                {/* Takeover & Time Indicator */}
-                <div className="flex items-center gap-1.5">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                    post.takeoverMode
-                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                  }`}>
-                    {post.takeoverMode ? 'Takeover' : 'AI Auto'}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Pastel Blue Pill: HUMAN OWNER */}
+                  <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-700 text-[10px] font-black uppercase tracking-wider">
+                    HUMAN OWNER
                   </span>
-                  <span className="text-xs text-slate-600">{post.timestamp}</span>
+                  <button className="text-slate-400 hover:text-slate-800 p-1">
+                    <MoreHorizontal className="w-4.5 h-4.5" />
+                  </button>
                 </div>
               </div>
 
-              {/* Post Content */}
-              <div className="pl-12">
-                <div 
-                  onClick={() => onSelectPost ? onSelectPost(post) : setExpandedPostId(isExpanded ? null : post.id)}
-                  className="cursor-pointer"
-                >
-                  <p className="text-slate-800 text-sm leading-relaxed whitespace-pre-line hover:text-slate-900 transition">
-                    {post.content}
-                  </p>
+              {/* Row 2: AI Agent Co-Creator Section */}
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative shrink-0">
+                    <img
+                      src={post.aiAgent.avatar || undefined}
+                      alt={post.aiAgent.name}
+                      className="w-11 h-11 rounded-full object-cover border-2 border-cyan-400"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-sm text-slate-900 truncate">
+                        {post.aiAgent.name}
+                      </span>
+                      {/* Blue Verified Badge */}
+                      <span className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[9px] font-black shrink-0">
+                        ✓
+                      </span>
+                      {/* Pastel Green Pill: AI AGENT */}
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider">
+                        AI AGENT
+                      </span>
+                      {/* Green Online Dot */}
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Online
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 truncate">
+                      {post.aiAgent.specialty}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Hashtags */}
-                {post.tags && post.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {post.tags.map((t) => (
-                      <span key={t} className="text-xs text-blue-600 hover:underline cursor-pointer">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                  {/* Pastel Purple Pill: AI AUTO-REPLY AKTIF */}
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold">
+                    <span>⚡</span>
+                    <span>AI AUTO-REPLY AKTIF</span>
+                  </span>
 
-                {/* Post Media Image (if applicable) */}
-                {post.image && (
-                  <div 
-                    onClick={() => onSelectPost ? onSelectPost(post) : null}
-                    className="mt-3 rounded-2xl overflow-hidden border border-slate-200/80 shadow-xs cursor-pointer group relative bg-slate-950"
-                  >
-                    <img
-                      src={post.image}
-                      alt="Post Media"
-                      className="w-full max-h-80 object-cover object-center group-hover:scale-[1.02] transition duration-300"
-                    />
-                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-medium flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-cyan-400" />
-                      <span>3D Spatial Preview</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3D Model Attachment Badge (if applicable) */}
-                {post.has3DModel && (
-                  <div 
-                    onClick={onOpenWorld3D}
-                    className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white cursor-pointer hover:shadow-lg hover:scale-[1.01] transition flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300">
-                        <Box className="w-5 h-5 animate-pulse" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-100 flex items-center gap-1">
-                          <span>Aset 3D: {post.modelName}</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 font-mono">
-                            Three.js PBR
-                          </span>
-                        </p>
-                        <p className="text-[11px] text-slate-300">
-                          Klik untuk eksplorasi langsung di Dunia 3D Crystal City
-                        </p>
-                      </div>
-                    </div>
-                    <ArrowUpRight className="w-4 h-4 text-cyan-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
-                  </div>
-                )}
-
-                {/* Film AI Trailer Direct Cinema Banner (User Requirement #4) */}
-                {(post.tags?.some((t) => t.toLowerCase().includes('film') || t.toLowerCase().includes('cinema')) || post.id === 'p-film-trailer') && (
-                  <div
-                    onClick={() => onOpenFilmAi ? onOpenFilmAi('film-1') : null}
-                    className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-purple-950 via-slate-900 to-rose-950 border border-purple-500/40 text-white cursor-pointer hover:shadow-xl hover:border-purple-400 transition flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-400/50 flex items-center justify-center text-purple-200 shadow-inner">
-                        <Film className="w-5 h-5 text-amber-300 animate-pulse" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-black text-amber-300 tracking-tight">
-                            🎬 Allpha Cinema AI Premiere
-                          </span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                            VIP Drama
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-300 mt-0.5">
-                          Tonton episode lengkap & dukung creator film AI (Ep 1-2 Free)
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-xs font-black shadow-md group-hover:scale-105 transition shrink-0">
-                      <span>Nonton Film</span>
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Four Distinct Action Buttons as seen on PRD Reference */}
-                <div className="grid grid-cols-4 gap-1.5 mt-3 pt-3 border-t border-slate-100">
+                  {/* Take Over Button */}
                   <button
                     onClick={() => onOpenAskAi(post.aiAgent.name, post.humanOwner.name, post.aiAgent.specialty)}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium transition"
-                    title={`Tanya langsung ke ${post.aiAgent.name}`}
+                    className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 border-2 border-slate-900 text-slate-900 font-black text-xs shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                   >
-                    <Bot className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Tanya AI</span>
-                  </button>
-
-                  <button
-                    onClick={() => onSelectPost ? onSelectPost(post) : setExpandedPostId(isExpanded ? null : post.id)}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Komentar</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (onOpenMessages) {
-                        onOpenMessages();
-                      } else {
-                        onOpenAskAi(post.aiAgent.name, post.humanOwner.name, post.aiAgent.specialty);
-                      }
-                    }}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition"
-                    title={`Kirim pesan ke ${post.humanOwner.name} & ${post.aiAgent.name}`}
-                  >
-                    <Send className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Pesan</span>
-                  </button>
-
-                  <button
-                    onClick={() => onOpenGenerate(post)}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-medium transition"
-                    title="Generate konten / kustom reels brand"
-                  >
-                    <Wand2 className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Generate</span>
+                    <span className="text-[11px]">👤</span>
+                    <span>TAKE OVER</span>
                   </button>
                 </div>
+              </div>
 
-                {/* Social Metrics Bar: Like, Repost, Bookmark */}
-                <div className="flex items-center justify-between mt-3 pt-2 text-xs text-slate-600">
+              {/* Row 3: Content Body Text */}
+              <div 
+                onClick={() => onSelectPost ? onSelectPost(post) : null}
+                className="cursor-pointer"
+              >
+                <p className="text-slate-900 text-sm leading-relaxed whitespace-pre-line font-medium">
+                  {post.content}
+                </p>
+              </div>
+
+              {/* Row 4: Embedded 3D District / Media Card (Sesuai Referensi Gambar) */}
+              {post.has3DModel && (
+                <div className="relative rounded-2xl overflow-hidden border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] aspect-[21/9] sm:aspect-[23/9] bg-slate-950 group">
+                  <img
+                    src={post.image || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80'}
+                    alt={post.modelName || '3D District'}
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-black/20" />
+
+                  {/* Floating badge on top left: [A] Crystal District / Pusat Kreator & Inovasi */}
+                  <div className="absolute top-3 left-3 flex items-center gap-2 p-1.5 pr-3 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-sm">
+                    <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-xs">
+                      A
+                    </div>
+                    <div>
+                      <h5 className="font-extrabold text-xs text-slate-900 leading-tight">
+                        {post.modelName || 'Crystal District'}
+                      </h5>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        {post.modelSub || 'Pusat Kreator & Inovasi'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Floating button on bottom right: [BUKA 3D WORLD →] */}
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                    <button
+                      onClick={onOpenWorld3D}
+                      className="px-4 py-2 rounded-full bg-white hover:bg-purple-50 text-purple-700 border-2 border-slate-900 font-black text-xs shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>BUKA 3D WORLD</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+
+                  {/* Next carousel chevron button on right */}
+                  <button 
+                    onClick={onOpenWorld3D}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 hover:bg-white border border-slate-300 text-slate-800 flex items-center justify-center shadow-sm"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Row 5: Action & Engagement Bar */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-4 text-xs font-bold text-slate-700">
+                  {/* Like Button */}
                   <button
                     onClick={() => onLikePost(post.id)}
-                    className={`flex items-center gap-1.5 hover:text-rose-600 transition ${
-                      post.isLiked ? 'text-rose-600 font-semibold' : ''
-                    }`}
+                    className="flex items-center gap-1.5 hover:text-rose-600 transition cursor-pointer"
                   >
                     <Heart className={`w-4.5 h-4.5 ${post.isLiked ? 'fill-rose-500 text-rose-500' : 'text-slate-700 hover:text-rose-500'}`} />
                     <span>{post.likes}</span>
                   </button>
 
-                  <button 
-                    onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
-                    className="flex items-center gap-1.5 hover:text-blue-600 transition"
+                  {/* Comment Button */}
+                  <button
+                    onClick={() => setExpandedCommentsPostId(isCommentsOpen ? null : post.id)}
+                    className="flex items-center gap-1.5 hover:text-blue-600 transition cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>{post.commentsCount} balasan</span>
+                    <MessageCircle className="w-4.5 h-4.5 text-slate-700 hover:text-blue-600" />
+                    <span>{post.commentsCount}</span>
                   </button>
 
-                  <button 
-                    onClick={() => alert('Postingan berhasil dibagikan ulang ke jaringan Allpha!')}
-                    className="flex items-center gap-1.5 hover:text-emerald-600 transition"
+                  {/* Repost Button */}
+                  <button
+                    onClick={() => alert(`Postingan "${post.content.slice(0, 30)}..." berhasil di-repost ke feed Anda!`)}
+                    className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer"
                   >
                     <Repeat2 className="w-4.5 h-4.5 text-slate-700 hover:text-emerald-600" />
                     <span>{post.reposts}</span>
                   </button>
 
-                  <button 
-                    onClick={() => alert('Postingan disimpan ke arsip!')}
-                    className="p-1 hover:text-slate-900 transition"
+                  {/* Share Button */}
+                  <button
+                    onClick={() => alert('Tautan postingan berhasil disalin ke clipboard!')}
+                    className="hover:text-slate-900 transition cursor-pointer"
                   >
                     <Share2 className="w-4.5 h-4.5 text-slate-700" />
                   </button>
                 </div>
 
-                {/* Interactive Thread Comments Section */}
-                {isExpanded && (
-                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
-                    <div className="space-y-2">
-                      {post.comments.map((c) => (
-                        <div key={c.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-slate-900">{c.authorName}</span>
-                              <span className="text-slate-600 text-[11px]">{c.authorHandle}</span>
-                              {c.isAi && (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-700 font-bold">
-                                  AI Auto-Reply
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-600">{c.timestamp}</span>
+                {/* Right CTA Button: [💬 Tanya Luna] (Playful Neo-Brutalist Soft Pastel Purple Pill) */}
+                <button
+                  onClick={() => onOpenAskAi(post.aiAgent.name, post.humanOwner.name, post.aiAgent.specialty)}
+                  className="px-4 py-1.5 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-800 border-2 border-purple-600 font-extrabold text-xs shadow-[1.5px_1.5px_0px_#7c3aed] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-purple-700 fill-purple-700/20" />
+                  <span>Tanya {post.aiAgent.name.split(' ')[0]}</span>
+                </button>
+              </div>
+
+              {/* Row 6: Hashtags Pills (Neo-Brutalist Soft Pastel Pills Sesuai Referensi) */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {post.tags && post.tags.map((tag, idx) => {
+                  const colors = [
+                    'bg-sky-50 text-sky-700 border-sky-200',
+                    'bg-purple-50 text-purple-700 border-purple-200',
+                    'bg-cyan-50 text-cyan-700 border-cyan-200',
+                    'bg-slate-50 text-slate-700 border-slate-200',
+                  ];
+                  const colorClass = colors[idx % colors.length];
+
+                  return (
+                    <span
+                      key={tag}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border ${colorClass} hover:opacity-80 transition cursor-pointer`}
+                    >
+                      {tag}
+                    </span>
+                  );
+                })}
+
+                {/* '+3' Pill */}
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer">
+                  +3
+                </span>
+              </div>
+
+              {/* Expandable Comments Drawer */}
+              {isCommentsOpen && (
+                <div className="pt-3 border-t-2 border-slate-100 space-y-3 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    {post.comments.map((c) => (
+                      <div key={c.id} className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-2.5 text-xs">
+                        <img src={c.authorAvatar} alt={c.authorName} className="w-7 h-7 rounded-full object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">{c.authorName}</span>
+                            <span className="text-[10px] text-slate-500">{c.timestamp}</span>
+                            {c.isAi && (
+                              <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[8px] font-bold">
+                                AI
+                              </span>
+                            )}
                           </div>
                           <p className="text-slate-700 mt-0.5">{c.content}</p>
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Inline Comment Input Box */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        type="text"
-                        placeholder={`Tulis komentar atau tanya ${post.aiAgent.name}...`}
-                        value={commentInput[post.id] || ''}
-                        onChange={(e) =>
-                          setCommentInput((prev) => ({ ...prev, [post.id]: e.target.value }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSendComment(post.id);
-                        }}
-                        className="flex-1 px-3 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-none transition"
-                      />
-                      <button
-                        onClick={() => handleSendComment(post.id)}
-                        className="p-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
+
+                  {/* Add Comment Input */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Tulis komentar publik..."
+                      value={commentInput[post.id] || ''}
+                      onChange={(e) => setCommentInput({ ...commentInput, [post.id]: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendComment(post.id)}
+                      className="flex-1 px-3.5 py-2 rounded-full bg-slate-50 border-2 border-slate-900 text-xs font-medium outline-none focus:bg-white"
+                    />
+                    <button
+                      onClick={() => handleSendComment(post.id)}
+                      className="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5"
+                    >
+                      Kirim
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </article>
           );
         })}
       </div>
+
     </div>
   );
 }
