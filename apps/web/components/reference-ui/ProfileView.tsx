@@ -40,13 +40,19 @@ import {
   Play,
   Palette
 } from 'lucide-react';
-import { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/store';
+import type { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/reference-store';
 import AgentIdentityModal from './AgentIdentityModal';
 import AgentGoalsTasksModal from './AgentGoalsTasksModal';
 
 interface ProfileViewProps {
   humanUser: HumanProfile;
-  agentProfile: AIAgentProfile;
+  agentProfile: AIAgentProfile | null;
+  ownedAgents?: Array<{ name: string; handle: string; specialty: string; avatar: string; status: string; credits?: number | null }>;
+  showCredits?: boolean;
+  showSocialCounts?: boolean;
+  humanVerified?: boolean;
+  agentStatusLabel?: string;
+  onOpenAccountSettings?: () => void;
   knowledgeDocs: KnowledgeDocument[];
   posts: PostItem[];
   isTakeoverActive: boolean;
@@ -64,6 +70,7 @@ interface ProfileViewProps {
 export default function ProfileView({
   humanUser,
   agentProfile,
+  ownedAgents: ownedAgentsFromApi = [],
   knowledgeDocs,
   posts,
   isTakeoverActive,
@@ -76,6 +83,7 @@ export default function ProfileView({
   onOpenAskAi,
   onOpenGenerate,
   onUpdateAgent,
+  onOpenAccountSettings,
 }: ProfileViewProps) {
   // Tabs: Konten, AI Agent, Disukai, Tentang
   const [activeProfileTab, setActiveProfileTab] = useState<'KONTEN' | 'AGENTS' | 'LIKED' | 'ABOUT'>('KONTEN');
@@ -102,36 +110,13 @@ export default function ProfileView({
     (p) => p.humanOwner.name === humanUser.name || p.humanOwner.handle === humanUser.username
   );
 
-  // Sub-agents list owned by Alex Tamara (as shown in reference screenshot 8)
-  const ownedAgents = [
-    {
-      name: 'Luna AI',
-      handle: '@luna.ai',
-      specialty: 'Asisten Kreatif & Desain 3D',
-      badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-      credits: 480,
-      avatar: 'https://picsum.photos/seed/luna-cyber/120/120',
-      status: isTakeoverActive ? 'Takeover Human' : 'AI Auto-Reply',
-    },
-    {
-      name: 'Nova AI',
-      handle: '@nova.ai',
-      specialty: '3D Spatial Architect',
-      badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
-      credits: 210,
-      avatar: 'https://picsum.photos/seed/technova/120/120',
-      status: 'AI Auto-Reply',
-    },
-    {
-      name: 'Travel AI',
-      handle: '@travel.ai',
-      specialty: 'Travel Planner & Worlds Guide',
-      badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
-      credits: 115,
-      avatar: 'https://picsum.photos/seed/district/120/120',
-      status: 'AI Auto-Reply',
-    },
-  ];
+  const ownedAgents = ownedAgentsFromApi;
+  const currentAgent: AIAgentProfile = agentProfile ?? {
+    id: '', name: '', handle: '', avatar: '', ownerId: humanUser.id, ownerName: humanUser.name,
+    ownerHandle: humanUser.username, specialty: '', category: '', bio: '', skills: [],
+    creditsEarned: 0, autoReply: false, model: '', goals: [], tasks: [],
+  };
+
 
   return (
     <div className="w-full max-w-xl mx-auto pb-28 min-h-screen px-3 sm:px-4 pt-2 font-sans">
@@ -169,7 +154,7 @@ export default function ProfileView({
           </button>
 
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => { onOpenAccountSettings ? onOpenAccountSettings() : setIsSettingsOpen(true); }}
             className="p-1.5 rounded-xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-slate-900 hover:bg-slate-50 transition active:translate-x-0.5 active:translate-y-0.5"
             title="Pengaturan Akun"
           >
@@ -292,7 +277,7 @@ export default function ProfileView({
                     </div>
                     <p className="text-[10px] text-slate-700 font-bold truncate">{ag.specialty}</p>
                     <p className="text-[10px] font-mono font-black text-slate-950 mt-0.5">
-                      +{ag.credits} Cr
+                      {ag.credits == null ? '—' : `+${ag.credits} Cr`}
                     </p>
                   </div>
                 </div>
@@ -529,7 +514,7 @@ export default function ProfileView({
                   className="aspect-square bg-slate-900 rounded-2xl overflow-hidden relative cursor-pointer group border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
                 >
                   <img
-                    src={post.image || `https://picsum.photos/seed/post-${post.id}/300/300`}
+                    src={post.image || '/icon.svg'}
                     alt="Grid thumbnail"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   />
@@ -569,7 +554,7 @@ export default function ProfileView({
               </p>
             </div>
             <span className="text-xs font-mono font-black text-slate-950 bg-amber-300 px-3 py-1 rounded-xl border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a]">
-              +{agentProfile.creditsEarned} Cr
+              {currentAgent.creditsEarned > 0 ? `+${currentAgent.creditsEarned} Cr` : '—'}
             </span>
           </div>
 
@@ -581,8 +566,8 @@ export default function ProfileView({
                 <div className="relative shrink-0">
                   <div className="w-16 h-16 rounded-2xl overflow-hidden ring-2 ring-cyan-400 bg-black border-2 border-white">
                     <img
-                      src={agentProfile.avatar3DImage || agentProfile.avatar}
-                      alt={agentProfile.name}
+                      src={currentAgent.avatar3DImage || currentAgent.avatar}
+                      alt={currentAgent.name}
                       className="w-full h-full object-cover object-top hover:scale-105 transition"
                     />
                   </div>
@@ -593,20 +578,20 @@ export default function ProfileView({
 
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-black text-base text-white">{agentProfile.name}</h4>
+                    <h4 className="font-black text-base text-white">{currentAgent.name}</h4>
                     <span className="text-[10px] px-2.5 py-0.5 rounded-lg bg-cyan-400 text-slate-950 font-black border border-cyan-300">
-                      {agentProfile.bidang || 'Desain Grafis'}
+                      {currentAgent.bidang || 'Desain Grafis'}
                     </span>
                     <span className="text-[9px] px-2 py-0.5 rounded-lg bg-white/20 text-white font-mono font-bold">
-                      {agentProfile.avatar3DCodename || 'LV-01'}
+                      {currentAgent.avatar3DCodename || 'LV-01'}
                     </span>
                   </div>
 
                   <p className="text-xs text-slate-300 font-mono">
-                    {agentProfile.handle} • Milik <strong>@{humanUser.username.replace('@', '')}</strong>
+                    {currentAgent.handle} • Milik <strong>@{humanUser.username.replace('@', '')}</strong>
                   </p>
                   <p className="text-xs text-slate-200 font-semibold pt-0.5">
-                    {agentProfile.specialty}
+                    {currentAgent.specialty}
                   </p>
                 </div>
               </div>
@@ -625,10 +610,10 @@ export default function ProfileView({
             {/* Active Skills Catalog Chips */}
             <div className="space-y-1.5 pt-2 border-t border-slate-800">
               <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider">
-                Katalog Skills Aktif ({agentProfile.skills?.length || 0}):
+                Katalog Skills Aktif ({currentAgent.skills?.length || 0}):
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {(agentProfile.skills || ['Brand 3D Vector', 'Shader Neon', 'Reels Scripting']).map((sk) => (
+                {(currentAgent.skills || []).map((sk) => (
                   <span
                     key={sk}
                     className="text-[10px] px-2.5 py-1 rounded-xl bg-slate-800 text-cyan-200 border border-slate-700 font-bold"
@@ -667,7 +652,7 @@ export default function ProfileView({
               </button>
               {onOpenAskAi && (
                 <button
-                  onClick={() => onOpenAskAi(agentProfile.name, humanUser.name, agentProfile.specialty)}
+                  onClick={() => onOpenAskAi(currentAgent.name, humanUser.name, currentAgent.specialty)}
                   className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-black transition flex items-center gap-1 border border-white/30"
                 >
                   <Bot className="w-3.5 h-3.5 text-cyan-300" />
@@ -683,7 +668,7 @@ export default function ProfileView({
               <div className="flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-slate-950" />
                 <h4 className="text-xs font-black text-slate-950 uppercase">
-                  Tugas Otonom Terjadwal ({agentProfile.tasks?.length || 4})
+                  Tugas Otonom Terjadwal ({currentAgent.tasks?.length || 0})
                 </h4>
               </div>
               <button
@@ -695,7 +680,7 @@ export default function ProfileView({
             </div>
 
             <div className="space-y-2">
-              {(agentProfile.tasks || []).slice(0, 2).map((t) => (
+              {(currentAgent.tasks || []).slice(0, 2).map((t) => (
                 <div
                   key={t.id}
                   className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] flex items-center justify-between gap-2 text-xs"
@@ -720,7 +705,7 @@ export default function ProfileView({
               AI Agent Companion Lainnya
             </h4>
             <div className="space-y-2.5">
-              {ownedAgents.filter(a => a.name !== agentProfile.name).map((ag, idx) => {
+              {ownedAgents.filter(a => a.name !== currentAgent.name).map((ag, idx) => {
                 const bgColors = ['bg-[#DDD6FE]', 'bg-[#BAE6FD]'];
                 const cardBg = bgColors[idx % bgColors.length];
                 return (
