@@ -31,7 +31,7 @@ import {
   AVATAR_3D_CATALOG, 
   BIDANG_SKILLS_CATALOG,
   Avatar3DItem 
-} from '@/lib/store';
+} from '../../lib/reference-store';
 
 interface AgentIdentityModalProps {
   isOpen: boolean;

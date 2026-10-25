@@ -17,7 +17,7 @@ import {
   Paperclip,
   Check
 } from 'lucide-react';
-import { HumanProfile } from '@/lib/store';
+import { HumanProfile } from '../../lib/reference-store';
 
 interface AskAiViewProps {
   onBack: () => void;
