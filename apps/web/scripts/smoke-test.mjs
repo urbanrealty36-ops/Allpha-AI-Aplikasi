@@ -223,6 +223,14 @@ for (const route of ['href="/stories"', 'href="/reels"', 'href="/spatial/navigat
 }
 assert.ok(referenceNavigation.includes('onSearch={query => navigate("/search?q=" + encodeURIComponent(query))}'));
 
+const webSearch = readFileSync(new URL("../app/search/page.tsx", import.meta.url), "utf8");
+assert.ok(webSearch.includes("useSearchParams"), "Search must react to global navbar query updates");
+assert.ok(webSearch.includes("lastUrlQuery.current === urlQuery"), "Search must avoid duplicate submissions for the same URL query");
+assert.ok(webSearch.includes("<Suspense"), "Search useSearchParams must be guarded by Suspense for production build");
+assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical authenticated Search API");
+assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
+
+
 // Native parity must expose the same canonical content/story/feed capabilities;
 // source assertions do not substitute for Expo typecheck or device acceptance.
 for (const contract of [
