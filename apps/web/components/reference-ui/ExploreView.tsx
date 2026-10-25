@@ -496,10 +496,10 @@ export default function ExploreView({
         {/* SECTION A: TRENDING HASHTAGS CAROUSEL (When not filtered or when on HASHTAGS) */}
         {/* ======================================================== */}
         {(activeSearchTab === 'ALL' || activeSearchTab === 'HASHTAGS') && (
-          <section className="space-y-2.5">
+          <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <Hash className="w-3.5 h-3.5 text-blue-600" />
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Hash className="w-4 h-4 text-sky-600 stroke-[2.5px]" />
                 <span>Hashtag Populer & Trending</span>
               </h2>
               {isSearching && (
@@ -542,7 +542,7 @@ export default function ExploreView({
         {(activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS') && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-purple-600 stroke-[2.5px]" />
                 <span>Akun Human & AI Agent ({filteredAccounts.length})</span>
               </h2>
@@ -556,7 +556,7 @@ export default function ExploreView({
                 Tidak ada akun yang cocok dengan kata kunci &quot;{searchQuery}&quot;
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {filteredAccounts.map((acc) => {
                   const isFollowed = followedAccounts[acc.handle] || false;
 
@@ -703,8 +703,8 @@ export default function ExploreView({
         {(activeSearchTab === 'ALL' || activeSearchTab === 'POSTS') && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-blue-600" />
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-sky-600 stroke-[2.5px]" />
                 <span>Postingan & Caption ({filteredPosts.length})</span>
               </h2>
             </div>
@@ -730,8 +730,8 @@ export default function ExploreView({
                           className="flex items-center gap-1.5"
                         />
                         <div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs font-bold text-slate-900">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-black text-slate-900">
                               {post.humanOwner.name}
                             </span>
                             <span className="text-[10px] text-slate-400 font-mono">
@@ -776,15 +776,15 @@ export default function ExploreView({
                     {/* Engagement Counts */}
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1">
-                          <Heart className="flex items-center gap-1" />
+                        <span className="flex items-center gap-1.5">
+                          <Heart className="flex items-center gap-1.5" />
                           {post.likes}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <MessageCircle className="flex items-center gap-1" />
+                        <span className="flex items-center gap-1.5">
+                          <MessageCircle className="flex items-center gap-1.5" />
                           {post.commentsCount}
                         </span>
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1.5">
                           <Repeat2 className="text-[10.5px] text-slate-900 font-black flex items-center gap-0.5 hover:underline" />
                           {post.reposts}
                         </span>
@@ -993,11 +993,11 @@ export default function ExploreView({
                         </span>
                       </div>
                       <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[9px] bg-black/50 backdrop-blur px-2 py-0.5 rounded-lg">
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1.5">
                           <Users className="w-3 h-3 text-cyan-400" />
                           {w.online}
                         </span>
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1.5">
                           <Calendar className="w-3 h-3 text-amber-400" />
                           {w.events}
                         </span>
@@ -1037,7 +1037,7 @@ export default function ExploreView({
                 </div>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {mediaSurfaces.map((surf) => (
                   <div
                     key={surf.id}
@@ -1192,7 +1192,7 @@ export default function ExploreView({
                           {tx.status}
                         </span>
                       </div>
-                      <p className="text-xs font-bold text-slate-900">{tx.querySummary}</p>
+                      <p className="text-xs font-black text-slate-900">{tx.querySummary}</p>
                       <p className="text-[10px] text-slate-500">
                         {tx.fromUser} → {tx.toAgent} ({tx.timestamp})
                       </p>
@@ -1238,20 +1238,20 @@ export default function ExploreView({
 
             <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2">
               <div className="flex justify-between">
-                <span className="text-slate-500">Domain:</span>
-                <span className="font-bold text-slate-800">{selectedBlueprint.domain}</span>
+                <span className="text-slate-600 font-bold">Domain:</span>
+                <span className="font-black text-slate-950">{selectedBlueprint.domain}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Kesiapan Eksekusi:</span>
-                <span className="font-bold text-emerald-600">{selectedBlueprint.readiness}</span>
+                <span className="text-slate-600 font-bold">Kesiapan Eksekusi:</span>
+                <span className="font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-lg border border-slate-900">{selectedBlueprint.readiness}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Peran Karakter 3D:</span>
-                <span className="font-bold text-slate-800">{selectedBlueprint.suggestedRole}</span>
+                <span className="text-slate-600 font-bold">Peran Karakter 3D:</span>
+                <span className="font-black text-slate-950">{selectedBlueprint.suggestedRole}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Estimasi Biaya:</span>
-                <span className="font-mono font-bold text-amber-600">
+                <span className="text-slate-600 font-bold">Estimasi Biaya:</span>
+                <span className="font-mono font-black text-amber-900">
                   {selectedBlueprint.costEstimateCredits} AI Credits
                 </span>
               </div>
@@ -1263,13 +1263,13 @@ export default function ExploreView({
                   triggerToast(`Skill "${selectedBlueprint.name}" berhasil dihubungkan ke AI Agent Luna!`);
                   setSelectedBlueprint(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition"
+                className="flex-1 py-2.5 rounded-2xl bg-sky-300 hover:bg-sky-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Terapkan ke AI Agent Saya
               </button>
               <button
                 onClick={() => setSelectedBlueprint(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                className="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
               >
                 Batal
               </button>
