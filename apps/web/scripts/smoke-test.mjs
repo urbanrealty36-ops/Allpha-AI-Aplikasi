@@ -300,6 +300,13 @@ assert.ok(liveStageRoute.includes("liveStateAvailable={false}"), "Live Stage rou
 assert.ok(liveStageComponent.includes("Belum ada sesi atau pesan Live"), "Live Stage must show a canonical empty state rather than sample chat");
 assert.doesNotMatch(liveStageComponent, /picsum\.photos|2430|3840|Raka Pratama/, "Live Stage must not seed demo viewers, likes or chat identities");
 
+
+const askAiRoute = readFileSync(new URL("../app/ask-ai/page.tsx", import.meta.url), "utf8");
+const askAiView = readFileSync(new URL("../components/reference-ui/AskAiView.tsx", import.meta.url), "utf8");
+assert.ok(askAiRoute.includes('"/v1/me"') && askAiRoute.includes('"/v1/agents"'), "Ask AI route must load canonical identity and Agent catalog");
+assert.ok(askAiView.includes("onSubmitQuery") && !askAiView.includes("/api/agent/interact"), "Ask AI must not bypass the canonical FastAPI Agent Runtime");
+assert.ok(askAiView.includes("Belum ada percakapan dari Agent Runtime"), "Ask AI must expose an honest empty conversation state");
+
 // Web PWA metadata and accessibility configuration are source-checked; installability still needs browser/device evidence.
 const pwaManifest = readFileSync(new URL("../app/manifest.ts", import.meta.url), "utf8");
 const webLayout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");

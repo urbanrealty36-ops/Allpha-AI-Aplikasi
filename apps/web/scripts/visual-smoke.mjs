@@ -46,5 +46,5 @@ if (failures.length) {
   console.error("VISUAL_SMOKE_FAILURES", JSON.stringify(failures, null, 2));
   process.exitCode = 1;
 } else {
-  console.log("Visual route smoke passed: 11 routes × 4 viewports; screenshots captured for every route.");
+  console.log("Visual route smoke passed: 12 routes × 4 viewports; screenshots captured for every route.");
 }
