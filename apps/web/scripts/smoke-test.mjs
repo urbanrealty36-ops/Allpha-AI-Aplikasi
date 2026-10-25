@@ -44,6 +44,9 @@ for (const contract of [
   "worker yang dikonfigurasi secara terpisah", "role=\"alert\"", "Coba lagi"
 ]) assert.ok(workflows.includes(contract), `missing Workflow Engine Web contract: ${contract}`);
 assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+assert.ok(workflows.includes("setSupabase(getBrowserSupabase())") && workflows.includes("after hydration"), "Workflow Supabase client must initialize after hydration to avoid duplicate server/client fallback UI");
+const globalStyles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Workflow configuration keys must wrap at narrow mobile widths");
 
 const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", import.meta.url), "utf8");
 for (const contract of [
