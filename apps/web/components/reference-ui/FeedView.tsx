@@ -45,6 +45,7 @@ interface FeedViewProps {
   initialCommentsPostId?: string | null;
   loading?: boolean;
   errorMessage?: string;
+  onRetry?: () => void;
   noticeMessage?: string;
   emptyState?: boolean;
 }
@@ -71,6 +72,7 @@ export default function FeedView({
   initialCommentsPostId,
   loading = false,
   errorMessage = '',
+  onRetry,
   noticeMessage = '',
   emptyState = false,
 }: FeedViewProps) {
@@ -254,7 +256,7 @@ export default function FeedView({
       {/* 4. FEED POSTS STREAM (Neo-Brutalist Soft Pastel Cards Sesuai Referensi)     */}
       {/* ========================================================================= */}
       <div className="space-y-4.5">
-        {errorMessage && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-white p-3 text-sm font-bold text-rose-700">{errorMessage}</p>}
+        {errorMessage && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border-2 border-rose-400 bg-white p-3 text-sm font-bold text-rose-700"><span>{errorMessage}</span>{onRetry && <button type="button" onClick={onRetry} disabled={loading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] disabled:opacity-50">Coba lagi</button>}</div>}
         {noticeMessage && <p role="status" className="rounded-xl border-2 border-emerald-400 bg-white p-3 text-sm font-bold text-emerald-800">{noticeMessage}</p>}
         {loading && visiblePosts.length === 0 && <p role="status" className="py-8 text-center text-sm font-semibold text-slate-500">Memuat feed…</p>}
         {emptyState && feedFilter === 'FOR_YOU' && !loading && !errorMessage && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-8 text-center"><h2 className="font-black text-slate-900">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
