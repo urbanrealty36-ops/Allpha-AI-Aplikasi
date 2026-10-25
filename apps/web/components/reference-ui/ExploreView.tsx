@@ -52,10 +52,6 @@ import {
 } from 'lucide-react';
 import type {
   SkillBlueprint,
-  WorkflowNodeItem,
-  MediaSurfaceItem,
-  QuestItem,
-  CreditTransaction,
   PostItem,
 } from '../../lib/reference-store';
 
@@ -140,98 +136,18 @@ export default function ExploreView({
   const [selectedBlueprint, setSelectedBlueprint] = useState<SkillBlueprint | null>(null);
 
   // n8n-style Workflow Studio state
-  const [workflowNodes, setWorkflowNodes] = useState<WorkflowNodeItem[]>([]);
-  const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
-  const [workflowExecutionLog, setWorkflowExecutionLog] = useState<string | null>(null);
 
   // Videotron Ads State
-  const [mediaSurfaces] = useState<MediaSurfaceItem[]>([]);
 
   // Quests & Reward state
-  const [quests, setQuests] = useState<QuestItem[]>([]);
 
   // Creator Settlement Transactions
-  const [transactions] = useState<CreditTransaction[]>([]);
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const triggerToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
-  };
-
-  // 3D Worlds catalog
-  const worlds3D = [
-    {
-      id: 'w-crystal',
-      name: 'Crystal City',
-      tagline: 'Pusat ekosistem Allpha Universe',
-      online: '24.3K Online',
-      events: '312 Event',
-      badge: 'Utama',
-      category: 'Metropolis',
-      img: '/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg',
-    },
-    {
-      id: 'w-neotokyo',
-      name: 'Neo Tokyo & Neo-Kyoto',
-      tagline: 'Kota futuristik Asia & digital atrium neon',
-      online: '12.5K Online',
-      events: '148 Event',
-      badge: 'Populer',
-      category: 'Cyberpunk',
-      img: '/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg',
-    },
-    {
-      id: 'w-mars',
-      name: 'Mars Colony Oasis',
-      tagline: 'Eksplorasi luar angkasa & kubah biosfer',
-      online: '8.7K Online',
-      events: '84 Event',
-      badge: 'Sci-Fi',
-      category: 'Space',
-      img: 'https://picsum.photos/seed/mars-oasis/400/250',
-    },
-    {
-      id: 'w-oceanic',
-      name: 'Oceanic World',
-      tagline: 'Dunia bawah laut bioluminescent',
-      online: '6.1K Online',
-      events: '42 Event',
-      badge: 'Nature',
-      category: 'Aquatic',
-      img: 'https://picsum.photos/seed/oceanic-world/400/250',
-    },
-  ];
-
-  // Handler to run workflow simulation
-  const handleRunWorkflow = () => {
-    setIsWorkflowRunning(true);
-    setWorkflowExecutionLog('Memulai eksekusi DAG node graph via AI Gateway Router...');
-    setTimeout(() => {
-      setWorkflowNodes((prev) =>
-        prev.map((n) => ({
-          ...n,
-          status: 'SUCCESS',
-        }))
-      );
-      setIsWorkflowRunning(false);
-      setWorkflowExecutionLog('Eksekusi Selesai! Checkpoint tersimpan secara durable & +15 Credits reward tercatat.');
-      triggerToast('Workflow n8n berhasil dieksekusi dengan resumable checkpoint!');
-    }, 1800);
-  };
-
-  // Handler to claim Quest reward
-  const handleClaimQuest = (questId: string) => {
-    setQuests((prev) =>
-      prev.map((q) => {
-        if (q.id === questId && q.progress >= q.maxProgress && !q.isClaimed) {
-          triggerToast(`Selamat! Klaim +${q.rewardCredits} AI Credits & +${q.rewardXp} XP berhasil!`);
-          return { ...q, isClaimed: true };
-        }
-        return q;
-      })
-    );
   };
 
   // ==========================================
