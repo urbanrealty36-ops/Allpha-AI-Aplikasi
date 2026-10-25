@@ -87,7 +87,7 @@ export default function Navbar({
               placeholder="Cari konten, AI Agent, atau District 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-100/80 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-full transition outline-none"
+              className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold bg-slate-50 border-2 border-slate-900 rounded-full outline-none shadow-[1.5px_1.5px_0px_#0f172a] focus:bg-white"
             />
           </div>
         </form>
@@ -129,7 +129,7 @@ export default function Navbar({
             title="Pesan Langsung / Direct Message (DM)"
             aria-label="Direct Messages"
           >
-            <MessageCircle className="w-4.5 h-4.5" />
+            <MessageCircle className="w-4.5 h-4.5 stroke-[2.2px]" />
             {unreadMessagesCount > 0 && (
               <span
                 className={`absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[9px] font-extrabold flex items-center justify-center ring-2 ${
