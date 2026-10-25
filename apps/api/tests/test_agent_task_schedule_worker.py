@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import asyncio
 import uuid
 
 import pytest
@@ -64,8 +65,11 @@ class FakeWorkflowStore:
         return row
 
 
-@pytest.mark.asyncio
-async def test_due_schedule_creates_canonical_workflow_run_and_never_executes_tool_directly():
+def test_due_schedule_creates_canonical_workflow_run_and_never_executes_tool_directly():
+    asyncio.run(_test_due_schedule_creates_canonical_workflow_run_and_never_executes_tool_directly())
+
+
+async def _test_due_schedule_creates_canonical_workflow_run_and_never_executes_tool_directly():
     owner_id, schedule_id, definition_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
     definition = WorkflowDefinition(
         workflow_key="agent-task-test", version=1,
@@ -100,8 +104,11 @@ async def test_due_schedule_creates_canonical_workflow_run_and_never_executes_to
     assert runtime.schedule["lease_token"] is None
 
 
-@pytest.mark.asyncio
-async def test_due_schedule_waits_for_owner_approval_without_workflow_dispatch():
+def test_due_schedule_waits_for_owner_approval_without_workflow_dispatch():
+    asyncio.run(_test_due_schedule_waits_for_owner_approval_without_workflow_dispatch())
+
+
+async def _test_due_schedule_waits_for_owner_approval_without_workflow_dispatch():
     owner_id, schedule_id, definition_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
     schedule = {
         "id": schedule_id, "owner_user_id": owner_id, "workflow_definition_id": definition_id,
