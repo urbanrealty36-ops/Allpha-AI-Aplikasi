@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -35,7 +35,7 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 export default function WorkflowsPage() {
-  const supabase = useMemo(() => getBrowserSupabase(), []);
+  const [supabase, setSupabase] = useState<ReturnType<typeof getBrowserSupabase>>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -47,6 +47,9 @@ export default function WorkflowsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  // Initialize browser-only Supabase after hydration to keep server/client markup identical.
+  useEffect(() => { setSupabase(getBrowserSupabase()); }, []);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     if (!session) throw new Error("Sesi login tidak tersedia. Silakan masuk terlebih dahulu.");
