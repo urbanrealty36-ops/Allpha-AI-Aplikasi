@@ -327,7 +327,7 @@ export default function ReelsView({
         {/* Like Button */}
         <button
           onClick={toggleLike}
-          className="flex flex-col items-center gap-1 group"
+          className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
         >
           <div className={`w-11 h-11 rounded-full flex items-center justify-center transition shadow-2xl backdrop-blur-sm ${
             currentLikeInfo.liked
@@ -336,7 +336,7 @@ export default function ReelsView({
           }`}>
             <Heart className={`w-5 h-5 ${currentLikeInfo.liked ? 'fill-white' : ''}`} />
           </div>
-          <span className="text-white text-[10px] font-bold drop-shadow">
+          <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
             {(currentLikeInfo.count / 1000).toFixed(1)}k
           </span>
         </button>
@@ -344,12 +344,12 @@ export default function ReelsView({
         {/* Comment Button */}
         <button
           onClick={() => alert(`Membuka 320 komentar untuk: "${currentReel.title}"`)}
-          className="flex flex-col items-center gap-1 group"
+          className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
         >
-          <div className="w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 border border-white/10 text-white flex items-center justify-center transition shadow-2xl backdrop-blur-sm">
-            <MessageCircle className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 flex items-center justify-center transition shadow-[2px_2px_0px_#0f172a]">
+            <MessageCircle className="w-5 h-5 stroke-[2.5px]" />
           </div>
-          <span className="text-white text-[10px] font-bold drop-shadow">
+          <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
             {currentReel.commentsCount}
           </span>
         </button>
@@ -362,13 +362,13 @@ export default function ReelsView({
               alert('Tautan Reels disalin ke papan klip!');
             }
           }}
-          className="flex flex-col items-center gap-1 group"
+          className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           title="Salin Tautan"
         >
-          <div className="w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 border border-white/10 text-white flex items-center justify-center transition shadow-2xl backdrop-blur-sm">
-            <Share2 className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 flex items-center justify-center transition shadow-[2px_2px_0px_#0f172a]">
+            <Share2 className="w-5 h-5 stroke-[2.5px]" />
           </div>
-          <span className="text-white text-[10px] font-bold drop-shadow">
+          <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
             {currentReel.sharesCount}
           </span>
         </button>
@@ -376,13 +376,13 @@ export default function ReelsView({
         {/* AI Agent Ask Button */}
         <button
           onClick={() => onOpenAskAi(currentReel.agentName, currentReel.creatorName, 'Kreativitas & Desain 3D')}
-          className="flex flex-col items-center gap-1 group"
+          className="flex flex-col items-center gap-1 group active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           title={`Tanya ${currentReel.agentName}`}
         >
           <div className="w-12 h-12 rounded-2xl bg-sky-300 hover:bg-sky-400 text-slate-950 flex items-center justify-center transition border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-            <Bot className="w-5 h-5" />
+            <Bot className="w-5 h-5 stroke-[2.5px]" />
           </div>
-          <span className="text-white text-[10px] font-bold drop-shadow">
+          <span className="text-white text-[10px] font-black drop-shadow-[1px_1px_0px_#000]">
             Tanya
           </span>
         </button>
@@ -395,7 +395,7 @@ export default function ReelsView({
             title="Tonton Film Penuh di AI Cinema"
           >
             <div className="w-12 h-12 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 flex items-center justify-center transition border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-              <Film className="w-5 h-5" />
+              <Film className="w-5 h-5 stroke-[2.5px]" />
             </div>
             <span className="text-amber-300 text-[10px] font-black drop-shadow-[1px_1px_0px_#000] uppercase">
               Cinema
