@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import ExploreView from "../../components/reference-ui/ExploreView";
-import type { PostItem } from "@/lib/store";
+import type { PostItem } from "../../lib/reference-store";
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
