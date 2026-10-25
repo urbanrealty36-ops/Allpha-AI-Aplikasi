@@ -41,6 +41,7 @@ export default function Navbar({
   unreadMessagesCount = 2,
   searchQuery,
   setSearchQuery,
+  onSearch,
   isHidden = false,
 }: NavbarProps) {
   const { isInstallable, install, isIOS } = usePWAInstall();
