@@ -142,9 +142,9 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
 
             <div className="text-right shrink-0 pl-3">
               <span className="text-[10px] font-bold text-slate-400 block">{item.time}</span>
-              {item.unread > 0 && (
+              {(item.unread ?? 0) > 0 && (
                 <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[9px] border border-slate-900 shadow-[1px_1px_0px_#0f172a]">
-                  {item.unread}
+                  {item.unread ?? 0}
                 </span>
               )}
             </div>
