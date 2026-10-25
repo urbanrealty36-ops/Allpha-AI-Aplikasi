@@ -8,7 +8,6 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
-  Repeat2,
   Send,
   Share2,
   ShieldAlert,
