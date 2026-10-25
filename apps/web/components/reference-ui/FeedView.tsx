@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Heart, 
   MessageCircle, 
@@ -36,6 +36,10 @@ interface FeedViewProps {
   onOpenMessages?: () => void;
   storiesData?: Array<{ id: string; name: string; img?: string; isAdd?: boolean; isLive?: boolean; ringColor?: string }>;
   productionMode?: boolean;
+  onSharePost?: (postId: string) => void;
+  onRepostPost?: (postId: string) => void;
+  onLoadComments?: (postId: string) => void;
+  initialCommentsPostId?: string | null;
 }
 
 export default function FeedView({
@@ -53,6 +57,10 @@ export default function FeedView({
   onOpenMessages,
   storiesData,
   productionMode = false,
+  onSharePost,
+  onRepostPost,
+  onLoadComments,
+  initialCommentsPostId,
 }: FeedViewProps) {
   const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
@@ -60,6 +68,12 @@ export default function FeedView({
 
   // Production stories come from the authenticated API; never seed demo identities.
   const stories = storiesData ?? [];
+
+  useEffect(() => {
+    if (!initialCommentsPostId || !posts.some(post => post.id === initialCommentsPostId)) return;
+    setExpandedCommentsPostId(initialCommentsPostId);
+    onLoadComments?.(initialCommentsPostId);
+  }, [initialCommentsPostId, posts, onLoadComments]);
 
   const handleSendComment = (postId: string) => {
     const text = commentInput[postId]?.trim();
@@ -381,7 +395,7 @@ export default function FeedView({
 
                   {/* Comment Button */}
                   <button
-                    onClick={() => setExpandedCommentsPostId(isCommentsOpen ? null : post.id)}
+                    onClick={() => { setExpandedCommentsPostId(isCommentsOpen ? null : post.id); if (!isCommentsOpen) onLoadComments?.(post.id); }}
                     className="flex items-center gap-1.5 hover:text-blue-600 transition cursor-pointer"
                   >
                     <MessageCircle className="w-4.5 h-4.5 text-slate-700 hover:text-blue-600" />
@@ -390,8 +404,10 @@ export default function FeedView({
 
                   {/* Repost Button */}
                   <button
-                    onClick={() => alert(`Postingan "${post.content.slice(0, 30)}..." berhasil di-repost ke feed Anda!`)}
-                    className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer"
+                    onClick={() => onRepostPost?.(post.id)}
+                    disabled={!onRepostPost}
+                    title={onRepostPost ? "Repost konten" : "Repost belum tersedia pada API produksi"}
+                    className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Repeat2 className="w-4.5 h-4.5 text-slate-700 hover:text-emerald-600" />
                     <span>{post.reposts}</span>
@@ -399,7 +415,9 @@ export default function FeedView({
 
                   {/* Share Button */}
                   <button
-                    onClick={() => alert('Tautan postingan berhasil disalin ke clipboard!')}
+                    onClick={() => onSharePost?.(post.id)}
+                    disabled={!onSharePost}
+                    title={onSharePost ? "Bagikan konten" : "Berbagi belum tersedia"}
                     className="hover:text-slate-900 transition cursor-pointer"
                   >
                     <Share2 className="w-4.5 h-4.5 text-slate-700" />
@@ -407,13 +425,13 @@ export default function FeedView({
                 </div>
 
                 {/* Right CTA Button: [💬 Tanya Luna] (Playful Neo-Brutalist Soft Pastel Purple Pill) */}
-                <button
+                {(!productionMode || post.aiAgent.name !== "—") && <button
                   onClick={() => onOpenAskAi(post.aiAgent.name, post.humanOwner.name, post.aiAgent.specialty)}
                   className="px-4 py-1.5 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-800 border-2 border-purple-600 font-extrabold text-xs shadow-[1.5px_1.5px_0px_#7c3aed] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-purple-700 fill-purple-700/20" />
                   <span>Tanya {post.aiAgent.name.split(' ')[0]}</span>
-                </button>
+                </button>}
               </div>
 
               {/* Row 6: Hashtags Pills (Neo-Brutalist Soft Pastel Pills Sesuai Referensi) */}
@@ -437,10 +455,7 @@ export default function FeedView({
                   );
                 })}
 
-                {/* '+3' Pill */}
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer">
-                  +3
-                </span>
+                {!productionMode && <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer">+3</span>}
               </div>
 
               {/* Expandable Comments Drawer */}
@@ -449,7 +464,7 @@ export default function FeedView({
                   <div className="space-y-2">
                     {post.comments.map((c) => (
                       <div key={c.id} className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-2.5 text-xs">
-                        <img src={c.authorAvatar} alt={c.authorName} className="w-7 h-7 rounded-full object-cover" />
+                        {c.authorAvatar ? <img src={c.authorAvatar} alt={c.authorName} className="w-7 h-7 rounded-full object-cover" /> : <div aria-label={c.authorName} className="w-7 h-7 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center"><Sparkles className="w-3.5 h-3.5" /></div>}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-slate-900">{c.authorName}</span>
