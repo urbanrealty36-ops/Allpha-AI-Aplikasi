@@ -22,17 +22,25 @@ import {
   Check
 } from 'lucide-react';
 import { 
-  HumanProfile, 
-  AIAgentProfile, 
-  AgentBidang, 
+  type HumanProfile, 
+  type AIAgentProfile, 
+  type AgentBidang, 
   AVATAR_3D_CATALOG, 
   BIDANG_SKILLS_CATALOG 
-} from '@/lib/store';
+} from '@/lib/reference-store';
 
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (user: HumanProfile, agent: AIAgentProfile, bonusCredits: number) => void;
+  onComplete: (payload: {
+    user: HumanProfile;
+    agent: AIAgentProfile;
+    email: string;
+    password: string;
+    authMode: 'REGISTER' | 'LOGIN';
+    interests: string[];
+    persona: string;
+  }) => Promise<void>;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
 }
@@ -52,16 +60,11 @@ export default function AuthOnboardingFlow({
   // Human Identity Form State
   const [humanName, setHumanName] = useState(currentUser.name);
   const [humanHandle, setHumanHandle] = useState(currentUser.username);
-  const [humanEmail, setHumanEmail] = useState('alex.tamara@example.com');
-  const [humanPassword, setHumanPassword] = useState('••••••••••••');
+  const [humanEmail, setHumanEmail] = useState('');
+  const [humanPassword, setHumanPassword] = useState('');
   const [humanBio, setHumanBio] = useState(currentUser.bio);
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([
-    'Kesehatan',
-    'IT & Teknologi',
-    '3D Spatial',
-    'Kreator Konten'
-  ]);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
 
   // AI Agent Identity Form State
   const [agentName, setAgentName] = useState(currentAgent.name);
@@ -70,7 +73,7 @@ export default function AuthOnboardingFlow({
     (currentAgent.bidang as AgentBidang) || 'Desain Grafis'
   );
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
-    currentAgent.skills || ['Brand Identity & Custom Logo 3D Vector', 'Desain Feed & Storyboard Reels Dinamis']
+    currentAgent.skills || []
   );
   const [agentSpecialty, setAgentSpecialty] = useState(currentAgent.specialty);
   const [agentCategory, setAgentCategory] = useState<'Kesehatan' | 'IT & Teknologi' | 'Marketing' | 'Kreativitas' | 'Gaming & 3D'>('Kreativitas');
@@ -81,7 +84,9 @@ export default function AuthOnboardingFlow({
   const [selectedAvatarCodename, setSelectedAvatarCodename] = useState(
     currentAgent.avatar3DCodename || AVATAR_3D_CATALOG[0].id
   );
-  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(true);
+  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   if (!isOpen) return null;
 
@@ -110,19 +115,34 @@ export default function AuthOnboardingFlow({
     );
   };
 
-  const handleFinishOnboarding = () => {
+  const handleFinishOnboarding = async () => {
+    if (isSubmitting) return;
+    setSubmitError('');
+    if (!humanEmail.trim() || !humanPassword) {
+      setSubmitError('Masukkan email dan password untuk melanjutkan.');
+      setStep('HUMAN_REGISTER');
+      return;
+    }
+    if (authMode === 'REGISTER' && humanPassword.length < 8) {
+      setSubmitError('Password pendaftaran minimal 8 karakter.');
+      setStep('HUMAN_REGISTER');
+      return;
+    }
+    if (!humanName.trim() || !humanHandle.trim() || !agentName.trim() || !agentHandle.trim() || selectedSkills.length === 0) {
+      setSubmitError('Lengkapi identitas Human, identitas Agent, dan pilih minimal satu Skill.');
+      return;
+    }
     const updatedHuman: HumanProfile = {
       ...currentUser,
-      name: humanName,
-      username: humanHandle.startsWith('@') ? humanHandle : `@${humanHandle}`,
+      name: humanName.trim(),
+      username: humanHandle.startsWith('@') ? humanHandle.trim() : `@${humanHandle.trim()}`,
       avatar: selectedAvatar,
-      bio: humanBio,
+      bio: humanBio.trim(),
     };
-
     const updatedAgent: AIAgentProfile = {
       ...currentAgent,
-      name: agentName,
-      handle: agentHandle.startsWith('@') ? agentHandle : `@${agentHandle}`,
+      name: agentName.trim(),
+      handle: agentHandle.startsWith('@') ? agentHandle.trim() : `@${agentHandle.trim()}`,
       avatar: selectedAgentAvatar,
       avatar3DImage: selectedAgentAvatar,
       avatar3DCodename: selectedAvatarCodename,
@@ -134,17 +154,22 @@ export default function AuthOnboardingFlow({
       skills: selectedSkills,
       autoReply: isAutoReplyEnabled,
     };
-
-    onComplete(updatedHuman, updatedAgent, 50);
-    setStep('SUCCESS');
-    setTimeout(() => {
-      onClose();
-    }, 1800);
+    setIsSubmitting(true);
+    try {
+      await onComplete({ user: updatedHuman, agent: updatedAgent, email: humanEmail.trim(), password: humanPassword, authMode, interests: selectedInterests, persona: agentPersona });
+      setStep('SUCCESS');
+      setTimeout(() => onClose(), 1800);
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Pendaftaran tidak dapat diselesaikan.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-[6px_6px_0px_#0f172a] border-3 border-slate-900 overflow-hidden flex flex-col max-h-[92vh]">
+        {submitError && <p role="alert" className="mx-4 mt-4 rounded-xl border-2 border-rose-500 bg-white p-3 text-xs font-bold text-rose-700">{submitError}</p>}
         {/* Top Dismiss Button */}
         <button
           onClick={onClose}
@@ -665,10 +690,11 @@ export default function AuthOnboardingFlow({
               </button>
               <button
                 type="button"
-                onClick={handleFinishOnboarding}
-                className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5"
+                onClick={() => void handleFinishOnboarding()}
+                disabled={isSubmitting}
+                className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50"
               >
-                <span>Selesai & Masuk ke Universe 🚀</span>
+                <span>{isSubmitting ? 'Memproses…' : 'Selesai & Masuk ke Universe 🚀'}</span>
               </button>
             </div>
           </div>
@@ -686,9 +712,7 @@ export default function AuthOnboardingFlow({
             <p className="text-xs text-slate-700 font-bold max-w-sm">
               Identitas Human <strong className="text-slate-900">{humanName}</strong> dan AI Agent <strong className="text-purple-700">{agentName}</strong> siap menjelajahi Universe.
             </p>
-            <span className="px-3.5 py-1.5 rounded-xl bg-amber-200 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-              +50 AI Credits Dikreditkan
-            </span>
+
           </div>
         )}
       </div>
