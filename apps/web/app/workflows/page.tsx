@@ -163,7 +163,7 @@ export default function WorkflowsPage() {
     finally { setSaving(false); }
   }
 
-  if (!supabase) return <><main className="identity-shell"><section className="config-card"><span className="section-kicker">WORKFLOW ENGINE / KONFIGURASI</span><h1>Konfigurasi autentikasi belum tersedia.</h1><p>Atur NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY untuk mengaktifkan sesi login. Kunci service-role tidak boleh berada di browser.</p></section></main></>;
+  if (!supabase) return <main className="identity-shell"><section className="config-card"><span className="section-kicker">WORKFLOW ENGINE / KONFIGURASI</span><h1>Konfigurasi autentikasi belum tersedia.</h1><p>Atur NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY untuk mengaktifkan sesi login. Kunci service-role tidak boleh berada di browser.</p></section></main>;
 
   return <main className="identity-shell">
     <header className="identity-topbar">
@@ -211,5 +211,5 @@ export default function WorkflowsPage() {
         {!selectedRun.events?.length ? <p className="empty-state">Belum ada event.</p> : <ol className="workflow-events">{selectedRun.events.map(event => <li key={event.sequence}><strong>{event.event_type}</strong>{event.step_key && <span> · {event.step_key}</span>}<small>{new Date(event.created_at).toLocaleString("id-ID")}</small></li>)}</ol>}
       </section>}
     </>}
-  </main></>;
+  </main>;
 }
