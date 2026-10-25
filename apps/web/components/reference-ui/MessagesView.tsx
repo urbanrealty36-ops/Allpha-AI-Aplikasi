@@ -15,83 +15,24 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
+export interface ReferenceConversation {
+  id: string; name: string; handle: string; role: string; isAi: boolean;
+  lastMessage: string; time: string; unread: number; avatar?: string;
+}
+
 interface MessagesViewProps {
   onOpenChat: (name: string, handle: string, isAi: boolean) => void;
   onBack?: () => void;
+  conversations?: ReferenceConversation[];
+  loading?: boolean;
 }
 
-export default function MessagesView({ onOpenChat, onBack }: MessagesViewProps) {
+export default function MessagesView({ onOpenChat, onBack, conversations: suppliedConversations, loading = false }: MessagesViewProps) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'HUMAN' | 'AI_AGENT' | 'GROUP'>('ALL');
   const [search, setSearch] = useState('');
 
-  const conversations = [
-    {
-      id: 'm1',
-      name: 'MediAI',
-      handle: '@mediai',
-      role: 'AI Agent · Kesehatan',
-      isAi: true,
-      lastMessage: 'Berikut rekomendasi pola makan dan suplemen untuk kerja hybrid.',
-      time: '10:24',
-      unread: 2,
-      avatar: 'https://picsum.photos/seed/mediai/120/120',
-    },
-    {
-      id: 'm2',
-      name: 'Raka Pratama',
-      handle: '@raka',
-      role: 'Human Owner',
-      isAi: false,
-      lastMessage: 'Siap, kita bahas konsep Live Stage di call sore nanti.',
-      time: '09:12',
-      unread: 0,
-      avatar: 'https://picsum.photos/seed/raka/120/120',
-    },
-    {
-      id: 'm3',
-      name: 'MarketNova',
-      handle: '@marketnova',
-      role: 'AI Agent · Marketing',
-      isAi: true,
-      lastMessage: 'Berikut ide kampanye reels video dengan logo brand Anda siap diunduh.',
-      time: '08:45',
-      unread: 0,
-      avatar: 'https://picsum.photos/seed/sari/120/120',
-    },
-    {
-      id: 'm4',
-      name: 'Dimas Ardi',
-      handle: '@dimasardi',
-      role: 'Human Owner · 3D Modeler',
-      isAi: false,
-      lastMessage: 'Asset 3D Crystal City Booth sudah saya upload ke marketplace.',
-      time: 'Kemarin',
-      unread: 0,
-      avatar: 'https://picsum.photos/seed/dimas/120/120',
-    },
-    {
-      id: 'm5',
-      name: 'DesignAI',
-      handle: '@designai',
-      role: 'AI Agent · Visual Creator',
-      isAi: true,
-      lastMessage: 'Gambar konsep arsitektur spatial sudah siap ✨',
-      time: 'Kemarin',
-      unread: 0,
-      avatar: 'https://picsum.photos/seed/alex-tamara/120/120',
-    },
-    {
-      id: 'm6',
-      name: 'Luna AI',
-      handle: '@luna.ai',
-      role: 'AI Agent milik Anda',
-      isAi: true,
-      lastMessage: '3 pengguna baru bertanya seputar 3D District, +45 AI Credits diperoleh!',
-      time: '2 hari lalu',
-      unread: 0,
-      avatar: 'https://picsum.photos/seed/luna-cyber/120/120',
-    },
-  ];
+  // Production routes provide conversations from the authenticated messaging API.
+  const conversations = suppliedConversations ?? [];
 
   const filtered = conversations.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.lastMessage.toLowerCase().includes(search.toLowerCase());
@@ -166,6 +107,8 @@ export default function MessagesView({ onOpenChat, onBack }: MessagesViewProps) 
 
       {/* Conversations List */}
       <div className="bg-white rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] divide-y-2 divide-slate-100 overflow-hidden">
+        {loading && <p className="p-5 text-center text-xs font-bold text-slate-500">Memuat percakapan…</p>}
+        {!loading && filtered.length === 0 && <p className="p-5 text-center text-xs font-bold text-slate-500">Belum ada percakapan yang cocok.</p>}
         {filtered.map((item) => (
           <div
             key={item.id}
