@@ -24,13 +24,7 @@ import {
   BarChart3,
   Flame
 } from 'lucide-react';
-import { 
-  AgentGoalItem, 
-  AgentTaskItem, 
-  AIAgentProfile, 
-  INITIAL_AGENT_GOALS, 
-  INITIAL_AGENT_TASKS 
-} from '@/lib/store';
+import type { AgentGoalItem, AgentTaskItem, AIAgentProfile } from '@/lib/reference-store';
 
 interface AgentGoalsTasksModalProps {
   isOpen: boolean;
@@ -50,11 +44,11 @@ export default function AgentGoalsTasksModal({
   const [activeTab, setActiveTab] = useState<'TASKS' | 'GOALS'>('TASKS');
 
   const [goals, setGoals] = useState<AgentGoalItem[]>(
-    agent.goals && agent.goals.length > 0 ? agent.goals : INITIAL_AGENT_GOALS
+    agent.goals ?? []
   );
 
   const [tasks, setTasks] = useState<AgentTaskItem[]>(
-    agent.tasks && agent.tasks.length > 0 ? agent.tasks : INITIAL_AGENT_TASKS
+    agent.tasks ?? []
   );
 
   // New Task Form Modal State
