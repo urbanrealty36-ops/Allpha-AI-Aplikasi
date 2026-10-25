@@ -217,8 +217,10 @@ assert.doesNotMatch(webReelsShell, /href="\/feed"[^>]*>← Feed/, "Reels must no
 
 
 const webFeed = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+const webFeedView = readFileSync(new URL("../components/reference-ui/FeedView.tsx", import.meta.url), "utf8");
+const webFeedContract = webFeed + "\\n" + webFeedView;
 for (const contract of ["/v1/feed", "/v1/feed/preferences", "session.access_token", 'role="alert"']) {
-  assert.ok(webFeed.includes(contract), "missing Web Feed API/error contract: " + contract);
+  assert.ok(webFeedContract.includes(contract), "missing Web Feed API/error contract: " + contract);
 }
 assert.doesNotMatch(webFeed, /mockFeedItems|fakeFeed/);
 
