@@ -153,6 +153,7 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
                 tool_key=schedule["tool_key"],
                 inputs=(schedule.get("input_payload") or {}),
                 idempotency_key=occurrence["idempotency_key"],
+                budget_limits=schedule.get("budget_limit") or {},
             )
             created = await create_task(payload, _internal_request(occurrence["trace_id"]), {"id": owner_id})
             runtime_task_id = str(created["task"]["id"])
