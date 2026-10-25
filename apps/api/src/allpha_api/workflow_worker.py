@@ -136,6 +136,8 @@ async def execute_agent_task_node(step: dict[str, Any], run: dict[str, Any], own
     if not schedules:
         raise WorkflowNodeError("scheduled Agent task is not owned by workflow owner")
     schedule = schedules[0]
+    if schedule.get("status") in {"paused", "cancelled", "needs_approval", "failed"}:
+        raise WorkflowNodeError("schedule is paused, cancelled, or waiting for owner approval")
     occurrences = await runtime_store.request("GET", "agent_task_schedule_runs", params={
         "select": "*", "id": f"eq.{schedule_run_id}", "schedule_id": f"eq.{schedule_id}",
         "owner_user_id": f"eq.{owner_id}", "limit": "1",
