@@ -15,6 +15,7 @@ type FeedItem = {
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
 type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
+type FeedStory = { id: string; owner_id: string; created_at: string; media?: FeedMedia[] };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -26,6 +27,7 @@ export default function FeedPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [items, setItems] = useState<FeedItem[]>([]);
+  const [stories, setStories] = useState<FeedStory[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [mode, setMode] = useState<"for_you" | "recent">("for_you");
   const [personalizationEnabled, setPersonalizationEnabled] = useState(true);
@@ -89,6 +91,15 @@ export default function FeedPage() {
   }, [request, session]);
 
   useEffect(() => { if (session) void loadFeed(true); }, [session, mode, loadFeed]);
+
+  useEffect(() => {
+    if (!session) { setStories([]); return; }
+    let active = true;
+    void request("/v1/stories?limit=30").then((data: { items?: FeedStory[] }) => {
+      if (active) setStories(data.items ?? []);
+    }).catch(() => { if (active) setStories([]); });
+    return () => { active = false; };
+  }, [request, session]);
 
   async function savePreferences(enabled: boolean, rankingMode = mode) {
     setBusyKey("preferences"); setError(""); setNotice("");
@@ -212,9 +223,9 @@ export default function FeedPage() {
         {!loading && items.length === 0 && <section className="mx-auto max-w-xl p-8 text-center"><h2 className="font-black">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
         <FeedView
           posts={postsForReference}
-          storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }]}
+          storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: story.owner_id.slice(0, 8), img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
-          onOpenAskAi={(agentName) => { window.location.assign("/ask-ai?agent=" + encodeURIComponent(agentName)); }}
+          onOpenAskAi={(agentName) => { window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
           onOpenGenerate={() => { window.location.assign("/create"); }}
           onOpenWorld3D={() => { window.location.assign("/spatial"); }}
           onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
