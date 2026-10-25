@@ -219,6 +219,8 @@ interface ExploreViewProps {
   userCredits?: number;
   agentCredits?: number;
   onLikePost?: (postId: string) => void;
+  productionMode?: boolean;
+  onSearch?: (query: string) => void;
 }
 
 type SearchTab = 'ALL' | 'ACCOUNTS' | 'POSTS' | 'HASHTAGS' | 'PRD_HUB';
@@ -234,18 +236,14 @@ export default function ExploreView({
   userCredits = 250,
   agentCredits = 480,
   onLikePost,
+  productionMode = false,
+  onSearch,
 }: ExploreViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSearchTab, setActiveSearchTab] = useState<SearchTab>('ALL');
+  const [activeSearchTab, setActiveSearchTab] = useState<SearchTab>(productionMode ? 'POSTS' : 'ALL');
 
   // Follow states for accounts
-  const [followedAccounts, setFollowedAccounts] = useState<{ [handle: string]: boolean }>({
-    '@luna.ai': true,
-    '@technova': false,
-    '@mediai': false,
-    '@andipratama': true,
-    '@mikatanaka': false,
-  });
+  const [followedAccounts, setFollowedAccounts] = useState<{ [handle: string]: boolean }>({});
 
   const toggleFollow = (handle: string) => {
     setFollowedAccounts(prev => ({
@@ -256,22 +254,22 @@ export default function ExploreView({
   };
 
   // 500 Skill Blueprints state
-  const [blueprints] = useState<SkillBlueprint[]>(SKILL_BLUEPRINTS_SAMPLE);
+  const [blueprints] = useState<SkillBlueprint[]>(productionMode ? [] : SKILL_BLUEPRINTS_SAMPLE);
   const [selectedBlueprint, setSelectedBlueprint] = useState<SkillBlueprint | null>(null);
 
   // n8n-style Workflow Studio state
-  const [workflowNodes, setWorkflowNodes] = useState<WorkflowNodeItem[]>(INITIAL_WORKFLOW_NODES);
+  const [workflowNodes, setWorkflowNodes] = useState<WorkflowNodeItem[]>(productionMode ? [] : INITIAL_WORKFLOW_NODES);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [workflowExecutionLog, setWorkflowExecutionLog] = useState<string | null>(null);
 
   // Videotron Ads State
-  const [mediaSurfaces] = useState<MediaSurfaceItem[]>(MEDIA_SURFACES_SAMPLE);
+  const [mediaSurfaces] = useState<MediaSurfaceItem[]>(productionMode ? [] : MEDIA_SURFACES_SAMPLE);
 
   // Quests & Reward state
-  const [quests, setQuests] = useState<QuestItem[]>(INITIAL_QUESTS);
+  const [quests, setQuests] = useState<QuestItem[]>(productionMode ? [] : INITIAL_QUESTS);
 
   // Creator Settlement Transactions
-  const [transactions] = useState<CreditTransaction[]>(INITIAL_TRANSACTIONS);
+  const [transactions] = useState<CreditTransaction[]>(productionMode ? [] : INITIAL_TRANSACTIONS);
 
   // Toast state
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -360,6 +358,7 @@ export default function ExploreView({
   const query = searchQuery.trim().toLowerCase();
 
   const filteredAccounts = useMemo(() => {
+    if (productionMode) return [];
     if (!query) return SOCIAL_ACCOUNTS_SAMPLE;
     return SOCIAL_ACCOUNTS_SAMPLE.filter(acc => 
       acc.name.toLowerCase().includes(query) ||
@@ -369,7 +368,7 @@ export default function ExploreView({
       (acc.ownerName && acc.ownerName.toLowerCase().includes(query)) ||
       acc.tags.some(t => t.toLowerCase().includes(query))
     );
-  }, [query]);
+  }, [query, productionMode]);
 
   const filteredPosts = useMemo(() => {
     if (!query) return posts;
@@ -384,11 +383,12 @@ export default function ExploreView({
   }, [query, posts]);
 
   const filteredHashtags = useMemo(() => {
+    if (productionMode) return [];
     if (!query) return POPULAR_HASHTAGS;
     return POPULAR_HASHTAGS.filter(h => 
       h.tag.toLowerCase().includes(query.startsWith('#') ? query : `#${query}`)
     );
-  }, [query]);
+  }, [query, productionMode]);
 
   const filteredBlueprints = useMemo(() => {
     if (!query) return blueprints;
@@ -442,6 +442,7 @@ export default function ExploreView({
             placeholder="Cari nama akun, @handle, caption, #hashtag, atau fitur..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onSearch?.(searchQuery.trim()); }}
             className="w-full pl-10 pr-9 py-2.5 text-xs font-bold bg-white border-2 border-slate-900 rounded-2xl shadow-[2px_2px_0px_#0f172a] focus:bg-sky-50 transition outline-none text-slate-900"
           />
           {searchQuery && (
@@ -462,7 +463,7 @@ export default function ExploreView({
             { id: 'POSTS' as SearchTab, label: '📝 Postingan & Caption', count: filteredPosts.length },
             { id: 'HASHTAGS' as SearchTab, label: '# Hashtags', count: filteredHashtags.length },
             { id: 'PRD_HUB' as SearchTab, label: '🌐 Allpha Hub', badge: 'Ecosystem' },
-          ].map((tab) => {
+          ].filter(tab => !productionMode || tab.id === 'POSTS').map((tab) => {
             const isActive = activeSearchTab === tab.id;
             return (
               <button
@@ -495,7 +496,7 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION A: TRENDING HASHTAGS CAROUSEL */}
         {/* ======================================================== */}
-        {(activeSearchTab === 'ALL' || activeSearchTab === 'HASHTAGS') && (
+        {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'HASHTAGS')) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -539,7 +540,7 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION B: ACCOUNTS RESULTS (HUMAN & AI AGENTS) */}
         {/* ======================================================== */}
-        {(activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS') && (
+        {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS')) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -807,7 +808,7 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION D: MASTER PRD FEATURES & DOMAINS HUB */}
         {/* (Accessible directly via tab 'PRD_HUB' or at bottom of ALL) */}
-        {(activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB') && (
+        {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB')) && (
           <div className="pt-2 border-t border-slate-200">
             <AllphaHubView
               onOpenWorld3D={() => onOpenWorld3D()}
