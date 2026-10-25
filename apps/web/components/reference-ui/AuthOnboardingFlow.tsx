@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Sparkles, 
   User, 
@@ -27,12 +27,14 @@ import {
   AgentBidang, 
   AVATAR_3D_CATALOG, 
   BIDANG_SKILLS_CATALOG 
-} from '@/lib/reference-store';
+} from '@/lib/store';
 
 interface AuthOnboardingFlowProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (payload: { user: HumanProfile; agent: AIAgentProfile; email: string; password: string; authMode: 'REGISTER' | 'LOGIN'; interests: string[]; persona: string }) => Promise<void>;
+  onComplete: (user: HumanProfile, agent: AIAgentProfile, bonusCredits: number) => void;
+  currentUser: HumanProfile;
+  currentAgent: AIAgentProfile;
 }
 
 export type OnboardingStep = 'SPLASH' | 'HUMAN_REGISTER' | 'AGENT_ONBOARDING' | 'SUCCESS';
@@ -41,56 +43,55 @@ export default function AuthOnboardingFlow({
   isOpen,
   onClose,
   onComplete,
+  currentUser,
+  currentAgent,
 }: AuthOnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('SPLASH');
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
-  const [submitting, setSubmitting] = useState(false);
-  const [submissionError, setSubmissionError] = useState('');
 
   // Human Identity Form State
-  const [humanName, setHumanName] = useState('');
-  const [humanHandle, setHumanHandle] = useState('');
-  const [humanEmail, setHumanEmail] = useState('');
-  const [humanPassword, setHumanPassword] = useState('');
-  const [humanBio, setHumanBio] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState('');
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [humanName, setHumanName] = useState(currentUser.name);
+  const [humanHandle, setHumanHandle] = useState(currentUser.username);
+  const [humanEmail, setHumanEmail] = useState('alex.tamara@example.com');
+  const [humanPassword, setHumanPassword] = useState('••••••••••••');
+  const [humanBio, setHumanBio] = useState(currentUser.bio);
+  const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([
+    'Kesehatan',
+    'IT & Teknologi',
+    '3D Spatial',
+    'Kreator Konten'
+  ]);
 
   // AI Agent Identity Form State
-  const [agentName, setAgentName] = useState('');
-  const [agentHandle, setAgentHandle] = useState('');
-  const [selectedBidang, setSelectedBidang] = useState<AgentBidang>('Desain Grafis');
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [agentSpecialty, setAgentSpecialty] = useState('');
+  const [agentName, setAgentName] = useState(currentAgent.name);
+  const [agentHandle, setAgentHandle] = useState(currentAgent.handle);
+  const [selectedBidang, setSelectedBidang] = useState<AgentBidang>(
+    (currentAgent.bidang as AgentBidang) || 'Desain Grafis'
+  );
+  const [selectedSkills, setSelectedSkills] = useState<string[]>(
+    currentAgent.skills || ['Brand Identity & Custom Logo 3D Vector', 'Desain Feed & Storyboard Reels Dinamis']
+  );
+  const [agentSpecialty, setAgentSpecialty] = useState(currentAgent.specialty);
   const [agentCategory, setAgentCategory] = useState<'Kesehatan' | 'IT & Teknologi' | 'Marketing' | 'Kreativitas' | 'Gaming & 3D'>('Kreativitas');
   const [agentPersona, setAgentPersona] = useState('Ramah & Kreatif');
-  const [selectedAgentAvatar, setSelectedAgentAvatar] = useState('');
-  const [selectedAvatarCodename, setSelectedAvatarCodename] = useState('');
-  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
-  const [canonicalSkills, setCanonicalSkills] = useState<Array<{ key: string; name: string; slug: string; category: string }>>([]);
-  const [skillsLoading, setSkillsLoading] = useState(true);
-  const [skillsError, setSkillsError] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://api.allpha.web.id' : 'http://localhost:8000')).replace(/\/$/, '');
-    void Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
-      const response = await fetch(base + '/v1/skill-catalog?limit=100&offset=' + offset, { cache: 'no-store' });
-      if (!response.ok) throw new Error('Katalog Skill gagal dimuat (' + response.status + ').');
-      const data = await response.json() as { items?: Array<{ key: string; name: string; slug: string; category: string }> };
-      return data.items ?? [];
-    })).then((pages) => { if (active) setCanonicalSkills(pages.flat()); })
-      .catch((cause) => { if (active) setSkillsError(cause instanceof Error ? cause.message : 'Katalog Skill tidak dapat dimuat.'); })
-      .finally(() => { if (active) setSkillsLoading(false); });
-    return () => { active = false; };
-  }, []);
+  const [selectedAgentAvatar, setSelectedAgentAvatar] = useState(
+    currentAgent.avatar3DImage || currentAgent.avatar || AVATAR_3D_CATALOG[0].image
+  );
+  const [selectedAvatarCodename, setSelectedAvatarCodename] = useState(
+    currentAgent.avatar3DCodename || AVATAR_3D_CATALOG[0].id
+  );
+  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(true);
 
   if (!isOpen) return null;
 
-  const humanAvatars = AVATAR_3D_CATALOG.slice(0, 5).map((avatar) => ({
-    label: avatar.name,
-    url: avatar.image,
-  }));
+  const humanAvatars = [
+    { label: 'Alex (Tech & Spatial)', url: 'https://picsum.photos/seed/alex-tamara/200/200' },
+    { label: 'Raka (Builder & Product)', url: 'https://picsum.photos/seed/raka/200/200' },
+    { label: 'Sari (Fashion & 3D)', url: 'https://picsum.photos/seed/sari/200/200' },
+    { label: 'Mika (Digital Artist)', url: 'https://picsum.photos/seed/mika/200/200' },
+    { label: 'Dr. Andi (Medical Health)', url: 'https://picsum.photos/seed/drandi/200/200' },
+  ];
 
   const availableInterests = [
     'Kesehatan',
@@ -109,12 +110,9 @@ export default function AuthOnboardingFlow({
     );
   };
 
-  const handleFinishOnboarding = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    setSubmissionError('');
+  const handleFinishOnboarding = () => {
     const updatedHuman: HumanProfile = {
-      id: '', followers: 0, following: 0, postsCount: 0, badge: '',
+      ...currentUser,
       name: humanName,
       username: humanHandle.startsWith('@') ? humanHandle : `@${humanHandle}`,
       avatar: selectedAvatar,
@@ -122,13 +120,12 @@ export default function AuthOnboardingFlow({
     };
 
     const updatedAgent: AIAgentProfile = {
-      id: '', ownerId: '', creditsEarned: 0, model: '',
+      ...currentAgent,
       name: agentName,
       handle: agentHandle.startsWith('@') ? agentHandle : `@${agentHandle}`,
       avatar: selectedAgentAvatar,
       avatar3DImage: selectedAgentAvatar,
       avatar3DCodename: selectedAvatarCodename,
-      bio: agentSpecialty.trim(),
       ownerName: updatedHuman.name,
       ownerHandle: updatedHuman.username,
       specialty: BIDANG_SKILLS_CATALOG[selectedBidang]?.label || agentSpecialty,
@@ -138,17 +135,11 @@ export default function AuthOnboardingFlow({
       autoReply: isAutoReplyEnabled,
     };
 
-    try {
-      if (authMode === 'REGISTER' && (!humanName.trim() || !humanHandle.trim())) throw new Error('Nama lengkap dan username wajib diisi.');
-      if (!humanEmail.trim() || !humanPassword) throw new Error('Email dan password wajib diisi.');
-      if (authMode === 'REGISTER' && selectedSkills.length === 0) throw new Error('Pilih minimal satu Skill untuk Agent.');
-      await onComplete({ user: updatedHuman, agent: updatedAgent, email: humanEmail.trim(), password: humanPassword, authMode, interests: selectedInterests, persona: agentPersona });
-      setStep('SUCCESS');
-    } catch (cause) {
-      setSubmissionError(cause instanceof Error ? cause.message : 'Onboarding gagal disimpan. Silakan coba lagi.');
-    } finally {
-      setSubmitting(false);
-    }
+    onComplete(updatedHuman, updatedAgent, 50);
+    setStep('SUCCESS');
+    setTimeout(() => {
+      onClose();
+    }, 1800);
   };
 
   return (
@@ -196,7 +187,7 @@ export default function AuthOnboardingFlow({
 
             {/* Feature Highlights Grid */}
             <div className="grid grid-cols-2 gap-2.5 w-full text-left">
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5">
+              <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-sky-200 border border-slate-900 text-sky-800 flex items-center justify-center shrink-0">
                   <User className="w-4 h-4" />
                 </div>
@@ -206,7 +197,7 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5">
+              <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-purple-200 border border-slate-900 text-purple-800 flex items-center justify-center shrink-0">
                   <Box className="w-4 h-4" />
                 </div>
@@ -216,7 +207,7 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5">
+              <div className="p-3.5 rounded-2xl bg-rose-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-rose-200 border border-slate-900 text-rose-800 flex items-center justify-center shrink-0">
                   <Radio className="w-4 h-4" />
                 </div>
@@ -226,7 +217,7 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5">
+              <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-amber-200 border border-slate-900 text-amber-800 flex items-center justify-center shrink-0">
                   <Coins className="w-4 h-4" />
                 </div>
@@ -286,13 +277,13 @@ export default function AuthOnboardingFlow({
               <div className="flex rounded-xl bg-slate-100 p-1 border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a] text-xs font-black">
                 <button
                   onClick={() => setAuthMode('REGISTER')}
-                  className={`px-3 py-1 rounded-lg transition ${authMode === 'REGISTER' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                  className={`px-3 py-1 rounded-lg transition ${authMode === 'REGISTER' ? 'bg-[#0284C7] text-white shadow-xs' : 'text-slate-700'}`}
                 >
                   Daftar
                 </button>
                 <button
                   onClick={() => setAuthMode('LOGIN')}
-                  className={`px-3 py-1 rounded-lg transition ${authMode === 'LOGIN' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                  className={`px-3 py-1 rounded-lg transition ${authMode === 'LOGIN' ? 'bg-[#0284C7] text-white shadow-xs' : 'text-slate-700'}`}
                 >
                   Masuk
                 </button>
@@ -311,8 +302,8 @@ export default function AuthOnboardingFlow({
                     key={av.url}
                     type="button"
                     onClick={() => setSelectedAvatar(av.url)}
-                    className={`relative rounded-full p-0.5 transition shrink-0 ${
-                      selectedAvatar === av.url ? 'ring-3 ring-blue-600 scale-105' : 'opacity-70 hover:opacity-100'
+                    className={`relative rounded-2xl p-0.5 transition shrink-0 ${
+                      selectedAvatar === av.url ? 'ring-3 ring-[#0284C7] scale-105' : 'opacity-70 hover:opacity-100'
                     }`}
                   >
                     <img src={av.url} alt={av.label} className="w-12 h-12 rounded-xl object-cover border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]" />
@@ -401,10 +392,10 @@ export default function AuthOnboardingFlow({
                         key={interest}
                         type="button"
                         onClick={() => toggleInterest(interest)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 ${
                           isSelected
-                            ? 'bg-blue-600 text-white font-bold'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            ? 'bg-[#0284C7] text-white shadow-[2px_2px_0px_#0f172a]'
+                            : 'bg-white text-slate-800 hover:bg-slate-50'
                         }`}
                       >
                         {isSelected ? `✓ ${interest}` : `+ ${interest}`}
@@ -477,10 +468,10 @@ export default function AuthOnboardingFlow({
                         setSelectedAgentAvatar(av.image);
                         setSelectedAvatarCodename(av.id);
                       }}
-                      className={`relative rounded-2xl p-1 transition shrink-0 text-left border flex flex-col items-center w-24 ${
+                      className={`relative rounded-2xl p-1.5 transition shrink-0 text-left border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex flex-col items-center w-26 active:translate-x-0.5 active:translate-y-0.5 ${
                         isSelected 
-                          ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-500/30 shadow-xs' 
-                          : 'border-slate-200 bg-white hover:border-purple-300'
+                          ? 'bg-purple-200 ring-2 ring-purple-600' 
+                          : 'bg-white hover:bg-purple-50'
                       }`}
                     >
                       <div className="w-22 h-22 rounded-xl overflow-hidden bg-slate-950 mb-1 border border-slate-900">
@@ -532,7 +523,7 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              {/* 11 BIDANG SELECTION (Health, IT, Desain Grafis, Photographer, Mentor, etc.) */}
+              {/* 11 BIDANG SELECTION */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[11px] font-black text-slate-900">
@@ -566,10 +557,10 @@ export default function AuthOnboardingFlow({
                           setSelectedSkills(BIDANG_SKILLS_CATALOG[b]?.skills.slice(0, 3) || []);
                           setAgentSpecialty(BIDANG_SKILLS_CATALOG[b]?.label || b);
                         }}
-                        className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition text-center truncate ${
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-black border-2 border-slate-900 transition text-center truncate active:translate-x-0.5 active:translate-y-0.5 ${
                           isSelected
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
-                            : 'border-slate-200 text-slate-600 hover:bg-purple-50'
+                            ? 'bg-purple-600 text-white shadow-[2px_2px_0px_#0f172a]'
+                            : 'bg-white text-slate-700 hover:bg-purple-50'
                         }`}
                       >
                         {b}
@@ -588,21 +579,26 @@ export default function AuthOnboardingFlow({
                   Katalog Skills Terpilih ({selectedSkills.length}):
                 </label>
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 bg-slate-50 rounded-2xl border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]">
-                  {skillsLoading && <p className="text-xs text-slate-500">Memuat katalog Skill kanonis…</p>}
-                  {skillsError && <div role="alert" className="text-xs text-red-700">{skillsError} <button type="button" className="underline" onClick={() => window.location.reload()}>Coba lagi</button></div>}
-                  {!skillsLoading && !skillsError && canonicalSkills.map((skill) => {
-                    const isSelected = selectedSkills.includes(skill.name);
+                  {BIDANG_SKILLS_CATALOG[selectedBidang]?.skills.map((skill) => {
+                    const isSelected = selectedSkills.includes(skill);
                     return (
                       <button
-                        key={skill.key}
+                        key={skill}
                         type="button"
-                        onClick={() => setSelectedSkills((previous) => isSelected ? previous.filter((value) => value !== skill.name) : [...previous, skill.name])}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-medium transition ${
-                          isSelected ? 'bg-purple-600 text-white font-bold' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedSkills(selectedSkills.filter(s => s !== skill));
+                          } else {
+                            setSelectedSkills([...selectedSkills, skill]);
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-xl text-[10px] font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 ${
+                          isSelected
+                            ? 'bg-purple-600 text-white shadow-[1px_1px_0px_#0f172a]'
+                            : 'bg-white text-slate-800 hover:bg-slate-100'
                         }`}
-                        title={skill.category + ' · ' + skill.slug}
                       >
-                        {isSelected ? `✓ ${skill.name}` : `+ ${skill.name}`}
+                        {isSelected ? `✓ ${skill}` : `+ ${skill}`}
                       </button>
                     );
                   })}
@@ -618,10 +614,10 @@ export default function AuthOnboardingFlow({
                       key={p}
                       type="button"
                       onClick={() => setAgentPersona(p)}
-                      className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-medium border transition ${
+                      className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-black border-2 border-slate-900 transition active:translate-x-0.5 active:translate-y-0.5 ${
                         agentPersona === p
-                          ? 'bg-purple-600 text-white border-purple-600 font-bold shadow-sm'
-                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          ? 'bg-purple-600 text-white shadow-[2px_2px_0px_#0f172a]'
+                          : 'bg-white text-slate-700 hover:bg-slate-50'
                       }`}
                     >
                       {p}
@@ -647,7 +643,15 @@ export default function AuthOnboardingFlow({
               </div>
 
               {/* Bonus Gift Card */}
-        
+              <div className="p-3 rounded-2xl bg-amber-200 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-400 border border-slate-900 text-slate-950 flex items-center justify-center font-black text-sm">
+                  🎁
+                </div>
+                <div className="text-xs">
+                  <p className="font-black text-slate-950">Bonus Selamat Datang: +50 AI Credits</p>
+                  <p className="text-[10px] text-slate-800 font-bold">Langsung aktif untuk modal interaksi pertama Anda!</p>
+                </div>
+              </div>
             </div>
 
             {/* Navigation Buttons */}
@@ -661,16 +665,14 @@ export default function AuthOnboardingFlow({
               </button>
               <button
                 type="button"
-                onClick={() => void handleFinishOnboarding()} disabled={submitting}
+                onClick={handleFinishOnboarding}
                 className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5"
               >
-                <span>{submitting ? "Menyimpan..." : "Selesai & Masuk ke Universe"} 🚀</span>
+                <span>Selesai & Masuk ke Universe 🚀</span>
               </button>
             </div>
           </div>
         )}
-
-        {submissionError && <div role="alert" className="mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submissionError}</div>}
 
         {/* ======================================================== */}
         {/* STEP 4: SUCCESS CONGRATULATIONS                          */}
@@ -685,7 +687,7 @@ export default function AuthOnboardingFlow({
               Identitas Human <strong className="text-slate-900">{humanName}</strong> dan AI Agent <strong className="text-purple-700">{agentName}</strong> siap menjelajahi Universe.
             </p>
             <span className="px-3.5 py-1.5 rounded-xl bg-amber-200 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-              Identitas berhasil disimpan
+              +50 AI Credits Dikreditkan
             </span>
           </div>
         )}
