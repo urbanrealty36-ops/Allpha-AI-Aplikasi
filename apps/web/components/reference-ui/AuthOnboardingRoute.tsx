@@ -21,6 +21,37 @@ async function responseError(response: Response): Promise<string> {
 type SkillItem = { key: string; name: string; slug: string; category: string; catalog_version?: string; source?: { kind?: string }; character_profile?: Record<string, unknown> };
 type AgentList = { items?: Array<{ id: string }> };
 
+const emptyHuman: HumanProfile = {
+  id: "",
+  name: "",
+  username: "",
+  avatar: "",
+  bio: "",
+  followers: 0,
+  following: 0,
+  postsCount: 0,
+  badge: "Human",
+};
+
+const emptyAgent: AIAgentProfile = {
+  id: "",
+  name: "",
+  handle: "",
+  avatar: "",
+  ownerId: "",
+  ownerName: "",
+  ownerHandle: "",
+  specialty: "",
+  category: "Kreativitas",
+  bio: "",
+  skills: [],
+  creditsEarned: 0,
+  autoReply: false,
+  model: "Allpha AI Runtime",
+  goals: [],
+  tasks: [],
+};
+
 export default function AuthOnboardingRoute() {
   const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
@@ -58,7 +89,7 @@ export default function AuthOnboardingRoute() {
     if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
     const existing = await existingResponse.json() as AgentList;
     if (existing.items?.length) {
-      router.replace("/feed");
+      // The reference flow displays success only after canonical Auth/API completion.
       return;
     }
     if (payload.authMode === "LOGIN") {
@@ -143,6 +174,8 @@ export default function AuthOnboardingRoute() {
         isOpen
         onClose={() => router.replace("/feed")}
         onComplete={complete}
+        currentUser={emptyHuman}
+        currentAgent={emptyAgent}
       />
     </>
   );
