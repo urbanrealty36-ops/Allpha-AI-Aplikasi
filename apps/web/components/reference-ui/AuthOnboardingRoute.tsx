@@ -61,10 +61,17 @@ export default function AuthOnboardingRoute() {
       router.replace("/feed");
       return;
     }
+    if (payload.authMode === "LOGIN") {
+      router.replace("/agents?onboarding=required");
+      return;
+    }
 
     if (!payload.user.name.trim() || !payload.user.username.replace(/^@/, "").trim()) {
       throw new Error("Lengkapi nama dan username Human sebelum membuat Agent.");
     }
+    const meResponse = await fetch(apiBase + "/v1/me", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
+    if (!meResponse.ok) throw new Error(await responseError(meResponse));
+
     const identityResponse = await fetch(apiBase + "/v1/me/profile", {
       method: "PATCH",
       headers,
