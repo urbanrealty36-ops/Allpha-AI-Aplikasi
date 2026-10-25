@@ -312,6 +312,11 @@ const agentGoalsModal = readFileSync(new URL("../components/reference-ui/AgentGo
 const agentIdentityModal = readFileSync(new URL("../components/reference-ui/AgentIdentityModal.tsx", import.meta.url), "utf8");
 assert.ok(agentGoalsModal.includes("Agent Runtime API belum dihubungkan") && agentGoalsModal.includes("kontrak penyimpanan goal Agent belum dihubungkan"), "Agent Goals/Tasks UI must fail closed until canonical task/goal APIs are wired");
 assert.doesNotMatch(agentGoalsModal, /setTimeout\(|Eksekusi otonom berhasil!|Tugas berhasil dihapus\.|Target strategis baru berhasil ditetapkan/);
+const liveStageView = readFileSync(new URL("../components/reference-ui/LiveExperienceStage.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(liveStageView, /if \(!liveStateAvailable\)\s*\{\s*return\s*\(/, "Live unavailable state must preserve the copied source composition instead of swapping to a redesigned card");
+assert.ok(liveStageView.includes("Belum ada presentasi aktif dari layanan Live Allpha.") && liveStageView.includes("disabled={!liveStateAvailable}"), "Live UI must preserve source layout while withholding sample slides and disabling unbound controls");
+assert.doesNotMatch(liveStageView, /Takeover Mikrofon aktif: Human Owner mengambil alih siaran panggung|setTimeout\(/, "Live interactions must not simulate takeover success or timed activity");
+
 const sourceStoryRail = feedViewParity.slice(feedViewParity.indexOf("{stories.map((story) => ("), feedViewParity.indexOf("{/* ========================================================================= */}", feedViewParity.indexOf("{stories.map((story) => (")) );
 assert.ok(sourceStoryRail.includes("story.isAdd && onOpenCreateModal") && sourceStoryRail.includes("story.isLive && onOpenLiveStage") && sourceStoryRail.includes("story.id === 's-3d-world'"), "Story rail must preserve exactly the reference-defined Add/Live/3D actions");
 assert.doesNotMatch(sourceStoryRail, /onOpenStory|openStoryViewer|setActiveStory|story\.id\s*\?\s*\//, "Do not invent a viewer interaction absent from the reference component");
