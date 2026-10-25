@@ -203,6 +203,7 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 /* Reference Feed composition: keep source hierarchy, with canonical routes/data. */
 .reference-feed-chrome{width:100%;max-width:760px;margin:0 auto;background:#fff;color:#172033}
 .reference-feed-tabs{display:flex;align-items:stretch;justify-content:space-around;gap:4px;min-height:76px;border-bottom:1px solid #e2e8f0;background:rgba(255,255,255,.97)}
+.reference-feed-tabs>button{border:0;background:transparent;cursor:pointer;font-family:inherit}
 .reference-feed-tabs>a,.reference-feed-tabs>button{position:relative;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px 9px;color:#64748b;font-size:clamp(12px,2.5vw,16px);font-weight:750;text-align:center}
 .reference-feed-tabs>a.is-active,.reference-feed-tabs>button.is-active{color:#111827}
 .reference-feed-tabs>a.is-active:after,.reference-feed-tabs>button.is-active:after{position:absolute;bottom:0;left:12%;right:12%;height:4px;border-radius:4px 4px 0 0;background:#111827;content:""}
