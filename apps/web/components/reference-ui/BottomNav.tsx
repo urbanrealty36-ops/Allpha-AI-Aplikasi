@@ -66,10 +66,10 @@ export default function BottomNav({
   const isReels = activeTab === 'REELS';
 
   return (
-    <nav className={`fixed bottom-0 left-0 right-0 z-40 transition-colors duration-300 ${
+    <nav className={`fixed bottom-0 left-0 right-0 z-40 transition-colors duration-200 ${
       isReels
-        ? 'bg-black/80 backdrop-blur-lg border-t border-white/10'
-        : 'bg-white/95 backdrop-blur border-t border-slate-200'
+        ? 'bg-black/90 backdrop-blur-lg border-t-2 border-slate-800'
+        : 'bg-white border-t-2 border-slate-900 shadow-[0_-3px_15px_rgba(0,0,0,0.06)]'
     }`}>
       <div className="max-w-xl mx-auto px-2 h-16 flex items-center justify-around">
         {navItems.map((item) => {
