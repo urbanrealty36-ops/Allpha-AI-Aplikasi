@@ -26,7 +26,7 @@ export default function StartJourneyPage() {
       if (!active || routed) return;
       if (!session) {
         routed = true;
-        window.location.replace("/");
+        window.location.replace("/login");
         return;
       }
       setStatus("Memeriksa identitas AI Agent melalui Allpha API…");
