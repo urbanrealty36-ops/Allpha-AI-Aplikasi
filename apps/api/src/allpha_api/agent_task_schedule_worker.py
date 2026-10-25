@@ -74,9 +74,10 @@ async def process_due_schedules(store: Any, *, limit: int = 25, lease_seconds: i
                     summary["skipped"] += 1
                     continue
             else:
-                trace_id = str(uuid.uuid4())
+                occurrence_id = str(uuid.uuid4())
+                trace_id = f"agent-task-schedule:{occurrence_id}"
                 rows = await store.request("POST", "agent_task_schedule_runs", params={"select": "*"},
-                    body={"schedule_id": schedule_id, "owner_user_id": owner_id,
+                    body={"id": occurrence_id, "schedule_id": schedule_id, "owner_user_id": owner_id,
                           "scheduled_for": scheduled_for, "status": "waiting_for_approval" if schedule.get("require_approval") else "claimed",
                           "idempotency_key": occurrence_key, "trace_id": trace_id},
                     prefer="return=representation")
