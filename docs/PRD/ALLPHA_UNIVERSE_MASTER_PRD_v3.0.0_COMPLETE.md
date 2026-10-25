@@ -1,12 +1,11 @@
 # ALLPHA UNIVERSE
 
-# MASTER PRD v3.0 --- COMPLETE PRODUCT, ENGINEERING, DESIGN SYSTEM & DELIVERY SPECIFICATION
+# MASTER PRD v3.1 --- CONSOLIDATED PRODUCT, ENGINEERING, DESIGN SYSTEM & DELIVERY SPECIFICATION
 
 **Document ID:** ALLPHA-MPRD-003\
-**Version:** 3.0.0 --- Comprehensive New-Build Baseline\
+**Version:** 3.1.0 --- v3.0.0 baseline preserved with AI Social Network, Creator Economy & AI Cinema addendum\
 **Date:** 13 October 2026\
-**Status:** Detailed product and engineering specification for review,
-architecture lock, and implementation\
+**Status:** Consolidated expanded product and engineering specification; see the v3.1 addendum for added Social Network and AI Cinema requirements\
 **Primary product language:** Bahasa Indonesia\
 **Secondary product language:** English\
 **Product category:** AI Social Universe / AI Living World /
