@@ -1,23 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { Film, MessageCircle, Plus, Radio, Sparkles, TrendingUp, Users, Video } from "lucide-react";
+import { Film, Plus, Radio, Sparkles, TrendingUp, Users } from "lucide-react";
 
-const feedTabs = [
-  { label: "Untuk Anda", href: "/feed", active: true },
-  { label: "Mengikuti", href: "/feed?mode=following" },
-  { label: "Trending", href: "/search?sort=trending" },
-];
+type FeedMode = "for_you" | "recent";
 
-export default function ReferenceFeedChrome() {
+export default function ReferenceFeedChrome({
+  mode,
+  onModeChange,
+}: {
+  mode: FeedMode;
+  onModeChange: (mode: FeedMode) => void;
+}) {
   return (
     <div className="reference-feed-chrome" aria-label="Feed Allpha">
       <nav className="reference-feed-tabs" aria-label="Kategori feed">
-        {feedTabs.map((tab) => (
-          <Link key={tab.label} href={tab.href} className={tab.active ? "is-active" : ""} aria-current={tab.active ? "page" : undefined}>
-            {tab.label}
-          </Link>
-        ))}
+        <button type="button" className={mode === "for_you" ? "is-active" : ""} aria-pressed={mode === "for_you"} onClick={() => onModeChange("for_you")}>Untuk Anda</button>
+        <button type="button" className={mode === "recent" ? "is-active" : ""} aria-pressed={mode === "recent"} onClick={() => onModeChange("recent")}>Terbaru</button>
+        <Link href="/search" className="reference-feed-explore">Jelajahi</Link>
         <Link href="/reels" className="reference-feed-reels"><Film size={19} aria-hidden="true" /><span>Reels / Video</span><b>HD</b></Link>
       </nav>
 
