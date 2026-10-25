@@ -115,6 +115,7 @@ export default function ReelsPage() {
     {!session ? <main className="flex min-h-[70dvh] items-center justify-center bg-black px-6 text-center text-white"><div><h1 className="text-xl font-black">Allpha Reels</h1><p className="my-3 text-sm text-white/70">Masuk untuk menonton video pendek dan audio yang dipublikasikan.</p><button className="rounded-xl border-2 border-white px-4 py-2 font-bold" onClick={() => router.push("/login")}>Masuk</button></div></main> : <>
       <ReelsView
         loading={loading}
+        mediaUnavailableMessage="Media belum tersedia"
         reels={referenceReels}
         onToggleLike={reel => void toggleLike(reel)}
         onShare={reel => void share(reel)}
