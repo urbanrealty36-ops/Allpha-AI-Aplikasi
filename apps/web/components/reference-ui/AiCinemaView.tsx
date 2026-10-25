@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Film, 
   Play, 
@@ -104,6 +104,9 @@ interface AiCinemaViewProps {
   userCredits: number | null;
   onPostTrailerToFeed?: (movie: AiMovieItem) => void;
   initialSelectedMovieId?: string;
+  catalogItems?: AiMovieItem[];
+  catalogState?: 'loading' | 'ready' | 'unavailable';
+  productionMode?: boolean;
 }
 
 const INITIAL_MOVIES_LIST: AiMovieItem[] = [
@@ -316,9 +319,16 @@ export default function AiCinemaView({
   userCredits,
   onPostTrailerToFeed,
   initialSelectedMovieId,
+  catalogItems,
+  catalogState = 'ready',
+  productionMode = false,
 }: AiCinemaViewProps) {
-  // Movie catalog state (supports dynamic user submissions)
-  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(INITIAL_MOVIES_LIST);
+  // Production uses only catalog records supplied by the canonical route adapter.
+  const [moviesList, setMoviesList] = useState<AiMovieItem[]>(() => catalogItems ?? (productionMode ? [] : INITIAL_MOVIES_LIST));
+  useEffect(() => {
+    if (catalogItems) setMoviesList(catalogItems);
+    else if (productionMode) setMoviesList([]);
+  }, [catalogItems, productionMode]);
 
   // VIP Monthly Subscription State
   const [isVipSubscribed, setIsVipSubscribed] = useState<boolean>(false);
@@ -394,9 +404,8 @@ export default function AiCinemaView({
 
   // Active playing movie in theater modal
   const [activeTheaterMovie, setActiveTheaterMovie] = useState<AiMovieItem | null>(() => {
-    if (initialSelectedMovieId) {
-      return INITIAL_MOVIES_LIST.find((m) => m.id === initialSelectedMovieId) || INITIAL_MOVIES_LIST[0];
-    }
+    const initialItems = catalogItems ?? (productionMode ? [] : INITIAL_MOVIES_LIST);
+    if (initialSelectedMovieId) return initialItems.find((m) => m.id === initialSelectedMovieId) ?? null;
     return null;
   });
 
@@ -468,6 +477,10 @@ export default function AiCinemaView({
 
   // Submit and Publish Film for Verification by Team Allpha
   const handlePublishForVerification = () => {
+    if (productionMode) {
+      showToast('Publikasi AI Cinema belum tersedia dari layanan produksi.');
+      return;
+    }
     if (!newTitle.trim()) {
       showToast('Harap masukkan Judul Film AI Anda.');
       return;
@@ -527,7 +540,8 @@ export default function AiCinemaView({
 
   // Simulate Instant Verification by Team Allpha
   const handleApproveByTeamAllpha = (movieId: string) => {
-    setMoviesList((prev) =>
+    if (productionMode) return;
+    setMoviesList((prev) => {
       prev.map((m) => {
         if (m.id === movieId) {
           return {
@@ -616,7 +630,7 @@ export default function AiCinemaView({
             )}
 
             <button
-              onClick={() => setIsCreateStudioOpen(true)}
+              onClick={() => { if (productionMode) { showToast('Studio AI Cinema belum terhubung ke layanan produksi.'); return; } setIsCreateStudioOpen(true); }}
               className="px-4 py-2 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5 stroke-[2.5px]" />
@@ -676,7 +690,7 @@ export default function AiCinemaView({
           {/* Action CTA Buttons */}
           <div className="relative z-10 flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0">
             <button
-              onClick={() => setIsCreateStudioOpen(true)}
+              onClick={() => { if (productionMode) { showToast('Studio AI Cinema belum terhubung ke layanan produksi.'); return; } setIsCreateStudioOpen(true); }}
               className="px-6 py-3.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black text-sm border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 stroke-[2.5px]" />
@@ -787,7 +801,7 @@ export default function AiCinemaView({
             </div>
 
             <button
-              onClick={() => setIsCreateStudioOpen(true)}
+              onClick={() => { if (productionMode) { showToast('Studio AI Cinema belum terhubung ke layanan produksi.'); return; } setIsCreateStudioOpen(true); }}
               className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
             >
               <PlusCircle className="w-3.5 h-3.5" />
@@ -896,7 +910,8 @@ export default function AiCinemaView({
 
           {/* Film Catalog Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {filteredMovies.map((movie) => (
+            {filteredMovies.length === 0 && <div role="status" className="col-span-full rounded-3xl border-2 border-dashed border-slate-300 bg-white p-6 text-center text-sm font-bold text-slate-600">{catalogState === 'loading' ? 'Memuat katalog AI Cinema…' : catalogState === 'unavailable' ? 'Katalog AI Cinema belum tersedia dari layanan produksi.' : 'Belum ada film AI Cinema yang dipublikasikan.'}</div>}
+             {filteredMovies.map((movie) => (
               <div
                 key={movie.id}
                 className="rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:-translate-y-0.5 transition overflow-hidden flex flex-col justify-between group"
