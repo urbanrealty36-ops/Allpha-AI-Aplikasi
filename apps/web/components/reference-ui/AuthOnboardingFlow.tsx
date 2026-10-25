@@ -762,7 +762,9 @@ export default function AuthOnboardingFlow({
             <p className="text-xs text-slate-700 font-bold max-w-sm">
               Identitas Human <strong className="text-slate-900">{humanName}</strong> dan AI Agent <strong className="text-purple-700">{agentName}</strong> siap menjelajahi Universe.
             </p>
-
+            <span className="px-3.5 py-1.5 rounded-xl bg-amber-200 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
+              Saldo AI Credits mengikuti ledger akun
+            </span>
           </div>
         )}
       </div>
