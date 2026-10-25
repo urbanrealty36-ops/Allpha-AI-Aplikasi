@@ -171,8 +171,8 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 @media(max-width:700px){.allpha-stories-page{padding:10px 9px 96px!important}.allpha-stories-page>section{padding:13px!important;border-radius:17px!important}.allpha-spatial-page{padding:12px 9px 96px!important}.allpha-spatial-page>header{padding:13px!important}}
 
 /* Reusable Feed card adapted from the reference hierarchy; actions remain API-backed. */
-.allpha-feed-card{padding:0!important;margin:0 0 16px!important;overflow:hidden;background:#fff;border:2px solid #0f172a;border-radius:28px;box-shadow:3px 3px 0 #0f172a}
-.allpha-feed-card-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 16px 12px;border-bottom:2px solid #0f172a}
+.allpha-feed-card-legacy{padding:0!important;margin:0 0 16px!important;overflow:hidden;background:#fff;border:2px solid #0f172a;border-radius:28px;box-shadow:3px 3px 0 #0f172a}
+.allpha-feed-card-legacy-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 16px 12px;border-bottom:2px solid #0f172a}
 .allpha-feed-owner{display:flex;align-items:center;gap:10px;min-width:0}
 .allpha-feed-owner-mark{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border-radius:50%;background:linear-gradient(135deg,#dbeafe,#eef2ff);color:#1d4ed8;font-size:19px;font-weight:900}
 .allpha-feed-owner strong{display:block;font-size:12px;color:#172554}
@@ -180,7 +180,7 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-feed-report{display:flex;align-items:center;gap:6px}
 .allpha-feed-report select{width:108px;padding:6px 8px;font-size:11px}
 .allpha-feed-report button{border:0;background:transparent;color:#7180a0;font-size:11px;padding:7px}
-.allpha-feed-card-body{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:16px 17px;color:#1d294b;font-size:14px;line-height:1.65}
+.allpha-feed-card-legacy-body{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:16px 17px;color:#1d294b;font-size:14px;line-height:1.65}
 .allpha-feed-media{padding:0 12px 12px}
 .allpha-feed-media :is(img,video){display:block;width:100%;max-height:540px;object-fit:contain;border-radius:15px;background:#f1f5fb}
 .allpha-feed-media audio{width:100%}
@@ -197,7 +197,7 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-feed-comment-form input{flex:1;min-width:0;padding:11px 13px;border:1px solid #dfe7f6;border-radius:13px}
 .allpha-feed-comment-form button{padding:10px 14px;border:0;border-radius:13px;background:#155eef;color:#fff;font-weight:700}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-@media(max-width:560px){.allpha-feed-card{border-radius:17px}.allpha-feed-card-meta{padding:12px}.allpha-feed-owner-mark{width:36px;height:36px;flex-basis:36px}.allpha-feed-report select{width:88px}.allpha-feed-report button{padding:6px 3px}.allpha-feed-card-body{padding:13px;font-size:13px}.allpha-feed-actions{padding:10px;gap:5px}.allpha-feed-actions button{font-size:11px;padding:7px 8px}.allpha-feed-comment-form{gap:6px}}
+@media(max-width:560px){.allpha-feed-card-legacy{border-radius:17px}.allpha-feed-card-legacy-meta{padding:12px}.allpha-feed-owner-mark{width:36px;height:36px;flex-basis:36px}.allpha-feed-report select{width:88px}.allpha-feed-report button{padding:6px 3px}.allpha-feed-card-legacy-body{padding:13px;font-size:13px}.allpha-feed-actions{padding:10px;gap:5px}.allpha-feed-actions button{font-size:11px;padding:7px 8px}.allpha-feed-comment-form{gap:6px}}
 
 
 /* Reference screenshot alignment: canonical web shell and creator surfaces */
@@ -243,15 +243,15 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 
 
 /* Feed card hierarchy refinement: creator identity, content, media and actions */
-.allpha-feed-card{overflow:hidden;border:1px solid #e2e8f0;border-radius:20px;background:#fff;box-shadow:0 5px 20px rgba(15,23,42,.045)}
-.allpha-feed-card-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 12px}
+.allpha-feed-card-legacy{overflow:hidden;border:1px solid #e2e8f0;border-radius:20px;background:#fff;box-shadow:0 5px 20px rgba(15,23,42,.045)}
+.allpha-feed-card-legacy-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 12px}
 .allpha-feed-owner{display:flex;align-items:center;gap:11px;min-width:0}
 .allpha-feed-owner-mark{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border:3px solid #fff;border-radius:50%;background:linear-gradient(135deg,#dbeafe,#e0e7ff);box-shadow:0 0 0 2px #60a5fa;color:#1d4ed8;font-size:16px;font-weight:800}
 .allpha-feed-owner-identity{display:grid;gap:3px;min-width:0}
 .allpha-feed-owner-identity>strong{display:block;overflow-wrap:anywhere;font-size:14px;line-height:1.35;color:#0f172a}
 .allpha-feed-owner-handle{color:#64748b;font-weight:500}
 .allpha-feed-owner time{font-size:11px;color:#64748b}
-.allpha-feed-card-body{padding:2px 18px 16px;font-size:15px;line-height:1.65;overflow-wrap:anywhere;color:#1e293b}
+.allpha-feed-card-legacy-body{padding:2px 18px 16px;font-size:15px;line-height:1.65;overflow-wrap:anywhere;color:#1e293b}
 .allpha-feed-media{margin:0 12px 12px;overflow:hidden;border-radius:15px;background:#f1f5f9}
 .allpha-feed-media img,.allpha-feed-media video{display:block;max-height:620px;width:100%;object-fit:contain}
 .allpha-feed-media audio{display:block;width:100%;padding:12px}
@@ -259,4 +259,4 @@ body:has(.allpha-ref-bottom-nav){padding-bottom:78px}
 .allpha-feed-actions button{border:1px solid #e2e8f0;border-radius:999px;padding:8px 11px;font-size:12px;font-weight:650;color:#475569}
 .allpha-feed-actions button.is-selected{border-color:#93c5fd;background:#eff6ff;color:#1d4ed8}
 .allpha-feed-comments{padding:14px 16px;border-top:1px solid #e2e8f0;background:#f8fafc}
-@media(max-width:560px){.allpha-feed-card{border-radius:17px}.allpha-feed-card-meta{padding:13px 13px 10px}.allpha-feed-owner-mark{flex-basis:38px;width:38px;height:38px}.allpha-feed-card-body{padding:2px 14px 13px}.allpha-feed-media{margin:0 8px 9px}.allpha-feed-actions{padding:10px;gap:6px}.allpha-feed-actions button{padding:7px 9px;font-size:11px}}
+@media(max-width:560px){.allpha-feed-card-legacy{border-radius:17px}.allpha-feed-card-legacy-meta{padding:13px 13px 10px}.allpha-feed-owner-mark{flex-basis:38px;width:38px;height:38px}.allpha-feed-card-legacy-body{padding:2px 14px 13px}.allpha-feed-media{margin:0 8px 9px}.allpha-feed-actions{padding:10px;gap:6px}.allpha-feed-actions button{padding:7px 9px;font-size:11px}}
