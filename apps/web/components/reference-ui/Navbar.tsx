@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 
 interface NavbarProps {
-  userCredits: number;
-  agentCredits: number;
-  isTakeoverActive: boolean;
+  userCredits: number | null;
+  agentCredits: number | null;
+  isTakeoverActive: boolean | null;
   onOpenTakeoverModal: () => void;
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
@@ -97,7 +97,7 @@ export default function Navbar({
               🪙
             </div>
             <span className="font-mono tracking-tight font-black text-xs text-amber-950">
-              {userCredits + agentCredits > 0 ? userCredits + agentCredits : 730}
+              {typeof userCredits === 'number' && typeof agentCredits === 'number' ? userCredits + agentCredits : '—'}
             </span>
           </button>
 
