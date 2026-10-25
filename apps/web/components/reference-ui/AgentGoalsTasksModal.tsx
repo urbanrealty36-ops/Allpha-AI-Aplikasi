@@ -194,16 +194,16 @@ export default function AgentGoalsTasksModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-      <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl border border-slate-200 p-5 max-h-[92vh] overflow-y-auto space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 backdrop-blur-xs animate-fade-in">
+      <div className="w-full max-w-xl rounded-3xl bg-white shadow-[6px_6px_0px_#0f172a] border-3 border-slate-900 p-5 max-h-[92vh] overflow-y-auto space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3 border-b-2 border-slate-900">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center shadow-md">
-              <Target className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-2xl bg-amber-200 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] text-slate-950 flex items-center justify-center">
+              <Target className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900">
+              <h2 className="text-sm font-black text-slate-900 uppercase">
                 Pusat Target & Tugas Otonom AI Agent
               </h2>
               <p className="text-[11px] text-slate-500">
@@ -213,14 +213,14 @@ export default function AgentGoalsTasksModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="p-1.5 rounded-xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-slate-700 hover:bg-slate-100 transition active:translate-x-0.5 active:translate-y-0.5"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Switcher: Tasks vs Goals */}
-        <div className="flex p-1 rounded-2xl bg-slate-100 text-xs font-bold">
+        <div className="flex p-1 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-black">
           <button
             onClick={() => setActiveTab('TASKS')}
             className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
@@ -252,14 +252,14 @@ export default function AgentGoalsTasksModal({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xs font-black text-slate-900">Daftar Tugas Mandiri AI Agent</h3>
+                <h3 className="text-xs font-black text-slate-900 uppercase">Daftar Tugas Mandiri AI Agent</h3>
                 <p className="text-[11px] text-slate-500">
                   Tugas yang dijalankan secara terjadwal atau otonom oleh AI tanpa intervensi manual
                 </p>
               </div>
               <button
                 onClick={() => setIsCreatingTask(true)}
-                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1"
+                className="px-3.5 py-1.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tambah Tugas</span>
@@ -275,20 +275,20 @@ export default function AgentGoalsTasksModal({
                 return (
                   <div
                     key={task.id}
-                    className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition space-y-2.5"
+                    className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2.5"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${badge.color}`}>
+                          <span className={`text-[10px] px-2.5 py-0.5 rounded-lg font-black border border-slate-900 ${badge.color}`}>
                             {badge.label}
                           </span>
-                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                          <span className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-200 text-slate-950 font-black border border-slate-900">
                             {task.frequency}
                           </span>
                           {task.scheduledTime && (
-                            <span className="text-[9px] text-slate-500 font-mono flex items-center gap-0.5">
-                              <Clock className="w-2.5 h-2.5" />
+                            <span className="text-[10px] text-slate-700 font-mono font-bold flex items-center gap-0.5">
+                              <Clock className="w-3 h-3 text-slate-900" />
                               {task.scheduledTime}
                             </span>
                           )}
@@ -299,14 +299,14 @@ export default function AgentGoalsTasksModal({
                       {/* Autonomous Toggle Switch */}
                       <button
                         onClick={() => handleToggleAutonomous(task.id)}
-                        className={`shrink-0 px-2.5 py-1 rounded-xl text-[10px] font-bold transition flex items-center gap-1 border ${
+                        className={`shrink-0 px-2.5 py-1 rounded-xl text-[10px] font-black transition flex items-center gap-1 border-2 border-slate-900 active:translate-x-0.5 active:translate-y-0.5 ${
                           task.autonomousExecution
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-2xs'
                             : 'bg-slate-100 text-slate-600 border-slate-200'
                         }`}
                         title="Klik untuk mengubah mode otonom"
                       >
-                        <span className={`w-2 h-2 rounded-full ${task.autonomousExecution ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                        <span className={`w-2 h-2 rounded-full border border-slate-900 ${task.autonomousExecution ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                         <span>{task.autonomousExecution ? 'Otonom Aktif' : 'Manual'}</span>
                       </button>
                     </div>
@@ -318,7 +318,7 @@ export default function AgentGoalsTasksModal({
                         <span>Jadwal Berikutnya: <strong>{task.nextRun || 'Sesuai jadwal'}</strong></span>
                       </div>
                       {task.outputSummary && (
-                        <p className="text-slate-700 font-medium pt-0.5 border-t border-slate-100">
+                        <p className="text-slate-900 font-bold pt-1 border-t border-slate-100">
                           {task.outputSummary}
                         </p>
                       )}
@@ -326,7 +326,7 @@ export default function AgentGoalsTasksModal({
 
                     {/* Action Bar */}
                     <div className="flex items-center justify-between pt-1 text-xs">
-                      <span className={`text-[10px] font-bold ${
+                      <span className={`text-[10px] font-black ${
                         task.status === 'COMPLETED' ? 'text-emerald-600' : 'text-blue-600'
                       }`}>
                         Status: {task.status === 'COMPLETED' ? '✓ Siap / Selesai' : '⏳ Siaga / Menunggu Jadwal'}
@@ -336,7 +336,7 @@ export default function AgentGoalsTasksModal({
                         <button
                           onClick={() => handleRunTaskNow(task)}
                           disabled={isRunning}
-                          className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition flex items-center gap-1 shadow-2xs disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white text-[10px] font-black transition flex items-center gap-1 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50"
                         >
                           {isRunning ? (
                             <>
@@ -352,7 +352,7 @@ export default function AgentGoalsTasksModal({
                         </button>
                         <button
                           onClick={() => handleDeleteTask(task.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                          className="p-1.5 rounded-xl bg-white hover:bg-rose-100 text-rose-600 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] transition active:translate-x-0.5 active:translate-y-0.5"
                           title="Hapus Tugas"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -380,7 +380,7 @@ export default function AgentGoalsTasksModal({
               </div>
               <button
                 onClick={() => setIsCreatingGoal(true)}
-                className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1"
+                className="px-3.5 py-1.5 rounded-xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tambah Goal</span>
@@ -391,34 +391,34 @@ export default function AgentGoalsTasksModal({
               {goals.map((goal) => (
                 <div
                   key={goal.id}
-                  className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5"
+                  className="p-4 rounded-2xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-2.5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${
+                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                        <span className={`text-[9.5px] px-2.5 py-0.5 rounded-lg font-black border border-slate-900 ${
                           goal.priority === 'HIGH'
                             ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : 'bg-blue-50 text-blue-700 border border-blue-200'
                         }`}>
                           Prioritas {goal.priority}
                         </span>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-[10px] text-slate-900 font-mono font-bold bg-amber-100 px-2 py-0.5 rounded-lg border border-slate-900">
                           Bidang: {goal.bidang}
                         </span>
                       </div>
-                      <h4 className="text-xs font-black text-slate-900">{goal.title}</h4>
+                      <h4 className="text-xs font-black text-slate-950">{goal.title}</h4>
                     </div>
 
-                    <span className="font-mono text-xs font-black text-blue-600">
+                    <span className="font-mono text-xs font-black text-slate-950 bg-sky-200 px-2 py-0.5 rounded-lg border border-slate-900">
                       {goal.progress}%
                     </span>
                   </div>
 
                   {/* Progress Bar */}
-                  <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                  <div className="w-full h-3 rounded-full bg-slate-100 border-2 border-slate-900 overflow-hidden shadow-2xs">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-600 to-purple-600 rounded-full transition-all duration-500"
+                      className="h-full bg-sky-400 rounded-full transition-all duration-500 border-r border-slate-900"
                       style={{ width: `${goal.progress}%` }}
                     />
                   </div>
@@ -433,7 +433,7 @@ export default function AgentGoalsTasksModal({
                         onUpdateAgent({ ...agent, goals: updated });
                         onToast(`Progres target ditingkatkan menjadi ${nextProg}%!`);
                       }}
-                      className="text-blue-600 font-bold hover:underline"
+                      className="text-sky-700 font-black hover:underline cursor-pointer"
                     >
                       + Tambah Progres Capaian
                     </button>
@@ -448,10 +448,10 @@ export default function AgentGoalsTasksModal({
         {/* MODAL / FORM: TAMBAH TUGAS OTONOM BARU                  */}
         {/* ======================================================== */}
         {isCreatingTask && (
-          <div className="p-4 rounded-3xl bg-blue-50/80 border border-blue-200 space-y-3 animate-fade-in text-xs">
+          <div className="p-4 rounded-3xl bg-sky-50 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3 animate-fade-in text-xs">
             <div className="flex items-center justify-between">
               <h4 className="font-black text-slate-900 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-blue-600" />
+                <Sparkles className="w-4 h-4 text-sky-700 stroke-[2.5px]" />
                 <span>Buat Tugas Mandiri Otonom Baru</span>
               </h4>
               <button
@@ -462,22 +462,22 @@ export default function AgentGoalsTasksModal({
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-2.5">
+            <form onSubmit={handleCreateTask} className="space-y-3">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Judul / Instruksi Tugas:</label>
+                <label className="font-black text-slate-900 block mb-1">Judul / Instruksi Tugas:</label>
                 <input
                   type="text"
                   required
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   placeholder="Misal: Jadwalkan postingan edukasi seputar tips kesehatan di era kerja hybrid"
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border-2 border-slate-900 font-bold text-slate-950 outline-none shadow-[1.5px_1.5px_0px_#0f172a]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Jenis Tugas:</label>
+                  <label className="font-black text-slate-900 block mb-1">Jenis Tugas:</label>
                   <select
                     value={newTaskType}
                     onChange={(e) => setNewTaskType(e.target.value as AgentTaskItem['type'])}
@@ -490,7 +490,7 @@ export default function AgentGoalsTasksModal({
                   </select>
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Frekuensi:</label>
+                  <label className="font-black text-slate-900 block mb-1">Frekuensi:</label>
                   <select
                     value={newTaskFrequency}
                     onChange={(e) => setNewTaskFrequency(e.target.value as AgentTaskItem['frequency'])}
@@ -506,7 +506,7 @@ export default function AgentGoalsTasksModal({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Waktu Eksekusi:</label>
+                  <label className="font-black text-slate-900 block mb-1">Waktu Eksekusi:</label>
                   <input
                     type="text"
                     value={newTaskScheduledTime}
@@ -521,9 +521,9 @@ export default function AgentGoalsTasksModal({
                     id="autonomousCheck"
                     checked={newTaskAutonomous}
                     onChange={(e) => setNewTaskAutonomous(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded"
+                    className="w-4.5 h-4.5 accent-sky-500 rounded border-2 border-slate-900 cursor-pointer"
                   />
-                  <label htmlFor="autonomousCheck" className="font-bold text-slate-800 text-[11px] cursor-pointer">
+                  <label htmlFor="autonomousCheck" className="font-black text-slate-950 text-[11px] cursor-pointer">
                     Eksekusi Otonom (AI Auto-Pilot)
                   </label>
                 </div>
@@ -532,7 +532,7 @@ export default function AgentGoalsTasksModal({
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition"
+                  className="flex-1 py-2.5 rounded-xl bg-sky-300 hover:bg-sky-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   Tugaskan ke {agent.name}
                 </button>
@@ -552,10 +552,10 @@ export default function AgentGoalsTasksModal({
         {/* MODAL / FORM: TAMBAH GOAL STRATEGIS BARU                */}
         {/* ======================================================== */}
         {isCreatingGoal && (
-          <div className="p-4 rounded-3xl bg-purple-50/80 border border-purple-200 space-y-3 animate-fade-in text-xs">
+          <div className="p-4 rounded-3xl bg-purple-50 border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3 animate-fade-in text-xs">
             <div className="flex items-center justify-between">
               <h4 className="font-black text-slate-900 flex items-center gap-1.5">
-                <Target className="w-4 h-4 text-purple-600" />
+                <Target className="w-4 h-4 text-purple-700 stroke-[2.5px]" />
                 <span>Buat Target Strategis (Goal) Baru</span>
               </h4>
               <button
@@ -566,22 +566,22 @@ export default function AgentGoalsTasksModal({
               </button>
             </div>
 
-            <form onSubmit={handleCreateGoal} className="space-y-2.5">
+            <form onSubmit={handleCreateGoal} className="space-y-3">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Judul Target:</label>
+                <label className="font-black text-slate-900 block mb-1">Judul Target:</label>
                 <input
                   type="text"
                   required
                   value={newGoalTitle}
                   onChange={(e) => setNewGoalTitle(e.target.value)}
                   placeholder="Misal: Mencapai 50K followers dan 500 AI Credits dari sesi konsultasi"
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:border-purple-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border-2 border-slate-900 font-bold text-slate-950 outline-none shadow-[1.5px_1.5px_0px_#0f172a]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Prioritas:</label>
+                  <label className="font-black text-slate-900 block mb-1">Prioritas:</label>
                   <select
                     value={newGoalPriority}
                     onChange={(e) => setNewGoalPriority(e.target.value as 'HIGH' | 'MEDIUM' | 'LOW')}
@@ -593,7 +593,7 @@ export default function AgentGoalsTasksModal({
                   </select>
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Target Selesai:</label>
+                  <label className="font-black text-slate-900 block mb-1">Target Selesai:</label>
                   <input
                     type="date"
                     value={newGoalTargetDate}
@@ -606,7 +606,7 @@ export default function AgentGoalsTasksModal({
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition"
+                  className="flex-1 py-2.5 rounded-xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   Simpan Target
                 </button>
@@ -626,7 +626,7 @@ export default function AgentGoalsTasksModal({
         <div className="pt-2 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+            className="px-5 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
             Tutup
           </button>
