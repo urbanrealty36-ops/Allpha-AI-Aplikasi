@@ -146,6 +146,9 @@ function SearchPageContent() {
         searchError={error}
         searchEmpty={searched && !busy && !error && items.length === 0}
         searchPrompt={!searched && !busy && !error}
+        onRetrySearch={() => { void runSearch(undefined, query); }}
+        onRetryTrends={() => { void loadTrends(); }}
+        onRetryRecommendations={() => { void loadRecommendations(); }}
         onSearch={value => { setQuery(value); void runSearch(undefined, value); }}
         onOpenAskAi={(agentName) => { window.location.assign("/ask-ai?agent=" + encodeURIComponent(agentName)); }}
         onOpenWorld3D={() => { window.location.assign("/spatial/navigation"); }}
