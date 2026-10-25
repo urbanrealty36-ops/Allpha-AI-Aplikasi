@@ -69,6 +69,7 @@ export default function FeedView({
 
   // Production stories come from the authenticated API; never seed demo identities.
   const stories = storiesData ?? [];
+  const visiblePosts = productionMode && feedFilter !== 'FOR_YOU' ? [] : posts;
 
   useEffect(() => {
     if (initialCommentsHandled || !initialCommentsPostId || !posts.some(post => post.id === initialCommentsPostId)) return;
@@ -239,7 +240,8 @@ export default function FeedView({
       {/* 4. FEED POSTS STREAM (Neo-Brutalist Soft Pastel Cards Sesuai Referensi)     */}
       {/* ========================================================================= */}
       <div className="space-y-4.5">
-        {posts.map((post) => {
+        {productionMode && feedFilter !== 'FOR_YOU' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><p className="text-sm font-black text-slate-900">{feedFilter === 'FOLLOWING' ? 'Feed Mengikuti belum tersedia' : 'Feed AI Agents belum tersedia'}</p><p className="mt-1 text-xs text-slate-500">{feedFilter === 'FOLLOWING' ? 'API feed belum menyediakan filter relasi mengikuti. Konten tidak diganti dengan feed umum.' : 'API konten belum mengembalikan atribusi AI Agent yang terverifikasi.'}</p></section>}
+        {visiblePosts.map((post) => {
           const isCommentsOpen = expandedCommentsPostId === post.id;
 
           return (
