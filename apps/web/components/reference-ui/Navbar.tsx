@@ -14,9 +14,9 @@ import {
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 interface NavbarProps {
-  userCredits: number;
-  agentCredits: number;
-  isTakeoverActive: boolean;
+  userCredits: number | null;
+  agentCredits: number | null;
+  isTakeoverActive: boolean | null;
   onOpenTakeoverModal: () => void;
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
@@ -91,16 +91,18 @@ export default function Navbar({
 
         {/* Right Actions: AI Credits, Takeover Status, PWA Install, Notifications */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* Credits Hub Button */}
-          <button
-            onClick={onOpenCreditsHub}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs transition"
-            title="AI Credits Saldo & Reward Hub"
-          >
-            <Coins className="w-3.5 h-3.5 text-amber-700 fill-amber-700" />
-            <span className="font-mono">{userCredits + agentCredits}</span>
-            <span className="text-[10px] text-amber-800 font-normal hidden sm:inline">Cr</span>
-          </button>
+          {/* Credits Hub: only show a balance when canonical values are supplied */}
+          {userCredits !== null && agentCredits !== null && (
+            <button
+              onClick={onOpenCreditsHub}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs transition"
+              title="AI Credits Saldo & Reward Hub"
+            >
+              <Coins className="w-3.5 h-3.5 text-amber-700 fill-amber-700" />
+              <span className="font-mono">{userCredits + agentCredits}</span>
+              <span className="text-[10px] text-amber-800 font-normal hidden sm:inline">Cr</span>
+            </button>
+          )}
 
           {/* PWA Install Button */}
           {isInstallable && (
