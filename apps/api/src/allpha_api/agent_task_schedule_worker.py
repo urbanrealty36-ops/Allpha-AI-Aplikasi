@@ -1,8 +1,8 @@
-"""Scheduled Agent task dispatcher.
+"""Durable schedule poller for the canonical Workflow Engine.
 
-Claims due occurrences in PostgreSQL, persists an idempotent occurrence before
-calling the existing Agent Runtime create/execute contract, and never fabricates
-success. A schedule requiring owner approval is held without dispatch.
+It claims due occurrences atomically and creates a Workflow run. The Workflow
+worker delegates the side effect to Agent Runtime after policy checks; this
+poller never executes Agent tools itself. Owner-approval gates fail closed.
 """
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from starlette.requests import Request
 
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 from allpha_api.workflow_engine import WorkflowDefinition
