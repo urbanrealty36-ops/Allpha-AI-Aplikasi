@@ -45,18 +45,18 @@ export default function ReferenceNavigation() {
   return (
     <>
       <Navbar
-        userCredits={null}
-        agentCredits={null}
-        isTakeoverActive={null}
+        userCredits={0}
+        agentCredits={0}
+        isTakeoverActive={false}
         onOpenTakeoverModal={() => navigate("/agents")}
         onOpenCreditsHub={() => navigate("/skill-challenges")}
         onOpenOnboarding={() => navigate("/agents?onboarding=required")}
         onOpenMessages={() => navigate("/messages")}
-        onOpenNotifications={() => navigate("/notifications")}
         isMessagesActive={pathname.startsWith("/messages")}
         unreadMessagesCount={0}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        onSearch={query => navigate("/search?q=" + encodeURIComponent(query))}
       />
       <BottomNav
         activeTab={tabForPath(pathname)}
