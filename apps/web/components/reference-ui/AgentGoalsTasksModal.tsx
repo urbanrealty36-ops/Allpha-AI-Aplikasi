@@ -70,106 +70,33 @@ export default function AgentGoalsTasksModal({
 
   if (!isOpen) return null;
 
-  // Toggle Autonomous Execution
-  const handleToggleAutonomous = (taskId: string) => {
-    const updated = tasks.map((t) => {
-      if (t.id === taskId) {
-        const nextState = !t.autonomousExecution;
-        onToast(
-          nextState
-            ? `Mode Otonom AKTIF: AI Agent ${agent.name} akan mengeksekusi tugas ini otomatis.`
-            : `Mode Otonom NON-AKTIF: Tugas ini memerlukan persetujuan manual Anda.`
-        );
-        return { ...t, autonomousExecution: nextState };
-      }
-      return t;
-    });
-
-    setTasks(updated);
-    onUpdateAgent({ ...agent, tasks: updated });
+  // Production adapter guard: this source UI has no canonical task-policy endpoint wired here.
+  const handleToggleAutonomous = (_taskId: string) => {
+    onToast('Perubahan mode otonom belum tersedia: kontrak API/policy Agent belum dihubungkan.');
   };
 
-  // Run Task Instantly
-  const handleRunTaskNow = (task: AgentTaskItem) => {
-    setRunningTaskId(task.id);
-    onToast(`Memulai eksekusi tugas "${task.title}" oleh ${agent.name}...`);
-
-    setTimeout(() => {
-      const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      const updated = tasks.map((t) => {
-        if (t.id === task.id) {
-          return {
-            ...t,
-            status: 'COMPLETED' as const,
-            lastRun: `Hari ini, ${now} WIB`,
-            outputSummary: `Eksekusi otonom berhasil! Draf dan log terkirim ke sistem Allpha.`,
-          };
-        }
-        return t;
-      });
-
-      setTasks(updated);
-      setRunningTaskId(null);
-      onUpdateAgent({ ...agent, tasks: updated });
-      onToast(`Tugas "${task.title}" selesai dieksekusi oleh AI Agent!`);
-    }, 1800);
+  // Do not simulate a successful runtime execution. The source design remains intact.
+  const handleRunTaskNow = (_task: AgentTaskItem) => {
+    onToast('Eksekusi belum tersedia: sesi/task harus dijalankan melalui Agent Runtime API.');
   };
 
-  // Delete Task
-  const handleDeleteTask = (taskId: string) => {
-    const updated = tasks.filter((t) => t.id !== taskId);
-    setTasks(updated);
-    onUpdateAgent({ ...agent, tasks: updated });
-    onToast('Tugas berhasil dihapus.');
+  // Local-only deletion is not a canonical business write.
+  const handleDeleteTask = (_taskId: string) => {
+    onToast('Penghapusan tugas belum tersedia: kontrak API task belum dihubungkan.');
   };
 
-  // Create New Task
+  // Keep the source form and styling, but never present local-only task creation as persisted.
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-
-    const newTask: AgentTaskItem = {
-      id: `t-${Date.now()}`,
-      title: newTaskTitle.trim(),
-      type: newTaskType,
-      frequency: newTaskFrequency,
-      status: 'IN_PROGRESS',
-      autonomousExecution: newTaskAutonomous,
-      scheduledTime: newTaskScheduledTime,
-      lastRun: 'Baru dibuat',
-      nextRun: `Hari ini, ${newTaskScheduledTime}`,
-      outputSummary: 'Tugas sedang dipantau oleh mesin penalaran otonom Allpha.',
-    };
-
-    const updated = [newTask, ...tasks];
-    setTasks(updated);
-    onUpdateAgent({ ...agent, tasks: updated });
-    setIsCreatingTask(false);
-    setNewTaskTitle('');
-    onToast(`Tugas otonom baru berhasil ditugaskan ke ${agent.name}!`);
+    onToast('Pembuatan tugas belum tersedia: kontrak Agent Runtime API belum dihubungkan.');
   };
 
-  // Create New Goal
+  // Keep the source form and styling; goals require a canonical persistence contract.
   const handleCreateGoal = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGoalTitle.trim()) return;
-
-    const newGoal: AgentGoalItem = {
-      id: `g-${Date.now()}`,
-      title: newGoalTitle.trim(),
-      bidang: agent.bidang || 'Desain Grafis',
-      targetDate: newGoalTargetDate,
-      priority: newGoalPriority,
-      status: 'ACTIVE',
-      progress: 20,
-    };
-
-    const updated = [newGoal, ...goals];
-    setGoals(updated);
-    onUpdateAgent({ ...agent, goals: updated });
-    setIsCreatingGoal(false);
-    setNewGoalTitle('');
-    onToast(`Target strategis baru berhasil ditetapkan untuk ${agent.name}!`);
+    onToast('Pembuatan goal belum tersedia: kontrak penyimpanan goal Agent belum dihubungkan.');
   };
 
   const getTypeBadge = (type: AgentTaskItem['type']) => {
@@ -420,13 +347,7 @@ export default function AgentGoalsTasksModal({
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
                     <span>Target: <strong className="text-slate-950">{goal.targetDate}</strong></span>
                     <button
-                      onClick={() => {
-                        const nextProg = Math.min(100, goal.progress + 15);
-                        const updated = goals.map(g => g.id === goal.id ? { ...g, progress: nextProg } : g);
-                        setGoals(updated);
-                        onUpdateAgent({ ...agent, goals: updated });
-                        onToast(`Progres target ditingkatkan menjadi ${nextProg}%!`);
-                      }}
+                      onClick={() => onToast('Perubahan progres goal belum tersedia: progres harus berasal dari data kanonis.')}
                       className="text-sky-700 font-black hover:underline cursor-pointer"
                     >
                       + Tambah Progres Capaian
