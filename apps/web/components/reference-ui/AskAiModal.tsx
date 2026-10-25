@@ -115,7 +115,7 @@ export default function AskAiModal({
               <div className="flex items-center gap-1.5">
                 <h2 className="text-sm font-black text-slate-900">{agentName}</h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-black">
-                  AI Agent
+                  AI AGENT
                 </span>
               </div>
               <p className="text-[11px] font-semibold text-slate-600">Milik @{humanOwner.toLowerCase().replace(/\s+/g, '')} · Human Owner</p>
@@ -124,8 +124,8 @@ export default function AskAiModal({
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-200 border-2 border-slate-900 text-amber-950 font-mono font-black flex items-center gap-1 shadow-[1.5px_1.5px_0px_#0f172a]">
-              <Coins className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 text-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer" />
-              15 Cr/sesi
+              <span>🪙</span>
+              <span>15 Cr/sesi</span>
             </span>
             <button
               onClick={onClose}
@@ -153,14 +153,14 @@ export default function AskAiModal({
               <div
                 className={`max-w-[80%] p-3.5 rounded-2xl leading-relaxed whitespace-pre-line border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] font-medium ${
                   m.sender === 'user'
-                    ? 'bg-blue-600 text-white rounded-tr-none'
-                    : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+                    ? 'bg-sky-400 text-slate-950 rounded-tr-none'
+                    : 'bg-white text-slate-900 rounded-tl-none'
                 }`}
               >
                 {m.text}
                 <div
                   className={`text-[9.5px] mt-1.5 text-right font-mono font-bold ${
-                    m.sender === 'user' ? 'text-blue-100' : 'text-slate-400'
+                    m.sender === 'user' ? 'text-slate-800' : 'text-slate-500'
                   }`}
                 >
                   {m.time}
@@ -172,7 +172,7 @@ export default function AskAiModal({
           {isLoading && (
             <div className="flex items-center gap-2 text-slate-800 text-xs pl-10 font-bold">
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-600 stroke-[2.5px]" />
-              <span>{agentName} sedang menyusun respon berdasarkan knowledge...</span>
+              <span>{agentName} sedang menyusun respon...</span>
             </div>
           )}
         </div>
