@@ -131,7 +131,7 @@ async def create_task(payload: TaskCreate, request: Request,
         try:
             encoded = json.dumps({
                 "session_id": str(payload.session_id), "skill_id": str(payload.skill_id),
-                "tool_key": payload.tool_key, "inputs": payload.inputs,
+                "tool_key": payload.tool_key, "inputs": payload.inputs, "budget_limits": payload.budget_limits,
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
         except (TypeError, ValueError, UnicodeEncodeError) as exc:
             raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_INPUT", "message": "Input task harus berupa JSON valid."}) from exc
