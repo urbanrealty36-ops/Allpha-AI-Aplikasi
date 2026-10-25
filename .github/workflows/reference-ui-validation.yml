@@ -40,6 +40,9 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
       - name: Install Playwright Chromium
         run: |
           npm install --no-save playwright
@@ -58,6 +61,18 @@ jobs:
           exit 1
       - name: Check routes at mobile and desktop viewports
         run: node scripts/visual-smoke.mjs
+      - name: Capture authenticated visual evidence
+        if: ${{ secrets.ALLPHA_E2E_EMAIL != '' && secrets.ALLPHA_E2E_PASSWORD != '' && secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' && secrets.NEXT_PUBLIC_API_BASE_URL != '' }}
+        run: node scripts/visual-auth-smoke.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          ALLPHA_E2E_EMAIL: ${{ secrets.ALLPHA_E2E_EMAIL }}
+          ALLPHA_E2E_PASSWORD: ${{ secrets.ALLPHA_E2E_PASSWORD }}
+      - name: Report missing authenticated test configuration
+        if: ${{ secrets.ALLPHA_E2E_EMAIL == '' || secrets.ALLPHA_E2E_PASSWORD == '' || secrets.NEXT_PUBLIC_SUPABASE_URL == '' || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY == '' || secrets.NEXT_PUBLIC_API_BASE_URL == '' }}
+        run: echo "::warning::Authenticated visual proof was not run because dedicated Supabase E2E credentials/configuration are not configured."
       - name: Upload visual evidence
         if: always()
         uses: actions/upload-artifact@v4
