@@ -116,8 +116,8 @@ Pinned to reference `main` commit `b6c9fc728d5d031a28b22fbbec9a546846900e87`; th
 
 | Source path | Bytes | Source blob SHA | Canonical target path |
 |---|---:|---|---|
-| `public/assets/menggu3d/ai_plaza.jpg` | 784618 | `e3453adbce9b27379c40ff1f4951ee99a812b4c9` | missing at canonical path |
-| `public/assets/menggu3d/billboard_ads.jpg` | 858428 | `0fc11cb48a923c8809e91ea020a140b69a650924` | missing at canonical path |
-| `public/assets/menggu3d/booth_3d.jpg` | 926272 | `6c26a03ad657f19aa4fb9ad4941f1999066d10e5` | missing at canonical path |
-| `public/assets/menggu3d/district_spatial.jpg` | 840740 | `ce20cae5341da20fdba8e78abcaa4af1b7f947a0` | missing at canonical path |
-| `public/assets/menggu3d/landmark_citadel.jpg` | 479671 | `5ce4e268c6850b97332584a3e2eae2fb38707678` | missing at canonical path |
+| `public/assets/menggu3d/ai_plaza.jpg` | 784618 | `e3453adbce9b27379c40ff1f4951ee99a812b4c9` | verified at `apps/web/public/assets/menggu3d/ai_plaza.jpg`; bytes=784618; Git blob SHA-1=e3453adbce9b27379c40ff1f4951ee99a812b4c9; SHA-256=13e8fb3a8d2b2737c847955ed12e12c645a79578a58565cfd427db4c68046573 |
+| `public/assets/menggu3d/billboard_ads.jpg` | 858428 | `0fc11cb48a923c8809e91ea020a140b69a650924` | verified at `apps/web/public/assets/menggu3d/billboard_ads.jpg`; bytes=858428; Git blob SHA-1=0fc11cb48a923c8809e91ea020a140b69a650924; SHA-256=ab219a41135782d9500163e7811d8e7d3e940a8104f8f8c53ec8ef5965d09f66 |
+| `public/assets/menggu3d/booth_3d.jpg` | 926272 | `6c26a03ad657f19aa4fb9ad4941f1999066d10e5` | verified at `apps/web/public/assets/menggu3d/booth_3d.jpg`; bytes=926272; Git blob SHA-1=6c26a03ad657f19aa4fb9ad4941f1999066d10e5; SHA-256=5f0e7ae05e2a7895c0e489bb1f1268f8946c228c8c5d899552860c1d69741fa6 |
+| `public/assets/menggu3d/district_spatial.jpg` | 840740 | `ce20cae5341da20fdba8e78abcaa4af1b7f947a0` | verified at `apps/web/public/assets/menggu3d/district_spatial.jpg`; bytes=840740; Git blob SHA-1=ce20cae5341da20fdba8e78abcaa4af1b7f947a0; SHA-256=5de1df9d43cea707279479a23d743ec08ceb2f50c570b45cb1e61d6fa6043d73 |
+| `public/assets/menggu3d/landmark_citadel.jpg` | 479671 | `5ce4e268c6850b97332584a3e2eae2fb38707678` | verified at `apps/web/public/assets/menggu3d/landmark_citadel.jpg`; bytes=479671; Git blob SHA-1=5ce4e268c6850b97332584a3e2eae2fb38707678; SHA-256=a894475e4730e87faa59848a2713df9f9a9c70bce1e401e3895ec8c9cdf8eff1 |
