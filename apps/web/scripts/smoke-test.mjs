@@ -341,7 +341,14 @@ assert.ok(cinemaViewParity.includes("Pendaftaran kreator, pengunggahan film, ver
 assert.ok(liveStageView.includes('liveStateAvailable ? "● Aktif" : "● Belum tersedia"'), "Live chat must not claim an active session when canonical live state is unavailable");
 assert.ok(liveStageView.includes('liveStateAvailable ? `${activeSlideIndex + 1} / ${slides.length}` : "— / —"'), "Live presentation must not expose demo slide counts without a canonical session");
 for (const route of ["/", "/login", "/start", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/spatial/themes", "/spatial/sample-scene", "/theme/sample-theme", "/ai-cinema", "/marketplace", "/live", "/ask-ai", "/profile", "/skill-challenges", "/content-studio", "/agents", "/agents/sample-agent/studio", "/agents/passport/sample-handle", "/communities", "/notifications", "/workflows"]) assert.ok(visualSmoke.includes(`"${route}"`), "Visual smoke must include canonical route: " + route);
-assert.ok(visualSmoke.includes("27 routes × 4 viewports") && visualSmoke.includes("width: 360") && visualSmoke.includes("width: 390") && visualSmoke.includes("width: 820") && visualSmoke.includes("width: 1440"), "Visual smoke must cover every canonical Web route and all four viewport widths");
+assert.ok(visualSmoke.includes("28 routes × 4 viewports") && visualSmoke.includes("width: 360") && visualSmoke.includes("width: 390") && visualSmoke.includes("width: 820") && visualSmoke.includes("width: 1440"), "Visual smoke must cover every canonical Web route and all four viewport widths");
+const spatialWorldRoute = readFileSync(new URL("../app/spatial/navigation/page.tsx", import.meta.url), "utf8");
+const spatialCatalogRoute = readFileSync(new URL("../app/spatial/navigation/catalog/page.tsx", import.meta.url), "utf8");
+const threeWorldView = readFileSync(new URL("../components/reference-ui/ThreeWorldView.tsx", import.meta.url), "utf8");
+assert.ok(spatialWorldRoute.includes("ThreeWorldView productionMode"), "Dunia 3D route must mount the copied reference world component with production guards");
+assert.ok(spatialCatalogRoute.includes("SpatialNavigationBrowser") && spatialCatalogRoute.includes("/spatial/navigation"), "Canonical spatial catalogue must remain reachable after source UI route mapping");
+assert.ok(threeWorldView.includes("Katalog booth 3D belum tersedia dari layanan produksi.") && threeWorldView.includes("disabled={productionMode}") && threeWorldView.includes("selectedBooth && !productionMode"), "3D source UI must suppress demo booth prices/purchases and unbound Live controls in production");
+
 assert.ok(referenceNavbar.includes("onOpenNotifications"), "Navbar notifications must use a real navigation callback");
 assert.doesNotMatch(referenceNavbar, /alert\(['"]Anda memiliki 3 notifikasi/);
 if (existsSync(nativeContentPath)) assert.ok(nativeApp.includes('prefixes: ["allpha://"]'), "Native root deep-link prefix must be configured");
