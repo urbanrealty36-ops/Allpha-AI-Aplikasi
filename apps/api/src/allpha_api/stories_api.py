@@ -203,17 +203,44 @@ async def list_active_stories(
         "order": "published_at.desc,id.desc",
         "limit": str(min(1000, limit * 20)),
     })
+    owner_ids = sorted({str(item.get("owner_id")) for item in (rows or []) if item.get("owner_id")})
+    profiles = await _server_db("GET", "profiles", params={
+        "select": "id,username,display_name,avatar_url,visibility",
+        "id": f"in.({','.join(owner_ids)})", "limit": str(min(1000, len(owner_ids))),
+    }) if owner_ids else []
+    profiles_by_id = {str(profile.get("id")): profile for profile in (profiles or [])}
     if user:
         followed, hidden = await _edges(str(user["id"]))
         visible = [
             item for item in (rows or [])
             if str(item.get("owner_id")) not in hidden
-            and (item.get("visibility") == "public" or str(item.get("owner_id")) in followed)
+            and (
+                (item.get("visibility") == "public" and (
+                    profiles_by_id.get(str(item.get("owner_id")), {}).get("visibility") == "public"
+                    or str(item.get("owner_id")) in followed
+                ))
+                or (item.get("visibility") == "followers" and str(item.get("owner_id")) in followed)
+            )
         ][:limit]
     else:
-        # Anonymous discovery is strictly public. Never return followers/private Stories.
-        visible = [item for item in (rows or []) if item.get("visibility") == "public"][:limit]
+        # Anonymous discovery is strictly public and public-profile-only.
+        visible = [
+            item for item in (rows or [])
+            if item.get("visibility") == "public"
+            and profiles_by_id.get(str(item.get("owner_id")), {}).get("visibility") == "public"
+        ][:limit]
     items = await _attach_media(visible)
+    for item in items:
+        creator = profiles_by_id.get(str(item.get("owner_id")), {})
+        item["creator"] = {
+            "username": creator.get("username"),
+            "display_name": creator.get("display_name") or creator.get("username") or "Kreator",
+            "avatar_url": creator.get("avatar_url"),
+        }
+        item["discovery_group"] = (
+            "following" if user and str(item.get("owner_id")) in followed
+            else "suggested_public"
+        )
     return {"items": items, "server_time": now.isoformat(), "media_preview_expires_in": 300}
 
 
