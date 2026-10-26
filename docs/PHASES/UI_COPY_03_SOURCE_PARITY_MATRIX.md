@@ -317,3 +317,17 @@ The reference repository contains six modal components and the target contains a
 - A previous automated CI artifact recorded 108 screenshots for 27 routes × widths 360, 390, 820 and 1440 on commit `4898e860f7927a34e35ce000526626bc98b9446d`. It is **stale for acceptance** because later UI code changes are not represented in that artifact. The authenticated visual gate was also skipped because protected Supabase/API test-session configuration was not present.
 - Allpha Smoke, ENG-P22 and ENG-P23 succeeded on the documentation-only predecessor commit `cbf3c3b105a10e623b9a1e1905fef921f6113d2d`; Vercel statuses reported `build-rate-limit`, and ENG-P01 was still running. These results do not certify the UI after the CSS isolation commit.
 - Do not close UI-COPY-03 from the component manifest alone. Current blockers: refreshed route/viewport screenshot evidence for the latest code, authenticated-state evidence with an approved isolated test identity, source-to-route composition review, and interaction-contract dispositions for all source controls. WP-02 remains blocked until the acceptance gate is actually satisfied.
+
+### Correction — latest public asset transfer verified (2026-10-26)
+
+The current-head Aistudio attachment previously listed as missing was subsequently captured from the pinned reference source by GitHub Actions and committed on the working branch. The binary is:
+
+- `apps/web/public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png`
+- Bytes: `2,030,869`
+- Source Git blob SHA-1: `ad78971cbe154e01325dc90f8ca0c88349c35c2b`
+- SHA-256: `fb06dd700425e620f8a26d28af76ae40f8da5a76b70aa7cb1bffb1e688899473`
+- Capture workflow run: [40278061361](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40278061361) — success; its log confirms size and Git blob SHA verification.
+
+A fresh Git-tree comparison against source `aad317c1f651163f065cd42b9ae35267d18f354a` now finds **21/21 public files match by path and Git blob SHA**. The capture workflow manifest was restored after an intermediate automation formatting defect and is now complete; its row-level hashes and temporary-media inventory remain intact. The capture workflow's row-boundary handling was corrected in commit `11cf1c8705de8182834c723d5a9da6fa377c73f5`.
+
+This closes the public asset path/hash inventory gap. It does not by itself close UI-COPY-03: route wiring, authenticated state, interaction contract gaps, and visual acceptance remain separate gates.
