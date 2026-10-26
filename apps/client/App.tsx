@@ -232,7 +232,7 @@ function Welcome() {
             <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
               <Pressable onPress={() => requestLogin("Menyukai Reels")} style={[s.button, { marginTop: 8 }]}><Text style={s.buttonText}>Suka</Text></Pressable>
               <Pressable onPress={() => requestLogin("Mengomentari Reels")} style={[s.button, s.secondary, { marginTop: 8 }]}><Text style={s.secondaryText}>Komentar</Text></Pressable>
-              <Pressable onPress={() => { void Share.share({ message: "https://allpha.web.id/reels?content=" + encodeURIComponent(item.id) }); }} style={[s.button, s.secondary, { marginTop: 8 }]}><Text style={s.secondaryText}>Bagikan</Text></Pressable>
+              <Pressable onPress={() => { void Share.share({ message: "https://allpha.web.id/feed?content=" + encodeURIComponent(item.id) }); }} style={[s.button, s.secondary, { marginTop: 8 }]}><Text style={s.secondaryText}>Bagikan</Text></Pressable>
             </View>
           </View>;
         })}
