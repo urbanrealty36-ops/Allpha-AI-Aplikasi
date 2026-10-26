@@ -16,6 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from allpha_api.auth import current_user
 from allpha_api.operator_security import privileged_rest_request, require_operator_scope, write_operator_audit
 from allpha_api.spatial_manifest_api import _get_rows, _service_config, _signed_asset_url
 
@@ -515,6 +516,7 @@ async def preview_theme_version(
 @router.get("/v1/spatial/themes")
 async def list_published_themes(
     limit: int = 50, offset: int = 0,
+    user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Public directory contains only themes with an active published version."""
     if not 1 <= limit <= 100 or offset < 0:
@@ -547,6 +549,7 @@ async def list_published_themes(
 async def get_published_theme_manifest(
     response: Response,
     theme_key: str = Path(min_length=3, max_length=120, pattern=r"^[a-z0-9][a-z0-9._-]{2,119}$"),
+    user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Renderer contract: published Theme + immutable published asset versions only."""
     if response is not None:
