@@ -5,6 +5,7 @@ import { Canvas, useLoader } from "@react-three/fiber";
 import { Group } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { configureAllphaGLTFLoader } from "../../lib/spatial/configureAllphaGLTFLoader";
+import { getBrowserSupabase } from "../../lib/supabase";
 import { ALLPHA_ASSET_CATEGORIES, type AllphaAssetCategory } from "./CanonicalGlbPreview";
 
 type SceneObject = {
@@ -31,7 +32,13 @@ type SceneManifest = {
   objects: SceneObject[];
 };
 
-class SceneErrorBoundary extends Component<{ children: ReactNode; onError: (error: Error) => void }, { failed: boolean }> {
+async function authenticatedHeaders(): Promise<Record<string, string>> {
+  const supabase = getBrowserSupabase();
+  const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+  if (!data.session) throw new Error("Masuk untuk memuat scene Universe 3D.");
+  return { Accept: "application/json", Authorization: "Bearer " + data.session.access_token };
+}
+\nclass SceneErrorBoundary extends Component<{ children: ReactNode; onError: (error: Error) => void }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: Error) { this.props.onError(error); }
@@ -92,14 +99,18 @@ export function CanonicalWorldRenderer({ sceneKey, themeKey, apiBase }: { sceneK
     const manifestPath = themeKey
       ? "/v1/spatial/themes/" + encodeURIComponent(themeKey) + "/manifest"
       : "/v1/spatial/scenes/" + encodeURIComponent(key) + "/manifest";
-    void fetch(base + manifestPath, {
-      signal: controller.signal, cache: "no-store", headers: { Accept: "application/json" },
-    }).then(async (response) => {
-      if (!response.ok) throw new Error(response.status === 404 ? (themeKey ? "Theme publik tidak ditemukan." : "Scene publik tidak ditemukan.") : "Manifest scene/Theme tidak tersedia (" + response.status + ").");
-      return validateManifest(await response.json());
-    }).then(setManifest).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Scene/Theme tidak dapat dimuat.");
-    });
+    void (async () => {
+      try {
+        const headers = await authenticatedHeaders();
+        if (controller.signal.aborted) return;
+        const response = await fetch(base + manifestPath, { signal: controller.signal, cache: "no-store", headers });
+        if (!response.ok) throw new Error(response.status === 404 ? (themeKey ? "Theme publik tidak ditemukan." : "Scene publik tidak ditemukan.") : "Manifest scene/Theme tidak tersedia (" + response.status + ").");
+        const nextManifest = validateManifest(await response.json());
+        if (!controller.signal.aborted) setManifest(nextManifest);
+      } catch (cause: unknown) {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Scene/Theme tidak dapat dimuat.");
+      }
+    })();
     return () => controller.abort();
   }, [sceneKey, themeKey, base, retry]);
 
