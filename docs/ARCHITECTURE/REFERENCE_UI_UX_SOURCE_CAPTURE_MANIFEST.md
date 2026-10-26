@@ -2,7 +2,7 @@
 
 **Observed:** 2026-10-24  
 **Reference repository:** https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New  
-**Reference branch/tree:** `main` / `5184f44e9f6c4e641cbe37e9f743583cf40d785e`  
+**Reference branch/tree:** `main` / `aad317c1f651163f065cd42b9ae35267d18f354a` (current source head for the 2026-10-26 inventory)  
 **Canonical repository:** https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi  
 **Scope:** Checkpoints A/B source capture and asset path reconciliation only. This is an inventory, not a phase/status plan.
 
@@ -11,7 +11,7 @@
 - Source tree: 90 entries, 73 file blobs.
 - Text/source/config files: 47; 47 confirmed present in the canonical reference archive or copied component target.
 - Top-level React components: 25; source component files exist under `apps/web/components/reference-ui/`, and archived originals exist under `docs/reference-ui-source/Allpha-Front-End-UI-New/`.
-- Public assets under `public/assets/aistudio/`: 19; all 19 exact-path copies exist in canonical `apps/web/public/` after binary capture and checksum verification.
+- Public assets under `public/assets/aistudio/`: 20; all 20 exact-path copies exist in canonical `apps/web/public/` after byte-size, source Git blob SHA-1 and SHA-256 verification.
 - Temporary `.aistudio/artifacts/brain/**/.tempmediaStorage/*`: 8; inventoried but not copied to public runtime because no confirmed usage/path mapping.
 - No backend/API/DB/Supabase or business-state changes were performed for this capture.
 
@@ -45,6 +45,7 @@
 | `public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png` | 2092646 | `e89cac55c852fc19a76c53427fe79ba42426ef50` | verified at `apps/web/public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png`; bytes=2092646; Git blob SHA-1=e89cac55c852fc19a76c53427fe79ba42426ef50; SHA-256=64393eebe03c4d992101688c9d0158043e83a6de3567480b93d9b31f8fe849ee |
 | `public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png` | 2674422 | `7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66` | verified at `apps/web/public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png`; bytes=2674422; Git blob SHA-1=7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66; SHA-256=df39e38360f889314b856793f4ff1fc190f9f88791e307ce78c7c45a1b2d2841 |
 | `public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png` | 2663435 | `749060b67cf8d143fc360c6c45e7742b849c27ab` | verified at `apps/web/public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png`; bytes=2663435; Git blob SHA-1=749060b67cf8d143fc360c6c45e7742b849c27ab; SHA-256=2018bbd59ebb4750ae9b77f0d6ad383eac8cc8dd42d4feec1364d6436465ccc5 |
+| `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` | 2030869 | `ad78971cbe154e01325dc90f8ca0c88349c35c2b` | verified at `apps/web/public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png`; bytes=2030869; Git blob SHA-1=ad78971cbe154e01325dc90f8ca0c88349c35c2b; SHA-256=fb06dd700425e620f8a26d28af76ae40f8da5a76b70aa7cb1bffb1e688899473 |
 
 ## Temporary AI Studio media inventory
 
@@ -75,7 +76,7 @@ Historical limitation (resolved by the verified capture workflow): direct connec
 ## Acceptance status
 
 - Checkpoint A: source component/route/asset inventory documented; route gaps explicit.
-- Checkpoint B: text/source capture and all 19 public assets are present at exact canonical paths. The eight previously missing assets were copied from the pinned reference source commit and verified by expected byte size, source Git blob SHA-1, and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.
+- Checkpoint B: text/source capture and all 20 public assets are present at exact canonical paths. The eight previously missing assets and the current-head addition were verified by expected byte size, source Git blob SHA-1 and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.
 - Component runtime wiring and full API integration are deliberately out of scope for A/B.
 
 
@@ -83,4 +84,4 @@ Historical limitation (resolved by the verified capture workflow): direct connec
 
 After the initial manifest was recorded, commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) copied the 13 remaining divergent component files byte-for-byte from reference source. A subsequent Git tree comparison verified **25 of 25** top-level reference component files now have the same Git blob SHA at `apps/web/components/reference-ui/<component>` as at `components/<component>` in reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
 
-This is source-copy evidence only. Component route wiring, production API behavior, and UI acceptance remain unverified. Binary asset transfer remains incomplete as stated above.
+This is source-copy evidence only. Component route wiring, production API behavior, and UI acceptance remain unverified. The latest current-head public asset is now present and checksum-verified; UI route wiring and acceptance remain separate gates.

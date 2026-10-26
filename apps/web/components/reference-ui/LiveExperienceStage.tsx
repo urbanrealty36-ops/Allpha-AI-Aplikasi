@@ -35,13 +35,17 @@ interface LiveExperienceStageProps {
   userCredits: number | null;
   agentCredits: number | null;
   liveStateAvailable?: boolean;
+  hostAvatarUrl?: string | null;
+  agentAvatarUrl?: string | null;
 }
 
 export default function LiveExperienceStage({
   onBackToFeed,
   userCredits,
   agentCredits,
-  liveStateAvailable = true,
+  liveStateAvailable = false,
+  hostAvatarUrl = null,
+  agentAvatarUrl = null,
 }: LiveExperienceStageProps) {
   // Live state
   const [isLive, setIsLive] = useState(false);
@@ -159,9 +163,13 @@ export default function LiveExperienceStage({
                 {isHostCameraOn ? (
                   <div className="text-center">
                     <div className="w-24 h-24 mx-auto rounded-full ring-4 ring-sky-300 p-1 bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-2xl">
-                      <div className="w-full h-full rounded-full border-2 border-slate-900 bg-slate-100 flex items-center justify-center">
-                        <User className="w-10 h-10 text-slate-500" aria-label="Human Owner belum tersedia" />
-                      </div>
+                      {hostAvatarUrl ? (
+                        <img src={hostAvatarUrl} alt="Human Owner" className="w-full h-full rounded-full object-cover border-2 border-slate-900" />
+                      ) : (
+                        <div className="w-full h-full rounded-full border-2 border-slate-900 bg-slate-100 flex items-center justify-center">
+                          <User className="w-10 h-10 text-slate-500" aria-label="Human Owner belum tersedia" />
+                        </div>
+                      )}
                     </div>
                     <span className="inline-block mt-3 px-3 py-1 rounded-full bg-white/90 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-2xs">
                       Mikrofon tersedia setelah sesi tersambung
@@ -228,9 +236,13 @@ export default function LiveExperienceStage({
               <div className="absolute inset-0 bg-gradient-to-tr from-purple-950 via-slate-900 to-indigo-950 flex items-center justify-center">
                 <div className="text-center">
                   <div className={`w-24 h-24 mx-auto rounded-full ring-4 ${isAiAgentSpeaking ? 'ring-purple-300 animate-pulse' : 'ring-purple-500/40'} p-1 bg-gradient-to-tr from-cyan-400 to-purple-500 shadow-2xl`}>
-                    <div className="w-full h-full rounded-full border-2 border-slate-900 bg-slate-100 flex items-center justify-center">
-                      <Bot className="w-10 h-10 text-purple-700" aria-label="AI Agent belum tersedia" />
-                    </div>
+                    {agentAvatarUrl ? (
+                      <img src={agentAvatarUrl} alt="AI Agent" className="w-full h-full rounded-full object-cover border-2 border-slate-900" />
+                    ) : (
+                      <div className="w-full h-full rounded-full border-2 border-slate-900 bg-slate-100 flex items-center justify-center">
+                        <Bot className="w-10 h-10 text-purple-700" aria-label="AI Agent belum tersedia" />
+                      </div>
+                    )}
                   </div>
                   <span className={`inline-block mt-3 px-3 py-1 rounded-full text-xs font-black border-2 border-slate-900 shadow-2xs ${
                     isAiAgentSpeaking
@@ -300,12 +312,12 @@ export default function LiveExperienceStage({
                 <button
                   onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1))}
                   disabled={!liveStateAvailable}
-                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
+                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.5px]" />
                 </button>
                 <span className="text-xs font-mono font-black text-slate-900 px-2">
-                  {activeSlideIndex + 1} / {slides.length}
+                  {liveStateAvailable ? `${activeSlideIndex + 1} / ${slides.length}` : "— / —"}
                 </span>
                 <button
                   onClick={() => setActiveSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0))}
@@ -347,8 +359,8 @@ export default function LiveExperienceStage({
           <div className="p-3.5 border-b-2 border-slate-900 flex items-center justify-between bg-amber-50">
             <div className="flex items-center gap-2">
               <span className="font-black text-xs text-slate-950">Live Chat Pemirsa</span>
-              <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-200 border border-slate-900 text-emerald-950 font-black">
-                ● Aktif
+              <span className={`text-[9.5px] px-2 py-0.5 rounded-full border border-slate-900 font-black ${liveStateAvailable ? "bg-emerald-200 text-emerald-950" : "bg-slate-200 text-slate-700"}`}>
+                {liveStateAvailable ? "● Aktif" : "● Belum tersedia"}
               </span>
             </div>
             <button

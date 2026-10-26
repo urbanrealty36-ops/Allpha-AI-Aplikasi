@@ -101,19 +101,22 @@ export default function AskAiView({
                 <Bot className="w-8 h-8 text-purple-700" aria-label="Avatar Agent" />
               </div>
             </div>
-            
+            <span
+              className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-slate-300 border-2 border-slate-900"
+              aria-label="Status Agent belum tersedia"
+            />
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <h2 className="font-black text-base text-slate-900">{agentName}</h2>
-              <CheckCircle2 className="w-4 h-4 text-sky-600 fill-sky-200" />
+              <HelpCircle className="w-4 h-4 text-slate-400" aria-label="Status verifikasi belum tersedia" />
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-black">
                 {specialty}
               </span>
             </div>
             <p className="text-xs text-slate-600 font-semibold mt-0.5">
-              Online · Milik <strong className="text-slate-900">{humanOwner}</strong>
+              Status belum tersedia · Milik <strong className="text-slate-900">{humanOwner}</strong>
             </p>
             <p className="text-xs font-medium text-slate-700 mt-1 leading-relaxed">
               Spesialis {specialty}, siap membantu analisis, pembuatan konten, dan eksplorasi spatial.

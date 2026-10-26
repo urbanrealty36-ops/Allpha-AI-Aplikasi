@@ -205,9 +205,10 @@ const WORLDS_DATA: WorldItem[] = [
 
 interface Universe3DHubViewProps {
   onBackToFeed: () => void;
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
   onRewardBonus?: (amount: number, reason: string) => void;
+  productionMode?: boolean;
 }
 
 export default function Universe3DHubView({
@@ -215,9 +216,10 @@ export default function Universe3DHubView({
   userCredits,
   agentCredits,
   onRewardBonus,
+  productionMode = false,
 }: Universe3DHubViewProps) {
-  // Flow Step: Starts at SPLASH as requested by the user
-  const [currentStep, setCurrentStep] = useState<UniverseFlowStep>('SPLASH');
+  // In production, start at the directory and fail closed until published worlds are returned by the canonical spatial API.
+  const [currentStep, setCurrentStep] = useState<UniverseFlowStep>(productionMode ? 'WORLDS' : 'SPLASH');
   
   // Selected World & District for inspection and teleportation
   const [selectedWorld, setSelectedWorld] = useState<WorldItem>(WORLDS_DATA[0]); // Crystal City by default
@@ -245,7 +247,7 @@ export default function Universe3DHubView({
 
   // Animate portal progress when entering PORTAL_LOADING
   useEffect(() => {
-    if (currentStep !== 'PORTAL_LOADING') return;
+    if (productionMode || currentStep !== 'PORTAL_LOADING') return;
 
     const interval = setInterval(() => {
       setLoadingProgress((prev) => {
@@ -269,10 +271,11 @@ export default function Universe3DHubView({
       clearInterval(interval);
       clearInterval(tipInterval);
     };
-  }, [currentStep]);
+  }, [currentStep, productionMode]);
 
   // Action to initiate portal travel
   const handleLaunchPortal = (world: WorldItem, districtName = 'Central Hub') => {
+    if (productionMode) return;
     setSelectedWorld(world);
     setTargetDistrict(districtName);
     setLoadingProgress(12);
@@ -280,7 +283,7 @@ export default function Universe3DHubView({
   };
 
   // Filtered worlds directory
-  const filteredWorlds = WORLDS_DATA.filter((w) => {
+  const filteredWorlds = (productionMode ? [] : WORLDS_DATA).filter((w) => {
     const matchesSearch = 
       w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       w.tagline.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -302,8 +305,8 @@ export default function Universe3DHubView({
         onBackToFeed={onBackToFeed}
         onExitToHub={() => setCurrentStep('HUB')}
         initialDistrict={targetDistrict}
-        userCredits={userCredits}
-        agentCredits={agentCredits}
+        userCredits={userCredits ?? 0}
+        agentCredits={agentCredits ?? 0}
         onRewardBonus={onRewardBonus}
       />
     );
@@ -339,7 +342,7 @@ export default function Universe3DHubView({
                 WebGL PBR 3D
               </span>
               <span className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-[11px] font-mono font-bold">
-                {userCredits} Cr
+                {userCredits == null ? '—' : `${userCredits} Cr`}
               </span>
             </div>
           </div>
@@ -732,9 +735,9 @@ export default function Universe3DHubView({
             <div className="px-4 py-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentStep('HUB')}
+                  onClick={() => productionMode ? onBackToFeed() : setCurrentStep('HUB')}
                   className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition"
-                  title="Kembali ke Universe Hub"
+                  title={productionMode ? "Kembali ke Feed" : "Kembali ke Universe Hub"}
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
@@ -745,12 +748,12 @@ export default function Universe3DHubView({
               </div>
 
               <div className="flex items-center gap-2">
-                <button
+                {!productionMode && <button
                   onClick={() => setCurrentStep('SPLASH')}
                   className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800"
                 >
                   Onboarding
-                </button>
+                </button>}
                 <button
                   onClick={onBackToFeed}
                   className="p-1.5 rounded-full bg-slate-900 text-slate-400 hover:text-white"
@@ -794,6 +797,7 @@ export default function Universe3DHubView({
 
           {/* Worlds Grid */}
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 pb-24">
+            {productionMode && <div role="status" className="sm:col-span-2 rounded-3xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Belum ada dunia spatial yang dipublikasikan melalui layanan Allpha. Direktori ini akan menampilkan dunia setelah katalog kanonis tersedia.</div>}
             {filteredWorlds.map((world) => (
               <div
                 key={world.id}

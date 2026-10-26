@@ -25,7 +25,9 @@ import {
 
 type WorldMode = 'DISTRICT' | 'MARKETPLACE' | 'AVATAR' | 'LIVESTAGE';
 
-export default function ThreeWorldView() {
+interface ThreeWorldViewProps { productionMode?: boolean; }
+
+export default function ThreeWorldView({ productionMode = false }: ThreeWorldViewProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [activeMode, setActiveMode] = useState<WorldMode>('DISTRICT');
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -37,9 +39,9 @@ export default function ThreeWorldView() {
   const [isHologramMode, setIsHologramMode] = useState<boolean>(false);
 
   // Live Stage State
-  const [isPodcastLive, setIsPodcastLive] = useState<boolean>(true);
-  const [podcastTopic, setPodcastTopic] = useState<string>('Ekosistem Sosial Masa Depan: Human × AI Agent');
-  const [audioMeter, setAudioMeter] = useState<number>(65);
+  const [isPodcastLive, setIsPodcastLive] = useState<boolean>(!productionMode);
+  const [podcastTopic, setPodcastTopic] = useState<string>(productionMode ? '' : 'Ekosistem Sosial Masa Depan: Human × AI Agent');
+  const [audioMeter, setAudioMeter] = useState<number | null>(productionMode ? null : 65);
 
   // Keep references to Three.js elements
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -72,12 +74,12 @@ export default function ThreeWorldView() {
 
   // Audio meter oscillation effect for Live Stage
   useEffect(() => {
-    if (!isPodcastLive) return;
+    if (!isPodcastLive || productionMode) return;
     const interval = setInterval(() => {
       setAudioMeter(Math.floor(40 + Math.random() * 55));
     }, 200);
     return () => clearInterval(interval);
-  }, [isPodcastLive]);
+  }, [isPodcastLive, productionMode]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -921,7 +923,7 @@ export default function ThreeWorldView() {
           <span>ALLPHA 3D UNIVERSE</span>
           <span className="text-slate-400">|</span>
           <span className="text-cyan-300 font-semibold">
-            {activeMode === 'DISTRICT' && 'Crystal City Central Avenue'}
+            {activeMode === 'DISTRICT' && (productionMode ? 'Pratinjau visual 3D' : 'Crystal City Central Avenue')}
             {activeMode === 'MARKETPLACE' && '3D Booth Marketplace'}
             {activeMode === 'AVATAR' && 'Avatar 3D Customizer'}
             {activeMode === 'LIVESTAGE' && 'Live Experience Podcast Stage'}
@@ -933,7 +935,7 @@ export default function ThreeWorldView() {
       </div>
 
       {/* Top Right Quick Mode Pills */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 shadow-xl">
+      <div className="absolute top-20 left-2 right-2 z-20 flex flex-wrap justify-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 shadow-xl sm:top-4 sm:left-auto sm:right-4 sm:flex-nowrap">
         <button
           onClick={() => handleSwitchMode('DISTRICT')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
@@ -996,8 +998,8 @@ export default function ThreeWorldView() {
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-                <span className="font-semibold text-slate-100">Crystal City Neo-Kyoto Atrium</span>
-                <span className="text-slate-400">• 12 Kiosks & Skyscrapers</span>
+                <span className="font-semibold text-slate-100">{productionMode ? "Pratinjau visual" : "Crystal City Neo-Kyoto Atrium"}</span>
+                {productionMode ? <span className="text-slate-400">• Pratinjau visual · data district belum tersedia</span> : <span className="text-slate-400">• 12 Kiosks & Skyscrapers</span>}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -1021,6 +1023,10 @@ export default function ThreeWorldView() {
           {/* Mode 2: Marketplace Booth Controls */}
           {activeMode === 'MARKETPLACE' && (
             <div className="flex flex-col gap-2">
+              {productionMode ? (
+                <p role="status" className="rounded-xl border border-slate-700 bg-slate-800/80 p-3 text-xs text-slate-300">Katalog booth 3D belum tersedia dari layanan produksi.</p>
+              ) : (
+                <>
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-slate-200">Pilih Booth Kiosk 3D untuk Inspeksi:</span>
                 <span className="text-purple-400 text-[11px]">Mata uang: AI Credits & Rupiah (IDR)</span>
@@ -1055,6 +1061,8 @@ export default function ThreeWorldView() {
                   <p className="text-[11px] text-slate-300">Character Pack • 80 Cr</p>
                 </button>
               </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1141,31 +1149,32 @@ export default function ThreeWorldView() {
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${isPodcastLive ? 'bg-rose-500' : 'bg-slate-500'}`} />
                   <span className="font-bold text-slate-100">Live Stage Podcast Studio</span>
-                  <span className="text-slate-400">| Alex Tamara (Human) × Luna AI (AI Agent)</span>
+                  {productionMode ? <span className="text-slate-400">| Host dan AI Agent belum terhubung</span> : <span className="text-slate-400">| Alex Tamara (Human) × Luna AI (AI Agent)</span>}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 text-[11px] text-slate-300 font-mono">
                     <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>AUDIO FREQ: {audioMeter}%</span>
+                    <span>{audioMeter == null ? 'AUDIO FREQ: —' : `AUDIO FREQ: ${audioMeter}%`}</span>
                   </div>
                   <button
                     onClick={() => setIsPodcastLive(!isPodcastLive)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition ${
+                    disabled={productionMode}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed ${
                       isPodcastLive
                         ? 'bg-rose-600 hover:bg-rose-700 text-white'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     }`}
                   >
                     {isPodcastLive ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                    <span>{isPodcastLive ? 'Jeda Siaran' : 'Mulai Siaran'}</span>
+                    <span>{productionMode ? 'Sesi Live belum tersedia' : isPodcastLive ? 'Jeda Siaran' : 'Mulai Siaran'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Topic Selector */}
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="text-slate-400">Topik Diskusi:</span>
-                {[
+                <span className="text-slate-400">{productionMode ? "Topik Live belum tersedia" : "Topik Diskusi:"}</span>
+                {!productionMode && [
                   'Ekosistem Sosial Masa Depan: Human × AI Agent',
                   'Monetisasi 3D Virtual Worlds & Aset Digital',
                   'Kesehatan & Nutrisi Kerja Hybrid dengan MediAI',
@@ -1189,7 +1198,7 @@ export default function ThreeWorldView() {
       </div>
 
       {/* Selected 3D Booth Inspector Modal */}
-      {selectedBooth && (
+      {selectedBooth && !productionMode && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/60">
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-purple-500/40 p-6 shadow-2xl text-white">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -1234,6 +1243,10 @@ export default function ThreeWorldView() {
             <div className="mt-6 flex items-center gap-2">
               <button
                 onClick={() => {
+                  if (productionMode) {
+                    setSelectedBooth(null);
+                    return;
+                  }
                   alert('Item booth berhasil ditambahkan ke keranjang pembelian!');
                   setSelectedBooth(null);
                 }}

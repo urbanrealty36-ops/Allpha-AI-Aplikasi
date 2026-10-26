@@ -575,6 +575,10 @@ export default function AiCinemaView({
 
   // Handler for subscribing VIP
   const handleConfirmVipSubscription = () => {
+    if (productionMode) {
+      showToast('Langganan VIP belum tersedia dari layanan produksi.');
+      return;
+    }
     setIsVipSubscribed(true);
     setIsSubscriptionModalOpen(false);
     showToast('Selamat! Langganan VIP Allpha Cinema Aktif. Semua episode terbuka tanpa batas!');
@@ -607,7 +611,7 @@ export default function AiCinemaView({
                 </span>
               </div>
               <p className="text-xs font-semibold text-slate-700 mt-0.5">
-                Wadah resmi Produser & Kreator Film AI. Tonton Drama Pendek (C-Drama, K-Drama, Sci-Fi) dengan bagi hasil 70% ke kreator.
+                {productionMode ? 'Katalog, ketentuan monetisasi, dan pembagian hasil belum tersedia dari layanan produksi.' : 'Wadah resmi Produser & Kreator Film AI. Tonton Drama Pendek (C-Drama, K-Drama, Sci-Fi) dengan bagi hasil 70% ke kreator.'}
               </p>
             </div>
           </div>
@@ -621,11 +625,11 @@ export default function AiCinemaView({
               </span>
             ) : (
               <button
-                onClick={() => setIsSubscriptionModalOpen(true)}
+                onClick={() => { if (productionMode) { showToast("Langganan VIP belum tersedia dari layanan produksi."); return; } setIsSubscriptionModalOpen(true); }}
                 className="px-3.5 py-2 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Crown className="w-3.5 h-3.5 stroke-[2.5px]" />
-                <span>Langganan VIP (150 Cr / Bln)</span>
+                <span>{productionMode ? 'Langganan belum tersedia' : 'Langganan VIP (150 Cr / Bln)'}</span>
               </button>
             )}
 
@@ -644,11 +648,11 @@ export default function AiCinemaView({
           <div className="flex items-center gap-2 font-medium">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-slate-900 shrink-0" />
             <span>
-              <strong className="font-black text-slate-950">Model Monetisasi Kreator:</strong> 70% dari seluruh royalti langganan & pembelian episode otomatis ditransfer ke Produser.
+              <strong className="font-black text-slate-950">Model Monetisasi Kreator:</strong> {productionMode ? 'Ketentuan pembagian hasil belum tersedia dari layanan produksi.' : '70% dari seluruh royalti langganan & pembelian episode otomatis ditransfer ke Produser.'}
             </span>
           </div>
           <span className="text-[11px] font-mono text-amber-900 font-black shrink-0 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300">
-            Total Royalti: 74,650 Cr
+            Total Royalti: {productionMode ? 'Belum tersedia' : '74,650 Cr'}
           </span>
         </div>
       </div>
@@ -659,30 +663,30 @@ export default function AiCinemaView({
           <div className="space-y-2 max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-200 border-2 border-slate-900 text-purple-950 text-[11px] font-black uppercase tracking-wider shadow-2xs">
               <Sparkles className="w-3.5 h-3.5 text-purple-950 stroke-[2.5px]" />
-              <span>Program Resmi Kreator & Produser Allpha</span>
+              <span>{productionMode ? 'Program Kreator & Produser Allpha' : 'Program Resmi Kreator & Produser Allpha'}</span>
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight leading-snug">
-              Ingin menjadi Creator/Produser Film AI di Allpha?
+              {productionMode ? 'Program Kreator Film AI Allpha' : 'Ingin menjadi Creator/Produser Film AI di Allpha?'}
             </h2>
 
             <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed">
-              Agar Karyamu ditonton orang banyak serta mendapatkan keuntungan dan pendapatan dari Film AI kamu, yuk registrasi dan upload film kamu! Klik tombol <strong>&quot;Create Film AI&quot;</strong> di bawah untuk mengunggah trailer, mengisi judul dan deskripsi, upload video per part film, lalu ajukan verifikasi resmi oleh Team Allpha.
+              {productionMode ? 'Pendaftaran kreator, pengunggahan film, verifikasi, dan ketentuan pendapatan belum tersedia dari layanan produksi.' : <>Agar Karyamu ditonton orang banyak serta mendapatkan keuntungan dan pendapatan dari Film AI kamu, yuk registrasi dan upload film kamu! Klik tombol <strong>&quot;Create Film AI&quot;</strong> di bawah untuk mengunggah trailer, mengisi judul dan deskripsi, upload video per part film, lalu ajukan verifikasi resmi oleh Team Allpha.</>}
             </p>
 
             {/* Benefit Highlights */}
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
               <span className="px-3 py-1 rounded-full bg-emerald-100 border-2 border-slate-900 text-emerald-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <Coins className="w-3.5 h-3.5 text-emerald-800" />
-                Bagi Hasil 70% Royalti Kreator
+                {productionMode ? 'Ketentuan royalti belum tersedia' : 'Bagi Hasil 70% Royalti Kreator'}
               </span>
               <span className="px-3 py-1 rounded-full bg-sky-100 border-2 border-slate-900 text-sky-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <Tv className="w-3.5 h-3.5 text-sky-800" />
-                Tayang di Feed, Reels & 3D Cinema
+                {productionMode ? 'Distribusi konten belum tersedia' : 'Tayang di Feed, Reels & 3D Cinema'}
               </span>
               <span className="px-3 py-1 rounded-full bg-purple-100 border-2 border-slate-900 text-purple-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-800" />
-                Verifikasi Resmi Team Allpha
+                {productionMode ? 'Verifikasi belum tersedia' : 'Verifikasi Resmi Team Allpha'}
               </span>
             </div>
           </div>
@@ -703,7 +707,7 @@ export default function AiCinemaView({
               className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 text-xs font-black shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Film className="w-3.5 h-3.5 text-rose-600 stroke-[2.5px]" />
-              <span>{cinemaViewMode === 'MY_STUDIO' ? 'Lihat Semua Katalog Film' : `Status Film Saya (${myUploadedFilms.length})`}</span>
+              <span>{cinemaViewMode === 'MY_STUDIO' ? 'Lihat Semua Katalog Film' : productionMode && catalogState !== 'ready' ? 'Status Film Saya' : `Status Film Saya (${myUploadedFilms.length})`}</span>
             </button>
           </div>
         </div>
@@ -796,7 +800,7 @@ export default function AiCinemaView({
                 </span>
               </h3>
               <p className="text-xs text-slate-500">
-                Kelola status verifikasi dari Team Allpha, tontonan penonton, dan royalti 70%.
+                {productionMode ? 'Status verifikasi, penonton, dan royalti ditampilkan setelah layanan produksi tersedia.' : 'Kelola status verifikasi dari Team Allpha, tontonan penonton, dan royalti 70%.'}
               </p>
             </div>
 
@@ -881,7 +885,7 @@ export default function AiCinemaView({
                 Katalog Film Pendek & Serial Drama AI
               </h3>
               <span className="text-xs text-slate-800 font-mono font-bold px-2 py-0.5 rounded-full bg-slate-200 border border-slate-900">
-                {filteredMovies.length} Judul
+                {catalogState === 'unavailable' ? 'Jumlah belum tersedia' : catalogState === 'loading' ? 'Memuat…' : `${filteredMovies.length} Judul`}
               </span>
             </div>
 
@@ -1035,7 +1039,7 @@ export default function AiCinemaView({
       {/* ========================================================================= */}
       {/* 2. DEDICATED STUDIO MODAL: "CREATE FILM AI" (Lengkap Form, Trailer, Parts) */}
       {/* ========================================================================= */}
-      {isCreateStudioOpen && (
+      {isCreateStudioOpen && !productionMode && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
           <div className="w-full max-w-2xl rounded-3xl bg-white text-slate-950 border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 sm:p-6 space-y-5 my-auto animate-in fade-in zoom-in-95 duration-200 text-xs">
             {/* Header */}
@@ -1655,6 +1659,10 @@ export default function AiCinemaView({
                         key={ep}
                         onClick={() => {
                           if (ep > 2 && !isVipSubscribed) {
+                            if (productionMode) {
+                              showToast('Langganan VIP belum tersedia dari layanan produksi.');
+                              return;
+                            }
                             setIsSubscriptionModalOpen(true);
                             return;
                           }
@@ -1708,7 +1716,7 @@ export default function AiCinemaView({
       {/* ========================================================================= */}
       {/* 5. VIP SUBSCRIPTION MODAL                                                 */}
       {/* ========================================================================= */}
-      {isSubscriptionModalOpen && (
+      {isSubscriptionModalOpen && !productionMode && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-3xl bg-white text-slate-950 border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-xs">
             <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100">

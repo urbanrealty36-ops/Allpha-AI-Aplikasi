@@ -18,6 +18,7 @@ from allpha_api.agent_runtime import (
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 from allpha_api.auth import current_user
 from allpha_api.tool_registry import UnknownToolError, get_tool
+from allpha_api.task_planner import TaskPlanningError, build_bounded_task_plan
 
 router = APIRouter(prefix="/v1/agent-runtime", tags=["agent-runtime"])
 _runtime = AgentRuntime()
@@ -129,6 +130,13 @@ async def create_task(payload: TaskCreate, request: Request,
         if payload.tool_key not in (skill.get("tool_dependencies") or []):
             raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Tool tidak tercantum pada Skill."})
         try:
+            plan = build_bounded_task_plan(payload.tool_key, payload.inputs)
+        except TaskPlanningError as exc:
+            raise HTTPException(status_code=422, detail={
+                "code": "INVALID_TASK_PLAN",
+                "message": "Task tidak dapat diterjemahkan menjadi satu langkah Tool terdaftar yang valid.",
+            }) from exc
+        try:
             encoded = json.dumps({
                 "session_id": str(payload.session_id), "skill_id": str(payload.skill_id),
                 "tool_key": payload.tool_key, "inputs": payload.inputs, "budget_limits": payload.budget_limits,
@@ -153,18 +161,18 @@ async def create_task(payload: TaskCreate, request: Request,
             "agent_version": int(agent["version"]), "skill_version": int(skill["version"]),
             "state": "created", "idempotency_key": payload.idempotency_key,
             "request_fingerprint": fingerprint, "tool_key": payload.tool_key,
-            "input_payload": payload.inputs, "task_budget_limits": requested_budget, "event_log": [_event("created", trace_id)],
+            "input_payload": plan.steps[0].input_payload, "task_budget_limits": requested_budget, "event_log": [_event("created", trace_id)],
             "trace_id": trace_id,
         }
         try:
             row = await store.create_task(body)
-            return {"task": row, "idempotent_replay": False}
+            return {"task": row, "idempotent_replay": False, "execution_plan": plan.public_contract()}
         except AgentRuntimePersistenceError:
             existing = await store.find_task_by_idempotency(owner_id, payload.idempotency_key)
             if existing:
                 if existing.get("request_fingerprint") != fingerprint:
                     raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah digunakan untuk payload berbeda."})
-                return {"task": existing, "idempotent_replay": True}
+                return {"task": existing, "idempotent_replay": True, "execution_plan": plan.public_contract()}
             raise
     except AgentRuntimePersistenceError as exc:
         raise _error(exc) from exc
@@ -293,6 +301,14 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             raise HTTPException(status_code=409, detail={"code": "PINNED_VERSION_CHANGED", "message": "Versi Agent atau Skill berubah; buat task baru."})
         if skill.get("status") != "published" or row["tool_key"] not in (skill.get("tool_dependencies") or []):
             raise HTTPException(status_code=403, detail={"code": "SKILL_TOOL_NOT_AUTHORIZED", "message": "Skill atau tool tidak lagi diizinkan."})
+        try:
+            plan = build_bounded_task_plan(str(row["tool_key"]), row.get("input_payload"))
+        except TaskPlanningError as exc:
+            raise HTTPException(status_code=409, detail={
+                "code": "STORED_TASK_PLAN_INVALID",
+                "message": "Input Task tersimpan tidak lagi cocok dengan kontrak Tool; eksekusi ditolak.",
+            }) from exc
+        planned_step = plan.steps[0]
         lease_token = str(uuid.uuid4())
         claimed = await store.claim_task(owner_id, str(task_id), lease_token, lease_seconds=60)
         if not claimed:
@@ -305,14 +321,18 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         task_limits = row.get("task_budget_limits") or {}
         max_runtime = min(30, max(1, int(limits.get("max_runtime_seconds", 30))),
                           max(1, int(task_limits.get("max_runtime_seconds", limits.get("max_runtime_seconds", 30)))))
-        max_calls = min(5, max(1, int(limits.get("max_tool_calls", 1))),
-                        max(1, int(task_limits.get("max_tool_calls", limits.get("max_tool_calls", 1)))))
+        max_calls = min(
+            plan.max_tool_calls,
+            5,
+            max(1, int(limits.get("max_tool_calls", 1))),
+            max(1, int(task_limits.get("max_tool_calls", limits.get("max_tool_calls", 1)))),
+        )
         envelope = AgentTaskEnvelope(
             task_id=str(row["id"]), task_version=int(row["task_version"]),
             requester_id=owner_id, agent_id=str(row["agent_id"]), agent_version=int(row["agent_version"]),
             owner_id=owner_id, skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
             input_classification="user_input", allowed_memory_scope=(),
-            allowed_tool_keys=(str(row["tool_key"]),),
+            allowed_tool_keys=(planned_step.tool_key,),
             capability_scopes=tuple(skill.get("required_permission_scopes") or ()),
             idempotency_key=str(row["idempotency_key"]), trace_id=str(row["trace_id"]),
             deadline_monotonic=time.monotonic() + max_runtime,
@@ -331,7 +351,7 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             resumed_from_checkpoint = False
             checkpoint = await store.get_latest_checkpoint(str(task_id)) if resuming else None
             if resuming:
-                if not checkpoint or checkpoint.get("input_fingerprint") != row.get("request_fingerprint") or checkpoint.get("step_key") != f"tool:{row['tool_key']}":
+                if not checkpoint or checkpoint.get("input_fingerprint") != row.get("request_fingerprint") or checkpoint.get("step_key") != planned_step.step_key:
                     raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Checkpoint tidak cocok dengan input dan step task; replay ditolak."})
                 try:
                     checkpoint_bytes = json.dumps(checkpoint["result_payload"], ensure_ascii=False, sort_keys=True,
@@ -345,12 +365,13 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
                     raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Checkpoint bukan hasil terminal yang dapat dipulihkan."})
                 resumed_from_checkpoint = True
             else:
-                result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
+                result = await _runtime.execute_tool(task, auth, tool_key=planned_step.tool_key, inputs=planned_step.input_payload)
+                result["execution_plan"] = plan.public_contract()
                 checkpoint_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True,
                                               separators=(",", ":"), allow_nan=False).encode("utf-8")
                 checkpoint = await store.append_checkpoint(
                     owner_id, str(task_id), lease_token, int(row["task_version"]),
-                    int(row.get("checkpoint_seq") or 0) + 1, f"tool:{row['tool_key']}",
+                    int(row.get("checkpoint_seq") or 0) + 1, planned_step.step_key,
                     str(row["request_fingerprint"]), hashlib.sha256(checkpoint_bytes).hexdigest(), result,
                 )
                 if not checkpoint:
