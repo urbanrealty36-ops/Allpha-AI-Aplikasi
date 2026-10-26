@@ -53,19 +53,22 @@ jobs:
               mode, kind, blob_sha, size_text = meta.split()
               if kind != "blob":
                   continue
-              source_file = source_root / relpath
-              data = source_file.read_bytes()
+              # Read directly from Git objects; tracked temporary media paths may
+              # not exist in the checkout working tree, but their blobs remain in Git.
+              data = subprocess.check_output(
+                  ["git", "-C", str(source_root), "show", f"HEAD:{relpath}"]
+              )
               size = len(data)
               actual_blob = subprocess.check_output(
-                  ["git", "-C", str(source_root), "hash-object", str(source_file)],
-                  text=True,
-              ).strip()
+                  ["git", "-C", str(source_root), "hash-object", "--stdin"],
+                  input=data,
+              ).decode("utf-8").strip()
               if size != int(size_text) or actual_blob != blob_sha:
                   raise SystemExit(f"Source blob verification failed: {relpath}")
 
               snapshot_file = snapshot_root / relpath
               snapshot_file.parent.mkdir(parents=True, exist_ok=True)
-              shutil.copyfile(source_file, snapshot_file)
+              snapshot_file.write_bytes(data)
 
               target_runtime = None
               # Keep the exact current source styles/components and images in the
@@ -75,7 +78,7 @@ jobs:
               if relpath.startswith("public/"):
                   target_runtime = runtime_root / relpath
                   target_runtime.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copyfile(source_file, target_runtime)
+                  target_runtime.write_bytes(data)
               elif relpath.startswith("src/assets/images/"):
                   target_runtime = runtime_root / "public/assets/reference-source" / relpath.removeprefix("src/assets/")
                   target_runtime.parent.mkdir(parents=True, exist_ok=True)
