@@ -84,3 +84,22 @@ Historical limitation (resolved by the verified capture workflow): direct connec
 After the initial manifest was recorded, commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) copied the 13 remaining divergent component files byte-for-byte from reference source. A subsequent Git tree comparison verified **25 of 25** top-level reference component files now have the same Git blob SHA at `apps/web/components/reference-ui/<component>` as at `components/<component>` in reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
 
 This is source-copy evidence only. Component route wiring, production API behavior, and UI acceptance remain unverified. Binary asset transfer remains incomplete as stated above.
+
+
+## Source sync update — 2026-10-27 (reference main b6c9fc728d5d031a28b22fbbec9a546846900e87)
+
+The reference repository advanced after the original capture recorded above. Latest observed source HEAD: `b6c9fc728d5d031a28b22fbbec9a546846900e87` ([commit](https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New/commit/b6c9fc728d5d031a28b22fbbec9a546846900e87)). Nine UI components not present as named files in the canonical target's `apps/web/components/reference-ui/` at the audited target HEAD are archived byte-for-byte as source-only references under `docs/reference-ui-source/`. They are intentionally not runtime imports: several use local/demo state and must be wired to canonical FastAPI contracts before production use.
+
+| Reference source | Source blob SHA | UTF-8 bytes | Canonical archive |
+|---|---|---:|---|
+| `components/AgentPassportModal.tsx` | `492b28ada01526a73a45f7a079435f204e8fcd3f` | 15356 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__AgentPassportModal_tsx.reference` |
+| `components/AuthOnboardingPage.tsx` | `007e68a0503d1a67799b7bb87b39ae0fc28978b3` | 55961 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__AuthOnboardingPage_tsx.reference` |
+| `components/CreatorStudioModal.tsx` | `2daf53afeb094221d2f4a5eefb69e3fdfeb24a81` | 19461 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__CreatorStudioModal_tsx.reference` |
+| `components/Menggu3DUniverseGallery.tsx` | `28ab5f90acbc71fd06a02390b8390005bfe362ee` | 58853 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__Menggu3DUniverseGallery_tsx.reference` |
+| `components/Menggu3DViewerModal.tsx` | `5a2b8ddfb1aa266ed65f65a368ef7326ed85e63b` | 18777 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__Menggu3DViewerModal_tsx.reference` |
+| `components/NotificationsModal.tsx` | `c6044b8544d06307ec3239a203d187fb6c522e63` | 8709 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__NotificationsModal_tsx.reference` |
+| `components/StoriesViewerModal.tsx` | `9743c5f28f6eeb38d744179ca31125c6cbccc499` | 11570 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__StoriesViewerModal_tsx.reference` |
+| `components/StoreAndBoothModal.tsx` | `f8d26bc5123527faa355292c7a653310335ff3c4` | 44468 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__StoreAndBoothModal_tsx.reference` |
+| `components/ThemeCatalogModal.tsx` | `be599258062337a5bf966c3a9d48ec3284fb0b69` | 7107 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__ThemeCatalogModal_tsx.reference` |
+
+The reference repository has updated Menggu3D images and additional October 26 screenshots, but its current Git tree contains zero `.glb` files. The canonical application Git tree also contains zero `.glb` files. Thus the claimed 927 GLBs are not evidenced as committed files in either audited tree; they must be inventoried from the actual configured Storage/catalog before a registration or publication count is asserted. This source sync does not change any Phase acceptance status.
