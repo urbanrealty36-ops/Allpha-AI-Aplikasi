@@ -262,7 +262,9 @@ const webSearch = readFileSync(new URL("../app/search/page.tsx", import.meta.url
 assert.ok(webSearch.includes("useSearchParams"), "Search must react to global navbar query updates");
 assert.ok(webSearch.includes("lastUrlQuery.current === urlQuery"), "Search must avoid duplicate submissions for the same URL query");
 assert.ok(webSearch.includes("<Suspense"), "Search useSearchParams must be guarded by Suspense for production build");
-assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical authenticated Search API");
+assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical public-safe Search API");
+assert.ok(webSearch.includes("/v1/recommendations/accounts") && webSearch.includes("/v1/search/accounts"), "Explore must load real public account recommendations and search results");
+assert.ok(webSearch.includes("/v1/social/follow/") && webSearch.includes("onFollowAccount"), "Explore follow actions must call the canonical authenticated follow API");
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
