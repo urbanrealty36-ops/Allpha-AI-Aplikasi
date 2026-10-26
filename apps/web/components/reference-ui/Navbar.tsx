@@ -7,18 +7,22 @@ import {
   Coins, 
   Bot,
   X,
-  MessageCircle
+  MessageCircle,
+  Store,
+  Sparkles
 } from 'lucide-react';
 
 interface NavbarProps {
   userCredits: number | null;
   agentCredits: number | null;
-  isTakeoverActive: boolean | null;
+  isTakeoverActive: boolean;
   onOpenTakeoverModal: () => void;
   onOpenCreditsHub: () => void;
   onOpenOnboarding?: () => void;
-  onOpenMessages?: () => void;
+  onOpenOnboardingPage?: () => void;
   onOpenNotifications?: () => void;
+  onOpenMessages?: () => void;
+  onOpenStoreAndBoothModal?: () => void;
   onSearch?: (query: string) => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
@@ -34,8 +38,10 @@ export default function Navbar({
   onOpenTakeoverModal,
   onOpenCreditsHub,
   onOpenOnboarding,
-  onOpenMessages,
+  onOpenOnboardingPage,
   onOpenNotifications,
+  onOpenMessages,
+  onOpenStoreAndBoothModal,
   onSearch,
   isMessagesActive = false,
   unreadMessagesCount,
@@ -51,10 +57,14 @@ export default function Navbar({
     <header className="sticky top-0 z-40 bg-white border-b-2 border-slate-900 shadow-xs">
       <div className="max-w-xl mx-auto px-4 h-16 flex items-center justify-between gap-2.5">
         
-        {/* Brand Logo Lockup matching the reference design */}
-        <div className="flex items-center gap-2 cursor-pointer select-none">
+        {/* Brand Logo Lockup - click to open Splash Sapa & Tour */}
+        <div 
+          onClick={onOpenOnboardingPage}
+          className="flex items-center gap-2 cursor-pointer select-none group"
+          title="Buka Halaman Splash Sapa & Panduan Platform"
+        >
           <div className="flex flex-col">
-            <div className="flex items-center tracking-tighter text-2xl font-black leading-none">
+            <div className="flex items-center tracking-tighter text-2xl font-black leading-none group-hover:scale-102 transition">
               <span className="text-[#0284C7]">ALL</span>
               <span className="text-[#0F172A]">PHA</span>
             </div>
@@ -73,7 +83,7 @@ export default function Navbar({
               placeholder="Cari konten, agent, district 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") onSearch?.(searchQuery.trim()); }}
+              onKeyDown={(event) => { if (event.key === 'Enter') onSearch?.(searchQuery.trim()); }}
               className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold bg-slate-50 border-2 border-slate-900 rounded-full outline-none shadow-[1.5px_1.5px_0px_#0f172a] focus:bg-white"
             />
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -106,7 +116,19 @@ export default function Navbar({
             </span>
           </button>
 
-          {/* 2. Robot / AI Agent Icon Button */}
+          {/* 2. Toko & Booth 3D Button */}
+          {onOpenStoreAndBoothModal && (
+            <button
+              onClick={onOpenStoreAndBoothModal}
+              className="w-9 h-9 rounded-2xl bg-[#FEF08A] hover:bg-amber-300 border-2 border-slate-900 text-slate-950 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
+              title="Buat Toko Marketplace & Booth 3D Spatial"
+              aria-label="Toko dan Booth 3D"
+            >
+              <Store className="w-4.5 h-4.5 stroke-[2.4px]" />
+            </button>
+          )}
+
+          {/* 3. Robot / AI Agent Icon Button */}
           <button
             onClick={onOpenTakeoverModal}
             className="w-9 h-9 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border-2 border-slate-900 text-emerald-600 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
@@ -131,10 +153,14 @@ export default function Navbar({
           {/* 4. Notification Bell with red dot */}
           <button
             onClick={() => {
-              onOpenNotifications?.();
+              if (onOpenNotifications) {
+                onOpenNotifications();
+              } else if (onOpenMessages) {
+                onOpenMessages();
+              }
             }}
             className="w-9 h-9 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 text-slate-900 flex items-center justify-center relative shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
-            title="Notifikasi & Pesan"
+            title="Notifikasi Aktivitas"
             aria-label="Notifications"
           >
             <Bell className="w-4.5 h-4.5 stroke-[2.2px]" />
@@ -151,7 +177,7 @@ export default function Navbar({
             aria-label="Pesan"
           >
             <MessageCircle className="w-4.5 h-4.5 stroke-[2.2px]" />
-            {typeof unreadMessagesCount === "number" && unreadMessagesCount > 0 && (
+            {unreadMessagesCount > 0 && (
               <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-4.5 h-4.5 rounded-full bg-rose-500 border border-white text-white text-[9px] font-black flex items-center justify-center shadow-2xs">
                 {unreadMessagesCount}
               </span>
