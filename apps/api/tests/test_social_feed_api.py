@@ -247,9 +247,21 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_feed_requires_authentication():
+def test_feed_allows_anonymous_public_read_with_empty_state(monkeypatch):
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items":
+            assert (params or {}).get("visibility") == "eq.public"
+            return []
+        if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
+            return []
+        raise AssertionError(f"guest feed must not query {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
     response = TestClient(app).get("/v1/feed")
-    assert response.status_code == 401
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+    assert response.json()["mode"] == "recent"
+    assert response.json()["personalization_enabled"] is False
 
 def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
     now = datetime.now(timezone.utc).isoformat()
