@@ -6,7 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import ExploreView from "../../components/reference-ui/ExploreView";
 import type { PostItem } from "../../lib/reference-store";
-type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string };
+type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
@@ -112,9 +112,11 @@ function SearchPageContent() {
     timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
     content: item.body,
     tags: [],
-    likes: 0,
-    commentsCount: 0,
-    reposts: 0,
+    likes: item.engagement?.likes ?? 0,
+    commentsCount: item.engagement?.comments ?? 0,
+    reposts: item.engagement?.shares ?? 0,
+    isLiked: Boolean(item.viewer_reaction),
+    isBookmarked: Boolean(item.saved),
     comments: [],
   }));
 
