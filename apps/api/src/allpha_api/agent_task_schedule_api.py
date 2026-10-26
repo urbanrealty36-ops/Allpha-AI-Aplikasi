@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 from allpha_api.auth import current_user
-from allpha_api.tool_registry import UnknownToolError, get_tool
+from allpha_api.tool_registry import ToolInputError, UnknownToolError, get_tool, validate_tool_input
 from allpha_api.workflow_engine import WorkflowDefinition, WorkflowNode
 from allpha_api.workflow_store import WorkflowPersistenceError, WorkflowStore
 
@@ -155,6 +155,13 @@ async def _verify_runtime_binding(store: AgentRuntimeStore, owner_id: str, paylo
     except (UnknownToolError, KeyError) as exc:
         raise HTTPException(status_code=422, detail={
             "code": "REGISTERED_TOOL_REQUIRED", "message": "Tool tidak terdaftar pada registry kanonis."
+        }) from exc
+    try:
+        validate_tool_input(payload.tool_key, payload.input_payload)
+    except (ToolInputError, UnknownToolError) as exc:
+        raise HTTPException(status_code=422, detail={
+            "code": "INVALID_TASK_TOOL_INPUT",
+            "message": "Input Task tidak sesuai schema Tool terdaftar.",
         }) from exc
     required_scopes = set(tool.required_permission_scopes)
     if not required_scopes.issubset(set(payload.granted_permission_scopes)):
