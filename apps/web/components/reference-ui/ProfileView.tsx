@@ -956,6 +956,8 @@ export default function ProfileView({
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </a>
 
+            </div>
+
             {/* Sub-Detail View if clicked */}
             {selectedSettingDetail === 'PRIVACY' && (
               <div className="p-4 bg-purple-50 border-t-2 border-slate-900 text-xs space-y-2">
