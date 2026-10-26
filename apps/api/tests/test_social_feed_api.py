@@ -61,6 +61,10 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
             return [{"interest_key": "ai", "preference": "interested"}, {"interest_key": "crypto", "preference": "not_interested"}]
         if table == "content_items":
             return content_rows
+        if table == "profiles":
+            return [{"id": str(row.get("owner_id")), "username": "public_user", "display_name": "Public User",
+                     "avatar_url": None, "bio": "", "visibility": "public"}
+                    for row in content_rows]
         if table == "social_edges":
             if params.get("actor_user_id") == "eq.eng-p14-viewer":
                 return [
@@ -252,6 +256,9 @@ def test_feed_allows_anonymous_public_read_with_empty_state(monkeypatch):
         if table == "content_items":
             assert (params or {}).get("visibility") == "eq.public"
             return []
+        if table == "profiles":
+            return [{"id": "public-author", "username": "public_author", "display_name": "Public Author",
+                     "avatar_url": None, "bio": "", "visibility": "public"}]
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"guest feed must not query {table}")
@@ -279,6 +286,9 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
             return []
         if table == "content_items":
             return content_rows
+        if table == "profiles":
+            return [{"id": owner, "username": "public_user", "display_name": "Public User",
+                     "avatar_url": None, "bio": "", "visibility": "public"} for owner in owners]
         if table == "social_edges":
             if params.get("actor_user_id") == "eq.eng-p14-viewer":
                 return [
