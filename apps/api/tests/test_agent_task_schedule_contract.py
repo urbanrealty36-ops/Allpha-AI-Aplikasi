@@ -94,3 +94,18 @@ def test_schedule_approval_route_is_unique():
     handler = source[start:end]
     assert '"require_approval": False' not in handler
     assert '"approved_by": owner_id' in handler
+
+
+def test_schedule_requires_tool_permission_scopes_to_be_explicitly_granted():
+    source = (Path(__file__).resolve().parents[1] / "src" / "allpha_api" / "agent_task_schedule_api.py").read_text(encoding="utf-8")
+    assert "required_scopes = set(tool.required_permission_scopes)" in source
+    assert "required_scopes.issubset(set(payload.granted_permission_scopes))" in source
+    assert "TASK_TOOL_PERMISSION_NOT_GRANTED" in source
+
+
+def test_schedule_worker_bounds_poll_batch_and_lease():
+    source = (Path(__file__).resolve().parents[1] / "src" / "allpha_api" / "agent_task_schedule_worker.py").read_text(encoding="utf-8")
+    assert 'if not 1 <= limit <= 100' in source
+    assert 'if not 5 <= lease_seconds <= 300' in source
+    assert 'bounded_env("ALLPHA_AGENT_TASK_SCHEDULER_BATCH_LIMIT", 25, 1, 100)' in source
+    assert 'bounded_env("ALLPHA_AGENT_TASK_SCHEDULER_LEASE_SECONDS", 60, 5, 300)' in source
