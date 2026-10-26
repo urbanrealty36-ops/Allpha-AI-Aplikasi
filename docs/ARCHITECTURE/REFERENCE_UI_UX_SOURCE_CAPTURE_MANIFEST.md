@@ -88,7 +88,7 @@ This is source-copy evidence only. Component route wiring, production API behavi
 
 ## Source sync update — 2026-10-27 (reference main b6c9fc728d5d031a28b22fbbec9a546846900e87)
 
-The reference repository advanced after the original capture recorded above. Latest observed source HEAD: `b6c9fc728d5d031a28b22fbbec9a546846900e87` ([commit](https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New/commit/b6c9fc728d5d031a28b22fbbec9a546846900e87)). Nine UI components not present as named files in the canonical target's `apps/web/components/reference-ui/` at the audited target HEAD are archived byte-for-byte as source-only references under `docs/reference-ui-source/`. They are intentionally not runtime imports: several use local/demo state and must be wired to canonical FastAPI contracts before production use.
+The reference repository advanced after the original capture recorded above. Latest observed source HEAD: `b6c9fc728d5d031a28b22fbbec9a546846900e87` ([commit](https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New/commit/b6c9fc728d5d031a28b22fbbec9a546846900e87)). Nine UI components not present as named files in the canonical target's `apps/web/components/reference-ui/` at the audited target HEAD were archived byte-for-byte as source snapshots under `docs/reference-ui-source/` and have now also been copied into the canonical runtime reference component folder. Their visual/source code is preserved; only `@/lib/store` imports were redirected to the existing `@/lib/reference-store`. They are not yet mounted by production routes: several contain local/demo state and must be wired to canonical FastAPI contracts before live use.
 
 | Reference source | Source blob SHA | UTF-8 bytes | Canonical archive |
 |---|---|---:|---|
@@ -103,3 +103,8 @@ The reference repository advanced after the original capture recorded above. Lat
 | `components/ThemeCatalogModal.tsx` | `be599258062337a5bf966c3a9d48ec3284fb0b69` | 7111 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__ThemeCatalogModal_tsx.reference` |
 
 The reference repository has updated Menggu3D images and additional October 26 screenshots, but its current Git tree contains zero `.glb` files. The canonical application Git tree also contains zero `.glb` files. Thus the claimed 927 GLBs are not evidenced as committed files in either audited tree; they must be inventoried from the actual configured Storage/catalog before a registration or publication count is asserted. This source sync does not change any Phase acceptance status.
+
+
+## Runtime source-copy update — 2026-10-27
+
+Direct-to-`main` commit [285be07](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/285be070fc8862481be66492129ab9742f3a70b6) copied the nine missing current reference components into `apps/web/components/reference-ui/` and the 3D engine into `apps/web/lib/menggu3dEngine.ts`. Visual component bodies were copied from source HEAD `b6c9fc728d5d031a28b22fbbec9a546846900e87`; only the local store import specifier was adapted to the canonical existing `reference-store.ts` where required. No route was switched to these components, no business state was changed, and no backend/DB/Storage state was mutated. The next step remains compile/typecheck/build and source-to-route reconciliation; do not treat copied-but-unmounted components as production feature acceptance.
