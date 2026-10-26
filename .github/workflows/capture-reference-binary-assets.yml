@@ -20,7 +20,7 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Download and verify the current source binary assets
+      - name: Download and verify current source binary assets including current-head additions
         env:
           SOURCE_COMMIT: "aad317c1f651163f065cd42b9ae35267d18f354a"
         run: |
@@ -67,9 +67,13 @@ jobs:
           for relpath, _, size, git_sha, sha256 in verified:
               row_prefix = f"| `{relpath}` | {size} | `{git_sha}` |"
               replacement = row_prefix + f" verified at `apps/web/{relpath}`; bytes={size}; Git blob SHA-1={git_sha}; SHA-256={sha256} |"
-              old_prefix = f"| `{relpath}` | {size} | `{git_sha}` | missing at canonical path |"
+              old_prefix = f"| `{relpath}` | {size} | `{git_sha}` | missing at canonical path"
               if old_prefix in manifest:
-                  manifest = manifest.replace(old_prefix, replacement, 1)
+                  row_start = manifest.index(old_prefix)
+                  row_end = manifest.find("\\n", row_start)
+                  if row_end < 0:
+                      row_end = len(manifest)
+                  manifest = manifest[:row_start] + replacement + manifest[row_end:]
               elif replacement not in manifest:
                   raise SystemExit(f"Manifest row is neither missing nor already verified: {relpath}")
 
