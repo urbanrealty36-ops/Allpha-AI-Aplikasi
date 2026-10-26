@@ -3,10 +3,19 @@ import hashlib
 import json
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from allpha_api.auth import current_user
 from allpha_api.main import app
+
+
+def _authenticated_user(request: Request):
+    request.state.user_id = "spatial-test-user"
+    return {"id": "spatial-test-user"}
+
+
+app.dependency_overrides[current_user] = _authenticated_user
 from allpha_api.spatial_theme_api import (
     CATEGORIES,
     ThemeManifestDraft,
