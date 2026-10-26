@@ -1,0 +1,102 @@
+name: Capture Complete Reference UI Images
+
+on:
+  push:
+    paths:
+      - ".github/workflows/capture-complete-reference-ui-images.yml"
+      - "docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture-reference-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout canonical repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Copy all image assets from pinned reference tree and verify hashes
+        env:
+          SOURCE_COMMIT: "b6c9fc728d5d031a28b22fbbec9a546846900e87"
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import urllib.request
+
+          owner = "urbanrealty36-ops"
+          repo = "Allpha-Front-End-UI-New"
+          commit = "b6c9fc728d5d031a28b22fbbec9a546846900e87"
+          api = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{commit}?recursive=1"
+          req = urllib.request.Request(api, headers={"User-Agent": "Allpha-Reference-UI-Capture", "Accept": "application/vnd.github+json"})
+          with urllib.request.urlopen(req, timeout=90) as response:
+              tree = json.load(response)["tree"]
+
+          image_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif"}
+          selected = []
+          for item in tree:
+              path = item["path"]
+              if item.get("type") != "blob" or pathlib.PurePosixPath(path).suffix.lower() not in image_exts:
+                  continue
+              if path.startswith("public/assets/") or path.startswith("src/assets/images/"):
+                  selected.append(item)
+
+          if not selected:
+              raise SystemExit("No reference image assets found; refusing empty capture.")
+
+          inventory = []
+          for item in selected:
+              source_path = item["path"]
+              if source_path.startswith("public/"):
+                  target = pathlib.Path("apps/web") / source_path
+              else:
+                  target = pathlib.Path("apps/web/public/assets/reference-source") / source_path.removeprefix("src/assets/")
+              url = f"https://raw.githubusercontent.com/{owner}/{repo}/{commit}/{source_path}"
+              req = urllib.request.Request(url, headers={"User-Agent": "Allpha-Reference-UI-Capture"})
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  data = response.read()
+              size = len(data)
+              git_sha = hashlib.sha1(b"blob " + str(size).encode() + b"\\0" + data).hexdigest()
+              if size != item["size"] or git_sha != item["sha"]:
+                  raise SystemExit(f"Source integrity mismatch for {source_path}: expected size={item['size']} sha={item['sha']}, got size={size} sha={git_sha}")
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(data)
+              inventory.append({
+                  "source": source_path,
+                  "target": target.as_posix(),
+                  "bytes": size,
+                  "git_blob_sha1": git_sha,
+                  "sha256": hashlib.sha256(data).hexdigest(),
+                  "source_commit": commit,
+              })
+              print(f"VERIFIED {source_path} -> {target.as_posix()} bytes={size} sha={git_sha}")
+
+          manifest = pathlib.Path("docs/reference-ui-source/REFERENCE_IMAGE_ASSET_INVENTORY.json")
+          manifest.parent.mkdir(parents=True, exist_ok=True)
+          manifest.write_text(json.dumps({
+              "reference_repository": f"https://github.com/{owner}/{repo}",
+              "source_commit": commit,
+              "capture_count": len(inventory),
+              "verification": "Every copied file matched the pinned Git tree's byte size and Git blob SHA-1; SHA-256 is recorded per target.",
+              "assets": inventory,
+          }, indent=2) + "\\n")
+          print(f"Captured and verified {len(inventory)} source image assets.")
+          PY
+
+      - name: Commit copied assets and inventory
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/public/assets docs/reference-ui-source/REFERENCE_IMAGE_ASSET_INVENTORY.json
+          if git diff --cached --quiet; then
+            echo "All reference image assets already match the pinned source."
+            exit 0
+          fi
+          git commit -m "chore(ui): capture all pinned reference image assets"
+          git push origin HEAD:main
