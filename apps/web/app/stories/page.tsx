@@ -137,15 +137,15 @@ export default function StoriesPage() {
         </form>
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
         {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-300 p-3 text-sm">{notice}</p>}
-        <section className="mb-8">
+      </>}
+      <section className="mb-8">
           <div className="mb-3 flex items-center justify-between"><h2 className="text-xl font-semibold">Momen aktif</h2><button onClick={() => void reload()} disabled={loading || busy} className="text-sm text-cyan-600 hover:underline">Muat ulang</button></div>
           {loading ? <p className="text-sm text-slate-500">Memuat Stories…</p> : active.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story aktif yang dapat Anda lihat.</p> : <div className="grid gap-3 sm:grid-cols-2">{active.map(story => <article key={story.id} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-cyan-600">{story.visibility}</span><span className="text-xs text-slate-500">{story.expires_at ? "Berakhir " + new Date(story.expires_at).toLocaleString("id-ID") : "Expiry belum tersedia"}</span></div><p className="whitespace-pre-wrap text-sm">{story.body || "Momen media"}</p>{story.media?.map(media => media.preview_url ? <a key={media.id} href={media.preview_url} target="_blank" rel="noreferrer" className="mt-3 block break-all text-xs text-blue-600 underline">{media.filename} · buka media</a> : null)}</article>)}</div>}
         </section>
-        <section>
+      {session && <section>
           <h2 className="mb-3 text-xl font-semibold">Stories saya</h2>
           {mine.length === 0 ? <p className="text-sm text-slate-500">Belum ada Story pada akun ini.</p> : <div className="space-y-3">{mine.map(story => <article key={story.id} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{story.status} · {story.moderation_status}</strong><span className="text-xs text-slate-500">{story.expires_at ? "Expiry: " + new Date(story.expires_at).toLocaleString("id-ID") : "Expiry dimulai setelah publikasi disetujui"}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{story.body || "Momen media"}</p>{story.status !== "archived" && story.status !== "deleted" && <button disabled={busy} onClick={() => void archive(story)} className="mt-3 text-sm text-red-600 hover:underline">Arsipkan Story</button>}</article>)}</div>}
-        </section>
-      </>}
+        </section>}
       {!session && error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {!session && loading && <p role="status" className="text-sm text-slate-500">Memuat Stories publik…</p>}
       {!session && !loading && active.length === 0 && !error && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story publik yang tersedia.</p>}
