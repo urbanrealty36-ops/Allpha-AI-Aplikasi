@@ -10,6 +10,7 @@ from allpha_api.tool_registry import (
     get_tool,
     list_tools,
     validate_tool_dependencies,
+    validate_tool_input,
 )
 
 client = TestClient(app)
@@ -29,6 +30,15 @@ def test_registry_contains_only_concrete_executable_handlers():
     assert [tool["key"] for tool in tools] == ["text.normalize"]
     assert all(tool["executable"] is True for tool in tools)
     assert execute_tool("text.normalize", {"text": "  hello\n  allpha  "}) == {"text": "hello allpha"}
+
+
+def test_tool_input_validation_does_not_execute_handler():
+    assert validate_tool_input("text.normalize", {"text": "  hello  "}) == {"text": "  hello  "}
+    import pytest
+    with pytest.raises(ToolInputError, match="must be string"):
+        validate_tool_input("text.normalize", {"text": 123})
+    with pytest.raises(ToolInputError, match="unexpected input"):
+        validate_tool_input("text.normalize", {"text": "ok", "unexpected": True})
 
 
 def test_registry_rejects_unknown_tool_and_invalid_inputs():
