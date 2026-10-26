@@ -32,9 +32,10 @@ export default function StoriesPage() {
   const [notice, setNotice] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    if (!session) throw new Error("Masuk terlebih dahulu untuk menggunakan Stories.");
+    const method = (init.method || "GET").toUpperCase();
+    if (!session && method !== "GET") throw new Error("Masuk terlebih dahulu untuk melakukan tindakan ini.");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", "Bearer " + session.access_token);
+    if (session) headers.set("Authorization", "Bearer " + session.access_token);
     headers.set("Accept", "application/json");
     if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
     const response = await fetch(apiBase + path, { ...init, headers, cache: "no-store" });
@@ -43,15 +44,16 @@ export default function StoriesPage() {
   }, [session]);
 
   const reload = useCallback(async () => {
-    if (!session) return;
     setLoading(true); setError("");
     try {
-      const [mineResult, activeResult] = await Promise.all([
-        request("/v1/stories/mine?limit=50") as Promise<{ items?: Story[] }>,
-        request("/v1/stories?limit=30") as Promise<{ items?: Story[] }>,
-      ]);
-      setMine(mineResult.items ?? []);
+      const activeResult = await request("/v1/stories?limit=30") as { items?: Story[] };
       setActive(activeResult.items ?? []);
+      if (session) {
+        const mineResult = await request("/v1/stories/mine?limit=50") as { items?: Story[] };
+        setMine(mineResult.items ?? []);
+      } else {
+        setMine([]);
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Stories belum dapat dimuat."); }
     finally { setLoading(false); }
   }, [request, session]);
@@ -63,7 +65,7 @@ export default function StoriesPage() {
     const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (alive) setSession(next); });
     return () => { alive = false; data.subscription.unsubscribe(); };
   }, [supabase]);
-  useEffect(() => { if (session) void reload(); }, [session, reload]);
+  useEffect(() => { void reload(); }, [session, reload]);
 
   async function createStory(event: FormEvent) {
     event.preventDefault();
@@ -110,7 +112,8 @@ export default function StoriesPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Stories & Moments</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Momen sementara dengan audience scope dan waktu kedaluwarsa yang ditegakkan server. Story baru masuk moderasi sebelum ditampilkan.</p>
       </header>
-      {!session ? <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="mb-3 text-sm">Masuk untuk membuat dan melihat Stories.</p><Link className="font-semibold text-blue-600 hover:underline" href="/">Masuk melalui Allpha</Link></section> : <>
+      {!session && <section className="mb-5 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900"><p className="text-sm font-semibold">Jelajahi Stories publik dari kreator Allpha.</p><p className="mt-1 text-xs text-slate-500">Masuk untuk membuat Story, melihat Stories khusus pengikut, dan menggunakan interaksi akun.</p><Link className="mt-3 inline-flex rounded-xl bg-indigo-300 px-4 py-2 text-sm font-semibold text-slate-950" href={"/login?next=" + encodeURIComponent("/stories")}>Daftar / Login</Link></section>}
+      {session && <>
         <form onSubmit={createStory} className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="text-lg font-semibold">Bagikan momen</h2>
           <textarea aria-label="Isi Story" value={body} onChange={e => setBody(e.target.value)} maxLength={2000} rows={4} className="w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600" placeholder="Apa yang sedang terjadi? (opsional jika ada media)" />
@@ -143,6 +146,9 @@ export default function StoriesPage() {
           {mine.length === 0 ? <p className="text-sm text-slate-500">Belum ada Story pada akun ini.</p> : <div className="space-y-3">{mine.map(story => <article key={story.id} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{story.status} · {story.moderation_status}</strong><span className="text-xs text-slate-500">{story.expires_at ? "Expiry: " + new Date(story.expires_at).toLocaleString("id-ID") : "Expiry dimulai setelah publikasi disetujui"}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{story.body || "Momen media"}</p>{story.status !== "archived" && story.status !== "deleted" && <button disabled={busy} onClick={() => void archive(story)} className="mt-3 text-sm text-red-600 hover:underline">Arsipkan Story</button>}</article>)}</div>}
         </section>
       </>}
+      {!session && error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {!session && loading && <p role="status" className="text-sm text-slate-500">Memuat Stories publik…</p>}
+      {!session && !loading && active.length === 0 && !error && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story publik yang tersedia.</p>}
     </main>
     </>
   );
