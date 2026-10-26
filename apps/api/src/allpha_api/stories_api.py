@@ -8,7 +8,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.content_api import MEDIA_FIELDS, _server_db, _signed_media_preview_url, _storage
 from allpha_api.feed_api import _edges
 
@@ -186,7 +186,7 @@ async def create_story(
 async def list_active_stories(
     request: Request,
     limit: int = Query(default=30, ge=1, le=100),
-    user: dict[str, Any] = Depends(current_user),
+    user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
     now = _now()
     await _expire_due_stories()
@@ -195,18 +195,22 @@ async def list_active_stories(
         "content_type": "eq.story",
         "status": "eq.published",
         "moderation_status": "eq.approved",
-        "visibility": "in.(public,followers)",
+        "visibility": "eq.public" if user is None else "in.(public,followers)",
         "expires_at": f"gt.{now.isoformat()}",
         "published_at": f"lte.{now.isoformat()}",
         "order": "published_at.desc,id.desc",
         "limit": str(min(1000, limit * 20)),
     })
-    followed, hidden = await _edges(str(user["id"]))
-    visible = [
-        item for item in (rows or [])
-        if str(item.get("owner_id")) not in hidden
-        and (item.get("visibility") != "followers" or str(item.get("owner_id")) in followed)
-    ][:limit]
+    if user:
+        followed, hidden = await _edges(str(user["id"]))
+        visible = [
+            item for item in (rows or [])
+            if str(item.get("owner_id")) not in hidden
+            and (item.get("visibility") == "public" or str(item.get("owner_id")) in followed)
+        ][:limit]
+    else:
+        # Anonymous discovery is strictly public. Never return followers/private Stories.
+        visible = [item for item in (rows or []) if item.get("visibility") == "public"][:limit]
     items = await _attach_media(visible)
     return {"items": items, "server_time": now.isoformat(), "media_preview_expires_in": 300}
 
