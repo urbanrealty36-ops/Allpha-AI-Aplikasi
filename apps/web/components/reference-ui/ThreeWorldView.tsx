@@ -935,7 +935,7 @@ export default function ThreeWorldView({ productionMode = false }: ThreeWorldVie
       </div>
 
       {/* Top Right Quick Mode Pills */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 shadow-xl">
+      <div className="absolute top-20 left-2 right-2 z-20 flex flex-wrap justify-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 shadow-xl sm:top-4 sm:left-auto sm:right-4 sm:flex-nowrap">
         <button
           onClick={() => handleSwitchMode('DISTRICT')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
