@@ -44,6 +44,7 @@ import {
 import type { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/reference-store';
 import AgentIdentityModal from './AgentIdentityModal';
 import AgentGoalsTasksModal from './AgentGoalsTasksModal';
+import StoreAndBoothModal from './StoreAndBoothModal';
 
 interface ProfileViewProps {
   humanUser: HumanProfile;
