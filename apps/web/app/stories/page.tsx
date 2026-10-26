@@ -9,6 +9,7 @@ type Story = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
   status: string; moderation_status: string; version: number; created_at: string;
   published_at?: string | null; expires_at?: string | null; media?: StoryMedia[];
+  creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null };
 };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -30,11 +31,13 @@ export default function StoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    if (!session) throw new Error("Masuk terlebih dahulu untuk menggunakan Stories.");
+    const method = (init.method || "GET").toUpperCase();
+    if (!session && method !== "GET") throw new Error("Masuk terlebih dahulu untuk mengubah Stories.");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", "Bearer " + session.access_token);
+    if (session) headers.set("Authorization", "Bearer " + session.access_token);
     headers.set("Accept", "application/json");
     if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
     const response = await fetch(apiBase + path, { ...init, headers, cache: "no-store" });
@@ -43,27 +46,32 @@ export default function StoriesPage() {
   }, [session]);
 
   const reload = useCallback(async () => {
-    if (!session) return;
     setLoading(true); setError("");
     try {
-      const [mineResult, activeResult] = await Promise.all([
-        request("/v1/stories/mine?limit=50") as Promise<{ items?: Story[] }>,
-        request("/v1/stories?limit=30") as Promise<{ items?: Story[] }>,
-      ]);
-      setMine(mineResult.items ?? []);
+      const activeResult = await request("/v1/stories?limit=100") as { items?: Story[] };
       setActive(activeResult.items ?? []);
+      if (session) {
+        const mineResult = await request("/v1/stories/mine?limit=50") as { items?: Story[] };
+        setMine(mineResult.items ?? []);
+      } else {
+        setMine([]);
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Stories belum dapat dimuat."); }
     finally { setLoading(false); }
   }, [request, session]);
 
   useEffect(() => {
-    if (!supabase) { setError("Konfigurasi autentikasi belum tersedia."); setLoading(false); return; }
+    if (!supabase) { setSession(null); setLoading(false); return; }
     let alive = true;
     void supabase.auth.getSession().then(({ data }) => { if (alive) { setSession(data.session); if (!data.session) setLoading(false); } });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (alive) setSession(next); });
     return () => { alive = false; data.subscription.unsubscribe(); };
   }, [supabase]);
-  useEffect(() => { if (session) void reload(); }, [session, reload]);
+  useEffect(() => { void reload(); }, [session, reload]);
+  useEffect(() => {
+    const storyId = new URLSearchParams(window.location.search).get("story");
+    if (storyId) setSelectedStoryId(storyId);
+  }, []);
 
   async function createStory(event: FormEvent) {
     event.preventDefault();
@@ -102,6 +110,12 @@ export default function StoriesPage() {
     finally { setBusy(false); }
   }
 
+  const selectedStory = active.find(story => story.id === selectedStoryId) ?? null;
+  const closeStory = () => {
+    setSelectedStoryId(null);
+    window.history.replaceState(null, "", "/stories");
+  };
+
   return (
     <>
       <main className="allpha-page allpha-stories-page mx-auto min-h-screen w-full max-w-4xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
@@ -110,7 +124,21 @@ export default function StoriesPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Stories & Moments</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Momen sementara dengan audience scope dan waktu kedaluwarsa yang ditegakkan server. Story baru masuk moderasi sebelum ditampilkan.</p>
       </header>
-      {!session ? <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="mb-3 text-sm">Masuk untuk membuat dan melihat Stories.</p><Link className="font-semibold text-blue-600 hover:underline" href="/">Masuk melalui Allpha</Link></section> : <>
+      {selectedStoryId && <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900" aria-label="Story viewer">
+        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">Story publik</p><h2 className="text-lg font-semibold">{selectedStory?.creator?.display_name || selectedStory?.creator?.username || "Story"}</h2></div><button type="button" onClick={closeStory} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-sm font-semibold">Tutup</button></div>
+        {loading && !selectedStory ? <p role="status" className="text-sm text-slate-500">Memuat Story…</p> : !selectedStory ? <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan.</p> : <div className="mx-auto max-w-lg">
+          {selectedStory.media?.map(media => media.preview_url ? (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline className="mb-3 max-h-[70dvh] w-full rounded-2xl bg-black" /> : media.media_type.startsWith("image/") ? <img key={media.id} src={media.preview_url} alt={selectedStory.body || "Media Story"} className="mb-3 max-h-[70dvh] w-full rounded-2xl object-contain bg-slate-950" /> : null) : null)}
+          {selectedStory.body && <p className="whitespace-pre-wrap text-sm">{selectedStory.body}</p>}
+          {selectedStory.expires_at && <p className="mt-2 text-xs text-slate-500">Berakhir {new Date(selectedStory.expires_at).toLocaleString("id-ID")}</p>}
+        </div>}
+      </section>}
+      {!session ? <>
+        <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900"><h2 className="text-sm font-black">Temukan Stories publik</h2><p className="my-2 text-xs leading-5 text-slate-600 dark:text-slate-300">Lihat momen publik dari kreator yang belum Anda ikuti. Masuk atau daftar untuk membuat Story dan menggunakan fitur akun.</p><div className="flex gap-2"><Link className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent("/stories")}>Masuk</Link><Link className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black" href={"/login?next=" + encodeURIComponent("/stories")}>Daftar</Link></div></section>
+        {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        <section className="mb-8"><div className="mb-3 flex items-center justify-between"><h2 className="text-xl font-semibold">Stories publik</h2><button onClick={() => void reload()} disabled={loading} className="text-sm text-cyan-600 hover:underline">Muat ulang</button></div>
+          {loading ? <p role="status" className="text-sm text-slate-500">Memuat Stories publik…</p> : active.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story publik yang tersedia.</p> : <div className="grid gap-3 sm:grid-cols-2">{active.map(story => <button type="button" key={story.id} onClick={() => { setSelectedStoryId(story.id); window.history.replaceState(null, "", "/stories?story=" + encodeURIComponent(story.id)); }} className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-cyan-500 dark:bg-slate-900 dark:border-slate-700"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-cyan-600">{story.creator?.display_name || story.creator?.username || "Kreator publik"}</span><span className="text-xs text-slate-500">Publik</span></div>{story.media?.find(media => media.preview_url && media.media_type.startsWith("image/"))?.preview_url && <img src={story.media.find(media => media.preview_url && media.media_type.startsWith("image/"))?.preview_url || ""} alt="" className="mb-3 max-h-56 w-full rounded-xl object-cover" />}{story.body && <p className="line-clamp-3 whitespace-pre-wrap text-sm">{story.body}</p>}<span className="mt-3 inline-block text-xs font-semibold text-cyan-700">Buka Story →</span></button>)}</div>}
+        </section>
+      </> : <>
         <form onSubmit={createStory} className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="text-lg font-semibold">Bagikan momen</h2>
           <textarea aria-label="Isi Story" value={body} onChange={e => setBody(e.target.value)} maxLength={2000} rows={4} className="w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600" placeholder="Apa yang sedang terjadi? (opsional jika ada media)" />
