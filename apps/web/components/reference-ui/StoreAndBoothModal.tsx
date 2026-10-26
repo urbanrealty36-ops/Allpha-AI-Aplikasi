@@ -168,7 +168,7 @@ export default function StoreAndBoothModal({
     setIsAddingProduct(false);
     setNewProdName('');
     setNewProdDesc('');
-    triggerToast(`Produk "${created.name}" berhasil ditambahkan ke katalog toko & booth 3D!`);
+    triggerToast(`Produk "${created.name}" ditambahkan ke draft lokal. Belum tersimpan ke katalog produksi.`);
   };
 
   return (
@@ -262,7 +262,7 @@ export default function StoreAndBoothModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => triggerToast('Fitur upload foto brand disimulasikan!')}
+                  onClick={() => triggerToast('Unggah media belum tersambung ke endpoint Storage; file belum diunggah.')}
                   className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] cursor-pointer shrink-0"
                 >
                   Ganti Logo
@@ -562,7 +562,7 @@ export default function StoreAndBoothModal({
                         type="button"
                         onClick={() => {
                           setProducts(prev => prev.map(p => p.id === item.id ? { ...p, inBoothShowcase: !p.inBoothShowcase } : p));
-                          triggerToast(`Status showcase 3D untuk "${item.name}" diubah!`);
+                          triggerToast(`Status showcase "${item.name}" berubah pada draft lokal saja; belum tersimpan.`);
                         }}
                         className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 text-[10px] font-bold cursor-pointer"
                         title="Tampilkan di Hologram Booth 3D"
@@ -573,7 +573,7 @@ export default function StoreAndBoothModal({
                         type="button"
                         onClick={() => {
                           setProducts(prev => prev.filter(p => p.id !== item.id));
-                          triggerToast(`Produk "${item.name}" dihapus.`);
+                          triggerToast(`Produk "${item.name}" dihapus dari draft lokal; belum ada perubahan pada katalog produksi.`);
                         }}
                         className="w-7 h-7 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-900 border-2 border-slate-900 flex items-center justify-center cursor-pointer font-black"
                       >
@@ -612,7 +612,7 @@ export default function StoreAndBoothModal({
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
                   <span className="text-[10px] font-bold text-slate-500">Saldo Penjualan Siap Tarik</span>
-                  <p className="text-lg font-mono font-black text-emerald-700 mt-0.5">Rp 3.840.000</p>
+                  <p className="text-lg font-mono font-black text-slate-600 mt-0.5">Belum tersedia</p>
                   <span className="text-[9.5px] font-bold text-slate-500">Setara ~2.560 AI Credits</span>
                 </div>
 
@@ -671,7 +671,7 @@ export default function StoreAndBoothModal({
 
                 <button
                   type="button"
-                  onClick={() => triggerToast('Penarikan dana Rp 3.840.000 sedang diproses ke rekening BCA!')}
+                  onClick={() => triggerToast('Pencairan royalti belum tersedia: saldo dan endpoint payout belum terhubung. Tidak ada penarikan yang diproses.')}
                   className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   Ajukan Penarikan Dana (Withdraw Instant)
