@@ -155,7 +155,11 @@ export default function ExploreView({
   // Follow states for accounts
   const [followedAccounts, setFollowedAccounts] = useState<{ [handle: string]: boolean }>({});
 
-  const toggleFollow = (handle: string) => {
+  const toggleFollow = (handle: string, accountId?: string) => {
+    if (productionMode && accountId) {
+      onFollowAccount?.(accountId, followedAccountIds.includes(accountId));
+      return;
+    }
     setFollowedAccounts(prev => ({
       ...prev,
       [handle]: !prev[handle]
@@ -410,22 +414,7 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION B: ACCOUNTS RESULTS (HUMAN & AI AGENTS) */}
         {/* ======================================================== */}
-        {productionMode && activeSearchTab === 'ACCOUNTS' && <section className="space-y-3">
-          <div className="flex items-center justify-between"><h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5"><Users className="h-4 w-4 text-purple-600" /><span>Kreator publik</span></h2><span className="text-[10px] font-bold text-slate-500">Berdasarkan konten publik</span></div>
-          {accountsLoading ? <p role="status" className="rounded-2xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Memuat akun publik…</p> : accountsError ? <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border-2 border-rose-300 bg-white p-4 text-xs font-semibold text-rose-700"><span>{accountsError}</span>{onRetryAccounts && <button type="button" onClick={onRetryAccounts} disabled={accountsLoading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900">Coba lagi</button>}</div> : filteredAccounts.length === 0 ? <p role="status" className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Belum ada akun publik yang memiliki konten publik yang memenuhi syarat.</p> : filteredAccounts.map(acc => {
-            const isFollowed = followedAccountIds.includes(acc.id);
-            return <article key={acc.id} className="flex items-start gap-3 rounded-3xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]">
-              <img src={acc.avatar || "/icon.svg"} alt="" className="h-12 w-12 shrink-0 rounded-full border-2 border-slate-900 object-cover" />
-              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-1.5"><h3 className="text-sm font-black text-slate-900">{acc.name}</h3>{acc.verified && <span aria-label="Terverifikasi" title="Terverifikasi" className="flex h-4 w-4 items-center justify-center rounded-full border border-slate-900 bg-sky-500 text-[9px] font-black text-white">✓</span>}</div>
-                <p className="text-[10px] font-semibold text-slate-500">{acc.handle ? "@" + acc.handle.replace(/^@/, "") : "Kreator publik"} · {acc.isAi ? "AI Agent" : "Human"}</p>
-                {acc.bio && <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-700">{acc.bio}</p>}
-                {acc.publicPostCount !== undefined && <p className="mt-1 text-[10px] font-semibold text-slate-500">{acc.publicPostCount} post publik</p>}
-              </div>
-              <button type="button" onClick={() => onFollowAccount?.(acc.id, isFollowed)} disabled={!onFollowAccount} className={`shrink-0 rounded-xl border-2 border-slate-900 px-3 py-2 text-[10px] font-black shadow-[2px_2px_0px_#0f172a] ${isFollowed ? "bg-white text-slate-900" : "bg-sky-300 text-slate-950"} disabled:opacity-50`}>{isFollowed ? "Mengikuti" : "Ikuti"}</button>
-            </article>;
-          })}
-        </section>}
-                {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS')) && (
+                {((productionMode && activeSearchTab === 'ACCOUNTS') || (!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS'))) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -439,14 +428,18 @@ export default function ExploreView({
               )}
             </div>
 
-            {filteredAccounts.length === 0 ? (
-              <div className="p-6 text-center bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-600 text-xs font-bold">
-                Tidak ada akun yang cocok dengan kata kunci &quot;{searchQuery}&quot;
+            {productionMode && accountsLoading ? (
+              <div role="status" className="p-6 text-center bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-600 text-xs font-bold">Memuat akun publik…</div>
+            ) : productionMode && accountsError ? (
+              <div role="alert" className="p-6 text-center bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-600 text-xs font-bold"><p>{accountsError}</p>{onRetryAccounts && <button type="button" onClick={onRetryAccounts} className="mt-3 rounded-xl border-2 border-slate-900 px-3 py-2">Coba lagi</button>}</div>
+            ) : filteredAccounts.length === 0 ? (
+              <div role="status" className="p-6 text-center bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-600 text-xs font-bold">
+                {productionMode ? "Belum ada akun publik yang memiliki konten publik yang memenuhi syarat." : `Tidak ada akun yang cocok dengan kata kunci "${searchQuery}"`}
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredAccounts.map((acc, idx) => {
-                  const isFollowed = followedAccounts[acc.handle] || false;
+                  const isFollowed = productionMode ? followedAccountIds.includes(acc.id) : (followedAccounts[acc.handle] || false);
                   const bgColors = ['bg-white', 'bg-sky-50/50', 'bg-emerald-50/50', 'bg-amber-50/50', 'bg-purple-50/50'];
                   const cardBg = bgColors[idx % bgColors.length];
 
