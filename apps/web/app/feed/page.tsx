@@ -38,11 +38,13 @@ export default function FeedPage() {
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [authPrompt, setAuthPrompt] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    if (!session) throw new Error("Masuk terlebih dahulu untuk membuka feed personal.");
+    const method = (init.method || "GET").toUpperCase();
+    if (!session && method !== "GET") throw new Error("Masuk terlebih dahulu untuk melakukan tindakan ini.");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", "Bearer " + session.access_token);
+    if (session) headers.set("Authorization", "Bearer " + session.access_token);
     headers.set("Accept", "application/json");
     if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
     const response = await fetch(apiBase + path, { ...init, headers, cache: "no-store" });
@@ -51,7 +53,6 @@ export default function FeedPage() {
   }, [session]);
 
   const loadFeed = useCallback(async (reset = true, nextCursor?: string | null) => {
-    if (!session) return;
     setLoading(true); setError("");
     try {
       const sharedContentId = reset && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("content") : null;
@@ -71,7 +72,7 @@ export default function FeedPage() {
   }, [mode, request, session]);
 
   useEffect(() => {
-    if (!supabase) { setError("Konfigurasi autentikasi belum tersedia."); setLoading(false); return; }
+    if (!supabase) { setLoading(false); return; }
     let active = true;
     void supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); if (!data.session) setLoading(false); } });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
@@ -89,10 +90,9 @@ export default function FeedPage() {
     })();
   }, [request, session]);
 
-  useEffect(() => { if (session) void loadFeed(true); }, [session, mode, loadFeed]);
+  useEffect(() => { void loadFeed(true); }, [session, mode, loadFeed]);
 
   useEffect(() => {
-    if (!session) { setStories([]); return; }
     let active = true;
     void request("/v1/stories?limit=30").then((data: { items?: FeedStory[] }) => {
       if (active) setStories(data.items ?? []);
@@ -100,7 +100,14 @@ export default function FeedPage() {
     return () => { active = false; };
   }, [request, session]);
 
+  function requireLogin(message: string) {
+    if (session) { setAuthPrompt(""); return false; }
+    setAuthPrompt(message);
+    return true;
+  }
+
   async function savePreferences(enabled: boolean, rankingMode = mode) {
+    if (requireLogin("Masuk untuk mengubah personalisasi Feed.")) return;
     setBusyKey("preferences"); setError(""); setNotice("");
     try {
       await request("/v1/feed/preferences", { method: "PUT", body: JSON.stringify({ personalization_enabled: enabled, ranking_mode: rankingMode }) });
@@ -110,6 +117,7 @@ export default function FeedPage() {
   }
 
   async function toggleReaction(item: FeedItem) {
+    if (requireLogin("Masuk untuk menyukai postingan.")) return;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/reaction", item.viewer_reaction
@@ -120,6 +128,7 @@ export default function FeedPage() {
   }
 
   async function toggleSave(item: FeedItem) {
+    if (requireLogin("Masuk untuk menyimpan postingan.")) return;
     setBusyKey(item.id); setError(""); setNotice("");
     try { await request("/v1/feed/" + encodeURIComponent(item.id) + "/save", { method: item.saved ? "DELETE" : "PUT" }); await loadFeed(true); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Simpan konten gagal."); }
@@ -137,6 +146,7 @@ export default function FeedPage() {
   }
 
   async function submitComment(item: FeedItem) {
+    if (requireLogin("Masuk untuk berkomentar.")) return;
     const body = (commentDrafts[item.id] ?? "").trim();
     if (!body) return;
     setBusyKey(item.id); setError(""); setNotice("");
@@ -151,6 +161,7 @@ export default function FeedPage() {
   }
 
   async function report(item: FeedItem, reason: "spam" | "harassment" | "privacy" | "misinformation" | "other" = "other") {
+    if (requireLogin("Masuk untuk melaporkan konten.")) return;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason }) });
@@ -160,7 +171,14 @@ export default function FeedPage() {
   }
 
   async function share(item: FeedItem) {
-    setBusyKey(item.id); setError(""); setNotice("");
+    setError(""); setNotice("");
+    if (!session) {
+      const url = window.location.origin + "/feed?content=" + encodeURIComponent(item.id);
+      try { await navigator.clipboard.writeText(url); setNotice("Tautan postingan publik disalin."); }
+      catch { setNotice("Tautan postingan publik: " + url); }
+      return;
+    }
+    setBusyKey(item.id);
     try {
       const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
         method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
@@ -205,6 +223,7 @@ export default function FeedPage() {
   });
 
   async function addCommentFromReference(postId: string, body: string) {
+    if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const item = items.find(row => row.id === postId);
     if (!item || !body.trim()) return;
     setBusyKey(postId); setError(""); setNotice("");
@@ -219,7 +238,14 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen w-full bg-sky-50 px-0 pb-24 pt-2 text-slate-900">
-      {!session ? <section className="mx-auto mt-4 max-w-xl rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-base font-black">Allpha Feed</h1><p className="my-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="inline-flex rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" href="/login">Masuk melalui Allpha</Link></section> : <>
+      {!session && <section className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-md rounded-2xl border-2 border-slate-900 bg-white p-3 shadow-[3px_3px_0px_#0f172a]">
+        <p className="text-sm font-black">Jelajahi Allpha tanpa login</p>
+        <p className="mt-1 text-xs text-slate-600">{authPrompt || "Lihat konten publik. Masuk untuk menyukai, berkomentar, menyimpan, dan mengikuti kreator."}</p>
+        <div className="mt-2 flex gap-2">
+          <Link className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-1.5 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent("/feed")}>Masuk</Link>
+          <Link className="rounded-xl border-2 border-slate-900 px-3 py-1.5 text-xs font-black" href={"/login?next=" + encodeURIComponent("/feed")}>Daftar</Link>
+        </div>
+      </section>}
         <FeedView
           productionMode
           loading={loading}
@@ -246,7 +272,6 @@ export default function FeedPage() {
           onOpenMessages={() => { window.location.assign("/messages"); }}
         />
         {cursor && <div className="mx-auto max-w-xl px-4 pb-6"><button className="w-full rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black shadow-[3px_3px_0px_#0f172a]" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button></div>}
-      </>}
     </main>
   );
 }
