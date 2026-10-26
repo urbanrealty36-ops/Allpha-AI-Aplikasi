@@ -91,7 +91,7 @@ function SearchPageContent() {
         isAi: false,
         specialty: "Kreator publik",
         bio: account.bio || "",
-        followers: account.followers ?? 0,
+        followers: typeof account.followers === "number" ? account.followers : undefined,
         tags: [],
         isFollowing: false,
       })));
