@@ -82,11 +82,11 @@ jobs:
               elif relpath.startswith("src/assets/images/"):
                   target_runtime = runtime_root / "public/assets/reference-source" / relpath.removeprefix("src/assets/")
                   target_runtime.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copyfile(source_file, target_runtime)
+                  target_runtime.write_bytes(data)
               elif relpath == "app/globals.css":
                   target_runtime = runtime_root / "components/reference-ui/reference-globals.css"
                   target_runtime.parent.mkdir(parents=True, exist_ok=True)
-                  shutil.copyfile(source_file, target_runtime)
+                  target_runtime.write_bytes(data)
               elif relpath.startswith("components/") and relpath.endswith(".tsx"):
                   # Keep the source snapshot byte-for-byte. Runtime copies are
                   # refreshed separately after route/API/demo-state reconciliation;
