@@ -7,7 +7,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 import ReelsView from "../../components/reference-ui/ReelsView";
 
 type ReelsMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
-type Reel = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: ReelsMedia[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
+type Reel = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: ReelsMedia[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type ReferenceReel = { id: string; title: string; caption: string; bgImage: string; creatorName: string; creatorHandle: string; creatorAvatar: string; agentName: string; agentHandle: string; audioName: string; likes: number; commentsCount: number; sharesCount: number; badge: string; ownerId: string; mediaUrl: string | null; mediaType: string | null; createdAt: string; liked: boolean };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -112,11 +112,11 @@ export default function ReelsPage() {
   const referenceReels: ReferenceReel[] = items.map(item => {
     const media = item.media?.find(entry => Boolean(entry.preview_url));
     const mediaUrl = media?.preview_url ?? null;
-    const ownerLabel = "Kreator";
+    const ownerLabel = item.creator?.display_name || item.creator?.username || "Kreator";
     return {
       id: item.id, title: item.body || "Konten Allpha", caption: item.body || "",
-      bgImage: mediaUrl || "", creatorName: ownerLabel, creatorHandle: "",
-      creatorAvatar: "", agentName: "", agentHandle: "", audioName: media?.filename || "Media Allpha",
+      bgImage: mediaUrl || "", creatorName: ownerLabel, creatorHandle: item.creator?.username || "",
+      creatorAvatar: item.creator?.avatar_url || "", agentName: "", agentHandle: "", audioName: media?.filename || "Media Allpha",
       likes: item.engagement?.likes ?? 0, commentsCount: item.engagement?.comments ?? 0,
       sharesCount: item.engagement?.shares ?? 0, badge: item.content_type.toUpperCase(),
       ownerId: item.owner_id, mediaUrl, mediaType: media?.media_type ?? null,
