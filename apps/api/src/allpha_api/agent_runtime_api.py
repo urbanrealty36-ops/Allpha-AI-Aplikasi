@@ -321,8 +321,12 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         task_limits = row.get("task_budget_limits") or {}
         max_runtime = min(30, max(1, int(limits.get("max_runtime_seconds", 30))),
                           max(1, int(task_limits.get("max_runtime_seconds", limits.get("max_runtime_seconds", 30)))))
-        max_calls = min(5, max(1, int(limits.get("max_tool_calls", 1))),
-                        max(1, int(task_limits.get("max_tool_calls", limits.get("max_tool_calls", 1)))))
+        max_calls = min(
+            plan.max_tool_calls,
+            5,
+            max(1, int(limits.get("max_tool_calls", 1))),
+            max(1, int(task_limits.get("max_tool_calls", limits.get("max_tool_calls", 1)))),
+        )
         envelope = AgentTaskEnvelope(
             task_id=str(row["id"]), task_version=int(row["task_version"]),
             requester_id=owner_id, agent_id=str(row["agent_id"]), agent_version=int(row["agent_version"]),
