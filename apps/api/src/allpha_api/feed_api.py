@@ -289,7 +289,42 @@ async def search_content(
             safe = {key: value for key, value in row.items() if key != "storage_path"}
             safe["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
             media_by_id.setdefault(str(row["content_id"]), []).append(safe)
-    items = [{**row, "media": media_by_id.get(str(row["id"]), [])} for row in page]
+    reactions = await _server_db("GET", "content_reactions", params={
+        "select": "content_id,actor_user_id,reaction", "content_id": f"in.({','.join(ids)})", "limit": "5000",
+    }) if ids else []
+    comments = await _server_db("GET", "content_comments", params={
+        "select": "content_id", "content_id": f"in.({','.join(ids)})", "status": "eq.visible", "limit": "5000",
+    }) if ids else []
+    saves = await _server_db("GET", "content_saves", params={
+        "select": "content_id,actor_user_id", "content_id": f"in.({','.join(ids)})", "limit": "5000",
+    }) if ids else []
+    shares = await _server_db("GET", "content_shares", params={
+        "select": "content_id", "content_id": f"in.({','.join(ids)})", "limit": "5000",
+    }) if ids else []
+    engagement: dict[str, dict[str, int]] = {}
+    viewer_reactions: dict[str, str] = {}
+    viewer_saves: set[str] = set()
+    for row in reactions or []:
+        cid = str(row["content_id"])
+        engagement.setdefault(cid, {"likes": 0, "comments": 0, "saves": 0, "shares": 0})["likes"] += 1
+        if owner and str(row.get("actor_user_id")) == owner:
+            viewer_reactions[cid] = str(row.get("reaction") or "like")
+    for row in comments or []:
+        engagement.setdefault(str(row["content_id"]), {"likes": 0, "comments": 0, "saves": 0, "shares": 0})["comments"] += 1
+    for row in saves or []:
+        cid = str(row["content_id"])
+        engagement.setdefault(cid, {"likes": 0, "comments": 0, "saves": 0, "shares": 0})["saves"] += 1
+        if owner and str(row.get("actor_user_id")) == owner:
+            viewer_saves.add(cid)
+    for row in shares or []:
+        engagement.setdefault(str(row["content_id"]), {"likes": 0, "comments": 0, "saves": 0, "shares": 0})["shares"] += 1
+    items = [{
+        **row,
+        "media": media_by_id.get(str(row["id"]), []),
+        "engagement": engagement.get(str(row["id"]), {"likes": 0, "comments": 0, "saves": 0, "shares": 0}),
+        "viewer_reaction": viewer_reactions.get(str(row["id"])),
+        "saved": str(row["id"]) in viewer_saves,
+    } for row in page]
     return {"query": query, "items": items, "count": len(items), "has_more": len(eligible) > limit}
 
 
