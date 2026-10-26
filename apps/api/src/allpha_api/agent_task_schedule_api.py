@@ -151,11 +151,17 @@ async def _verify_runtime_binding(store: AgentRuntimeStore, owner_id: str, paylo
             "code": "SKILL_TOOL_NOT_AUTHORIZED", "message": "Tool tidak tercantum pada Skill yang dipilih."
         })
     try:
-        get_tool(payload.tool_key)
+        tool = get_tool(payload.tool_key)
     except (UnknownToolError, KeyError) as exc:
         raise HTTPException(status_code=422, detail={
             "code": "REGISTERED_TOOL_REQUIRED", "message": "Tool tidak terdaftar pada registry kanonis."
         }) from exc
+    required_scopes = set(tool.required_permission_scopes)
+    if not required_scopes.issubset(set(payload.granted_permission_scopes)):
+        raise HTTPException(status_code=403, detail={
+            "code": "TASK_TOOL_PERMISSION_NOT_GRANTED",
+            "message": "Human Owner harus memberikan seluruh scope yang diwajibkan Tool sebelum menjadwalkan Task."
+        })
     if payload.task_type != "SKILL_EXECUTION":
         raise HTTPException(status_code=409, detail={
             "code": "TASK_TYPE_TOOL_NOT_IMPLEMENTED",
