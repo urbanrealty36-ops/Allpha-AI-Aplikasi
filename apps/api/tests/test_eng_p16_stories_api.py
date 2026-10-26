@@ -42,6 +42,7 @@ def test_create_story_uses_canonical_content_registry_and_server_owner(monkeypat
         })
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(optional_current_user, None)
     assert response.status_code == 201, response.text
     row = calls[0][3]
     assert calls[0][1] == "content_items"
@@ -63,6 +64,7 @@ def test_story_creation_rejects_client_owned_fields(monkeypatch):
         })
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(optional_current_user, None)
     assert response.status_code == 422
 
 
@@ -74,6 +76,7 @@ def test_story_ttl_is_bounded():
         high = client.post("/v1/stories", json={"body": "Moment", "expires_after_hours": 169})
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(optional_current_user, None)
     assert low.status_code == 422
     assert high.status_code == 422
 
@@ -117,6 +120,7 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
         response = client.get("/v1/stories")
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(optional_current_user, None)
     assert response.status_code == 200, response.text
     assert [item["id"] for item in response.json()["items"]] == [STORY_ID]
     feed_query = next(params for method, table, params, _ in calls if method == "GET" and table == "content_items" and params.get("status") == "eq.published" and params.get("expires_at", "").startswith("gt."))
@@ -143,6 +147,7 @@ def test_story_delete_is_owner_scoped_and_compare_and_set(monkeypatch):
         response = client.delete(f"/v1/stories/{STORY_ID}")
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(optional_current_user, None)
     assert response.status_code == 200, response.text
     assert calls[0][2]["owner_id"] == f"eq.{OWNER}"
     assert calls[1][2]["version"] == "eq.2"
@@ -186,6 +191,7 @@ def test_story_media_upload_preserves_story_content_type(monkeypatch):
         )
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(optional_current_user, None)
 
     assert response.status_code == 201, response.text
     assert response.json()["content"]["content_type"] == "story"
