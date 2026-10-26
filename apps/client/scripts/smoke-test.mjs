@@ -139,3 +139,10 @@ assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
 
 assert.match(app,/linking=\{\{ prefixes: \["allpha:\/\/"\]/);
 assert.match(app,/Welcome: "", Auth: "auth", Profile: "profile"/);
+const guestWelcome = app.slice(app.indexOf("function Welcome"), app.indexOf("function Auth"));
+for (const contract of [
+  "/v1/feed?mode=recent&limit=10", "/v1/stories?limit=20", "/v1/reels?mode=recent&limit=10",
+  "requestLogin(\"Menyukai postingan\")", "requestLogin(\"Mengomentari postingan\")",
+  "requestLogin(\"Mengikuti kreator\")", "Share.share", "Linking.openURL"
+]) assert.ok(guestWelcome.includes(contract), `missing Native guest social contract: ${contract}`);
+
