@@ -8,7 +8,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.content_api import MEDIA_FIELDS, _server_db, _signed_media_preview_url, _storage
 from allpha_api.feed_api import _edges
 
@@ -186,26 +186,39 @@ async def create_story(
 async def list_active_stories(
     request: Request,
     limit: int = Query(default=30, ge=1, le=100),
-    user: dict[str, Any] = Depends(current_user),
+    user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
+    """List only eligible active Stories; guests receive public Stories from public profiles."""
     now = _now()
     await _expire_due_stories()
+    owner = str(user["id"]) if user else None
     rows = await _server_db("GET", "content_items", params={
         "select": STORY_FIELDS,
         "content_type": "eq.story",
         "status": "eq.published",
         "moderation_status": "eq.approved",
-        "visibility": "in.(public,followers)",
+        "visibility": "in.(public,followers)" if owner else "eq.public",
         "expires_at": f"gt.{now.isoformat()}",
         "published_at": f"lte.{now.isoformat()}",
         "order": "published_at.desc,id.desc",
         "limit": str(min(1000, limit * 20)),
     })
-    followed, hidden = await _edges(str(user["id"]))
+    followed, hidden = await _edges(owner) if owner else (set(), set())
+    candidates = rows or []
+    if not owner and candidates:
+        profile_rows = await _server_db("GET", "profiles", params={
+            "select": "id,visibility",
+            "id": f"in.({','.join(str(item.get('owner_id')) for item in candidates if item.get('owner_id'))})",
+            "visibility": "eq.public",
+            "limit": str(min(1000, len(candidates))),
+        })
+        public_profile_ids = {str(row.get("id")) for row in profile_rows or []}
+        candidates = [item for item in candidates if str(item.get("owner_id")) in public_profile_ids]
     visible = [
-        item for item in (rows or [])
+        item for item in candidates
         if str(item.get("owner_id")) not in hidden
-        and (item.get("visibility") != "followers" or str(item.get("owner_id")) in followed)
+        and (item.get("visibility") == "public" or
+             (owner and item.get("visibility") == "followers" and str(item.get("owner_id")) in followed))
     ][:limit]
     items = await _attach_media(visible)
     return {"items": items, "server_time": now.isoformat(), "media_preview_expires_in": 300}
