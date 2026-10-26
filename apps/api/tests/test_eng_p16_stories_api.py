@@ -55,6 +55,7 @@ def test_create_story_uses_canonical_content_registry_and_server_owner(monkeypat
 
 def test_story_creation_rejects_client_owned_fields(monkeypatch):
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[optional_current_user] = _auth()
     try:
         response = client.post("/v1/stories", json={
             "body": "Moment", "owner_id": OTHER, "status": "published",
@@ -67,6 +68,7 @@ def test_story_creation_rejects_client_owned_fields(monkeypatch):
 
 def test_story_ttl_is_bounded():
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[optional_current_user] = _auth()
     try:
         low = client.post("/v1/stories", json={"body": "Moment", "expires_after_hours": 0})
         high = client.post("/v1/stories", json={"body": "Moment", "expires_after_hours": 169})
@@ -110,6 +112,7 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
     monkeypatch.setattr(stories_api, "_server_db", fake_db)
     monkeypatch.setattr(stories_api, "_edges", fake_edges)
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[optional_current_user] = _auth()
     try:
         response = client.get("/v1/stories")
     finally:
@@ -135,6 +138,7 @@ def test_story_delete_is_owner_scoped_and_compare_and_set(monkeypatch):
         return 0
     monkeypatch.setattr(stories_api, "_cleanup_story_media", no_cleanup)
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[optional_current_user] = _auth()
     try:
         response = client.delete(f"/v1/stories/{STORY_ID}")
     finally:
@@ -174,6 +178,7 @@ def test_story_media_upload_preserves_story_content_type(monkeypatch):
     monkeypatch.setattr(content_api, "_server_db", fake_db)
     monkeypatch.setattr(content_api, "_storage", fake_storage)
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[optional_current_user] = _auth()
     try:
         response = client.post(
             f"/v1/content/{STORY_ID}/media",
