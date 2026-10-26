@@ -353,6 +353,7 @@ assert.ok(universeHubRoute.includes("Universe3DHubView") && universeHubRoute.inc
 assert.ok(universeHubView.includes("productionMode ? [] : WORLDS_DATA") && universeHubView.includes("Belum ada dunia spatial yang dipublikasikan") && universeHubView.includes("if (productionMode) return;"), "Universe Hub must show an honest empty state and block demo portal transitions in production");
 
 assert.ok(threeWorldView.includes("Katalog booth 3D belum tersedia dari layanan produksi.") && threeWorldView.includes("disabled={productionMode}") && threeWorldView.includes("selectedBooth && !productionMode"), "3D source UI must suppress demo booth prices/purchases and unbound Live controls in production");
+assert.ok(threeWorldView.includes("productionMode ? 'Pratinjau visual 3D' : 'Crystal City Central Avenue'") && threeWorldView.includes('productionMode ? "Pratinjau visual" : "Crystal City Neo-Kyoto Atrium"'), "3D procedural scene must be labeled as a preview until a canonical world is published");
 assert.ok(threeWorldView.includes("if (productionMode) {\n                    setSelectedBooth(null);\n                    return;\n                  }") && threeWorldView.includes("alert('Item booth berhasil ditambahkan ke keranjang pembelian!')"), "3D booth purchase simulation must be unreachable in production mode");
 
 assert.ok(referenceNavbar.includes("onOpenNotifications"), "Navbar notifications must use a real navigation callback");
