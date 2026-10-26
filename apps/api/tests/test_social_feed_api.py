@@ -310,3 +310,63 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
+def test_guest_account_recommendations_use_real_public_profiles_and_follower_counts(monkeypatch):
+    owner_a = "00000000-0000-0000-0000-000000000031"
+    owner_b = "00000000-0000-0000-0000-000000000032"
+    now = datetime.now(timezone.utc).isoformat()
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "content_items":
+            return [
+                {"owner_id": owner_a, "published_at": now},
+                {"owner_id": owner_b, "published_at": now},
+            ]
+        if table == "profiles":
+            return [
+                {"id": owner_a, "username": "public_a", "display_name": "Public A", "avatar_url": None, "bio": "Creator", "visibility": "public"},
+                {"id": owner_b, "username": "public_b", "display_name": "Public B", "avatar_url": None, "bio": "Creator", "visibility": "public"},
+            ]
+        if table == "social_edges" and params.get("target_user_id"):
+            return [
+                {"target_user_id": owner_a},
+                {"target_user_id": owner_a},
+                {"target_user_id": owner_b},
+            ]
+        return []
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    response = TestClient(app).get("/v1/recommendations/accounts")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["id"] for item in payload["items"]] == [owner_a, owner_b]
+    assert [item["followers"] for item in payload["items"]] == [2, 1]
+    assert all("verified" not in item for item in payload["items"])
+
+
+def test_follow_endpoint_creates_canonical_social_edge(monkeypatch):
+    target = "00000000-0000-0000-0000-000000000041"
+    writes = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles" and method == "GET":
+            return [{"id": target, "visibility": "public"}]
+        if table == "social_edges" and method == "GET":
+            return []
+        if table == "social_edges" and method == "POST":
+            writes.append(body)
+            return [{**body, "id": "follow-edge", "created_at": datetime.now(timezone.utc).isoformat()}]
+        raise AssertionError(f"unexpected {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).post(f"/v1/social/follow/{target}")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "active"
+    assert writes[0]["actor_user_id"] == "eng-p14-viewer"
+    assert writes[0]["target_user_id"] == target
+    assert writes[0]["edge_type"] == "follow"
