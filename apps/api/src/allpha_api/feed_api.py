@@ -399,7 +399,7 @@ async def get_recommendations(
 
 
 async def _public_account_discovery(
-    *, owner: str | None, limit: int, query: str | None = None,
+    *, owner: str | None, limit: int, query: str | None = None, exclude_followed: bool = True,
 ) -> dict[str, Any]:
     """Recommend real public Human profiles that own eligible public content."""
     content_rows = await _server_db("GET", "content_items", params={
@@ -435,7 +435,7 @@ async def _public_account_discovery(
         str(row["id"]): row for row in (profiles or [])
         if str(row.get("id")) != owner
         and str(row.get("id")) not in hidden
-        and str(row.get("id")) not in followed
+        and (not exclude_followed or str(row.get("id")) not in followed)
     }
     ordered_ids = [owner_id for owner_id in candidate_ids if owner_id in profile_by_id]
     if not ordered_ids:
@@ -463,6 +463,7 @@ async def _public_account_discovery(
             "bio": profile.get("bio"),
             "visibility": "public",
             "followers": follower_counts.get(owner_id, 0) if follower_counts_exact else None,
+            "is_following": owner is not None and owner_id in followed,
             "latest_public_content_at": latest_by_owner.get(owner_id),
             # Verification is omitted until a canonical, server-backed verification field exists.
         })
@@ -493,7 +494,7 @@ async def search_public_accounts(
     if len(query) < 2:
         raise HTTPException(422, detail={"code": "SEARCH_QUERY_INVALID", "message": "Masukkan kata kunci yang valid."})
     owner = str(user["id"]) if user else None
-    result = await _public_account_discovery(owner=owner, limit=limit, query=query)
+    result = await _public_account_discovery(owner=owner, limit=limit, query=query, exclude_followed=False)
     return {**result, "query": query}
 
 
