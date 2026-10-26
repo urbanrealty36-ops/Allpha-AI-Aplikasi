@@ -49,7 +49,7 @@ jobs:
           )
           entries = []
           for line in source_tree.splitlines():
-              meta, relpath = line.split("\\t", 1)
+              meta, relpath = line.split(chr(9), 1)
               mode, kind, blob_sha, size_text = meta.split()
               if kind != "blob":
                   continue
@@ -110,7 +110,7 @@ jobs:
           }
           manifest_path = pathlib.Path("docs/reference-ui-source/REFERENCE_SOURCE_SNAPSHOT_MANIFEST.json")
           manifest_path.parent.mkdir(parents=True, exist_ok=True)
-          manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n")
+          manifest_path.write_text(json.dumps(manifest, indent=2) + chr(10))
           print(f"Verified and copied {len(entries)} source files from {source_commit}.")
           PY
 
