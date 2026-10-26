@@ -280,3 +280,40 @@ The reference repository contains six modal components and the target contains a
 - A duplicate per-run approval route was removed; the single route records approval for that occurrence only and preserves the schedule's future approval setting. Regression assertion added; wait for the new CI run before marking the fix validated.
 - The current Tool Registry only has text.normalize. Natural-language instructions are currently stored as schedule metadata and are not executed by a general LLM planner. Domain task types without registered canonical tools fail closed. Full autonomous task execution is therefore not accepted yet.
 - AgentTaskSchedulePanel.tsx is a target-only component, not a direct source-repository component; exact source style reconciliation is still required before UI-COPY-03 can close.
+
+---
+
+## Source/target inventory refresh — 2026-10-26 (UI-COPY-03 remains open)
+
+**Pinned source:** `urbanrealty36-ops/Allpha-Front-End-UI-New@aad317c1f651163f065cd42b9ae35267d18f354a`  
+**Target branch:** `work/ui-copy-03-eng-p11-input-contract-20261026`; inventory commit before this refresh was `cbf3c3b105a10e623b9a1e1905fef921f6113d2d`. The CSS isolation follow-up is commit `b812e94793b2966d9f78243aecccffe382088b87`.
+
+### Component manifest result
+
+- Reference tree contains **25** `components/*.tsx` source components.
+- All **25/25** have a corresponding file under `apps/web/components/reference-ui/`; there are no missing source component files.
+- **11/25** are byte-identical by Git blob SHA: `AskAiModal`, `BottomNav`, `CreatePostModal`, `GenerateModal`, `PostDetailView`, `SkillsChallengeHub`, `TakeoverControlView`, `TakeoverModal`, `ThreeWorldView`, `Universe3DExperience`, `Universe3DHubView`.
+- **14/25** are production adapters, not byte-identical: `AgentGoalsTasksModal`, `AgentIdentityModal`, `AiCinemaView`, `AllphaHubView`, `AskAiView`, `AuthOnboardingFlow`, `ExploreView`, `FeedView`, `LiveExperienceStage`, `MarketplaceView`, `MessagesView`, `Navbar`, `ProfileView`, `ReelsView`. Each delta still requires preserving the source JSX/layout/class hierarchy while changing only data/action boundaries and unavailable states needed to prevent demo behavior.
+- Five target-only components are present: `AgentTaskSchedulePanel`, `AuthOnboardingRoute`, `ReferenceApp`, `ReferenceFeedChrome`, and `ReferenceNavigation`. The first is a target-only scheduler UI, not a component in the reference repo; keep its lifecycle/API ownership in the canonical ENG-P11 phase and do not treat its visual similarity as source-copy parity. The remaining integration-shell files are target routing adapters, not reference components.
+- The reference's `app/page.tsx` is a single-page composition; the target exposes 27 Next route pages. Component-file presence is not proof that every source view is mounted at the right route or that all source affordances work. Route-to-component and interaction acceptance remains a separate gate.
+
+### CSS, framework and PWA
+
+- Reference `app/globals.css` is 49 bytes and imports Tailwind plus `tw-animate-css`. Target `apps/web/app/globals.css` includes the reference imports plus legacy identity and owning-domain styles; replacing it wholesale would break unrelated domain routes and is not approved.
+- The target CSS had unscoped generic rules for anchors, form controls, buttons, label-small text, and smooth scrolling. These were narrowed to `.identity-shell` / `html:has(.identity-shell)` so legacy identity-page styles do not cascade over the copied reference routes. Change commit: `b812e94793b2966d9f78243aecccffe382088b87`. This is a CSS-isolation correction, not visual acceptance; dynamic selectors and browser cascade still need evidence.
+- The target PWA manifest uses the existing `/icon.svg`. The reference manifest names `/icon-192.png` and `/icon-512.png`, but those files are absent from the reference public tree. Do not copy broken manifest paths or invent replacement PNGs.
+- Exact public-tree audit: reference `public/` has 21 files; target `apps/web/public/` has 20. Twenty paths match by path and blob SHA. One unmatched file is `assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` (2,030,869 bytes, source blob `ad78971cbe154e01325dc90f8ca0c88349c35c2b`). A source code search found no reference to this filename; it is in the Aistudio attachment/evidence folder rather than a referenced runtime UI asset. The GitHub connector cannot decode this binary blob as UTF-8, so it was not falsely reported as copied. If this evidence attachment is required in the deployed public tree, it still needs an approved binary-transfer path and exact checksum verification.
+- Source `package.json` and monorepo `apps/web/package.json` intentionally differ in scripts and framework patch versions. Target adds tests, typecheck and Supabase integration, while source includes source-only dependencies/configuration. Do not replace the monorepo package/config wholesale; continue checking Tailwind/PostCSS and imported source classes against the existing workspace setup.
+
+### Interaction contract disposition
+
+- Ask AI: source calls a demo `/api/agent/interact` and has simulated fallback/reward behavior. Target must retain the source composition but not send to that demo route or invent a chat-turn endpoint. The inspected target route has no `onSubmitQuery` callback; until the owning canonical contract is available, the UI must present a truthful unavailable state and must not claim delivery/reply/credit settlement.
+- Stories: the source Feed only binds add-story, Live Stage and its spatial item; ordinary story cards have no viewer handler. Keep source behavior exactly—do not invent a Story Viewer click contract.
+- Agent Goals/Tasks: source component is not mounted in the source root composition, and its generic form does not match the current runtime's owned-session + published-skill + declared-tool + idempotency contract. Do not invent Goal CRUD or task success in this copy phase.
+- AI Cinema and Marketplace: source layouts remain present, but catalog, purchase, billing, moderation and credit operations are not inferred from demo fixtures. Target routes fail closed with unavailable/empty data until their existing owner phases provide canonical contracts.
+
+### Evidence and gate
+
+- A previous automated CI artifact recorded 108 screenshots for 27 routes × widths 360, 390, 820 and 1440 on commit `4898e860f7927a34e35ce000526626bc98b9446d`. It is **stale for acceptance** because later UI code changes are not represented in that artifact. The authenticated visual gate was also skipped because protected Supabase/API test-session configuration was not present.
+- Allpha Smoke, ENG-P22 and ENG-P23 succeeded on the documentation-only predecessor commit `cbf3c3b105a10e623b9a1e1905fef921f6113d2d`; Vercel statuses reported `build-rate-limit`, and ENG-P01 was still running. These results do not certify the UI after the CSS isolation commit.
+- Do not close UI-COPY-03 from the component manifest alone. Current blockers: refreshed route/viewport screenshot evidence for the latest code, authenticated-state evidence with an approved isolated test identity, source-to-route composition review, and interaction-contract dispositions for all source controls. WP-02 remains blocked until the acceptance gate is actually satisfied.
