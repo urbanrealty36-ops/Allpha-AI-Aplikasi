@@ -2,7 +2,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api import feed_api
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.main import app
 
 client = TestClient(app)
@@ -62,6 +62,7 @@ def test_reels_reuses_canonical_feed_and_filters_to_video_and_audio(monkeypatch)
 
     monkeypatch.setattr(feed_api, "get_feed", fake_feed)
     app.dependency_overrides[current_user] = _auth_as()
+    app.dependency_overrides[optional_current_user] = _auth_as()
     try:
         response = client.get("/v1/reels?mode=recent&limit=10")
     finally:
