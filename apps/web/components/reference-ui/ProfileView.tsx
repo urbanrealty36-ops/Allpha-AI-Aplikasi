@@ -914,8 +914,6 @@ export default function ProfileView({
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
-            </div>
-
               {/* Reference UI shortcuts wired to canonical pages; no demo business records are created. */}
               <a
                 href="/content-studio"
