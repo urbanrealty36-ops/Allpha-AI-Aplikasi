@@ -124,7 +124,7 @@ function SearchPageContent() {
   }));
 
   return <>
-    {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><p className="text-xs font-black text-slate-950">{authPrompt || "Jelajahi konten publik. Masuk untuk personalisasi dan interaksi."}</p><div className="mt-2 flex gap-2"><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950">Masuk</a><a href={"/signup?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black text-slate-950">Daftar</a></div></section>}
+    {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><p className="text-xs font-black text-slate-950">{authPrompt || "Jelajahi konten publik. Masuk untuk personalisasi dan interaksi."}</p><div className="mt-2 flex gap-2"><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950">Masuk</a><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black text-slate-950">Daftar</a></div></section>}
       <ExploreView
         posts={postsForReference}
         trendsData={trends}
