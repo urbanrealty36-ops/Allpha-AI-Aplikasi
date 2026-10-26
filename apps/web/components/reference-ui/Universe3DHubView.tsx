@@ -205,8 +205,8 @@ const WORLDS_DATA: WorldItem[] = [
 
 interface Universe3DHubViewProps {
   onBackToFeed: () => void;
-  userCredits: number;
-  agentCredits: number;
+  userCredits: number | null;
+  agentCredits: number | null;
   onRewardBonus?: (amount: number, reason: string) => void;
   productionMode?: boolean;
 }
@@ -305,8 +305,8 @@ export default function Universe3DHubView({
         onBackToFeed={onBackToFeed}
         onExitToHub={() => setCurrentStep('HUB')}
         initialDistrict={targetDistrict}
-        userCredits={userCredits}
-        agentCredits={agentCredits}
+        userCredits={userCredits ?? 0}
+        agentCredits={agentCredits ?? 0}
         onRewardBonus={onRewardBonus}
       />
     );
@@ -342,7 +342,7 @@ export default function Universe3DHubView({
                 WebGL PBR 3D
               </span>
               <span className="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300 text-[11px] font-mono font-bold">
-                {userCredits} Cr
+                {userCredits == null ? '—' : `${userCredits} Cr`}
               </span>
             </div>
           </div>
