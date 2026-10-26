@@ -61,6 +61,8 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
             return [{"interest_key": "ai", "preference": "interested"}, {"interest_key": "crypto", "preference": "not_interested"}]
         if table == "content_items":
             return content_rows
+        if table == "profiles":
+            return [{"id": row["owner_id"], "visibility": "public"} for row in content_rows]
         if table == "social_edges":
             if params.get("actor_user_id") == "eq.eng-p14-viewer":
                 return [
