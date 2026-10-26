@@ -93,3 +93,16 @@ async def user_db_request(
     if not response.content:
         return None
     return response.json()
+
+async def optional_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict[str, Any] | None:
+    """Resolve an authenticated Human when a Bearer token exists; otherwise allow public reads.
+
+    A supplied but invalid token is never downgraded to anonymous access. This dependency
+    is only for explicitly public-read routes; all mutations continue to use current_user.
+    """
+    if credentials is None:
+        return None
+    return await current_user(request, credentials)
