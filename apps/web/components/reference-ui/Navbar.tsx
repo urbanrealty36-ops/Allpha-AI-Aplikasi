@@ -55,7 +55,7 @@ export default function Navbar({
       <div className="max-w-xl mx-auto px-4 h-16 flex items-center justify-between gap-2.5">
         
         {/* Brand Logo Lockup matching the reference design */}
-        <div className="flex items-center gap-2 cursor-pointer select-none">
+        <a href="/login" aria-label="ALLPHA UNIVERSE — buka halaman onboarding, login, dan register" className="flex items-center gap-2 cursor-pointer select-none no-underline">
           <div className="flex flex-col">
             <div className="flex items-center tracking-tighter text-2xl font-black leading-none">
               <span className="text-[#0284C7]">ALL</span>
@@ -65,7 +65,7 @@ export default function Navbar({
               UNIVERSE
             </span>
           </div>
-        </div>
+        </a>
 
         {/* Expandable Search Input (if active) */}
         {isSearchOpen && (
