@@ -11,7 +11,7 @@
 - Source tree: 90 entries, 73 file blobs.
 - Text/source/config files: 47; 47 confirmed present in the canonical reference archive or copied component target.
 - Top-level React components: 25; source component files exist under `apps/web/components/reference-ui/`, and archived originals exist under `docs/reference-ui-source/Allpha-Front-End-UI-New/`.
-- Public assets under `public/assets/aistudio/`: 20; all 20 exact-path copies exist in canonical `apps/web/public/` after binary capture and checksum verification.
+- Public assets under `public/assets/aistudio/`: 20; all 20 exact-path copies exist in canonical `apps/web/public/` after byte-size, source Git blob SHA-1 and SHA-256 verification.
 - Temporary `.aistudio/artifacts/brain/**/.tempmediaStorage/*`: 8; inventoried but not copied to public runtime because no confirmed usage/path mapping.
 - No backend/API/DB/Supabase or business-state changes were performed for this capture.
 
@@ -46,3 +46,42 @@
 | `public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png` | 2674422 | `7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66` | verified at `apps/web/public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png`; bytes=2674422; Git blob SHA-1=7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66; SHA-256=df39e38360f889314b856793f4ff1fc190f9f88791e307ce78c7c45a1b2d2841 |
 | `public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png` | 2663435 | `749060b67cf8d143fc360c6c45e7742b849c27ab` | verified at `apps/web/public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png`; bytes=2663435; Git blob SHA-1=749060b67cf8d143fc360c6c45e7742b849c27ab; SHA-256=2018bbd59ebb4750ae9b77f0d6ad383eac8cc8dd42d4feec1364d6436465ccc5 |
 | `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` | 2030869 | `ad78971cbe154e01325dc90f8ca0c88349c35c2b` | verified at `apps/web/public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png`; bytes=2030869; Git blob SHA-1=ad78971cbe154e01325dc90f8ca0c88349c35c2b; SHA-256=fb06dd700425e620f8a26d28af76ae40f8da5a76b70aa7cb1bffb1e688899473 |
+
+## Temporary AI Studio media inventory
+
+These files exist in the source Git tree, but are not in `public/` and have no confirmed component references. Preserve the inventory; do not automatically publish these temporary files.
+
+| Source path | Bytes | Source blob SHA | Disposition |
+|---|---:|---|---|
+| `.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792752503552_e609cdd7.jpg` | 644676 | `d2383fd34b56cff879be3fd2291ab0662aae51e3` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792755028276_a24e5eb7.jpg` | 590774 | `4182881e0a3d78e7d1a757e2c2622fea98d3a151` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792755048475_f3472b58.jpg` | 672454 | `0730fcf3e580a6c8a3bc10cc6aabfb4cd1d45010` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758232833_e2b17fc4.jpg` | 586619 | `14e593bb3b4f465f386294f8250cf7c26ebf7d5d` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758261098_0af534ee.jpg` | 558343 | `2844a29f29371611e638158eae79a167560eafd1` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758287565_7ffa1b2b.jpg` | 1104144 | `8e58ed3ef6c1562c027ad45ff56f265e357e2d77` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/b7c56f9d-546d-4107-956d-26f1948eec14/.tempmediaStorage/media_1792763439888_4853ca49.jpg` | 741976 | `b63fe9a95b0b1aceff9315731b0156ef53a2d161` | not copied; temporary source media, no confirmed UI runtime reference |
+| `.aistudio/artifacts/brain/b7c56f9d-546d-4107-956d-26f1948eec14/.tempmediaStorage/media_1792764131790_87fa76a7.jpg` | 685285 | `597c4ee0de2cc0ab7e114ef650f2d4a18916812d` | not copied; temporary source media, no confirmed UI runtime reference |
+
+## Transfer limitation encountered
+
+Historical limitation (resolved by the verified capture workflow): direct connector binary decoding was unavailable, so the eight assets are fetched by GitHub Actions from the pinned source commit. The workflow refuses to commit if any byte size or source Git blob SHA-1 differs, then records SHA-256 for each target file in this manifest.
+
+## Runtime isolation
+
+- `apps/web/tsconfig.json` excludes `reference-source/**` and `components/reference-ui/*.tsx`; reference UI components are intentionally source snapshots until wired route-by-route.
+- `docs/reference-ui-source/**` is outside `apps/web` and therefore outside the Next.js app directory.
+- `.reference` files are source snapshots, not TS/TSX compilation units.
+- No Railway build/deploy was run or requested. Vercel is the only deployment target, and no deployment is claimed by this inventory commit.
+
+## Acceptance status
+
+- Checkpoint A: source component/route/asset inventory documented; route gaps explicit.
+- Checkpoint B: text/source capture and all 20 public assets are present at exact canonical paths. The eight previously missing assets and the current-head addition were verified by expected byte size, source Git blob SHA-1 and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.
+- Component runtime wiring and full API integration are deliberately out of scope for A/B.
+
+
+## Exact component-copy verification
+
+After the initial manifest was recorded, commit [`fb526a2`](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fb526a246dcced5970271086126ee94c8024716e) copied the 13 remaining divergent component files byte-for-byte from reference source. A subsequent Git tree comparison verified **25 of 25** top-level reference component files now have the same Git blob SHA at `apps/web/components/reference-ui/<component>` as at `components/<component>` in reference tree `5184f44e9f6c4e641cbe37e9f743583cf40d785e`.
+
+This is source-copy evidence only. Component route wiring, production API behavior, and UI acceptance remain unverified. The latest current-head public asset is now present and checksum-verified; UI route wiring and acceptance remain separate gates.
