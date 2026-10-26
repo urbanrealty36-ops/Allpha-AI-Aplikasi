@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   User, 
   Bot, 
@@ -38,11 +38,15 @@ import {
   Target,
   Zap,
   Play,
-  Palette
+  Palette,
+  Store
 } from 'lucide-react';
 import type { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/reference-store';
 import AgentIdentityModal from './AgentIdentityModal';
 import AgentGoalsTasksModal from './AgentGoalsTasksModal';
+import StoreAndBoothModal from './StoreAndBoothModal';
+import ThemeCatalogModal from './ThemeCatalogModal';
+import CreatorStudioModal from './CreatorStudioModal';
 
 interface ProfileViewProps {
   humanUser: HumanProfile;
@@ -64,7 +68,7 @@ interface ProfileViewProps {
   onSelectPost?: (post: PostItem) => void;
   onOpenAskAi?: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenGenerate?: (contextPost: PostItem) => void;
-  onUpdateAgent?: (updatedAgent: AIAgentProfile) => void;
+  onUpdateAgent?: (updatedAgent: AIAgentProfile) => void | Promise<void>;
 }
 
 export default function ProfileView({
@@ -101,6 +105,23 @@ export default function ProfileView({
   // AI Agent Identity & Goals/Tasks Modals State
   const [isIdentityModalOpen, setIsIdentityModalOpen] = useState(false);
   const [isGoalsTasksModalOpen, setIsGoalsTasksModalOpen] = useState(false);
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  const [isThemeCatalogOpen, setIsThemeCatalogOpen] = useState(false);
+  const [isCreatorStudioOpen, setIsCreatorStudioOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('settings') === 'store') {
+      setIsSettingsOpen(true);
+      setIsStoreModalOpen(true);
+    } else if (params.get('settings') === 'theme') {
+      setIsSettingsOpen(true);
+      setIsThemeCatalogOpen(true);
+    } else if (params.get('settings') === 'creator') {
+      setIsSettingsOpen(true);
+      setIsCreatorStudioOpen(true);
+    }
+  }, []);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -630,7 +651,7 @@ export default function ProfileView({
             {/* Core Action Buttons */}
             <div className="pt-2 flex flex-wrap gap-2.5">
               <button
-                onClick={() => setIsIdentityModalOpen(true)}
+                onClick={() => agentProfile ? setIsIdentityModalOpen(true) : onOpenTakeoverModal()}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Palette className="w-4 h-4 text-slate-950" />
@@ -638,7 +659,7 @@ export default function ProfileView({
               </button>
 
               <button
-                onClick={() => setIsGoalsTasksModalOpen(true)}
+                onClick={() => agentProfile ? setIsGoalsTasksModalOpen(true) : onOpenTakeoverModal()}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-purple-400 hover:bg-purple-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Target className="w-4 h-4 text-slate-950" />
@@ -913,6 +934,48 @@ export default function ProfileView({
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
+              {/* Reference UI shortcuts wired to canonical pages; no demo business records are created. */}
+              <button
+                type="button"
+                onClick={() => { setIsSettingsOpen(false); setIsCreatorStudioOpen(true); }}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-violet-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Sparkles className="w-4 h-4 text-violet-600" /><div><p className="font-black text-slate-900">Creator Studio & AI Hub</p><p className="text-[11px] font-bold text-slate-500">Buka studio referensi; generasi AI menunggu koneksi Gateway</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+              <a
+                href={agentProfile?.handle ? '/agents/passport/' + encodeURIComponent(agentProfile.handle.replace(/^@/, '')) : '/agents'}
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Shield className="w-4 h-4 text-sky-700" /><div><p className="font-black text-slate-900">AI Agent Passport</p><p className="text-[11px] font-bold text-slate-500">Buka halaman identitas agen kanonis</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
+              <button
+                type="button"
+                onClick={() => { setIsSettingsOpen(false); setIsThemeCatalogOpen(true); }}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-fuchsia-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Palette className="w-4 h-4 text-fuchsia-700" /><div><p className="font-black text-slate-900">Katalog Tema Visual</p><p className="text-[11px] font-bold text-slate-500">Buka pilihan tema referensi; penyimpanan menunggu kontrak preferensi tema</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+              <a
+                href="/stories"
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-rose-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><FolderOpen className="w-4 h-4 text-rose-700" /><div><p className="font-black text-slate-900">Stories & Moments</p><p className="text-[11px] font-bold text-slate-500">Buka cerita dan moment melalui alur Stories aplikasi</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
+              <button
+                type="button"
+                onClick={() => { setIsSettingsOpen(false); setIsStoreModalOpen(true); }}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-emerald-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Store className="w-4 h-4 text-emerald-700" /><div><p className="font-black text-slate-900">Buat Toko Marketplace & Booth 3D</p><p className="text-[11px] font-bold text-slate-500">Konfigurasi brand, katalog dan booth; simpan setelah API tersedia</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+
             </div>
 
             {/* Sub-Detail View if clicked */}
@@ -920,23 +983,23 @@ export default function ProfileView({
               <div className="p-4 bg-purple-50 border-t-2 border-slate-900 text-xs space-y-2">
                 <h4 className="font-black text-purple-950">Isolasi Memori & Privasi (Master PRD Part XV):</h4>
                 <p className="text-purple-900 font-semibold leading-relaxed text-[11px]">
-                  Memori privat pemilik agen tidak pernah dibagikan kepada pengguna eksternal. Hanya modul pengetahuan yang telah diverifikasi dan disetujui yang dapat diakses oleh publik.
+                  Akses memori dan publikasi pengetahuan mengikuti policy backend. Status konfigurasi privasi untuk akun ini belum dibaca dari API pada panel ini.
                 </p>
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-bold text-purple-950">Enkripsi End-to-End:</span>
-                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-300 text-slate-950 font-black text-[10px] border border-slate-900">AKTIF</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-amber-200 text-slate-950 font-black text-[10px] border border-slate-900">BELUM DIVERIFIKASI</span>
                 </div>
               </div>
             )}
 
             {selectedSettingDetail === 'SESSION' && (
               <div className="p-4 bg-emerald-50 border-t-2 border-slate-900 text-xs space-y-2">
-                <h4 className="font-black text-emerald-950">Sesi Aktif Saat Ini:</h4>
+                <h4 className="font-black text-emerald-950">Sesi & Perangkat Terhubung</h4>
                 <p className="text-emerald-900 font-bold text-[11px]">
-                  • Browser Web / PWA • Jakarta, Indonesia (Aktif sekarang)
+                  Daftar sesi aktif dan pencabutan sesi belum terhubung ke endpoint manajemen sesi. Tidak ada sesi yang dinyatakan dicabut dari panel ini.
                 </p>
                 <button 
-                  onClick={() => alert('Semua sesi eksternal berhasil dicabut!')}
+                  onClick={() => showToast('Pengelolaan sesi belum tersedia: endpoint manajemen sesi belum dihubungkan.')}
                   className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs border border-slate-900 shadow-[1px_1px_0px_#0f172a]"
                 >
                   Cabut Semua Sesi Lain
@@ -977,14 +1040,42 @@ export default function ProfileView({
         </div>
       )}
 
+      <StoreAndBoothModal isOpen={isStoreModalOpen} onClose={() => setIsStoreModalOpen(false)} currentUser={humanUser} currentAgent={currentAgent} />
+      <CreatorStudioModal
+        isOpen={isCreatorStudioOpen}
+        onClose={() => setIsCreatorStudioOpen(false)}
+        agent={currentAgent}
+        user={humanUser}
+        userCredits={null}
+        onDeductCredits={() => { /* Fail closed: no local credit mutation. */ }}
+        onOpenFilmAi={() => { setIsCreatorStudioOpen(false); window.location.assign('/ai-cinema'); }}
+      />
+      <ThemeCatalogModal
+        isOpen={isThemeCatalogOpen}
+        onClose={() => setIsThemeCatalogOpen(false)}
+        onSelectTheme={async (themeId, themeName) => {
+          throw new Error('Preferensi tema visual belum dapat disimpan: API settings saat ini hanya menerima light/dark/system, bukan theme ID ' + themeId + '. Pilihan "' + themeName + '" belum diterapkan.');
+        }}
+      />
+
       {/* AI Agent Identity Modal (Bidang, Skills Catalog, 3D Avatar Catalog) */}
       <AgentIdentityModal
         isOpen={isIdentityModalOpen}
         onClose={() => setIsIdentityModalOpen(false)}
         agent={currentAgent}
-        onSaveAgent={(updated) => {
-          if (onUpdateAgent) onUpdateAgent(updated);
-          showToast(`Identitas ${updated.name} berhasil diperbarui!`);
+        onSaveAgent={async (updated) => {
+          if (!agentProfile?.id) throw new Error("Belum ada Agent kanonis. Buat Agent melalui halaman My Agent terlebih dahulu.");
+          if (!onUpdateAgent) throw new Error("Penyimpanan identitas Agent belum terhubung ke API.");
+          await onUpdateAgent(updated);
+          const hasUnpersistedFields =
+            updated.bidang !== agentProfile.bidang ||
+            updated.avatar3DCodename !== agentProfile.avatar3DCodename ||
+            JSON.stringify(updated.skills ?? []) !== JSON.stringify(agentProfile.skills ?? []) ||
+            updated.model !== agentProfile.model ||
+            updated.autoReply !== agentProfile.autoReply;
+          showToast(hasUnpersistedFields
+            ? "Nama, handle, dan deskripsi tersimpan. Bidang, skill, avatar 3D, model, dan auto-reply belum tersimpan karena kontrak API belum mendukungnya."
+            : `Identitas dasar ${updated.name} tersimpan melalui Allpha API.`);
         }}
       />
 

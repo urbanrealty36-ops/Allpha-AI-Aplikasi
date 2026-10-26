@@ -1,3 +1,30 @@
+# UI-COPY-03 Execution Update — 2026-10-26 (latest recorded checkpoint)
+
+**Status: `in_progress` — NOT accepted; do not advance the owning phase.** Source: `urbanrealty36-ops/Allpha-Front-End-UI-New` (`main`). Target PR: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/pull/9. Branch: `fix/ui-copy-03-reference-page-parity`. Latest code commit at this checkpoint: `aa69826c9f6170d8d9c282231656789b6323c72a`.
+
+## Changes recorded in this checkpoint
+- Removed duplicate Allpha Hub placeholder sections; retained the reference `AllphaHubView` and production guards against demo credits/events/ledger/quest data.
+- MessagesView now renders its supplied notice, API error and retry states, and explicitly labels group conversations unavailable while no group contract is connected.
+- Direct Message POST uses the same `client_message_id` in its request body and `Idempotency-Key` header.
+- Profile's supported Agent identity fields (display name, handle, description) are persisted through the existing authenticated `PATCH /v1/agents/{id}` contract. Modal save waits for the API and surfaces errors; its draft resets when a canonical Agent is selected/opened.
+- Profile actions route to My Agent if no canonical Agent exists. Hard-coded “E2E active”, fabricated current-session text, and alert-based session-revocation success were removed; missing session/privacy API capabilities are stated explicitly.
+- Goal/task modal copy now makes clear that the modal itself does not persist Goal data or execute/delete Runtime tasks; the existing My Agent Runtime route remains the real task flow.
+- Spatial navigation nodes with a canonical `scene_key` now link to `/spatial/{sceneKey}`, where `CanonicalWorldRenderer` loads an authenticated manifest and approved/published GLB references.
+
+## Architecture and safety
+- No database migration and no new database. No direct privileged client-side database writes.
+- No reference demo balances, sample worlds, fabricated online/event/review counts, simulated task completion, or fake security success are promoted into production.
+- Web remains the Next.js PWA; Android/iOS remain React Native + Expo.
+- The reference `Universe3DHubView` still contains hardcoded sample worlds/districts/metrics/reward flows and is **not yet wired into production**. The canonical API-backed navigation and scene renderer remain in use until the reference visual shell can consume real World/District/Scene data without demo values.
+
+## Verification evidence and outstanding gates
+- Earlier workflow set for the initial PR commit passed Allpha Smoke, ENG-P22, ENG-P23 and ENG-P01.
+- For latest checkpoint commit `aa69826c9f6170d8d9c282231656789b6323c72a`: Allpha Smoke run `40310487001` was queued/running; ENG-P23 run `40310487060`, ENG-P22 run `40310486908`, and ENG-P01 run `40310486892` were pending at last inspection.
+- Authenticated visual parity and screenshots at 360/390/820/1440 px have **not** been verified. Full per-route interaction coverage, native-device visual parity, production integration/E2E, and deployment evidence remain outstanding.
+- Do not merge or declare UI-COPY-03 accepted on source-level checks or CI alone. Complete the reference route/component/asset inventory, real World/District/Scene adapter, DM detail interaction matrix, all modal/form behaviors, responsive screenshot evidence, and full CI/E2E gates before changing status.
+
+---
+
 **Execution update (2026-10-25, Feed interaction completion follow-up):**
 - Wired the reference Feed overflow (MoreHorizontal) control to a source-styled report menu with the canonical report reasons (spam, harassment, privacy, misinformation, other). Submission calls the existing authenticated `POST /v1/feed/{content_id}/report` handler; no simulated success alert is used.
 - Latest FeedView blob SHA is `7e0c14e91780791a67108b26864f3b27c4d9fc93` (29,045 bytes); latest Feed route blob SHA is `80eb0f15e5977b9c59675cd6728c0b454979b078` (15,789 bytes). The phase manifest table and route evidence above are updated to these values.

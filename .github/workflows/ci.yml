@@ -22,6 +22,7 @@ jobs:
 
   web-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,6 +34,33 @@ jobs:
         run: npm test
       - working-directory: apps/web
         run: npm run build
+      - name: Install Playwright Chromium for responsive route checks
+        working-directory: apps/web
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start production web server and validate all route viewports
+        working-directory: apps/web
+        env:
+          ALLPHA_VISUAL_BASE_URL: http://127.0.0.1:3000
+        run: |
+          npm run start -- --hostname 127.0.0.1 > /tmp/allpha-web.log 2>&1 &
+          echo $! > /tmp/allpha-web.pid
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then cat /tmp/allpha-web.log; exit 1; fi
+          node scripts/visual-smoke.mjs
+      - name: Upload responsive route screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allpha-responsive-route-screenshots
+          path: apps/web/artifacts/reference-ui-visual/*.png
+          if-no-files-found: warn
+          retention-days: 7
 
   native-client-checks:
     runs-on: ubuntu-latest

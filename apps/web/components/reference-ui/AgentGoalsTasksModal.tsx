@@ -70,26 +70,26 @@ export default function AgentGoalsTasksModal({
 
   // Do not simulate a successful runtime execution. The source design remains intact.
   const handleRunTaskNow = (_task: AgentTaskItem) => {
-    onToast('Eksekusi belum tersedia: sesi/task harus dijalankan melalui Agent Runtime API.');
+    onToast('Modal ini tidak menjalankan task. Gunakan My Agent (/agents) untuk menjalankan task melalui Runtime API, sesi, Skill terpublikasi, tool yang diizinkan, dan policy yang valid.');
   };
 
   // Local-only deletion is not a canonical business write.
   const handleDeleteTask = (_taskId: string) => {
-    onToast('Penghapusan tugas belum tersedia: kontrak API task belum dihubungkan.');
+    onToast('Task tidak dihapus dari modal ini. Kelola task melalui My Agent Runtime (/agents); perubahan belum dilakukan.');
   };
 
   // Keep the source form and styling, but never present local-only task creation as persisted.
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-    onToast('Pembuatan tugas belum tersedia: kontrak Agent Runtime API belum dihubungkan.');
+    onToast('Pembuatan tugas belum tersedia: Agent Runtime API belum dihubungkan pada modal ini. Gunakan My Agent (/agents) untuk membuat task melalui sesi, Skill terpublikasi, dan tool yang dideklarasikan.');
   };
 
   // Keep the source form and styling; goals require a canonical persistence contract.
   const handleCreateGoal = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGoalTitle.trim()) return;
-    onToast('Pembuatan goal belum tersedia: kontrak penyimpanan goal Agent belum dihubungkan.');
+    onToast('Pembuatan goal belum tersedia: kontrak penyimpanan goal Agent belum dihubungkan. Form ini tidak menulis perubahan ke backend karena endpoint Goal belum tersedia.');
   };
 
   const getTypeBadge = (type: AgentTaskItem['type']) => {

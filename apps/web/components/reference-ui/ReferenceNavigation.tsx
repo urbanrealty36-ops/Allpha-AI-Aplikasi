@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Navbar from "./Navbar";
 import BottomNav, { type TabType } from "./BottomNav";
+import NotificationsModal from "./NotificationsModal";
 
 function tabForPath(path: string): TabType {
   if (path.startsWith("/create")) return "CREATE";
@@ -41,6 +42,7 @@ export default function ReferenceNavigation() {
   const pathname = usePathname() || "/feed";
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const navigate = (path: string) => router.push(path);
   const setActiveTab = (tab: TabType) => navigate(routeForTab[tab] ?? "/feed");
@@ -55,7 +57,8 @@ export default function ReferenceNavigation() {
         onOpenCreditsHub={() => navigate("/skill-challenges")}
         onOpenOnboarding={() => navigate("/agents?onboarding=required")}
         onOpenMessages={() => navigate("/messages")}
-        onOpenNotifications={() => navigate("/notifications")}
+        onOpenStore={() => navigate("/profile?settings=store")}
+        onOpenNotifications={() => setNotificationsOpen(true)}
         isMessagesActive={pathname.startsWith("/messages")}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
@@ -66,6 +69,7 @@ export default function ReferenceNavigation() {
         setActiveTab={setActiveTab}
         onOpenCreateModal={() => navigate("/create")}
       />
+      <NotificationsModal isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </>
   );
 }

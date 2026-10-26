@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
-import AuthOnboardingFlow from "./AuthOnboardingFlow";
+import AuthOnboardingPage from "./AuthOnboardingPage";
 import type { AIAgentProfile, HumanProfile } from "@/lib/reference-store";
 import { getBrowserSupabase } from "@/lib/supabase";
 
@@ -174,15 +174,30 @@ export default function AuthOnboardingRoute() {
     router.replace(returnTo);
   }
 
+  async function googleSignIn() {
+    if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi.");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: typeof window !== "undefined" ? window.location.origin + returnTo : undefined },
+    });
+    if (error) throw error;
+  }
+
+  async function resetPassword(email: string) {
+    if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi.");
+    if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Masukkan alamat email yang valid terlebih dahulu.");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: typeof window !== "undefined" ? window.location.origin + "/account/reset-password" : undefined });
+    if (error) throw error;
+  }
+
   return (
-    <>
-      <AuthOnboardingFlow
-        isOpen
-        onClose={() => router.replace(returnTo)}
-        onComplete={complete}
-        currentUser={emptyHuman}
-        currentAgent={emptyAgent}
-      />
-    </>
+    <AuthOnboardingPage
+      onEnterApp={() => router.replace(returnTo)}
+      onCompleteAuth={complete}
+      onGoogleSignIn={googleSignIn}
+      onResetPassword={resetPassword}
+      currentUser={emptyHuman}
+      currentAgent={emptyAgent}
+    />
   );
 }
