@@ -1,6 +1,16 @@
+from fastapi import Request
 from fastapi.testclient import TestClient
 
+from allpha_api.auth import current_user
 from allpha_api.main import app
+
+
+def _authenticated_user(request: Request):
+    request.state.user_id = "spatial-test-user"
+    return {"id": "spatial-test-user"}
+
+
+app.dependency_overrides[current_user] = _authenticated_user
 
 
 def test_public_scene_manifest_fails_closed_when_server_catalog_is_unconfigured(monkeypatch):
