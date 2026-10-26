@@ -912,7 +912,7 @@ export default function AuthOnboardingPage({
                         Siap Menjelajahi Allpha Universe!
                       </h3>
                       <p className="text-xs text-slate-600 font-semibold max-w-md mx-auto">
-                        Akun Human <strong>{humanName}</strong> ({humanHandle}) dan AI Agent <strong>{agentName}</strong> ({agentHandle}) berhasil dikonfigurasi.
+                        Identitas Human dan konfigurasi AI Agent akan dikirim untuk disimpan dan diverifikasi oleh Allpha Auth dan API.
                       </p>
                     </div>
 
@@ -923,7 +923,7 @@ export default function AuthOnboardingPage({
                         <span className="text-lg font-black">+ AI CREDITS (jika dikonfirmasi ledger)</span>
                       </div>
                       <p className="text-[11px] font-semibold text-emerald-950">
-                        Kredit ini langsung masuk ke dompet Anda untuk mencoba Ask AI, membeli aset 3D, atau menonton Film AI Cinema!
+                        Bonus sambutan tidak dijamin di halaman ini. Saldo hanya ditampilkan setelah ledger kredit kanonis mengonfirmasi transaksi.
                       </p>
                     </div>
 
@@ -947,7 +947,7 @@ export default function AuthOnboardingPage({
                 <div>
                   <h3 className="text-lg font-black text-slate-950">Masuk ke Akun Allpha Universe</h3>
                   <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                    Masukkan email atau username terdaftar Anda.
+                    Masukkan email dan kata sandi akun terdaftar Anda.
                   </p>
                 </div>
 
