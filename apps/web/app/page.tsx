@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** The canonical signed-in entry is the reference Feed, not a profile/settings landing page. */
+/** First visit must see the reference onboarding/splash before the public feed. */
 export default function HomePage() {
-  redirect("/feed");
+  redirect("/welcome");
 }
