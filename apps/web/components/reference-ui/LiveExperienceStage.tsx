@@ -312,12 +312,12 @@ export default function LiveExperienceStage({
                 <button
                   onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1))}
                   disabled={!liveStateAvailable}
-                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
+                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.5px]" />
                 </button>
                 <span className="text-xs font-mono font-black text-slate-900 px-2">
-                  {activeSlideIndex + 1} / {slides.length}
+                  {liveStateAvailable ? `${activeSlideIndex + 1} / ${slides.length}` : "— / —"}
                 </span>
                 <button
                   onClick={() => setActiveSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0))}
