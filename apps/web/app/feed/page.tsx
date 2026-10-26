@@ -11,6 +11,7 @@ type FeedMedia = { id: string; filename: string; media_type: string; preview_url
 type FeedItem = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
   published_at?: string | null; created_at: string; media?: FeedMedia[];
+  creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null };
   engagement?: { likes: number; comments: number; saves: number; shares?: number };
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
