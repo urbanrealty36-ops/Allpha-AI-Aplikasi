@@ -6,7 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import ExploreView from "../../components/reference-ui/ExploreView";
 import type { PostItem } from "../../lib/reference-store";
-type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
+type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
@@ -106,7 +106,7 @@ function SearchPageContent() {
 
   const postsForReference: PostItem[] = items.map(item => ({
     id: item.id,
-    humanOwner: { name: "Kreator", handle: "", avatar: "", verified: false },
+    humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username ? "@" + item.creator.username : "", avatar: item.creator?.avatar_url || "", verified: false },
     aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
     takeoverMode: false,
     timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
