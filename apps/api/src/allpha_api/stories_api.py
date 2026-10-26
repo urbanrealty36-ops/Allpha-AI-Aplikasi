@@ -51,10 +51,11 @@ async def _attach_media(items: list[dict[str, Any]], *, owner_id: str | None = N
         content_id = str(row.get("content_id"))
         if content_id not in allowed_ids:
             continue
-        by_content.setdefault(content_id, []).append({
-            **row,
-            "preview_url": await _signed_media_preview_url(row["storage_path"], expires_in=300),
-        })
+        # Storage paths are private implementation details; expose only the
+        # short-lived signed preview issued by the canonical media service.
+        media_item = {key: value for key, value in row.items() if key != "storage_path"}
+        media_item["preview_url"] = await _signed_media_preview_url(row["storage_path"], expires_in=300)
+        by_content.setdefault(content_id, []).append(media_item)
     return [{**item, "media": by_content.get(str(item["id"]), [])} for item in items]
 
 
