@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
@@ -103,24 +103,39 @@ def _published(row: dict[str, Any]) -> datetime:
 @router.get("/v1/feed")
 async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_you",
                    limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
-                   user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    owner = str(user["id"])
+                   user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
+    # Guest reads are public-only, chronological, and never depend on a personal feed.
+    owner = str(user["id"]) if user else None
     offset, as_of = _cursor_decode(cursor)
-    prefs_rows = await _server_db("GET", "feed_preferences", params={
-        "select": "personalization_enabled,ranking_mode", "user_id": f"eq.{owner}", "limit": "1"})
-    prefs = prefs_rows[0] if prefs_rows else {"personalization_enabled": True, "ranking_mode": "for_you"}
-    enabled = bool(prefs.get("personalization_enabled", True))
-    effective_mode = "recent" if not enabled else (prefs.get("ranking_mode", "for_you") if mode == "for_you" else "recent")
+    if owner:
+        prefs_rows = await _server_db("GET", "feed_preferences", params={
+            "select": "personalization_enabled,ranking_mode", "user_id": f"eq.{owner}", "limit": "1"})
+        prefs = prefs_rows[0] if prefs_rows else {"personalization_enabled": True, "ranking_mode": "for_you"}
+        enabled = bool(prefs.get("personalization_enabled", True))
+        effective_mode = "recent" if not enabled else (prefs.get("ranking_mode", "for_you") if mode == "for_you" else "recent")
+        visibility_filter = "in.(public,followers)"
+    else:
+        prefs = {"personalization_enabled": False, "ranking_mode": "recent"}
+        enabled = False
+        effective_mode = "recent"
+        visibility_filter = "eq.public"
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
-        "visibility": "in.(public,followers)", "published_at": f"lte.{as_of.isoformat()}",
+        "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
+        "visibility": visibility_filter, "published_at": f"lte.{as_of.isoformat()}",
         "order": "published_at.desc,id.desc", "limit": str(CANDIDATES)})
     candidates = rows or []
-    followed, hidden = await _edges(owner)
-    candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and (r.get("visibility") != "followers" or str(r.get("owner_id")) in followed)]
+    followed, hidden = await _edges(owner) if owner else (set(), set())
+    if not owner and candidates:
+        profiles = await _server_db("GET", "profiles", params={
+            "select": "id,visibility", "id": f"in.({','.join(str(row.get('owner_id')) for row in candidates if row.get('owner_id'))})",
+            "visibility": "eq.public", "limit": str(min(CANDIDATES, len(candidates)))})
+        public_profile_ids = {str(row.get("id")) for row in profiles or []}
+        candidates = [row for row in candidates if str(row.get("owner_id")) in public_profile_ids]
+    candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and
+                  (r.get("visibility") == "public" or (owner and r.get("visibility") == "followers" and str(r.get("owner_id")) in followed))]
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
-    if effective_mode == "for_you" and enabled:
+    if owner and effective_mode == "for_you" and enabled:
         interest_rows = await _server_db("GET", "user_interests", params={
             "select": "interest_key,preference", "user_id": f"eq.{owner}", "limit": "500",
         })
@@ -146,19 +161,19 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     viewer_reactions: dict[str, str] = {}; viewer_saves: set[str] = set()
     for row in reactions or []:
         cid = str(row["content_id"]); likes[cid] = likes.get(cid, 0) + 1
-        if str(row.get("actor_user_id")) == owner: viewer_reactions[cid] = str(row.get("reaction") or "like")
+        if owner and str(row.get("actor_user_id")) == owner: viewer_reactions[cid] = str(row.get("reaction") or "like")
     for row in comments or []:
         cid = str(row["content_id"]); comment_counts[cid] = comment_counts.get(cid, 0) + 1
     for row in saves or []:
         cid = str(row["content_id"]); save_counts[cid] = save_counts.get(cid, 0) + 1
-        if str(row.get("actor_user_id")) == owner: viewer_saves.add(cid)
+        if owner and str(row.get("actor_user_id")) == owner: viewer_saves.add(cid)
     for row in shares or []:
         cid = str(row["content_id"]); share_counts[cid] = share_counts.get(cid, 0) + 1
     ranked = []
     for row in candidates:
         cid = str(row["id"])
         like_count, comment_count, save_count, share_count = likes.get(cid, 0), comment_counts.get(cid, 0), save_counts.get(cid, 0), share_counts.get(cid, 0)
-        followed_creator = str(row.get("owner_id")) in followed
+        followed_creator = bool(owner and str(row.get("owner_id")) in followed)
         body_tokens = set(re.findall(r"[a-z0-9]+", str(row.get("body") or "").casefold()))
         interest_matches = sum(
             1 for key in interest_keys
