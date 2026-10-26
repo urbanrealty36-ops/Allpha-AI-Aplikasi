@@ -34,6 +34,7 @@ interface FeedViewProps {
   onOpenReels?: () => void;
   onOpenLiveStage?: () => void;
   onOpenCreateModal?: () => void;
+  onOpenStory?: (storyId: string) => void;
   onOpenFilmAi?: (filmId?: string) => void;
   onOpenMessages?: () => void;
   storiesData?: Array<{ id: string; name: string; img?: string; isAdd?: boolean; isLive?: boolean; ringColor?: string }>;
@@ -61,6 +62,7 @@ export default function FeedView({
   onOpenReels,
   onOpenLiveStage,
   onOpenCreateModal,
+  onOpenStory,
   onOpenFilmAi,
   onOpenMessages,
   storiesData,
@@ -183,6 +185,8 @@ export default function FeedView({
                 onOpenLiveStage();
               } else if (story.id === 's-3d-world') {
                 onOpenWorld3D();
+              } else if (!story.isAdd && !story.isLive && onOpenStory) {
+                onOpenStory(story.id);
               }
             }}
             className="flex flex-col items-center gap-1 shrink-0 cursor-pointer group active:scale-95 transition"
