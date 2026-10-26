@@ -707,7 +707,7 @@ export default function AiCinemaView({
               className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 text-xs font-black shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Film className="w-3.5 h-3.5 text-rose-600 stroke-[2.5px]" />
-              <span>{cinemaViewMode === 'MY_STUDIO' ? 'Lihat Semua Katalog Film' : `Status Film Saya (${myUploadedFilms.length})`}</span>
+              <span>{cinemaViewMode === 'MY_STUDIO' ? 'Lihat Semua Katalog Film' : productionMode && catalogState !== 'ready' ? 'Status Film Saya' : `Status Film Saya (${myUploadedFilms.length})`}</span>
             </button>
           </div>
         </div>
@@ -885,7 +885,7 @@ export default function AiCinemaView({
                 Katalog Film Pendek & Serial Drama AI
               </h3>
               <span className="text-xs text-slate-800 font-mono font-bold px-2 py-0.5 rounded-full bg-slate-200 border border-slate-900">
-                {filteredMovies.length} Judul
+                {catalogState === 'unavailable' ? 'Jumlah belum tersedia' : catalogState === 'loading' ? 'Memuat…' : `${filteredMovies.length} Judul`}
               </span>
             </div>
 
