@@ -82,14 +82,14 @@ export default function AgentGoalsTasksModal({
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-    onToast('Task tidak disimpan dari modal ini. Gunakan My Agent (/agents) untuk membuat task melalui Runtime API dengan sesi, Skill terpublikasi, dan tool yang dideklarasikan.');
+    onToast('Pembuatan tugas belum tersedia: Agent Runtime API belum dihubungkan pada modal ini. Gunakan My Agent (/agents) untuk membuat task melalui sesi, Skill terpublikasi, dan tool yang dideklarasikan.');
   };
 
   // Keep the source form and styling; goals require a canonical persistence contract.
   const handleCreateGoal = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGoalTitle.trim()) return;
-    onToast('Goal tidak disimpan: endpoint penyimpanan Goal belum tersedia. Form ini tidak menulis perubahan ke backend.');
+    onToast('Pembuatan goal belum tersedia: kontrak penyimpanan goal Agent belum dihubungkan. Form ini tidak menulis perubahan ke backend karena endpoint Goal belum tersedia.');
   };
 
   const getTypeBadge = (type: AgentTaskItem['type']) => {
