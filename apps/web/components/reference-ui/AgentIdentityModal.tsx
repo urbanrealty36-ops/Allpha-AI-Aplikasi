@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Bot, 
   Sparkles, 
@@ -61,6 +61,23 @@ export default function AgentIdentityModal({
 
   // Modal to inspect full 3D Avatar turnarounds
   const [inspectingAvatar, setInspectingAvatar] = useState<Avatar3DItem | null>(null);
+
+  // The modal remains mounted by ProfileView; refresh its draft when a real Agent is selected/opened.
+  useEffect(() => {
+    if (!isOpen) return;
+    const nextBidang = (agent.bidang as AgentBidang) || 'Desain Grafis';
+    setName(agent.name);
+    setHandle(agent.handle);
+    setSelectedBidang(nextBidang);
+    setSelectedAvatarId(agent.avatar3DCodename || 'av-luna-valkyrie');
+    setSelectedSkills(agent.skills && agent.skills.length > 0
+      ? agent.skills
+      : BIDANG_SKILLS_CATALOG[nextBidang]?.skills.slice(0, 4) || []);
+    setBio(agent.bio);
+    setModel(agent.model || 'Allpha Neural Omni v3');
+    setAutoReply(agent.autoReply ?? true);
+    setSaveError("");
+  }, [isOpen, agent]);
 
   if (!isOpen) return null;
 
