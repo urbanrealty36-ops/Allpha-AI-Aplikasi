@@ -55,6 +55,11 @@ const emptyAgent: AIAgentProfile = {
 export default function AuthOnboardingRoute() {
   const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
+  const returnTo = useMemo(() => {
+    if (typeof window === "undefined") return "/feed";
+    const requested = new URLSearchParams(window.location.search).get("next");
+    return requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/feed";
+  }, []);
 
   async function complete(payload: {
     user: HumanProfile;
@@ -89,7 +94,8 @@ export default function AuthOnboardingRoute() {
     if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
     const existing = await existingResponse.json() as AgentList;
     if (existing.items?.length) {
-      // The reference flow displays success only after canonical Auth/API completion.
+      // Return to the public context that prompted authentication; the original action is not replayed.
+      router.replace(returnTo);
       return;
     }
     if (payload.authMode === "LOGIN") {
@@ -165,14 +171,14 @@ export default function AuthOnboardingRoute() {
       cache: "no-store",
     });
     if (!agentResponse.ok) throw new Error(await responseError(agentResponse));
-    router.replace("/feed");
+    router.replace(returnTo);
   }
 
   return (
     <>
       <AuthOnboardingFlow
         isOpen
-        onClose={() => router.replace("/feed")}
+        onClose={() => router.replace(returnTo)}
         onComplete={complete}
         currentUser={emptyHuman}
         currentAgent={emptyAgent}
