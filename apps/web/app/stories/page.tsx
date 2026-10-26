@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import StoriesViewerModal, { type StoryItem } from "../../components/reference-ui/StoriesViewerModal";
+import type { HumanProfile, AIAgentProfile } from "../../lib/reference-store";
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
@@ -118,20 +120,44 @@ export default function StoriesPage() {
 
   return (
     <>
+      <StoriesViewerModal
+        isOpen={Boolean(selectedStoryId)}
+        onClose={closeStory}
+        initialIndex={Math.max(0, active.findIndex(story => story.id === selectedStoryId))}
+        currentUser={{
+          id: session?.user.id ?? "",
+          name: String(session?.user.user_metadata?.display_name ?? session?.user.email ?? "Pengguna"),
+          username: String(session?.user.user_metadata?.username ?? ""),
+          avatar: String(session?.user.user_metadata?.avatar_url ?? "/icon.svg"),
+          bio: "", followers: 0, following: 0, postsCount: 0, badge: "Human",
+        } satisfies HumanProfile}
+        currentAgent={{
+          id: "", name: "", handle: "", avatar: "", ownerId: session?.user.id ?? "",
+          ownerName: String(session?.user.user_metadata?.display_name ?? session?.user.email ?? "Pengguna"),
+          ownerHandle: "", specialty: "", category: "", bio: "", skills: [], creditsEarned: 0,
+          autoReply: false, model: "", goals: [], tasks: [],
+        } satisfies AIAgentProfile}
+        stories={active.map(story => ({
+          id: story.id,
+          creatorName: story.creator?.display_name || story.creator?.username || "Kreator",
+          creatorHandle: story.creator?.username ? "@" + story.creator.username.replace(/^@/, "") : "",
+          creatorAvatar: story.creator?.avatar_url || "/icon.svg",
+          isAiAgent: false,
+          mediaUrl: story.media?.find(media => Boolean(media.preview_url))?.preview_url || "",
+          caption: story.body || "",
+          timestamp: new Date(story.created_at).toLocaleString("id-ID"),
+        } satisfies StoryItem))}
+        onOpenCreateStory={() => {
+          closeStory();
+          window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Isi Story"]')?.focus(), 0);
+        }}
+      />
       <main className="allpha-page allpha-stories-page mx-auto min-h-screen w-full max-w-4xl px-4 py-6 text-slate-900 dark:text-slate-100 sm:px-6">
       <header className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">Allpha Universe</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Stories & Moments</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Momen sementara dengan audience scope dan waktu kedaluwarsa yang ditegakkan server. Story baru masuk moderasi sebelum ditampilkan.</p>
       </header>
-      {selectedStoryId && <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900" aria-label="Story viewer">
-        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">Story publik</p><h2 className="text-lg font-semibold">{selectedStory?.creator?.display_name || selectedStory?.creator?.username || "Story"}</h2></div><button type="button" onClick={closeStory} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-sm font-semibold">Tutup</button></div>
-        {loading && !selectedStory ? <p role="status" className="text-sm text-slate-500">Memuat Story…</p> : !selectedStory ? <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan.</p> : <div className="mx-auto max-w-lg">
-          {selectedStory.media?.map(media => media.preview_url ? (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline className="mb-3 max-h-[70dvh] w-full rounded-2xl bg-black" /> : media.media_type.startsWith("image/") ? <img key={media.id} src={media.preview_url} alt={selectedStory.body || "Media Story"} className="mb-3 max-h-[70dvh] w-full rounded-2xl object-contain bg-slate-950" /> : null) : null)}
-          {selectedStory.body && <p className="whitespace-pre-wrap text-sm">{selectedStory.body}</p>}
-          {selectedStory.expires_at && <p className="mt-2 text-xs text-slate-500">Berakhir {new Date(selectedStory.expires_at).toLocaleString("id-ID")}</p>}
-        </div>}
-      </section>}
       {!session ? <>
         <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900"><h2 className="text-sm font-black">Temukan Stories publik</h2><p className="my-2 text-xs leading-5 text-slate-600 dark:text-slate-300">Lihat momen publik dari kreator yang belum Anda ikuti. Masuk atau daftar untuk membuat Story dan menggunakan fitur akun.</p><div className="flex gap-2"><Link className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent("/stories")}>Masuk</Link><Link className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black" href={"/login?next=" + encodeURIComponent("/stories")}>Daftar</Link></div></section>
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
