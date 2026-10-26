@@ -50,13 +50,16 @@ def test_client_api_data_adapter_feed_interaction_lifecycle(monkeypatch):
     async def isolated_data_adapter(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
         assert table in {
-            "content_items", "social_edges", "user_interests", "content_reactions",
+            "content_items", "profiles", "social_edges", "user_interests", "content_reactions",
             "content_saves", "content_comments", "content_shares", "content_reports",
             "feed_preferences", "content_mentions", "content_media",
         }, f"unexpected data access: {method} {table}"
 
         if table == "content_items":
             return [content] if params.get("id", "").endswith(CONTENT_ID) or not params.get("id") else []
+        if table == "profiles":
+            return [{"id": OWNER, "username": "public_owner", "display_name": "Public Owner",
+                     "avatar_url": None, "bio": "", "visibility": "public"}]
         if table == "social_edges":
             return []
         if table == "user_interests":
