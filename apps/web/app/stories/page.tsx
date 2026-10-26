@@ -30,6 +30,7 @@ export default function StoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const method = (init.method || "GET").toUpperCase();
@@ -66,6 +67,17 @@ export default function StoriesPage() {
     return () => { alive = false; data.subscription.unsubscribe(); };
   }, [supabase]);
   useEffect(() => { void reload(); }, [session, reload]);
+  useEffect(() => {
+    const storyId = new URLSearchParams(window.location.search).get("story");
+    if (storyId) setSelectedStoryId(storyId);
+  }, []);
+
+  const selectedStory = active.find(story => story.id === selectedStoryId) ?? null;
+
+  function closeStory() {
+    setSelectedStoryId(null);
+    window.history.replaceState(null, "", "/stories");
+  }
 
   async function createStory(event: FormEvent) {
     event.preventDefault();
@@ -138,9 +150,17 @@ export default function StoriesPage() {
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
         {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-300 p-3 text-sm">{notice}</p>}
       </>}
+      {selectedStoryId && <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900" aria-label="Story viewer">
+        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">Story publik</p><h2 className="text-lg font-semibold">{selectedStory?.creator?.display_name || selectedStory?.creator?.username || "Story"}</h2></div><button type="button" onClick={closeStory} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-sm font-semibold">Tutup</button></div>
+        {loading && !selectedStory ? <p role="status" className="text-sm text-slate-500">Memuat Story…</p> : !selectedStory ? <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan.</p> : <div className="mx-auto max-w-lg">
+          {selectedStory.media?.map(media => media.preview_url ? (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline className="mb-3 max-h-[70dvh] w-full rounded-2xl bg-black" /> : media.media_type.startsWith("image/") ? <img key={media.id} src={media.preview_url} alt={selectedStory.body || "Media Story"} className="mb-3 max-h-[70dvh] w-full rounded-2xl object-contain bg-slate-950" /> : null) : null)}
+          {selectedStory.body && <p className="whitespace-pre-wrap text-sm">{selectedStory.body}</p>}
+          {selectedStory.expires_at && <p className="mt-2 text-xs text-slate-500">Berakhir {new Date(selectedStory.expires_at).toLocaleString("id-ID")}</p>}
+        </div>}
+      </section>}
       <section className="mb-8">
           <div className="mb-3 flex items-center justify-between"><h2 className="text-xl font-semibold">Momen aktif</h2><button onClick={() => void reload()} disabled={loading || busy} className="text-sm text-cyan-600 hover:underline">Muat ulang</button></div>
-          {loading ? <p className="text-sm text-slate-500">Memuat Stories…</p> : active.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story aktif yang dapat Anda lihat.</p> : <div className="grid gap-3 sm:grid-cols-2">{active.map(story => <article key={story.id} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-cyan-600">{story.visibility}</span><span className="text-xs text-slate-500">{story.expires_at ? "Berakhir " + new Date(story.expires_at).toLocaleString("id-ID") : "Expiry belum tersedia"}</span></div><p className="whitespace-pre-wrap text-sm">{story.body || "Momen media"}</p>{story.media?.map(media => media.preview_url ? <a key={media.id} href={media.preview_url} target="_blank" rel="noreferrer" className="mt-3 block break-all text-xs text-blue-600 underline">{media.filename} · buka media</a> : null)}</article>)}</div>}
+          {loading ? <p className="text-sm text-slate-500">Memuat Stories…</p> : active.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story aktif yang dapat Anda lihat.</p> : <div className="grid gap-3 sm:grid-cols-2">{active.map(story => <article key={story.id} role="button" tabIndex={0} onClick={() => setSelectedStoryId(story.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") setSelectedStoryId(story.id); }} className="cursor-pointer rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-cyan-600">{story.visibility}</span><span className="text-xs text-slate-500">{story.expires_at ? "Berakhir " + new Date(story.expires_at).toLocaleString("id-ID") : "Expiry belum tersedia"}</span></div><p className="whitespace-pre-wrap text-sm">{story.body || "Momen media"}</p>{story.media?.map(media => media.preview_url ? <a key={media.id} href={media.preview_url} target="_blank" rel="noreferrer" className="mt-3 block break-all text-xs text-blue-600 underline">{media.filename} · buka media</a> : null)}</article>)}</div>}
         </section>
       {session && <section>
           <h2 className="mb-3 text-xl font-semibold">Stories saya</h2>
