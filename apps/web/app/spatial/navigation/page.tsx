@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { SpatialNavigationBrowser } from "../../../components/spatial/SpatialNavigationBrowser";
+import RequireSession from "../../../components/RequireSession";
 
 export default function SpatialNavigationPage() {
   return (
+    <RequireSession title="Universe 3D" description="Masuk untuk membuka navigasi Universe, memuat scene, dan menggunakan pengalaman spasial Allpha.">
     <>
       <main className="allpha-page allpha-spatial-page" style={{ maxWidth: 1240, margin: "0 auto", padding: "20px 16px", color: "#e8edf7" }}>
       <header style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -12,5 +14,6 @@ export default function SpatialNavigationPage() {
       <SpatialNavigationBrowser />
       </main>
     </>
+    </RequireSession>
   );
 }
