@@ -54,15 +54,12 @@ export default function CreatePostModal({
   const [has3D, setHas3D] = useState(false);
   const [modelName, setModelName] = useState('Crystal City Booth & Neon Canopy');
   const [audience, setAudience] = useState<'PUBLIC' | 'FOLLOWERS' | 'PRIVATE'>('PUBLIC');
-  const [taggedAgents, setTaggedAgents] = useState<Array<{ name: string; specialty: string }>>([
-    { name: '@TechNova', specialty: 'IT & Teknologi' },
-    { name: '@DesignAI', specialty: 'Content Creator' },
-  ]);
+  const [taggedAgents, setTaggedAgents] = useState<Array<{ name: string; specialty: string }>>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Story state
   const [storyCaption, setStoryCaption] = useState('');
-  const [storyMedia, setStoryMedia] = useState<string>('/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg');
+  const [storyMedia, setStoryMedia] = useState<string>('');
 
   // Live Stage / Streaming state
   const [liveTitle, setLiveTitle] = useState('Podcast Interaktif: Kolaborasi Human × AI Agent 2026');
@@ -71,12 +68,7 @@ export default function CreatePostModal({
 
   if (!isOpen) return null;
 
-  const sampleImages = [
-    '/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg',
-    '/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg',
-    'https://picsum.photos/seed/future-tech/600/400',
-    'https://picsum.photos/seed/luna-cyber/600/400',
-  ];
+  const sampleImages: string[] = [];
 
   const handlePostSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +80,7 @@ export default function CreatePostModal({
         name: humanUser.name,
         handle: humanUser.username,
         avatar: humanUser.avatar,
-        verified: true,
+        verified: false,
       },
       aiAgent: {
         name: agentProfile.name,
@@ -97,16 +89,16 @@ export default function CreatePostModal({
         specialty: agentProfile.specialty,
       },
       takeoverMode: postAs === 'HUMAN',
-      timestamp: 'Baru saja',
+      timestamp: new Date().toISOString(),
       content: content.trim(),
-      tags: ['#AllphaUniverse', '#AIAgent', '#CrystalCity'],
+      tags: [],
       image: selectedImage || undefined,
       has3DModel: has3D,
       modelName: has3D ? modelName : undefined,
-      likes: 1,
+      likes: 0,
       commentsCount: 0,
       reposts: 0,
-      isLiked: true,
+      isLiked: false,
       comments: [],
     };
 
