@@ -524,12 +524,34 @@ async def unsave_content(content_id: uuid.UUID, user: dict[str, Any] = Depends(c
     return {"saved": False, "removed": bool(rows)}
 
 @router.get("/v1/feed/{content_id}/comments")
-async def list_comments(content_id: uuid.UUID, limit: int = Query(default=30, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _visible_content(content_id, str(user["id"]))
-    rows = await _server_db("GET", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at",
+async def list_comments(
+    content_id: uuid.UUID,
+    limit: int = Query(default=30, ge=1, le=100),
+    user: dict[str, Any] | None = Depends(optional_current_user),
+) -> dict[str, Any]:
+    if user:
+        await _visible_content(content_id, str(user["id"]))
+        select_fields = "id,content_id,actor_user_id,body,status,created_at,updated_at"
+    else:
+        # Public comment reads are allowed only for a published, approved public post
+        # owned by a public profile. Never expose actor IDs or mention targets to guests.
+        public_items = await _server_db("GET", "content_items", params={
+            "select": "id,owner_id,visibility,status,moderation_status,published_at",
+            "id": f"eq.{content_id}", "content_type": "not.eq.story",
+            "status": "eq.published", "moderation_status": "eq.approved",
+            "visibility": "eq.public", "published_at": f"lte.{_now().isoformat()}", "limit": "1",
+        })
+        if not public_items:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
+        owner_id = str(public_items[0].get("owner_id") or "")
+        profile = (await _profiles_for({owner_id})).get(owner_id)
+        if not profile or profile.get("visibility") != "public":
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
+        select_fields = "id,content_id,body,status,created_at,updated_at"
+    rows = await _server_db("GET", "content_comments", params={"select": select_fields,
         "content_id": f"eq.{content_id}", "status": "eq.visible", "order": "created_at.asc", "limit": str(limit)})
     items = rows or []
-    if items:
+    if user and items:
         mention_rows = await _server_db("GET", "content_mentions", params={
             "select": "comment_id,mentioned_user_id", "comment_id": f"in.({','.join(str(x['id']) for x in items)})", "limit": str(min(500, len(items) * 20)),
         })
