@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   User, 
   Bot, 
@@ -108,6 +108,20 @@ export default function ProfileView({
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
   const [isThemeCatalogOpen, setIsThemeCatalogOpen] = useState(false);
   const [isCreatorStudioOpen, setIsCreatorStudioOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('settings') === 'store') {
+      setIsSettingsOpen(true);
+      setIsStoreModalOpen(true);
+    } else if (params.get('settings') === 'theme') {
+      setIsSettingsOpen(true);
+      setIsThemeCatalogOpen(true);
+    } else if (params.get('settings') === 'creator') {
+      setIsSettingsOpen(true);
+      setIsCreatorStudioOpen(true);
+    }
+  }, []);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
