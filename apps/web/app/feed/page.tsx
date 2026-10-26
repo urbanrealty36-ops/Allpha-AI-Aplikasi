@@ -70,7 +70,10 @@ export default function FeedPage() {
   }, [mode, request, session]);
 
   useEffect(() => {
-    if (!supabase) { setError("Konfigurasi autentikasi belum tersedia."); setLoading(false); return; }
+    // Authentication is optional for public Feed browsing. If the browser auth
+    // client is not configured, keep the visitor anonymous instead of blocking
+    // the public API read; protected actions still fail closed in the API.
+    if (!supabase) { setSession(null); setLoading(false); return; }
     let active = true;
     void supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); if (!data.session) setLoading(false); } });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
@@ -134,7 +137,8 @@ export default function FeedPage() {
   }
 
   async function openComments(item: FeedItem) {
-    if (requireLogin("Masuk untuk melihat dan berpartisipasi dalam komentar.")) return;
+    // Public comments can be read without an account; submitting a comment
+    // remains an authenticated mutation in submitComment and the API.
     const opening = !commentsOpen[item.id];
     setCommentsOpen(current => ({ ...current, [item.id]: opening }));
     if (!opening || comments[item.id]) return;
