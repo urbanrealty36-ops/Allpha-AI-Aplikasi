@@ -340,7 +340,7 @@ def test_guest_account_recommendations_use_real_public_profiles_and_follower_cou
     assert response.status_code == 200, response.text
     payload = response.json()
     assert [item["id"] for item in payload["items"]] == [owner_a, owner_b]
-    assert [item["followers"] for item in payload["items"]] == [2, 1]
+    assert all("followers" not in item for item in payload["items"])
     assert all("verified" not in item for item in payload["items"])
 
 
