@@ -45,6 +45,7 @@ import type { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '
 import AgentIdentityModal from './AgentIdentityModal';
 import AgentGoalsTasksModal from './AgentGoalsTasksModal';
 import StoreAndBoothModal from './StoreAndBoothModal';
+import ThemeCatalogModal from './ThemeCatalogModal';
 
 interface ProfileViewProps {
   humanUser: HumanProfile;
@@ -104,6 +105,7 @@ export default function ProfileView({
   const [isIdentityModalOpen, setIsIdentityModalOpen] = useState(false);
   const [isGoalsTasksModalOpen, setIsGoalsTasksModalOpen] = useState(false);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  const [isThemeCatalogOpen, setIsThemeCatalogOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -933,14 +935,14 @@ export default function ProfileView({
                 <div className="flex items-center gap-3"><Shield className="w-4 h-4 text-sky-700" /><div><p className="font-black text-slate-900">AI Agent Passport</p><p className="text-[11px] font-bold text-slate-500">Buka halaman identitas agen kanonis</p></div></div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </a>
-              <a
-                href="/spatial/themes"
-                onClick={() => setIsSettingsOpen(false)}
+              <button
+                type="button"
+                onClick={() => { setIsSettingsOpen(false); setIsThemeCatalogOpen(true); }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-fuchsia-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
               >
-                <div className="flex items-center gap-3"><Palette className="w-4 h-4 text-fuchsia-700" /><div><p className="font-black text-slate-900">Katalog Tema Spatial</p><p className="text-[11px] font-bold text-slate-500">Lihat tema yang tersedia melalui API Theme Universe</p></div></div>
+                <div className="flex items-center gap-3"><Palette className="w-4 h-4 text-fuchsia-700" /><div><p className="font-black text-slate-900">Katalog Tema Visual</p><p className="text-[11px] font-bold text-slate-500">Buka pilihan tema referensi; penyimpanan menunggu kontrak preferensi tema</p></div></div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
-              </a>
+              </button>
               <a
                 href="/stories"
                 onClick={() => setIsSettingsOpen(false)}
@@ -1023,6 +1025,13 @@ export default function ProfileView({
       )}
 
       <StoreAndBoothModal isOpen={isStoreModalOpen} onClose={() => setIsStoreModalOpen(false)} currentUser={humanUser} currentAgent={currentAgent} />
+      <ThemeCatalogModal
+        isOpen={isThemeCatalogOpen}
+        onClose={() => setIsThemeCatalogOpen(false)}
+        onSelectTheme={async (themeId, themeName) => {
+          throw new Error('Preferensi tema visual belum dapat disimpan: API settings saat ini hanya menerima light/dark/system, bukan theme ID ' + themeId + '. Pilihan "' + themeName + '" belum diterapkan.');
+        }}
+      />
 
       {/* AI Agent Identity Modal (Bidang, Skills Catalog, 3D Avatar Catalog) */}
       <AgentIdentityModal
