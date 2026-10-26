@@ -67,7 +67,7 @@ export interface SocialAccountItem {
   ownerHandle?: string;
   specialty: string;
   bio: string;
-  followers: number;
+  followers?: number;
   verified?: boolean;
   isFollowing?: boolean;
   isLive?: boolean;
@@ -530,7 +530,7 @@ export default function ExploreView({
                       <div className="pt-2.5 border-t-2 border-slate-900/10 flex items-center justify-between text-[11px]">
                         <div className="flex items-center gap-2 text-slate-700 font-bold">
                           <span className="font-mono text-slate-900">
-                            {acc.followers.toLocaleString()}
+                            {typeof acc.followers === 'number' ? acc.followers.toLocaleString() : '—'}
                           </span>
                           <span>pengikut</span>
                           <span>•</span>
