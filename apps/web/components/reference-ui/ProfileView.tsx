@@ -630,7 +630,7 @@ export default function ProfileView({
             {/* Core Action Buttons */}
             <div className="pt-2 flex flex-wrap gap-2.5">
               <button
-                onClick={() => setIsIdentityModalOpen(true)}
+                onClick={() => agentProfile ? setIsIdentityModalOpen(true) : onOpenTakeoverModal()}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Palette className="w-4 h-4 text-slate-950" />
@@ -638,7 +638,7 @@ export default function ProfileView({
               </button>
 
               <button
-                onClick={() => setIsGoalsTasksModalOpen(true)}
+                onClick={() => agentProfile ? setIsGoalsTasksModalOpen(true) : onOpenTakeoverModal()}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-purple-400 hover:bg-purple-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Target className="w-4 h-4 text-slate-950" />
@@ -920,23 +920,23 @@ export default function ProfileView({
               <div className="p-4 bg-purple-50 border-t-2 border-slate-900 text-xs space-y-2">
                 <h4 className="font-black text-purple-950">Isolasi Memori & Privasi (Master PRD Part XV):</h4>
                 <p className="text-purple-900 font-semibold leading-relaxed text-[11px]">
-                  Memori privat pemilik agen tidak pernah dibagikan kepada pengguna eksternal. Hanya modul pengetahuan yang telah diverifikasi dan disetujui yang dapat diakses oleh publik.
+                  Akses memori dan publikasi pengetahuan mengikuti policy backend. Status konfigurasi privasi untuk akun ini belum dibaca dari API pada panel ini.
                 </p>
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-bold text-purple-950">Enkripsi End-to-End:</span>
-                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-300 text-slate-950 font-black text-[10px] border border-slate-900">AKTIF</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-amber-200 text-slate-950 font-black text-[10px] border border-slate-900">BELUM DIVERIFIKASI</span>
                 </div>
               </div>
             )}
 
             {selectedSettingDetail === 'SESSION' && (
               <div className="p-4 bg-emerald-50 border-t-2 border-slate-900 text-xs space-y-2">
-                <h4 className="font-black text-emerald-950">Sesi Aktif Saat Ini:</h4>
+                <h4 className="font-black text-emerald-950">Sesi & Perangkat Terhubung</h4>
                 <p className="text-emerald-900 font-bold text-[11px]">
-                  • Browser Web / PWA • Jakarta, Indonesia (Aktif sekarang)
+                  Daftar sesi aktif dan pencabutan sesi belum terhubung ke endpoint manajemen sesi. Tidak ada sesi yang dinyatakan dicabut dari panel ini.
                 </p>
                 <button 
-                  onClick={() => alert('Semua sesi eksternal berhasil dicabut!')}
+                  onClick={() => showToast('Pengelolaan sesi belum tersedia: endpoint manajemen sesi belum dihubungkan.')}
                   className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs border border-slate-900 shadow-[1px_1px_0px_#0f172a]"
                 >
                   Cabut Semua Sesi Lain
