@@ -343,3 +343,89 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
     assert payload["items"][0]["viewer_reaction"] is None
     assert payload["items"][0]["saved"] is False
     assert not any(table == "social_edges" for _, table, _ in calls)
+
+def test_public_creator_recommendations_require_real_public_profiles_and_posts(monkeypatch):
+    now = datetime.now(timezone.utc).isoformat()
+    public_id = "00000000-0000-0000-0000-000000000201"
+    no_public_posts_id = "00000000-0000-0000-0000-000000000202"
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "content_items":
+            assert params.get("visibility") == "eq.public"
+            return [{"owner_id": public_id, "published_at": now}, {"owner_id": public_id, "published_at": now}]
+        if table == "profiles":
+            assert public_id in params.get("id", "")
+            assert params.get("visibility") == "eq.public"
+            return [{"id": public_id, "username": "public_creator", "display_name": "Public Creator",
+                     "avatar_url": None, "bio": "Real public profile", "visibility": "public"}]
+        raise AssertionError(f"unexpected table {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    response = TestClient(app).get("/v1/recommendations/creators?limit=10")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["id"] == public_id
+    assert payload["items"][0]["public_post_count"] == 2
+    assert "verified" not in payload["items"][0]
+    assert "followers" not in payload["items"][0]
+
+
+def test_follow_public_profile_is_idempotent_and_uses_server_actor(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000203"
+    actor_id = "00000000-0000-0000-0000-000000000204"
+    calls = []
+
+    async def fake_user(request: Request):
+        request.state.user_id = actor_id
+        return {"id": actor_id}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}, body, prefer))
+        if table == "profiles":
+            return [{"id": target_id, "visibility": "public"}]
+        if table == "social_edges" and method == "GET":
+            return []
+        if table == "social_edges" and method == "POST":
+            assert body["actor_user_id"] == actor_id
+            assert body["target_user_id"] == target_id
+            return [{"id": "edge-id", "target_user_id": target_id, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()}]
+        raise AssertionError((method, table, params))
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = fake_user
+    try:
+        response = TestClient(app).put(f"/v1/social/follow/{target_id}")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "active"
+    assert response.json()["created"] is True
+
+
+def test_unfollow_is_idempotent_and_actor_scoped(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000205"
+    actor_id = "00000000-0000-0000-0000-000000000206"
+    calls = []
+
+    async def fake_user(request: Request):
+        request.state.user_id = actor_id
+        return {"id": actor_id}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}))
+        assert method == "DELETE" and table == "social_edges"
+        assert params["actor_user_id"] == f"eq.{actor_id}"
+        assert params["target_user_id"] == f"eq.{target_id}"
+        assert params["edge_type"] == "eq.follow"
+        return []
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = fake_user
+    try:
+        response = TestClient(app).delete(f"/v1/social/follow/{target_id}")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["status"] == "not_following"
