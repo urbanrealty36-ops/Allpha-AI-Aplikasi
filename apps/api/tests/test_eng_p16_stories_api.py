@@ -21,8 +21,7 @@ def _auth(user_id=OWNER):
     return dependency
 
 
-def test_stories_routes_require_authentication():
-    assert client.get("/v1/stories").status_code == 401
+def test_public_story_discovery_is_guest_read_but_mutations_remain_authenticated():
     assert client.get("/v1/stories/mine").status_code == 401
     assert client.post("/v1/stories", json={"body": "hello"}).status_code == 401
 
@@ -193,3 +192,34 @@ def test_migration_has_server_expiry_trigger_and_index():
     assert "expires_at" in migration
     assert "content_stories_active_expiry_idx" in migration
     assert "content_items" in migration
+
+def test_guest_story_discovery_returns_only_public_active_stories(monkeypatch):
+    now = datetime.now(timezone.utc)
+    public_story = {
+        "id": STORY_ID, "owner_id": OWNER, "body": "public moment", "content_type": "story",
+        "visibility": "public", "status": "published", "moderation_status": "approved",
+        "version": 2, "published_at": now.isoformat(), "expires_at": (now + timedelta(hours=2)).isoformat(),
+    }
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        calls.append((method, table, params))
+        if table == "content_items" and method == "GET":
+            if params.get("expires_at", "").startswith("lte."):
+                return []
+            if params.get("expires_at", "").startswith("gt."):
+                assert params.get("visibility") == "eq.public"
+                return [public_story]
+            return []
+        if table == "content_media":
+            return []
+        raise AssertionError((method, table, params))
+
+    monkeypatch.setattr(stories_api, "_server_db", fake_db)
+    response = client.get("/v1/stories?limit=10")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["id"] for item in payload["items"]] == [STORY_ID]
+    assert all(params.get("visibility") != "in.(public,followers)" for _, table, params in calls if table == "content_items" and params.get("expires_at", "").startswith("gt."))
+    assert not any(table == "social_edges" for _, table, _ in calls)
