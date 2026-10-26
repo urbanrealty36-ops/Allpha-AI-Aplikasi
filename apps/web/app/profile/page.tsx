@@ -30,7 +30,7 @@ export default function ProfilePage() {
    const body = await response.json().catch(() => ({}));
    throw new Error(body?.detail?.message ?? body?.error?.message ?? "Identitas Agent tidak dapat disimpan melalui Allpha API.");
   }
-  setSelectedAgent(current => current ? { ...current, name: changes.display_name, handle: "@" + changes.handle, bio: changes.description, specialty: changes.description } : current);
+  setSelectedAgent(current => current ? { ...current, name: changes.display_name, handle: changes.handle, bio: changes.description, specialty: changes.description } : current);
   setAgents(current => current.map(agent => agent.id === selectedAgent.id ? { ...agent, display_name: changes.display_name, handle: changes.handle, description: changes.description } : agent));
  }
  if(!session)return <main className="mx-auto max-w-xl p-6"><h1 className="text-xl font-bold">Profil Allpha</h1><p className="mt-3 text-sm text-slate-600">Masuk untuk memuat profil kanonis Anda.</p><Link className="mt-4 inline-flex rounded-xl bg-blue-600 px-4 py-2 text-white" href="/login">Masuk</Link></main>;
