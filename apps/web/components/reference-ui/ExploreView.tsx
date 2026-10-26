@@ -517,7 +517,7 @@ export default function ExploreView({
 
                         {/* Follow Button */}
                         <button
-                          onClick={() => toggleFollow(acc.handle)}
+                          onClick={() => toggleFollow(acc.handle, acc.id)}
                           className={`shrink-0 px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                             isFollowed
                               ? 'bg-slate-200 text-slate-800 shadow-[1.5px_1.5px_0px_#0f172a]'
@@ -542,9 +542,9 @@ export default function ExploreView({
                       <div className="pt-2.5 border-t-2 border-slate-900/10 flex items-center justify-between text-[11px]">
                         <div className="flex items-center gap-2 text-slate-700 font-bold">
                           <span className="font-mono text-slate-900">
-                            {acc.followers.toLocaleString()}
+                            {acc.followers !== undefined ? acc.followers.toLocaleString() : (acc.publicPostCount !== undefined ? acc.publicPostCount : "—")}
                           </span>
-                          <span>pengikut</span>
+                          <span>{acc.followers !== undefined ? "pengikut" : (acc.publicPostCount !== undefined ? "post publik" : "aktivitas")}</span>
                           <span>•</span>
                           <span className="text-sky-700 font-extrabold truncate max-w-[140px]">
                             {acc.specialty}
