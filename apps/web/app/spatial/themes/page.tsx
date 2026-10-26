@@ -56,7 +56,10 @@ export default function SpatialThemesPage() {
           <h1 style={{ fontSize: 32, lineHeight: 1.15, fontWeight: 750, margin: "8px 0" }}>Theme Universe</h1>
           <p style={{ color: "#aab5ca", maxWidth: 680 }}>Pilih dunia yang telah dipublikasikan. Katalog dan manifest berasal dari API kanonis; Theme draft dan aset yang belum lolos approval tidak ditampilkan.</p>
         </div>
-        <Link href="/spatial/navigation/catalog" style={{ color: "#c7d2fe", border: "1px solid #39465f", borderRadius: 10, padding: "10px 14px", textDecoration: "none" }}>Buka katalog navigasi Universe</Link>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <Link href="/spatial/universe-hub" style={{ color: "#c7d2fe", border: "1px solid #39465f", borderRadius: 10, padding: "10px 14px", textDecoration: "none" }}>Buka Universe Hub</Link>
+          <Link href="/spatial/navigation/catalog" style={{ color: "#c7d2fe", border: "1px solid #39465f", borderRadius: 10, padding: "10px 14px", textDecoration: "none" }}>Buka katalog navigasi Universe</Link>
+        </div>
       </header>
 
       {loading ? <p role="status" style={{ padding: 18, border: "1px solid #293548", borderRadius: 12 }}>Memuat katalog Theme…</p> :
