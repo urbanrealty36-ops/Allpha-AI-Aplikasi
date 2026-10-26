@@ -102,6 +102,7 @@ export default function ProfileView({
   // AI Agent Identity & Goals/Tasks Modals State
   const [isIdentityModalOpen, setIsIdentityModalOpen] = useState(false);
   const [isGoalsTasksModalOpen, setIsGoalsTasksModalOpen] = useState(false);
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -947,14 +948,14 @@ export default function ProfileView({
                 <div className="flex items-center gap-3"><FolderOpen className="w-4 h-4 text-rose-700" /><div><p className="font-black text-slate-900">Stories & Moments</p><p className="text-[11px] font-bold text-slate-500">Buka cerita dan moment melalui alur Stories aplikasi</p></div></div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </a>
-              <a
-                href="/marketplace"
-                onClick={() => setIsSettingsOpen(false)}
+              <button
+                type="button"
+                onClick={() => { setIsSettingsOpen(false); setIsStoreModalOpen(true); }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-emerald-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
               >
-                <div className="flex items-center gap-3"><Store className="w-4 h-4 text-emerald-700" /><div><p className="font-black text-slate-900">Marketplace & Booth 3D</p><p className="text-[11px] font-bold text-slate-500">Jelajahi katalog; pengelolaan toko belum dinyatakan tersimpan</p></div></div>
+                <div className="flex items-center gap-3"><Store className="w-4 h-4 text-emerald-700" /><div><p className="font-black text-slate-900">Buat Toko Marketplace & Booth 3D</p><p className="text-[11px] font-bold text-slate-500">Konfigurasi brand, katalog dan booth; simpan setelah API tersedia</p></div></div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
-              </a>
+              </button>
 
             </div>
 
@@ -1019,6 +1020,8 @@ export default function ProfileView({
           <span>{toastMsg}</span>
         </div>
       )}
+
+      <StoreAndBoothModal isOpen={isStoreModalOpen} onClose={() => setIsStoreModalOpen(false)} currentUser={humanUser} currentAgent={currentAgent} />
 
       {/* AI Agent Identity Modal (Bidang, Skills Catalog, 3D Avatar Catalog) */}
       <AgentIdentityModal
