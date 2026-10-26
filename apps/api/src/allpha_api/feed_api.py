@@ -366,8 +366,22 @@ async def unsave_content(content_id: uuid.UUID, user: dict[str, Any] = Depends(c
     return {"saved": False, "removed": bool(rows)}
 
 @router.get("/v1/feed/{content_id}/comments")
-async def list_comments(content_id: uuid.UUID, limit: int = Query(default=30, ge=1, le=100), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _visible_content(content_id, str(user["id"]))
+async def list_comments(content_id: uuid.UUID, limit: int = Query(default=30, ge=1, le=100), user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
+    if user:
+        await _visible_content(content_id, str(user["id"]))
+    else:
+        public_item = await _server_db("GET", "content_items", params={
+            "select": "id,owner_id,visibility,status,moderation_status",
+            "id": f"eq.{content_id}", "visibility": "eq.public", "status": "eq.published",
+            "moderation_status": "eq.approved", "content_type": "neq.story", "limit": "1",
+        })
+        if not public_item:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+        profile = await _server_db("GET", "profiles", params={
+            "select": "id", "id": f"eq.{public_item[0]['owner_id']}", "visibility": "eq.public", "limit": "1",
+        })
+        if not profile:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     rows = await _server_db("GET", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at",
         "content_id": f"eq.{content_id}", "status": "eq.visible", "order": "created_at.asc", "limit": str(limit)})
     items = rows or []
@@ -409,9 +423,23 @@ async def share_content(content_id: uuid.UUID, payload: ShareCreate,
     return {"share": rows[0], "share_url": "https://allpha.web.id/feed?content=" + str(content_id)}
 
 @router.get("/v1/feed/item/{content_id}")
-async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    owner = str(user["id"])
-    item = await _visible_content(content_id, owner)
+async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
+    owner = str(user["id"]) if user else None
+    if owner:
+        item = await _visible_content(content_id, owner)
+    else:
+        rows = await _server_db("GET", "content_items", params={
+            "select": FIELDS, "id": f"eq.{content_id}", "content_type": "neq.story",
+            "status": "eq.published", "moderation_status": "eq.approved", "visibility": "eq.public", "limit": "1",
+        })
+        if not rows:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+        item = rows[0]
+        profiles = await _server_db("GET", "profiles", params={
+            "select": "id", "id": f"eq.{item['owner_id']}", "visibility": "eq.public", "limit": "1",
+        })
+        if not profiles:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     cid = str(content_id)
     reactions = await _server_db("GET", "content_reactions", params={"select": "actor_user_id,reaction", "content_id": f"eq.{cid}", "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "id", "content_id": f"eq.{cid}", "status": "eq.visible", "limit": "5000"})
@@ -424,10 +452,10 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] = Dep
         media_item = {key: value for key, value in row.items() if key != "storage_path"}
         media_item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
         media_items.append(media_item)
-    viewer_reaction = next((str(row.get("reaction") or "like") for row in reactions or [] if str(row.get("actor_user_id")) == owner), None)
+    viewer_reaction = next((str(row.get("reaction") or "like") for row in reactions or [] if owner and str(row.get("actor_user_id")) == owner), None)
     item["engagement"] = {"likes": len(reactions or []), "comments": len(comments or []), "saves": len(saves or []), "shares": len(shares or [])}
     item["viewer_reaction"] = viewer_reaction
-    item["saved"] = any(str(row.get("actor_user_id")) == owner for row in saves or [])
+    item["saved"] = bool(owner and any(str(row.get("actor_user_id")) == owner for row in saves or []))
     item["media"] = media_items
     item["ranking_signals"] = ["shared_link"]
     return {"item": item}
