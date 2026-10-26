@@ -92,14 +92,14 @@ The reference repository advanced after the original capture recorded above. Lat
 
 | Reference source | Source blob SHA | UTF-8 bytes | Canonical archive |
 |---|---|---:|---|
-| `components/AgentPassportModal.tsx` | `492b28ada01526a73a45f7a079435f204e8fcd3f` | 15356 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__AgentPassportModal_tsx.reference` |
-| `components/AuthOnboardingPage.tsx` | `007e68a0503d1a67799b7bb87b39ae0fc28978b3` | 55961 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__AuthOnboardingPage_tsx.reference` |
-| `components/CreatorStudioModal.tsx` | `2daf53afeb094221d2f4a5eefb69e3fdfeb24a81` | 19461 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__CreatorStudioModal_tsx.reference` |
-| `components/Menggu3DUniverseGallery.tsx` | `28ab5f90acbc71fd06a02390b8390005bfe362ee` | 58853 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__Menggu3DUniverseGallery_tsx.reference` |
-| `components/Menggu3DViewerModal.tsx` | `5a2b8ddfb1aa266ed65f65a368ef7326ed85e63b` | 18777 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__Menggu3DViewerModal_tsx.reference` |
-| `components/NotificationsModal.tsx` | `c6044b8544d06307ec3239a203d187fb6c522e63` | 8709 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__NotificationsModal_tsx.reference` |
-| `components/StoriesViewerModal.tsx` | `9743c5f28f6eeb38d744179ca31125c6cbccc499` | 11570 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__StoriesViewerModal_tsx.reference` |
-| `components/StoreAndBoothModal.tsx` | `f8d26bc5123527faa355292c7a653310335ff3c4` | 44468 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__StoreAndBoothModal_tsx.reference` |
-| `components/ThemeCatalogModal.tsx` | `be599258062337a5bf966c3a9d48ec3284fb0b69` | 7107 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__ThemeCatalogModal_tsx.reference` |
+| `components/AgentPassportModal.tsx` | `492b28ada01526a73a45f7a079435f204e8fcd3f` | 15366 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__AgentPassportModal_tsx.reference` |
+| `components/AuthOnboardingPage.tsx` | `007e68a0503d1a67799b7bb87b39ae0fc28978b3` | 56053 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__AuthOnboardingPage_tsx.reference` |
+| `components/CreatorStudioModal.tsx` | `2daf53afeb094221d2f4a5eefb69e3fdfeb24a81` | 19487 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__CreatorStudioModal_tsx.reference` |
+| `components/Menggu3DUniverseGallery.tsx` | `28ab5f90acbc71fd06a02390b8390005bfe362ee` | 58945 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__Menggu3DUniverseGallery_tsx.reference` |
+| `components/Menggu3DViewerModal.tsx` | `5a2b8ddfb1aa266ed65f65a368ef7326ed85e63b` | 18783 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__Menggu3DViewerModal_tsx.reference` |
+| `components/NotificationsModal.tsx` | `c6044b8544d06307ec3239a203d187fb6c522e63` | 8719 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__NotificationsModal_tsx.reference` |
+| `components/StoriesViewerModal.tsx` | `9743c5f28f6eeb38d744179ca31125c6cbccc499` | 11588 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__StoriesViewerModal_tsx.reference` |
+| `components/StoreAndBoothModal.tsx` | `f8d26bc5123527faa355292c7a653310335ff3c4` | 44490 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__StoreAndBoothModal_tsx.reference` |
+| `components/ThemeCatalogModal.tsx` | `be599258062337a5bf966c3a9d48ec3284fb0b69` | 7111 | `docs/reference-ui-source/Allpha-Front-End-UI-New/components__ThemeCatalogModal_tsx.reference` |
 
 The reference repository has updated Menggu3D images and additional October 26 screenshots, but its current Git tree contains zero `.glb` files. The canonical application Git tree also contains zero `.glb` files. Thus the claimed 927 GLBs are not evidenced as committed files in either audited tree; they must be inventoried from the actual configured Storage/catalog before a registration or publication count is asserted. This source sync does not change any Phase acceptance status.
