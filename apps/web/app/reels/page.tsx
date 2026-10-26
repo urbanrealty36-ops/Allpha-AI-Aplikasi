@@ -27,11 +27,13 @@ export default function ReelsPage() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState(false);
   const [notice, setNotice] = useState("");
+  const [authPrompt, setAuthPrompt] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    if (!session) throw new Error("Masuk terlebih dahulu untuk membuka Reels.");
+    const method = (init.method || "GET").toUpperCase();
+    if (!session && method !== "GET") throw new Error("Masuk terlebih dahulu untuk melakukan tindakan ini.");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", "Bearer " + session.access_token);
+    if (session) headers.set("Authorization", "Bearer " + session.access_token);
     headers.set("Accept", "application/json");
     if (init.body) headers.set("Content-Type", "application/json");
     const response = await fetch(apiBase + path, { ...init, headers, cache: "no-store" });
@@ -40,7 +42,6 @@ export default function ReelsPage() {
   }, [session]);
 
   const load = useCallback(async (reset = true, nextCursor?: string | null) => {
-    if (!session) return;
     setLoading(true); setError(""); setLoadError(false);
     try {
       const params = new URLSearchParams({ limit: "20", mode: "recent" });
@@ -68,9 +69,16 @@ export default function ReelsPage() {
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
-  useEffect(() => { if (session) void load(true); }, [session, load]);
+  useEffect(() => { void load(true); }, [session, load]);
+
+  function requireLogin(message: string) {
+    if (session) { setAuthPrompt(""); return false; }
+    setAuthPrompt(message);
+    return true;
+  }
 
   async function toggleLike(reel: Pick<ReferenceReel, 'id'>) {
+    if (requireLogin("Masuk untuk menyukai Reels.")) return;
     setBusy(reel.id); setError(""); setLoadError(false); setNotice("");
     try {
       const item = items.find(row => row.id === reel.id);
@@ -83,7 +91,14 @@ export default function ReelsPage() {
   }
 
   async function share(reel: Pick<ReferenceReel, 'id'>) {
-    setBusy(reel.id); setError(""); setLoadError(false); setNotice("");
+    setError(""); setLoadError(false); setNotice("");
+    if (!session) {
+      const url = window.location.origin + "/reels?content=" + encodeURIComponent(reel.id);
+      try { await navigator.clipboard.writeText(url); setNotice("Tautan Reels publik disalin."); }
+      catch { setNotice("Tautan Reels publik: " + url); }
+      return;
+    }
+    setBusy(reel.id);
     try {
       const result = await request("/v1/feed/" + encodeURIComponent(reel.id) + "/share", {
         method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
@@ -112,7 +127,13 @@ export default function ReelsPage() {
   return <>
     {error && <div role="alert" className="fixed left-3 right-3 top-3 z-50 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-xl border border-red-300 bg-white p-3 text-sm text-red-700 shadow"><span>{error}</span>{loadError && <button type="button" className="shrink-0 rounded-lg border-2 border-slate-900 bg-white px-3 py-1 font-black text-slate-900" disabled={loading} onClick={() => void load(true)}>Coba lagi</button>}</div>}
     {notice && <p role="status" className="fixed left-3 right-3 top-3 z-50 mx-auto max-w-xl rounded-xl border border-emerald-300 bg-white p-3 text-sm text-emerald-800 shadow">{notice}</p>}
-    {!session ? <main className="flex min-h-[70dvh] items-center justify-center bg-black px-6 text-center text-white"><div><h1 className="text-xl font-black">Allpha Reels</h1><p className="my-3 text-sm text-white/70">Masuk untuk menonton video pendek dan audio yang dipublikasikan.</p><button className="rounded-xl border-2 border-white px-4 py-2 font-bold" onClick={() => router.push("/login")}>Masuk</button></div></main> : <>
+    {!session && <div className="fixed left-3 right-3 top-14 z-40 mx-auto max-w-md rounded-2xl border-2 border-white/80 bg-slate-950/90 p-3 text-white shadow-xl">
+      <p className="text-xs font-bold">{authPrompt || "Tonton Reels publik. Masuk untuk menyukai, berkomentar, dan mengikuti kreator."}</p>
+      <div className="mt-2 flex gap-2">
+        <button className="rounded-lg border border-white px-3 py-1.5 text-xs font-black" onClick={() => router.push("/login?next=" + encodeURIComponent("/reels"))}>Masuk</button>
+        <button className="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-slate-950" onClick={() => router.push("/login?next=" + encodeURIComponent("/reels"))}>Daftar</button>
+      </div>
+    </div>}
       <ReelsView
         loading={loading}
         mediaUnavailableMessage="Media belum tersedia"
@@ -120,13 +141,12 @@ export default function ReelsPage() {
         onToggleLike={reel => void toggleLike(reel)}
         onShare={reel => void share(reel)}
         onOpenComments={reel => router.push("/feed?content=" + encodeURIComponent(reel.id) + "&comments=1")}
-        onOpenBrandCustomizer={() => router.push("/create")}
-        onOpenAskAi={(agentName) => router.push(agentName ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai")}
+        onOpenBrandCustomizer={() => { if (requireLogin("Masuk untuk menggunakan Generate AI.")) return; router.push("/create"); }}
+        onOpenAskAi={(agentName) => { if (requireLogin("Masuk untuk menggunakan Tanya AI Agent.")) return; router.push(agentName ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
         onBackToFeed={() => router.push("/feed")}
         onOpenLiveStage={() => router.push("/live")}
         onOpenFilmAi={() => router.push("/ai-cinema")}
       />
       {cursor && <div className="fixed bottom-3 left-3 right-3 z-40 mx-auto max-w-sm"><button className="w-full rounded-xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-[3px_3px_0px_#0f172a]" disabled={loading} onClick={() => void load(false, cursor)}>Muat Reels berikutnya</button></div>}
-    </>}
   </>;
 }
