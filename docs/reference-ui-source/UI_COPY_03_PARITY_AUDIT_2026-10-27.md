@@ -72,3 +72,26 @@ UI-COPY-03 remains IN_PROGRESS until every source component/route/style/asset is
 - No login wall was added to the public feed. The Welcome page's login/register buttons route to `/login` and canonical Supabase/FastAPI auth flow.
 - No fake demo identity, simulated authentication, credits bonus, or transaction is persisted by the welcome route.
 - Remaining acceptance work: inventory every source file and map each screen/modal/action/style/asset to runtime routes, reconcile API-backed actions and verify responsive UI parity. No staging or live transaction test was run.
+
+
+## Source freshness re-check and verified reference HEAD (2026-10-27, multi-method)
+
+The previous freshness statement must be interpreted carefully: this check queried GitHub repository metadata, the REST branches endpoint, the REST commits endpoint, GitHub commit search sorted by committer date, and the recursive Git tree. All methods identify `main` at `b6c9fc728d5d031a28b22fbbec9a546846900e87`, committed/pushed 2026-10-26 17:03:27Z. Repository metadata reports `pushed_at=2026-10-26T17:03:27Z`; the only listed branch is `main`. Thus the source is not stale relative to that latest remote commit, but the canonical repo's archived source snapshot does not fully match that HEAD and must be refreshed for changed files.
+
+Verified latest source tree:
+- Tree SHA: `b6c9fc728d5d031a28b22fbbec9a546846900e87`
+- Recursive tree: not truncated; 148 entries including directories, 120 tracked file blobs.
+- Latest commit: [b6c9fc728d5d031a28b22fbbec9a546846900e87](https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New/commit/b6c9fc728d5d031a28b22fbbec9a546846900e87)
+- Message: GLB export and studio tools in 3D engine, dynamic model loading in `Menggu3DViewerModal`, download capabilities in `Universe3DHubView`/gallery, and billboard customization.
+
+Fresh hash checks against current canonical runtime confirm these exact source matches:
+- `components/Menggu3DUniverseGallery.tsx` -> `apps/web/components/reference-ui/Menggu3DUniverseGallery.tsx` (SHA `28ab5f90acbc71fd06a02390b8390005bfe362ee`)
+- `components/Menggu3DViewerModal.tsx` -> `apps/web/components/reference-ui/Menggu3DViewerModal.tsx` (SHA `5a2b8ddfb1aa266ed65f65a368ef7326ed85e63b`)
+- `components/Universe3DExperience.tsx` -> `apps/web/components/reference-ui/Universe3DExperience.tsx` (SHA `904518182a463c6edc3e892b5575140be9958722`)
+- `components/Universe3DHubView.tsx` -> `apps/web/components/reference-ui/Universe3DHubView.tsx` (SHA `850b0819e4c6d84fb79dc10d37b8ab7b80f6df2d`)
+- `lib/menggu3dEngine.ts` -> `apps/web/lib/menggu3dEngine.ts` (SHA `d77482123c22c17d078b35e434b5db17190b4c25`)
+- `hooks/usePWAInstall.ts` -> `apps/web/hooks/usePWAInstall.ts` (SHA `5830140e95b10d57f07a0c434d407317175aa8eb`)
+
+Important non-identical files still requiring component-by-component review include `AllphaHubView.tsx`, `AuthOnboardingFlow.tsx`, `BottomNav.tsx`, `CreatePostModal.tsx`, `LiveExperienceStage.tsx`, `MarketplaceView.tsx`, `Navbar.tsx`, and `ProfileView.tsx`. Their runtime copies contain production wiring or omit portions of source content; do not replace wholesale until source-only demo state is isolated from canonical auth/API/persistence. This is a UI-preserving adapter task, not permission to redesign the source.
+
+This section supersedes any inference that the source repository was not updated. It does not mark UI-COPY-03 complete. No build, typecheck, browser/viewport, staging, or device test is claimed.
