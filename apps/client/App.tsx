@@ -101,6 +101,8 @@ function Welcome() {
   const nav = useNavigation<NavigationProp<Routes>>();
   const [health, setHealth] = useState("Memeriksa API…");
   const [publicFeed, setPublicFeed] = useState<NativeFeedItem[]>([]);
+  const [publicReels, setPublicReels] = useState<NativeFeedItem[]>([]);
+  const [reelsError, setReelsError] = useState("");
   const [publicStories, setPublicStories] = useState<NativeStory[]>([]);
   const [selectedStory, setSelectedStory] = useState<NativeStory | null>(null);
   const [guestLoading, setGuestLoading] = useState(true);
@@ -129,7 +131,18 @@ function Welcome() {
         if (active) setGuestError(cause instanceof Error ? cause.message : "Konten publik belum dapat dimuat.");
       } finally { if (active) setGuestLoading(false); }
     };
+    const loadPublicReels = async () => {
+      try {
+        const response = await fetch(apiBase + "/v1/reels?mode=recent&limit=10", { headers: { Accept: "application/json" }, cache: "no-store" });
+        if (!response.ok) throw new Error("Reels publik belum dapat dimuat.");
+        const payload = await response.json() as { items?: NativeFeedItem[] };
+        if (active) setPublicReels(payload.items ?? []);
+      } catch (cause) {
+        if (active) setReelsError(cause instanceof Error ? cause.message : "Reels publik belum dapat dimuat.");
+      }
+    };
     void loadPublicContent();
+    void loadPublicReels();
     return () => { active = false; };
   }, []);
 
@@ -202,6 +215,28 @@ function Welcome() {
           </View>
         </View>)}
       <Pressable onPress={() => requestLogin("Membuat postingan")} style={[s.button, { marginTop: 14 }]}><Text style={s.buttonText}>Buat postingan · Masuk / Daftar</Text></Pressable>
+    </View>
+    <View style={s.card}>
+      <Text style={s.kicker}>REELS PUBLIK</Text>
+      <Text style={s.title}>Video dan audio publik</Text>
+      {guestLoading ? <ActivityIndicator color="#A5B4FC"/> : publicReels.length === 0
+        ? <Text style={s.body}>Belum ada Reels publik yang tersedia.</Text>
+        : publicReels.map(item => {
+          const media = item.media?.find(candidate => candidate.preview_url && (candidate.media_type.startsWith("video/") || candidate.media_type.startsWith("audio/")));
+          return <View key={item.id} style={s.socialRow}>
+            <Text style={s.kicker}>{item.creator?.display_name || item.creator?.username || "Kreator publik"}</Text>
+            {!!item.body && <Text style={s.body}>{item.body}</Text>}
+            {media?.preview_url
+              ? <Pressable onPress={() => { void Linking.openURL(media.preview_url!); }} style={s.button}><Text style={s.buttonText}>{media.media_type.startsWith("audio/") ? "Putar audio publik" : "Putar video publik"}</Text></Pressable>
+              : <Text style={s.status}>Pratinjau media belum tersedia.</Text>}
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <Pressable onPress={() => requestLogin("Menyukai Reels")} style={[s.button, { marginTop: 8 }]}><Text style={s.buttonText}>Suka</Text></Pressable>
+              <Pressable onPress={() => requestLogin("Mengomentari Reels")} style={[s.button, s.secondary, { marginTop: 8 }]}><Text style={s.secondaryText}>Komentar</Text></Pressable>
+              <Pressable onPress={() => { void Share.share({ message: "https://allpha.web.id/reels?content=" + encodeURIComponent(item.id) }); }} style={[s.button, s.secondary, { marginTop: 8 }]}><Text style={s.secondaryText}>Bagikan</Text></Pressable>
+            </View>
+          </View>;
+        })}
+      {reelsError && <Text style={s.warning}>{reelsError}</Text>}
     </View>
     <Text style={s.footnote}>Native Android & iOS · sesi tersimpan di secure storage</Text>
   </ScrollView>;
