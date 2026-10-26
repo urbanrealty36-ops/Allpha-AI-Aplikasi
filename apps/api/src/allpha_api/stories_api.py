@@ -232,6 +232,8 @@ async def list_active_stories(
         ][:limit]
     items = await _attach_media(visible)
     for item in items:
+        # Provenance is lifecycle/audit metadata, not part of a public Story payload.
+        item.pop("provenance", None)
         creator = profiles_by_id.get(str(item.get("owner_id")), {})
         item["creator"] = {
             "username": creator.get("username"),
