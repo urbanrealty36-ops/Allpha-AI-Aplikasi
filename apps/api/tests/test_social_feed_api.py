@@ -6,7 +6,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api import feed_api
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.main import app
 
 
@@ -24,6 +24,7 @@ def test_feed_cursor_round_trip_and_rejects_tampering():
     assert decoded == as_of
     client = TestClient(app)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = client.get("/v1/feed?cursor=not-a-valid-cursor")
         assert response.status_code == 422
