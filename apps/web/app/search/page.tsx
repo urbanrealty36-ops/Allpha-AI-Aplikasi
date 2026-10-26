@@ -155,7 +155,7 @@ function SearchPageContent() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.detail?.message || payload?.error?.message || "Follow belum berhasil.");
-      setAccountsError(payload.status === "requested" ? "Permintaan mengikuti akun privat dikirim." : "Anda sekarang mengikuti kreator ini.");
+      setAccountsError("");
       await loadAccounts(accountQuery);
     } catch (cause) {
       setAccountsError(cause instanceof Error ? cause.message : "Follow belum berhasil.");
