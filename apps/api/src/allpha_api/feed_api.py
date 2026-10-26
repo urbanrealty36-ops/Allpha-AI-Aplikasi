@@ -133,6 +133,14 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         candidates = [row for row in candidates if str(row.get("owner_id")) in public_profile_ids]
     candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and
                   (r.get("visibility") == "public" or (owner and r.get("visibility") == "followers" and str(r.get("owner_id")) in followed))]
+    # Public posts from private profiles are not guest-visible; authenticated followers may
+    # see those profiles only when the follow edge is active.
+    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in candidates})
+    candidates = [
+        row for row in candidates
+        if (profile_by_id.get(str(row.get("owner_id")), {}).get("visibility") == "public"
+            or (owner and str(row.get("owner_id")) in followed))
+    ]
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
     if owner and effective_mode == "for_you" and enabled:
