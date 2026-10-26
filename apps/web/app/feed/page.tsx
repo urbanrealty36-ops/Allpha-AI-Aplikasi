@@ -11,11 +11,12 @@ type FeedMedia = { id: string; filename: string; media_type: string; preview_url
 type FeedItem = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
   published_at?: string | null; created_at: string; media?: FeedMedia[];
+  creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null };
   engagement?: { likes: number; comments: number; saves: number; shares?: number };
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
 type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
-type FeedStory = { id: string; owner_id: string; created_at: string; media?: FeedMedia[] };
+type FeedStory = { id: string; owner_id: string; created_at: string; media?: FeedMedia[]; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -201,7 +202,7 @@ export default function FeedPage() {
     const image = item.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url;
     return {
       id: item.id,
-      humanOwner: { name: "Kreator", handle: "", avatar: "", verified: false },
+      humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username ? "@" + item.creator.username : "", avatar: item.creator?.avatar_url || "", verified: false },
       aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
       takeoverMode: false,
       timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
@@ -258,7 +259,7 @@ export default function FeedPage() {
           onLoadComments={postId => { const item = items.find(row => row.id === postId); if (item) void openComments(item); }}
           onSharePost={postId => { const item = items.find(row => row.id === postId); if (item) void share(item); }}
           onReportPost={(postId, reason) => { const item = items.find(row => row.id === postId); if (item) void report(item, reason); }}
-          storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: "Momen", img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
+          storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: story.creator?.display_name || story.creator?.username || "Momen", img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? story.creator?.avatar_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onOpenStory={storyId => { window.location.assign("/stories?story=" + encodeURIComponent(storyId)); }}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
           onOpenAskAi={(agentName) => { window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
