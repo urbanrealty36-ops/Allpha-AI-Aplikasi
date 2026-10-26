@@ -45,7 +45,7 @@
 | `public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png` | 2092646 | `e89cac55c852fc19a76c53427fe79ba42426ef50` | verified at `apps/web/public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png`; bytes=2092646; Git blob SHA-1=e89cac55c852fc19a76c53427fe79ba42426ef50; SHA-256=64393eebe03c4d992101688c9d0158043e83a6de3567480b93d9b31f8fe849ee |
 | `public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png` | 2674422 | `7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66` | verified at `apps/web/public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png`; bytes=2674422; Git blob SHA-1=7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66; SHA-256=df39e38360f889314b856793f4ff1fc190f9f88791e307ce78c7c45a1b2d2841 |
 | `public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png` | 2663435 | `749060b67cf8d143fc360c6c45e7742b849c27ab` | verified at `apps/web/public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png`; bytes=2663435; Git blob SHA-1=749060b67cf8d143fc360c6c45e7742b849c27ab; SHA-256=2018bbd59ebb4750ae9b77f0d6ad383eac8cc8dd42d4feec1364d6436465ccc5 |
-| `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` | 2030869 | `ad78971cbe154e01325dc90f8ca0c88349c35c2b` | missing at canonical path (current source head `aad317c1f651163f065cd42b9ae35267d18f354a`); pending exact-size/blob verification |
+| `public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png` | 2030869 | `ad78971cbe154e01325dc90f8ca0c88349c35c2b` | missing at canonical path |
 
 ## Temporary AI Studio media inventory
 
