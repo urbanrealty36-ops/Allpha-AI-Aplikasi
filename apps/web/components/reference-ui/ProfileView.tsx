@@ -64,7 +64,7 @@ interface ProfileViewProps {
   onSelectPost?: (post: PostItem) => void;
   onOpenAskAi?: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenGenerate?: (contextPost: PostItem) => void;
-  onUpdateAgent?: (updatedAgent: AIAgentProfile) => void;
+  onUpdateAgent?: (updatedAgent: AIAgentProfile) => void | Promise<void>;
 }
 
 export default function ProfileView({
@@ -982,9 +982,19 @@ export default function ProfileView({
         isOpen={isIdentityModalOpen}
         onClose={() => setIsIdentityModalOpen(false)}
         agent={currentAgent}
-        onSaveAgent={(updated) => {
-          if (onUpdateAgent) onUpdateAgent(updated);
-          showToast(`Identitas ${updated.name} berhasil diperbarui!`);
+        onSaveAgent={async (updated) => {
+          if (!agentProfile?.id) throw new Error("Belum ada Agent kanonis. Buat Agent melalui halaman My Agent terlebih dahulu.");
+          if (!onUpdateAgent) throw new Error("Penyimpanan identitas Agent belum terhubung ke API.");
+          await onUpdateAgent(updated);
+          const hasUnpersistedFields =
+            updated.bidang !== agentProfile.bidang ||
+            updated.avatar3DCodename !== agentProfile.avatar3DCodename ||
+            JSON.stringify(updated.skills ?? []) !== JSON.stringify(agentProfile.skills ?? []) ||
+            updated.model !== agentProfile.model ||
+            updated.autoReply !== agentProfile.autoReply;
+          showToast(hasUnpersistedFields
+            ? "Nama, handle, dan deskripsi tersimpan. Bidang, skill, avatar 3D, model, dan auto-reply belum tersimpan karena kontrak API belum mendukungnya."
+            : `Identitas dasar ${updated.name} tersimpan melalui Allpha API.`);
         }}
       />
 
