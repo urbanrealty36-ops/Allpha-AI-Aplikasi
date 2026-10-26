@@ -69,6 +69,8 @@ export default function StoriesViewerModal({
 
   // Stories are supplied by the canonical API-backed route; no bundled demo stories.
 
+  useEffect(() => { if (isOpen) { setActiveStoryIndex(Math.min(initialIndex, Math.max(0, stories.length - 1))); setProgress(0); setReplyText(''); setIsPaused(false); } }, [isOpen, initialIndex, stories.length]);
+
   // Auto-progress timer
   useEffect(() => {
     if (!isOpen || isPaused || mode === 'CREATE') return;
@@ -89,15 +91,15 @@ export default function StoriesViewerModal({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isOpen, isPaused, activeStoryIndex, mode, STORIES.length, onClose]);
+  }, [isOpen, isPaused, activeStoryIndex, mode, stories.length, onClose]);
 
   if (!isOpen) return null;
   if (stories.length === 0) return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true" aria-label="Stories"><div className="w-full max-w-sm rounded-3xl border-2 border-slate-900 bg-white p-6 text-center shadow-[5px_5px_0px_#0f172a]"><h2 className="text-lg font-black">Belum ada Story aktif</h2><p className="mt-2 text-sm text-slate-600">Daftar Story dimuat dari API kanonis. Belum ada item yang tersedia untuk ditampilkan.</p><button className="mt-4 rounded-xl border-2 border-slate-900 bg-[#FEF08A] px-4 py-2 font-black" onClick={onClose}>Tutup</button></div></div>;
 
-  const currentStory = stories[activeStoryIndex];
+  const currentStory = stories[Math.min(activeStoryIndex, stories.length - 1)];
 
   const handleNext = () => {
-    if (activeStoryIndex < STORIES.length - 1) {
+    if (activeStoryIndex < stories.length - 1) {
       setActiveStoryIndex(activeStoryIndex + 1);
       setProgress(0);
     } else {
@@ -112,8 +114,11 @@ export default function StoriesViewerModal({
     }
   };
 
-  const handleSendReaction = (emoji: string) => {
-    showToast(`Reaksi ${emoji} terkirim ke ${currentStory.creatorName}!`);
+  const handleSendReaction = async (emoji: string) => {
+    if (!currentStory) return;
+    if (!onReact) { showToast('Reaksi belum terhubung ke endpoint Stories; belum dikirim.'); return; }
+    try { await onReact(currentStory.id, emoji); showToast(`Reaksi ${emoji} dikonfirmasi oleh API.`); }
+    catch (cause) { showToast(cause instanceof Error ? cause.message : 'Reaksi belum dapat dikirim.'); }
   };
 
   const handleSendReply = async () => {
@@ -124,13 +129,9 @@ export default function StoriesViewerModal({
   };
 
   const handleCreateMoment = () => {
-    if (!newStoryPrompt.trim()) {
-      showToast('Masukkan ide Moment atau Story terlebih dahulu!');
-      return;
-    }
-    showToast('Story Moment baru berhasil dipublikasikan ke Feed!');
-    setNewStoryPrompt('');
-    setMode('VIEW');
+    if (!newStoryPrompt.trim()) { showToast('Masukkan ide Moment atau Story terlebih dahulu!'); return; }
+    if (onOpenCreateStory) { onClose(); onOpenCreateStory(); return; }
+    showToast('Publikasi Story harus dilakukan melalui formulir Stories kanonis. Tidak ada publikasi simulasi.');
   };
 
   return (
@@ -139,7 +140,7 @@ export default function StoriesViewerModal({
         
         {/* Top Progress Bars */}
         <div className="absolute top-3 left-3 right-3 z-30 flex gap-1.5">
-          {STORIES.map((s, idx) => (
+          {stories.map((s, idx) => (
             <div key={s.id} className="h-1.5 flex-1 bg-white/30 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-white transition-all duration-100"
