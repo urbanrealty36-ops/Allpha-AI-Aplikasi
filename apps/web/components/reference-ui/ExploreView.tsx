@@ -67,8 +67,9 @@ export interface SocialAccountItem {
   ownerHandle?: string;
   specialty: string;
   bio: string;
-  followers: number;
-  verified: boolean;
+  followers?: number;
+  verified?: boolean;
+  publicPostCount?: number;
   isLive?: boolean;
   tags: string[];
 }
@@ -94,6 +95,12 @@ interface ExploreViewProps {
   onRetryRecommendations?: () => void;
   trendsData?: Array<{ topic: string; content_count: number }>;
   recommendationsData?: PostItem[];
+  accountsData?: SocialAccountItem[];
+  accountsLoading?: boolean;
+  accountsError?: string;
+  onRetryAccounts?: () => void;
+  followedAccountIds?: string[];
+  onFollowAccount?: (accountId: string, currentlyFollowed: boolean) => void;
   recommendationsLoading?: boolean;
   recommendationsError?: string;
   trendsLoading?: boolean;
@@ -125,6 +132,12 @@ export default function ExploreView({
   onRetryRecommendations,
   trendsData = [],
   recommendationsData = [],
+  accountsData = [],
+  accountsLoading = false,
+  accountsError = "",
+  onRetryAccounts,
+  followedAccountIds = [],
+  onFollowAccount,
   recommendationsLoading = false,
   recommendationsError = "",
   trendsLoading = false,
@@ -175,7 +188,15 @@ export default function ExploreView({
   const query = searchQuery.trim().toLowerCase();
 
   const filteredAccounts = useMemo(() => {
-    if (productionMode) return [];
+    if (productionMode) {
+      if (!query) return accountsData;
+      return accountsData.filter(acc =>
+        acc.name.toLowerCase().includes(query) ||
+        acc.handle.toLowerCase().includes(query) ||
+        acc.specialty.toLowerCase().includes(query) ||
+        acc.bio.toLowerCase().includes(query)
+      );
+    }
     if (!query) return SOCIAL_ACCOUNTS_SAMPLE;
     return SOCIAL_ACCOUNTS_SAMPLE.filter(acc => 
       acc.name.toLowerCase().includes(query) ||
@@ -185,7 +206,7 @@ export default function ExploreView({
       (acc.ownerName && acc.ownerName.toLowerCase().includes(query)) ||
       acc.tags.some(t => t.toLowerCase().includes(query))
     );
-  }, [query, productionMode]);
+  }, [query, productionMode, accountsData]);
 
   const filteredPosts = useMemo(() => {
     if (!query) return posts;
@@ -389,7 +410,21 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION B: ACCOUNTS RESULTS (HUMAN & AI AGENTS) */}
         {/* ======================================================== */}
-        {productionMode && activeSearchTab === 'ACCOUNTS' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Users className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Pencarian akun</h3><p className="mt-1 text-xs text-slate-500">Endpoint akun Human dan AI Agent belum tersedia pada kontrak pencarian yang terhubung.</p></section>}
+        {productionMode && activeSearchTab === 'ACCOUNTS' && <section className="space-y-3">
+          <div className="flex items-center justify-between"><h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5"><Users className="h-4 w-4 text-purple-600" /><span>Kreator publik</span></h2><span className="text-[10px] font-bold text-slate-500">Berdasarkan konten publik</span></div>
+          {accountsLoading ? <p role="status" className="rounded-2xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Memuat akun publik…</p> : accountsError ? <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border-2 border-rose-300 bg-white p-4 text-xs font-semibold text-rose-700"><span>{accountsError}</span>{onRetryAccounts && <button type="button" onClick={onRetryAccounts} disabled={accountsLoading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900">Coba lagi</button>}</div> : filteredAccounts.length === 0 ? <p role="status" className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Belum ada akun publik yang memiliki konten publik yang memenuhi syarat.</p> : filteredAccounts.map(acc => {
+            const isFollowed = followedAccountIds.includes(acc.id);
+            return <article key={acc.id} className="flex items-start gap-3 rounded-3xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]">
+              <img src={acc.avatar || "/icon.svg"} alt="" className="h-12 w-12 shrink-0 rounded-full border-2 border-slate-900 object-cover" />
+              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-1.5"><h3 className="text-sm font-black text-slate-900">{acc.name}</h3>{acc.verified && <span aria-label="Terverifikasi" title="Terverifikasi" className="flex h-4 w-4 items-center justify-center rounded-full border border-slate-900 bg-sky-500 text-[9px] font-black text-white">✓</span>}</div>
+                <p className="text-[10px] font-semibold text-slate-500">{acc.handle ? "@" + acc.handle.replace(/^@/, "") : "Kreator publik"} · {acc.isAi ? "AI Agent" : "Human"}</p>
+                {acc.bio && <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-700">{acc.bio}</p>}
+                {acc.publicPostCount !== undefined && <p className="mt-1 text-[10px] font-semibold text-slate-500">{acc.publicPostCount} post publik</p>}
+              </div>
+              <button type="button" onClick={() => onFollowAccount?.(acc.id, isFollowed)} disabled={!onFollowAccount} className={`shrink-0 rounded-xl border-2 border-slate-900 px-3 py-2 text-[10px] font-black shadow-[2px_2px_0px_#0f172a] ${isFollowed ? "bg-white text-slate-900" : "bg-sky-300 text-slate-950"} disabled:opacity-50`}>{isFollowed ? "Mengikuti" : "Ikuti"}</button>
+            </article>;
+          })}
+        </section>}
                 {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS')) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
