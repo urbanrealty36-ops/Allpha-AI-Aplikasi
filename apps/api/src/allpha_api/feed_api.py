@@ -440,18 +440,6 @@ async def _public_account_discovery(
     ordered_ids = [owner_id for owner_id in candidate_ids if owner_id in profile_by_id]
     if not ordered_ids:
         return {"items": [], "source": "eligible_public_content", "has_more": False}
-    edge_rows = await _server_db("GET", "social_edges", params={
-        "select": "target_user_id",
-        "target_user_id": f"in.({','.join(ordered_ids)})",
-        "edge_type": "eq.follow",
-        "status": "eq.active",
-        "limit": "10000",
-    })
-    follower_counts_exact = len(edge_rows or []) < 10000
-    follower_counts: dict[str, int] = {}
-    for edge in edge_rows or []:
-        target_id = str(edge.get("target_user_id") or "")
-        follower_counts[target_id] = follower_counts.get(target_id, 0) + 1
     items = []
     for owner_id in ordered_ids[:limit]:
         profile = profile_by_id[owner_id]
@@ -462,7 +450,6 @@ async def _public_account_discovery(
             "avatar_url": profile.get("avatar_url"),
             "bio": profile.get("bio"),
             "visibility": "public",
-            "followers": follower_counts.get(owner_id, 0) if follower_counts_exact else None,
             "is_following": owner is not None and owner_id in followed,
             "latest_public_content_at": latest_by_owner.get(owner_id),
             # Verification is omitted until a canonical, server-backed verification field exists.
