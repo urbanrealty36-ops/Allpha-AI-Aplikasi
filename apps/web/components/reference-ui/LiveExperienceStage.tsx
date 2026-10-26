@@ -359,8 +359,8 @@ export default function LiveExperienceStage({
           <div className="p-3.5 border-b-2 border-slate-900 flex items-center justify-between bg-amber-50">
             <div className="flex items-center gap-2">
               <span className="font-black text-xs text-slate-950">Live Chat Pemirsa</span>
-              <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-200 border border-slate-900 text-emerald-950 font-black">
-                ● Aktif
+              <span className={`text-[9.5px] px-2 py-0.5 rounded-full border border-slate-900 font-black ${liveStateAvailable ? "bg-emerald-200 text-emerald-950" : "bg-slate-200 text-slate-700"}`}>
+                {liveStateAvailable ? "● Aktif" : "● Belum tersedia"}
               </span>
             </div>
             <button
