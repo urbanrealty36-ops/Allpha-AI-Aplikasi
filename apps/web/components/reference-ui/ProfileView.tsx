@@ -983,8 +983,12 @@ export default function ProfileView({
         onClose={() => setIsIdentityModalOpen(false)}
         agent={currentAgent}
         onSaveAgent={(updated) => {
-          if (onUpdateAgent) onUpdateAgent(updated);
-          showToast(`Identitas ${updated.name} berhasil diperbarui!`);
+          if (onUpdateAgent) {
+            onUpdateAgent(updated);
+            showToast(`Permintaan pembaruan identitas ${updated.name} telah dikirim.`);
+          } else {
+            showToast('Penyimpanan identitas belum tersedia: endpoint pembaruan Agent belum dihubungkan.');
+          }
         }}
       />
 
