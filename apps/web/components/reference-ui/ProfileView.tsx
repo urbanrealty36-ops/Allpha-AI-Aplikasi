@@ -46,6 +46,7 @@ import AgentIdentityModal from './AgentIdentityModal';
 import AgentGoalsTasksModal from './AgentGoalsTasksModal';
 import StoreAndBoothModal from './StoreAndBoothModal';
 import ThemeCatalogModal from './ThemeCatalogModal';
+import CreatorStudioModal from './CreatorStudioModal';
 
 interface ProfileViewProps {
   humanUser: HumanProfile;
@@ -106,6 +107,7 @@ export default function ProfileView({
   const [isGoalsTasksModalOpen, setIsGoalsTasksModalOpen] = useState(false);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
   const [isThemeCatalogOpen, setIsThemeCatalogOpen] = useState(false);
+  const [isCreatorStudioOpen, setIsCreatorStudioOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -919,14 +921,14 @@ export default function ProfileView({
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
               {/* Reference UI shortcuts wired to canonical pages; no demo business records are created. */}
-              <a
-                href="/content-studio"
-                onClick={() => setIsSettingsOpen(false)}
+              <button
+                type="button"
+                onClick={() => { setIsSettingsOpen(false); setIsCreatorStudioOpen(true); }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-violet-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
               >
-                <div className="flex items-center gap-3"><Sparkles className="w-4 h-4 text-violet-600" /><div><p className="font-black text-slate-900">Creator Studio & AI Hub</p><p className="text-[11px] font-bold text-slate-500">Kreasi konten, dokumen, dan alat AI yang tersedia</p></div></div>
+                <div className="flex items-center gap-3"><Sparkles className="w-4 h-4 text-violet-600" /><div><p className="font-black text-slate-900">Creator Studio & AI Hub</p><p className="text-[11px] font-bold text-slate-500">Buka studio referensi; generasi AI menunggu koneksi Gateway</p></div></div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
-              </a>
+              </button>
               <a
                 href={agentProfile?.handle ? '/agents/passport/' + encodeURIComponent(agentProfile.handle.replace(/^@/, '')) : '/agents'}
                 onClick={() => setIsSettingsOpen(false)}
@@ -1025,6 +1027,15 @@ export default function ProfileView({
       )}
 
       <StoreAndBoothModal isOpen={isStoreModalOpen} onClose={() => setIsStoreModalOpen(false)} currentUser={humanUser} currentAgent={currentAgent} />
+      <CreatorStudioModal
+        isOpen={isCreatorStudioOpen}
+        onClose={() => setIsCreatorStudioOpen(false)}
+        agent={currentAgent}
+        user={humanUser}
+        userCredits={null}
+        onDeductCredits={() => { /* Fail closed: no local credit mutation. */ }}
+        onOpenFilmAi={() => { setIsCreatorStudioOpen(false); window.location.assign('/ai-cinema'); }}
+      />
       <ThemeCatalogModal
         isOpen={isThemeCatalogOpen}
         onClose={() => setIsThemeCatalogOpen(false)}
