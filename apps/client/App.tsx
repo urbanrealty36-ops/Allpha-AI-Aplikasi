@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { NavigationContainer, useNavigation, type NavigationProp } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -26,9 +26,9 @@ Notifications.setNotificationHandler({
 
 type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
-type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
+type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
-type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[] };
+type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[] };
 
 
 type NativeContentFile = { uri: string; name: string; mimeType?: string | null; size?: number | null };
@@ -100,8 +100,111 @@ function Brand() { return <View style={s.brand}><View style={s.mark}><Text style
 function Welcome() {
   const nav = useNavigation<NavigationProp<Routes>>();
   const [health, setHealth] = useState("Memeriksa API…");
-  useEffect(() => { let active = true; fetch(apiBase + "/healthz").then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(b => { if (active) setHealth(b.status === "ok" ? "API terhubung" : "API memberi status tidak dikenal"); }).catch(() => { if (active) setHealth("API tidak terjangkau"); }); return () => { active = false; }; }, []);
-  return <ScrollView contentContainerStyle={s.page}><Brand/><View style={s.card}><Text style={s.kicker}>YOUR WORLD. YOUR AGENT.</Text><Text style={s.hero}>Temukan dunia yang terhubung.</Text><Text style={s.body}>Mulai dengan identitas manusia, lalu hubungkan perjalanan Anda ke AI Agent dan universe sosial Allpha.</Text><Text style={s.status}>●  {health}</Text>{!configured && <Text style={s.warning}>Autentikasi belum dikonfigurasi. Atur EXPO_PUBLIC_SUPABASE_URL dan EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.</Text>}<Button title="Masuk" onPress={() => nav.navigate("Auth", { mode: "signin" })} disabled={!configured}/><Button title="Buat akun" secondary onPress={() => nav.navigate("Auth", { mode: "signup" })} disabled={!configured}/></View><Text style={s.footnote}>Native Android & iOS · sesi tersimpan di secure storage</Text></ScrollView>;
+  const [publicFeed, setPublicFeed] = useState<NativeFeedItem[]>([]);
+  const [publicStories, setPublicStories] = useState<NativeStory[]>([]);
+  const [selectedStory, setSelectedStory] = useState<NativeStory | null>(null);
+  const [guestLoading, setGuestLoading] = useState(true);
+  const [guestError, setGuestError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch(apiBase + "/healthz").then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(b => { if (active) setHealth(b.status === "ok" ? "API terhubung" : "API memberi status tidak dikenal"); })
+      .catch(() => { if (active) setHealth("API tidak terjangkau"); });
+    const loadPublicContent = async () => {
+      setGuestLoading(true); setGuestError("");
+      try {
+        const [feedResponse, storiesResponse] = await Promise.all([
+          fetch(apiBase + "/v1/feed?mode=recent&limit=10", { headers: { Accept: "application/json" }, cache: "no-store" }),
+          fetch(apiBase + "/v1/stories?limit=20", { headers: { Accept: "application/json" }, cache: "no-store" }),
+        ]);
+        if (!feedResponse.ok) throw new Error("Feed publik belum dapat dimuat.");
+        const feed = await feedResponse.json() as { items?: NativeFeedItem[] };
+        if (active) setPublicFeed(feed.items ?? []);
+        if (storiesResponse.ok) {
+          const stories = await storiesResponse.json() as { items?: NativeStory[] };
+          if (active) setPublicStories(stories.items ?? []);
+        }
+      } catch (cause) {
+        if (active) setGuestError(cause instanceof Error ? cause.message : "Konten publik belum dapat dimuat.");
+      } finally { if (active) setGuestLoading(false); }
+    };
+    void loadPublicContent();
+    return () => { active = false; };
+  }, []);
+
+  function requestLogin(action: string) {
+    Alert.alert("Masuk ke Allpha", action + " memerlukan akun. Konten publik tetap dapat Anda lihat tanpa login.", [
+      { text: "Nanti", style: "cancel" },
+      { text: "Masuk", onPress: () => nav.navigate("Auth", { mode: "signin" }) },
+      { text: "Daftar", onPress: () => nav.navigate("Auth", { mode: "signup" }) },
+    ]);
+  }
+
+  async function sharePublicPost(item: NativeFeedItem) {
+    const url = "https://allpha.web.id/feed?content=" + encodeURIComponent(item.id);
+    await Share.share({ message: url });
+  }
+
+  const selectedStoryMedia = selectedStory?.media?.find(media => Boolean(media.preview_url));
+
+  return <ScrollView contentContainerStyle={s.page}>
+    <Brand/>
+    <View style={s.card}>
+      <Text style={s.kicker}>YOUR WORLD. YOUR AGENT.</Text>
+      <Text style={s.hero}>Temukan dunia yang terhubung.</Text>
+      <Text style={s.body}>Jelajahi konten publik terlebih dahulu. Masuk atau daftar saat Anda ingin berinteraksi atau menggunakan fitur akun.</Text>
+      <Text style={s.status}>●  {health}</Text>
+      {!configured && <Text style={s.warning}>Autentikasi belum dikonfigurasi. Atur EXPO_PUBLIC_SUPABASE_URL dan EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.</Text>}
+      <Button title="Masuk" onPress={() => nav.navigate("Auth", { mode: "signin" })} disabled={!configured}/>
+      <Button title="Buat akun" secondary onPress={() => nav.navigate("Auth", { mode: "signup" })} disabled={!configured}/>
+    </View>
+
+    <View style={s.card}>
+      <Text style={s.kicker}>STORIES PUBLIK</Text>
+      <Text style={s.title}>Momen dari kreator publik</Text>
+      {guestLoading ? <ActivityIndicator color="#A5B4FC"/> : publicStories.length === 0
+        ? <Text style={s.body}>Belum ada Story publik yang tersedia.</Text>
+        : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+          {publicStories.map(story => {
+            const image = story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url;
+            return <Pressable key={story.id} onPress={() => setSelectedStory(story)} style={({ pressed }) => [s.socialRow, { width: 124, borderBottomWidth: 0, opacity: pressed ? 0.8 : 1 }]}>
+              {image ? <Image source={{ uri: image }} style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: "#A5B4FC", alignSelf: "center" }}/> : <View style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: "#A5B4FC", alignSelf: "center", alignItems: "center", justifyContent: "center" }}><Text style={s.kicker}>STORY</Text></View>}
+              <Text style={[s.body, { textAlign: "center" }]} numberOfLines={1}>{story.creator?.display_name || story.creator?.username || "Kreator publik"}</Text>
+            </Pressable>;
+          })}
+        </ScrollView>}
+      {selectedStory && <View style={[s.card, { padding: 14, marginTop: 12 }]}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}><Text style={s.title}>{selectedStory.creator?.display_name || selectedStory.creator?.username || "Story publik"}</Text><Pressable onPress={() => setSelectedStory(null)}><Text style={s.secondaryText}>Tutup</Text></Pressable></View>
+        {selectedStoryMedia?.media_type.startsWith("image/") && selectedStoryMedia.preview_url && <Image source={{ uri: selectedStoryMedia.preview_url }} resizeMode="contain" style={{ width: "100%", height: 320, borderRadius: 16, marginVertical: 10 }}/>}
+        {selectedStoryMedia?.media_type.startsWith("video/") && selectedStoryMedia.preview_url && <Button title="Buka video Story" secondary onPress={() => { void Linking.openURL(selectedStoryMedia.preview_url!); }}/>}
+        {!!selectedStory.body && <Text style={s.body}>{selectedStory.body}</Text>}
+        <Text style={s.status}>Story publik · media menggunakan tautan akses sementara</Text>
+      </View>}
+      {guestError && <Text style={s.warning}>{guestError}</Text>}
+    </View>
+
+    <View style={s.card}>
+      <Text style={s.kicker}>FEED PUBLIK</Text>
+      <Text style={s.title}>Jelajahi Allpha</Text>
+      {guestLoading ? <ActivityIndicator color="#A5B4FC"/> : publicFeed.length === 0
+        ? <Text style={s.body}>Belum ada postingan publik yang tersedia.</Text>
+        : publicFeed.map(item => <View key={item.id} style={s.socialRow}>
+          <Text style={s.kicker}>{item.creator?.display_name || item.creator?.username || "Kreator publik"}</Text>
+          {!!item.body && <Text style={s.body}>{item.body}</Text>}
+          {item.media?.filter(media => media.preview_url && media.media_type.startsWith("image/")).slice(0, 1).map(media => <Image key={media.id} source={{ uri: media.preview_url! }} resizeMode="cover" style={{ width: "100%", height: 220, borderRadius: 14, marginVertical: 8 }}/>)}
+          <Text style={s.status}>{(item.engagement?.likes ?? 0).toLocaleString("id-ID")} suka · {(item.engagement?.comments ?? 0).toLocaleString("id-ID")} komentar</Text>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <Pressable onPress={() => requestLogin("Menyukai postingan")} style={s.button}><Text style={s.buttonText}>Suka</Text></Pressable>
+            <Pressable onPress={() => requestLogin("Mengomentari postingan")} style={[s.button, s.secondary]}><Text style={s.secondaryText}>Komentar</Text></Pressable>
+            <Pressable onPress={() => { void sharePublicPost(item); }} style={[s.button, s.secondary]}><Text style={s.secondaryText}>Bagikan</Text></Pressable>
+            <Pressable onPress={() => requestLogin("Mengikuti kreator")} style={[s.button, s.secondary]}><Text style={s.secondaryText}>Ikuti</Text></Pressable>
+          </View>
+        </View>)}
+      <Pressable onPress={() => requestLogin("Membuat postingan")} style={[s.button, { marginTop: 14 }]}><Text style={s.buttonText}>Buat postingan · Masuk / Daftar</Text></Pressable>
+    </View>
+    <Text style={s.footnote}>Native Android & iOS · sesi tersimpan di secure storage</Text>
+  </ScrollView>;
 }
 
 function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } }) {
