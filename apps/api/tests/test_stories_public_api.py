@@ -71,6 +71,7 @@ def test_guest_story_discovery_returns_only_public_profile_stories_and_hides_sto
         assert item["id"] == story_id
         assert item["discovery_group"] == "suggested_public"
         assert item["creator"]["display_name"] == "Public Author"
+        assert "provenance" not in item
         assert item["media"][0]["preview_url"].startswith("https://signed.example.invalid/")
         assert "storage_path" not in item["media"][0]
     finally:
