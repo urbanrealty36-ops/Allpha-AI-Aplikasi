@@ -772,7 +772,7 @@ export default function ProfileView({
           <div className="text-xs text-slate-700 font-semibold space-y-2">
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Status Identitas:</span>
-              <span className="font-black text-slate-700">{humanVerified ? 'Terverifikasi' : 'Status belum tersedia'}</span>
+              <span className={`font-black ${humanVerified ? 'text-emerald-700' : 'text-slate-700'}`}>{humanVerified ? 'Terverifikasi' : 'Status belum tersedia'}</span>
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Bergabung Sejak:</span>
