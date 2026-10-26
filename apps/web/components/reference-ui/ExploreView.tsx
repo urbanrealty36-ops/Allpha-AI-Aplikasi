@@ -68,7 +68,8 @@ export interface SocialAccountItem {
   specialty: string;
   bio: string;
   followers: number;
-  verified: boolean;
+  verified?: boolean;
+  isFollowing?: boolean;
   isLive?: boolean;
   tags: string[];
 }
@@ -89,6 +90,12 @@ interface ExploreViewProps {
   onLikePost?: (postId: string) => void;
   productionMode?: boolean;
   onSearch?: (query: string) => void;
+  onSearchAccounts?: (query: string) => void;
+  accountsData?: SocialAccountItem[];
+  accountsLoading?: boolean;
+  accountsError?: string;
+  onRetryAccounts?: () => void;
+  onFollowAccount?: (account: SocialAccountItem) => void;
   onRetrySearch?: () => void;
   onRetryTrends?: () => void;
   onRetryRecommendations?: () => void;
@@ -120,6 +127,12 @@ export default function ExploreView({
   onLikePost,
   productionMode = false,
   onSearch,
+  onSearchAccounts,
+  accountsData = [],
+  accountsLoading = false,
+  accountsError = "",
+  onRetryAccounts,
+  onFollowAccount,
   onRetrySearch,
   onRetryTrends,
   onRetryRecommendations,
@@ -142,11 +155,13 @@ export default function ExploreView({
   // Follow states for accounts
   const [followedAccounts, setFollowedAccounts] = useState<{ [handle: string]: boolean }>({});
 
-  const toggleFollow = (handle: string) => {
-    setFollowedAccounts(prev => ({
-      ...prev,
-      [handle]: !prev[handle]
-    }));
+  const toggleFollow = (account: SocialAccountItem) => {
+    if (productionMode) {
+      onFollowAccount?.(account);
+      return;
+    }
+    const handle = account.handle;
+    setFollowedAccounts(prev => ({ ...prev, [handle]: !prev[handle] }));
     triggerToast(followedAccounts[handle] ? `Berhenti mengikuti ${handle}` : `Mulai mengikuti ${handle}!`);
   };
 
@@ -175,9 +190,9 @@ export default function ExploreView({
   const query = searchQuery.trim().toLowerCase();
 
   const filteredAccounts = useMemo(() => {
-    if (productionMode) return [];
-    if (!query) return SOCIAL_ACCOUNTS_SAMPLE;
-    return SOCIAL_ACCOUNTS_SAMPLE.filter(acc => 
+    const sourceAccounts = productionMode ? accountsData : SOCIAL_ACCOUNTS_SAMPLE;
+    if (!query) return sourceAccounts;
+    return sourceAccounts.filter(acc => 
       acc.name.toLowerCase().includes(query) ||
       acc.handle.toLowerCase().includes(query) ||
       acc.specialty.toLowerCase().includes(query) ||
@@ -185,7 +200,7 @@ export default function ExploreView({
       (acc.ownerName && acc.ownerName.toLowerCase().includes(query)) ||
       acc.tags.some(t => t.toLowerCase().includes(query))
     );
-  }, [query, productionMode]);
+  }, [query, productionMode, accountsData]);
 
   const filteredPosts = useMemo(() => {
     if (!query) return posts;
@@ -259,7 +274,7 @@ export default function ExploreView({
             placeholder="Cari nama akun, @handle, caption, #hashtag, atau fitur..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') onSearch?.(searchQuery.trim()); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') (activeSearchTab === 'ACCOUNTS' ? onSearchAccounts : onSearch)?.(searchQuery.trim()); }}
             className="w-full pl-10 pr-9 py-2.5 text-xs font-bold bg-white border-2 border-slate-900 rounded-2xl shadow-[2px_2px_0px_#0f172a] focus:bg-sky-50 transition outline-none text-slate-900"
           />
           {searchQuery && (
@@ -389,7 +404,8 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION B: ACCOUNTS RESULTS (HUMAN & AI AGENTS) */}
         {/* ======================================================== */}
-        {productionMode && activeSearchTab === 'ACCOUNTS' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Users className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Pencarian akun</h3><p className="mt-1 text-xs text-slate-500">Endpoint akun Human dan AI Agent belum tersedia pada kontrak pencarian yang terhubung.</p></section>}
+        {productionMode && activeSearchTab === 'ACCOUNTS' && accountsLoading && <p role="status" className="rounded-2xl border-2 border-slate-300 bg-white p-4 text-xs font-semibold text-slate-500">Memuat akun publik…</p>}
+        {productionMode && activeSearchTab === 'ACCOUNTS' && accountsError && <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border-2 border-rose-300 bg-white p-4 text-xs font-semibold text-rose-700"><span>{accountsError}</span>{onRetryAccounts && <button type="button" onClick={onRetryAccounts} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900">Coba lagi</button>}</div>}
                 {(!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'ACCOUNTS')) && (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
@@ -411,7 +427,7 @@ export default function ExploreView({
             ) : (
               <div className="space-y-3">
                 {filteredAccounts.map((acc, idx) => {
-                  const isFollowed = followedAccounts[acc.handle] || false;
+                  const isFollowed = productionMode ? Boolean(acc.isFollowing) : Boolean(followedAccounts[acc.handle]);
                   const bgColors = ['bg-white', 'bg-sky-50/50', 'bg-emerald-50/50', 'bg-amber-50/50', 'bg-purple-50/50'];
                   const cardBg = bgColors[idx % bgColors.length];
 
@@ -489,7 +505,7 @@ export default function ExploreView({
 
                         {/* Follow Button */}
                         <button
-                          onClick={() => toggleFollow(acc.handle)}
+                          onClick={() => toggleFollow(acc)}
                           className={`shrink-0 px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                             isFollowed
                               ? 'bg-slate-200 text-slate-800 shadow-[1.5px_1.5px_0px_#0f172a]'
