@@ -21,8 +21,13 @@ def _auth(user_id=OWNER):
     return dependency
 
 
-def test_stories_routes_require_authentication():
-    assert client.get("/v1/stories").status_code == 401
+def test_stories_public_list_is_anonymous_but_mutations_and_mine_require_auth(monkeypatch):
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        return []
+    monkeypatch.setattr(stories_api, "_server_db", fake_db)
+    public = client.get("/v1/stories")
+    assert public.status_code == 200, public.text
+    assert public.json()["items"] == []
     assert client.get("/v1/stories/mine").status_code == 401
     assert client.post("/v1/stories", json={"body": "hello"}).status_code == 401
 
@@ -110,10 +115,12 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
     monkeypatch.setattr(stories_api, "_server_db", fake_db)
     monkeypatch.setattr(stories_api, "_edges", fake_edges)
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[stories_api.optional_current_user] = _auth()
     try:
         response = client.get("/v1/stories")
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(stories_api.optional_current_user, None)
     assert response.status_code == 200, response.text
     assert [item["id"] for item in response.json()["items"]] == [STORY_ID]
     feed_query = next(params for method, table, params, _ in calls if method == "GET" and table == "content_items" and params.get("status") == "eq.published" and params.get("expires_at", "").startswith("gt."))
