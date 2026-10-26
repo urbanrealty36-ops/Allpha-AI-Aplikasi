@@ -80,7 +80,7 @@ function SearchPageContent() {
       const response = await fetch(apiBase + path, { headers, cache: "no-store" });
       const payload = await response.json() as Payload<{
         id: string; username?: string | null; display_name?: string | null; avatar_url?: string | null;
-        bio?: string | null; followers?: number;
+        bio?: string | null; followers?: number; is_following?: boolean;
       }>;
       if (!response.ok) throw new Error(payload.error?.message || "Akun publik belum dapat dimuat.");
       setAccountsData((payload.items || []).map(account => ({
@@ -93,7 +93,7 @@ function SearchPageContent() {
         bio: account.bio || "",
         followers: typeof account.followers === "number" ? account.followers : undefined,
         tags: [],
-        isFollowing: false,
+        isFollowing: Boolean(account.is_following),
       })));
     } catch (cause) {
       setAccountsData([]);
@@ -149,7 +149,7 @@ function SearchPageContent() {
     if (requireLogin("Masuk untuk mengikuti kreator ini.")) return;
     try {
       const response = await fetch(apiBase + "/v1/social/follow/" + encodeURIComponent(account.id), {
-        method: "POST",
+        method: account.isFollowing ? "DELETE" : "POST",
         headers: { Authorization: "Bearer " + session!.access_token, Accept: "application/json" },
         cache: "no-store",
       });
