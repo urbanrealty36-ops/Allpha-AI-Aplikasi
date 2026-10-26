@@ -154,6 +154,10 @@ async def run_forever(*, poll_interval_seconds: int = 5, limit: int = 25,
                       lease_seconds: int = 60, stop_event: asyncio.Event | None = None) -> None:
     if not 1 <= poll_interval_seconds <= 60:
         raise ValueError("poll interval must be between 1 and 60")
+    if not 1 <= limit <= 100:
+        raise ValueError("limit must be between 1 and 100")
+    if not 5 <= lease_seconds <= 300:
+        raise ValueError("lease_seconds must be between 5 and 300")
     stop = stop_event or asyncio.Event()
     store = AgentRuntimeStore.from_environment()
     while not stop.is_set():
@@ -178,9 +182,19 @@ def main() -> None:
     if os.getenv("ALLPHA_AGENT_TASK_SCHEDULER_ENABLED", "false").strip().lower() != "true":
         log.info("Agent task scheduler disabled; set ALLPHA_AGENT_TASK_SCHEDULER_ENABLED=true in an approved worker service")
         return
-    poll = int(os.getenv("ALLPHA_AGENT_TASK_SCHEDULER_POLL_INTERVAL_SECONDS", "5"))
-    limit = int(os.getenv("ALLPHA_AGENT_TASK_SCHEDULER_BATCH_LIMIT", "25"))
-    lease = int(os.getenv("ALLPHA_AGENT_TASK_SCHEDULER_LEASE_SECONDS", "60"))
+    def bounded_env(name: str, default: int, minimum: int, maximum: int) -> int:
+        raw = os.getenv(name, str(default)).strip()
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise SystemExit(f"{name} must be an integer") from exc
+        if not minimum <= value <= maximum:
+            raise SystemExit(f"{name} must be between {minimum} and {maximum}")
+        return value
+
+    poll = bounded_env("ALLPHA_AGENT_TASK_SCHEDULER_POLL_INTERVAL_SECONDS", 5, 1, 60)
+    limit = bounded_env("ALLPHA_AGENT_TASK_SCHEDULER_BATCH_LIMIT", 25, 1, 100)
+    lease = bounded_env("ALLPHA_AGENT_TASK_SCHEDULER_LEASE_SECONDS", 60, 5, 300)
     async def serve() -> None:
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
