@@ -33,7 +33,13 @@ import {
   Share2,
   SlidersHorizontal,
   Flame,
-  Search
+  Search,
+  ShoppingBag,
+  Store,
+  Truck,
+  QrCode,
+  Package,
+  ArrowUpRight
 } from 'lucide-react';
 
 export type EventCategory = 
@@ -67,6 +73,8 @@ interface AllphaHubViewProps {
   onOpenWorld3D: (districtName?: string) => void;
   onOpenFilmAi?: (filmId?: string) => void;
   onOpenLiveExperienceStage?: () => void;
+  onOpenMarketplace?: () => void;
+  onOpenStoreAndBoothModal?: () => void;
   userCredits: number | null;
   agentCredits: number | null;
   productionMode?: boolean;
@@ -77,6 +85,8 @@ export default function AllphaHubView({
   onOpenWorld3D,
   onOpenFilmAi,
   onOpenLiveExperienceStage,
+  onOpenMarketplace,
+  onOpenStoreAndBoothModal,
   userCredits,
   agentCredits,
   productionMode = false,
@@ -84,7 +94,7 @@ export default function AllphaHubView({
 }: AllphaHubViewProps) {
   // Active sub-tab inside Allpha Hub
   const [activeHubSection, setActiveHubSection] = useState<
-    'STAGE' | 'WORLDS' | 'VIDEOTRON' | 'QUESTS' | 'LEDGER'
+    'STAGE' | 'WORLDS' | 'MARKETPLACE' | 'VIDEOTRON' | 'QUESTS' | 'LEDGER'
   >('STAGE');
 
   // Event category filter
@@ -588,6 +598,7 @@ export default function AllphaHubView({
             {[
               { id: 'STAGE', label: 'Event Stage Live', icon: Radio, count: productionMode ? '— Live' : stageEvents.filter(e => e.isLive).length + ' Live' },
               { id: 'WORLDS', label: 'Jelajahi Dunia 3D', icon: Box, count: worldsDirectory.length + ' Dunia' },
+              { id: 'MARKETPLACE', label: 'Marketplace & Booth 3D', icon: ShoppingBag, count: productionMode ? 'Katalog' : 'Toko & Booth' },
               { id: 'VIDEOTRON', label: '3D Videotron', icon: Tv, count: '4 Slot' },
               { id: 'QUESTS', label: 'Quest & XP', icon: Award, count: hubQuests.filter(q => !q.claimed && q.current >= q.target).length + ' Klaim' },
               { id: 'LEDGER', label: 'Buku Besar & Settlement', icon: Receipt, count: 'Royalti 70%' },
@@ -898,6 +909,270 @@ export default function AllphaHubView({
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ======================================================== */}
+      {/* 2.5 SPATIAL MARKETPLACE & 3D BOOTH DISTRICTS (ALLPHA HUB) */}
+      {/* ======================================================== */}
+      {activeHubSection === 'MARKETPLACE' && (
+        <section className="space-y-4 animate-in fade-in duration-200">
+          
+          {/* Marketplace Callout Hero (Soft Pastel Menggu #FEF08A) */}
+          <div className="p-5 sm:p-6 rounded-3xl bg-[#FEF08A] border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a]">
+                    <ShoppingBag className="w-4 h-4 text-slate-950 stroke-[2.5px]" />
+                  </span>
+                  <h2 className="text-base sm:text-lg font-black text-slate-950 tracking-tight">
+                    Marketplace & Booth 3D Spatial
+                  </h2>
+                </div>
+                <p className="text-xs font-semibold text-slate-800">
+                  Jelajahi etalase produk digital, merchandise fisik, hardware, dan stan pameran booth 3D di distrik Allpha Universe.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {onOpenStoreAndBoothModal && (
+                  <button
+                    onClick={onOpenStoreAndBoothModal}
+                    className="px-4 py-2 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Store className="w-3.5 h-3.5 text-slate-900 stroke-[2.5px]" />
+                    <span>Buat Toko & Booth 3D</span>
+                  </button>
+                )}
+                {onOpenMarketplace && (
+                  <button
+                    onClick={onOpenMarketplace}
+                    className="px-4 py-2 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Buka Marketplace Penuh</span>
+                    <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5px]" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Guarantees */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] font-bold text-slate-900">
+              <span className="px-2.5 py-1 rounded-xl bg-white/80 border border-slate-900 flex items-center gap-1.5 shadow-2xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5px]" />
+                Bagi Hasil 85% untuk Penjual
+              </span>
+              <span className="px-2.5 py-1 rounded-xl bg-white/80 border border-slate-900 flex items-center gap-1.5 shadow-2xs">
+                <Truck className="w-3.5 h-3.5 text-sky-700 stroke-[2.5px]" />
+                Ongkir Otomatis (JNE, SiCepat, J&T)
+              </span>
+              <span className="px-2.5 py-1 rounded-xl bg-white/80 border border-slate-900 flex items-center gap-1.5 shadow-2xs">
+                <QrCode className="w-3.5 h-3.5 text-purple-700 stroke-[2.5px]" />
+                Midtrans QRIS & Virtual Account
+              </span>
+            </div>
+          </div>
+
+          {/* Active 3D Booths Directory Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Box className="w-4 h-4 text-purple-600 stroke-[2.5px]" />
+                <span>Stan Pameran Booth 3D di Universe Districts</span>
+              </h3>
+              <span className="text-[11px] font-bold text-slate-500">4 Booth Terbuka</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {(productionMode ? [] : [
+                {
+                  id: 'booth-1',
+                  name: 'Luna 3D Spatial Rig Lab',
+                  seller: 'Alex Tamara & Luna AI',
+                  district: 'Crystal City Metropolis',
+                  theme: 'Playful Menggu Pastel',
+                  productsCount: 14,
+                  visitors: '1.4k Kunjungan',
+                  banner: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80',
+                  badgeColor: 'bg-[#FEF08A]',
+                },
+                {
+                  id: 'booth-2',
+                  name: 'Neo Tokyo Shader & Apparel',
+                  seller: 'Mika Tanaka & TechNova',
+                  district: 'Neo Tokyo Neon Atrium',
+                  theme: 'Cyberpunk Neon Glow',
+                  productsCount: 22,
+                  visitors: '2.8k Kunjungan',
+                  banner: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=400&q=80',
+                  badgeColor: 'bg-purple-200',
+                },
+                {
+                  id: 'booth-3',
+                  name: 'Mars Biosphere Hardware IoT',
+                  seller: 'Dr. Andi & MediAI',
+                  district: 'Mars Colony Oasis',
+                  theme: 'Minimalist Quartz Glass',
+                  productsCount: 8,
+                  visitors: '890 Kunjungan',
+                  banner: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
+                  badgeColor: 'bg-emerald-200',
+                },
+                {
+                  id: 'booth-4',
+                  name: 'HoloSound Audio & Vinyl 3D',
+                  seller: 'DJ Rian Nexus & BeatForge',
+                  district: 'Central Live Arena',
+                  theme: 'Japanese Zen Spatial',
+                  productsCount: 19,
+                  visitors: '3.1k Kunjungan',
+                  banner: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
+                  badgeColor: 'bg-rose-200',
+                },
+              ]).map((booth) => (
+                <div
+                  key={booth.id}
+                  className="rounded-3xl bg-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] overflow-hidden hover:shadow-[5px_5px_0px_#0f172a] transition flex flex-col justify-between"
+                >
+                  <div className="relative h-28 w-full overflow-hidden border-b-2 border-slate-900">
+                    <img
+                      src={booth.banner}
+                      alt={booth.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      <span className={`px-2.5 py-0.5 rounded-full border border-slate-900 text-slate-950 font-black text-[9.5px] uppercase shadow-2xs ${booth.badgeColor}`}>
+                        {booth.district}
+                      </span>
+                    </div>
+                    <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-white font-mono font-bold text-[9px]">
+                      {booth.visitors}
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-2.5">
+                    <div>
+                      <h4 className="font-black text-sm text-slate-950">{booth.name}</h4>
+                      <p className="text-[11px] font-semibold text-slate-600">Oleh {booth.seller}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-500">
+                        {booth.productsCount} Produk Etalase
+                      </span>
+                      <button
+                        onClick={() => {
+                          onOpenWorld3D(booth.district);
+                          showToast(`Warping ke ${booth.name} di ${booth.district}...`);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-sky-300 hover:bg-sky-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Box className="w-3.5 h-3.5 text-slate-950 stroke-[2.5px]" />
+                        <span>Kunjungi Booth 3D</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {productionMode && <p role="status" className="col-span-full rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Direktori Booth 3D akan tampil setelah data tersedia dari layanan produksi.</p>}
+            </div>
+          </div>
+
+          {/* Featured Marketplace Products Grid */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-emerald-600 stroke-[2.5px]" />
+                <span>Produk Terlaris di Allpha Hub</span>
+              </h3>
+              {onOpenMarketplace && (
+                <button
+                  onClick={onOpenMarketplace}
+                  className="text-xs font-black text-slate-900 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  Lihat Semua Produk →
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {(productionMode ? [] : [
+                {
+                  id: 'prod-1',
+                  name: 'Procedural Neon City 3D Kit',
+                  type: 'DIGITAL',
+                  priceIdr: 'Rp 275.000',
+                  credits: 185,
+                  image: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=300&q=80',
+                  seller: 'Luna 3D Lab',
+                  rating: '5.0 ★',
+                },
+                {
+                  id: 'prod-2',
+                  name: 'Cyberpunk Holographic Hoodie',
+                  type: 'PHYSICAL',
+                  priceIdr: 'Rp 399.000',
+                  credits: 260,
+                  image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=300&q=80',
+                  seller: 'Neo Tokyo Merch',
+                  rating: '4.9 ★',
+                },
+                {
+                  id: 'prod-3',
+                  name: 'MediAI Diagnostic Companion',
+                  type: 'DIGITAL',
+                  priceIdr: 'Rp 195.000',
+                  credits: 130,
+                  image: 'https://picsum.photos/seed/diagnostic/300/200',
+                  seller: 'Dr. Andi Pratama',
+                  rating: '4.9 ★',
+                },
+              ]).map((prod) => (
+                <div
+                  key={prod.id}
+                  className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2.5px_2.5px_0px_#0f172a] space-y-2 text-xs flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="relative h-28 rounded-xl overflow-hidden border-2 border-slate-900">
+                      <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" />
+                      <span className={`absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md font-mono text-[9px] font-black border border-slate-900 ${
+                        prod.type === 'DIGITAL' ? 'bg-sky-200 text-sky-950' : 'bg-amber-200 text-amber-950'
+                      }`}>
+                        {prod.type}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h5 className="font-black text-slate-950 line-clamp-1">{prod.name}</h5>
+                      <p className="text-[10.5px] font-semibold text-slate-500">{prod.seller}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="font-mono font-black text-emerald-700 text-xs">{prod.priceIdr}</p>
+                      <span className="font-mono font-bold text-amber-900 text-[10px]">{prod.credits} Cr</span>
+                    </div>
+
+                    {onOpenMarketplace ? (
+                      <button
+                        onClick={onOpenMarketplace}
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] cursor-pointer"
+                      >
+                        Beli
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-black text-amber-500">{prod.rating}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {productionMode && <p role="status" className="col-span-full rounded-2xl border-2 border-dashed border-slate-300 bg-white p-5 text-center text-xs font-bold text-slate-600">Produk unggulan akan tampil setelah katalog produksi tersedia.</p>}
+            </div>
+          </div>
+
         </section>
       )}
 
