@@ -1243,6 +1243,10 @@ export default function ThreeWorldView({ productionMode = false }: ThreeWorldVie
             <div className="mt-6 flex items-center gap-2">
               <button
                 onClick={() => {
+                  if (productionMode) {
+                    setSelectedBooth(null);
+                    return;
+                  }
                   alert('Item booth berhasil ditambahkan ke keranjang pembelian!');
                   setSelectedBooth(null);
                 }}
