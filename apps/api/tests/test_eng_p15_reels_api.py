@@ -16,8 +16,16 @@ def _auth_as(user_id="reels-viewer"):
     return fake_current_user
 
 
-def test_reels_requires_authentication():
-    assert client.get("/v1/reels").status_code == 401
+def test_reels_allows_anonymous_public_reads(monkeypatch):
+    calls = []
+    async def fake_feed(**kwargs):
+        calls.append(kwargs)
+        return {"items": [], "next_cursor": None, "mode": "recent", "personalization_enabled": False}
+    monkeypatch.setattr(feed_api, "get_feed", fake_feed)
+    response = client.get("/v1/reels")
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+    assert calls[0]["user"] is None
 
 
 def test_reels_reuses_canonical_feed_and_filters_to_video_and_audio(monkeypatch):
@@ -39,6 +47,7 @@ def test_reels_reuses_canonical_feed_and_filters_to_video_and_audio(monkeypatch)
 
     monkeypatch.setattr(feed_api, "get_feed", fake_feed)
     app.dependency_overrides[current_user] = _auth_as()
+    app.dependency_overrides[feed_api.optional_current_user] = _auth_as()
     try:
         response = client.get("/v1/reels?mode=recent&limit=10")
     finally:
