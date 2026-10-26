@@ -78,6 +78,7 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     monkeypatch.setattr(feed_api, "_signed_media_preview_url", no_signed_url)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).get("/v1/feed?mode=for_you&limit=10")
         assert response.status_code == 200, response.text
@@ -102,6 +103,7 @@ def test_feed_preferences_default_without_persisting_a_row(monkeypatch):
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).get("/v1/feed/preferences")
         assert response.status_code == 200
@@ -117,6 +119,7 @@ def test_reaction_refuses_non_public_content(monkeypatch):
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).put(
             "/v1/feed/00000000-0000-0000-0000-000000000001/reaction",
@@ -150,6 +153,7 @@ def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatc
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
         assert response.status_code == 200, response.text
@@ -177,6 +181,7 @@ def test_blocked_creator_content_cannot_receive_interactions(monkeypatch):
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
         assert response.status_code == 404
@@ -204,6 +209,7 @@ def test_share_records_event_and_returns_deep_link(monkeypatch):
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).post(f"/v1/feed/{content_id}/share", json={"share_target": "copy_link"})
         assert response.status_code == 201, response.text
@@ -231,6 +237,7 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     monkeypatch.setattr(feed_api, "_signed_media_preview_url", lambda path: None)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).get(f"/v1/feed/item/{content_id}")
         assert response.status_code == 200, response.text
@@ -278,6 +285,7 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
     try:
         response = TestClient(app).get("/v1/feed?mode=recent&limit=10")
         assert response.status_code == 200, response.text
