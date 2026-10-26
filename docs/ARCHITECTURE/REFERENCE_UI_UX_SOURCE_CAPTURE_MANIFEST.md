@@ -108,3 +108,16 @@ The reference repository has updated Menggu3D images and additional October 26 s
 ## Runtime source-copy update — 2026-10-27
 
 Direct-to-`main` commit [285be07](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/285be070fc8862481be66492129ab9742f3a70b6) copied the nine missing current reference components into `apps/web/components/reference-ui/` and the 3D engine into `apps/web/lib/menggu3dEngine.ts`. Visual component bodies were copied from source HEAD `b6c9fc728d5d031a28b22fbbec9a546846900e87`; only the local store import specifier was adapted to the canonical existing `reference-store.ts` where required. No route was switched to these components, no business state was changed, and no backend/DB/Storage state was mutated. The next step remains compile/typecheck/build and source-to-route reconciliation; do not treat copied-but-unmounted components as production feature acceptance.
+
+
+### Additional current reference assets — Menggu3D
+
+Pinned to reference `main` commit `b6c9fc728d5d031a28b22fbbec9a546846900e87`; the five source images are required by the copied 3D gallery/viewer presentation.
+
+| Source path | Bytes | Source blob SHA | Canonical target path |
+|---|---:|---|---|
+| `public/assets/menggu3d/ai_plaza.jpg` | 784618 | `e3453adbce9b27379c40ff1f4951ee99a812b4c9` | missing at canonical path |
+| `public/assets/menggu3d/billboard_ads.jpg` | 858428 | `0fc11cb48a923c8809e91ea020a140b69a650924` | missing at canonical path |
+| `public/assets/menggu3d/booth_3d.jpg` | 926272 | `6c26a03ad657f19aa4fb9ad4941f1999066d10e5` | missing at canonical path |
+| `public/assets/menggu3d/district_spatial.jpg` | 840740 | `ce20cae5341da20fdba8e78abcaa4af1b7f947a0` | missing at canonical path |
+| `public/assets/menggu3d/landmark_citadel.jpg` | 479671 | `5ce4e268c6850b97332584a3e2eae2fb38707678` | missing at canonical path |

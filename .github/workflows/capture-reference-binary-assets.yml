@@ -20,16 +20,16 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Download and verify the eight source blobs
+      - name: Download and verify source blobs
         env:
-          SOURCE_COMMIT: "5184f44e9f6c4e641cbe37e9f743583cf40d785e"
+          SOURCE_COMMIT: "b6c9fc728d5d031a28b22fbbec9a546846900e87"
         run: |
           python - <<'PY'
           import hashlib
           import pathlib
           import urllib.request
 
-          source_commit = "5184f44e9f6c4e641cbe37e9f743583cf40d785e"
+          source_commit = "b6c9fc728d5d031a28b22fbbec9a546846900e87"
           assets = [
               ("public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md", 129536, "ff7b7b14b1245da0d6e6510dea4f033d8099c1a9"),
               ("public/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg", 1105749, "808ddbb761676c06e91ba6e092244511e1d1e899"),
@@ -39,6 +39,11 @@ jobs:
               ("public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png", 2092646, "e89cac55c852fc19a76c53427fe79ba42426ef50"),
               ("public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png", 2674422, "7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66"),
               ("public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png", 2663435, "749060b67cf8d143fc360c6c45e7742b849c27ab"),
+              ("public/assets/menggu3d/ai_plaza.jpg", 784618, "e3453adbce9b27379c40ff1f4951ee99a812b4c9"),
+              ("public/assets/menggu3d/billboard_ads.jpg", 858428, "0fc11cb48a923c8809e91ea020a140b69a650924"),
+              ("public/assets/menggu3d/booth_3d.jpg", 926272, "6c26a03ad657f19aa4fb9ad4941f1999066d10e5"),
+              ("public/assets/menggu3d/district_spatial.jpg", 840740, "ce20cae5341da20fdba8e78abcaa4af1b7f947a0"),
+              ("public/assets/menggu3d/landmark_citadel.jpg", 479671, "5ce4e268c6850b97332584a3e2eae2fb38707678"),
           ]
           verified = []
           for relpath, expected_size, expected_git_sha in assets:
