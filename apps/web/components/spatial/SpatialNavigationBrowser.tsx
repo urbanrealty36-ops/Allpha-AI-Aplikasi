@@ -1,11 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getBrowserSupabase } from "../../lib/supabase";
 
 type Node = { node_id:string; parent_id:string|null; level:string; slug:string; display_name:string; coordinates:Record<string,unknown>|null; landmarks:Record<string,unknown>[]; scene_key:string|null; child_count:number; version:number };
 type Asset = { asset_id:string; asset_version:number; asset_key:string; display_name:string; category:string; sha256:string; byte_size:number; published_at:string|null };
 const API=(process.env.NEXT_PUBLIC_API_BASE_URL||"https://api.allpha.web.id").replace(/\/$/,"");
-const CATEGORIES=["universe","galaxy","world","orbit","capsule","district","booth","content-feed","agent-character","live-stage","human-live","sticker-social","animation","navigation-fx"];
+async function authenticatedHeaders(): Promise<Record<string, string>> {
+ const supabase = getBrowserSupabase();
+ const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+ if (!data.session) throw new Error("Masuk untuk memuat katalog Universe 3D.");
+ return { Accept: "application/json", Authorization: "Bearer " + data.session.access_token };
+}
+\nconst CATEGORIES=["universe","galaxy","world","orbit","capsule","district","booth","content-feed","agent-character","live-stage","human-live","sticker-social","animation","navigation-fx"];
 
 export function SpatialNavigationBrowser(){
  const [items,setItems]=useState<Node[]>([]),[trail,setTrail]=useState<Node[]>([]),[assets,setAssets]=useState<Asset[]>([]);
@@ -13,7 +20,7 @@ export function SpatialNavigationBrowser(){
  const loadNodes=useCallback(async(parentKey?:string)=>{
   setLoading(true);setError("");
   try{const url=new URL(API+"/v1/spatial/navigation/nodes");if(parentKey)url.searchParams.set("parent_key",parentKey);url.searchParams.set("limit","100");
-   const response=await fetch(url.toString(),{cache:"no-store",headers:{Accept:"application/json"}});
+   const response=await fetch(url.toString(),{cache:"no-store",headers:await authenticatedHeaders()});
    const body=await response.json().catch(()=>({}));
    if(!response.ok)throw new Error(body?.detail?.message||"Navigasi Universe belum tersedia.");
    setItems(Array.isArray(body.items)?body.items:[]);
