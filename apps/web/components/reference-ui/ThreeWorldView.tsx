@@ -923,7 +923,7 @@ export default function ThreeWorldView({ productionMode = false }: ThreeWorldVie
           <span>ALLPHA 3D UNIVERSE</span>
           <span className="text-slate-400">|</span>
           <span className="text-cyan-300 font-semibold">
-            {activeMode === 'DISTRICT' && 'Crystal City Central Avenue'}
+            {activeMode === 'DISTRICT' && (productionMode ? 'Pratinjau visual 3D' : 'Crystal City Central Avenue')}
             {activeMode === 'MARKETPLACE' && '3D Booth Marketplace'}
             {activeMode === 'AVATAR' && 'Avatar 3D Customizer'}
             {activeMode === 'LIVESTAGE' && 'Live Experience Podcast Stage'}
@@ -998,7 +998,7 @@ export default function ThreeWorldView({ productionMode = false }: ThreeWorldVie
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-                <span className="font-semibold text-slate-100">Crystal City Neo-Kyoto Atrium</span>
+                <span className="font-semibold text-slate-100">{productionMode ? "Pratinjau visual" : "Crystal City Neo-Kyoto Atrium"}</span>
                 {productionMode ? <span className="text-slate-400">• Pratinjau visual · data district belum tersedia</span> : <span className="text-slate-400">• 12 Kiosks & Skyscrapers</span>}
               </div>
               <div className="flex items-center gap-2">
