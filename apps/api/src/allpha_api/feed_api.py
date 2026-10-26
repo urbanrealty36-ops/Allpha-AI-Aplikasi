@@ -288,6 +288,7 @@ async def search_content(
     ))
     page = eligible[:limit]
     ids = [str(row["id"]) for row in page]
+    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in page})
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     if ids:
         media = await _server_db("GET", "content_media", params={
@@ -329,6 +330,11 @@ async def search_content(
         engagement.setdefault(str(row["content_id"]), {"likes": 0, "comments": 0, "saves": 0, "shares": 0})["shares"] += 1
     items = [{
         **row,
+        "creator": {
+            "username": profile_by_id.get(str(row.get("owner_id")), {}).get("username"),
+            "display_name": profile_by_id.get(str(row.get("owner_id")), {}).get("display_name"),
+            "avatar_url": profile_by_id.get(str(row.get("owner_id")), {}).get("avatar_url"),
+        },
         "media": media_by_id.get(str(row["id"]), []),
         "engagement": engagement.get(str(row["id"]), {"likes": 0, "comments": 0, "saves": 0, "shares": 0}),
         "viewer_reaction": viewer_reactions.get(str(row["id"])),
