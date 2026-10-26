@@ -16,8 +16,31 @@ def _auth_as(user_id="reels-viewer"):
     return fake_current_user
 
 
-def test_reels_requires_authentication():
-    assert client.get("/v1/reels").status_code == 401
+def test_reels_allows_guest_public_read_through_canonical_feed(monkeypatch):
+    calls = []
+
+    async def fake_feed(**kwargs):
+        calls.append(kwargs)
+        return {
+            "items": [
+                {"id": "public-video", "visibility": "public", "media": [
+                    {"id": "v1", "media_type": "video/mp4", "preview_url": "https://signed.invalid/v"}
+                ]},
+                {"id": "public-image", "visibility": "public", "media": [
+                    {"id": "i1", "media_type": "image/jpeg", "preview_url": "https://signed.invalid/i"}
+                ]},
+            ],
+            "next_cursor": None,
+            "mode": "recent",
+            "personalization_enabled": False,
+        }
+
+    monkeypatch.setattr(feed_api, "get_feed", fake_feed)
+    response = client.get("/v1/reels?mode=recent&limit=10")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["id"] for item in payload["items"]] == ["public-video"]
+    assert calls[0]["user"] is None
 
 
 def test_reels_reuses_canonical_feed_and_filters_to_video_and_audio(monkeypatch):
