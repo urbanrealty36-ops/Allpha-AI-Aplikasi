@@ -4,7 +4,7 @@ import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState 
 import { useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
-import ExploreView from "../../components/reference-ui/ExploreView";
+import ExploreView, { type SocialAccountItem } from "../../components/reference-ui/ExploreView";
 import type { PostItem } from "../../lib/reference-store";
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
 type Trend = { topic: string; content_count: number; example_content_id: string };
@@ -22,6 +22,10 @@ function SearchPageContent() {
   const [trendsBusy, setTrendsBusy] = useState(false);
   const [trendsError, setTrendsError] = useState("");
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [accountsData, setAccountsData] = useState<SocialAccountItem[]>([]);
+  const [accountsBusy, setAccountsBusy] = useState(false);
+  const [accountsError, setAccountsError] = useState("");
+  const [accountQuery, setAccountQuery] = useState("");
   const [recommendationsBusy, setRecommendationsBusy] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,9 +65,46 @@ function SearchPageContent() {
     finally { setRecommendationsBusy(false); }
   }
 
+  async function loadAccounts(value = "") {
+    const trimmed = value.trim();
+    if (trimmed.length === 1) {
+      setAccountsError("Masukkan minimal 2 karakter untuk mencari akun.");
+      return;
+    }
+    setAccountsBusy(true); setAccountsError(""); setAccountQuery(trimmed);
+    try {
+      const headers: HeadersInit = session ? { Authorization: "Bearer " + session.access_token } : {};
+      const path = trimmed.length >= 2
+        ? "/v1/search/accounts?q=" + encodeURIComponent(trimmed) + "&limit=30"
+        : "/v1/recommendations/accounts?limit=12";
+      const response = await fetch(apiBase + path, { headers, cache: "no-store" });
+      const payload = await response.json() as Payload<{
+        id: string; username?: string | null; display_name?: string | null; avatar_url?: string | null;
+        bio?: string | null; followers?: number;
+      }>;
+      if (!response.ok) throw new Error(payload.error?.message || "Akun publik belum dapat dimuat.");
+      setAccountsData((payload.items || []).map(account => ({
+        id: account.id,
+        name: account.display_name || account.username || "Kreator",
+        handle: account.username ? "@" + account.username : "",
+        avatar: account.avatar_url || "",
+        isAi: false,
+        specialty: "Kreator publik",
+        bio: account.bio || "",
+        followers: account.followers ?? 0,
+        tags: [],
+        isFollowing: false,
+      })));
+    } catch (cause) {
+      setAccountsData([]);
+      setAccountsError(cause instanceof Error ? cause.message : "Akun publik belum dapat dimuat.");
+    } finally { setAccountsBusy(false); }
+  }
+
   useEffect(() => {
     void loadTrends();
     void loadRecommendations();
+    void loadAccounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
 
@@ -104,6 +145,23 @@ function SearchPageContent() {
     return true;
   }
 
+  async function followAccount(account: SocialAccountItem) {
+    if (requireLogin("Masuk untuk mengikuti kreator ini.")) return;
+    try {
+      const response = await fetch(apiBase + "/v1/social/follow/" + encodeURIComponent(account.id), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session!.access_token, Accept: "application/json" },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail?.message || payload?.error?.message || "Follow belum berhasil.");
+      setAccountsError(payload.status === "requested" ? "Permintaan mengikuti akun privat dikirim." : "Anda sekarang mengikuti kreator ini.");
+      await loadAccounts(accountQuery);
+    } catch (cause) {
+      setAccountsError(cause instanceof Error ? cause.message : "Follow belum berhasil.");
+    }
+  }
+
   const postsForReference: PostItem[] = items.map(item => ({
     id: item.id,
     humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username ? "@" + item.creator.username : "", avatar: item.creator?.avatar_url || "", verified: false },
@@ -142,6 +200,12 @@ function SearchPageContent() {
     </section>}
       <ExploreView
         posts={postsForReference}
+        accountsData={accountsData}
+        accountsLoading={accountsBusy}
+        accountsError={accountsError}
+        onRetryAccounts={() => { void loadAccounts(accountQuery); }}
+        onSearchAccounts={value => { void loadAccounts(value); }}
+        onFollowAccount={account => { void followAccount(account); }}
         trendsData={trends}
         trendsLoading={trendsBusy}
         trendsError={trendsError}
