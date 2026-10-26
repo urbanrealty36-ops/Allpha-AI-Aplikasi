@@ -120,7 +120,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         effective_mode = "recent"
         visibility_filter = "eq.public"
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
+        "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
         "visibility": visibility_filter, "published_at": f"lte.{as_of.isoformat()}",
         "order": "published_at.desc,id.desc", "limit": str(CANDIDATES)})
     candidates = rows or []
@@ -234,7 +234,7 @@ async def search_content(
     # Each term is sanitized before it is sent to PostgREST; database filters remain authoritative.
     clauses = [f"body.ilike.*{term.replace('*', '').replace('%', '').replace('_', '')}*" for term in terms]
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
+        "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
         "visibility": "in.(public,followers)" if owner else "eq.public", "or": f"({','.join(clauses)})",
         "order": "published_at.desc,id.desc", "limit": "500",
     })
@@ -290,7 +290,7 @@ async def get_trends(
     """Derive trends from actual public content for guests and eligible content for signed-in users."""
     owner = str(user["id"]) if user else None
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
+        "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
         "visibility": "in.(public,followers)" if owner else "eq.public", "order": "published_at.desc,id.desc", "limit": "500",
     })
     followed, hidden = await _edges(owner) if owner else (set(), set())
