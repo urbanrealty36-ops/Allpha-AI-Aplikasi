@@ -189,7 +189,9 @@ async def list_active_stories(
     user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
     now = _now()
-    await _expire_due_stories()
+    # Guest reads filter expires_at at query time; do not let anonymous traffic trigger cleanup writes.
+    if user:
+        await _expire_due_stories()
     rows = await _server_db("GET", "content_items", params={
         "select": STORY_FIELDS,
         "content_type": "eq.story",
