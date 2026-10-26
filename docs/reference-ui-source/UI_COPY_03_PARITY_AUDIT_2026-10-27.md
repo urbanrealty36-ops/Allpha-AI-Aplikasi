@@ -41,3 +41,14 @@ The canonical app already has route adapters and many source-styled components. 
 ## Acceptance gate
 
 UI-COPY-03 remains IN_PROGRESS until every source component/route/style/asset is inventoried, each requested feature is mapped to a runtime route/component and canonical API, source-to-runtime visual differences are accounted for, and missing backend contracts are documented as explicit blocked states. Snapshot success alone does not pass this gate.
+
+
+## Follow-up implementation update (2026-10-27)
+
+- Byte-for-byte synchronized the following reference components into the runtime component directory, using the source repo's current `main` blobs:
+  - `components/Universe3DHubView.tsx` source blob `850b0819e4c6d84fb79dc10d37b8ab7b80f6df2d` → `apps/web/components/reference-ui/Universe3DHubView.tsx`; target commit `fb89c9a1bf4a1f48873c05672cdccbd97101d44d`.
+  - `components/Universe3DExperience.tsx` source blob `904518182a463c6edc3e892b5575140be9958722` → `apps/web/components/reference-ui/Universe3DExperience.tsx`; target commit `6aae2c306c21585d0ec871926bae1b29782ea07a`.
+- The newer Universe hub source imports the already synchronized `Menggu3DUniverseGallery`, `Menggu3DViewerModal`, and `menggu3dEngine`; its export/download affordances and GLB generation are now present in the runtime source component.
+- This sync is an exact source-code copy, not a runtime route acceptance result. The current canonical `/spatial/navigation` route still uses `SpatialNavigationBrowser` and canonical spatial manifests, not the demo-driven reference Universe hub. It must be connected without using the reference's hardcoded world metrics, local-only state, or simulated credit/reward callbacks as production truth.
+- No design changes were made to the copied components. No staging or real-world payment tests were run.
+- `WP-01 / UI-COPY-03` remains `IN_PROGRESS`: route integration, API wiring, complete feature/component parity, and the requested no-demo-data acceptance still require implementation and evidence.
