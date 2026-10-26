@@ -12,7 +12,8 @@ async function authenticatedHeaders(): Promise<Record<string, string>> {
  if (!data.session) throw new Error("Masuk untuk memuat katalog Universe 3D.");
  return { Accept: "application/json", Authorization: "Bearer " + data.session.access_token };
 }
-\nconst CATEGORIES=["universe","galaxy","world","orbit","capsule","district","booth","content-feed","agent-character","live-stage","human-live","sticker-social","animation","navigation-fx"];
+
+const CATEGORIES=["universe","galaxy","world","orbit","capsule","district","booth","content-feed","agent-character","live-stage","human-live","sticker-social","animation","navigation-fx"];
 
 export function SpatialNavigationBrowser(){
  const [items,setItems]=useState<Node[]>([]),[trail,setTrail]=useState<Node[]>([]),[assets,setAssets]=useState<Asset[]>([]);
