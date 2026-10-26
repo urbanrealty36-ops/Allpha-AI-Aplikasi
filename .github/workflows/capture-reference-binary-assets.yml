@@ -70,7 +70,7 @@ jobs:
               old_prefix = f"| `{relpath}` | {size} | `{git_sha}` | missing at canonical path"
               if old_prefix in manifest:
                   row_start = manifest.index(old_prefix)
-                  row_end = manifest.find("\\n", row_start)
+                  row_end = manifest.find("\n", row_start)
                   if row_end < 0:
                       row_end = len(manifest)
                   manifest = manifest[:row_start] + replacement + manifest[row_end:]
