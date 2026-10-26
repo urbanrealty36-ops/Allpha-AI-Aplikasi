@@ -124,7 +124,7 @@ export default function CreatePage() {
       {!session ? (
         <section className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
           <p className="mb-3 text-sm">Masuk terlebih dahulu untuk membuat konten.</p>
-          <Link href="/" className="font-semibold text-blue-600 hover:underline">Masuk melalui Allpha</Link>
+          <Link href={"/login?next=" + encodeURIComponent("/create")} className="font-semibold text-blue-600 hover:underline">Masuk / Daftar</Link>
         </section>
       ) : (
         <form onSubmit={submit} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900 sm:p-6">
