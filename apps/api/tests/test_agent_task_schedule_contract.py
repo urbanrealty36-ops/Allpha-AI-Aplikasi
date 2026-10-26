@@ -85,3 +85,12 @@ def test_schedule_migration_has_atomic_claims_and_idempotent_occurrences():
     assert "enable row level security" in migration
     assert "from public, anon, authenticated" in migration
     assert "workflow_runs_agent_schedule_trace_uidx" in migration
+
+def test_schedule_approval_route_is_unique():
+    source = (Path(__file__).resolve().parents[1] / "src" / "allpha_api" / "agent_task_schedule_api.py").read_text(encoding="utf-8")
+    assert source.count('@router.post("/{schedule_id}/runs/{run_id}/approve")') == 1
+    start = source.index('@router.post("/{schedule_id}/runs/{run_id}/approve")')
+    end = source.index('@router.patch("/{schedule_id}/status")', start)
+    handler = source[start:end]
+    assert '"require_approval": False' not in handler
+    assert '"approved_by": owner_id' in handler
