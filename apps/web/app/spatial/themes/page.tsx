@@ -42,13 +42,19 @@ export default function SpatialThemesPage() {
   }, [supabase]);
 
   useEffect(() => {
+    if (!session) {
+      setItems([]);
+      setSelected(null);
+      setLoading(false);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError("");
     fetch(API + "/v1/spatial/themes?limit=100&offset=0", {
       signal: controller.signal,
       cache: "no-store",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: "Bearer " + session.access_token },
     }).then(async (response) => {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -67,7 +73,19 @@ export default function SpatialThemesPage() {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [retry]);
+  }, [retry, session?.access_token]);
+
+  if (!authResolved) return <main className="min-h-[50dvh] p-6" role="status">Memeriksa sesi Allpha…</main>;
+  if (!session) return (
+    <main className="mx-auto flex min-h-[70dvh] max-w-xl items-center justify-center px-5">
+      <section className="w-full rounded-2xl border-2 border-slate-900 bg-white p-5 text-slate-950 shadow-[3px_3px_0px_#0f172a]">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-700">Allpha Universe · Spatial</p>
+        <h1 className="mt-2 text-xl font-black">Login diperlukan untuk mengakses Universe</h1>
+        <p className="mt-2 text-sm text-slate-600">Katalog navigasi, Theme interaktif, dan renderer dunia hanya tersedia setelah sesi pengguna terverifikasi.</p>
+        <Link className="mt-4 inline-flex rounded-xl border-2 border-slate-900 bg-indigo-300 px-4 py-2 text-sm font-black text-slate-950" href={"/login?next=" + encodeURIComponent("/spatial/themes")}>Daftar / Login</Link>
+      </section>
+    </main>
+  );
 
   return (
     <><main className="allpha-page allpha-spatial-page" style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px 48px", color: "#e8edf7" }}>
