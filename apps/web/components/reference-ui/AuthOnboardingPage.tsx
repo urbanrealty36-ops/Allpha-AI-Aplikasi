@@ -42,11 +42,13 @@ import {
   BIDANG_SKILLS_CATALOG,
   INITIAL_USER,
   INITIAL_AGENT
-} from '@/lib/reference-store';
+} from '@/lib/store';
 
 interface AuthOnboardingPageProps {
   onEnterApp: () => void;
   onCompleteAuth: (user: HumanProfile, agent: AIAgentProfile, bonusCredits: number) => void;
+  /** In production, hand authentication to the canonical auth route; never simulate success here. */
+  onStartAuthentication?: () => void;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
 }
@@ -56,6 +58,7 @@ export type PageSection = 'SLIDES' | 'AUTH' | 'ECOSYSTEM_TOUR';
 export default function AuthOnboardingPage({
   onEnterApp,
   onCompleteAuth,
+  onStartAuthentication,
   currentUser,
   currentAgent,
 }: AuthOnboardingPageProps) {
@@ -218,6 +221,10 @@ export default function AuthOnboardingPage({
   };
 
   const handleFinishRegister = () => {
+    if (onStartAuthentication) {
+      onStartAuthentication();
+      return;
+    }
     const updatedHuman: HumanProfile = {
       ...currentUser,
       name: humanName,
@@ -251,6 +258,10 @@ export default function AuthOnboardingPage({
 
   const handleQuickLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (onStartAuthentication) {
+      onStartAuthentication();
+      return;
+    }
     showToast(`Selamat datang kembali, ${humanName}!`);
     setTimeout(() => {
       onEnterApp();
