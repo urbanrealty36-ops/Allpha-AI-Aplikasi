@@ -63,3 +63,12 @@ UI-COPY-03 remains IN_PROGRESS until every source component/route/style/asset is
 - The welcome route passes empty identity values, not `INITIAL_USER` / `INITIAL_AGENT`; it does not grant the source's +50 AI Credits claim. The original source visual styling is retained; only production event wiring is adapted.
 - Commits: `10c03589ef260737449ceb505fb6c426c6e9f00a` (safe auth handoff), `3dfaf1dfff00b8a535c55aa98a3438f6e9b80ea0` (welcome route), `2a0cbe8d2157a8230a8c8ccdcab8fbc19f8971f9` (root redirect), `5e833bf5375d0064eaab0a933664fc680f8c39d8` (hide app nav on splash).
 - No staging/browser/real payment testing was performed, as requested. Route code was committed, but visual/runtime acceptance is not claimed.
+
+
+## Public homepage workflow clarification (2026-10-27)
+
+- Product rule confirmed: users must see the reference Splash/Welcome page first, then may enter the public homepage/feed without signing in. Login is required only for protected actions/flows according to existing route/API authorization rules.
+- Current implementation: `/` redirects to `/welcome`; the source CTA "Buka Feed Aplikasi" / guest bypass routes to `/feed`; `/feed` loads the canonical feed API and does not require the UI onboarding form to be completed first. Mutating/identity-dependent actions remain subject to canonical authentication and API authorization.
+- No login wall was added to the public feed. The Welcome page's login/register buttons route to `/login` and canonical Supabase/FastAPI auth flow.
+- No fake demo identity, simulated authentication, credits bonus, or transaction is persisted by the welcome route.
+- Remaining acceptance work: inventory every source file and map each screen/modal/action/style/asset to runtime routes, reconcile API-backed actions and verify responsive UI parity. No staging or live transaction test was run.
