@@ -262,6 +262,7 @@ export default function FeedPage() {
           onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
           onSelectPost={post => { window.location.assign("/feed?content=" + encodeURIComponent(post.id)); }}
           onOpenReels={() => { window.location.assign("/reels"); }}
+          onOpenStory={storyId => { window.location.assign("/stories?story=" + encodeURIComponent(storyId)); }}
           onOpenLiveStage={() => { window.location.assign("/live"); }}
           onOpenCreateModal={() => { if (requireLogin("Masuk untuk membuat postingan.")) return; window.location.assign("/create"); }}
           onOpenFilmAi={() => { window.location.assign("/ai-cinema"); }}
