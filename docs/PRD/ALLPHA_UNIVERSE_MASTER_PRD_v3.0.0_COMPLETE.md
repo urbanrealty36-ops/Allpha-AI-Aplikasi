@@ -3548,3 +3548,142 @@ Required journey-level specifications:
 5. Run automated accessibility and visual regression checks; report actual commands/results and do not claim checks that were not run.
 6. Preserve the existing 3D Universe architecture and its 14 categories. The token system may style spatial navigation, stages, cards and controls but must not change the canonical 3D domain model.
 7. Do not close UI-COPY-03 until reference parity, route behavior, responsive evidence and server-data wiring are recorded. Do not claim full social-network completion until domain-specific acceptance criteria in this PRD are verified.
+
+---
+
+# ADDENDUM v3.1.2 — GUEST SOCIAL EXPERIENCE & AUTHENTICATION BOUNDARIES
+**Date:** 26 October 2026  
+**Status:** Canonical product architecture addendum; supplements v3.1 and v3.1.1 without replacing prior requirements.  
+**Purpose:** Define the intended public/anonymous visitor experience for Allpha's AI Social Network, the boundary between public viewing and authenticated actions, and the stricter authentication gates for spatial and AI execution features.
+
+## 1. Product decision and guiding principle
+
+Allpha MUST support a deliberate **Guest Social Experience**. An anonymous visitor is not automatically redirected to sign-in simply for opening the social product. The visitor should be able to discover and consume eligible public content before deciding to register or sign in.
+
+The product follows three access contexts:
+1. **Guest / Anonymous visitor:** may read only explicitly public, published, non-expired and policy-eligible resources and use the limited public AI Cinema experience defined below.
+2. **Authenticated Human:** may perform actions permitted to that identity and resource, subject to ownership, privacy, moderation, policy, quota, entitlement and credit rules.
+3. **Privileged or resource-scoped identity:** owners, creators, Agent owners, Live participants, moderators and Super Admins receive additional capabilities only through their specific server-verified role, ownership, grants and context. Sign-in alone does not confer these capabilities.
+
+The guest experience MUST preserve the canonical reference UI's visual composition and mobile-first responsive behavior. This addendum defines access behavior; it does not authorize redesigning reference components or creating look-alike substitute components.
+
+## 2. Public guest surfaces
+
+Subject to resource visibility and server policy, a guest MAY access:
+- The public Feed and individual public post detail pages.
+- Public Reels/video playback and permitted public media metadata.
+- Public Human and AI Agent profiles, limited to fields explicitly designated public.
+- Public Stories, including eligible Stories from accounts the visitor does not follow, when the Story owner and its audience policy permit public discovery.
+- Public Explore/discovery surfaces, eligible trends and public recommendations.
+- Publicly accessible AI Cinema catalogue items and playback only to the extent the specific title, rights, territory, maturity classification, release window and entitlement policy permit guest playback.
+
+Guest access MUST NOT expose private accounts or fields, private posts, Close Friends or follower-only Stories, expired/deleted/unpublished content, blocked relationships, private Agent knowledge/memory, private media URLs, hidden moderation data, personal contact data, or any resource whose audience/entitlement denies the visitor.
+
+An empty public catalogue is a valid empty state. The system MUST NOT insert sample accounts, synthetic posts, invented engagement metrics, fake verified badges, fabricated Story rings, or placeholder media presented as real user content to make the guest experience look populated.
+
+## 3. Public Feed and discovery behavior
+
+The public Feed endpoint and query path MUST be explicitly designed for anonymous read access; they MUST NOT depend on an authenticated-only endpoint merely being called from a guest page. The canonical backend remains the source of truth.
+
+For guest requests, the backend MUST:
+1. Resolve only content with an explicit public visibility and eligible published lifecycle state.
+2. Exclude expired, deleted, quarantined, unpublished, blocked, restricted, or otherwise ineligible resources.
+3. Apply moderation and safety eligibility before returning content.
+4. Return only public fields and authorized media references; never serialize private fields and rely on the client to hide them.
+5. Apply stable cursor pagination, bounded page sizes, rate/abuse controls, and privacy-safe observability.
+6. Return explicit loading, empty, unavailable, rate-limited and error behavior through stable API contracts; it MUST NOT fabricate fallback business data.
+
+Guest discovery may use public content quality, freshness, topic relevance, aggregate popularity signals and diversity constraints. Personalized ranking based on private user history or private contact data MUST NOT be assumed for an anonymous visitor. Once authenticated, additional signals may be used only under the applicable consent, privacy and policy rules.
+
+## 4. Stories: Following and Suggested discovery
+
+The Stories experience MUST distinguish at least these logical candidate groups:
+- **Following Stories:** eligible Stories from accounts the authenticated user follows, filtered by current audience and relationship rules.
+- **Suggested Public Stories:** eligible public Stories from accounts the visitor/user does not follow, selected by permitted relevance and diversity signals.
+
+A guest may receive Suggested Public Stories even without a following graph. An authenticated user may receive both groups. These are candidate groups, not permission overrides: privacy, audience scope, expiry, block/mute rules, moderation and publication status are always applied before delivery.
+
+Recommendation signals MAY include public topic/content relevance, freshness, permitted engagement aggregates, diversity and explicit public creator/Agent discovery signals. A verified account may be one eligible signal, but verification MUST be genuine, server-backed and MUST NOT be the sole eligibility or ranking criterion. Contact-based suggestions are allowed only when a real supported integration, appropriate permission/consent and applicable privacy controls exist; the system MUST NOT imply that it has scanned a visitor's contacts when it has not.
+
+Story viewer navigation, view recording, replies, reactions and other mutations require their own canonical contracts. A Story card in the Feed is not evidence that a functioning Story viewer or view event exists. Guest view recording, if supported, MUST be privacy-aware, abuse-controlled and explicitly specified; guest replies/reactions and other identity-dependent mutations require authentication.
+
+## 5. Interaction gating and login/register prompt
+
+Actions that create or mutate identity-bound social state MUST require authentication and server authorization. Examples include following/unfollowing, liking/reacting, commenting/replying, bookmarking, creating or editing posts/Stories/Reels, posting replies, messaging, and other account-owned actions.
+
+When a guest selects a gated action, the UI SHOULD show a compact, context-aware **Sign up / Log in** prompt while preserving the current public content context. The prompt should explain the relevant value (for example, “Log in to follow this creator”) and use the copied reference UI's existing modal/card/dialog conventions. It MUST NOT redirect every public page visit to a full-screen login wall by default.
+
+A public share action MAY remain available without sign-in when it only opens a permitted public URL or uses an allowed operating-system share sheet and does not create identity-bound server state. Any private, attribution-sensitive or state-mutating share behavior remains subject to its canonical contract.
+
+After successful authentication, the visitor SHOULD return to the original content and intended destination. The initial gated action MUST NOT be treated as successful solely because the login flow completed. It must be explicitly retried/confirmed or re-authorized and executed through the canonical API. If login is cancelled, return the visitor to the same public context without mutating state.
+
+Authentication prompts and client route guards are usability controls only. Every protected operation MUST also enforce authentication, resource authorization, policy, quota and entitlement in the canonical FastAPI backend. Hiding a button is not an authorization boundary.
+
+## 6. Hard authentication gates: Spatial Universe and AI execution
+
+For an anonymous visitor, the following execution capabilities MUST be unavailable:
+- Entering or executing an interactive Universe 3D experience that requires an identified user session.
+- Starting a Tanya AI Agent conversation or invoking Agent runtime tools.
+- Starting Generate AI/content generation or other billable/model-backed execution.
+
+The UI may show the canonical feature identity, a non-executing preview where separately permitted, and a clear sign-up/log-in CTA. However, a locked feature MUST NOT start a hidden session, call a model/provider, invoke an Agent tool, reserve/consume AI Credits, create a task, or perform a privileged data request before authentication and entitlement checks pass.
+
+All such execution MUST pass through the canonical FastAPI API, authentication and trusted caller context, resource/Agent permission checks, policy, budget/quota/credit reservation where applicable, and the canonical engine/AI Gateway/Model Router. The backend MUST reject anonymous execution even if a client bypasses the UI. Authentication is necessary but may not be sufficient: account status, ownership, Agent publication, capability grants, consent, entitlement, quota, policy and credits still apply.
+
+This gate does not prohibit a separately defined, genuinely public static marketing/preview page or public spatial media. Such preview content must be explicitly classified as non-executing public content and must not be confused with entering or operating the authenticated Universe experience.
+
+## 7. AI Cinema: limited guest access
+
+AI Cinema is the explicit exception among the named AI/spatial surfaces: it MAY provide a limited public catalogue and playback experience to anonymous visitors, but only for titles and actions whose public release, rights, maturity, territory and access policy permit guest access.
+
+Guest access MUST NOT implicitly enable personal libraries, subscriptions, purchases, creator/owner dashboards, project editing, generation, uploads, private screenings, personalized delivery, earnings/royalty views, credit transactions, or other account-bound/paid capabilities. Those require authentication and their own entitlement/ownership checks.
+
+Guest playback MUST use authorized playback references and server-enforced policy. A visible title card does not imply playback rights. If the catalogue is empty or a title is unavailable for guest playback, display an honest empty/locked/unavailable state. Never show fabricated credit balances, prices, royalties, subscription status, view counts or creator earnings.
+
+## 8. Canonical API and data ownership
+
+The required request path remains:
+
+`Web PWA / Native Client → typed/versioned FastAPI contract → authentication and trusted caller context → authorization/privacy/audience/policy/entitlement/rate checks → canonical domain service/engine → repository/provider → response`.
+
+- The backend is authoritative for visibility, moderation, audience, follow relationships, verification, recommendations' eligible inputs, media authorization, feature entitlements, credits and action results.
+- Anonymous public-read contracts MUST be explicit and separately reviewed from authenticated write contracts. Do not weaken an authenticated endpoint globally just to make a guest page render.
+- Clients MUST NOT directly query or mutate business tables, call privileged RPCs, or bypass FastAPI for social, Agent, Cinema or credit operations.
+- Public media URLs/references must be scoped to public resources or issued through a canonical authorization mechanism. Private storage objects MUST NOT become public merely to simplify playback.
+- API response schemas MUST minimize guest-visible fields and must not leak private account attributes, internal moderation notes, private Agent context, contact data or secret identifiers.
+- Public endpoints require bounded pagination and abuse controls appropriate to anonymous traffic. Caching must respect publication state, takedowns, expiry and visibility changes.
+- Native Android/iOS and Web must follow the same semantic access contract. Web remains the installable PWA; native applications remain React Native + Expo.
+
+## 9. UI states and analytics
+
+Every relevant public or gated surface MUST define loading, populated, empty, unavailable/locked, error, retry and access-denied states as applicable. A CTA must be context-aware and must not imply that login guarantees an entitlement or a successful action.
+
+Analytics MAY distinguish anonymous content impressions from authenticated actions, but must follow privacy/consent requirements, avoid unnecessary fingerprinting and avoid counting retries or duplicate requests as multiple valid actions. Guest view semantics, bot filtering, deduplication and retention must be specified by the owning Feed/Story/Video domain rather than inferred from UI rendering.
+
+## 10. Phase mapping and acceptance
+
+This is a product architecture addendum, not a new engineering phase. Implement its requirements under the existing owners and dependencies in `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md`:
+- Identity/session and authorization boundaries: ENG-P02.
+- Feed, content visibility, interactions and public read contracts: ENG-P13–ENG-P14.
+- Reels/video playback and media visibility: ENG-P15.
+- Stories audience, viewer and discovery: ENG-P16.
+- Explore/search/recommendations: ENG-P17.
+- AI execution and Agent access: existing AI/Agent runtime phase owners in the fixed phase plan.
+- Spatial access/preview boundary: existing Spatial phase owners.
+- AI Cinema catalogue/playback/entitlement: existing AI Cinema/creator-economy phase owners.
+- UI copy and reference parity remain under the existing WP-01/UI-COPY-03 checkpoint; WP-02 must not be advanced until its existing acceptance gate is satisfied.
+
+Do not create new ENG phase numbers or parallel phase trackers. Update the owning rows in the fixed phase plan when implementation status or next action changes.
+
+Acceptance requires evidence for:
+1. Anonymous users can read only eligible public resources and cannot retrieve private/restricted fields or media.
+2. Public Feed/Reels/Explore pagination, empty/error/locked states and privacy filters follow canonical contracts.
+3. Suggested Public Stories can include eligible non-followed public accounts without bypassing audience, expiry, block, moderation or privacy rules.
+4. Gated social actions show the contextual login prompt; cancel preserves context; successful login returns safely; no mutation is reported until the canonical API confirms it.
+5. Anonymous requests cannot start Universe 3D execution, Agent conversations/tool calls, or AI generation, even if they bypass client UI.
+6. AI Cinema guest playback is limited to explicitly eligible public titles and does not expose paid/personal capabilities or fabricated financial/business data.
+7. Authorization and negative tests cover anonymous API calls, private resources, blocked relationships, expired/unpublished content, and cross-user access.
+8. The same semantic policy is implemented consistently across Web and Native clients; Super Admin moderation/governance remains appropriately privileged.
+9. Actual test, integration and device evidence is recorded. If real user accounts/content are not yet available, source/contract work may proceed and data-dependent checks remain explicitly NOT VERIFIED; no fake users or posts may be seeded into a real environment to manufacture evidence.
+
+**Implementation note:** This addendum specifies intended behavior; it does not claim these endpoints, Story viewer contracts, recommendation inputs or runtime gates are already implemented. Inspect existing APIs and schemas and implement missing behavior under the owning phase. Do not weaken privacy or invent data to close a UI gap.
