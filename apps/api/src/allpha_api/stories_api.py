@@ -242,6 +242,10 @@ async def list_active_stories(
              (owner and item.get("visibility") == "followers" and str(item.get("owner_id")) in followed))
     ][:limit]
     items = await _attach_media(visible)
+    for item in items:
+        item["discovery_group"] = (
+            "following" if owner and str(item.get("owner_id")) in followed else "suggested_public"
+        )
     return {"items": items, "server_time": now.isoformat(), "media_preview_expires_in": 300}
 
 
