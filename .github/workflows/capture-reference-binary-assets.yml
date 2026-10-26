@@ -83,11 +83,11 @@ jobs:
           )
           manifest = manifest.replace(
               "Checkpoint B: text/source capture is present, but binary capture is **incomplete** until the missing public assets are copied and hash-verified. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.",
-              "Checkpoint B: text/source capture and all 19 public assets are present at exact canonical paths. The eight previously missing assets were copied from the pinned reference source commit and verified by expected byte size, source Git blob SHA-1, and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established."
+              "Checkpoint B: text/source capture and all 19 public assets are present at exact canonical paths. The eight previously missing AI Studio assets and five Menggu3D reference images were copied from the pinned reference source commit and verified by expected byte size, source Git blob SHA-1, and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established."
           )
           manifest = manifest.replace(
               "The GitHub connector successfully exposes source tree metadata (path, byte size and Git blob SHA) and text files, but binary blob retrieval fails UTF-8 decoding and base64 fetch for binary files returns no content. The execution container also has no network DNS access to fetch raw GitHub binary assets. Therefore, missing binary files are explicitly inventoried and must not be claimed as copied. The available source evidence supports the file hashes/sizes above, not byte-for-byte transfer of the missing assets.",
-              "Historical limitation (resolved by the verified capture workflow): direct connector binary decoding was unavailable, so the eight assets are fetched by GitHub Actions from the pinned source commit. The workflow refuses to commit if any byte size or source Git blob SHA-1 differs, then records SHA-256 for each target file in this manifest."
+              "Historical limitation (resolved by the verified capture workflow): direct connector binary decoding was unavailable, so the listed assets are fetched by GitHub Actions from the pinned source commit. The workflow refuses to commit if any byte size or source Git blob SHA-1 differs, then records SHA-256 for each target file in this manifest."
           )
           manifest_path.write_text(manifest)
           PY
@@ -96,7 +96,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/public/assets/aistudio docs/ARCHITECTURE/REFERENCE_UI_UX_SOURCE_CAPTURE_MANIFEST.md
+          git add apps/web/public/assets/aistudio apps/web/public/assets/menggu3d docs/ARCHITECTURE/REFERENCE_UI_UX_SOURCE_CAPTURE_MANIFEST.md
           if git diff --cached --quiet; then
             echo "No binary asset changes to commit."
             exit 0

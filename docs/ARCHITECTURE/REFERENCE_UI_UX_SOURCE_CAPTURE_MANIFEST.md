@@ -75,7 +75,7 @@ Historical limitation (resolved by the verified capture workflow): direct connec
 ## Acceptance status
 
 - Checkpoint A: source component/route/asset inventory documented; route gaps explicit.
-- Checkpoint B: text/source capture and all 19 public assets are present at exact canonical paths. The eight previously missing assets were copied from the pinned reference source commit and verified by expected byte size, source Git blob SHA-1, and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.
+- Checkpoint B: text/source capture and all 19 public assets are present at exact canonical paths. The eight previously missing AI Studio assets and five Menggu3D reference images were copied from the pinned reference source commit and verified by expected byte size, source Git blob SHA-1, and recorded SHA-256. Temporary AI Studio media remains inventory-only unless an actual UI reference is established.
 - Component runtime wiring and full API integration are deliberately out of scope for A/B.
 
 
