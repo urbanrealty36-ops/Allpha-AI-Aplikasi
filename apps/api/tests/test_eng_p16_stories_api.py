@@ -4,7 +4,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from allpha_api import stories_api
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.main import app
 
 client = TestClient(app)
@@ -35,6 +35,7 @@ def test_create_story_uses_canonical_content_registry_and_server_owner(monkeypat
 
     monkeypatch.setattr(stories_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = _auth()
+    app.dependency_overrides[optional_current_user] = _auth()
     try:
         response = client.post("/v1/stories", json={
             "body": "  Moment  ", "visibility": "followers", "expires_after_hours": 12,
