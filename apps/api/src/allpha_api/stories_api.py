@@ -205,15 +205,18 @@ async def list_active_stories(
     })
     followed, hidden = await _edges(owner) if owner else (set(), set())
     candidates = rows or []
-    if not owner and candidates:
+    if candidates:
         profile_rows = await _server_db("GET", "profiles", params={
             "select": "id,visibility",
             "id": f"in.({','.join(str(item.get('owner_id')) for item in candidates if item.get('owner_id'))})",
-            "visibility": "eq.public",
             "limit": str(min(1000, len(candidates))),
         })
-        public_profile_ids = {str(row.get("id")) for row in profile_rows or []}
-        candidates = [item for item in candidates if str(item.get("owner_id")) in public_profile_ids]
+        profile_visibility = {str(row.get("id")): str(row.get("visibility") or "") for row in profile_rows or []}
+        candidates = [
+            item for item in candidates
+            if profile_visibility.get(str(item.get("owner_id"))) == "public"
+            or (owner and str(item.get("owner_id")) in followed)
+        ]
     visible = [
         item for item in candidates
         if str(item.get("owner_id")) not in hidden
