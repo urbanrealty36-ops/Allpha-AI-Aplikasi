@@ -9,10 +9,11 @@ import base64
 import json
 import os
 import re
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from allpha_api.auth import current_user
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(tags=["spatial-navigation"])
@@ -135,6 +136,7 @@ async def list_navigation_nodes(
     level: str | None = Query(default=None),
     cursor: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=50, ge=1, le=100),
+    user: dict[str, Any] = Depends(current_user),
 ) -> NavigationPage:
     """List only published public nodes; omit parent_key to list Universe roots."""
     response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
@@ -179,6 +181,7 @@ async def list_published_spatial_assets(
     category: str | None = Query(default=None),
     cursor: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=50, ge=1, le=100),
+    user: dict[str, Any] = Depends(current_user),
 ) -> PublishedAssetPage:
     """Browse only published GLB versions. Intake receipts and TEST_ONLY rows are never exposed."""
     response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
