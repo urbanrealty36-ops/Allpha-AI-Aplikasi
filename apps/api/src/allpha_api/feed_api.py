@@ -263,7 +263,22 @@ async def search_content(
             safe = {key: value for key, value in row.items() if key != "storage_path"}
             safe["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
             media_by_id.setdefault(str(row["content_id"]), []).append(safe)
-    items = [{**row, "media": media_by_id.get(str(row["id"]), [])} for row in page]
+    reactions = await _server_db("GET", "content_reactions", params={"select": "content_id", "content_id": f"in.({','.join(ids)})", "limit": "5000"}) if ids else []
+    comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": f"in.({','.join(ids)})", "status": "eq.visible", "limit": "5000"}) if ids else []
+    shares = await _server_db("GET", "content_shares", params={"select": "content_id", "content_id": f"in.({','.join(ids)})", "limit": "5000"}) if ids else []
+    counts: dict[str, dict[str, int]] = {}
+    for row in page:
+        counts[str(row["id"])] = {"likes": 0, "comments": 0, "saves": 0, "shares": 0}
+    for row in reactions or []:
+        cid = str(row["content_id"])
+        if cid in counts: counts[cid]["likes"] += 1
+    for row in comments or []:
+        cid = str(row["content_id"])
+        if cid in counts: counts[cid]["comments"] += 1
+    for row in shares or []:
+        cid = str(row["content_id"])
+        if cid in counts: counts[cid]["shares"] += 1
+    items = [{**row, "media": media_by_id.get(str(row["id"]), []), "engagement": counts[str(row["id"])]} for row in page]
     return {"query": query, "items": items, "count": len(items), "has_more": len(eligible) > limit}
 
 
