@@ -115,8 +115,25 @@ export default function MessagesView({ onOpenChat, onBack, conversations: suppli
 
       {/* Conversations List */}
       <div className="bg-white rounded-3xl border-2 border-slate-900 shadow-[4px_4px_0px_#0f172a] divide-y-2 divide-slate-100 overflow-hidden">
-        {loading && <p className="p-5 text-center text-xs font-bold text-slate-500">Memuat percakapan…</p>}
-        {!loading && filtered.length === 0 && <p className="p-5 text-center text-xs font-bold text-slate-500">Belum ada percakapan yang cocok.</p>}
+        {noticeMessage && <p className="p-3 bg-sky-50 text-xs font-bold text-slate-700">{noticeMessage}</p>}
+        {loading && <p role="status" className="p-5 text-center text-xs font-bold text-slate-500">Memuat percakapan…</p>}
+        {!loading && errorMessage && (
+          <div role="alert" className="p-4 bg-rose-50 text-center space-y-3">
+            <p className="text-xs font-bold text-slate-800">{errorMessage}</p>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="px-4 py-2 rounded-xl bg-white border-2 border-slate-900 text-slate-900 text-xs font-black shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition">
+                Coba Lagi
+              </button>
+            )}
+          </div>
+        )}
+        {!loading && !errorMessage && filtered.length === 0 && (
+          <p className="p-5 text-center text-xs font-bold text-slate-500">
+            {activeTab === 'GROUP'
+              ? 'Percakapan grup belum tersedia karena kontrak API percakapan grup belum terhubung.'
+              : 'Belum ada percakapan yang cocok.'}
+          </p>
+        )}
         {filtered.map((item) => (
           <div
             key={item.id}
