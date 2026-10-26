@@ -319,7 +319,7 @@ assert.doesNotMatch(liveStageView, /Takeover Mikrofon aktif: Human Owner mengamb
 
 const sourceStoryRail = feedViewParity.slice(feedViewParity.indexOf("{stories.map((story) => ("), feedViewParity.indexOf("{/* ========================================================================= */}", feedViewParity.indexOf("{stories.map((story) => (")) );
 assert.ok(sourceStoryRail.includes("story.isAdd && onOpenCreateModal") && sourceStoryRail.includes("story.isLive && onOpenLiveStage") && sourceStoryRail.includes("story.id === 's-3d-world'"), "Story rail must preserve exactly the reference-defined Add/Live/3D actions");
-assert.match(sourceStoryRail, /onOpenStory|openStoryViewer|setActiveStory|story\\.id\\s*\\?\\s*\\//, "Public Story cards must connect to the canonical Story viewer route");
+assert.ok(sourceStoryRail.includes("onOpenStory"), "Public Story cards must connect to the canonical Story viewer route");
 
 assert.ok(agentIdentityModal.includes("onSaveAgent(updated)") && agentIdentityModal.includes("AVATAR_3D_CATALOG"), "Agent Identity must preserve source catalog and delegate persistence to its adapter");
 
