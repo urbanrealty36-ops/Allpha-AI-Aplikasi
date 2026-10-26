@@ -1585,3 +1585,13 @@ For every package, maintain a source-to-domain trace from Web PWA, Native React 
 - Removed the source's fallback display of 730 credits and its default unread-message count of 2 from runtime behavior; unavailable credit values remain `—` and unread badges require a real numeric value.
 - Source file SHA: `fab9a740d3a7a8d81e7219be27f01b9d67ca8261`. Runtime Navbar commit: `8291e7d8dd20f401608f78e0b89faad0f3fc5ed5`.
 - This is a partial parity slice only. The app shell callback wiring and the remaining major source components still need reconciliation. No build, typecheck, browser, viewport, staging, or device tests were run. UI-COPY-03 remains `in_progress`.
+
+
+### UI-COPY-03 — Allpha Hub Marketplace restoration and onboarding Menggu image (2026-10-27)
+
+- Restored the reference `MARKETPLACE` tab in `apps/web/components/reference-ui/AllphaHubView.tsx`, including the source Marketplace & Booth 3D hero, quick-guarantee chips, Booth directory card layout, featured product card layout, and the original source utility classes/styles.
+- Reconnected optional `onOpenMarketplace` and `onOpenStoreAndBoothModal` callbacks to the source buttons. In `productionMode`, the hard-coded demo booth/product arrays are suppressed and honest empty states are shown; no demo booth visitors, product counts, sample products, or purchase results are rendered.
+- AllphaHub runtime commit: `14cd509000ce3d739f043881436fe9c754f2036d`.
+- Updated the onboarding welcome slide image reference to the source's existing 3D Menggu asset `/assets/slides/slide_welcome_3d_1793022854882.jpg` without changing the surrounding markup, CSS, colors, fonts, or layout. Commit: `4ca6a06faf74d1cad70a911472f0302a229b88ea`.
+- Verified the SHA-1 Git blob hashes of `public/assets/slides/slide_welcome_3d_1793022854882.jpg` and all five `public/assets/menggu3d/*.jpg` files match the reference repository exactly. These assets were already present in the target PWA public directory; they were not replaced or duplicated.
+- The remaining `CreatePostModal`, `LiveExperienceStage`, `MarketplaceView`, `ProfileView`, and `FeedView` work remains. UI-COPY-03 remains `in_progress`. No build, typecheck, browser, viewport, staging, or device tests were run.
