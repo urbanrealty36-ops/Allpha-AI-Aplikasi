@@ -15,7 +15,6 @@ def _authenticated_user(request: Request):
     return {"id": "spatial-test-user"}
 
 
-app.dependency_overrides[current_user] = _authenticated_user
 from allpha_api.spatial_theme_api import (
     CATEGORIES,
     ThemeManifestDraft,
@@ -24,6 +23,14 @@ from allpha_api.spatial_theme_api import (
     _canonical_digest,
     _validate_assets,
 )
+
+
+def _get_authenticated(path: str):
+    app.dependency_overrides[current_user] = _authenticated_user
+    try:
+        return TestClient(app).get(path)
+    finally:
+        app.dependency_overrides.pop(current_user, None)
 
 
 def test_theme_manifest_is_declarative_and_rejects_unknown_fields():
@@ -71,7 +78,7 @@ def test_theme_public_manifest_fails_closed_when_theme_schema_is_unavailable(mon
         raise HTTPException(status_code=503, detail={"code": "SPATIAL_CATALOG_NOT_READY", "message": "not ready"})
 
     monkeypatch.setattr(theme_api, "_get_rows", fail_catalog)
-    response = TestClient(app).get("/v1/spatial/themes/crystal-city/manifest")
+    response = _get_authenticated("/v1/spatial/themes/crystal-city/manifest")
     assert response.status_code == 503
 
 
@@ -101,7 +108,7 @@ def test_theme_publish_validation_requires_published_rights_verified_assets(monk
 
 
 def test_theme_public_manifest_route_rejects_invalid_key():
-    response = TestClient(app).get("/v1/spatial/themes/Invalid%20Key/manifest")
+    response = _get_authenticated("/v1/spatial/themes/Invalid%20Key/manifest")
     assert response.status_code == 422
 
 
@@ -429,3 +436,8 @@ def test_empty_two_dimensional_fallback_theme_is_publishable_without_glb_assets(
     result = asyncio.run(theme_api._validate_assets(manifest, for_publish=True))
     assert result["valid"] is True
     assert result["resolved"] == []
+
+
+def test_published_theme_manifest_rejects_anonymous_requests():
+    response = TestClient(app).get("/v1/spatial/themes/crystal-city/manifest")
+    assert response.status_code == 401
