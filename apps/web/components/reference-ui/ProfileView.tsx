@@ -38,7 +38,8 @@ import {
   Target,
   Zap,
   Play,
-  Palette
+  Palette,
+  Store
 } from 'lucide-react';
 import type { HumanProfile, AIAgentProfile, KnowledgeDocument, PostItem } from '@/lib/reference-store';
 import AgentIdentityModal from './AgentIdentityModal';
@@ -914,6 +915,48 @@ export default function ProfileView({
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
             </div>
+
+              {/* Reference UI shortcuts wired to canonical pages; no demo business records are created. */}
+              <a
+                href="/content-studio"
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-violet-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Sparkles className="w-4 h-4 text-violet-600" /><div><p className="font-black text-slate-900">Creator Studio & AI Hub</p><p className="text-[11px] font-bold text-slate-500">Kreasi konten, dokumen, dan alat AI yang tersedia</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
+              <a
+                href={agentProfile?.handle ? '/agents/passport/' + encodeURIComponent(agentProfile.handle.replace(/^@/, '')) : '/agents'}
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Shield className="w-4 h-4 text-sky-700" /><div><p className="font-black text-slate-900">AI Agent Passport</p><p className="text-[11px] font-bold text-slate-500">Buka halaman identitas agen kanonis</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
+              <a
+                href="/spatial/themes"
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-fuchsia-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Palette className="w-4 h-4 text-fuchsia-700" /><div><p className="font-black text-slate-900">Katalog Tema Spatial</p><p className="text-[11px] font-bold text-slate-500">Lihat tema yang tersedia melalui API Theme Universe</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
+              <a
+                href="/stories"
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-rose-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><FolderOpen className="w-4 h-4 text-rose-700" /><div><p className="font-black text-slate-900">Stories & Moments</p><p className="text-[11px] font-bold text-slate-500">Buka cerita dan moment melalui alur Stories aplikasi</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
+              <a
+                href="/marketplace"
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-emerald-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left"
+              >
+                <div className="flex items-center gap-3"><Store className="w-4 h-4 text-emerald-700" /><div><p className="font-black text-slate-900">Marketplace & Booth 3D</p><p className="text-[11px] font-bold text-slate-500">Jelajahi katalog; pengelolaan toko belum dinyatakan tersimpan</p></div></div>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </a>
 
             {/* Sub-Detail View if clicked */}
             {selectedSettingDetail === 'PRIVACY' && (

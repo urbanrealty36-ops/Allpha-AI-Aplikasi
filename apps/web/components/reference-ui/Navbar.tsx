@@ -7,7 +7,8 @@ import {
   Coins, 
   Bot,
   X,
-  MessageCircle
+  MessageCircle,
+  Store
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -19,6 +20,7 @@ interface NavbarProps {
   onOpenOnboarding?: () => void;
   onOpenMessages?: () => void;
   onOpenNotifications?: () => void;
+  onOpenStore?: () => void;
   onSearch?: (query: string) => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
@@ -36,6 +38,7 @@ export default function Navbar({
   onOpenOnboarding,
   onOpenMessages,
   onOpenNotifications,
+  onOpenStore,
   onSearch,
   isMessagesActive = false,
   unreadMessagesCount,
@@ -114,6 +117,16 @@ export default function Navbar({
             aria-label="AI Agent Controller"
           >
             <Bot className="w-4.5 h-4.5 stroke-[2.4px]" />
+          </button>
+
+          {/* Reference shortcut: Marketplace & 3D Booths */}
+          <button
+            onClick={onOpenStore}
+            className="w-9 h-9 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border-2 border-slate-900 text-emerald-800 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
+            title="Marketplace & Booth 3D"
+            aria-label="Marketplace dan Booth 3D"
+          >
+            <Store className="w-4.5 h-4.5 stroke-[2.4px]" />
           </button>
 
           {/* 3. Search Icon Button */}
