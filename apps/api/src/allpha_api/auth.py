@@ -52,6 +52,17 @@ async def current_user(
     return user
 
 
+async def optional_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict[str, Any] | None:
+    """Resolve an optional session for public-read endpoints; never grants write access."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    # Reuse the same remote Supabase Auth verification as protected routes.
+    return await current_user(request, credentials)
+
+
 async def user_db_request(
     method: str,
     path: str,
