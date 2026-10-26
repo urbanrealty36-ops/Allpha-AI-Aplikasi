@@ -1539,3 +1539,10 @@ For every package, maintain a source-to-domain trace from Web PWA, Native React 
 - Evidence: `docs/reference-ui-source/UI_COPY_03_PARITY_AUDIT_2026-10-27.md`; commits `10c03589ef260737449ceb505fb6c426c6e9f00a`, `3dfaf1dfff00b8a535c55aa98a3438f6e9b80ea0`, `2a0cbe8d2157a8230a8c8ccdcab8fbc19f8971f9`, `5e833bf5375d0064eaab0a933664fc680f8c39d8`.
 - This is a code-level route integration, not a tested visual acceptance. No staging or real payment tests were run.
 - Phase remains `WP-01 / UI-COPY-03 — IN_PROGRESS`; all requested component and API parity is not yet accepted.
+
+
+**Public homepage workflow clarification (2026-10-27):**
+- Required flow: `/` → `/welcome` → user can choose "Buka Feed Aplikasi" / guest to enter public `/feed` without login; login is required only for protected actions under canonical API authorization.
+- No public-feed login wall was added. `/feed` remains the canonical API-backed route and public content visibility remains governed by the API.
+- Audit evidence: `docs/reference-ui-source/UI_COPY_03_PARITY_AUDIT_2026-10-27.md`.
+- UI-COPY-03 remains IN_PROGRESS until full route/component/asset/style mapping and remaining runtime/API parity are completed; no staging or real payment test was performed.
