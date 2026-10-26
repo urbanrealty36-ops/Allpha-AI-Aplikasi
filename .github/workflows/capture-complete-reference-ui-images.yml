@@ -46,7 +46,7 @@ jobs:
           image_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif"}
           inventory = []
           for line in listing.splitlines():
-              meta, source_path = line.split("\\t", 1)
+              meta, source_path = line.split("\t", 1)
               mode, kind, blob_sha, size_text = meta.split()
               path = pathlib.PurePosixPath(source_path)
               if kind != "blob" or path.suffix.lower() not in image_exts:
@@ -88,7 +88,7 @@ jobs:
               "capture_count": len(inventory),
               "verification": "Every copied image matched the pinned source checkout's byte size and Git blob SHA-1; SHA-256 is recorded per target.",
               "assets": inventory,
-          }, indent=2) + "\\n")
+          }, indent=2) + "\n")
           print(f"Captured and verified {len(inventory)} reference images.")
           PY
 
