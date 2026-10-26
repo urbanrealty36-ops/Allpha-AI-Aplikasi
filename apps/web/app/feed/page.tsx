@@ -38,11 +38,11 @@ export default function FeedPage() {
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [authPrompt, setAuthPrompt] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    if (!session) throw new Error("Masuk terlebih dahulu untuk membuka feed personal.");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", "Bearer " + session.access_token);
+    if (session) headers.set("Authorization", "Bearer " + session.access_token);
     headers.set("Accept", "application/json");
     if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
     const response = await fetch(apiBase + path, { ...init, headers, cache: "no-store" });
@@ -51,7 +51,6 @@ export default function FeedPage() {
   }, [session]);
 
   const loadFeed = useCallback(async (reset = true, nextCursor?: string | null) => {
-    if (!session) return;
     setLoading(true); setError("");
     try {
       const sharedContentId = reset && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("content") : null;
@@ -89,10 +88,9 @@ export default function FeedPage() {
     })();
   }, [request, session]);
 
-  useEffect(() => { if (session) void loadFeed(true); }, [session, mode, loadFeed]);
+  useEffect(() => { void loadFeed(true); }, [session, mode, loadFeed]);
 
   useEffect(() => {
-    if (!session) { setStories([]); return; }
     let active = true;
     void request("/v1/stories?limit=30").then((data: { items?: FeedStory[] }) => {
       if (active) setStories(data.items ?? []);
@@ -100,7 +98,14 @@ export default function FeedPage() {
     return () => { active = false; };
   }, [request, session]);
 
+  function requireLogin(action: string) {
+    if (session) { setAuthPrompt(""); return false; }
+    setAuthPrompt(action);
+    return true;
+  }
+
   async function savePreferences(enabled: boolean, rankingMode = mode) {
+    if (requireLogin("Masuk untuk mengubah preferensi Feed.")) return;
     setBusyKey("preferences"); setError(""); setNotice("");
     try {
       await request("/v1/feed/preferences", { method: "PUT", body: JSON.stringify({ personalization_enabled: enabled, ranking_mode: rankingMode }) });
@@ -110,6 +115,7 @@ export default function FeedPage() {
   }
 
   async function toggleReaction(item: FeedItem) {
+    if (requireLogin("Masuk untuk menyukai postingan.")) return;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/reaction", item.viewer_reaction
@@ -120,6 +126,7 @@ export default function FeedPage() {
   }
 
   async function toggleSave(item: FeedItem) {
+    if (requireLogin("Masuk untuk menyimpan postingan.")) return;
     setBusyKey(item.id); setError(""); setNotice("");
     try { await request("/v1/feed/" + encodeURIComponent(item.id) + "/save", { method: item.saved ? "DELETE" : "PUT" }); await loadFeed(true); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Simpan konten gagal."); }
@@ -127,6 +134,7 @@ export default function FeedPage() {
   }
 
   async function openComments(item: FeedItem) {
+    if (requireLogin("Masuk untuk melihat dan berpartisipasi dalam komentar.")) return;
     const opening = !commentsOpen[item.id];
     setCommentsOpen(current => ({ ...current, [item.id]: opening }));
     if (!opening || comments[item.id]) return;
@@ -137,6 +145,7 @@ export default function FeedPage() {
   }
 
   async function submitComment(item: FeedItem) {
+    if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const body = (commentDrafts[item.id] ?? "").trim();
     if (!body) return;
     setBusyKey(item.id); setError(""); setNotice("");
@@ -151,6 +160,7 @@ export default function FeedPage() {
   }
 
   async function report(item: FeedItem, reason: "spam" | "harassment" | "privacy" | "misinformation" | "other" = "other") {
+    if (requireLogin("Masuk untuk melaporkan konten.")) return;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason }) });
@@ -160,7 +170,14 @@ export default function FeedPage() {
   }
 
   async function share(item: FeedItem) {
-    setBusyKey(item.id); setError(""); setNotice("");
+    setError(""); setNotice("");
+    if (!session) {
+      const url = window.location.origin + "/feed?content=" + encodeURIComponent(item.id);
+      try { await navigator.clipboard.writeText(url); setNotice("Tautan publik disalin."); }
+      catch { setNotice("Tautan publik: " + url); }
+      return;
+    }
+    setBusyKey(item.id);
     try {
       const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
         method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
@@ -205,6 +222,7 @@ export default function FeedPage() {
   });
 
   async function addCommentFromReference(postId: string, body: string) {
+    if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const item = items.find(row => row.id === postId);
     if (!item || !body.trim()) return;
     setBusyKey(postId); setError(""); setNotice("");
@@ -219,7 +237,7 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen w-full bg-sky-50 px-0 pb-24 pt-2 text-slate-900">
-      {!session ? <section className="mx-auto mt-4 max-w-xl rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-base font-black">Allpha Feed</h1><p className="my-3 text-sm">Masuk untuk melihat feed personal, memberi reaksi, menyimpan, dan berkomentar.</p><Link className="inline-flex rounded-2xl border-2 border-slate-900 bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" href="/login">Masuk melalui Allpha</Link></section> : <>
+      {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-sm font-black">Jelajahi Allpha</h1><p className="my-2 text-xs leading-5">{authPrompt || "Lihat postingan publik. Masuk atau daftar untuk menyukai, mengikuti kreator, dan berkomentar."}</p><div className="flex gap-2"><Link className="inline-flex rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" href={"/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search)}>Masuk</Link><Link className="inline-flex rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-950" href={"/signup?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search)}>Daftar</Link></div></section>}
         <FeedView
           productionMode
           loading={loading}
@@ -234,19 +252,18 @@ export default function FeedPage() {
           onReportPost={(postId, reason) => { const item = items.find(row => row.id === postId); if (item) void report(item, reason); }}
           storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: "Momen", img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
-          onOpenAskAi={(agentName) => { window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
-          onOpenGenerate={() => { window.location.assign("/create"); }}
-          onOpenWorld3D={() => { window.location.assign("/spatial/navigation"); }}
+          onOpenAskAi={(agentName) => { if (requireLogin("Masuk untuk menggunakan Tanya AI Agent.")) return; window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
+          onOpenGenerate={() => { if (requireLogin("Masuk untuk menggunakan Generate AI.")) return; window.location.assign("/create"); }}
+          onOpenWorld3D={() => { if (requireLogin("Masuk untuk memasuki Universe 3D.")) return; window.location.assign("/spatial/navigation"); }}
           onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
           onSelectPost={post => { window.location.assign("/feed?content=" + encodeURIComponent(post.id)); }}
           onOpenReels={() => { window.location.assign("/reels"); }}
           onOpenLiveStage={() => { window.location.assign("/live"); }}
-          onOpenCreateModal={() => { window.location.assign("/create"); }}
+          onOpenCreateModal={() => { if (requireLogin("Masuk untuk membuat postingan.")) return; window.location.assign("/create"); }}
           onOpenFilmAi={() => { window.location.assign("/ai-cinema"); }}
           onOpenMessages={() => { window.location.assign("/messages"); }}
         />
         {cursor && <div className="mx-auto max-w-xl px-4 pb-6"><button className="w-full rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black shadow-[3px_3px_0px_#0f172a]" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button></div>}
-      </>}
     </main>
   );
 }
