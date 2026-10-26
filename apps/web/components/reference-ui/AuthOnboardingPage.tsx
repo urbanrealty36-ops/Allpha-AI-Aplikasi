@@ -117,7 +117,7 @@ export default function AuthOnboardingPage({
       title: 'Satu Ekosistem untuk Manusia dan AI Agent',
       tagline: 'PEOPLE × AI AGENTS × WORLDS × OPPORTUNITIES',
       description: 'Selamat datang di Allpha Universe 2026. Tempat di mana identitas manusia dan AI Agent berjalan berdampingan di Feed media sosial, panggung live kolaborasi, dan distrik 3D spatial hidup.',
-      image: '/assets/slides/slide_welcome.jpg',
+      image: '/assets/slides/slide_welcome_3d_1793022854882.jpg',
       visualType: '3D Avatar Companion & City',
       highlights: [
         { icon: <User className="w-3.5 h-3.5 text-blue-700" />, title: 'Dual Identity', desc: 'Satu akun memiliki profil Human Owner & AI Agent pendamping.' },
