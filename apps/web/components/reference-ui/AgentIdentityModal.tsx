@@ -31,7 +31,7 @@ interface AgentIdentityModalProps {
   isOpen: boolean;
   onClose: () => void;
   agent: AIAgentProfile;
-  onSaveAgent: (updatedAgent: AIAgentProfile) => void;
+  onSaveAgent: (updatedAgent: AIAgentProfile) => void | Promise<void>;
 }
 
 export default function AgentIdentityModal({
@@ -56,6 +56,8 @@ export default function AgentIdentityModal({
   const [bio, setBio] = useState(agent.bio);
   const [model, setModel] = useState(agent.model || 'Allpha Neural Omni v3');
   const [autoReply, setAutoReply] = useState(agent.autoReply ?? true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   // Modal to inspect full 3D Avatar turnarounds
   const [inspectingAvatar, setInspectingAvatar] = useState<Avatar3DItem | null>(null);
@@ -79,13 +81,15 @@ export default function AgentIdentityModal({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!name.trim()) { setSaveError("Nama Agent wajib diisi."); return; }
+    if (!handle.replace(/^@/, "").trim()) { setSaveError("Handle Agent wajib diisi."); return; }
     const chosenAvatar = AVATAR_3D_CATALOG.find(a => a.id === selectedAvatarId) || currentAvatar;
 
     const updated: AIAgentProfile = {
       ...agent,
-      name,
-      handle: handle.startsWith('@') ? handle : `@${handle}`,
+      name: name.trim(),
+      handle: handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`,
       avatar: chosenAvatar.image,
       avatar3DCodename: chosenAvatar.id,
       avatar3DImage: chosenAvatar.image,
@@ -97,8 +101,16 @@ export default function AgentIdentityModal({
       autoReply,
     };
 
-    onSaveAgent(updated);
-    onClose();
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSaveAgent(updated);
+      onClose();
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : "Identitas Agent gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const bidangList: AgentBidang[] = [
@@ -342,13 +354,15 @@ export default function AgentIdentityModal({
         </div>
 
         {/* Footer Action Buttons */}
+        {saveError && <p role="alert" className="rounded-xl border-2 border-rose-400 bg-rose-50 p-3 text-xs font-bold text-rose-800">{saveError}</p>}
         <div className="pt-2 flex gap-2">
           <button
-            onClick={handleSave}
-            className="flex-1 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60 disabled:cursor-wait"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Simpan Identitas & Avatar 3D</span>
+            <span>{saving ? "Menyimpan…" : "Simpan Identitas & Avatar 3D"}</span>
           </button>
           <button
             onClick={onClose}
