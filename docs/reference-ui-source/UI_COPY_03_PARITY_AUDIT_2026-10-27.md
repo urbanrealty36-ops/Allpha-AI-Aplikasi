@@ -104,3 +104,12 @@ This section supersedes any inference that the source repository was not updated
 - Safety finding: the source components also contain demo fixtures and simulated business states (for example hard-coded creator/agent balances, sample marketplace inventory, transaction/settlement records, sample social stories/posts, viewer/like counts, and purchase flows). A wholesale copy into runtime would violate the explicit production-data constraint. The next change must preserve source JSX/classes/sections while binding data/actions to canonical API adapters and rendering honest empty/loading/error states. Do not claim full parity based on the BottomNav copy alone.
 - Current component diffs and source/target SHA evidence were checked directly against current reference `main` HEAD `b6c9fc728d5d031a28b22fbbec9a546846900e87`. No build/typecheck/browser/viewport/device tests were run.
 - UI-COPY-03 remains `in_progress`; remaining work includes source-UI restoration for AllphaHub, Feed/CreatePost, LiveExperience, Marketplace, Profile and Navbar while retaining production adapters; then exact source-to-runtime mapping for remaining files/assets/PWA config.
+
+
+### UI-COPY-03 — Navbar source structure restoration (2026-10-27)
+
+- Restored the reference `components/Navbar.tsx` markup and source class structure into `apps/web/components/reference-ui/Navbar.tsx`, retaining the runtime search submit callback and nullable production credit values.
+- Preserved source buttons and callbacks for the Store & Booth action and onboarding-page navigation; these controls only appear when their existing optional callbacks are supplied by the app shell.
+- Removed the source's fallback display of 730 credits and its default unread-message count of 2 from runtime behavior; unavailable credit values remain `—` and unread badges require a real numeric value.
+- Source file SHA: `fab9a740d3a7a8d81e7219be27f01b9d67ca8261`. Runtime Navbar commit: `8291e7d8dd20f401608f78e0b89faad0f3fc5ed5`.
+- This is a partial parity slice only. The app shell callback wiring and the remaining major source components still need reconciliation. No build, typecheck, browser, viewport, staging, or device tests were run. UI-COPY-03 remains `in_progress`.
