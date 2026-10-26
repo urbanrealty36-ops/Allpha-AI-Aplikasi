@@ -55,7 +55,25 @@ async def _attach_media(items: list[dict[str, Any]], *, owner_id: str | None = N
             **row,
             "preview_url": await _signed_media_preview_url(row["storage_path"], expires_in=300),
         })
-    return [{**item, "media": by_content.get(str(item["id"]), [])} for item in items]
+    owner_ids = sorted({str(item.get("owner_id")) for item in items if item.get("owner_id")})
+    profiles = await _server_db("GET", "profiles", params={
+        "select": "id,username,display_name,avatar_url,visibility",
+        "id": f"in.({','.join(owner_ids)})",
+        "limit": str(min(1000, len(owner_ids))),
+    }) if owner_ids else []
+    creator_by_id = {
+        str(row["id"]): {
+            "username": row.get("username"),
+            "display_name": row.get("display_name"),
+            "avatar_url": row.get("avatar_url"),
+        }
+        for row in profiles or []
+    }
+    return [{
+        **item,
+        "media": by_content.get(str(item["id"]), []),
+        "creator": creator_by_id.get(str(item.get("owner_id"))),
+    } for item in items]
 
 
 async def _cleanup_story_media(content_id: str, owner_id: str | None = None) -> int:
