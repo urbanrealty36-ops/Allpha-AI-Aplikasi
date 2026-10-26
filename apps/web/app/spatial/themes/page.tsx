@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { Session } from "@supabase/supabase-js";
+import { getBrowserSupabase } from "../../../lib/supabase";
 import { CanonicalWorldRenderer } from "../../../components/spatial/CanonicalWorldRenderer";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
@@ -14,11 +16,30 @@ type Theme = {
 };
 
 export default function SpatialThemesPage() {
+  const supabase = useMemo(() => getBrowserSupabase(), []);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [items, setItems] = useState<Theme[]>([]);
   const [selected, setSelected] = useState<Theme | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    if (!supabase) { setAuthResolved(true); return; }
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setSession(data.session);
+      setAuthResolved(true);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
+      setSession(next);
+      setAuthResolved(true);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, [supabase]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -85,7 +106,10 @@ export default function SpatialThemesPage() {
           <div><h2 style={{ fontSize: 21, fontWeight: 700, margin: 0 }}>{selected.display_name}</h2><p style={{ color: "#aab5ca", margin: "4px 0 0" }}>Theme {selected.theme_key} · versi {selected.active_version}</p></div>
           <button type="button" onClick={() => setSelected(null)} style={{ border: "1px solid #39465f", borderRadius: 8, padding: "8px 12px", background: "#111a2d", color: "#e8edf7", cursor: "pointer" }}>Tutup</button>
         </div>
-        <CanonicalWorldRenderer themeKey={selected.theme_key} />
+        {!authResolved ? <p role="status" style={{ color: "#aab5ca", padding: 12 }}>Memeriksa sesi Allpha…</p> : !session ? <div style={{ border: "1px solid #39465f", borderRadius: 12, padding: 14, color: "#e8edf7" }}>
+          <p style={{ margin: 0 }}>Login diperlukan untuk memasuki Theme interaktif dan memulai renderer Universe 3D.</p>
+          <Link href={"/login?next=" + encodeURIComponent("/spatial/themes")} style={{ display: "inline-block", marginTop: 10, color: "#111827", background: "#c7d2fe", borderRadius: 8, padding: "9px 12px", textDecoration: "none", fontWeight: 700 }}>Daftar / Login</Link>
+        </div> : <CanonicalWorldRenderer themeKey={selected.theme_key} />}
       </section>}
     </main></>
   );
