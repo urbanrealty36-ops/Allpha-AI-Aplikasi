@@ -102,6 +102,8 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
             if params and params.get("expires_at", "").startswith("gt."):
                 return [row for row in rows if datetime.fromisoformat(row["expires_at"]) > now]
             return rows
+        if table == "profiles":
+            return [{"id": OWNER, "username": "story_owner", "display_name": "Story Owner", "avatar_url": None, "visibility": "public"}]
         if table == "content_media":
             return []
         if table == "content_items" and method == "PATCH":
@@ -224,6 +226,8 @@ def test_guest_story_discovery_returns_only_public_active_stories(monkeypatch):
                 assert params.get("visibility") == "eq.public"
                 return [public_story]
             return []
+        if table == "profiles":
+            return [{"id": OWNER, "username": "public_creator", "display_name": "Public Creator", "avatar_url": None, "visibility": "public"}]
         if table == "content_media":
             return []
         raise AssertionError((method, table, params))
