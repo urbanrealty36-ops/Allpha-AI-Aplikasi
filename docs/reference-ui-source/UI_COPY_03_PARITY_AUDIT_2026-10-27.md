@@ -52,3 +52,14 @@ UI-COPY-03 remains IN_PROGRESS until every source component/route/style/asset is
 - This sync is an exact source-code copy, not a runtime route acceptance result. The current canonical `/spatial/navigation` route still uses `SpatialNavigationBrowser` and canonical spatial manifests, not the demo-driven reference Universe hub. It must be connected without using the reference's hardcoded world metrics, local-only state, or simulated credit/reward callbacks as production truth.
 - No design changes were made to the copied components. No staging or real-world payment tests were run.
 - `WP-01 / UI-COPY-03` remains `IN_PROGRESS`: route integration, API wiring, complete feature/component parity, and the requested no-demo-data acceptance still require implementation and evidence.
+
+
+## Public splash/onboarding route implementation (2026-10-27)
+
+- Added `apps/web/app/welcome/page.tsx`, mounting the source `AuthOnboardingPage` component for the first-visit splash slides and ecosystem introduction.
+- Changed `apps/web/app/page.tsx` to redirect `/` to `/welcome`; the public home/feed is no longer the initial root route.
+- Updated `ReferenceAppShell` to hide authenticated app navigation on `/welcome`, preserving the source page's full-screen layout.
+- Production action handling: Google/register/login actions in this page hand off to canonical `/login` instead of treating demo form data as a real session; the canonical login route uses Supabase Auth and the FastAPI provisioning adapter. The "Buka Feed" / guest path remains available as the source UI specifies.
+- The welcome route passes empty identity values, not `INITIAL_USER` / `INITIAL_AGENT`; it does not grant the source's +50 AI Credits claim. The original source visual styling is retained; only production event wiring is adapted.
+- Commits: `10c03589ef260737449ceb505fb6c426c6e9f00a` (safe auth handoff), `3dfaf1dfff00b8a535c55aa98a3438f6e9b80ea0` (welcome route), `2a0cbe8d2157a8230a8c8ccdcab8fbc19f8971f9` (root redirect), `5e833bf5375d0064eaab0a933664fc680f8c39d8` (hide app nav on splash).
+- No staging/browser/real payment testing was performed, as requested. Route code was committed, but visual/runtime acceptance is not claimed.
