@@ -219,6 +219,111 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
             "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
 
 
+@router.get("/v1/recommendations/creators", tags=["search-discovery"])
+async def get_public_creator_recommendations(
+    limit: int = Query(default=12, ge=1, le=30),
+    user: dict[str, Any] | None = Depends(optional_current_user),
+) -> dict[str, Any]:
+    """Recommend only public profile owners with real eligible public content; never invent verification or contact signals."""
+    content_rows = await _server_db("GET", "content_items", params={
+        "select": "owner_id,published_at", "content_type": "not.eq.story",
+        "status": "eq.published", "moderation_status": "eq.approved", "visibility": "eq.public",
+        "order": "published_at.desc,id.desc", "limit": "1000",
+    })
+    counts: dict[str, int] = {}
+    latest: dict[str, str] = {}
+    for row in content_rows or []:
+        creator_id = str(row.get("owner_id") or "")
+        if not creator_id:
+            continue
+        counts[creator_id] = counts.get(creator_id, 0) + 1
+        published_at = str(row.get("published_at") or "")
+        if creator_id not in latest or published_at > latest[creator_id]:
+            latest[creator_id] = published_at
+    if not counts:
+        return {"items": [], "count": 0, "source": "eligible_public_content"}
+    owner = str(user["id"]) if user else None
+    followed, hidden = await _edges(owner) if owner else (set(), set())
+    excluded = hidden | followed
+    if owner:
+        excluded.add(owner)
+    candidate_ids = [creator_id for creator_id in counts if creator_id not in excluded]
+    if not candidate_ids:
+        return {"items": [], "count": 0, "source": "eligible_public_content"}
+    profiles = await _server_db("GET", "profiles", params={
+        "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
+        "id": f"in.({','.join(candidate_ids)})", "visibility": "eq.public",
+        "limit": str(min(100, max(limit * 5, limit))),
+    })
+    by_id = {str(row.get("id")): row for row in (profiles or [])}
+    ranked = sorted((creator_id for creator_id in candidate_ids if creator_id in by_id),
+                    key=lambda creator_id: (counts[creator_id], latest.get(creator_id, "")), reverse=True)
+    items = []
+    for creator_id in ranked[:limit]:
+        profile = by_id[creator_id]
+        items.append({
+            "id": creator_id,
+            "username": profile.get("username"),
+            "display_name": profile.get("display_name") or profile.get("username") or "Kreator",
+            "avatar_url": profile.get("avatar_url"),
+            "bio": profile.get("bio") or "",
+            "public_post_count": counts[creator_id],
+            "last_public_post_at": latest.get(creator_id),
+            "is_ai": False,
+        })
+    return {"items": items, "count": len(items), "source": "eligible_public_content"}
+
+
+@router.put("/v1/social/follow/{target_user_id}", tags=["social-graph"])
+async def follow_public_profile(
+    target_user_id: uuid.UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor_id = str(user["id"])
+    target_id = str(target_user_id)
+    if actor_id == target_id:
+        raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Akun tidak dapat mengikuti dirinya sendiri."})
+    target_rows = await _server_db("GET", "profiles", params={
+        "select": "id,visibility", "id": f"eq.{target_id}", "limit": "1",
+    })
+    if not target_rows:
+        raise HTTPException(status_code=404, detail={"code": "PUBLIC_PROFILE_NOT_FOUND", "message": "Akun tidak ditemukan."})
+    for source, target in ((actor_id, target_id), (target_id, actor_id)):
+        blocks = await _server_db("GET", "social_edges", params={
+            "select": "id", "actor_user_id": f"eq.{source}", "target_user_id": f"eq.{target}",
+            "edge_type": "eq.block", "status": "eq.active", "limit": "1",
+        })
+        if blocks:
+            raise HTTPException(status_code=403, detail={"code": "SOCIAL_EDGE_BLOCKED", "message": "Tindakan ini tidak tersedia karena pembatasan akun."})
+    existing = await _server_db("GET", "social_edges", params={
+        "select": "id,status", "actor_user_id": f"eq.{actor_id}", "target_user_id": f"eq.{target_id}",
+        "edge_type": "eq.follow", "limit": "1",
+    })
+    if existing:
+        return {"target_user_id": target_id, "status": existing[0].get("status"), "created": False}
+    rows = await _server_db("POST", "social_edges", params={"select": "id,target_user_id,status,created_at"},
+        body={"actor_user_id": actor_id, "target_user_id": target_id, "edge_type": "follow", "status": "active"},
+        prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "SOCIAL_FOLLOW_NOT_RECORDED", "message": "Permintaan mengikuti akun tidak dapat disimpan."})
+    return {"target_user_id": target_id, "status": rows[0].get("status"), "created": True}
+
+
+@router.delete("/v1/social/follow/{target_user_id}", tags=["social-graph"])
+async def unfollow_profile(
+    target_user_id: uuid.UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    actor_id = str(user["id"])
+    target_id = str(target_user_id)
+    if actor_id == target_id:
+        raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Akun tidak dapat mengikuti dirinya sendiri."})
+    await _server_db("DELETE", "social_edges", params={
+        "actor_user_id": f"eq.{actor_id}", "target_user_id": f"eq.{target_id}", "edge_type": "eq.follow",
+    }, prefer="return=minimal")
+    return {"target_user_id": target_id, "status": "not_following"}
+
+
 @router.get("/v1/search", tags=["search-discovery"])
 async def search_content(
     q: str = Query(min_length=2, max_length=100),
