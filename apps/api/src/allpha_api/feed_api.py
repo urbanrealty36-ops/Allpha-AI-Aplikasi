@@ -93,6 +93,17 @@ async def _edges(user_id: str) -> tuple[set[str], set[str]]:
     hidden.update(str(x["actor_user_id"]) for x in (incoming or []) if x.get("status") == "active")
     return followed, hidden
 
+async def _profiles_for(user_ids: set[str]) -> dict[str, dict[str, Any]]:
+    ids = sorted(value for value in user_ids if value)
+    if not ids:
+        return {}
+    rows = await _server_db("GET", "profiles", params={
+        "select": "id,username,display_name,avatar_url,bio,visibility",
+        "id": f"in.({','.join(ids)})", "limit": str(min(1000, len(ids))),
+    })
+    return {str(row.get("id")): row for row in (rows or [])}
+
+
 def _published(row: dict[str, Any]) -> datetime:
     try:
         value = datetime.fromisoformat(str(row.get("published_at") or row.get("created_at")).replace("Z", "+00:00"))
@@ -125,8 +136,19 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         "order": "published_at.desc,id.desc", "limit": str(CANDIDATES)})
     candidates = rows or []
     followed, hidden = await _edges(owner) if owner else (set(), set())
-    candidates = [r for r in candidates if str(r.get("owner_id")) not in hidden and
-                  (r.get("visibility") == "public" or (owner and r.get("visibility") == "followers" and str(r.get("owner_id")) in followed))]
+    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in candidates})
+    candidates = [
+        row for row in candidates
+        if str(row.get("owner_id")) not in hidden
+        and str(row.get("owner_id")) in profile_by_id
+        and (
+            (row.get("visibility") == "public" and (
+                profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
+                or (owner and str(row.get("owner_id")) in followed)
+            ))
+            or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed)
+        )
+    ]
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
     if owner and effective_mode == "for_you" and enabled:
@@ -213,7 +235,10 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
     items = []
     for row in page:
         cid = str(row["id"]); item = {k: v for k, v in row.items() if k != "_rank"}
-        item["media"] = media_by_id.get(cid, []); items.append(item)
+        item["media"] = media_by_id.get(cid, [])
+        creator = profile_by_id.get(str(row.get("owner_id")), {})
+        item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}
+        items.append(item)
     next_offset = offset + len(page)
     return {"items": items, "next_cursor": _cursor_encode(next_offset, as_of) if next_offset < len(ranked) and next_offset < CANDIDATES else None,
             "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
@@ -349,6 +374,13 @@ async def search_content(
         if str(row.get("owner_id")) not in hidden
         and (row.get("visibility") == "public" or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed))
     ]
+    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in eligible})
+    eligible = [
+        row for row in eligible
+        if str(row.get("owner_id")) in profile_by_id
+        and (profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
+             or (owner and str(row.get("owner_id")) in followed))
+    ]
     needle = query.casefold()
     eligible.sort(key=lambda row: (
         0 if needle in str(row.get("body") or "").casefold() else 1,
@@ -383,7 +415,12 @@ async def search_content(
     for row in shares or []:
         cid = str(row["content_id"])
         if cid in counts: counts[cid]["shares"] += 1
-    items = [{**row, "media": media_by_id.get(str(row["id"]), []), "engagement": counts[str(row["id"])]} for row in page]
+    items = [{
+        **row, "media": media_by_id.get(str(row["id"]), []), "engagement": counts[str(row["id"])],
+        "creator": {"username": profile_by_id.get(str(row.get("owner_id")), {}).get("username"),
+                    "display_name": profile_by_id.get(str(row.get("owner_id")), {}).get("display_name") or profile_by_id.get(str(row.get("owner_id")), {}).get("username") or "Kreator",
+                    "avatar_url": profile_by_id.get(str(row.get("owner_id")), {}).get("avatar_url")},
+    } for row in page]
     return {"query": query, "items": items, "count": len(items), "has_more": len(eligible) > limit}
 
 
@@ -403,6 +440,13 @@ async def get_trends(
         row for row in (rows or [])
         if str(row.get("owner_id")) not in hidden
         and (row.get("visibility") == "public" or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed))
+    ]
+    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in visible})
+    visible = [
+        row for row in visible
+        if str(row.get("owner_id")) in profile_by_id
+        and (profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
+             or (owner and str(row.get("owner_id")) in followed))
     ]
     stopwords = {
         "yang", "dan", "atau", "untuk", "dari", "dengan", "pada", "ini", "itu", "akan",
@@ -536,6 +580,10 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
         if not rows:
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         item = rows[0]
+        public_profile = (await _profiles_for({str(item.get("owner_id") or "")})).get(str(item.get("owner_id")))
+        if not public_profile or public_profile.get("visibility") != "public":
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
+        item["creator"] = {"username": public_profile.get("username"), "display_name": public_profile.get("display_name") or public_profile.get("username") or "Kreator", "avatar_url": public_profile.get("avatar_url")}
     cid = str(content_id)
     reactions = await _server_db("GET", "content_reactions", params={"select": "actor_user_id,reaction", "content_id": f"eq.{cid}", "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "id", "content_id": f"eq.{cid}", "status": "eq.visible", "limit": "5000"})
