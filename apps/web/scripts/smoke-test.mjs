@@ -348,6 +348,7 @@ const threeWorldView = readFileSync(new URL("../components/reference-ui/ThreeWor
 assert.ok(spatialWorldRoute.includes("ThreeWorldView productionMode"), "Dunia 3D route must mount the copied reference world component with production guards");
 assert.ok(spatialCatalogRoute.includes("SpatialNavigationBrowser") && spatialCatalogRoute.includes("/spatial/navigation"), "Canonical spatial catalogue must remain reachable after source UI route mapping");
 assert.ok(threeWorldView.includes("Katalog booth 3D belum tersedia dari layanan produksi.") && threeWorldView.includes("disabled={productionMode}") && threeWorldView.includes("selectedBooth && !productionMode"), "3D source UI must suppress demo booth prices/purchases and unbound Live controls in production");
+assert.ok(threeWorldView.includes("if (productionMode) {\n                    setSelectedBooth(null);\n                    return;\n                  }") && threeWorldView.includes("alert('Item booth berhasil ditambahkan ke keranjang pembelian!')"), "3D booth purchase simulation must be unreachable in production mode");
 
 assert.ok(referenceNavbar.includes("onOpenNotifications"), "Navbar notifications must use a real navigation callback");
 assert.doesNotMatch(referenceNavbar, /alert\(['"]Anda memiliki 3 notifikasi/);
