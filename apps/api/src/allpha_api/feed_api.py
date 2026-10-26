@@ -409,7 +409,7 @@ async def _public_account_discovery(
         "status": "eq.published",
         "moderation_status": "eq.approved",
         "order": "published_at.desc,id.desc",
-        "limit": "1000",
+        "limit": "150",
     })
     latest_by_owner: dict[str, str] = {}
     for row in content_rows or []:
@@ -447,6 +447,7 @@ async def _public_account_discovery(
         "status": "eq.active",
         "limit": "10000",
     })
+    follower_counts_exact = len(edge_rows or []) < 10000
     follower_counts: dict[str, int] = {}
     for edge in edge_rows or []:
         target_id = str(edge.get("target_user_id") or "")
@@ -461,7 +462,7 @@ async def _public_account_discovery(
             "avatar_url": profile.get("avatar_url"),
             "bio": profile.get("bio"),
             "visibility": "public",
-            "followers": follower_counts.get(owner_id, 0),
+            "followers": follower_counts.get(owner_id, 0) if follower_counts_exact else None,
             "latest_public_content_at": latest_by_owner.get(owner_id),
             # Verification is omitted until a canonical, server-backed verification field exists.
         })
