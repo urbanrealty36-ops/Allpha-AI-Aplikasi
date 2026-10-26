@@ -6,7 +6,8 @@ import secrets
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Path, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Response
+from allpha_api.auth import current_user
 
 from allpha_api.spatial_scene_contract import SceneManifestV1
 from allpha_api.spatial_test_auth import is_authorized_spatial_test_request
@@ -195,6 +196,7 @@ async def get_test_only_scene_manifest(
 async def get_published_scene_manifest(
     response: Response,
     scene_key: str = Path(min_length=3, max_length=120, pattern=r"^[a-z0-9][a-z0-9._-]{2,119}$"),
+    user: dict = Depends(current_user),
 ) -> SceneManifestV1:
     """Return only a published scene and published, approved asset versions."""
     response.headers["Cache-Control"] = "private, no-store"
