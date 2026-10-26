@@ -677,17 +677,9 @@ export default function ExploreView({
           </section>
         )}
 
-        {/* ======================================================== */}
-        {/* SECTION D: MASTER PRD FEATURES & DOMAINS HUB */}
-        {/* (Accessible directly via tab 'PRD_HUB' or at bottom of ALL) */}
-        {productionMode && activeSearchTab === 'PRD_HUB' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><Globe className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-2 text-sm font-black text-slate-900">Allpha Hub</h3><p className="mt-1 text-xs text-slate-500">Panel ekosistem tetap mengikuti UI referensi; data produksi akan ditampilkan setelah kontrak API Hub tersedia.</p></section>}
-                {!productionMode && (activeSearchTab === 'ALL' || activeSearchTab === 'PRD_HUB') && (
-          <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center">
-            <Globe className="mx-auto h-6 w-6 text-slate-400" />
-            <h3 className="mt-2 text-sm font-black text-slate-900">Allpha Hub</h3>
-            <p className="mt-1 text-xs text-slate-500">Hub produksi memerlukan kontrak API untuk event, district, dan saldo kanonis; data demo tidak digunakan.</p>
-          </section>
-        )}
+        {/* SECTION D: render the reference Allpha Hub component directly.
+            Its productionMode branch owns honest empty/unavailable states and
+            keeps demo balances, event listings, and rewards out of production. */}
       </div>
 
       {/* SECTION D: MASTER PRD FEATURES & DOMAINS HUB — source reference integration */}
