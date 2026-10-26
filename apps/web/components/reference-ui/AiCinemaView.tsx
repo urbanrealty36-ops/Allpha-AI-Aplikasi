@@ -575,6 +575,11 @@ export default function AiCinemaView({
 
   // Handler for subscribing VIP
   const handleConfirmVipSubscription = () => {
+    if (productionMode) {
+      setIsSubscriptionModalOpen(false);
+      showToast('Langganan AI Cinema belum terhubung ke layanan entitlement dan billing. Tidak ada langganan yang diaktifkan.');
+      return;
+    }
     setIsVipSubscribed(true);
     setIsSubscriptionModalOpen(false);
     showToast('Selamat! Langganan VIP Allpha Cinema Aktif. Semua episode terbuka tanpa batas!');
@@ -621,7 +626,7 @@ export default function AiCinemaView({
               </span>
             ) : (
               <button
-                onClick={() => setIsSubscriptionModalOpen(true)}
+                onClick={() => { if (productionMode) { showToast('Langganan AI Cinema belum tersedia. Tidak ada pembayaran atau entitlement yang dibuat.'); return; } setIsSubscriptionModalOpen(true); }}
                 className="px-3.5 py-2 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Crown className="w-3.5 h-3.5 stroke-[2.5px]" />
@@ -1655,6 +1660,7 @@ export default function AiCinemaView({
                         key={ep}
                         onClick={() => {
                           if (ep > 2 && !isVipSubscribed) {
+                            if (productionMode) { showToast('Langganan AI Cinema belum tersedia. Tidak ada pembayaran atau entitlement yang dibuat.'); return; }
                             setIsSubscriptionModalOpen(true);
                             return;
                           }
