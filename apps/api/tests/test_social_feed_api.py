@@ -280,6 +280,8 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
             return []
         if table == "content_items":
             return content_rows
+        if table == "profiles":
+            return [{"id": row["owner_id"], "visibility": "public"} for row in content_rows]
         if table == "social_edges":
             if params.get("actor_user_id") == "eq.eng-p14-viewer":
                 return [
