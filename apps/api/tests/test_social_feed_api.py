@@ -335,6 +335,9 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
         if table == "content_items":
             assert params.get("visibility") == "eq.public"
             return [row for row in rows if row["visibility"] == "public"]
+        if table == "profiles":
+            return [{"id": "public-author", "username": "public_author", "display_name": "Public Author",
+                     "avatar_url": None, "bio": "", "visibility": "public"}]
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"guest feed must not query {table}")
