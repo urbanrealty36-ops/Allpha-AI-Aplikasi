@@ -286,3 +286,39 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
+def test_guest_feed_returns_only_public_published_content(monkeypatch):
+    now = datetime.now(timezone.utc)
+    rows = [
+        {"id": "00000000-0000-0000-0000-000000000101", "owner_id": "public-author", "body": "public post",
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+        {"id": "00000000-0000-0000-0000-000000000102", "owner_id": "private-author", "body": "followers only",
+         "content_type": "text", "visibility": "followers", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+    ]
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        calls.append((method, table, params))
+        if table == "content_items":
+            assert params.get("visibility") == "eq.public"
+            return [row for row in rows if row["visibility"] == "public"]
+        if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
+            return []
+        raise AssertionError(f"guest feed must not query {table}")
+
+    async def no_signed_url(path: str, *, expires_in: int = 300):
+        raise AssertionError("fixture has no media")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_signed_media_preview_url", no_signed_url)
+    response = TestClient(app).get("/v1/feed?mode=for_you&limit=10")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["body"] for item in payload["items"]] == ["public post"]
+    assert payload["mode"] == "recent"
+    assert payload["personalization_enabled"] is False
+    assert payload["items"][0]["viewer_reaction"] is None
+    assert payload["items"][0]["saved"] is False
+    assert not any(table == "social_edges" for _, table, _ in calls)
