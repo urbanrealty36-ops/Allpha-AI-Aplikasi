@@ -229,27 +229,34 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
 async def search_content(
     q: str = Query(min_length=2, max_length=100),
     limit: int = Query(default=20, ge=1, le=50),
-    user: dict[str, Any] = Depends(current_user),
+    user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
-    """Search only published, approved content and re-apply social visibility controls."""
+    """Search published approved public content for guests; apply relationship filters when authenticated."""
     query = " ".join(re.findall(r"[a-zA-Z0-9À-ÿ -]+", q)).strip()
     terms = [part for part in query.split() if len(part) >= 2][:8]
     if not terms:
         raise HTTPException(422, detail={"code": "SEARCH_QUERY_INVALID", "message": "Masukkan kata kunci yang valid."})
-    owner = str(user["id"])
+    owner = str(user["id"]) if user else None
     # Each term is sanitized before it is sent to PostgREST; database filters remain authoritative.
     clauses = [f"body.ilike.*{term.replace('*', '').replace('%', '').replace('_', '')}*" for term in terms]
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
-        "visibility": "in.(public,followers)", "or": f"({','.join(clauses)})",
+        "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
+        "visibility": "in.(public,followers)" if owner else "eq.public", "or": f"({','.join(clauses)})",
         "order": "published_at.desc,id.desc", "limit": "500",
     })
-    followed, hidden = await _edges(owner)
+    followed, hidden = await _edges(owner) if owner else (set(), set())
     eligible = [
         row for row in (rows or [])
         if str(row.get("owner_id")) not in hidden
-        and (row.get("visibility") != "followers" or str(row.get("owner_id")) in followed)
+        and (row.get("visibility") == "public" or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed))
     ]
+    if not owner and eligible:
+        profiles = await _server_db("GET", "profiles", params={
+            "select": "id,visibility", "id": f"in.({','.join(str(row.get('owner_id')) for row in eligible if row.get('owner_id'))})",
+            "visibility": "eq.public", "limit": str(min(500, len(eligible))),
+        })
+        public_profile_ids = {str(row.get("id")) for row in profiles or []}
+        eligible = [row for row in eligible if str(row.get("owner_id")) in public_profile_ids]
     needle = query.casefold()
     eligible.sort(key=lambda row: (
         0 if needle in str(row.get("body") or "").casefold() else 1,
@@ -276,20 +283,27 @@ async def search_content(
 @router.get("/v1/trends", tags=["search-discovery"])
 async def get_trends(
     limit: int = Query(default=10, ge=1, le=30),
-    user: dict[str, Any] = Depends(current_user),
+    user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
-    """Derive lightweight trends from real eligible content; no synthetic trend rows."""
-    owner = str(user["id"])
+    """Derive trends from real eligible content; guest trends include public resources only."""
+    owner = str(user["id"]) if user else None
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "status": "eq.published", "moderation_status": "eq.approved",
-        "visibility": "in.(public,followers)", "order": "published_at.desc,id.desc", "limit": "500",
+        "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
+        "visibility": "in.(public,followers)" if owner else "eq.public", "order": "published_at.desc,id.desc", "limit": "500",
     })
-    followed, hidden = await _edges(owner)
+    followed, hidden = await _edges(owner) if owner else (set(), set())
     visible = [
         row for row in (rows or [])
         if str(row.get("owner_id")) not in hidden
-        and (row.get("visibility") != "followers" or str(row.get("owner_id")) in followed)
+        and (row.get("visibility") == "public" or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed))
     ]
+    if not owner and visible:
+        profiles = await _server_db("GET", "profiles", params={
+            "select": "id,visibility", "id": f"in.({','.join(str(row.get('owner_id')) for row in visible if row.get('owner_id'))})",
+            "visibility": "eq.public", "limit": str(min(500, len(visible))),
+        })
+        public_profile_ids = {str(row.get("id")) for row in profiles or []}
+        visible = [row for row in visible if str(row.get("owner_id")) in public_profile_ids]
     stopwords = {
         "yang", "dan", "atau", "untuk", "dari", "dengan", "pada", "ini", "itu", "akan",
         "tidak", "ada", "saya", "kami", "kamu", "bisa", "juga", "dalam", "karena",
@@ -313,10 +327,10 @@ async def get_trends(
 @router.get("/v1/recommendations", tags=["search-discovery"])
 async def get_recommendations(
     limit: int = Query(default=10, ge=1, le=30),
-    user: dict[str, Any] = Depends(current_user),
+    user: dict[str, Any] | None = Depends(optional_current_user),
     request: Request = None,
 ) -> dict[str, Any]:
-    """Reuse canonical feed ranking and preference controls for recommendations."""
+    """Reuse canonical feed ranking; guest recommendations are public-only and chronological."""
     page = await get_feed(request=request, mode="for_you", limit=limit, cursor=None, user=user)
     return {"items": page["items"], "mode": page["mode"], "personalization_enabled": page["personalization_enabled"]}
 
