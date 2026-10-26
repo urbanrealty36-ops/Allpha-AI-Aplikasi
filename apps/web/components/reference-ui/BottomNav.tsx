@@ -24,7 +24,8 @@ export type TabType =
   | 'POST_DETAIL'
   | 'TAKEOVER_CONTROL'
   | 'ASK_AI_VIEW'
-  | 'FILM_AI';
+  | 'FILM_AI'
+  | 'ONBOARDING_PAGE';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -39,8 +40,8 @@ export default function BottomNav({
   onOpenCreateModal,
   unreadCount = 2,
 }: BottomNavProps) {
-  // Hide in detail sub-views
-  if (activeTab === 'POST_DETAIL' || activeTab === 'ASK_AI_VIEW') {
+  // Hide in detail sub-views or full-page onboarding
+  if (activeTab === 'POST_DETAIL' || activeTab === 'ASK_AI_VIEW' || activeTab === 'ONBOARDING_PAGE') {
     return null;
   }
 
