@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CanonicalWorldRenderer } from "../../../components/spatial/CanonicalWorldRenderer";
 import RequireSession from "../../../components/RequireSession";
+import { getBrowserSupabase } from "../../../lib/supabase";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
 type Theme = {
@@ -25,27 +26,31 @@ export default function SpatialThemesPage() {
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    fetch(API + "/v1/spatial/themes?limit=100&offset=0", {
-      signal: controller.signal,
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    }).then(async (response) => {
+    void (async () => {
+      try {
+        const supabase = getBrowserSupabase();
+        const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+        if (!data.session) throw new Error("Masuk untuk membuka katalog Theme Universe.");
+        const response = await fetch(API + "/v1/spatial/themes?limit=100&offset=0", {
+          signal: controller.signal,
+          cache: "no-store",
+          headers: { Accept: "application/json", Authorization: "Bearer " + data.session.access_token },
+        });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         const message = body?.detail?.message || "Katalog Theme tidak tersedia.";
         throw new Error(message + " (" + response.status + ")");
       }
-      return body;
-    }).then((body) => {
-      if (!controller.signal.aborted) setItems(Array.isArray(body.items) ? body.items : []);
-    }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) {
-        setItems([]);
-        setError(cause instanceof Error ? cause.message : "Katalog Theme gagal dimuat.");
+        if (!controller.signal.aborted) setItems(Array.isArray(body.items) ? body.items : []);
+      } catch (cause: unknown) {
+        if (!controller.signal.aborted) {
+          setItems([]);
+          setError(cause instanceof Error ? cause.message : "Katalog Theme gagal dimuat.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-    }).finally(() => {
-      if (!controller.signal.aborted) setLoading(false);
-    });
+    })();
     return () => controller.abort();
   }, [retry]);
 
