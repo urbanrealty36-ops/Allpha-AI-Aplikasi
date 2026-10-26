@@ -38,7 +38,9 @@ async function authenticatedHeaders(): Promise<Record<string, string>> {
   if (!data.session) throw new Error("Masuk untuk memuat scene Universe 3D.");
   return { Accept: "application/json", Authorization: "Bearer " + data.session.access_token };
 }
-\nclass SceneErrorBoundary extends Component<{ children: ReactNode; onError: (error: Error) => void }, { failed: boolean }> {
+
+
+class SceneErrorBoundary extends Component<{ children: ReactNode; onError: (error: Error) => void }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: Error) { this.props.onError(error); }
