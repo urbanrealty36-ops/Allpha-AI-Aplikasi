@@ -439,3 +439,56 @@ def test_unfollow_is_idempotent_and_actor_scoped(monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["status"] == "not_following"
+
+def test_anonymous_can_read_comments_only_on_public_published_content(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000091"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {
+        "id": content_id, "owner_id": "public-author", "visibility": "public",
+        "status": "published", "moderation_status": "approved", "published_at": now,
+    }
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        calls.append((method, table, params))
+        if table == "content_items":
+            return [content] if params.get("id") == f"eq.{content_id}" else []
+        if table == "profiles":
+            return [{"id": "public-author", "username": "public_author", "display_name": "Public Author",
+                     "avatar_url": None, "bio": "", "visibility": "public"}]
+        if table == "content_comments":
+            assert params.get("select") == "id,content_id,body,status,created_at,updated_at"
+            return [{"id": "comment-1", "content_id": content_id, "body": "Public comment",
+                     "status": "visible", "created_at": now, "updated_at": now}]
+        raise AssertionError(f"anonymous comment read must not query {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides.clear()
+    try:
+        response = TestClient(app).get(f"/v1/feed/{content_id}/comments")
+        assert response.status_code == 200, response.text
+        item = response.json()["items"][0]
+        assert item["body"] == "Public comment"
+        assert "actor_user_id" not in item
+        assert not any(table == "content_mentions" for _, table, _ in calls)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_anonymous_cannot_read_comments_for_non_public_content(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000092"
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items":
+            return []
+        raise AssertionError(f"private/unpublished content must be rejected before querying {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides.clear()
+    try:
+        response = TestClient(app).get(f"/v1/feed/{content_id}/comments")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    finally:
+        app.dependency_overrides.clear()
