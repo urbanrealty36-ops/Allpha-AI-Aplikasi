@@ -1,4 +1,4 @@
-name: Capture Complete Reference UI Images
+name: Refresh Full Reference UI Source Snapshot
 
 on:
   push:
@@ -11,24 +11,24 @@ permissions:
   contents: write
 
 jobs:
-  capture-reference-images:
+  refresh-source-snapshot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout canonical repository
+      - name: Checkout canonical Allpha repository
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Checkout pinned reference UI repository
+      - name: Checkout latest reference repository main
         uses: actions/checkout@v4
         with:
           repository: urbanrealty36-ops/Allpha-Front-End-UI-New
-          ref: b6c9fc728d5d031a28b22fbbec9a546846900e87
+          ref: main
           path: reference-ui
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Copy all image assets and verify source Git blobs
+      - name: Copy complete reference source snapshot and public UI assets
         run: |
           python - <<'PY'
           import hashlib
@@ -38,68 +38,90 @@ jobs:
           import subprocess
 
           source_root = pathlib.Path("reference-ui")
-          commit = "b6c9fc728d5d031a28b22fbbec9a546846900e87"
-          listing = subprocess.check_output(
+          snapshot_root = pathlib.Path("docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT")
+          runtime_root = pathlib.Path("apps/web")
+          source_commit = subprocess.check_output(
+              ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True
+          ).strip()
+          source_tree = subprocess.check_output(
               ["git", "-C", str(source_root), "ls-tree", "-rl", "--full-tree", "HEAD"],
               text=True,
           )
-          image_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif"}
-          inventory = []
-          for line in listing.splitlines():
-              meta, source_path = line.split("\t", 1)
+          entries = []
+          for line in source_tree.splitlines():
+              meta, relpath = line.split("\\t", 1)
               mode, kind, blob_sha, size_text = meta.split()
-              path = pathlib.PurePosixPath(source_path)
-              if kind != "blob" or path.suffix.lower() not in image_exts:
+              if kind != "blob":
                   continue
-              if not (source_path.startswith("public/assets/") or source_path.startswith("src/assets/images/")):
-                  continue
-              source_file = source_root / source_path
+              source_file = source_root / relpath
               data = source_file.read_bytes()
               size = len(data)
-              actual_sha = subprocess.check_output(
+              actual_blob = subprocess.check_output(
                   ["git", "-C", str(source_root), "hash-object", str(source_file)],
                   text=True,
               ).strip()
-              if size != int(size_text) or actual_sha != blob_sha:
-                  raise SystemExit(f"Source integrity mismatch: {source_path}")
-              if source_path.startswith("public/"):
-                  target = pathlib.Path("apps/web") / source_path
-              else:
-                  target = pathlib.Path("apps/web/public/assets/reference-source") / source_path.removeprefix("src/assets/")
-              target.parent.mkdir(parents=True, exist_ok=True)
-              shutil.copyfile(source_file, target)
-              inventory.append({
-                  "source": source_path,
-                  "target": target.as_posix(),
-                  "bytes": size,
-                  "git_blob_sha1": actual_sha,
-                  "sha256": hashlib.sha256(data).hexdigest(),
-                  "source_commit": commit,
-              })
-              print(f"VERIFIED {source_path} -> {target.as_posix()} bytes={size} git_blob_sha1={actual_sha}")
+              if size != int(size_text) or actual_blob != blob_sha:
+                  raise SystemExit(f"Source blob verification failed: {relpath}")
 
-          if not inventory:
-              raise SystemExit("No image assets found; refusing empty capture.")
-          manifest = pathlib.Path("docs/reference-ui-source/REFERENCE_IMAGE_ASSET_INVENTORY.json")
-          manifest.parent.mkdir(parents=True, exist_ok=True)
-          manifest.write_text(json.dumps({
+              snapshot_file = snapshot_root / relpath
+              snapshot_file.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source_file, snapshot_file)
+
+              target_runtime = None
+              # Keep the exact current source styles/components and images in the
+              # source snapshot. Only public UI assets are mirrored to the PWA's
+              # public directory; app orchestrators, config, and demo store are
+              # never copied over canonical production entry points.
+              if relpath.startswith("public/"):
+                  target_runtime = runtime_root / relpath
+                  target_runtime.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(source_file, target_runtime)
+              elif relpath.startswith("src/assets/images/"):
+                  target_runtime = runtime_root / "public/assets/reference-source" / relpath.removeprefix("src/assets/")
+                  target_runtime.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(source_file, target_runtime)
+              elif relpath == "app/globals.css":
+                  target_runtime = runtime_root / "components/reference-ui/reference-globals.css"
+                  target_runtime.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(source_file, target_runtime)
+              elif relpath.startswith("components/") and relpath.endswith(".tsx"):
+                  # Keep the source snapshot byte-for-byte. Runtime copies are
+                  # refreshed separately after route/API/demo-state reconciliation;
+                  # do not overwrite canonical route adapters with sample data.
+                  pass
+              entries.append({
+                  "source_path": relpath,
+                  "snapshot_path": snapshot_file.as_posix(),
+                  "source_bytes": size,
+                  "git_blob_sha1": actual_blob,
+                  "sha256": hashlib.sha256(data).hexdigest(),
+                  "runtime_mirror": target_runtime.as_posix() if target_runtime else None,
+              })
+
+          manifest = {
               "reference_repository": "https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New",
-              "source_commit": commit,
-              "capture_count": len(inventory),
-              "verification": "Every copied image matched the pinned source checkout's byte size and Git blob SHA-1; SHA-256 is recorded per target.",
-              "assets": inventory,
-          }, indent=2) + "\n")
-          print(f"Captured and verified {len(inventory)} reference images.")
+              "reference_branch": "main",
+              "reference_commit": source_commit,
+              "canonical_repository": "https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi",
+              "file_count": len(entries),
+              "verification": "Each source file was checked against the checked-out Git tree size and Git blob SHA-1 before byte-for-byte snapshot copy; SHA-256 recorded for every file.",
+              "runtime_policy": "Public UI assets and reference globals stylesheet are mirrored; source components/config/demo store are archived without overwriting canonical API route adapters or importing demo business state.",
+              "files": entries,
+          }
+          manifest_path = pathlib.Path("docs/reference-ui-source/REFERENCE_SOURCE_SNAPSHOT_MANIFEST.json")
+          manifest_path.parent.mkdir(parents=True, exist_ok=True)
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n")
+          print(f"Verified and copied {len(entries)} source files from {source_commit}.")
           PY
 
-      - name: Commit copied assets and inventory
+      - name: Commit refreshed source snapshot
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/public/assets docs/reference-ui-source/REFERENCE_IMAGE_ASSET_INVENTORY.json
+          git add docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT docs/reference-ui-source/REFERENCE_SOURCE_SNAPSHOT_MANIFEST.json apps/web/public/assets apps/web/components/reference-ui/reference-globals.css
           if git diff --cached --quiet; then
-            echo "All reference image assets already match the pinned source."
+            echo "Reference source snapshot already matches latest main."
             exit 0
           fi
-          git commit -m "chore(ui): capture all pinned reference image assets"
+          git commit -m "chore(ui): refresh complete reference source and style snapshot"
           git push origin HEAD:main
