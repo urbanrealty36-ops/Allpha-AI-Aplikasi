@@ -104,6 +104,8 @@ def test_active_story_feed_enforces_expiry_and_audience(monkeypatch):
             return rows
         if table == "content_media":
             return []
+        if table == "profiles":
+            return [{"id": OWNER, "visibility": "public"}]
         if table == "content_items" and method == "PATCH":
             return [{"id": STORY_ID}]
         raise AssertionError((method, table))
