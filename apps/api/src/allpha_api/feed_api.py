@@ -518,6 +518,11 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
         if not profiles:
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     cid = str(content_id)
+    profile_rows = await _server_db("GET", "profiles", params={
+        "select": "username,display_name,avatar_url", "id": f"eq.{item['owner_id']}", "limit": "1",
+    })
+    if profile_rows:
+        item["creator"] = profile_rows[0]
     reactions = await _server_db("GET", "content_reactions", params={"select": "actor_user_id,reaction", "content_id": f"eq.{cid}", "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "id", "content_id": f"eq.{cid}", "status": "eq.visible", "limit": "5000"})
     saves = await _server_db("GET", "content_saves", params={"select": "actor_user_id", "content_id": f"eq.{cid}", "limit": "5000"})
