@@ -200,7 +200,7 @@ export default function FeedPage() {
     const image = item.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url;
     return {
       id: item.id,
-      humanOwner: { name: "Kreator", handle: "", avatar: "", verified: false },
+      humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username || "", avatar: item.creator?.avatar_url || "", verified: false },
       aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
       takeoverMode: false,
       timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
