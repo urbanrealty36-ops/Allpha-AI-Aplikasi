@@ -34,8 +34,25 @@ import {
   CheckCircle2, 
   Flame, 
   Search,
-  Filter
+  Filter,
+  Box,
+  Download,
+  Layers,
+  Camera,
+  RotateCw,
+  Loader2
 } from 'lucide-react';
+import { 
+  createMengguDistrict, 
+  createMengguCitadelTower, 
+  createMengguPlazaFountain, 
+  createMengguBillboardAds, 
+  createMengguTenantBooth, 
+  exportObjectToGLB, 
+  downloadGLBBlob,
+  MENGGU_PALETTE 
+} from '@/lib/menggu3dEngine';
+import Menggu3DViewerModal, { MengguViewerItem } from './Menggu3DViewerModal';
 
 export type UniverseSubView = 
   | 'IN_WORLD'           // 7. Tampilan Dalam Dunia 3D
@@ -111,6 +128,15 @@ export default function Universe3DExperience({
     { id: 'q4', title: 'Sapa 1 Teman atau AI Agent di District', current: 1, target: 1, xp: 150, credits: 20, done: true },
   ]);
 
+  const [expToast, setExpToast] = useState<string | null>(null);
+  const [isExportingGLB, setIsExportingGLB] = useState<boolean>(false);
+  const [inspectMengguItem, setInspectMengguItem] = useState<MengguViewerItem | null>(null);
+
+  const showExpToast = (msg: string) => {
+    setExpToast(msg);
+    setTimeout(() => setExpToast(null), 3200);
+  };
+
   // Three.js instances ref
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -118,6 +144,55 @@ export default function Universe3DExperience({
   const controlsRef = useRef<OrbitControls | null>(null);
   const playerMeshRef = useRef<THREE.Group | null>(null);
   const otherAvatarsGroupRef = useRef<THREE.Group | null>(null);
+
+  // Export 3D District to standard GLB
+  const handleExportDistrictGLB = async () => {
+    if (!sceneRef.current) return;
+    setIsExportingGLB(true);
+    try {
+      const blob = await exportObjectToGLB(sceneRef.current, 'allpha_menggu_universe_3d.glb');
+      downloadGLBBlob(blob, 'allpha_menggu_universe_3d.glb');
+      showExpToast('File 3D Universe GLB berhasil di-generate & diunduh!');
+    } catch (err) {
+      console.error(err);
+      showExpToast('Gagal mengekspor GLB.');
+    } finally {
+      setIsExportingGLB(false);
+    }
+  };
+
+  // Quick Camera Tour presets
+  const handleTourCamera = (target: 'OVERVIEW' | 'CITADEL' | 'PLAZA' | 'BILLBOARD' | 'BOOTH' | 'AVATAR') => {
+    if (!cameraRef.current || !controlsRef.current) return;
+    const cam = cameraRef.current;
+    const ctrl = controlsRef.current;
+    if (target === 'OVERVIEW') {
+      cam.position.set(0, 32, 48);
+      ctrl.target.set(0, 8, 0);
+      showExpToast('Kamera: Overview Metropolis Spatial');
+    } else if (target === 'CITADEL') {
+      cam.position.set(0, 26, -16);
+      ctrl.target.set(0, 38, -45);
+      showExpToast('Kamera: Crystal Citadel Spire Tower');
+    } else if (target === 'PLAZA') {
+      cam.position.set(-24, 12, 12);
+      ctrl.target.set(-24, 4, -4);
+      showExpToast('Kamera: AI Central Plaza & Fountain');
+    } else if (target === 'BILLBOARD') {
+      cam.position.set(24, 18, 24);
+      ctrl.target.set(24, 14, 4);
+      showExpToast('Kamera: Curved Videotron Billboard Ads');
+    } else if (target === 'BOOTH') {
+      cam.position.set(10, 8, -4);
+      ctrl.target.set(10, 3, -16);
+      showExpToast('Kamera: 3D Tenant Booth & Showcase');
+    } else if (target === 'AVATAR') {
+      cam.position.set(animRef.current.avatarX, 4, animRef.current.avatarZ + 8);
+      ctrl.target.set(animRef.current.avatarX, 2.5, animRef.current.avatarZ);
+      showExpToast('Kamera: Avatar 3D');
+    }
+    ctrl.update();
+  };
 
   // Mutable animation state
   const animRef = useRef({
@@ -130,6 +205,30 @@ export default function Universe3DExperience({
     emote: 'idle',
     armorColor: '#06b6d4',
   });
+
+  // Virtual Joystick directional button
+  const handleVirtualMove = (dx: number, dz: number) => {
+    animRef.current.avatarX += dx;
+    animRef.current.avatarZ += dz;
+    animRef.current.targetRotY = Math.atan2(dx, dz);
+    animRef.current.isWalking = true;
+    setAvatarPos({ x: animRef.current.avatarX, z: animRef.current.avatarZ });
+    setIsWalking(true);
+
+    setTimeout(() => {
+      animRef.current.isWalking = false;
+      setIsWalking(false);
+    }, 300);
+  };
+
+  // Teleport to district
+  const handleTeleport = (districtName: string, x: number, z: number) => {
+    animRef.current.avatarX = x;
+    animRef.current.avatarZ = z;
+    setAvatarPos({ x, z });
+    setCurrentDistrict(districtName);
+    setSubView('IN_WORLD');
+  };
 
   useEffect(() => {
     animRef.current.emote = avatarEmote;
@@ -275,11 +374,10 @@ export default function Universe3DExperience({
     scene.add(districtGroup);
 
     const towers = [
-      { x: -24, z: -10, w: 10, h: 42, d: 10, name: 'AI PLAZA', color: '#00f2fe' },
-      { x: -22, z: 16, w: 12, h: 32, d: 12, name: 'CENTRAL HUB', color: '#38bdf8' },
-      { x: 24, z: -10, w: 10, h: 46, d: 10, name: 'CREATOR HUB', color: '#ec4899' },
-      { x: 22, z: 18, w: 12, h: 35, d: 12, name: 'LIVE STAGE ARENA', color: '#a855f7' },
-      { x: 0, z: -45, w: 26, h: 68, d: 16, name: 'CRYSTAL SANCTUARY', color: '#06b6d4' },
+      { x: -24, z: -16, w: 10, h: 42, d: 10, name: 'AI PLAZA', color: '#00f2fe' },
+      { x: -22, z: 20, w: 12, h: 32, d: 12, name: 'CENTRAL HUB', color: '#38bdf8' },
+      { x: 24, z: -16, w: 10, h: 46, d: 10, name: 'CREATOR HUB', color: '#ec4899' },
+      { x: 22, z: 20, w: 12, h: 35, d: 12, name: 'LIVE STAGE ARENA', color: '#a855f7' },
     ];
 
     towers.forEach((t) => {
@@ -327,82 +425,98 @@ export default function Universe3DExperience({
         opacity: 0.9,
       })
     );
-    skywalk.position.set(0, 16, -10);
+    skywalk.position.set(0, 16, -16);
     districtGroup.add(skywalk);
 
     // Glowing handrails
     const railG = new THREE.BoxGeometry(44, 0.4, 0.4);
     const railM = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
     const r1 = new THREE.Mesh(railG, railM);
-    r1.position.set(0, 17.5, -7.8);
+    r1.position.set(0, 17.5, -13.8);
     const r2 = new THREE.Mesh(railG, railM);
-    r2.position.set(0, 17.5, -12.2);
+    r2.position.set(0, 17.5, -18.2);
     districtGroup.add(r1, r2);
 
     // ==========================================
-    // 2. 3D MARKETPLACE BOOTHS
+    // 3D MENGGU ART SPATIAL STRUCTURES
     // ==========================================
-    const booths = [
-      { name: 'NEXUS WEAR', sub: 'Digital Fashion', x: -10, z: 2, color: 0xec4899 },
-      { name: 'PIXEL PETS', sub: '3D Companions', x: 10, z: 2, color: 0x06b6d4 },
-      { name: 'CYBER WEAR', sub: 'Armor & Rig', x: -10, z: -16, color: 0xa855f7 },
-      { name: 'AI AVATARS', sub: 'Character Pack', x: 10, z: -16, color: 0x3b82f6 },
+    // 1. Crystal Citadel & AI Spire Tower Landmark (Peak Landmark)
+    const citadelTower = createMengguCitadelTower();
+    citadelTower.position.set(0, 0, -45);
+    citadelTower.scale.set(0.9, 0.9, 0.9);
+    districtGroup.add(citadelTower);
+
+    // 2. AI Central Plaza & Holographic Fountain (AI Plaza District)
+    const plazaFountain = createMengguPlazaFountain();
+    plazaFountain.position.set(-24, 0, 4);
+    plazaFountain.scale.set(0.88, 0.88, 0.88);
+    districtGroup.add(plazaFountain);
+
+    // 3. Floating Curved Holographic Billboard Ads (Creator Hub)
+    const billboardAds = createMengguBillboardAds('ALLPHA 3D SPATIAL UNIVERSE', 'Metropolis Living Hub • 14 Theme 3D');
+    billboardAds.position.set(24, 0, 4);
+    billboardAds.scale.set(0.92, 0.92, 0.92);
+    billboardAds.rotation.y = -Math.PI / 4;
+    districtGroup.add(billboardAds);
+
+    // 4. Elevated Monorail Track Circle with Bubble Pods
+    const monorailTrackGeo = new THREE.TorusGeometry(38, 0.45, 12, 64);
+    const monorailTrackMat = new THREE.MeshStandardMaterial({
+      color: MENGGU_PALETTE.lilacLavender,
+      metalness: 0.35,
+      roughness: 0.25,
+    });
+    const monorailTrack = new THREE.Mesh(monorailTrackGeo, monorailTrackMat);
+    monorailTrack.rotation.x = Math.PI / 2;
+    monorailTrack.position.y = 13.5;
+    districtGroup.add(monorailTrack);
+
+    // Monorail Bubble Pods Group
+    const monorailPodGroup = new THREE.Group();
+    monorailPodGroup.name = 'MonorailPodGroup';
+
+    const createPod = (color: number) => {
+      const p = new THREE.Group();
+      const cab = new THREE.Mesh(
+        new THREE.CapsuleGeometry(1.5, 3.2, 16, 20),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.1 })
+      );
+      cab.rotation.z = Math.PI / 2;
+      p.add(cab);
+
+      const vis = new THREE.Mesh(
+        new THREE.SphereGeometry(1.3, 16, 12, 0, Math.PI, 0, Math.PI),
+        new THREE.MeshPhysicalMaterial({ color: 0x22d3ee, transmission: 0.8, transparent: true, opacity: 0.85 })
+      );
+      vis.rotation.x = -Math.PI / 2;
+      vis.position.x = 1.6;
+      p.add(vis);
+      return p;
+    };
+
+    const pod1 = createPod(MENGGU_PALETTE.butterYellow);
+    pod1.position.set(38, 14.8, 0);
+    monorailPodGroup.add(pod1);
+
+    const pod2 = createPod(MENGGU_PALETTE.softMint);
+    pod2.position.set(-38, 14.8, 0);
+    monorailPodGroup.add(pod2);
+    districtGroup.add(monorailPodGroup);
+
+    // ==========================================
+    // 5. 3D MENGGU MODULAR TENANT BOOTHS
+    // ==========================================
+    const boothConfigs = [
+      { name: 'NEXUS WEAR', color: MENGGU_PALETTE.softMint, x: -10, z: 2 },
+      { name: 'PIXEL PETS', color: MENGGU_PALETTE.coralPeach, x: 10, z: 2 },
+      { name: 'CYBER RIGS', color: MENGGU_PALETTE.lilacLavender, x: -10, z: -16 },
+      { name: 'AI AVATARS', color: MENGGU_PALETTE.butterYellow, x: 10, z: -16 },
     ];
 
-    booths.forEach((b) => {
-      const bG = new THREE.Group();
-      bG.position.set(b.x, 0, b.z);
-
-      // Kiosk Base
-      const base = new THREE.Mesh(
-        new THREE.CylinderGeometry(4.2, 4.4, 0.4, 32),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 })
-      );
-      base.position.y = 0.2;
-      base.receiveShadow = !isSoftwareGl;
-      bG.add(base);
-
-      // Neon rim
-      const rim = new THREE.Mesh(
-        new THREE.TorusGeometry(4.3, 0.08, 8, 32),
-        new THREE.MeshBasicMaterial({ color: b.color })
-      );
-      rim.rotation.x = Math.PI / 2;
-      rim.position.y = 0.42;
-      bG.add(rim);
-
-      // Holographic Arch
-      const arch = new THREE.Mesh(
-        new THREE.TorusGeometry(3.2, 0.2, 12, 24, Math.PI),
-        new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9, roughness: 0.2 })
-      );
-      arch.position.y = 3.2;
-      bG.add(arch);
-
-      // Sign
-      const signTex = createNeonSign(b.name, b.sub, '#' + b.color.toString(16).padStart(6, '0'));
-      const sign = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.8, 1.8),
-        new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide })
-      );
-      sign.position.set(0, 4.2, 0);
-      bG.add(sign);
-
-      // Floating Showcase Gem
-      const gem = new THREE.Mesh(
-        new THREE.OctahedronGeometry(1.0),
-        new THREE.MeshPhysicalMaterial({
-          color: b.color,
-          emissive: b.color,
-          emissiveIntensity: 0.5,
-          metalness: 0.9,
-          roughness: 0.1,
-        })
-      );
-      gem.position.set(0, 2.0, 0);
-      bG.add(gem);
-
-      districtGroup.add(bG);
+    boothConfigs.forEach((cfg) => {
+      const booth = createMengguTenantBooth(cfg.name, cfg.color);
+      booth.position.set(cfg.x, 0, cfg.z);
+      districtGroup.add(booth);
     });
 
     // ==========================================
@@ -731,6 +845,31 @@ export default function Universe3DExperience({
         setNearbyEncounter(null);
       }
 
+      // Dynamic 3D Menggu Art structures animation
+      const podGroup = districtGroup.getObjectByName('MonorailPodGroup');
+      if (podGroup) {
+        podGroup.rotation.y = t * 0.35;
+      }
+      const droneGroup = districtGroup.getObjectByName('CitadelDroneGroup');
+      if (droneGroup) {
+        droneGroup.rotation.y = -t * 0.7;
+      }
+      const citadelGem = districtGroup.getObjectByName('CitadelGem');
+      if (citadelGem) {
+        citadelGem.rotation.y = t * 1.1;
+        citadelGem.position.y = 66 + Math.sin(t * 2) * 0.7;
+      }
+      const fountainLotus = districtGroup.getObjectByName('FountainLotus');
+      if (fountainLotus) {
+        fountainLotus.rotation.y = t * 0.5;
+        fountainLotus.position.y = 6.2 + Math.sin(t * 2.2) * 0.35;
+      }
+      const boothGem = districtGroup.getObjectByName('BoothShowcaseGem');
+      if (boothGem) {
+        boothGem.rotation.y = t * 1.3;
+        boothGem.position.y = 3.0 + Math.sin(t * 2) * 0.3;
+      }
+
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(tick);
     };
@@ -786,30 +925,6 @@ export default function Universe3DExperience({
       }
     };
   }, []);
-
-  // Virtual Joystick directional button
-  const handleVirtualMove = (dx: number, dz: number) => {
-    animRef.current.avatarX += dx;
-    animRef.current.avatarZ += dz;
-    animRef.current.targetRotY = Math.atan2(dx, dz);
-    animRef.current.isWalking = true;
-    setAvatarPos({ x: animRef.current.avatarX, z: animRef.current.avatarZ });
-    setIsWalking(true);
-
-    setTimeout(() => {
-      animRef.current.isWalking = false;
-      setIsWalking(false);
-    }, 300);
-  };
-
-  // Teleport to district
-  const handleTeleport = (districtName: string, x: number, z: number) => {
-    animRef.current.avatarX = x;
-    animRef.current.avatarZ = z;
-    setAvatarPos({ x, z });
-    setCurrentDistrict(districtName);
-    setSubView('IN_WORLD');
-  };
 
   // Send live stage chat
   const handleSendLiveChat = (e: React.FormEvent) => {
@@ -951,17 +1066,99 @@ export default function Universe3DExperience({
       {/* ======================================================== */}
       {subView === 'IN_WORLD' && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 sm:p-4 pt-24 sm:pt-24">
-          {/* Top Status Pill (Clean and non-intrusive) */}
-          <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-sm">
-            <div className="px-3 py-1.5 rounded-full bg-slate-900/85 border border-cyan-500/30 text-white shadow-xl flex items-center gap-2 text-xs backdrop-blur-sm">
-              <Compass className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
-              <span className="font-bold text-white truncate">Crystal City Central</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
-                24,340
+          {/* Top Status & Quick 3D Tour Bar */}
+          <div className="pointer-events-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 max-w-full z-30">
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-1.5 rounded-full bg-slate-900/90 border border-cyan-500/30 text-white shadow-xl flex items-center gap-2 text-xs backdrop-blur-md">
+                <Compass className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
+                <span className="font-bold text-white truncate">Crystal City Metropolis</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                  24,340 Online
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  X:{avatarPos.x.toFixed(0)} Z:{avatarPos.z.toFixed(0)}
+                </span>
+              </div>
+
+              <span className="px-2.5 py-1 rounded-full bg-[#FEF08A] text-slate-950 font-black text-[10px] border border-slate-900 shadow-xs hidden md:inline-flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-600" />
+                3D Menggu Art Spatial
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">
-                X:{avatarPos.x.toFixed(0)} Z:{avatarPos.z.toFixed(0)}
-              </span>
+            </div>
+
+            {/* Quick Tour Presets & Download GLB */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-md overflow-x-auto no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => handleTourCamera('OVERVIEW')}
+                  className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition shrink-0 cursor-pointer"
+                >
+                  🏙️ Overview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTourCamera('CITADEL')}
+                  className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition shrink-0 cursor-pointer"
+                >
+                  🗼 Citadel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTourCamera('PLAZA')}
+                  className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition shrink-0 cursor-pointer"
+                >
+                  ⛲ Plaza
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTourCamera('BILLBOARD')}
+                  className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition shrink-0 cursor-pointer"
+                >
+                  📺 Billboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTourCamera('BOOTH')}
+                  className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition shrink-0 cursor-pointer"
+                >
+                  🛍️ Booth
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInspectMengguItem({
+                    id: 'landmark-citadel',
+                    name: 'Crystal Citadel & AI Spire',
+                    categoryTag: '3. District & Landmark',
+                    description: 'Pusat komputasi AI & observatorium Crystal City.',
+                    builderType: 'citadel',
+                  })}
+                  className="px-2.5 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-[10px] font-black transition shrink-0 cursor-pointer flex items-center gap-1"
+                >
+                  <Box className="w-3 h-3 text-cyan-400" />
+                  <span>Inspektor GLB</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExportDistrictGLB}
+                disabled={isExportingGLB}
+                className="px-3 py-1.5 rounded-2xl bg-[#FEF08A] hover:bg-amber-300 text-slate-950 font-black text-xs border border-slate-900 shadow-xl transition flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                title="Unduh format 3D GLB spatial"
+              >
+                {isExportingGLB ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Mengekspor...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5 stroke-[2.5px]" />
+                    <span>Unduh 3D (.GLB)</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
@@ -1011,19 +1208,19 @@ export default function Universe3DExperience({
               {/* Interaction Buttons */}
               <div className="grid grid-cols-4 gap-1 mt-2.5 pt-2 border-t border-slate-800/80 text-[10px]">
                 <button
-                  onClick={() => alert(`Anda melambaikan tangan menyapa ${nearbyEncounter.name}!`)}
+                  onClick={() => showExpToast(`Anda melambaikan tangan menyapa ${nearbyEncounter.name}!`)}
                   className="py-1 rounded-lg bg-blue-600 hover:bg-blue-500 font-bold transition text-center"
                 >
                   Sapa 👋
                 </button>
                 <button
-                  onClick={() => alert(`Membuka chat pribadi dengan ${nearbyEncounter.name}`)}
+                  onClick={() => showExpToast(`Membuka obrolan dengan ${nearbyEncounter.name}`)}
                   className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-medium transition text-center"
                 >
                   Chat 💬
                 </button>
                 <button
-                  onClick={() => alert(`Menampilkan profil lengkap ${nearbyEncounter.name}`)}
+                  onClick={() => showExpToast(`Profil: ${nearbyEncounter.name} (${nearbyEncounter.type})`)}
                   className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 font-medium transition text-center"
                 >
                   Profil 👤
@@ -1447,7 +1644,7 @@ export default function Universe3DExperience({
                     <p className="text-amber-400 font-bold font-mono mt-1">{item.price}</p>
                   </div>
                   <button
-                    onClick={() => alert(`Aset "${item.name}" berhasil dicoba pada preview avatar!`)}
+                    onClick={() => showExpToast(`Aset "${item.name}" berhasil dicoba pada preview avatar!`)}
                     className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shadow"
                   >
                     Beli & Pasang di 3D
@@ -1563,13 +1760,13 @@ export default function Universe3DExperience({
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => alert(`Menyapa ${p.name}!`)}
+                      onClick={() => showExpToast(`Menyapa ${p.name}!`)}
                       className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold transition text-xs"
                     >
                       Sapa
                     </button>
                     <button
-                      onClick={() => alert(`Membuka sesi obrolan dengan ${p.name}`)}
+                      onClick={() => showExpToast(`Membuka obrolan dengan ${p.name}`)}
                       className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-semibold transition text-xs"
                     >
                       Chat
@@ -1580,6 +1777,25 @@ export default function Universe3DExperience({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Floating In-World Toast */}
+      {expToast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-slate-900/95 text-white text-xs font-bold border-2 border-slate-700 shadow-xl backdrop-blur-md">
+          <span>✨ {expToast}</span>
+        </div>
+      )}
+
+      {/* 3D Menggu Art Modal Inspector & GLB Exporter */}
+      {inspectMengguItem && (
+        <Menggu3DViewerModal
+          item={inspectMengguItem}
+          onClose={() => setInspectMengguItem(null)}
+          onWarpToUniverse={() => {
+            setInspectMengguItem(null);
+            handleTourCamera('CITADEL');
+          }}
+        />
       )}
     </div>
   );
