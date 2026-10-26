@@ -663,15 +663,15 @@ export default function AiCinemaView({
           <div className="space-y-2 max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-200 border-2 border-slate-900 text-purple-950 text-[11px] font-black uppercase tracking-wider shadow-2xs">
               <Sparkles className="w-3.5 h-3.5 text-purple-950 stroke-[2.5px]" />
-              <span>Program Resmi Kreator & Produser Allpha</span>
+              <span>{productionMode ? 'Program Kreator & Produser Allpha' : 'Program Resmi Kreator & Produser Allpha'}</span>
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight leading-snug">
-              Ingin menjadi Creator/Produser Film AI di Allpha?
+              {productionMode ? 'Program Kreator Film AI Allpha' : 'Ingin menjadi Creator/Produser Film AI di Allpha?'}
             </h2>
 
             <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed">
-              Agar Karyamu ditonton orang banyak serta mendapatkan keuntungan dan pendapatan dari Film AI kamu, yuk registrasi dan upload film kamu! Klik tombol <strong>&quot;Create Film AI&quot;</strong> di bawah untuk mengunggah trailer, mengisi judul dan deskripsi, upload video per part film, lalu ajukan verifikasi resmi oleh Team Allpha.
+              {productionMode ? 'Pendaftaran kreator, pengunggahan film, verifikasi, dan ketentuan pendapatan belum tersedia dari layanan produksi.' : <>Agar Karyamu ditonton orang banyak serta mendapatkan keuntungan dan pendapatan dari Film AI kamu, yuk registrasi dan upload film kamu! Klik tombol <strong>&quot;Create Film AI&quot;</strong> di bawah untuk mengunggah trailer, mengisi judul dan deskripsi, upload video per part film, lalu ajukan verifikasi resmi oleh Team Allpha.</>}
             </p>
 
             {/* Benefit Highlights */}
@@ -682,11 +682,11 @@ export default function AiCinemaView({
               </span>
               <span className="px-3 py-1 rounded-full bg-sky-100 border-2 border-slate-900 text-sky-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <Tv className="w-3.5 h-3.5 text-sky-800" />
-                Tayang di Feed, Reels & 3D Cinema
+                {productionMode ? 'Distribusi konten belum tersedia' : 'Tayang di Feed, Reels & 3D Cinema'}
               </span>
               <span className="px-3 py-1 rounded-full bg-purple-100 border-2 border-slate-900 text-purple-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-800" />
-                Verifikasi Resmi Team Allpha
+                {productionMode ? 'Verifikasi belum tersedia' : 'Verifikasi Resmi Team Allpha'}
               </span>
             </div>
           </div>
