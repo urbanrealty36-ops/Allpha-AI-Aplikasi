@@ -101,16 +101,48 @@ def validate_tool_dependencies(dependencies: list[str]) -> None:
         raise UnknownToolError(", ".join(unknown))
 
 
-def execute_tool(tool_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+def validate_tool_input(tool_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate a bounded JSON object against the registered Tool input contract without executing it."""
     tool = get_tool(tool_key)
     if not isinstance(payload, dict):
         raise ToolInputError("tool input must be an object")
-    unknown_fields = sorted(set(payload) - set(tool.input_schema["properties"]))
-    if unknown_fields:
+    schema = tool.input_schema
+    properties = schema.get("properties", {})
+    unknown_fields = sorted(set(payload) - set(properties))
+    if unknown_fields and schema.get("additionalProperties") is False:
         raise ToolInputError(f"unexpected input field(s): {', '.join(unknown_fields)}")
-    for field in tool.input_schema["required"]:
+    for field in schema.get("required", []):
         if field not in payload:
             raise ToolInputError(f"missing required input field: {field}")
+    type_checks = {
+        "string": lambda value: isinstance(value, str),
+        "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+        "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+        "boolean": lambda value: isinstance(value, bool),
+        "object": lambda value: isinstance(value, dict),
+        "array": lambda value: isinstance(value, list),
+    }
+    for field, value in payload.items():
+        spec = properties.get(field)
+        if not isinstance(spec, dict):
+            continue
+        expected_type = spec.get("type")
+        checker = type_checks.get(expected_type)
+        if checker and not checker(value):
+            raise ToolInputError(f"{field} must be {expected_type}")
+        if isinstance(value, str):
+            if "maxLength" in spec and len(value) > int(spec["maxLength"]):
+                raise ToolInputError(f"{field} must contain at most {spec['maxLength']} characters")
+            if "minLength" in spec and len(value) < int(spec["minLength"]):
+                raise ToolInputError(f"{field} must contain at least {spec['minLength']} characters")
+        if "enum" in spec and value not in spec["enum"]:
+            raise ToolInputError(f"{field} must be one of the allowed values")
+    return payload
+
+
+def execute_tool(tool_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    validate_tool_input(tool_key, payload)
+    tool = get_tool(tool_key)
     try:
         return tool.handler(payload)
     except ValueError as exc:
