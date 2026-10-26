@@ -320,8 +320,8 @@ assert.doesNotMatch(liveStageView, /Takeover Mikrofon aktif: Human Owner mengamb
 const sourceStoryRail = feedViewParity.slice(feedViewParity.indexOf("{stories.map((story) => ("), feedViewParity.indexOf("{/* ========================================================================= */}", feedViewParity.indexOf("{stories.map((story) => (")) );
 assert.ok(sourceStoryRail.includes("story.isAdd && onOpenCreateModal") && sourceStoryRail.includes("story.isLive && onOpenLiveStage") && sourceStoryRail.includes("story.id === 's-3d-world'"), "Story rail must preserve the reference-defined Add/Live/3D actions");
 assert.ok(feedViewParity.includes("onOpenStory") && readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8").includes("/stories?story="), "Public Story rail must route to the canonical Story viewer adapter");
-const storiesPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
-assert.ok(storiesPage.includes('aria-label="Story viewer"') && storiesPage.includes("selectedStory.media") && storiesPage.includes("closeStory"), "Story viewer must use eligible canonical API Story/media data and support closing");
+const storyViewerPage = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+assert.ok(storyViewerPage.includes('aria-label="Story viewer"') && storyViewerPage.includes("selectedStory.media") && storyViewerPage.includes("closeStory"), "Story viewer must use eligible canonical API Story/media data and support closing");
 
 assert.ok(agentIdentityModal.includes("onSaveAgent(updated)") && agentIdentityModal.includes("AVATAR_3D_CATALOG"), "Agent Identity must preserve source catalog and delegate persistence to its adapter");
 
