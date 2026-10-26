@@ -324,8 +324,8 @@ async def get_recommendations(
 @router.get("/v1/reels", tags=["reels"])
 async def get_reels(request: Request, mode: Literal["for_you", "recent"] = "for_you",
                     limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
-                    user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    """Reuse the canonical feed's visibility, ranking, signed media URLs and cursor."""
+                    user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
+    """Reuse the canonical feed's guest/auth visibility, ranking, signed media URLs and cursor."""
     page = await get_feed(request=request, mode=mode, limit=limit, cursor=cursor, user=user)
     items = []
     for item in page["items"]:
