@@ -124,3 +124,22 @@ async def _test_due_schedule_waits_for_owner_approval_without_workflow_dispatch(
     assert runtime.occurrences[0]["status"] == "waiting_for_approval"
     assert runtime.schedule["status"] == "needs_approval"
     assert runtime.schedule["lease_token"] is None
+
+
+def test_scheduler_worker_rejects_unbounded_batch_and_lease_settings():
+    import allpha_api.agent_task_schedule_worker as worker
+
+    async def scenario():
+        stop = asyncio.Event()
+        for kwargs, expected in [
+            ({"poll_interval_seconds": 0}, "poll interval"),
+            ({"poll_interval_seconds": 61}, "poll interval"),
+            ({"limit": 0}, "limit"),
+            ({"limit": 101}, "limit"),
+            ({"lease_seconds": 4}, "lease_seconds"),
+            ({"lease_seconds": 301}, "lease_seconds"),
+        ]:
+            with pytest.raises(ValueError, match=expected):
+                await worker.run_forever(stop_event=stop, **kwargs)
+
+    asyncio.run(scenario())
