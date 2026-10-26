@@ -203,9 +203,18 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         # Version 1 is lexicographic, not a fabricated weighted score: followed creator,
         # explicit user-interest match count, observed engagement, then publish time.
         rank_key = (int(followed_creator), interest_matches, engagement_total, _published(row), str(row["id"]))
-        ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count, "shares": share_count},
-                       "viewer_reaction": viewer_reactions.get(cid), "saved": cid in viewer_saves,
-                       "ranking_signals": signals, "_rank": rank_key})
+        profile = profile_by_id.get(str(row.get("owner_id")), {})
+        ranked.append({
+            **row,
+            "creator": {
+                "username": profile.get("username"),
+                "display_name": profile.get("display_name"),
+                "avatar_url": profile.get("avatar_url"),
+            },
+            "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count, "shares": share_count},
+            "viewer_reaction": viewer_reactions.get(cid), "saved": cid in viewer_saves,
+            "ranking_signals": signals, "_rank": rank_key,
+        })
     ranked.sort(key=(lambda r: r["_rank"]) if effective_mode == "for_you"
                 else (lambda r: (_published(r), str(r["id"]))), reverse=True)
     # Apply creator diversity before offset pagination so page boundaries remain stable.
