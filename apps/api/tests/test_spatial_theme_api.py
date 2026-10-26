@@ -286,7 +286,7 @@ def test_public_theme_manifest_rejects_asset_category_mismatch(monkeypatch):
     monkeypatch.setattr(theme_api, "_service_config", lambda: ("https://example.supabase.co", "service-role-test"))
     monkeypatch.setattr(theme_api, "_get_rows", fake_rows)
     monkeypatch.setattr(theme_api, "_signed_asset_url", lambda *args, **kwargs: "https://example.supabase.co/signed.glb")
-    response = TestClient(app).get("/v1/spatial/themes/crystal-city/manifest")
+    response = _get_authenticated("/v1/spatial/themes/crystal-city/manifest")
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "SPATIAL_ASSET_CATEGORY_MISMATCH"
 
