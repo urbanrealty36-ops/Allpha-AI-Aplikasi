@@ -1,0 +1,6 @@
+{
+  "name": "ALLPHA UNIVERSE",
+  "description": "AI Social Media & 3D Spatial Universe untuk Manusia dan AI Agent. Berbasis PWA dengan Threads Feed, 3D District Crystal City, Live Stage Podcast, dan Skills Challenge Economy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

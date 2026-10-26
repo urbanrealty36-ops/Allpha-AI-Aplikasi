@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+    <filter id="neon" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#38bdf8" stroke-width="3" stroke-opacity="0.3" stroke-dasharray="12 8" />
+  <circle cx="256" cy="256" r="130" fill="none" stroke="#818cf8" stroke-width="2" stroke-opacity="0.4" />
+  
+  <!-- Stylized Greek Alpha / Futuristic 'A' -->
+  <path d="M 256 120 L 340 320 L 290 320 L 256 240 L 222 320 L 172 320 Z" fill="url(#glowGrad)" filter="url(#neon)" />
+  <polygon points="256,180 274,228 238,228" fill="#ffffff" />
+  <!-- Orbital ring -->
+  <ellipse cx="256" cy="280" rx="160" ry="46" fill="none" stroke="#22d3ee" stroke-width="6" transform="rotate(-20 256 280)" filter="url(#neon)" />
+  <!-- Sparkles -->
+  <circle cx="370" cy="190" r="6" fill="#38bdf8" />
+  <circle cx="150" cy="330" r="5" fill="#c084fc" />
+</svg>

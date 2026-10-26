@@ -1,0 +1,971 @@
+{
+  "reference_repository": "https://github.com/urbanrealty36-ops/Allpha-Front-End-UI-New",
+  "reference_branch": "main",
+  "reference_commit": "b6c9fc728d5d031a28b22fbbec9a546846900e87",
+  "canonical_repository": "https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi",
+  "file_count": 120,
+  "verification": "Each source file was checked against the checked-out Git tree size and Git blob SHA-1 before byte-for-byte snapshot copy; SHA-256 recorded for every file.",
+  "runtime_policy": "Public UI assets and reference globals stylesheet are mirrored; source components/config/demo store are archived without overwriting canonical API route adapters or importing demo business state.",
+  "files": [
+    {
+      "source_path": ".aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927868515_27d9c3b6.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927868515_27d9c3b6.jpg",
+      "source_bytes": 685285,
+      "git_blob_sha1": "597c4ee0de2cc0ab7e114ef650f2d4a18916812d",
+      "sha256": "1e35e81287b1e3779117a0229b2a138deaadab46630edc6cda5c8842ccf16aed",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927877515_236bcb9a.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927877515_236bcb9a.jpg",
+      "source_bytes": 651621,
+      "git_blob_sha1": "422d339e4c9c48e2bac26c9bf435c93408fb58b3",
+      "sha256": "393205d1942c1e1ec1fb68ef0c1aeb79456f04312f57078899aad2439367129a",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927885600_95de86d1.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927885600_95de86d1.jpg",
+      "source_bytes": 590774,
+      "git_blob_sha1": "4182881e0a3d78e7d1a757e2c2622fea98d3a151",
+      "sha256": "4e89cb4b9dae352e1b4f6fc00d29145b41fc45a9eee1c5e374828932a02280c2",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927899892_f4040c6e.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/1d13ab21-817e-4d1f-a254-43aa07d213e4/.tempmediaStorage/media_1792927899892_f4040c6e.jpg",
+      "source_bytes": 699468,
+      "git_blob_sha1": "dc1dbd4d93a89155e44dc0d0e499b3022684aabc",
+      "sha256": "ce194f62465d44b001d85af3dc4acfe64001f0c3eabe7f3ca3b14d2c9f6188d1",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792752503552_e609cdd7.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792752503552_e609cdd7.jpg",
+      "source_bytes": 644676,
+      "git_blob_sha1": "d2383fd34b56cff879be3fd2291ab0662aae51e3",
+      "sha256": "88e4a1c1ab0ef8538b990aad5c655e645f66eb6e863d99c00280d7cf90d95f0f",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792755028276_a24e5eb7.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792755028276_a24e5eb7.jpg",
+      "source_bytes": 590774,
+      "git_blob_sha1": "4182881e0a3d78e7d1a757e2c2622fea98d3a151",
+      "sha256": "4e89cb4b9dae352e1b4f6fc00d29145b41fc45a9eee1c5e374828932a02280c2",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792755048475_f3472b58.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792755048475_f3472b58.jpg",
+      "source_bytes": 672454,
+      "git_blob_sha1": "0730fcf3e580a6c8a3bc10cc6aabfb4cd1d45010",
+      "sha256": "d765b801a9408d1135a298043238e8399983232471942a24a35197294247c193",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758232833_e2b17fc4.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758232833_e2b17fc4.jpg",
+      "source_bytes": 586619,
+      "git_blob_sha1": "14e593bb3b4f465f386294f8250cf7c26ebf7d5d",
+      "sha256": "0db052a1f9bf333b3249c31e85fd91f86ebdcdbd2979780cd53f36896e2823ae",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758261098_0af534ee.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758261098_0af534ee.jpg",
+      "source_bytes": 558343,
+      "git_blob_sha1": "2844a29f29371611e638158eae79a167560eafd1",
+      "sha256": "c07d41e9f5a035fd66dddb7787f9675fc4c9ff789eacd9338754bee2c92b319f",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758287565_7ffa1b2b.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/3c911de3-54df-47f7-a52a-41a1abbf6242/.tempmediaStorage/media_1792758287565_7ffa1b2b.jpg",
+      "source_bytes": 1104144,
+      "git_blob_sha1": "8e58ed3ef6c1562c027ad45ff56f265e357e2d77",
+      "sha256": "22a42efd5b8a2fd65c528abbbf701004ffb97998f2dd1cd79a7ce5eb6f384317",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/4967876d-dfb4-4705-8237-92690eb09d3f/.tempmediaStorage/media_1792914845743_56c70907.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/4967876d-dfb4-4705-8237-92690eb09d3f/.tempmediaStorage/media_1792914845743_56c70907.png",
+      "source_bytes": 2030869,
+      "git_blob_sha1": "ad78971cbe154e01325dc90f8ca0c88349c35c2b",
+      "sha256": "fb06dd700425e620f8a26d28af76ae40f8da5a76b70aa7cb1bffb1e688899473",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/6d67fdf5-e3ca-4a7a-8764-67cc4b060325/.tempmediaStorage/media_1793018578414_32fc5366.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/6d67fdf5-e3ca-4a7a-8764-67cc4b060325/.tempmediaStorage/media_1793018578414_32fc5366.jpg",
+      "source_bytes": 497481,
+      "git_blob_sha1": "2ea569299feed8e955c0387d6e09e0d691485271",
+      "sha256": "4cb5cdf07b0bf8f31c64f92d64e508b21390183a5db8c32cc5b1b4a3537b14d8",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/6d67fdf5-e3ca-4a7a-8764-67cc4b060325/.tempmediaStorage/media_1793023752807_02e665cc.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/6d67fdf5-e3ca-4a7a-8764-67cc4b060325/.tempmediaStorage/media_1793023752807_02e665cc.jpg",
+      "source_bytes": 538903,
+      "git_blob_sha1": "23e8cf6bb32a62dac3503454c79baa8435f44454",
+      "sha256": "a2cdc6e0a38f63ee7d14569f53098c1fdc52ba44b7a31c167558dcc3a3e2790d",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/b7c56f9d-546d-4107-956d-26f1948eec14/.tempmediaStorage/media_1792763439888_4853ca49.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/b7c56f9d-546d-4107-956d-26f1948eec14/.tempmediaStorage/media_1792763439888_4853ca49.jpg",
+      "source_bytes": 741976,
+      "git_blob_sha1": "b63fe9a95b0b1aceff9315731b0156ef53a2d161",
+      "sha256": "f99e67e441ead9a7acf9ad64b3f31871f985d8fffb5f7bdc2027c563646ea242",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".aistudio/artifacts/brain/b7c56f9d-546d-4107-956d-26f1948eec14/.tempmediaStorage/media_1792764131790_87fa76a7.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.aistudio/artifacts/brain/b7c56f9d-546d-4107-956d-26f1948eec14/.tempmediaStorage/media_1792764131790_87fa76a7.jpg",
+      "source_bytes": 685285,
+      "git_blob_sha1": "597c4ee0de2cc0ab7e114ef650f2d4a18916812d",
+      "sha256": "1e35e81287b1e3779117a0229b2a138deaadab46630edc6cda5c8842ccf16aed",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".env.example",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.env.example",
+      "source_bytes": 59,
+      "git_blob_sha1": "b718d75a509a12ec1dff4ddbaad7eff91071a3c6",
+      "sha256": "f76b3526314dc90751d29d23d283f62e71ac264c3b084ead7a13de38e6f19000",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".eslintrc.json",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.eslintrc.json",
+      "source_bytes": 24,
+      "git_blob_sha1": "15b1ed91acf662a241dac0425b14ae0837d81f5d",
+      "sha256": "a66f8ca4ad166f1999822967959ede701f895533cee9bff92b4edc92a47e8a25",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": ".gitignore",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/.gitignore",
+      "source_bytes": 67,
+      "git_blob_sha1": "71b810ccacbcc72d38715bfb7dd8822b7ff013d2",
+      "sha256": "d3b60dc325939dcbc5e350e074ed78102ae93efb1a519e461e24c31920da7246",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "app/api/agent/interact/route.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/app/api/agent/interact/route.ts",
+      "source_bytes": 8437,
+      "git_blob_sha1": "ee906b48eab82c27af9f027ac0e86e8fe0dfc9d8",
+      "sha256": "012a7e605a359c7b926e2dd75c4cde0ac6a19b7a5b14a079ab1e05835786cdd2",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "app/globals.css",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/app/globals.css",
+      "source_bytes": 49,
+      "git_blob_sha1": "5a7873abc0ed6501cce9c86073350bfc602cfcb2",
+      "sha256": "e1d5d9c861db7e22a0ddc03dc0e51dde85e5d9bce432ad6d8f90b5405ee9fe13",
+      "runtime_mirror": "apps/web/components/reference-ui/reference-globals.css"
+    },
+    {
+      "source_path": "app/layout.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/app/layout.tsx",
+      "source_bytes": 1492,
+      "git_blob_sha1": "c5be526c1af94f870460af9138f33254740f4213",
+      "sha256": "7adb2721d72ed10f80fbcbb04de57783f1c8a2abafb3d18b666209033c0b5b2c",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "app/manifest.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/app/manifest.ts",
+      "source_bytes": 711,
+      "git_blob_sha1": "52416276c182bf89094ff33815027857b5c313f1",
+      "sha256": "5a0bf9f7233cd20dc2077a09b88a9820730195cdc7b26c8d2d9c15992a720188",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "app/not-found.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/app/not-found.tsx",
+      "source_bytes": 628,
+      "git_blob_sha1": "92ae07505de3e593debf4bf81ddec45395d028ed",
+      "sha256": "3448fb5debdfb0c0b650757c9c4f59361e2338a900c7744f637971f1f59bcdef",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "app/page.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/app/page.tsx",
+      "source_bytes": 27393,
+      "git_blob_sha1": "0bddfa37d8dbc307d0362b742b66ee644f9dfba0",
+      "sha256": "d93f81bd0e99eb21dafc67ee4a91a30fd183a645f98a0c11d2015ecb671fd748",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AgentGoalsTasksModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AgentGoalsTasksModal.tsx",
+      "source_bytes": 29614,
+      "git_blob_sha1": "8db6dbcde28b190b40308f546c4a6d200329caee",
+      "sha256": "3937d8aaf0747fbbc5d41f35023f06b9cdc420ed32554ee5ffacd0ed96e050b3",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AgentIdentityModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AgentIdentityModal.tsx",
+      "source_bytes": 17826,
+      "git_blob_sha1": "8d70617d267921fd2fb47a1e8e23fc2239e1f1d2",
+      "sha256": "2eb8f8293a258eb102efac7ff6172f8d332a4b763765bc9fe0ed5aae24f44d46",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AgentPassportModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AgentPassportModal.tsx",
+      "source_bytes": 15366,
+      "git_blob_sha1": "492b28ada01526a73a45f7a079435f204e8fcd3f",
+      "sha256": "07664554c95f08b76c1506063779721885bba3cc389aaefb0e98c8a5fffcd079",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AiCinemaView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AiCinemaView.tsx",
+      "source_bytes": 87141,
+      "git_blob_sha1": "b00d437932622e0d4651cc89ce386b4a1cdfb7fa",
+      "sha256": "94cc34590f3c383beb49e467a0ac41cf4d08c4ecb115d228cbeb55586c7bc90d",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AllphaHubView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AllphaHubView.tsx",
+      "source_bytes": 92142,
+      "git_blob_sha1": "3fa129dede142534ef262c1fc740fee1a31df52b",
+      "sha256": "15b26118aacd66fd2767ff964e5c1d517bbd9bcabe154458f855416ec2c2e469",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AskAiModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AskAiModal.tsx",
+      "source_bytes": 8008,
+      "git_blob_sha1": "b099a49f214075c566be3a082dce734805573cc5",
+      "sha256": "ca6f08fc857aeb99184cf93bf9f74c00a69461af83835daef742c4210326d122",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AskAiView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AskAiView.tsx",
+      "source_bytes": 12764,
+      "git_blob_sha1": "d66753039df606195330ff2b5ba8793399d81d4c",
+      "sha256": "1309e01986c23ece80280180afb46f9ee9a2612f4ecb6e4592c596ad201f9888",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AuthOnboardingFlow.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AuthOnboardingFlow.tsx",
+      "source_bytes": 41907,
+      "git_blob_sha1": "30207dd3bfb7cf9864d5a142bb299f245c9adb46",
+      "sha256": "14b5dcf69c40182fee2268a361e72439fa6b817d266b00030287083507cd0f31",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/AuthOnboardingPage.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/AuthOnboardingPage.tsx",
+      "source_bytes": 56053,
+      "git_blob_sha1": "007e68a0503d1a67799b7bb87b39ae0fc28978b3",
+      "sha256": "d62220d12b8ee6d50f2438c25adabcdea4bd179c8b16db4f889b6f6f47c16ed3",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/BottomNav.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/BottomNav.tsx",
+      "source_bytes": 6357,
+      "git_blob_sha1": "c2841cf7048bd2130f8634435d683523e04325d6",
+      "sha256": "bed85ceb020590f1807699591bfc8ca2f1fa190dcdd25fde9c1cd40cdb3d8d2a",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/CreatePostModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/CreatePostModal.tsx",
+      "source_bytes": 40441,
+      "git_blob_sha1": "e620b3ad820523050d47ce2f564e9bd269f6ab9a",
+      "sha256": "962eecc7d8a9cae1de15c6996339befd2dd72b51dbe039c3cccd113d55888758",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/CreatorStudioModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/CreatorStudioModal.tsx",
+      "source_bytes": 19487,
+      "git_blob_sha1": "2daf53afeb094221d2f4a5eefb69e3fdfeb24a81",
+      "sha256": "305262c67f01ac4fc36270116a88be6bb794d96019e162ee03d0592a37e39eae",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/ExploreView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/ExploreView.tsx",
+      "source_bytes": 45818,
+      "git_blob_sha1": "9e1f3a9f7c43ee4ed0c250842d6c93e0200e5701",
+      "sha256": "94feca4af6a7b6915ac467de1b73061ebfc93973a83d96302def490b8e69aff3",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/FeedView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/FeedView.tsx",
+      "source_bytes": 27457,
+      "git_blob_sha1": "ac8710aa0fb9bd407640361b5c7d2c0fcb707869",
+      "sha256": "985f607c986d2a5c74881fb57bd5bd6d1573b9caac9e9c7f7b24f54736f2d3a9",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/GenerateModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/GenerateModal.tsx",
+      "source_bytes": 24161,
+      "git_blob_sha1": "ae17e11390d24effd6cee1f7cf556f61d83f0e0c",
+      "sha256": "6da1a2803b4e4c6e07a77c0e659e092d79186e1b8e0536281ca11975fd9a1cd5",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/LiveExperienceStage.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/LiveExperienceStage.tsx",
+      "source_bytes": 42376,
+      "git_blob_sha1": "8787caa184b9a8161bcc287ea6ff27cfb75c8a3f",
+      "sha256": "e07bca1d978cf9bb7c7b30712f80d3ffccc6b1937f0c3abe7545bec49f7f94bd",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/MarketplaceView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/MarketplaceView.tsx",
+      "source_bytes": 40151,
+      "git_blob_sha1": "6859ccc63768b6f636d3622cecebc8edd5a5fa7c",
+      "sha256": "5e336a0066c31cfdf0de549b8dbd06cca8e810edf1d36b16ae7de4b67019995b",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/Menggu3DUniverseGallery.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/Menggu3DUniverseGallery.tsx",
+      "source_bytes": 58945,
+      "git_blob_sha1": "28ab5f90acbc71fd06a02390b8390005bfe362ee",
+      "sha256": "4de18fb5535c95ffc72ecbc76609a457a090d5eda1d196bde5bad237c1002b12",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/Menggu3DViewerModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/Menggu3DViewerModal.tsx",
+      "source_bytes": 18783,
+      "git_blob_sha1": "5a2b8ddfb1aa266ed65f65a368ef7326ed85e63b",
+      "sha256": "29a3096c75c3e879f4beed106d2f0b9d732a8c2f91a39d11fe5afd17dc84dfae",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/MessagesView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/MessagesView.tsx",
+      "source_bytes": 8108,
+      "git_blob_sha1": "20685f8eb9e5f16df8f1163bcd9198f23cc25f56",
+      "sha256": "66a236cc8165db45d9e9cf6890c4edb15657f8f631b8d5cce5962d17ce51e183",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/Navbar.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/Navbar.tsx",
+      "source_bytes": 7830,
+      "git_blob_sha1": "fab9a740d3a7a8d81e7219be27f01b9d67ca8261",
+      "sha256": "a02ab027579c8661ba8240cd7a08ca08b613bd0a44ca33116a5b741c64359405",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/NotificationsModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/NotificationsModal.tsx",
+      "source_bytes": 8719,
+      "git_blob_sha1": "c6044b8544d06307ec3239a203d187fb6c522e63",
+      "sha256": "ddfa8e903cfe58ef01f3a9f7bf7596dddbb21c4544f20d2f7b6db8fba7cf78a1",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/PostDetailView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/PostDetailView.tsx",
+      "source_bytes": 18430,
+      "git_blob_sha1": "840ca483ed4746cf795f64fffcfaaa226eab007f",
+      "sha256": "37d85a0d042f9518cc0a47c46909274c87629a92ab9cb3d26b37db5662e0b03d",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/ProfileView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/ProfileView.tsx",
+      "source_bytes": 75029,
+      "git_blob_sha1": "c55452a78cee9f1e33f2480bea39049f24882348",
+      "sha256": "f46d18f5f688ae6e33bed6494b17c6a8721aab006db2999ed36495306ad2048c",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/ReelsView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/ReelsView.tsx",
+      "source_bytes": 21865,
+      "git_blob_sha1": "f2e226a6a81e6ad0867525481e49d77b5d1001ee",
+      "sha256": "b3ec3cbea16c1f95738b97b7f4709b7190551cc28b97065d0f55987b7ff69df9",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/SkillsChallengeHub.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/SkillsChallengeHub.tsx",
+      "source_bytes": 26578,
+      "git_blob_sha1": "987dafe0b208281a02308fe1c897ddae11678f2d",
+      "sha256": "b9feefbe6647ca3600891990dbd540f4ea9f883c56fd01097294983c1346b6be",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/StoreAndBoothModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/StoreAndBoothModal.tsx",
+      "source_bytes": 44490,
+      "git_blob_sha1": "f8d26bc5123527faa355292c7a653310335ff3c4",
+      "sha256": "d8a736ec144ce67514f3a972636cc74cf3a38d7f407d290b9f9371ddefee8d96",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/StoriesViewerModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/StoriesViewerModal.tsx",
+      "source_bytes": 11588,
+      "git_blob_sha1": "9743c5f28f6eeb38d744179ca31125c6cbccc499",
+      "sha256": "93a0ece08b34e126d2c37bfb550e987375dfedb1f9d7b1f784218bf998d0c18a",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/TakeoverControlView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/TakeoverControlView.tsx",
+      "source_bytes": 17287,
+      "git_blob_sha1": "47ade46ffdd500e96de64bf4f152a14e347fa4ea",
+      "sha256": "1ac5642be03f465c84bfa81f5d9c9cb6c9a67e5ad734445e1ce60a95747fa8f5",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/TakeoverModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/TakeoverModal.tsx",
+      "source_bytes": 7085,
+      "git_blob_sha1": "af58cd8a362ff3e260620bcf968df1ec6fda90aa",
+      "sha256": "9b143ac4d5037eaaec98cec11f10e7a78d8c39b0938959fb2e8d93e4f61fcd6b",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/ThemeCatalogModal.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/ThemeCatalogModal.tsx",
+      "source_bytes": 7111,
+      "git_blob_sha1": "be599258062337a5bf966c3a9d48ec3284fb0b69",
+      "sha256": "ccff2c2561f7a58292b84da202beea18c60fde9fc883a98c7f168bc62c80c8d5",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/ThreeWorldView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/ThreeWorldView.tsx",
+      "source_bytes": 50284,
+      "git_blob_sha1": "33064372c878be0ede72340fa4d97e9ab253fe9b",
+      "sha256": "79d786871ccf4eed0700cb0639a126bd3a87e2ef0c5c809d038ff57afd66c826",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/Universe3DExperience.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/Universe3DExperience.tsx",
+      "source_bytes": 78731,
+      "git_blob_sha1": "904518182a463c6edc3e892b5575140be9958722",
+      "sha256": "a51a361ec0126abf95bf75cf4e342a50e13def05b8445269e0365e2df2c5dd66",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "components/Universe3DHubView.tsx",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/components/Universe3DHubView.tsx",
+      "source_bytes": 85343,
+      "git_blob_sha1": "850b0819e4c6d84fb79dc10d37b8ab7b80f6df2d",
+      "sha256": "cac93b51076dfb973085b26ee68170577cb1319c9148f547dafd48859532cfd8",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "eslint.config.mjs",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/eslint.config.mjs",
+      "source_bytes": 314,
+      "git_blob_sha1": "3e9def882f86c18e294dee5f8c06a74f510cf8dd",
+      "sha256": "81f2f39167e00dc07cc0016759bd12c3583fe25d4342248c59ac9c6ac0fe2e11",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "hooks/use-mobile.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/hooks/use-mobile.ts",
+      "source_bytes": 613,
+      "git_blob_sha1": "512259a578bbee75b7552260e7f316ea30ce18d2",
+      "sha256": "5047306f2ba36a2f1ee416218f8eca5090223fc1fea842e98884d9bcfc678f0e",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "hooks/usePWAInstall.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/hooks/usePWAInstall.ts",
+      "source_bytes": 1923,
+      "git_blob_sha1": "5830140e95b10d57f07a0c434d407317175aa8eb",
+      "sha256": "b616dd9302c5c0dffb0b8bcaa3e636a706233477be83640b59dd6bbde3788737",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "lib/menggu3dEngine.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/lib/menggu3dEngine.ts",
+      "source_bytes": 47156,
+      "git_blob_sha1": "d77482123c22c17d078b35e434b5db17190b4c25",
+      "sha256": "b84e6813ee03c9c1182c5e343fb9ddcc1a337ec5743149aaef16e7b89e5baefc",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "lib/store.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/lib/store.ts",
+      "source_bytes": 42966,
+      "git_blob_sha1": "f19b70fd0bde5226f1014c91ba80646d87d780a3",
+      "sha256": "be310d2b166799cae0989525286fd53c56b444b344bc2125809ee0f1f42297b7",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "lib/utils.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/lib/utils.ts",
+      "source_bytes": 166,
+      "git_blob_sha1": "bd0c391ddd1088e9067844c48835bf4abcd61783",
+      "sha256": "7c8c3dfc0cdd370d44932828eb067ef771c8fe7996693221d5d4b90af6d54f2d",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "metadata.json",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/metadata.json",
+      "source_bytes": 329,
+      "git_blob_sha1": "bdf05d7ef886cfd6950950c2959cae7e75617a08",
+      "sha256": "388e6c6ada37e85fe557d7fc147bcfd070761f2e4e3646cb13fe193219fd429d",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "next-env.d.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/next-env.d.ts",
+      "source_bytes": 262,
+      "git_blob_sha1": "830fb594ca2970a827555c28a253b097367e08d8",
+      "sha256": "85ae5aee75f011967cf2d25cbc342f62d69314e9d925f7f4aa3456fc2cffcca6",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "next.config.ts",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/next.config.ts",
+      "source_bytes": 870,
+      "git_blob_sha1": "d0dc5db8f2ad53184650d433c9b73ab5c8bf716a",
+      "sha256": "f850c0166355ee9c296bdf04a6c0f2a598b70550e0d62ff3c8f758a17a325e85",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "package.json",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/package.json",
+      "source_bytes": 1084,
+      "git_blob_sha1": "763670e6c124537245a7383244af2e657a8550a7",
+      "sha256": "d16d1ba491b91db73dfd1e199e4afad7d72692b146822e32b767318487beee33",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "postcss.config.mjs",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/postcss.config.mjs",
+      "source_bytes": 168,
+      "git_blob_sha1": "e2167ce22cc33cf23e33d17f03dc9bcc783d7ff6",
+      "sha256": "37036f1d557b163b84bcd0d8af54069578cd97f9dd8686a1da79e78537267129",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md",
+      "source_bytes": 129536,
+      "git_blob_sha1": "ff7b7b14b1245da0d6e6510dea4f033d8099c1a9",
+      "sha256": "3ae29f7817d501992da387da10147fdd48e95571f82d29ad16ac908744fd5b0b",
+      "runtime_mirror": "apps/web/public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md"
+    },
+    {
+      "source_path": "public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md",
+      "source_bytes": 179585,
+      "git_blob_sha1": "232427419f814ee802f892f36c56f2546f3f1920",
+      "sha256": "ca4ee66294850eee64e771a4f823f705b9fd57bfd193847cc60c81a90b40bb3a",
+      "runtime_mirror": "apps/web/public/assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261015-164747_fd4f48e4.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261015-164747_fd4f48e4.jpg",
+      "source_bytes": 915577,
+      "git_blob_sha1": "4a2dee71322ee123ff7a835789e0e5820af3fda2",
+      "sha256": "fd4f48e4dc80d16fe20fe4f88ff39a670ac75f8a08ddd071f58bbaedcdaa340e",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261015-164747_fd4f48e4.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261020-224657_48336231.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261020-224657_48336231.jpg",
+      "source_bytes": 464766,
+      "git_blob_sha1": "53e9c361665384c8e66d9379468eeac5d18a0788",
+      "sha256": "4833623100d6d7eb664cfda3d9b73da66fdf10d5f8b6bc3125af3166fadc5cdf",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261020-224657_48336231.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg",
+      "source_bytes": 1105749,
+      "git_blob_sha1": "808ddbb761676c06e91ba6e092244511e1d1e899",
+      "sha256": "2d568e437f45a2e7e5d1db00eb432e06c96ac90d99b0f5522f62248907a92f9e",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261022-214044_2d568e43.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg",
+      "source_bytes": 699468,
+      "git_blob_sha1": "dc1dbd4d93a89155e44dc0d0e499b3022684aabc",
+      "sha256": "ce194f62465d44b001d85af3dc4acfe64001f0c3eabe7f3ca3b14d2c9f6188d1",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261022-220040_ce194f62.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-174657_88e4a1c1.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-174657_88e4a1c1.jpg",
+      "source_bytes": 644676,
+      "git_blob_sha1": "d2383fd34b56cff879be3fd2291ab0662aae51e3",
+      "sha256": "88e4a1c1ab0ef8538b990aad5c655e645f66eb6e863d99c00280d7cf90d95f0f",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-174657_88e4a1c1.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg",
+      "source_bytes": 590774,
+      "git_blob_sha1": "4182881e0a3d78e7d1a757e2c2622fea98d3a151",
+      "sha256": "4e89cb4b9dae352e1b4f6fc00d29145b41fc45a9eee1c5e374828932a02280c2",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-182318_4e89cb4b.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-182405_d765b801.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-182405_d765b801.jpg",
+      "source_bytes": 672454,
+      "git_blob_sha1": "0730fcf3e580a6c8a3bc10cc6aabfb4cd1d45010",
+      "sha256": "d765b801a9408d1135a298043238e8399983232471942a24a35197294247c193",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-182405_d765b801.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-185525_22a42efd.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-185525_22a42efd.jpg",
+      "source_bytes": 1104144,
+      "git_blob_sha1": "8e58ed3ef6c1562c027ad45ff56f265e357e2d77",
+      "sha256": "22a42efd5b8a2fd65c528abbbf701004ffb97998f2dd1cd79a7ce5eb6f384317",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-185525_22a42efd.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-190053_0db052a1.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-190053_0db052a1.jpg",
+      "source_bytes": 586619,
+      "git_blob_sha1": "14e593bb3b4f465f386294f8250cf7c26ebf7d5d",
+      "sha256": "0db052a1f9bf333b3249c31e85fd91f86ebdcdbd2979780cd53f36896e2823ae",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-190053_0db052a1.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-191515_c07d41e9.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-191515_c07d41e9.jpg",
+      "source_bytes": 558343,
+      "git_blob_sha1": "2844a29f29371611e638158eae79a167560eafd1",
+      "sha256": "c07d41e9f5a035fd66dddb7787f9675fc4c9ff789eacd9338754bee2c92b319f",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-191515_c07d41e9.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-204929_f99e67e4.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-204929_f99e67e4.jpg",
+      "source_bytes": 741976,
+      "git_blob_sha1": "b63fe9a95b0b1aceff9315731b0156ef53a2d161",
+      "sha256": "f99e67e441ead9a7acf9ad64b3f31871f985d8fffb5f7bdc2027c563646ea242",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-204929_f99e67e4.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-205615_1e35e812.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-205615_1e35e812.jpg",
+      "source_bytes": 685285,
+      "git_blob_sha1": "597c4ee0de2cc0ab7e114ef650f2d4a18916812d",
+      "sha256": "1e35e81287b1e3779117a0229b2a138deaadab46630edc6cda5c8842ccf16aed",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-205615_1e35e812.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261023-211448_393205d1.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261023-211448_393205d1.jpg",
+      "source_bytes": 651621,
+      "git_blob_sha1": "422d339e4c9c48e2bac26c9bf435c93408fb58b3",
+      "sha256": "393205d1942c1e1ec1fb68ef0c1aeb79456f04312f57078899aad2439367129a",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261023-211448_393205d1.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261026-193944_4cb5cdf0.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261026-193944_4cb5cdf0.jpg",
+      "source_bytes": 497481,
+      "git_blob_sha1": "2ea569299feed8e955c0387d6e09e0d691485271",
+      "sha256": "4cb5cdf07b0bf8f31c64f92d64e508b21390183a5db8c32cc5b1b4a3537b14d8",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261026-193944_4cb5cdf0.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261026-205215_2ced31d9.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261026-205215_2ced31d9.jpg",
+      "source_bytes": 689582,
+      "git_blob_sha1": "219ce5ba0f91562f39a22f899b4e8e2d7293fc81",
+      "sha256": "2ced31d93cddf2e9d0fc0dbaaffc1e284cec96b9a0a073353fac44873e85c57a",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261026-205215_2ced31d9.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/Screenshot_20261026-210824_a2cdc6e0.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/Screenshot_20261026-210824_a2cdc6e0.jpg",
+      "source_bytes": 538903,
+      "git_blob_sha1": "23e8cf6bb32a62dac3503454c79baa8435f44454",
+      "sha256": "a2cdc6e0a38f63ee7d14569f53098c1fdc52ba44b7a31c167558dcc3a3e2790d",
+      "runtime_mirror": "apps/web/public/assets/aistudio/Screenshot_20261026-210824_a2cdc6e0.jpg"
+    },
+    {
+      "source_path": "public/assets/aistudio/file_000000000124820cac0b31096f36996d_47c73336.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/file_000000000124820cac0b31096f36996d_47c73336.png",
+      "source_bytes": 2284057,
+      "git_blob_sha1": "12d6c93d1f47e22017355db24d5c5f9d650eac64",
+      "sha256": "47c7333642d6d3c598e0a42d1c8a334bd628130d1929d63ab9909ef953299a74",
+      "runtime_mirror": "apps/web/public/assets/aistudio/file_000000000124820cac0b31096f36996d_47c73336.png"
+    },
+    {
+      "source_path": "public/assets/aistudio/file_00000000560c820baca9cd747fc97471_b104badb.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/file_00000000560c820baca9cd747fc97471_b104badb.png",
+      "source_bytes": 2070206,
+      "git_blob_sha1": "b0cbd91174768e7eb979f9920b85f637f7d920f4",
+      "sha256": "b104badbde9698f5fa6f700793822b829445f59d02e71c5097d323896eb1142a",
+      "runtime_mirror": "apps/web/public/assets/aistudio/file_00000000560c820baca9cd747fc97471_b104badb.png"
+    },
+    {
+      "source_path": "public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png",
+      "source_bytes": 2092646,
+      "git_blob_sha1": "e89cac55c852fc19a76c53427fe79ba42426ef50",
+      "sha256": "64393eebe03c4d992101688c9d0158043e83a6de3567480b93d9b31f8fe849ee",
+      "runtime_mirror": "apps/web/public/assets/aistudio/file_000000008064820b8790f095225931fd_64393eeb.png"
+    },
+    {
+      "source_path": "public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png",
+      "source_bytes": 2674422,
+      "git_blob_sha1": "7bcb5eb6a77de90eb449a8acfda0ddf7aeadcb66",
+      "sha256": "df39e38360f889314b856793f4ff1fc190f9f88791e307ce78c7c45a1b2d2841",
+      "runtime_mirror": "apps/web/public/assets/aistudio/file_00000000d1c08207a6952642d1a26363_df39e383.png"
+    },
+    {
+      "source_path": "public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png",
+      "source_bytes": 2663435,
+      "git_blob_sha1": "749060b67cf8d143fc360c6c45e7742b849c27ab",
+      "sha256": "2018bbd59ebb4750ae9b77f0d6ad383eac8cc8dd42d4feec1364d6436465ccc5",
+      "runtime_mirror": "apps/web/public/assets/aistudio/file_00000000d5a08211bff1d1706016eb9d_2018bbd5.png"
+    },
+    {
+      "source_path": "public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png",
+      "source_bytes": 2030869,
+      "git_blob_sha1": "ad78971cbe154e01325dc90f8ca0c88349c35c2b",
+      "sha256": "fb06dd700425e620f8a26d28af76ae40f8da5a76b70aa7cb1bffb1e688899473",
+      "runtime_mirror": "apps/web/public/assets/aistudio/file_00000000e2f48207b9fbf70131d4041f_fb06dd70.png"
+    },
+    {
+      "source_path": "public/assets/menggu3d/ai_plaza.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/menggu3d/ai_plaza.jpg",
+      "source_bytes": 784618,
+      "git_blob_sha1": "e3453adbce9b27379c40ff1f4951ee99a812b4c9",
+      "sha256": "13e8fb3a8d2b2737c847955ed12e12c645a79578a58565cfd427db4c68046573",
+      "runtime_mirror": "apps/web/public/assets/menggu3d/ai_plaza.jpg"
+    },
+    {
+      "source_path": "public/assets/menggu3d/billboard_ads.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/menggu3d/billboard_ads.jpg",
+      "source_bytes": 858428,
+      "git_blob_sha1": "0fc11cb48a923c8809e91ea020a140b69a650924",
+      "sha256": "ab219a41135782d9500163e7811d8e7d3e940a8104f8f8c53ec8ef5965d09f66",
+      "runtime_mirror": "apps/web/public/assets/menggu3d/billboard_ads.jpg"
+    },
+    {
+      "source_path": "public/assets/menggu3d/booth_3d.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/menggu3d/booth_3d.jpg",
+      "source_bytes": 926272,
+      "git_blob_sha1": "6c26a03ad657f19aa4fb9ad4941f1999066d10e5",
+      "sha256": "5f0e7ae05e2a7895c0e489bb1f1268f8946c228c8c5d899552860c1d69741fa6",
+      "runtime_mirror": "apps/web/public/assets/menggu3d/booth_3d.jpg"
+    },
+    {
+      "source_path": "public/assets/menggu3d/district_spatial.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/menggu3d/district_spatial.jpg",
+      "source_bytes": 840740,
+      "git_blob_sha1": "ce20cae5341da20fdba8e78abcaa4af1b7f947a0",
+      "sha256": "5de1df9d43cea707279479a23d743ec08ceb2f50c570b45cb1e61d6fa6043d73",
+      "runtime_mirror": "apps/web/public/assets/menggu3d/district_spatial.jpg"
+    },
+    {
+      "source_path": "public/assets/menggu3d/landmark_citadel.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/menggu3d/landmark_citadel.jpg",
+      "source_bytes": 479671,
+      "git_blob_sha1": "5ce4e268c6850b97332584a3e2eae2fb38707678",
+      "sha256": "a894475e4730e87faa59848a2713df9f9a9c70bce1e401e3895ec8c9cdf8eff1",
+      "runtime_mirror": "apps/web/public/assets/menggu3d/landmark_citadel.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_cinema.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_cinema.jpg",
+      "source_bytes": 933431,
+      "git_blob_sha1": "41215ecaa20ff755d23e4d4a55e9bcbfb8cf2786",
+      "sha256": "d02ca0f55864a3f4f8e56b503a9c549bd26067aeb2febf86cd67186366aa50c8",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_cinema.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_cinema_3d_1793023017033.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_cinema_3d_1793023017033.jpg",
+      "source_bytes": 933431,
+      "git_blob_sha1": "41215ecaa20ff755d23e4d4a55e9bcbfb8cf2786",
+      "sha256": "d02ca0f55864a3f4f8e56b503a9c549bd26067aeb2febf86cd67186366aa50c8",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_cinema_3d_1793023017033.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_dualfeed_3d_1793022941224.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_dualfeed_3d_1793022941224.jpg",
+      "source_bytes": 678134,
+      "git_blob_sha1": "64d55a937cbf6f003e541134f18701323a7c425e",
+      "sha256": "663d81d2f1519cf787f7025b614bae80d8c6a5fbf4932c64dd1b28b7260bef9b",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_dualfeed_3d_1793022941224.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_feed.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_feed.jpg",
+      "source_bytes": 678134,
+      "git_blob_sha1": "64d55a937cbf6f003e541134f18701323a7c425e",
+      "sha256": "663d81d2f1519cf787f7025b614bae80d8c6a5fbf4932c64dd1b28b7260bef9b",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_feed.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_livestage.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_livestage.jpg",
+      "source_bytes": 747019,
+      "git_blob_sha1": "b61f4b658d21defb9ad435763be99d8b9e2d9756",
+      "sha256": "be6a76a0a226ff7dc0f66829d07004ad36a611f266d644c68b03b831db1658d6",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_livestage.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_livestage_3d_1793023043430.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_livestage_3d_1793023043430.jpg",
+      "source_bytes": 747019,
+      "git_blob_sha1": "b61f4b658d21defb9ad435763be99d8b9e2d9756",
+      "sha256": "be6a76a0a226ff7dc0f66829d07004ad36a611f266d644c68b03b831db1658d6",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_livestage_3d_1793023043430.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_welcome.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_welcome.jpg",
+      "source_bytes": 726956,
+      "git_blob_sha1": "e5ee63bf3a746755cd84b3d5d7866627c160bea6",
+      "sha256": "da3dc81fb80968c601776faf4a9f57f8bcb8bbc9cfe611bd1bf8f8beea150956",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_welcome.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_welcome_3d_1793022854882.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_welcome_3d_1793022854882.jpg",
+      "source_bytes": 726956,
+      "git_blob_sha1": "e5ee63bf3a746755cd84b3d5d7866627c160bea6",
+      "sha256": "da3dc81fb80968c601776faf4a9f57f8bcb8bbc9cfe611bd1bf8f8beea150956",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_welcome_3d_1793022854882.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_worlds.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_worlds.jpg",
+      "source_bytes": 926272,
+      "git_blob_sha1": "6c26a03ad657f19aa4fb9ad4941f1999066d10e5",
+      "sha256": "5f0e7ae05e2a7895c0e489bb1f1268f8946c228c8c5d899552860c1d69741fa6",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_worlds.jpg"
+    },
+    {
+      "source_path": "public/assets/slides/slide_worlds_3d_1793022976093.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/assets/slides/slide_worlds_3d_1793022976093.jpg",
+      "source_bytes": 926272,
+      "git_blob_sha1": "6c26a03ad657f19aa4fb9ad4941f1999066d10e5",
+      "sha256": "5f0e7ae05e2a7895c0e489bb1f1268f8946c228c8c5d899552860c1d69741fa6",
+      "runtime_mirror": "apps/web/public/assets/slides/slide_worlds_3d_1793022976093.jpg"
+    },
+    {
+      "source_path": "public/icon.svg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/public/icon.svg",
+      "source_bytes": 1669,
+      "git_blob_sha1": "dc7a81851259357b30c3a7bca9f7751457893314",
+      "sha256": "bbc422185016bf9e08963da95b16e8b49e2b3d6134cff7781e92b50429c5d72c",
+      "runtime_mirror": "apps/web/public/icon.svg"
+    },
+    {
+      "source_path": "src/assets/images/menggu_ai_plaza_1793024772235.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/menggu_ai_plaza_1793024772235.jpg",
+      "source_bytes": 784618,
+      "git_blob_sha1": "e3453adbce9b27379c40ff1f4951ee99a812b4c9",
+      "sha256": "13e8fb3a8d2b2737c847955ed12e12c645a79578a58565cfd427db4c68046573",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/menggu_ai_plaza_1793024772235.jpg"
+    },
+    {
+      "source_path": "src/assets/images/menggu_billboard_ads_1793024797427.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/menggu_billboard_ads_1793024797427.jpg",
+      "source_bytes": 858428,
+      "git_blob_sha1": "0fc11cb48a923c8809e91ea020a140b69a650924",
+      "sha256": "ab219a41135782d9500163e7811d8e7d3e940a8104f8f8c53ec8ef5965d09f66",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/menggu_billboard_ads_1793024797427.jpg"
+    },
+    {
+      "source_path": "src/assets/images/menggu_district_spatial_1793024717088.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/menggu_district_spatial_1793024717088.jpg",
+      "source_bytes": 840740,
+      "git_blob_sha1": "ce20cae5341da20fdba8e78abcaa4af1b7f947a0",
+      "sha256": "5de1df9d43cea707279479a23d743ec08ceb2f50c570b45cb1e61d6fa6043d73",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/menggu_district_spatial_1793024717088.jpg"
+    },
+    {
+      "source_path": "src/assets/images/menggu_landmark_citadel_1793024745732.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/menggu_landmark_citadel_1793024745732.jpg",
+      "source_bytes": 479671,
+      "git_blob_sha1": "5ce4e268c6850b97332584a3e2eae2fb38707678",
+      "sha256": "a894475e4730e87faa59848a2713df9f9a9c70bce1e401e3895ec8c9cdf8eff1",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/menggu_landmark_citadel_1793024745732.jpg"
+    },
+    {
+      "source_path": "src/assets/images/slide_cinema_3d_1793023017033.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/slide_cinema_3d_1793023017033.jpg",
+      "source_bytes": 933431,
+      "git_blob_sha1": "41215ecaa20ff755d23e4d4a55e9bcbfb8cf2786",
+      "sha256": "d02ca0f55864a3f4f8e56b503a9c549bd26067aeb2febf86cd67186366aa50c8",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/slide_cinema_3d_1793023017033.jpg"
+    },
+    {
+      "source_path": "src/assets/images/slide_dualfeed_3d_1793022941224.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/slide_dualfeed_3d_1793022941224.jpg",
+      "source_bytes": 678134,
+      "git_blob_sha1": "64d55a937cbf6f003e541134f18701323a7c425e",
+      "sha256": "663d81d2f1519cf787f7025b614bae80d8c6a5fbf4932c64dd1b28b7260bef9b",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/slide_dualfeed_3d_1793022941224.jpg"
+    },
+    {
+      "source_path": "src/assets/images/slide_livestage_3d_1793023043430.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/slide_livestage_3d_1793023043430.jpg",
+      "source_bytes": 747019,
+      "git_blob_sha1": "b61f4b658d21defb9ad435763be99d8b9e2d9756",
+      "sha256": "be6a76a0a226ff7dc0f66829d07004ad36a611f266d644c68b03b831db1658d6",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/slide_livestage_3d_1793023043430.jpg"
+    },
+    {
+      "source_path": "src/assets/images/slide_welcome_3d_1793022854882.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/slide_welcome_3d_1793022854882.jpg",
+      "source_bytes": 726956,
+      "git_blob_sha1": "e5ee63bf3a746755cd84b3d5d7866627c160bea6",
+      "sha256": "da3dc81fb80968c601776faf4a9f57f8bcb8bbc9cfe611bd1bf8f8beea150956",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/slide_welcome_3d_1793022854882.jpg"
+    },
+    {
+      "source_path": "src/assets/images/slide_worlds_3d_1793022976093.jpg",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/src/assets/images/slide_worlds_3d_1793022976093.jpg",
+      "source_bytes": 926272,
+      "git_blob_sha1": "6c26a03ad657f19aa4fb9ad4941f1999066d10e5",
+      "sha256": "5f0e7ae05e2a7895c0e489bb1f1268f8946c228c8c5d899552860c1d69741fa6",
+      "runtime_mirror": "apps/web/public/assets/reference-source/images/slide_worlds_3d_1793022976093.jpg"
+    },
+    {
+      "source_path": "tsconfig.json",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/tsconfig.json",
+      "source_bytes": 658,
+      "git_blob_sha1": "fd8d34e6573933aefe3c409017402eadab1b5d67",
+      "sha256": "68015f80f40f7f7523e2575b8ddac5f410455a3a9148da9a037df33ed7193c8d",
+      "runtime_mirror": null
+    },
+    {
+      "source_path": "tsconfig.tsbuildinfo",
+      "snapshot_path": "docs/reference-ui-source/Allpha-Front-End-UI-New-SNAPSHOT/tsconfig.tsbuildinfo",
+      "source_bytes": 213688,
+      "git_blob_sha1": "b8fd0aa43fdbb8f7bd1e47b426164aca71f79ebf",
+      "sha256": "e4ebe20339409aee4743eeb76ca22f40fb1c7b74f6b8fdee0d81fa069cd00f79",
+      "runtime_mirror": null
+    }
+  ]
+}
