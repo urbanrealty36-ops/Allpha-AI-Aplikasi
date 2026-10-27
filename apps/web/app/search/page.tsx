@@ -277,7 +277,8 @@ function SearchPageContent() {
         trendsData={trends}
         accountsData={accountsForReference}
         accountsLoading={creatorsBusy}
-        accountsError={socialGraphError || creatorsError}
+        accountsError={creatorsError}
+        relationshipError={socialGraphError}
         onRetryAccounts={() => { void loadCreators(); void loadSocialGraph(); }}
         followedAccountIds={followedAccountIds}
         pendingFollowAccountIds={pendingFollowAccountIds}
