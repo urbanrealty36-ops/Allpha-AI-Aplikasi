@@ -310,10 +310,10 @@ export default function FeedPage() {
     };
   });
 
-  async function createPostFromReference(post: PostItem, visibility: "PUBLIC" | "FOLLOWERS" | "PRIVATE", mediaFile: File | null): Promise<boolean> {
+  async function createPostFromReference(post: PostItem, visibility: "PUBLIC" | "FOLLOWERS" | "PRIVATE", mediaFile: File | null): Promise<{ accepted: boolean; message?: string }> {
     if (!session) {
       setAuthPrompt("Masuk untuk membuat postingan.");
-      return false;
+      return { accepted: false, message: "Sesi login diperlukan untuk membuat konten." };
     }
     setError("");
     setNotice("");
@@ -362,13 +362,14 @@ export default function FeedPage() {
           : `Konten diterima API. Status: ${status}; moderasi: ${moderation}. Konten belum dianggap publik sampai API menyatakan published dan approved.`;
       await loadFeed(true);
       setNotice(confirmation);
-      return true;
+      return { accepted: true, message: confirmation };
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Konten belum tersimpan melalui API.";
-      setError(createdId
+      const truthfulMessage = createdId
         ? `Draft ${createdId} sudah dibuat. ${message} Draft tidak dianggap terpublikasi; periksa statusnya sebelum mencoba ulang.`
-        : message);
-      return false;
+        : message;
+      setError(truthfulMessage);
+      return { accepted: false, message: truthfulMessage };
     }
   }
 
