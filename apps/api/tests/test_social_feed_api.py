@@ -836,5 +836,5 @@ def test_public_profile_hides_inactive_account_before_content_lookup(monkeypatch
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
     assert not any(table == "content_items" for _, table, _ in calls)
