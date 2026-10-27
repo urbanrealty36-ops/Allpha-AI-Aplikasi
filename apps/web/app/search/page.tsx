@@ -35,7 +35,6 @@ function SearchPageContent() {
   const [creatorsError, setCreatorsError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
-  const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
