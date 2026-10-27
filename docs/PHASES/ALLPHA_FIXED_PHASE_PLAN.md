@@ -1890,3 +1890,10 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - WP-02 source route names exist for the core Native journeys, but complete reference-to-target component/CSS/asset parity and actual responsive/deep-link/device acceptance remain unverified. The source smoke assertions have not been executed.
 - No authenticated two-user tests, build/typecheck, smoke/test execution, staging, device flow or deployment was run. The live inspection was read-only.
 - **Status unchanged:** WP-02 `IN_PROGRESS`; ENG-P04 `IN_PROGRESS`. This evidence identifies an actual database privilege blocker and does not authorize advancing to ENG-P05. Follow the existing approved migration/validation process; do not apply production DDL ad hoc.
+
+
+**WP-02 route inventory expansion — 2026-10-27:**
+- Expanded `docs/PHASES/WP-02_ENG-P04_ACCEPTANCE_EVIDENCE_2026-10-27.md` with a source-level comparison of the reference shell's 14 route/tab journeys against Native deep links and stack routes, plus Stories, Notifications, Communities and Account subsections.
+- Explicit gaps recorded: no Native route for Create, Live Stage, Spatial Navigation, Marketplace, Ask AI, or AI Cinema; Skills Challenge has no dedicated Native deep link; POST_DETAIL query parameters are not mapped to a selected Native post; story selection/deep-link semantics differ. These must not be masked with fake routes or client-only success states. Downstream domain routes must follow canonical owner phases.
+- This is a source inventory, not device acceptance. No UI build, screenshot/viewport checks, Native device/deep-link flow, smoke tests or automated tests were run.
+- **Status unchanged:** WP-02 `IN_PROGRESS`; ENG-P04 `IN_PROGRESS`. ENG-P04 also remains blocked by the live `user_settings` privilege finding and unapplied forward migration described in the evidence register.
