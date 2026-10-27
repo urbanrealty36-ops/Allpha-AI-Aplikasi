@@ -44,7 +44,14 @@ function SearchPageContent() {
     if (!supabase) return;
     let active = true;
     void supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session); });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
+      searchRequestSequence.current += 1;
+      setItems([]);
+      setDiscoveredUsers([]);
+      setDiscoveryBusy(false);
+      setSession(next);
+    });
     return () => { active = false; searchRequestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
