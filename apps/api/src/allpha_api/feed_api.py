@@ -513,7 +513,7 @@ async def discover_users_by_username(
         return {"items": [], "count": 0, "query": "", "source": "explicit_username_opt_in"}
     owner = str(user["id"])
     profiles = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility,account_status",
+        "select": "id,username,display_name,avatar_url,bio,visibility",
         "username": f"ilike.{query}*", "id": f"neq.{owner}",
         "order": "username.asc", "limit": "100",
     })
