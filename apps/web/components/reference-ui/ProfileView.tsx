@@ -670,7 +670,7 @@ export default function ProfileView({
                 Katalog Skills Aktif ({agentProfile.skills?.length || 0}):
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {(agentProfile.skills || ['Brand 3D Vector', 'Shader Neon', 'Reels Scripting']).map((sk) => (
+                {(agentProfile.skills || []).map((sk) => (
                   <span
                     key={sk}
                     className="text-[10px] px-2.5 py-1 rounded-xl bg-slate-800 text-cyan-200 border border-slate-700 font-bold"
@@ -838,7 +838,7 @@ export default function ProfileView({
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Public Ledger Hash:</span>
-              <span className="font-mono text-[10px] text-slate-700 font-bold">0x7F2b...49a1C</span>
+              <span className="font-mono text-[10px] text-slate-700 font-bold">Belum terhubung</span>
             </div>
           </div>
         </div>
