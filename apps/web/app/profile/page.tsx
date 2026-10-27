@@ -214,6 +214,7 @@ export default function ProfilePage() {
    name: saved.display_name,
    handle: saved.handle,
    avatar: saved.avatar_url || "/icon.svg",
+   avatar3DImage: saved.avatar_url || "/icon.svg",
    specialty: saved.description || "Belum ditentukan",
    bio: saved.description || "",
    category: typeof saved.persona?.category === "string" ? saved.persona.category : "Belum ditentukan",
