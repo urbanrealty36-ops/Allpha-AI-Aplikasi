@@ -64,12 +64,22 @@ def _cursor_decode(cursor: str | None) -> tuple[int, datetime]:
 
 async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, Any]:
     rows = await _server_db("GET", "content_items", params={
-        "select": FIELDS, "id": f"eq.{content_id}", "status": "eq.published",
+        "select": FIELDS + ",expires_at", "id": f"eq.{content_id}", "status": "eq.published",
         "moderation_status": "eq.approved", "visibility": "in.(public,followers)", "limit": "1",
     })
     if not rows:
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     item = rows[0]
+    # Stories share the content interaction tables, but their TTL is a hard
+    # authorization boundary. Do not allow a stale published row to accept
+    # reactions/comments after the canonical Stories expiry time.
+    if item.get("content_type") == "story":
+        try:
+            expires_at = datetime.fromisoformat(str(item.get("expires_at") or "").replace("Z", "+00:00"))
+        except ValueError:
+            expires_at = None
+        if expires_at is None or expires_at.tzinfo is None or expires_at.astimezone(timezone.utc) <= _now():
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Story tidak ditemukan, kedaluwarsa, atau tidak dapat diakses."})
     followed, hidden = await _edges(viewer_id)
     owner_id = str(item.get("owner_id"))
     if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed):
