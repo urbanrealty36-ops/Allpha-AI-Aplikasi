@@ -24,7 +24,22 @@ Notifications.setNotificationHandler({
   }),
 });
 
-type Routes = { Welcome: undefined; Auth: { mode?: "signin" | "signup" } | undefined; Profile: undefined };
+type Routes = {
+  Welcome: undefined;
+  Auth: { mode?: "signin" | "signup" } | undefined;
+  Profile: undefined;
+  Account: undefined;
+  Agents: undefined;
+  Feed: undefined;
+  Reels: undefined;
+  Stories: undefined;
+  Search: undefined;
+  Messages: undefined;
+  Notifications: undefined;
+  Communities: undefined;
+  Social: undefined;
+  Consents: undefined;
+};
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
@@ -263,7 +278,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 
 function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
 
-function Profile({ session, initialTab = "profile" }: { session: Session; initialTab?: "profile" | "agents" | "feed" }) {
+function Profile({ session, initialTab = "profile" }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities" }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities">(initialTab);
@@ -1661,7 +1676,24 @@ function Navigator() {
   }, []);
 
   if (!ready || (session && !journeyReady)) return <View style={s.loading}><ActivityIndicator size="large" color="#A5B4FC"/><Text style={s.muted}>Menyiapkan sesi dan memeriksa identitas AI Agent…</Text></View>;
-  return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: { Welcome: "", Auth: "auth", Profile: "profile" } } }}><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <Stack.Screen name="Profile">{() => <Profile session={session} initialTab={journeyTab}/>}</Stack.Screen> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
+  return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: {
+    Welcome: "", Auth: "auth", Profile: "profile", Account: "account", Agents: "agents",
+    Feed: "feed", Reels: "reels", Stories: "stories", Search: "search", Messages: "messages",
+    Notifications: "notifications", Communities: "communities", Social: "account/social", Consents: "account/consents",
+  } } }}><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <>
+    <Stack.Screen name="Profile">{() => <Profile session={session} initialTab="profile"/>}</Stack.Screen>
+    <Stack.Screen name="Account">{() => <Profile session={session} initialTab="settings"/>}</Stack.Screen>
+    <Stack.Screen name="Agents">{() => <Profile session={session} initialTab="agents"/>}</Stack.Screen>
+    <Stack.Screen name="Feed">{() => <Profile session={session} initialTab="feed"/>}</Stack.Screen>
+    <Stack.Screen name="Reels">{() => <Profile session={session} initialTab="reels"/>}</Stack.Screen>
+    <Stack.Screen name="Stories">{() => <Profile session={session} initialTab="stories"/>}</Stack.Screen>
+    <Stack.Screen name="Search">{() => <Profile session={session} initialTab="discovery"/>}</Stack.Screen>
+    <Stack.Screen name="Messages">{() => <Profile session={session} initialTab="messages"/>}</Stack.Screen>
+    <Stack.Screen name="Notifications">{() => <Profile session={session} initialTab="notifications"/>}</Stack.Screen>
+    <Stack.Screen name="Communities">{() => <Profile session={session} initialTab="communities"/>}</Stack.Screen>
+    <Stack.Screen name="Social">{() => <Profile session={session} initialTab="social"/>}</Stack.Screen>
+    <Stack.Screen name="Consents">{() => <Profile session={session} initialTab="consents"/>}</Stack.Screen>
+  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
