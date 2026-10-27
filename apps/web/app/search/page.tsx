@@ -50,38 +50,49 @@ function SearchPageContent() {
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
       authEventSeen = true;
+      sessionTokenRef.current = next?.access_token ?? null;
       searchRequestSequence.current += 1;
       setItems([]);
       setDiscoveredUsers([]);
       setDiscoveryBusy(false);
+      setBusy(false);
+      setTrendsBusy(false);
+      setRecommendationsBusy(false);
+      setCreatorsBusy(false);
+      setFollowedAccountIds([]);
       setSession(next);
     });
     return () => { active = false; searchRequestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
   async function loadTrends() {
+    const requestSessionToken = session?.access_token ?? null;
     setTrendsBusy(true); setTrendsError("");
     try {
       const response = await fetch(apiBase + "/v1/trends?limit=10", { headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store" });
       const payload = await response.json() as Payload<Trend>;
       if (!response.ok) throw new Error(payload.error?.message || "Tren belum dapat dimuat.");
+      if (requestSessionToken !== sessionTokenRef.current) return;
       setTrends(payload.items || []);
-    } catch (cause) { setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
-    finally { setTrendsBusy(false); }
+    } catch (cause) { if (requestSessionToken === sessionTokenRef.current) setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
+    finally { if (requestSessionToken === sessionTokenRef.current) setTrendsBusy(false); }
   }
 
   async function loadRecommendations() {
+    const requestSessionToken = session?.access_token ?? null;
     setRecommendationsBusy(true); setRecommendationsError("");
     try {
       const response = await fetch(apiBase + "/v1/recommendations?limit=10", { headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store" });
       const payload = await response.json() as Payload<Recommendation>;
       if (!response.ok) throw new Error(payload.error?.message || "Rekomendasi belum dapat dimuat.");
+      if (requestSessionToken !== sessionTokenRef.current) return;
       setRecommendations(payload.items || []);
-    } catch (cause) { setRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi belum dapat dimuat."); }
-    finally { setRecommendationsBusy(false); }
+    } catch (cause) { if (requestSessionToken === sessionTokenRef.current) setRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi belum dapat dimuat."); }
+    finally { if (requestSessionToken === sessionTokenRef.current) setRecommendationsBusy(false); }
   }
 
   async function loadCreators() {
+    const requestSessionToken = session?.access_token ?? null;
     setCreatorsBusy(true); setCreatorsError("");
     try {
       const response = await fetch(apiBase + "/v1/recommendations/creators?limit=20", {
@@ -89,11 +100,14 @@ function SearchPageContent() {
       });
       const payload = await response.json() as Payload<Creator>;
       if (!response.ok) throw new Error(payload.error?.message || "Rekomendasi akun belum dapat dimuat.");
+      if (requestSessionToken !== sessionTokenRef.current) return;
       setCreators(payload.items || []);
     } catch (cause) {
-      setCreatorsError(cause instanceof Error ? cause.message : "Rekomendasi akun belum dapat dimuat.");
-      setCreators([]);
-    } finally { setCreatorsBusy(false); }
+      if (requestSessionToken === sessionTokenRef.current) {
+        setCreatorsError(cause instanceof Error ? cause.message : "Rekomendasi akun belum dapat dimuat.");
+        setCreators([]);
+      }
+    } finally { if (requestSessionToken === sessionTokenRef.current) setCreatorsBusy(false); }
   }
 
   useEffect(() => {
