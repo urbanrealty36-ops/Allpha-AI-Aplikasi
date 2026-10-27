@@ -872,3 +872,36 @@ def test_public_content_from_private_profile_is_hidden_from_non_followers(monkey
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
     assert writes == []
+
+
+def test_expired_story_rejects_feed_interactions(monkeypatch):
+    story_id = "00000000-0000-0000-0000-000000000099"
+    expired_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET"
+        assert table == "content_items"
+        assert "expires_at" in params["select"]
+        return [{
+            "id": story_id,
+            "owner_id": "eng-p16-story-owner",
+            "content_type": "story",
+            "body": "expired story",
+            "visibility": "public",
+            "status": "published",
+            "moderation_status": "approved",
+            "version": 1,
+            "created_at": expired_at,
+            "updated_at": expired_at,
+            "published_at": expired_at,
+            "expires_at": expired_at,
+        }]
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/feed/{story_id}/reaction", json={"reaction": "like"})
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    finally:
+        app.dependency_overrides.clear()
