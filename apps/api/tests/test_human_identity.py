@@ -180,8 +180,11 @@ def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
+        if method == "GET":
+            return []
         return [{
             "id": "edge-123",
+            "actor_user_id": "human-123",
             "target_user_id": "00000000-0000-0000-0000-000000000002",
             "edge_type": "follow",
             "status": "active",
