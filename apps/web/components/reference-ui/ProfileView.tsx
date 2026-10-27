@@ -149,7 +149,6 @@ export default function ProfileView({
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawBank, setWithdrawBank] = useState('BCA');
   const [withdrawAccount, setWithdrawAccount] = useState('');
-  const [settingsLang, setSettingsLang] = useState<'id' | 'en' | 'ja'>('id');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -1335,32 +1334,18 @@ export default function ProfileView({
                   <Globe className="w-4 h-4 text-slate-700" />
                   <span>Pilihan Bahasa Sistem & AI:</span>
                 </h4>
-                <div className="space-y-1.5">
-                  {[
-                    { code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩' },
-                    { code: 'en', name: 'English (US)', flag: '🇺🇸' },
-                    { code: 'ja', name: '日本語 (Japanese)', flag: '🇯🇵' },
-                  ].map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => {
-                        setIsSettingsOpen(false);
-                        setSelectedSettingDetail(null);
-                        if (onOpenAccountSettings) onOpenAccountSettings("profile");
-                        else showToast("Pengaturan bahasa belum terhubung ke formulir profil kanonis.");
-                      }}
-                      className={`w-full p-2.5 rounded-xl border-2 border-slate-900 flex items-center justify-between transition ${
-                        settingsLang === lang.code ? 'bg-[#FEF08A] font-black' : 'bg-white hover:bg-slate-50 font-bold'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span>{lang.flag}</span>
-                        <span>{lang.name}</span>
-                      </span>
-                      {settingsLang === lang.code && <span>✓ Aktif</span>}
-                    </button>
-                  ))}
-                </div>
+                <p className="text-[11px] leading-relaxed text-slate-700">Bahasa akun dikelola melalui formulir profil kanonis. Pilihan bahasa belum ditampilkan sebagai tersimpan di sini karena status preferensi akun tidak dimuat oleh panel ini.</p>
+                <button
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setSelectedSettingDetail(null);
+                    if (onOpenAccountSettings) onOpenAccountSettings("profile");
+                    else showToast("Pengaturan profil kanonis belum tersedia.");
+                  }}
+                  className="w-full p-2.5 rounded-xl border-2 border-slate-900 bg-white hover:bg-slate-50 font-black text-slate-900"
+                >
+                  Buka Pengaturan Profil
+                </button>
               </div>
             )}
 
