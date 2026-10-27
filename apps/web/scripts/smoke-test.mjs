@@ -461,3 +461,5 @@ assert.ok(exploreView.includes('pendingFollowAccountIds?: string[]') && exploreV
 assert.ok(exploreView.includes('"/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))'), "Human account cards must navigate to the canonical public profile route");
 
 assert.ok(socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", handle)') && socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", query)'), "Profile routes and username discovery must reject malformed handles rather than normalize them into another account");
+
+assert.ok(socialFeedApi.includes('requested_status = "requested" if target_rows[0].get("visibility") == "private" else "active"') && socialFeedApi.includes('"follow_request_created" if rows[0].get("status") == "requested" else "follow_active"'), "Legacy follow endpoint must preserve private-profile request semantics");
