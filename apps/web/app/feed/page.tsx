@@ -378,6 +378,7 @@ export default function FeedPage() {
       setAuthPrompt("Masuk untuk membuat postingan.");
       return { accepted: false, message: "Sesi login diperlukan untuk membuat konten." };
     }
+    const epoch = sessionEpoch.current;
     setError("");
     setNotice("");
     let createdId: string | null = null;
@@ -404,6 +405,7 @@ export default function FeedPage() {
         method: "POST",
         body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text" }),
       }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
+      if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat draft dibuat; proses publikasi dihentikan.");
       const contentId = created.item?.id;
       createdId = contentId ?? null;
       if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
@@ -411,11 +413,14 @@ export default function FeedPage() {
         const form = new FormData();
         form.append("file", mediaFile, mediaFile.name);
         await request("/v1/content/" + encodeURIComponent(contentId) + "/media", { method: "POST", body: form });
+        if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat media diunggah; draft tidak diteruskan ke publikasi.");
       }
+      if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah; proses publikasi dihentikan.");
       const published = await request("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as {
         item?: { status?: string; moderation_status?: string };
         message?: string;
       };
+      if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah setelah permintaan publikasi; periksa status draft dari akun pemilik.");
       const status = published.item?.status ?? created.item?.status ?? "unknown";
       const moderation = published.item?.moderation_status ?? created.item?.moderation_status ?? "unknown";
       const confirmation = published.message
@@ -431,6 +436,9 @@ export default function FeedPage() {
       const truthfulMessage = createdId
         ? `Draft ${createdId} sudah dibuat. ${message} Draft tidak dianggap terpublikasi; periksa statusnya sebelum mencoba ulang.`
         : message;
+      if (epoch !== sessionEpoch.current) {
+        return { accepted: false, message: "Sesi berubah; proses dihentikan. Periksa draft dari akun pemilik sebelum mencoba ulang." };
+      }
       setError(truthfulMessage);
       return { accepted: false, message: truthfulMessage };
     }
