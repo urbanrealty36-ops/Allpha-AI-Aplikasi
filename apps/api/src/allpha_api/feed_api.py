@@ -708,7 +708,7 @@ async def list_comments(
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         owner_id = str(public_items[0].get("owner_id") or "")
         profile = (await _profiles_for({owner_id})).get(owner_id)
-        if not profile or profile.get("visibility") != "public":
+        if not profile or profile.get("visibility") != "public" or profile.get("account_status", "active") != "active":
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         select_fields = "id,content_id,body,status,created_at,updated_at"
     rows = await _server_db("GET", "content_comments", params={"select": select_fields,
@@ -766,7 +766,7 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         item = rows[0]
         public_profile = (await _profiles_for({str(item.get("owner_id") or "")})).get(str(item.get("owner_id")))
-        if not public_profile or public_profile.get("visibility") != "public":
+        if not public_profile or public_profile.get("visibility") != "public" or public_profile.get("account_status", "active") != "active":
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         item["creator"] = {"username": public_profile.get("username"), "display_name": public_profile.get("display_name") or public_profile.get("username") or "Kreator", "avatar_url": public_profile.get("avatar_url")}
     cid = str(content_id)
