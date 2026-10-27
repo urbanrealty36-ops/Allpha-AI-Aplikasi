@@ -112,3 +112,31 @@ The results are recorded above. These queries do not exercise end-user JWT polic
 
 - Added a source-level smoke assertion for the exact user_settings privilege migration contract: broad table revoke, column revoke, authenticated SELECT, and restricted INSERT/UPDATE column lists. Commit: `37f3822c7d64bdb6e7659b59bb54848e71eb856b`.
 - The smoke script was **not run**. This assertion detects source drift only; it cannot prove the migration has run or that live grants are corrected.
+
+
+## Reference/target source manifest (read-only inventory)
+
+Blob SHA values below are the GitHub file blob SHAs returned by the repository connector; byte counts are UTF-8 source lengths from the retrieved content. They identify exactly which source was inspected, not visual equivalence.
+
+| Role | Path | Blob SHA | Bytes | Review result |
+|---|---|---|---:|---|
+| Reference | `app/page.tsx` | `0bddfa37d8dbc307d0362b742b66ee644f9dfba0` | 27,391 | Reference SPA composition; contains demo/store state and modal/tab behavior requiring API-backed adapter parity, not direct promotion |
+| Reference | `app/globals.css` | `5a7873abc0ed6501cce9c86073350bfc602cfcb2` | 49 | Reference base stylesheet |
+| Reference | `components/Navbar.tsx` | `fab9a740d3a7a8d81e7219be27f01b9d67ca8261` | 7,826 | Header/navigation visual source |
+| Reference | `components/BottomNav.tsx` | `c2841cf7048bd2130f8634435d683523e04325d6` | 6,357 | Mobile navigation visual source |
+| Reference | `components/ProfileView.tsx` | `c55452a78cee9f1e33f2480bea39049f24882348` | 74,976 | Profile visual/interaction source |
+| Reference | `components/ExploreView.tsx` | `9e1f3a9f7c43ee4ed0c250842d6c93e0200e5701` | 45,784 | Explore/Search visual/interaction source |
+| Reference | `components/MessagesView.tsx` | `20685f8eb9e5f16df8f1163bcd9198f23cc25f56` | 8,096 | Inbox visual/interaction source |
+| Target | `apps/web/app/globals.css` | `1d22919ddf820336cbe4d17064ca7d97e367032b` | 21,310 | Target stylesheet is substantially larger; route-scoped cascade/asset parity remains open |
+| Target | `apps/web/components/reference-ui/ReferenceNavigation.tsx` | `d499ce9d86a45a3f23c0f2018172522fccf8ec81` | 6,097 | Shared navigation adapter and route map |
+| Target | `apps/web/components/reference-ui/ExploreView.tsx` | `cfe9a582b35d3d1398bc65abf298c8834b6b7f32` | 48,574 | API-backed Explore adapter; not visually accepted |
+| Target | `apps/web/components/reference-ui/MessagesView.tsx` | `7074ec42cf02c670781d353c02235a9317204a7e` | 8,042 | API-backed inbox adapter; not visually/device accepted |
+| Target | `apps/web/components/reference-ui/ProfileView.tsx` | `479a40e777357bd530ed879d58f6cfd9102f3901` | 78,066 | Profile adapter; intentionally suppresses unavailable metrics/runtime claims |
+| Target | `apps/web/app/feed/page.tsx` | `85fb59c745929dbf8e513aef424018f5f5d39808` | 29,381 | API-backed Feed route; story click-through still needs canonical viewer contract |
+| Target | `apps/web/app/search/page.tsx` | `75c28213273646537d8e43b287a8de563e54c252` | 20,322 | API-backed search/discovery and session/request sequencing |
+| Target | `apps/web/app/messages/page.tsx` | `0d0349a0762b613028bc33c3c29a05457cf9f580` | 10,877 | Auth-scoped inbox adapter and request sequencing |
+| Target | `apps/web/app/notifications/page.tsx` | `5a3351870eea29d4ac2d62854d4675487c8039e8` | 12,515 | Auth-scoped notification/preferences adapter |
+| Target | `apps/web/app/profile/page.tsx` | `3d590ade12c16b43ff36fac434401ae57213c668` | 15,949 | Profile adapter; unavailable counts/takeover state are not fabricated |
+| Target | `apps/web/app/account/page.tsx` | `d977cf0cc45e84ca3c295d47b7b0fec95b742e98` | 36,071 | Account/settings/social/consent route and query-tab mapping |
+
+The manifest is now source-checksum traceable for the principal WP-02 journeys, but it is not yet the complete public-asset/font/icon/image manifest and does not resolve dynamic CSS, responsive breakpoints, screenshot diff, animation/gesture, accessibility, or interaction acceptance. Those require a permitted validation window; no test/build or screenshot was performed here.
