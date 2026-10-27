@@ -586,6 +586,7 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
         assert body["actor_user_id"] == actor_id
         assert body["target_user_id"] == target_id
         assert body["edge_type"] == "follow"
+        assert body["status"] == "requested", "private-profile follow must not become active before owner approval"
         return [created]
 
     monkeypatch.setattr(main_api, "user_db_request", fake_db)
