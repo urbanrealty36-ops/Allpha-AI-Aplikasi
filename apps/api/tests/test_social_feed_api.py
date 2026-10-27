@@ -577,8 +577,11 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
 
     async def fake_db(method, path, access_token, *, params=None, body=None, prefer=None):
         calls.append((method, path, params or {}, body, prefer))
-        if method == "GET":
+        if method == "GET" and path == "social_edges":
             return []
+        if method == "GET" and path == "profiles":
+            assert params["select"] == "id,visibility,account_status"
+            return [{"id": target_id, "visibility": "private", "account_status": "active"}]
         assert method == "POST" and path == "social_edges"
         assert body["actor_user_id"] == actor_id
         assert body["target_user_id"] == target_id
@@ -599,7 +602,41 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
     payload = response.json()
     assert payload["idempotent_replay"] is False
     assert payload["outcome"] == "follow_request_created"
-    assert len(calls) == 2
+    assert len(calls) == 5  # existing edge, target profile, two block directions, insert
+
+
+def test_canonical_social_edge_rejects_deactivated_profile_before_relationship_write(monkeypatch):
+    actor_id = "00000000-0000-0000-0000-000000000307"
+    target_id = "00000000-0000-0000-0000-000000000308"
+    calls = []
+
+    async def fake_user(request: Request):
+        request.state.supabase_access_token = "social-edge-inactive-test-token"
+        return {"id": actor_id}
+
+    async def fake_db(method, path, access_token, *, params=None, body=None, prefer=None):
+        calls.append((method, path, params or {}, body))
+        if path == "social_edges":
+            assert method == "GET"
+            return []
+        if path == "profiles":
+            assert method == "GET"
+            return [{"id": target_id, "visibility": "public", "account_status": "deactivation_requested"}]
+        raise AssertionError(f"follow must stop before writing to {path}")
+
+    monkeypatch.setattr(main_api, "user_db_request", fake_db)
+    app.dependency_overrides[current_user] = fake_user
+    try:
+        response = TestClient(app).post(
+            "/v1/me/social-edges",
+            json={"target_user_id": target_id, "edge_type": "follow"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"]["code"] == "PUBLIC_PROFILE_NOT_FOUND"
+    assert not any(method == "POST" for method, _, _, _ in calls)
 
 
 def test_follow_rejects_deactivated_profile_before_relationship_write(monkeypatch):
