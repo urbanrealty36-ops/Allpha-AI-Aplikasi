@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -41,9 +41,10 @@ def test_weekly_schedule_respects_weekday_and_timezone():
 
 
 def test_once_schedule_requires_offset_and_future_timestamp():
+    future_run = (datetime.now(timezone.utc) + timedelta(days=2)).astimezone(ZoneInfo("Asia/Jakarta"))
     parsed = TaskScheduleCreate.model_validate(schedule_payload(
-        schedule_kind="once", run_at="2026-10-27T18:00:00+07:00"))
-    assert _next_occurrence(parsed, datetime(2026, 10, 26, tzinfo=timezone.utc)) == datetime(2026, 10, 27, 11, 0, tzinfo=timezone.utc)
+        schedule_kind="once", run_at=future_run.isoformat()))
+    assert _next_occurrence(parsed, datetime.now(timezone.utc)) == parsed.run_at.astimezone(timezone.utc)
     with pytest.raises(ValidationError):
         TaskScheduleCreate.model_validate(schedule_payload(
             schedule_kind="once", run_at="2026-10-27T18:00:00"))
