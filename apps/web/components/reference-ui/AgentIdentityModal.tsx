@@ -143,10 +143,10 @@ export default function AgentIdentityModal({
             </div>
             <div>
               <h2 className="text-sm font-black text-slate-900 uppercase">
-                AI Agent Identity & 3D Avatar Studio
+                AI Agent Identity & Avatar Profil
               </h2>
               <p className="text-[11px] font-bold text-slate-500">
-                Pilih avatar profil dan bidang profesi; aktivasi Skills dikelola di Agent Studio
+                Pilih gambar avatar dan bidang profesi; aktivasi Skills dilakukan melalui Agent Studio
               </p>
             </div>
           </div>
@@ -163,10 +163,10 @@ export default function AgentIdentityModal({
           <div className="flex items-center justify-between">
             <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
               <Box className="w-3.5 h-3.5 text-blue-600" />
-              <span>Katalog Model Avatar 3D (Multi-Angle Rigged)</span>
+              <span>Katalog gambar avatar (bukan bukti GLB rigged)</span>
             </label>
             <span className="text-[10px] text-blue-600 font-bold">
-              {AVATAR_3D_CATALOG.length} Avatar 3D
+              {AVATAR_3D_CATALOG.length} pilihan avatar
             </span>
           </div>
 
