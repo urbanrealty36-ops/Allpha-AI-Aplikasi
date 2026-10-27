@@ -235,6 +235,7 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
             </Pressable>;
           })}
         </ScrollView>}
+      {initialStoryId && !selectedStory && !guestLoading && <Text style={s.warning}>Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan.</Text>}
       {selectedStory && <View style={[s.card, { padding: 14, marginTop: 12 }]}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}><Text style={s.title}>{selectedStory.creator?.display_name || selectedStory.creator?.username || "Story publik"}</Text><Pressable onPress={() => setSelectedStory(null)}><Text style={s.secondaryText}>Tutup</Text></Pressable></View>
         {selectedStoryMedia?.media_type.startsWith("image/") && selectedStoryMedia.preview_url && <Image source={{ uri: selectedStoryMedia.preview_url }} resizeMode="contain" style={{ width: "100%", height: 320, borderRadius: 16, marginVertical: 10 }}/>}
