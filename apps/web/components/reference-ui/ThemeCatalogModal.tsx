@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Palette, Check, Sparkles, X, Sun, Moon, Eye } from 'lucide-react';
 
-interface ThemeItem {
+export interface ThemeItem {
   id: string;
   name: string;
   subtitle: string;
@@ -17,13 +17,15 @@ interface ThemeCatalogModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentThemeId?: string;
-  onSelectTheme: (themeId: string, themeName: string) => void;
+  themes?: ThemeItem[];
+  onSelectTheme: (themeId: string, themeName: string) => boolean | Promise<boolean>;
 }
 
 export default function ThemeCatalogModal({
   isOpen,
   onClose,
-  currentThemeId = 'menggu-pastel',
+  currentThemeId = '',
+  themes = [],
   onSelectTheme,
 }: ThemeCatalogModalProps) {
   const [selectedId, setSelectedId] = useState(currentThemeId);
@@ -34,51 +36,18 @@ export default function ThemeCatalogModal({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const THEMES: ThemeItem[] = [
-    {
-      id: 'menggu-pastel',
-      name: 'Soft Pastel Menggu (Default 2026)',
-      subtitle: 'Playful, ramah, dan menenangkan dengan palet pastel lembut',
-      paletteColors: ['#FEF08A', '#DDD6FE', '#BAE6FD', '#BBF7D0', '#FECDD3'],
-      borderStyle: 'border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]',
-      description: 'Perpaduan warna butter yellow, soft lavender, sky blue, dan blush pink dengan border tactile Neo-Brutalism.',
-      badge: 'TERPOPULER'
-    },
-    {
-      id: 'neo-brutal-slate',
-      name: 'Playful Neo-Brutalist Spatial',
-      subtitle: 'Kontras tinggi, border tebal 3px, dan bayangan taktil retro pop',
-      paletteColors: ['#F43F5E', '#0EA5E9', '#FBBF24', '#10B981', '#0F172A'],
-      borderStyle: 'border-3 border-slate-950 shadow-[4px_4px_0px_#000]',
-      description: 'Estetika desain web modern dengan batas tegas, tipografi kuat, dan nuansa arcade futuristik.',
-      badge: 'PRO'
-    },
-    {
-      id: 'cyberpunk-tokyo',
-      name: 'Neo Tokyo Cyberpunk',
-      subtitle: 'Neon cyan, magenta, dan gelapnya distrik kota masa depan',
-      paletteColors: ['#06B6D4', '#EC4899', '#A855F7', '#1E1B4B', '#09090B'],
-      borderStyle: 'border-2 border-cyan-400 shadow-[3px_3px_0px_#ec4899]',
-      description: 'Ideal untuk penjelajahan 3D Universe malam hari dan panggung konser live stage virtual.',
-      badge: '3D SPATIAL'
-    },
-    {
-      id: 'crystal-oasis',
-      name: 'Crystal City Oasis',
-      subtitle: 'Pantulan air jernih, biophilic design, dan emerald glass',
-      paletteColors: ['#38BDF8', '#34D399', '#F0FDF4', '#047857', '#0F172A'],
-      borderStyle: 'border-2 border-emerald-800 shadow-[3px_3px_0px_#047857]',
-      description: 'Warna alam segar yang dipadukan dengan kaca PBR futuristik untuk suasana santai.',
-      badge: 'BIO-TECH'
-    },
-  ];
+  const THEMES: ThemeItem[] = themes;
 
   if (!isOpen) return null;
 
-  const handleApply = (theme: ThemeItem) => {
+  const handleApply = async (theme: ThemeItem) => {
+    const applied = await onSelectTheme(theme.id, theme.name);
+    if (!applied) {
+      showToast("Penerapan tema belum dikonfirmasi oleh layanan tema kanonis.");
+      return;
+    }
     setSelectedId(theme.id);
-    onSelectTheme(theme.id, theme.name);
-    showToast(`Tema "${theme.name}" berhasil diterapkan ke Allpha Universe!`);
+    showToast(`Tema "${theme.name}" diterapkan oleh layanan tema kanonis.`);
   };
 
   return (
@@ -106,6 +75,13 @@ export default function ThemeCatalogModal({
 
         {/* Theme Cards List */}
         <div className="p-4 overflow-y-auto space-y-3.5 flex-1">
+          {THEMES.length === 0 && (
+            <div className="p-5 rounded-3xl border-2 border-dashed border-slate-400 bg-slate-50 text-center">
+              <Palette className="w-7 h-7 mx-auto mb-2 text-slate-400" />
+              <p className="text-xs font-black text-slate-800">Katalog tema kanonis belum tersedia.</p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-500">Tema tidak diisi dengan contoh statis. Daftar akan muncul setelah adapter tema tersambung.</p>
+            </div>
+          )}
           {THEMES.map((th) => {
             const isSelected = selectedId === th.id;
 
