@@ -1903,3 +1903,10 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Public profile resolution and public creator recommendations now exclude accounts whose canonical `profiles.account_status` is not `active`; public profile resolution returns the existing not-found contract before reading any content for an inactive account. Missing `account_status` remains treated as `active` only for legacy fixtures/source compatibility; the deployed schema contract still needs review.
 - Added a regression test source for the inactive-profile boundary. It was not executed per instruction.
 - This narrows one visibility gap; it does not close ENG-P04. Remaining blockers are cross-surface privacy/visibility review, canonical grant/migration reconciliation and deferred verification.
+
+
+**Follow-up source reconciliation (2026-10-27, WP-02/ENG-P04):**
+- Reconciled Search's ExploreView callback contract with the actual component API: it passes relationship state (active, requested, or null), not a boolean. Search now hydrates active and pending follow IDs separately from /v1/me/social-graph, renders pending request state through the existing reference UI, and allows cancellation of a pending request through the canonical DELETE endpoint.
+- The username discovery query now selects only profile columns already used by the canonical profile projection; no unverified account_status column is assumed.
+- Added a source-contract assertion for pending follow request state/cancellation. As before, assertions were **not run**; no build, typecheck, test, staging, migration application or deployment was executed.
+- Current branch head after this update is recorded in GitHub; PR #10 remains a draft. WP-02 must remain IN_PROGRESS / acceptance DEFERRED / NOT VERIFIED until shared-shell/source parity, privacy/schema/grant reconciliation, and the explicitly deferred verification gates are completed. The fixed phase plan explicitly says not to invent a separate WP-03; the next canonical engineering scope remains **ENG-P04 — Social Graph**, with cross-surface privacy/visibility and grant/migration reconciliation as the entry criteria.
