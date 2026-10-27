@@ -448,6 +448,10 @@ assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_i
 const nativeSocialSource = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
 assert.ok(nativeSocialSource.includes('updateInterestPreference') && nativeSocialSource.includes('"not_interested"'), "Native Social Graph must persist both positive and negative interest preferences");
 assert.ok(nativeSocialSource.includes('result.outcome === "follow_active"') && nativeSocialSource.includes('result.outcome === "follow_request_created"'), "Native Social Graph must distinguish active follows from private-profile requests");
+for (const contract of [
+  "/v1/social/discover-users", "socialDiscoveryUsers", "socialDiscoveryRequestSequence.current",
+  "Pencarian username menghormati pengaturan penemuan akun", "ID TARGET UNTUK BLOKIR / BISUKAN"
+]) assert.ok(nativeSocialSource.includes(contract), "Native Social Graph must use privacy-aware username discovery: " + contract);
 for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
 const nativeApp = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
 for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"agents\"", "Feed: \"feed\"", "Reels: \"reels\"", "Stories: \"stories\"", "Search: \"search\"", "Messages: \"messages\"", "Notifications: \"notifications\"", "Communities: \"communities\""]) {
