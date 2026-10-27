@@ -1876,3 +1876,12 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **Shared shell navigation auth sequencing (2026-10-27):**
 - Fixed a race in ReferenceNavigation where a delayed initial getSession() response could overwrite a newer onAuthStateChange session and refresh inbox indicators for the wrong identity. The initial read is now ignored once an auth event has been observed. File: apps/web/components/reference-ui/ReferenceNavigation.tsx.
 - Added an unexecuted source-contract assertion. No test/build/typecheck/staging/deployment was run.
+
+
+**WP-02 identity/session isolation and username discovery contract (2026-10-27):**
+- Account and Profile pages now ignore delayed initial `getSession()` results after an auth-state event and clear prior user's profile/settings/Agent/content projections when the authenticated user changes. This extends the existing stale-response guards to the shared identity surfaces.
+- Username discovery now selects the canonical `profiles.account_status` field and excludes accounts whose status is not `active`, in addition to requiring explicit `privacy_settings.discoverable_by_username === true`, exact literal username-prefix matching, and exclusion of block/mute/active-or-pending follow relationships.
+- Added API contract tests (not executed) for explicit opt-in, private-profile minimal projection, opt-out, inactive accounts, block/follow exclusions, and malformed handles. Added source-contract assertions (not executed) for account/profile auth-race and identity-switch protections.
+- Files touched in this checkpoint: `apps/api/src/allpha_api/feed_api.py`, `apps/api/tests/test_social_feed_api.py`, `apps/web/app/account/page.tsx`, `apps/web/app/profile/page.tsx`, `apps/web/scripts/smoke-test.mjs`.
+- Validation policy unchanged: no test execution, build, typecheck, staging, real-user test, migration execution or deployment was performed. These are source changes only, pending authorized verification and review.
+- **Status remains WP-02 `IN_PROGRESS` and ENG-P04 `IN_PROGRESS`.** Remaining blockers include cross-surface privacy/visibility parity, review of the least-privilege `user_settings` grant-repair migration against source/live schema, and final integration/source-parity review of shared shell and canonical engine endpoints. Canonical LLM/Model Router, Agent Runtime, Memory/Knowledge, Skills and Workflow modules remain owned by their existing modules; WP-02 consumes those APIs rather than duplicating engines.
