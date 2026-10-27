@@ -1838,3 +1838,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Added source-contract assertions in `apps/web/scripts/smoke-test.mjs` for the profile endpoint, private discoverability gate, public profile route, and pending-follow reference UI. Assertions have **not** been executed, in accordance with the current instruction.
 - This is still an implementation checkpoint, not a release/acceptance statement. No tests, build, typecheck, staging, live-user test, or deployment were run. The new endpoint still needs schema/RLS/source-parity review and a future authorized verification pass. WP-02 remains `IN_PROGRESS`; ENG-P04 remains `IN_PROGRESS`.
 - Checkpoint commits: `346c9d9102147a7f48dae43633009dae48020da1`, `b8b6fad1dce00392e2327ffb7d33d04f57855213`, `aee1528d4ad50fa624fc759d11eafb52996348b5`, `b239917412c61c3154943bff0e9c6b909385e1e1`, `16edb48b057936456dc36ae0c534adb9a5603bbc`, `9d6e0bbcd72c233e2d4384cab2ace68b4ff4b68a`.
+
+
+**Follow-up hardening (2026-10-27):**
+- Username/profile handle parsing now rejects malformed characters instead of silently stripping them. This prevents a route such as a malformed handle from normalizing into and accidentally resolving a different user's valid handle. Generic content-search phrases produce an empty account-discovery result rather than being compacted into a different username prefix. File: `apps/api/src/allpha_api/feed_api.py`.
+- Added a source-contract assertion for malformed handle rejection; it has not been executed. No tests/build/typecheck/staging/deployment were run.
