@@ -1875,3 +1875,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/49ec368158f46cbe16657725f178faca01ab4554, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/387d85d5783f998ba52c627908003796fd2aad2f, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/d7c0a3d30730d47f2179334a1e38fef13f6fa734.
 - Source-only change. Regression test and smoke script have not been executed. No build/typecheck, staging, real-user journey, deployment, production migration, or live RLS/grant verification was performed.
 - **Status unchanged:** WP-02 IN_PROGRESS; ENG-P04 IN_PROGRESS. Acceptance remains blocked on the full Web–Native route/UI parity inventory, execution/evidence under the approved acceptance process, and authorized live database grants/RLS plus cross-user privacy evidence. Do not start ENG-P05 until both gates have evidence-based acceptance.
+
+**WP-02 follow-up — 2026-10-27 (Native Agent journey request sequencing):**
+- Native Navigator now sequences the `/v1/agents` journey lookup per authentication event and ignores stale responses after a session/account change. This closes the source-level race noted in the prior fixed-plan entry; it does not prove native navigation parity or device behavior.
+- Added a smoke-source assertion for the sequence guard. It has not been executed.
+- Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/9b7feffefbee04384df50e13eff62a44fa014cfc, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/79462004c81405e9e4561a46ce450576d9e02c7a.
+- WP-02 and ENG-P04 remain IN_PROGRESS. No test, smoke, typecheck/build, staging, device flow, production migration, or deployment was run. The remaining Web–Native route/UI parity and live database grant/RLS/privacy evidence are still required before either acceptance gate can close.
