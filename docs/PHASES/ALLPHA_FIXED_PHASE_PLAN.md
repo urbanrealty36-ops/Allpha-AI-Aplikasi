@@ -1645,3 +1645,11 @@ The Product Owner explicitly authorizes moving past WP-01 / UI-COPY-03 without w
 - Scope remains the existing WP-02 row: header, bottom navigation, session state, search, notifications, inbox badges, Human profile, profile settings, privacy controls, profile-owned Feed/Reels tabs, My Agent list and Agent profile; canonical API data only, with Web and Native route/deep-link parity.
 - First slice: audit shared shell/session and profile data contracts, identify fields already returned by canonical FastAPI, wire only those fields, and record unsupported fields as explicit unavailable states. Do not invent social counts, posts, credit balances, verification badges, unread counts, owned Agent mutations, or privacy settings.
 - Keep Marketplace/Booth API integration, authenticated visual evidence, and Vercel deployment as deferred items under their appropriate owners/operational constraints; they are not WP-02 acceptance blockers unless a WP-02 dependency is explicitly documented.
+
+
+**WP-02 execution update — 2026-10-27 (navigation truth-state slice):**
+- Fixed active-tab mapping so `/profile` highlights the reference Profile tab instead of falling back to Feed. Agent management `/agents` remains in the Profile tab group.
+- Removed the hardcoded default unread count of `2` from the copied BottomNav component; absence of canonical unread-count data no longer implies a fabricated count.
+- Changed Navbar's red notification dot to render only when an explicit canonical `hasUnreadNotifications={true}` value is supplied. The shared shell currently supplies no such value, so it no longer invents unread activity while preserving the exact dot style for a future API-backed state.
+- Commits: [BottomNav](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/528fd0df4dddef8e51113589c7ca8bfad9cfb60b), [Navbar](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/741514f722606fd95d6d75b1793c22b37b5b21a5), [ReferenceNavigation](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/c0b949a7f6cd24040c18d68ef4dfb917f934a8c3).
+- CI for the newest commit is queued/in progress at the time of this note. Do not claim this WP-02 slice validated until the current commit's typecheck/build/route checks complete.
