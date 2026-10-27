@@ -1835,3 +1835,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Added a source regression test for the legacy private-profile route and a smoke-source assertion for both route contracts. Neither has been executed.
 - Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/d3bc5c118be53d564fc91f1c4c29058eb0de4eea, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/df257c07f1801cb3244507ea96e284a3f8f08572, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/1c1467e3940a9a7a2494d412864181d510ba96ed.
 - WP-02 and ENG-P04 remain IN_PROGRESS. No test/build/typecheck execution, staging, real-user flow, deployment or production migration was run. The acceptance gate remains open.
+
+
+**Smoke-source follow-up — 2026-10-27:**
+- Corrected the new legacy private-follow assertion to read the feed API source within its own top-level binding rather than referencing a block-scoped variable from an earlier conditional. Commit: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/8bcf593c91ed217a8d3a2aa41150b8eb9c19e67a.
+- The smoke file has not been executed. This correction does not change acceptance status: WP-02 and ENG-P04 remain IN_PROGRESS.
