@@ -111,7 +111,7 @@ function Button({ title, onPress, secondary = false, disabled = false }: { title
 }
 function Brand() { return <View style={s.brand}><View style={s.mark}><Text style={s.markText}>A</Text></View><Text style={s.eyebrow}>AI SOCIAL UNIVERSE</Text><Text style={s.brandTitle}>Allpha</Text><Text style={s.muted}>Satu universe untuk manusia dan AI Agent.</Text></View>; }
 
-function Welcome() {
+function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string; initialContentId?: string } = {}) {
   const nav = useNavigation<NavigationProp<Routes>>();
   const [health, setHealth] = useState("Memeriksa API…");
   const [publicFeed, setPublicFeed] = useState<NativeFeedItem[]>([]);
@@ -119,8 +119,42 @@ function Welcome() {
   const [reelsError, setReelsError] = useState("");
   const [publicStories, setPublicStories] = useState<NativeStory[]>([]);
   const [selectedStory, setSelectedStory] = useState<NativeStory | null>(null);
+  const [selectedPublicFeedItem, setSelectedPublicFeedItem] = useState<NativeFeedItem | null>(null);
+  const [selectedPublicFeedId, setSelectedPublicFeedId] = useState<string | null>(initialContentId ?? null);
+  const [selectedPublicFeedLoading, setSelectedPublicFeedLoading] = useState(false);
+  const [selectedPublicFeedError, setSelectedPublicFeedError] = useState("");
   const [guestLoading, setGuestLoading] = useState(true);
   const [guestError, setGuestError] = useState("");
+
+  useEffect(() => { setSelectedPublicFeedId(initialContentId ?? null); }, [initialContentId]);
+
+  useEffect(() => {
+    if (!initialStoryId) return;
+    const match = publicStories.find(story => story.id === initialStoryId);
+    if (match) setSelectedStory(match);
+  }, [initialStoryId, publicStories]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedPublicFeedId) {
+      setSelectedPublicFeedItem(null);
+      setSelectedPublicFeedError("");
+      setSelectedPublicFeedLoading(false);
+      return () => { active = false; };
+    }
+    setSelectedPublicFeedItem(null);
+    setSelectedPublicFeedError("");
+    setSelectedPublicFeedLoading(true);
+    void fetch(apiBase + "/v1/feed/item/" + encodeURIComponent(selectedPublicFeedId), { headers: { Accept: "application/json" }, cache: "no-store" })
+      .then(async response => {
+        const payload = await response.json().catch(() => ({})) as { item?: NativeFeedItem; detail?: { message?: string }; error?: { message?: string } };
+        if (!response.ok || !payload.item || payload.item.id !== selectedPublicFeedId) throw new Error(payload.detail?.message || payload.error?.message || "Konten publik tidak tersedia atau tidak dapat diakses.");
+        if (active) setSelectedPublicFeedItem(payload.item);
+      })
+      .catch(cause => { if (active) setSelectedPublicFeedError(cause instanceof Error ? cause.message : "Konten publik tidak tersedia atau tidak dapat diakses."); })
+      .finally(() => { if (active) setSelectedPublicFeedLoading(false); });
+    return () => { active = false; };
+  }, [selectedPublicFeedId]);
 
   useEffect(() => {
     let active = true;
@@ -214,6 +248,14 @@ function Welcome() {
     <View style={s.card}>
       <Text style={s.kicker}>FEED PUBLIK</Text>
       <Text style={s.title}>Jelajahi Allpha</Text>
+      {selectedPublicFeedId && <View style={[s.card, { padding: 14, marginTop: 12 }]}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}><Text style={s.title}>Konten terpilih</Text><Pressable onPress={() => { setSelectedPublicFeedId(null); setSelectedPublicFeedItem(null); setSelectedPublicFeedError(""); }}><Text style={s.secondaryText}>Tutup</Text></Pressable></View>
+        {selectedPublicFeedLoading ? <ActivityIndicator color="#A5B4FC"/> : selectedPublicFeedError ? <Text style={s.warning}>{selectedPublicFeedError}</Text> : selectedPublicFeedItem ? <>
+          <Text style={s.kicker}>{selectedPublicFeedItem.creator?.display_name || selectedPublicFeedItem.creator?.username || "Kreator publik"}</Text>
+          {!!selectedPublicFeedItem.body && <Text style={s.body}>{selectedPublicFeedItem.body}</Text>}
+          {selectedPublicFeedItem.media?.filter(media => media.preview_url && media.media_type.startsWith("image/")).map(media => <Image key={media.id} source={{ uri: media.preview_url! }} resizeMode="contain" style={{ width: "100%", height: 220, borderRadius: 14, marginVertical: 8 }}/>) }
+        </> : <Text style={s.body}>Konten publik tidak tersedia atau tidak dapat diakses.</Text>}
+      </View>}
       {guestLoading ? <ActivityIndicator color="#A5B4FC"/> : publicFeed.length === 0
         ? <Text style={s.body}>Belum ada postingan publik yang tersedia.</Text>
         : publicFeed.map(item => <View key={item.id} style={s.socialRow}>
@@ -1790,7 +1832,7 @@ function Navigator() {
     <Stack.Screen name="Messages">{() => <Profile session={session} initialTab="messages"/>}</Stack.Screen>
     <Stack.Screen name="Notifications">{() => <Profile session={session} initialTab="notifications"/>}</Stack.Screen>
     <Stack.Screen name="Communities">{() => <Profile session={session} initialTab="communities"/>}</Stack.Screen>
-  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
+  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/><Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen><Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
