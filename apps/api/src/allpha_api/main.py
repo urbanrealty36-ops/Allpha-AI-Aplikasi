@@ -538,6 +538,42 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
             "outcome": _social_edge_outcome(existing[0]),
         })
 
+    # Follow creation must enforce the same active-profile and reciprocal-block
+    # rules as Feed discovery. RLS alone is not the product relationship policy.
+    if payload.edge_type == "follow":
+        target_profiles = await user_db_request("GET", "profiles", token, params={
+            "select": "id,visibility,account_status",
+            "id": f"eq.{payload.target_user_id}",
+            "limit": "1",
+        })
+        target_profile = target_profiles[0] if target_profiles else None
+        if (
+            not target_profile
+            or target_profile.get("visibility") not in {"public", "private"}
+            or target_profile.get("account_status", "active") != "active"
+        ):
+            raise HTTPException(status_code=404, detail={
+                "code": "PUBLIC_PROFILE_NOT_FOUND",
+                "message": "Akun tidak ditemukan.",
+            })
+        for source_id, target_id in (
+            (str(user["id"]), str(payload.target_user_id)),
+            (str(payload.target_user_id), str(user["id"])),
+        ):
+            active_blocks = await user_db_request("GET", "social_edges", token, params={
+                "select": "id",
+                "actor_user_id": f"eq.{source_id}",
+                "target_user_id": f"eq.{target_id}",
+                "edge_type": "eq.block",
+                "status": "eq.active",
+                "limit": "1",
+            })
+            if active_blocks:
+                raise HTTPException(status_code=403, detail={
+                    "code": "SOCIAL_EDGE_BLOCKED",
+                    "message": "Relasi tidak dapat dibuat karena salah satu akun memblokir akun lainnya.",
+                })
+
     try:
         rows = await user_db_request(
             "POST", "social_edges", token,
