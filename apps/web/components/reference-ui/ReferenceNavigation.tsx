@@ -16,7 +16,7 @@ function tabForPath(path: string): TabType {
   if (path.startsWith("/ai-cinema")) return "FILM_AI";
   if (path.startsWith("/marketplace")) return "MARKETPLACE";
   if (path.startsWith("/stories") || path.startsWith("/feed")) return "FEED";
-  if (path.startsWith("/agents")) return "PROFILE";
+  if (path.startsWith("/profile") || path.startsWith("/agents")) return "PROFILE";
   return "FEED";
 }
 
