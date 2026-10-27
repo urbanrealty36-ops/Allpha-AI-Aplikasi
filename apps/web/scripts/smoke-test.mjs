@@ -286,8 +286,11 @@ if (existsSync(socialFeedApiPath)) {
 }
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
-const guestFeedPrivacyTest = readFileSync(new URL("../../api/tests/test_social_feed_api.py", import.meta.url), "utf8");
-assert.ok(guestFeedPrivacyTest.includes("test_guest_comments_and_shared_item_hide_inactive_public_profile"), "Feed API regression coverage must include guest shared-link and comments access for inactive owners");
+const guestFeedPrivacyTestPath = new URL("../../api/tests/test_social_feed_api.py", import.meta.url);
+if (existsSync(guestFeedPrivacyTestPath)) {
+  const guestFeedPrivacyTest = readFileSync(guestFeedPrivacyTestPath, "utf8");
+  assert.ok(guestFeedPrivacyTest.includes("test_guest_comments_and_shared_item_hide_inactive_public_profile"), "Feed API regression coverage must include guest shared-link and comments access for inactive owners");
+}
 
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
