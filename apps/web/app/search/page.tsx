@@ -10,6 +10,7 @@ type SearchItem = { id: string; body: string; content_type: string; owner_id: st
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
 type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
+type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
 type SocialGraphEdge = { target_user_id: string; edge_type: "follow" | "block" | "mute"; status: "requested" | "active" };
 type SocialGraphPayload = { outgoing?: SocialGraphEdge[] };
@@ -30,6 +31,8 @@ function SearchPageContent() {
   const [creators, setCreators] = useState<Creator[]>([]);
   const [creatorsBusy, setCreatorsBusy] = useState(false);
   const [creatorsError, setCreatorsError] = useState("");
+  const [discoveredUsers, setDiscoveredUsers] = useState<DiscoveredUser[]>([]);
+  const [discoveryError, setDiscoveryError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [socialGraphError, setSocialGraphError] = useState("");
@@ -45,6 +48,7 @@ function SearchPageContent() {
   const recommendationsRequestSequence = useRef(0);
   const creatorsRequestSequence = useRef(0);
   const socialGraphRequestSequence = useRef(0);
+  const discoveryRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) return;
@@ -66,6 +70,7 @@ function SearchPageContent() {
       recommendationsRequestSequence.current += 1;
       creatorsRequestSequence.current += 1;
       socialGraphRequestSequence.current += 1;
+      discoveryRequestSequence.current += 1;
       data.subscription.unsubscribe();
     };
   }, [supabase]);
@@ -80,12 +85,15 @@ function SearchPageContent() {
     recommendationsRequestSequence.current += 1;
     creatorsRequestSequence.current += 1;
     socialGraphRequestSequence.current += 1;
+    discoveryRequestSequence.current += 1;
     lastUrlQuery.current = null;
     setQuery("");
     setItems([]);
     setTrends([]);
     setRecommendations([]);
     setCreators([]);
+    setDiscoveredUsers([]);
+    setDiscoveryError("");
     setFollowedAccountIds([]);
     setPendingFollowAccountIds([]);
     setSocialGraphError("");
@@ -178,6 +186,32 @@ function SearchPageContent() {
     }
   }
 
+  async function loadDiscoveredUsers(value: string) {
+    const normalized = value.trim().replace(/^@/, "");
+    const sequence = ++discoveryRequestSequence.current;
+    if (!session || !/^[a-zA-Z0-9_]{3,30}$/.test(normalized)) {
+      setDiscoveredUsers([]);
+      setDiscoveryError("");
+      return;
+    }
+    setDiscoveryError("");
+    try {
+      const response = await fetch(apiBase + "/v1/social/discover-users?q=" + encodeURIComponent(normalized) + "&limit=20", {
+        headers: { Authorization: "Bearer " + session.access_token },
+        cache: "no-store",
+      });
+      const payload = await response.json() as Payload<DiscoveredUser>;
+      if (sequence !== discoveryRequestSequence.current) return;
+      if (!response.ok) throw new Error(payload.error?.message || "Pencarian username belum dapat dimuat.");
+      setDiscoveredUsers(payload.items || []);
+    } catch (cause) {
+      if (sequence === discoveryRequestSequence.current) {
+        setDiscoveredUsers([]);
+        setDiscoveryError(cause instanceof Error ? cause.message : "Pencarian username belum dapat dimuat.");
+      }
+    }
+  }
+
   useEffect(() => {
     void loadTrends();
     void loadRecommendations();
@@ -197,6 +231,7 @@ function SearchPageContent() {
       return;
     }
     setBusy(true); setError(""); setSearched(true);
+    void loadDiscoveredUsers(value.trim());
     try {
       const response = await fetch(apiBase + "/v1/search?q=" + encodeURIComponent(value.trim()) + "&limit=30", {
         headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store",
@@ -238,6 +273,21 @@ function SearchPageContent() {
     tags: [],
   }));
 
+  const discoveredAccountsForReference: SocialAccountItem[] = discoveredUsers.map(item => ({
+    id: item.id,
+    name: item.display_name || item.username,
+    handle: item.username,
+    avatar: item.avatar_url || "/icon.svg",
+    isAi: false,
+    specialty: item.visibility === "private" ? "Akun privat" : "Akun yang dapat ditemukan",
+    bio: item.bio || "",
+    tags: [],
+  }));
+  const combinedAccountsForReference = [
+    ...accountsForReference,
+    ...discoveredAccountsForReference,
+  ].filter((item, index, all) => all.findIndex(candidate => candidate.id === item.id) === index);
+
   const postsForReference: PostItem[] = items.map(item => ({
     id: item.id,
     humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username || "", avatar: item.creator?.avatar_url || "", verified: false },
@@ -275,11 +325,12 @@ function SearchPageContent() {
       <ExploreView
         posts={postsForReference}
         trendsData={trends}
-        accountsData={accountsForReference}
+        accountsData={combinedAccountsForReference}
         accountsLoading={creatorsBusy}
         accountsError={creatorsError}
+        discoveryError={discoveryError}
         relationshipError={socialGraphError}
-        onRetryAccounts={() => { void loadCreators(); void loadSocialGraph(); }}
+        onRetryAccounts={() => { void loadCreators(); void loadSocialGraph(); void loadDiscoveredUsers(query); }}
         followedAccountIds={followedAccountIds}
         pendingFollowAccountIds={pendingFollowAccountIds}
         onFollowAccount={async (accountId, currentlyFollowed, currentlyPending = false) => {
