@@ -38,7 +38,7 @@ const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV =
 export default function PublicProfilePage() {
   const params = useParams<{ username: string }>();
   const router = useRouter();
-  const username = typeof params?.username === "string" ? decodeURIComponent(params.username) : "";
+  const username = typeof params?.username === "string" ? params.username : "";
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
