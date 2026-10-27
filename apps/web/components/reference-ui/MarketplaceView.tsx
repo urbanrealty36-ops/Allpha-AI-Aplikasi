@@ -63,7 +63,6 @@ export default function MarketplaceView({
   userCredits,
   catalogItems,
   catalogState = 'unavailable',
-  productionMode = true,
   purchaseAvailable = false,
   onWarpToBooth,
   onOpenSellerChat
@@ -179,7 +178,7 @@ export default function MarketplaceView({
         </div>
         <div className="flex items-center gap-1 px-3 py-1.5 rounded-2xl bg-white border-2 border-slate-900 text-slate-950 font-mono text-xs font-black shadow-[2px_2px_0px_#0f172a]">
           <span>🪙</span>
-          <span>{userCredits} Cr</span>
+          <span>{userCredits == null ? '—' : userCredits.toLocaleString('id-ID')} Cr</span>
         </div>
       </div>
 
@@ -605,7 +604,7 @@ export default function MarketplaceView({
                         { id: 'BCA_VA', label: 'BCA Virtual Acc', icon: '🏦' },
                         { id: 'MANDIRI_VA', label: 'Mandiri VA', icon: '🏛️' },
                         { id: 'CREDIT_CARD', label: 'Kartu Kredit', icon: '💳' },
-                        { id: 'AI_CREDITS', label: `AI Credits (${userCredits})`, icon: '🪙' },
+                        { id: 'AI_CREDITS', label: `AI Credits (${userCredits == null ? '—' : userCredits})`, icon: '🪙' },
                       ].map((m) => (
                         <button
                           key={m.id}
