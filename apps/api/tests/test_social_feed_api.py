@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from allpha_api import feed_api
 from allpha_api.auth import current_user, optional_current_user
 from allpha_api.main import app
+import allpha_api.main as main_api
 
 
 def _fixture_user(request: Request):
@@ -495,3 +496,91 @@ def test_anonymous_cannot_read_comments_for_non_public_content(monkeypatch):
         assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_create_social_edge_replay_returns_existing_edge_without_duplicate_write(monkeypatch):
+    actor_id = "00000000-0000-0000-0000-000000000301"
+    target_id = "00000000-0000-0000-0000-000000000302"
+    existing = {
+        "id": "00000000-0000-0000-0000-000000000303",
+        "actor_user_id": actor_id,
+        "target_user_id": target_id,
+        "edge_type": "follow",
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    calls = []
+
+    async def fake_user(request: Request):
+        request.state.supabase_access_token = "social-edge-test-token"
+        return {"id": actor_id}
+
+    async def fake_db(method, path, access_token, *, params=None, body=None, prefer=None):
+        calls.append((method, path, params or {}, body, prefer))
+        assert access_token == "social-edge-test-token"
+        assert method == "GET" and path == "social_edges"
+        assert params["actor_user_id"] == f"eq.{actor_id}"
+        assert params["target_user_id"] == f"eq.{target_id}"
+        assert params["edge_type"] == "eq.follow"
+        return [existing]
+
+    monkeypatch.setattr(main_api, "user_db_request", fake_db)
+    app.dependency_overrides[current_user] = fake_user
+    try:
+        response = TestClient(app).post(
+            "/v1/me/social-edges",
+            json={"target_user_id": target_id, "edge_type": "follow"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["edge"]["id"] == existing["id"]
+    assert payload["idempotent_replay"] is True
+    assert payload["outcome"] == "follow_active"
+    assert len(calls) == 1  # no duplicate POST was attempted
+
+
+def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
+    actor_id = "00000000-0000-0000-0000-000000000304"
+    target_id = "00000000-0000-0000-0000-000000000305"
+    created = {
+        "id": "00000000-0000-0000-0000-000000000306",
+        "actor_user_id": actor_id,
+        "target_user_id": target_id,
+        "edge_type": "follow",
+        "status": "requested",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    calls = []
+
+    async def fake_user(request: Request):
+        request.state.supabase_access_token = "social-edge-test-token"
+        return {"id": actor_id}
+
+    async def fake_db(method, path, access_token, *, params=None, body=None, prefer=None):
+        calls.append((method, path, params or {}, body, prefer))
+        if method == "GET":
+            return []
+        assert method == "POST" and path == "social_edges"
+        assert body["actor_user_id"] == actor_id
+        assert body["target_user_id"] == target_id
+        assert body["edge_type"] == "follow"
+        return [created]
+
+    monkeypatch.setattr(main_api, "user_db_request", fake_db)
+    app.dependency_overrides[current_user] = fake_user
+    try:
+        response = TestClient(app).post(
+            "/v1/me/social-edges",
+            json={"target_user_id": target_id, "edge_type": "follow"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["idempotent_replay"] is False
+    assert payload["outcome"] == "follow_request_created"
+    assert len(calls) == 2
