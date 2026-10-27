@@ -457,6 +457,12 @@ for (const contract of [
   "Pencarian username menghormati pengaturan penemuan akun", "ID TARGET UNTUK BLOKIR / BISUKAN"
 ]) assert.ok(nativeSocialSource.includes(contract), "Native Social Graph must use privacy-aware username discovery: " + contract);
 for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
+const nativeNavigatorSource = nativeApp.slice(nativeApp.indexOf("function Navigator()"));
+for (const contract of [
+  "journeyRequestSequence.current", "const sequence = ++journeyRequestSequence.current",
+  "if (sequence !== journeyRequestSequence.current) return",
+  "if (active && sequence === journeyRequestSequence.current) setJourneyReady(true)"
+]) assert.ok(nativeNavigatorSource.includes(contract), "Native Agent journey lookup must ignore stale auth-session responses: " + contract);
 const nativeApp = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
 for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"agents\"", "Feed: \"feed\"", "Reels: \"reels\"", "Stories: \"stories\"", "Search: \"search\"", "Messages: \"messages\"", "Notifications: \"notifications\"", "Communities: \"communities\""]) {
   assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
