@@ -1426,10 +1426,10 @@ export default function ProfileView({
         onClose={() => setIsIdentityModalOpen(false)}
         agent={agentProfile}
         onSaveAgent={(updated) => {
-          if (!onUpdateAgent) { showToast("Endpoint penyimpanan identitas Agent belum terhubung."); return; }
-          void Promise.resolve(onUpdateAgent(updated))
-            .then(() => showToast(`Identitas ${updated.name} tersimpan. Kelola Skills dan runtime melalui Agent Studio.`))
-            .catch((cause) => showToast(cause instanceof Error ? cause.message : "Perubahan identitas Agent gagal disimpan."));
+          if (!onUpdateAgent) return Promise.reject(new Error("Endpoint penyimpanan identitas Agent belum terhubung."));
+          return Promise.resolve(onUpdateAgent(updated)).then(() => {
+            showToast(`Identitas ${updated.name} tersimpan. Kelola Skills dan runtime melalui Agent Studio.`);
+          });
         }}
       />
 
