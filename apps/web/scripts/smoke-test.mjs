@@ -505,3 +505,5 @@ const profileSessionSource = readFileSync(new URL("../app/profile/page.tsx", imp
 for (const [name, source] of [["Account", accountSessionSource], ["Profile", profileSessionSource]]) {
   assert.ok(source.includes("authEventSeen") && source.includes("!authEventSeen"), name + " must not let a stale getSession read override a newer auth event");
 }
+
+assert.ok(nativeApp.includes("authEventSeen") && nativeApp.includes("!authEventSeen"), "Native navigation must not let a stale initial session read override a newer auth event");
