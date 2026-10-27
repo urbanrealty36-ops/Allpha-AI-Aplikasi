@@ -622,3 +622,59 @@ def test_follow_rejects_deactivated_profile_before_relationship_write(monkeypatc
     assert response.json()["error"]["code"] == "PUBLIC_PROFILE_NOT_FOUND"
     assert len(calls) == 1
     assert calls[0][1] == "profiles"
+
+
+def test_inactive_profile_content_cannot_receive_interactions(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000901"
+    owner_id = "eng-p14-deactivated-owner"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": owner_id, "body": "old content", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items":
+            return [content]
+        if table == "social_edges":
+            return []
+        if table == "profiles":
+            return [{"id": owner_id, "visibility": "public", "account_status": "deactivation_requested"}]
+        raise AssertionError(f"interaction must stop before {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+
+
+def test_private_profile_public_content_requires_active_follow_for_interactions(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000902"
+    owner_id = "eng-p14-private-owner"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": owner_id, "body": "private owner content", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items":
+            return [content]
+        if table == "social_edges":
+            return []
+        if table == "profiles":
+            return [{"id": owner_id, "visibility": "private", "account_status": "active"}]
+        raise AssertionError(f"interaction must stop before {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/feed/{content_id}/reaction", json={"reaction": "like"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
