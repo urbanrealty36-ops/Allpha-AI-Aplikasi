@@ -116,7 +116,8 @@ interface ExploreViewProps {
   accountsError?: string;
   onRetryAccounts?: () => void;
   followedAccountIds?: string[];
-  onFollowAccount?: (accountId: string, currentlyFollowed: boolean) => void;
+  pendingFollowAccountIds?: string[];
+  onFollowAccount?: (accountId: string, currentlyFollowed: boolean, currentlyPending?: boolean) => void;
   recommendationsLoading?: boolean;
   recommendationsError?: string;
   trendsLoading?: boolean;
@@ -153,6 +154,7 @@ export default function ExploreView({
   accountsError = "",
   onRetryAccounts,
   followedAccountIds = [],
+  pendingFollowAccountIds = [],
   onFollowAccount,
   recommendationsLoading = false,
   recommendationsError = "",
@@ -176,7 +178,7 @@ export default function ExploreView({
 
   const toggleFollow = (handle: string, accountId?: string) => {
     if (productionMode && accountId) {
-      onFollowAccount?.(accountId, followedAccountIds.includes(accountId));
+      onFollowAccount?.(accountId, followedAccountIds.includes(accountId), pendingFollowAccountIds.includes(accountId));
       return;
     }
     setFollowedAccounts(prev => ({
@@ -532,6 +534,7 @@ export default function ExploreView({
               <div className="space-y-3">
                 {filteredAccounts.map((acc, idx) => {
                   const isFollowed = productionMode ? followedAccountIds.includes(acc.id) : (followedAccounts[acc.handle] || false);
+                  const isPending = productionMode && pendingFollowAccountIds.includes(acc.id);
                   const bgColors = ['bg-white', 'bg-sky-50/50', 'bg-emerald-50/50', 'bg-amber-50/50', 'bg-purple-50/50'];
                   const cardBg = bgColors[idx % bgColors.length];
 
@@ -610,13 +613,22 @@ export default function ExploreView({
                         {/* Follow Button */}
                         <button
                           onClick={() => toggleFollow(acc.handle, acc.id)}
+                          title={isPending ? "Batalkan permintaan mengikuti" : isFollowed ? "Berhenti mengikuti" : "Ikuti akun"}
+                          aria-label={isPending ? `Batalkan permintaan mengikuti ${acc.handle}` : isFollowed ? `Berhenti mengikuti ${acc.handle}` : `Ikuti ${acc.handle}`}
                           className={`shrink-0 px-3.5 py-1.5 rounded-2xl text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
                             isFollowed
                               ? 'bg-slate-200 text-slate-800 shadow-[1.5px_1.5px_0px_#0f172a]'
-                              : 'bg-amber-300 hover:bg-amber-400 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
+                              : isPending
+                                ? 'bg-amber-200 hover:bg-amber-300 text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]'
+                                : 'bg-amber-300 hover:bg-amber-400 text-slate-950 shadow-[2px_2px_0px_#0f172a]'
                           }`}
                         >
-                          {isFollowed ? (
+                          {isPending ? (
+                            <>
+                              <X className="w-3.5 h-3.5 stroke-[3px]" />
+                              <span>Menunggu</span>
+                            </>
+                          ) : isFollowed ? (
                             <>
                               <Check className="w-3.5 h-3.5 text-emerald-800 stroke-[3px]" />
                               <span>Mengikuti</span>
