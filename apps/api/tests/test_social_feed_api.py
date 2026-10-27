@@ -267,8 +267,12 @@ def test_feed_allows_anonymous_public_read_with_empty_state(monkeypatch):
             assert (params or {}).get("visibility") == "eq.public"
             return []
         if table == "profiles":
-            return [{"id": "public-author", "username": "public_author", "display_name": "Public Author",
-                     "avatar_url": None, "bio": "", "visibility": "public"}]
+            return [
+                {"id": "public-author", "username": "public_author", "display_name": "Public Author",
+                 "avatar_url": None, "bio": "", "visibility": "public", "account_status": "active"},
+                {"id": "private-author", "username": "private_author", "display_name": "Private Author",
+                 "avatar_url": "/private.png", "bio": "private profile", "visibility": "private", "account_status": "active"},
+            ]
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"guest feed must not query {table}")
@@ -335,6 +339,9 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
          "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
         {"id": "00000000-0000-0000-0000-000000000102", "owner_id": "private-author", "body": "followers only",
          "content_type": "text", "visibility": "followers", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+        {"id": "00000000-0000-0000-0000-000000000103", "owner_id": "private-author", "body": "public post from private profile",
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
          "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
     ]
     calls = []
