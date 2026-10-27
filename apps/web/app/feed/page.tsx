@@ -302,13 +302,12 @@ export default function FeedPage() {
     }
     setError("");
     setNotice("");
-    let created: { item?: { id?: string; status?: string; moderation_status?: string }; message?: string } | null = null;
     try {
-      created = await request("/v1/content", {
+      const created = await request("/v1/content", {
         method: "POST",
         body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: "text" }),
-      }) as typeof created;
-      const contentId = created?.item?.id;
+      }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
+      const contentId = created.item?.id;
       if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
       const published = await request("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as {
         item?: { status?: string; moderation_status?: string };
@@ -316,12 +315,13 @@ export default function FeedPage() {
       };
       const status = published.item?.status ?? created.item?.status ?? "unknown";
       const moderation = published.item?.moderation_status ?? created.item?.moderation_status ?? "unknown";
-      setNotice(published.message
+      const confirmation = published.message
         ? `${published.message} Status: ${status}; moderasi: ${moderation}.`
         : status === "published" && moderation === "approved"
           ? "Konten disetujui dan dipublikasikan oleh API."
-          : `Konten diterima API. Status: ${status}; moderasi: ${moderation}. Konten belum dianggap publik sampai API menyatakan published dan approved.`);
+          : `Konten diterima API. Status: ${status}; moderasi: ${moderation}. Konten belum dianggap publik sampai API menyatakan published dan approved.`;
       await loadFeed(true);
+      setNotice(confirmation);
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Konten belum tersimpan melalui API.");
