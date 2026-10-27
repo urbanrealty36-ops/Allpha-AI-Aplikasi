@@ -401,6 +401,7 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
+  const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const [spatialSceneKey, setSpatialSceneKey] = useState(""); const [spatialActiveKey, setSpatialActiveKey] = useState("");
   const [error, setError] = useState(""); const [message, setMessage] = useState(""); const [retry, setRetry] = useState(0);
@@ -932,8 +933,10 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
   async function addSocialEdge(edgeType: "follow" | "block" | "mute") {
     setBusy(true); setError(""); setMessage("");
     try {
-      await apiRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) });
-      setTargetUserId(""); setMessage(edgeType === "follow" ? "Permintaan mengikuti dikirim." : edgeType === "block" ? "Akun diblokir." : "Akun dibisukan.");
+      const result = await apiRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
+      setTargetUserId("");
+      const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti akun ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : result.outcome === "user_blocked" ? "Akun diblokir." : result.outcome === "user_muted" ? "Akun dibisukan." : "Relasi sosial tersimpan.";
+      setMessage(result.idempotent_replay ? "Relasi tersebut sudah ada; tidak dibuat duplikat." : outcomeMessage);
       await loadSocialGraph();
     } catch (e) { setError(e instanceof Error ? e.message : "Relasi sosial gagal disimpan."); }
     finally { setBusy(false); }
@@ -957,8 +960,14 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
   async function saveInterest() {
     const key = interestKey.trim().toLowerCase(); if (!key) return;
     setBusy(true); setError(""); setMessage("");
-    try { await apiRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference: "interested" }) }); setInterestKey(""); setMessage("Minat tersimpan."); await loadSocialGraph(); }
+    try { await apiRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference: interestPreference }) }); setInterestKey(""); setMessage(interestPreference === "interested" ? "Preferensi minat tersimpan." : "Preferensi tidak diminati tersimpan."); await loadSocialGraph(); }
     catch (e) { setError(e instanceof Error ? e.message : "Minat tidak dapat disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function updateInterestPreference(key: string, preference: "interested" | "not_interested") {
+    setBusy(true); setError(""); setMessage("");
+    try { await apiRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference }) }); setMessage(preference === "interested" ? "Minat diaktifkan kembali." : "Minat ditandai tidak diminati."); await loadSocialGraph(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Preferensi minat tidak dapat diperbarui."); }
     finally { setBusy(false); }
   }
   async function removeInterest(key: string) {
@@ -1588,7 +1597,7 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
         {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{item.status === "failed" && <Button title="Pulihkan draft" secondary disabled={contentBusy} onPress={() => void retryNativeContent(item)}/>}{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}</View></View>)}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
-        <Text style={s.muted}>Gunakan ID pengguna target. Pencarian username masuk cakupan discovery berikutnya.</Text>
+        <Text style={s.muted}>Relasi dan preferensi minat disimpan melalui API kanonis. Pencarian username belum tersedia; gunakan ID pengguna target.</Text>
         <TextInput accessibilityLabel="ID pengguna target" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder="UUID akun Allpha" placeholderTextColor="#8B94AC"/>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Ikuti" disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("follow")}/><Button title="Blokir" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("block")}/><Button title="Bisukan" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("mute")}/></View>
         <Text style={s.kicker}>PERMINTAAN MASUK ({socialGraph.incoming_requests.length})</Text>
@@ -1597,8 +1606,9 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
         {socialGraph.outgoing.map(edge => <View key={edge.id} style={s.socialRow}><Text style={s.body}>{edge.edge_type} · {edge.target_user_id} · {edge.status || "active"}</Text><Button title="Hapus" secondary disabled={busy} onPress={() => void removeSocialEdge(edge)}/></View>)}
         <Text style={s.kicker}>MINAT</Text>
         <TextInput accessibilityLabel="Tambah minat" value={interestKey} onChangeText={value => setInterestKey(value.toLowerCase())} autoCapitalize="none" maxLength={80} style={field} placeholder="contoh: desain.3d" placeholderTextColor="#8B94AC"/>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={interestPreference === "interested" ? "✓ Diminati" : "Diminati"} secondary={interestPreference !== "interested"} onPress={() => setInterestPreference("interested")}/><Button title={interestPreference === "not_interested" ? "✓ Tidak diminati" : "Tidak diminati"} secondary={interestPreference !== "not_interested"} onPress={() => setInterestPreference("not_interested")}/></View>
         <Button title="Simpan minat" disabled={busy || !interestKey.trim()} onPress={() => void saveInterest()}/>
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{socialGraph.interests.map(item => <Button key={item.interest_key} title={item.interest_key + " ×"} secondary disabled={busy} onPress={() => void removeInterest(item.interest_key)}/>)}</View>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{socialGraph.interests.map(item => <View key={item.interest_key} style={[s.socialRow,{flexGrow:1}]}><Text style={s.body}>{item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</Text><View style={{flexDirection:"row",gap:8,flexWrap:"wrap"}}><Button title={item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"} secondary disabled={busy} onPress={() => void updateInterestPreference(item.interest_key,item.preference === "interested" ? "not_interested" : "interested")}/><Button title="Hapus" secondary disabled={busy} onPress={() => void removeInterest(item.interest_key)}/></View></View>)}</View>
         {socialGraph.blocked_by.length > 0 && <Text style={s.muted}>Akun yang memblokir Anda: {socialGraph.blocked_by.map(edge => edge.actor_user_id).join(", ")}</Text>}
       </> : <><Text style={s.muted}>Data Social Graph belum dimuat.</Text><Button title="Muat ulang" onPress={() => void loadSocialGraph()}/></>}
       {!!error && !loading && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
