@@ -44,3 +44,5 @@ GRANT UPDATE (user_id, interest_key, preference)
   ON TABLE public.user_interests TO authenticated;
 
 -- Reviewed source revision: 2026-10-27; CLI generation is intentionally isolated in the ENG-P04 workflow.
+
+-- CLI workflow trigger revision: 2026-10-27T16:40Z.
