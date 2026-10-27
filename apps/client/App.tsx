@@ -1673,6 +1673,7 @@ function Navigator() {
 
   useEffect(() => {
     let active = true;
+    let authEventSeen = false;
     const resolveJourney = async (next: Session | null) => {
       if (!active) return;
       setSession(next);
@@ -1705,7 +1706,7 @@ function Navigator() {
       return () => { active = false; };
     }
     void supabase.auth.getSession().then(({ data, error }) => {
-      if (!active) return;
+      if (!active || authEventSeen) return;
       if (error) {
         setReady(true);
         setJourneyReady(true);
@@ -1714,6 +1715,7 @@ function Navigator() {
       void resolveJourney(data.session).finally(() => { if (active) setReady(true); });
     });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
       void resolveJourney(next);
     });
     return () => { active = false; data.subscription.unsubscribe(); };
