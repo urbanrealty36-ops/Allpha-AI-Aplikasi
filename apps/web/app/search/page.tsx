@@ -326,8 +326,8 @@ function SearchPageContent() {
         posts={postsForReference}
         trendsData={trends}
         accountsData={combinedAccountsForReference}
-        accountsLoading={creatorsBusy}
-        accountsError={creatorsError}
+        accountsLoading={creatorsBusy && combinedAccountsForReference.length === 0}
+        accountsError={creatorsError && combinedAccountsForReference.length === 0 ? creatorsError : ""}
         discoveryError={discoveryError}
         relationshipError={socialGraphError}
         onRetryAccounts={() => { void loadCreators(); void loadSocialGraph(); void loadDiscoveredUsers(query); }}
