@@ -584,3 +584,93 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
     assert payload["idempotent_replay"] is False
     assert payload["outcome"] == "follow_request_created"
     assert len(calls) == 2
+
+
+
+def test_social_profile_rejects_malformed_handle_without_database_lookup(monkeypatch):
+    async def fail_db(*args, **kwargs):
+        raise AssertionError("Malformed handles must be rejected before database lookup")
+
+    monkeypatch.setattr(feed_api, "_server_db", fail_db)
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/profiles/not%20the%20same%20handle")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+
+
+def test_private_social_profile_requires_explicit_discoverability(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000901"
+    viewer_id = "eng-p14-viewer"
+    db_calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        db_calls.append((method, table, params or {}))
+        if table == "profiles":
+            return [{
+                "id": target_id, "username": "privatehandle", "display_name": "Private Account",
+                "avatar_url": "https://example.invalid/private-avatar.png", "bio": "private bio",
+                "visibility": "private",
+            }]
+        if table == "social_edges":
+            return []
+        if table == "user_settings":
+            return [{"privacy_settings": {"discoverable_by_username": False}}]
+        raise AssertionError(f"Unexpected table access: {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), set()
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/profiles/privatehandle")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert not any(table == "content_items" for _, table, _ in db_calls)
+
+
+def test_discoverable_private_profile_returns_minimal_preview_only(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000902"
+    viewer_id = "eng-p14-viewer"
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "profiles":
+            return [{
+                "id": target_id, "username": "discoverableprivate", "display_name": "Private Account",
+                "avatar_url": "https://example.invalid/private-avatar.png", "bio": "private bio",
+                "visibility": "private",
+            }]
+        if table == "social_edges":
+            return []
+        if table == "user_settings":
+            return [{"privacy_settings": {"discoverable_by_username": True}}]
+        raise AssertionError(f"Private preview must not access {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), set()
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/profiles/discoverableprivate")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["can_view_content"] is False
+    assert payload["items"] == []
+    assert payload["profile"]["avatar_url"] is None
+    assert payload["profile"]["bio"] == ""
+    assert payload["profile"]["visibility"] == "private"
