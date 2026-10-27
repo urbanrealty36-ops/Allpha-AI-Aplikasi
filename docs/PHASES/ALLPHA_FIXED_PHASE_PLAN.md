@@ -1846,3 +1846,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - ReferenceNavigation, Account and Profile now protect the initial Supabase getSession result from overwriting a newer onAuthStateChange event. The shared shell already sequences inbox-indicator reads; source smoke assertions now cover the navigation, Account and Profile race guards.
 - Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/0af02b6ee9200a27070f3ef4cfd32d908b8ff103, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/6f8b4ccaa2d507cc32b8580976ed781e53506983, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/f28fb358fcad09b5409d221b58112eaf6c9bcaee, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/c665827dda83fb04d85369ac6593511e8adf6167, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/5e8506e55c919a3a036606b89b76982bfc38a192.
 - Source changes and smoke assertions have not been executed. WP-02 and ENG-P04 remain IN_PROGRESS; no acceptance or production verification is claimed.
+
+
+**WP-02 Native session initialization follow-up — 2026-10-27:**
+- Native Navigator now ignores a delayed initial getSession result after a newer auth-state event has arrived, matching the Web shared-shell, Account and Profile guard. Added a smoke-source assertion; no Native typecheck/device test or smoke execution was performed.
+- Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/3471e03b73df4d7ef8f8063ccfd7a2c84e1a479c, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fc147133ab679c48abb4893a96db51f87cd57027.
+- WP-02 remains IN_PROGRESS. Native navigation's asynchronous Agent-journey lookup sequencing, broader Web–Native source-to-route parity, and the remaining acceptance inventory are still open. ENG-P04 remains IN_PROGRESS; no acceptance or production verification is claimed.
