@@ -106,3 +106,9 @@ The live SQL catalog checks were read-only and inspected:
 - live migration history for presence/absence of `20261027180000_eng_p03_user_settings_least_privilege_grants`.
 
 The results are recorded above. These queries do not exercise end-user JWT policy evaluation, so cross-user isolation remains unverified even where a policy expression appears correctly scoped.
+
+
+## Follow-up source contract
+
+- Added a source-level smoke assertion for the exact user_settings privilege migration contract: broad table revoke, column revoke, authenticated SELECT, and restricted INSERT/UPDATE column lists. Commit: `37f3822c7d64bdb6e7659b59bb54848e71eb856b`.
+- The smoke script was **not run**. This assertion detects source drift only; it cannot prove the migration has run or that live grants are corrected.
