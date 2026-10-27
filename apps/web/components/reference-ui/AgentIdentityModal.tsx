@@ -334,10 +334,13 @@ export default function AgentIdentityModal({
             />
           </div>
 
-          {/* Canonical model selection is owned by the AI Gateway/Model Router. */}
-          <div className="p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-            <p className="font-black text-slate-900">AI Gateway & Model Router</p>
-            <p className="text-[11px] text-slate-700 font-semibold">Pemilihan provider/model, biaya, budget, fallback, dan status runtime dikelola oleh backend kanonis. Panel profil tidak mengubah model atau mengaktifkan Auto-Reply.</p>
+          {/* Model row preserves the source layout; provider/model decisions stay server-owned. */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
+            <div>
+              <p className="font-black text-slate-900">Model Neural Engine</p>
+              <p className="text-[10px] text-slate-600 font-bold">Dikelola oleh AI Gateway & Model Router Allpha</p>
+            </div>
+            <span className="font-mono text-xs font-black text-slate-950 bg-sky-200 px-2.5 py-1 rounded-xl border border-slate-900">Backend</span>
           </div>
         </div>
 
@@ -351,7 +354,7 @@ export default function AgentIdentityModal({
             className="flex-1 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 disabled:opacity-60 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{saving ? "Menyimpan…" : "Simpan Identitas Profil"}</span>
+            <span>{saving ? "Menyimpan…" : "Simpan Identitas & Avatar 3D"}</span>
           </button>
           <button
             onClick={onClose}
