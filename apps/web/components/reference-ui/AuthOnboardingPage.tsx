@@ -44,23 +44,28 @@ interface AuthOnboardingPageProps {
   onStartAuthentication?: () => void;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
+  humanAvatarOptions?: string[];
+  avatarCatalog?: typeof AVATAR_3D_CATALOG;
+  skillCatalog?: typeof BIDANG_SKILLS_CATALOG;
 }
 
 export type PageSection = 'SLIDES' | 'AUTH' | 'ECOSYSTEM_TOUR';
 
 export default function AuthOnboardingPage({
   onEnterApp,
-  onCompleteAuth,
   onStartAuthentication,
   currentUser,
   currentAgent,
+  humanAvatarOptions = currentUser.avatar ? [currentUser.avatar] : [],
+  avatarCatalog = [],
+  skillCatalog = [],
 }: AuthOnboardingPageProps) {
   const [activeSection, setActiveSection] = useState<PageSection>('SLIDES');
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
   const [registerStep, setRegisterStep] = useState<1 | 2 | 3>(1);
   const [selectedLang, setSelectedLang] = useState<'id' | 'en' | 'ja' | 'ms'>('id');
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isGoogleLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Form State: Human
@@ -70,29 +75,22 @@ export default function AuthOnboardingPage({
   const [humanPassword, setHumanPassword] = useState('');
   const [humanBio, setHumanBio] = useState(currentUser.bio);
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([
-    'Kesehatan',
-    'IT & Teknologi',
-    '3D Spatial',
-    'Kreator Konten'
-  ]);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
 
   // Form State: AI Agent
   const [agentName, setAgentName] = useState(currentAgent.name);
   const [agentHandle, setAgentHandle] = useState(currentAgent.handle);
-  const [selectedBidang, setSelectedBidang] = useState<AgentBidang>(
-    (currentAgent.bidang as AgentBidang) || 'Desain Grafis'
-  );
+  const [selectedBidang, setSelectedBidang] = useState<AgentBidang | ''>((currentAgent.bidang as AgentBidang) || '');
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
     currentAgent.skills || []
   );
   const [agentSpecialty, setAgentSpecialty] = useState(currentAgent.specialty);
   const [agentCategory, setAgentCategory] = useState<'Kesehatan' | 'IT & Teknologi' | 'Marketing' | 'Kreativitas' | 'Gaming & 3D'>('Kreativitas');
   const [selectedAgentAvatar, setSelectedAgentAvatar] = useState(
-    currentAgent.avatar3DImage || currentAgent.avatar || AVATAR_3D_CATALOG[0].image
+    currentAgent.avatar3DImage || currentAgent.avatar || ''
   );
   const [selectedAvatarCodename, setSelectedAvatarCodename] = useState(
-    currentAgent.avatar3DCodename || AVATAR_3D_CATALOG[0].id
+    currentAgent.avatar3DCodename || ''
   );
   const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
 
@@ -202,15 +200,7 @@ export default function AuthOnboardingPage({
   };
 
   const handleGoogleSignIn = () => {
-    setIsGoogleLoading(true);
-    setTimeout(() => {
-      setIsGoogleLoading(false);
-      setHumanName('Alex Tamara (Google)');
-      setHumanHandle('@alextamara_google');
-      setHumanEmail('alex.tamara@gmail.com');
-      showToast('Login Google Berhasil! Melanjutkan ke verifikasi profil...');
-      setRegisterStep(2);
-    }, 1000);
+    showToast('Google OAuth belum terhubung ke penyedia autentikasi. Tidak ada login yang dilakukan.');
   };
 
   const handleFinishRegister = () => {
@@ -218,35 +208,7 @@ export default function AuthOnboardingPage({
       onStartAuthentication();
       return;
     }
-    const updatedHuman: HumanProfile = {
-      ...currentUser,
-      name: humanName,
-      username: humanHandle.startsWith('@') ? humanHandle : `@${humanHandle}`,
-      avatar: selectedAvatar,
-      bio: humanBio,
-    };
-
-    const updatedAgent: AIAgentProfile = {
-      ...currentAgent,
-      name: agentName,
-      handle: agentHandle.startsWith('@') ? agentHandle : `@${agentHandle}`,
-      avatar: selectedAgentAvatar,
-      avatar3DImage: selectedAgentAvatar,
-      avatar3DCodename: selectedAvatarCodename,
-      ownerName: updatedHuman.name,
-      ownerHandle: updatedHuman.username,
-      specialty: BIDANG_SKILLS_CATALOG[selectedBidang]?.label || agentSpecialty,
-      category: agentCategory,
-      bidang: selectedBidang,
-      skills: selectedSkills,
-      autoReply: isAutoReplyEnabled,
-    };
-
-    onCompleteAuth(updatedHuman, updatedAgent, 50);
-    showToast('Selamat! Akun & AI Agent berhasil didaftarkan (+50 AI Credits bonus)!');
-    setTimeout(() => {
-      onEnterApp();
-    }, 1200);
+    showToast('Pendaftaran belum terhubung ke autentikasi dan provisioning kanonis. Tidak ada akun, Agent, atau kredit yang dibuat.');
   };
 
   const handleQuickLogin = (e: React.FormEvent) => {
@@ -598,7 +560,7 @@ export default function AuthOnboardingPage({
                     <h3 className="text-base sm:text-lg font-black text-slate-950">
                       {registerStep === 1 && 'Identitas Human Owner & Akun'}
                       {registerStep === 2 && 'Konfigurasi AI Agent Pendamping'}
-                      {registerStep === 3 && 'Klaim Bonus Sambutan & Masuk!'}
+                      {registerStep === 3 && 'Konfirmasi & Masuk'}
                     </h3>
                   </div>
 
@@ -891,7 +853,7 @@ export default function AuthOnboardingPage({
                         onClick={() => setRegisterStep(3)}
                         className="px-6 py-2.5 rounded-2xl bg-[#FEF08A] hover:bg-amber-300 border-2 border-slate-900 text-slate-950 font-black text-xs shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
                       >
-                        <span>Lanjut: Konfirmasi & Bonus</span>
+                        <span>Lanjut: Konfirmasi & Masuk</span>
                         <ChevronRight className="w-4 h-4 stroke-[2.5px]" />
                       </button>
                     </div>
@@ -913,7 +875,7 @@ export default function AuthOnboardingPage({
                         Siap Menjelajahi Allpha Universe!
                       </h3>
                       <p className="text-xs text-slate-600 font-semibold max-w-md mx-auto">
-                        Akun Human <strong>{humanName}</strong> ({humanHandle}) dan AI Agent <strong>{agentName}</strong> ({agentHandle}) berhasil dikonfigurasi.
+                        Data onboarding belum dikonfirmasi oleh layanan autentikasi kanonis. Akun dan Agent belum dibuat.
                       </p>
                     </div>
 
@@ -921,10 +883,10 @@ export default function AuthOnboardingPage({
                     <div className="p-4 rounded-3xl bg-[#BBF7D0] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-950 max-w-md mx-auto space-y-1.5">
                       <div className="flex items-center justify-center gap-2">
                         <Coins className="w-5 h-5 text-emerald-800 stroke-[2.5px]" />
-                        <span className="text-lg font-black">+50 AI CREDITS SAMBUTAN</span>
+                        <span className="text-lg font-black">KREDIT BELUM TERSEDIA</span>
                       </div>
                       <p className="text-[11px] font-semibold text-emerald-950">
-                        Kredit ini langsung masuk ke dompet Anda untuk mencoba Ask AI, membeli aset 3D, atau menonton Film AI Cinema!
+                        Saldo hanya akan ditampilkan setelah billing kanonis mengonfirmasi transaksi.
                       </p>
                     </div>
 
