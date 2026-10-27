@@ -854,3 +854,51 @@ def test_legacy_follow_route_persists_private_profile_follow_as_requested(monkey
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "requested"
     assert writes and writes[0]["status"] == "requested"
+
+
+def test_following_feed_returns_only_active_followed_creators(monkeypatch):
+    now = datetime.now(timezone.utc)
+    followed_owner = "eng-p14-following-owner"
+    fresh_owner = "eng-p14-unfollowed-owner"
+    content_rows = [
+        {"id": "00000000-0000-0000-0000-000000000101", "owner_id": followed_owner, "body": "followed post",
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+        {"id": "00000000-0000-0000-0000-000000000102", "owner_id": fresh_owner, "body": "unfollowed post",
+         "content_type": "text", "visibility": "public", "status": "published", "moderation_status": "approved",
+         "version": 1, "created_at": now.isoformat(), "updated_at": now.isoformat(), "published_at": now.isoformat()},
+    ]
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "feed_preferences":
+            return []
+        if table == "content_items":
+            return content_rows
+        if table == "profiles":
+            return [{"id": row["owner_id"], "username": row["owner_id"], "display_name": row["owner_id"],
+                     "avatar_url": None, "bio": "", "visibility": "public", "account_status": "active"}
+                    for row in content_rows]
+        if table == "social_edges":
+            if params.get("actor_user_id") == "eq.eng-p14-viewer":
+                return [{"target_user_id": followed_owner, "edge_type": "follow", "status": "active"}]
+            return []
+        if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
+            return []
+        raise AssertionError(f"unexpected table {table}")
+
+    async def no_signed_url(path: str, *, expires_in: int = 300):
+        raise AssertionError("feed fixture has no media")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_signed_media_preview_url", no_signed_url)
+    app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/feed?mode=following&limit=10")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["mode"] == "following"
+        assert [item["owner_id"] for item in payload["items"]] == [followed_owner]
+    finally:
+        app.dependency_overrides.clear()
