@@ -30,7 +30,7 @@ type Routes = {
   Profile: undefined;
   Account: { tab?: "profile" | "settings" | "social" | "consents" } | undefined;
   Agents: undefined;
-  Feed: undefined;
+  Feed: { content?: string } | undefined;
   Reels: undefined;
   Stories: { story?: string } | undefined;
   Search: undefined;
@@ -277,7 +277,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 
 function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
 
-function Profile({ session, initialTab = "profile", initialStoryId }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities"; initialStoryId?: string }) {
+function Profile({ session, initialTab = "profile", initialStoryId, initialContentId }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities"; initialStoryId?: string; initialContentId?: string }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities">(initialTab);
@@ -289,6 +289,9 @@ function Profile({ session, initialTab = "profile", initialStoryId }: { session:
   const [contentFile, setContentFile] = useState<NativeContentFile | null>(null);
   const [contentBusy, setContentBusy] = useState(false);
   const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
+  const [selectedFeedItem, setSelectedFeedItem] = useState<NativeFeedItem | null>(null);
+  const [selectedFeedLoading, setSelectedFeedLoading] = useState(false);
+  const [selectedFeedError, setSelectedFeedError] = useState("");
   const [reelsItems, setReelsItems] = useState<NativeFeedItem[]>([]);
   const [storyItems, setStoryItems] = useState<NativeStory[]>([]);
   const [activeStories, setActiveStories] = useState<NativeStory[]>([]);
@@ -606,6 +609,27 @@ function Profile({ session, initialTab = "profile", initialStoryId }: { session:
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat."); }
     finally { setFeedBusy(false); }
   }
+  useEffect(() => {
+    let active = true;
+    if (!initialContentId) {
+      setSelectedFeedItem(null);
+      setSelectedFeedError("");
+      setSelectedFeedLoading(false);
+      return () => { active = false; };
+    }
+    setSelectedFeedItem(null);
+    setSelectedFeedError("");
+    setSelectedFeedLoading(true);
+    void apiRequest("/v1/feed/item/" + encodeURIComponent(initialContentId)).then((payload: { item?: NativeFeedItem }) => {
+      if (!active) return;
+      if (!payload.item || payload.item.id !== initialContentId) throw new Error("Konten tidak tersedia atau tidak dapat diakses.");
+      setSelectedFeedItem(payload.item);
+    }).catch((cause) => {
+      if (active) setSelectedFeedError(cause instanceof Error ? cause.message : "Konten tidak tersedia atau tidak dapat diakses.");
+    }).finally(() => { if (active) setSelectedFeedLoading(false); });
+    return () => { active = false; };
+  }, [initialContentId, session.access_token]);
+
   async function loadNativeReels(reset = true) {
     setReelsBusy(true); setError(""); setMessage("");
     try {
@@ -1576,6 +1600,15 @@ function Profile({ session, initialTab = "profile", initialStoryId }: { session:
         {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
       </> : tab === "feed" ? <>
+        {initialContentId && <View style={s.socialRow}>
+          <Text style={s.kicker}>KONTEN TERPILIH</Text>
+          {selectedFeedLoading ? <Text style={s.muted}>Memuat konten…</Text> : selectedFeedError ? <Text style={s.muted}>{selectedFeedError}</Text> : selectedFeedItem ? <>
+            <Text style={s.body}>{selectedFeedItem.creator?.display_name || selectedFeedItem.creator?.username || "Kreator"}</Text>
+            {!!selectedFeedItem.body && <Text style={s.body}>{selectedFeedItem.body}</Text>}
+            {(selectedFeedItem.media || []).map(media => media.preview_url ? <Button key={media.id} title={"Buka " + media.filename} secondary onPress={() => void Linking.openURL(media.preview_url!)} /> : null)}
+          </> : <Text style={s.muted}>Konten tidak tersedia atau tidak dapat diakses.</Text>}
+          <Button title="Tutup konten" secondary onPress={() => setSelectedFeedItem(null)} />
+        </View>}
         <Text style={s.kicker}>ENG-P14 · SOCIAL FEED</Text><Text style={s.title}>Feed sosial</Text>
         <Text style={s.muted}>Konten publik yang telah disetujui. Ranking menghormati relasi follow, block, mute, dan preferensi Anda.</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
@@ -1747,7 +1780,7 @@ function Navigator() {
     <Stack.Screen name="Profile">{() => <Profile session={session} initialTab="profile"/>}</Stack.Screen>
     <Stack.Screen name="Account">{({ route }) => <Profile session={session} initialTab={route.params?.tab || "profile"}/>}</Stack.Screen>
     <Stack.Screen name="Agents">{() => <Profile session={session} initialTab="agents"/>}</Stack.Screen>
-    <Stack.Screen name="Feed">{() => <Profile session={session} initialTab="feed"/>}</Stack.Screen>
+    <Stack.Screen name="Feed">{({ route }) => <Profile session={session} initialTab="feed" initialContentId={route.params?.content}/>}</Stack.Screen>
     <Stack.Screen name="Reels">{() => <Profile session={session} initialTab="reels"/>}</Stack.Screen>
     <Stack.Screen name="Stories">{({ route }) => <Profile session={session} initialTab="stories" initialStoryId={route.params?.story}/>}</Stack.Screen>
     <Stack.Screen name="Search">{() => <Profile session={session} initialTab="discovery"/>}</Stack.Screen>
