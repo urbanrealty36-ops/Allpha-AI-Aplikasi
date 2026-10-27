@@ -1799,3 +1799,11 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Branch commits in this checkpoint: `6313e0ef1fc294a6da7e35373d87832906d33972`, `f72e83d89c44e3828fba03a16ebc734cb0119ad5`, `51fe87395c8f58c3711fbc25d8541a635fda3d5d`, `53839c62ff44368d8fda4e742ea7700aea4a66c0`, `a9909c9dcabdf31be888ada8e205c8c0ddc55c9e`, `d39a37c5f4dd3b623c1a8719e93b880fc1097d34`, `61d7861d05287cfec9b97ced9ca7f3792d4730cb`, `33f75e481ea571c8387c5f7cb9cefaef6dd070ee`, `7fe06b9ffb48ba32a4d6c3e0295ff9bd156f77e8`, `7d1587265b8b49e9143f7c4c65d179fe1347c55d`.
 - **Not yet verified:** tests/build/typecheck/staging/deployment were not run. This checkpoint is source implementation, not acceptance or production verification. Username discovery still needs an authorization/contract review against live schema/RLS and migration parity; follow outcome messaging and profile navigation should be reconciled with the final reference UX. WP-02 remains `IN_PROGRESS`; ENG-P04 remains `IN_PROGRESS`.
 - Next checkpoint: inspect the actual router registration and schema contracts for `user_settings`, `social_edges`, and the shared navigation routes; reconcile all notification/inbox/session edge cases and finish source parity. Do not deploy or execute tests unless the user changes the current instruction.
+
+
+**Follow-up delta (2026-10-27, same WP-02 checkpoint):**
+- Added auth-change invalidation for notification preference reads and cleared inbox state on identity changes: `8184c8fde0e31b35b6e51dd04ea0c0ad1ccb3d09`, `76e502894d010e075ffee3055d48cfa68db5fa7d`, `24ea27e4e15137d5495d2310b94020d4cbfc9025`.
+- Messaging now preserves the current conversation list during same-conversation realtime refresh: `626fd89380f33cb2ec34fec93947f5898b48d230`.
+- Search clears discovery state on account changes and seeds followed-account state from canonical `GET /v1/me/social-graph`: `7ed34161368ee8aa67f325cd6d4741d1b87e3668`, `c2615bf8e5dfb616e66c6764995f986d2408f7b6`, `c1f06bb70c5c3ad2d6adc449d6bade3a6df88f1a`.
+- Username discovery now excludes non-active profiles using the existing `profiles.account_status` field: `3ed3fdcb1ae43ff2bc3b36295601b371ed1bf19b`.
+- This remains a source-only checkpoint. No tests, build, typecheck, staging, or deployment were run.
