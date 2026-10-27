@@ -456,8 +456,8 @@ for (const contract of [
   "Pencarian username menghormati pengaturan penemuan akun", "ID TARGET UNTUK BLOKIR / BISUKAN"
 ]) assert.ok(nativeSocialSource.includes(contract), "Native Social Graph must use privacy-aware username discovery: " + contract);
 for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
-const nativeApp = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
-const nativeNavigatorSource = nativeApp.slice(nativeApp.indexOf("function Navigator()"));
+const nativeAppForDeepLinks = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
+const nativeNavigatorSource = nativeAppForDeepLinks.slice(nativeAppForDeepLinks.indexOf("function Navigator()"));
 for (const contract of [
   "journeyRequestSequence.current", "const sequence = ++journeyRequestSequence.current",
   "if (sequence !== journeyRequestSequence.current) return",
@@ -465,9 +465,9 @@ for (const contract of [
 ]) assert.ok(nativeNavigatorSource.includes(contract), "Native Agent journey lookup must ignore stale auth-session responses: " + contract);
 
 for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"agents\"", "Feed: \"feed\"", "Reels: \"reels\"", "Stories: \"stories\"", "Search: \"search\"", "Messages: \"messages\"", "Notifications: \"notifications\"", "Communities: \"communities\""]) {
-  assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
+  assert.ok(nativeAppForDeepLinks.includes(route), `Native deep-link route missing: ${route}`);
 }
-assert.ok(nativeApp.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
+assert.ok(nativeAppForDeepLinks.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
 
 
 const messagesRoute = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
