@@ -1843,3 +1843,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **Follow-up hardening (2026-10-27):**
 - Username/profile handle parsing now rejects malformed characters instead of silently stripping them. This prevents a route such as a malformed handle from normalizing into and accidentally resolving a different user's valid handle. Generic content-search phrases produce an empty account-discovery result rather than being compacted into a different username prefix. File: `apps/api/src/allpha_api/feed_api.py`.
 - Added a source-contract assertion for malformed handle rejection; it has not been executed. No tests/build/typecheck/staging/deployment were run.
+
+
+**API regression coverage authored (2026-10-27):**
+- Added unexecuted API tests in `apps/api/tests/test_social_feed_api.py` for malformed-handle rejection before database access, hidden private profile when username discovery is disabled, and minimal preview for explicitly discoverable private profiles.
+- These are test definitions only; no API test runner or any other test/build/typecheck/staging/deployment command was executed.
