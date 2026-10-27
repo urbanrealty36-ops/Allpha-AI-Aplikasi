@@ -53,7 +53,7 @@ export default function NotificationsPage() {
       setPreferences(null);
       setSession(next);
     });
-    return () => { active = false; requestSequence.current += 1; data.subscription.unsubscribe(); };
+    return () => { active = false; sessionEpoch.current += 1; requestSequence.current += 1; preferencesRequestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
   const api = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
