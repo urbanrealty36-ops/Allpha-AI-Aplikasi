@@ -25,7 +25,7 @@ type RuntimeTool = { key: string; name: string; description: string; executable:
 type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
 type CatalogSkill = { key: string; slug: string; name: string; category: string; category_label: string; description: string; executable: boolean; execution_status: string; catalog_version?: string; source?: { kind?: string; repository?: string; source_url?: string }; character_profile: { archetype_key: string; display_role: string; asset_key: string | null; asset_status: string } };
 type SkillCatalogResponse = { items: CatalogSkill[]; total: number; categories: { key: string; label: string; count: number }[]; catalog_version: string };
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function responseError(response: Response): Promise<string> {
   try {
