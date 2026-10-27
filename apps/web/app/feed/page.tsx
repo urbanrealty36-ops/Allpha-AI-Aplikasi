@@ -110,11 +110,15 @@ export default function FeedPage() {
     let active = true;
     const loadComposerIdentity = async () => {
       try {
-        const [me, agentPayload] = await Promise.all([
-          request("/v1/me") as Promise<MeResponse>,
-          request("/v1/agents") as Promise<{ items?: ApiAgent[] }>,
-        ]);
+        const me = await request("/v1/me") as MeResponse;
         if (!me.user) throw new Error("Identitas Human kanonis belum tersedia.");
+        let agentPayload: { items?: ApiAgent[] } = { items: [] };
+        try {
+          agentPayload = await request("/v1/agents") as { items?: ApiAgent[] };
+        } catch {
+          // A Human can still create a Human-authored post when the optional Agent catalog is unavailable.
+          agentPayload = { items: [] };
+        }
         const name = me.profile?.display_name?.trim() || me.user.email || "Pengguna";
         const human: HumanProfile = {
           id: me.user.id,
