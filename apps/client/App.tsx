@@ -28,7 +28,7 @@ type Routes = {
   Welcome: undefined;
   Auth: { mode?: "signin" | "signup" } | undefined;
   Profile: undefined;
-  Account: undefined;
+  Account: { tab?: "profile" | "settings" | "social" | "consents" } | undefined;
   Agents: undefined;
   Feed: undefined;
   Reels: undefined;
@@ -37,8 +37,6 @@ type Routes = {
   Messages: undefined;
   Notifications: undefined;
   Communities: undefined;
-  Social: undefined;
-  Consents: undefined;
 };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
@@ -1679,10 +1677,10 @@ function Navigator() {
   return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: {
     Welcome: "", Auth: "auth", Profile: "profile", Account: "account", Agents: "agents",
     Feed: "feed", Reels: "reels", Stories: "stories", Search: "search", Messages: "messages",
-    Notifications: "notifications", Communities: "communities", Social: "account/social", Consents: "account/consents",
+    Notifications: "notifications", Communities: "communities",
   } } }}><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <>
     <Stack.Screen name="Profile">{() => <Profile session={session} initialTab="profile"/>}</Stack.Screen>
-    <Stack.Screen name="Account">{() => <Profile session={session} initialTab="settings"/>}</Stack.Screen>
+    <Stack.Screen name="Account">{({ route }) => <Profile session={session} initialTab={route.params?.tab || "profile"}/>}</Stack.Screen>
     <Stack.Screen name="Agents">{() => <Profile session={session} initialTab="agents"/>}</Stack.Screen>
     <Stack.Screen name="Feed">{() => <Profile session={session} initialTab="feed"/>}</Stack.Screen>
     <Stack.Screen name="Reels">{() => <Profile session={session} initialTab="reels"/>}</Stack.Screen>
@@ -1691,8 +1689,6 @@ function Navigator() {
     <Stack.Screen name="Messages">{() => <Profile session={session} initialTab="messages"/>}</Stack.Screen>
     <Stack.Screen name="Notifications">{() => <Profile session={session} initialTab="notifications"/>}</Stack.Screen>
     <Stack.Screen name="Communities">{() => <Profile session={session} initialTab="communities"/>}</Stack.Screen>
-    <Stack.Screen name="Social">{() => <Profile session={session} initialTab="social"/>}</Stack.Screen>
-    <Stack.Screen name="Consents">{() => <Profile session={session} initialTab="consents"/>}</Stack.Screen>
   </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
