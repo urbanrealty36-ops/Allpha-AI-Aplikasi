@@ -258,8 +258,12 @@ export default function FeedView({
 
           {/* Right Holographic 3D Crystal 'A' Pyramid & Avatars */}
           <div className="flex items-center -space-x-2 shrink-0" aria-hidden="true">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-indigo-700 shadow-md"><Sparkles className="h-4 w-4" /></div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-cyan-400 bg-sky-100 text-sky-700 shadow-md"><Bot className="h-4 w-4" /></div>
+            <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-md">
+              <div className="w-full h-full object-cover bg-indigo-100 text-indigo-700 flex items-center justify-center"><Sparkles className="w-4 h-4" /></div>
+            </div>
+            <div className="w-8 h-8 rounded-full border-2 border-cyan-400 overflow-hidden shadow-md">
+              <div className="w-full h-full object-cover bg-sky-100 text-sky-700 flex items-center justify-center"><Bot className="w-4 h-4" /></div>
+            </div>
           </div>
         </div>
 
@@ -272,7 +276,12 @@ export default function FeedView({
       {/* ========================================================================= */}
       <div className="space-y-4.5">
         {errorMessage && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border-2 border-rose-400 bg-white p-3 text-sm font-bold text-rose-700"><span>{errorMessage}</span>{onRetry && <button type="button" onClick={onRetry} disabled={loading} className="shrink-0 rounded-xl border-2 border-slate-900 bg-white px-3 py-1.5 text-xs font-black text-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] disabled:opacity-50">Coba lagi</button>}</div>}
-        {noticeMessage && <p role="status" className="rounded-xl border-2 border-emerald-400 bg-white p-3 text-sm font-bold text-emerald-800">{noticeMessage}</p>}
+        {noticeMessage && (
+          <div role="status" className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-slate-900 text-white text-xs font-bold border-2 border-slate-700 shadow-[3px_3px_0px_#000] flex items-center gap-2">
+            <span>✨</span>
+            <span>{noticeMessage}</span>
+          </div>
+        )}
         {loading && visiblePosts.length === 0 && <p role="status" className="py-8 text-center text-sm font-semibold text-slate-500">Memuat feed…</p>}
         {emptyState && feedFilter === 'FOR_YOU' && !loading && !errorMessage && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-8 text-center"><h2 className="font-black text-slate-900">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
         {productionMode && feedFilter !== 'FOR_YOU' && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><p className="text-sm font-black text-slate-900">{feedFilter === 'FOLLOWING' ? 'Feed Mengikuti belum tersedia' : 'Feed AI Agents belum tersedia'}</p><p className="mt-1 text-xs text-slate-500">{feedFilter === 'FOLLOWING' ? 'API feed belum menyediakan filter relasi mengikuti. Konten tidak diganti dengan feed umum.' : 'API konten belum mengembalikan atribusi AI Agent yang terverifikasi.'}</p></section>}
