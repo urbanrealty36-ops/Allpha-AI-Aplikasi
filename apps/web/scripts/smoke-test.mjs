@@ -235,6 +235,7 @@ for (const contract of ["/v1/stories", "/v1/content/", "/media", "/publish", "se
 assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
 const storyViewer = readFileSync(new URL("../components/reference-ui/StoriesViewerModal.tsx", import.meta.url), "utf8");
 assert.ok(webStories.includes("StoriesViewerModal") && webStories.includes("productionMode") && webStories.includes("/reaction") && webStories.includes("/comments"), "Story viewer must use canonical API-backed interactions and source modal");
+assert.ok(webStories.includes('>Buka Story</button>') && webStories.includes('"/stories?story=" + encodeURIComponent(story.id)'), "Authenticated and public story cards must open the canonical story viewer");
 assert.ok(storyViewer.includes("productionMode ? (storiesData ?? []) : STORIES") && storyViewer.includes("disabled={productionMode && (!onSendReaction") && storyViewer.includes("if (productionMode) return;"), "Story viewer production mode must use API data and must not expose demo success actions");
 
 const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
