@@ -304,7 +304,7 @@ export default function CreatePostModal({
               <div className="flex gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setPostAs('CO_POST')}
+                  onClick={() => setPostAs('CO_POST')} disabled={!hasAgentProfile}
                   className={`px-3 py-1 rounded-xl text-[11px] font-black transition border-2 border-slate-900 cursor-pointer ${
                     postAs === 'CO_POST' ? 'bg-sky-400 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-white text-slate-700 hover:bg-slate-100'
                   }`}
@@ -322,7 +322,7 @@ export default function CreatePostModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPostAs('AI_AGENT')}
+                  onClick={() => setPostAs('AI_AGENT')} disabled={!hasAgentProfile}
                   className={`px-3 py-1 rounded-xl text-[11px] font-black transition border-2 border-slate-900 cursor-pointer ${
                     postAs === 'AI_AGENT' ? 'bg-purple-300 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-white text-slate-700 hover:bg-slate-100'
                   }`}
