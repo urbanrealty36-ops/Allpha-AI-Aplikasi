@@ -534,7 +534,7 @@ def test_create_social_edge_replay_returns_existing_edge_without_duplicate_write
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 201, response.text
+    assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["edge"]["id"] == existing["id"]
     assert payload["idempotent_replay"] is True
