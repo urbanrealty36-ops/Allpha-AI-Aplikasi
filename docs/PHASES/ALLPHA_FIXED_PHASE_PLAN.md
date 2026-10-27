@@ -1840,3 +1840,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **Smoke-source follow-up — 2026-10-27:**
 - Corrected the new legacy private-follow assertion to read the feed API source within its own top-level binding rather than referencing a block-scoped variable from an earlier conditional. Commit: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/8bcf593c91ed217a8d3a2aa41150b8eb9c19e67a.
 - The smoke file has not been executed. This correction does not change acceptance status: WP-02 and ENG-P04 remain IN_PROGRESS.
+
+
+**WP-02 shared-shell identity race hardening — 2026-10-27:**
+- ReferenceNavigation, Account and Profile now protect the initial Supabase getSession result from overwriting a newer onAuthStateChange event. The shared shell already sequences inbox-indicator reads; source smoke assertions now cover the navigation, Account and Profile race guards.
+- Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/0af02b6ee9200a27070f3ef4cfd32d908b8ff103, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/6f8b4ccaa2d507cc32b8580976ed781e53506983, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/f28fb358fcad09b5409d221b58112eaf6c9bcaee, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/c665827dda83fb04d85369ac6593511e8adf6167, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/5e8506e55c919a3a036606b89b76982bfc38a192.
+- Source changes and smoke assertions have not been executed. WP-02 and ENG-P04 remain IN_PROGRESS; no acceptance or production verification is claimed.
