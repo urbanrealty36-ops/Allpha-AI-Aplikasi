@@ -2014,3 +2014,22 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Added a source contract test in `apps/api/tests/test_eng_p04_privacy_migration_contract.py` that requires exactly one CLI-generated migration and asserts the exact table/column revocations, required grants, and absence of TRUNCATE grants, broad grants, default-privilege changes, policy drops, or table drops.
 - First workflow run `40542069756` failed after locating the already-generated migration because `pytest` was not installed in the runner. The workflow was corrected to set up Python 3.12 and install `apps/api` dev dependencies before running the contract test. The next generator run `40542341378` and Allpha Smoke run `40542341522` were queued at the latest check; their conclusions are pending, so do not report them as green until completed.
 - The generator is source-only and does not connect to or apply DDL to production. Production migration ledger and ACLs have not been changed by this workflow. ENG-P04 remains `in_progress` pending green CI, approved application of the migration, and accepted database isolation evidence.
+
+
+## Latest verification and remaining acceptance gates (2026-10-27)
+
+### Latest completed code-level checks
+- Allpha Smoke run [40545415902](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40545415902) completed successfully for commit `748e03b210e14a1609e930642f88a826590e25c5`: `api-tests`, `native-client-checks`, and `web-build` all passed. The run includes Feed/Story deep-link negative-state and stale-request assertions plus the Web smoke test changes that guard cross-package source checks when Web is built from its standalone Docker context.
+- ENG-P04 generator run [40545415760](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40545415760) completed successfully. Supabase CLI `2.81.3` generated the migration and the workflow's Python migration-contract test passed.
+- On the prior commit, ENG-P22 Spatial and Production Quality Gate run `40543759752` passed Native renderer/app smoke, FastAPI tests, Super Admin checks and Web typecheck/lint/smoke/build; ENG-P23 run `40543760066` passed its Web renderer, API contract and Native renderer jobs; ENG-P22 Theme Builder run `40543759893` passed Web, Native, Super Admin and API-contract jobs.
+- The older ENG-P01 run `40544784320` failed its Web container build due to Web smoke assertions unconditionally reading source files outside the `apps/web` Docker build context. These source checks are now guarded by `existsSync` so they still run in the monorepo checkout but do not fail when unrelated API/Native files are not present in the standalone Web context. The follow-up ENG-P01 run `40545415938` is still running at this update; its API job has passed, while Android Gradle, iOS simulator build, Super Admin container and Web container jobs are still in progress. Do not call ENG-P01 green until all required jobs finish.
+
+### Live database verification — read-only
+- Supabase migration ledger was re-read after CLI generation and does **not** contain `20261027163225` / `eng_p04_social_graph_least_privilege_grants`.
+- Live read-only ACL checks still show `authenticated` has `TRUNCATE` on `social_edges` and `user_interests`; `anon` and `authenticated` still have broad table privileges on `user_settings`. The new SQL is source-only. **No production DDL was run**, and no live grants were changed.
+- The CLI-generated Social Graph migration is reviewed at source level and covered by a test asserting exact table/column revokes and required API grants. Its production application remains blocked pending the approved migration-application process and the required two-user JWT/Realtime isolation evidence. Staging remains deferred as requested.
+
+### Phase acceptance decision
+- **WP-02 remains `in_progress`**. Feed filter/deep-link source contracts and code-level CI now pass, but complete visual/component/layout/CSS/asset parity and the remaining route/action matrix have not been accepted. Browser viewport/device checks remain deferred per instruction.
+- **ENG-P04 remains `in_progress`**. The forward migration exists and its contract test passes, but live ACLs remain unchanged until the approved application/verification path is used.
+- **ENG-P05 remains blocked** until both WP-02 and ENG-P04 acceptance evidence is complete. No PR merge, Vercel deployment, staging test, physical-device test, or production DDL was performed.
