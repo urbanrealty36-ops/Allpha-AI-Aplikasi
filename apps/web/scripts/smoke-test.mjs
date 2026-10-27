@@ -458,3 +458,13 @@ for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"
   assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
 }
 assert.ok(nativeApp.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
+
+
+const messagesRoute = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+for (const contract of ["authEventSeen", "sessionEpoch", "listSequence", "messageSequence", "sessionUserId", "client_message_id", "encodeURIComponent(c.id)"]) {
+  assert.ok(messagesRoute.includes(contract), "Messages must isolate account sessions and guard stale requests: " + contract);
+}
+const notificationsRoute = readFileSync(new URL("../app/notifications/page.tsx", import.meta.url), "utf8");
+for (const contract of ["authEventSeen", "sessionEpoch", "inboxSequence", "preferencesSequence", "sessionUserId", "encodeURIComponent(item.id)"]) {
+  assert.ok(notificationsRoute.includes(contract), "Notifications must isolate account sessions and guard stale requests: " + contract);
+}
