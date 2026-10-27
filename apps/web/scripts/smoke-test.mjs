@@ -274,7 +274,7 @@ for (const contract of [
 ]) assert.ok(webSearch.includes(contract), "Search must isolate sessions and use canonical Social Graph contracts: " + contract);
 const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
 assert.ok(exploreView.includes("pendingFollowAccountIds") && exploreView.includes("<span>Menunggu</span>") && exploreView.includes("Batalkan permintaan mengikuti"), "Explore must distinguish active follows from cancellable private-profile requests");
-assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("discoverable"), "Explore must connect username discovery to the canonical saved-preference API");
+assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("loadDiscoveredUsers"), "Explore must connect username discovery to the canonical discovery endpoint");
 assert.ok(exploreView.includes("discoveryError") && exploreView.includes("relationshipError"), "Explore must expose explicit discovery and relationship error states");
 const socialFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
 if (existsSync(socialFeedApiPath)) {
@@ -452,6 +452,7 @@ assert.ok(accountRoute.includes('new URLSearchParams(window.location.search).get
 assert.ok(accountRoute.includes('interestPreference') && accountRoute.includes('"not_interested"') && accountRoute.includes('updateInterestPreference'), "Web Social Graph must persist both positive and negative interest preferences");
 assert.ok(accountRoute.includes('result.outcome === "follow_active"') && accountRoute.includes('result.outcome === "follow_request_created"'), "Web Social Graph must distinguish active follows from private-profile requests");
 const apiMain = readFileSync(new URL("../../api/src/allpha_api/main.py", import.meta.url), "utf8");
+assert.ok(apiMain.includes("discoverable_by_username"), "Canonical discovery API must enforce the saved username-discovery preference");
 assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
 assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
 const nativeSocialSource = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
