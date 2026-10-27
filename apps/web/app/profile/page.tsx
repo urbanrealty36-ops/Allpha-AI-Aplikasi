@@ -22,6 +22,7 @@ export default function ProfilePage() {
     return;
   }
   let active = true;
+  let authEventSeen = false;
   let requestSequence = 0;
 
   const loadProfile = async (current: Session | null) => {
