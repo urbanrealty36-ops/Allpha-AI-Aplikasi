@@ -1869,3 +1869,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Removed an unused participant lookup from `apps/web/app/messages/page.tsx` discovered during source review. This is a small source cleanup only and does not establish typecheck/build success.
 - Commit: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/54d3bc1cff790678e6e93f8a0aed74c92e7784f7.
 - WP-02 and ENG-P04 remain `IN_PROGRESS`; no test, build, staging, deployment, or production migration was run.
+**WP-02 / ENG-P04 privacy follow-up — 2026-10-27 (guest shared links and comments):**
+- Closed a source-level privacy gap found in unauthenticated read paths: guest comments and shared-feed-item routes now fail closed when the otherwise-public content owner is not in active account state. The normal guest feed already filtered inactive owners; these two direct-link paths now apply the same account-lifecycle boundary.
+- Added a regression test source covering both guest endpoints and added a source-contract assertion in the Web smoke script.
+- Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/49ec368158f46cbe16657725f178faca01ab4554, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/387d85d5783f998ba52c627908003796fd2aad2f, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/d7c0a3d30730d47f2179334a1e38fef13f6fa734.
+- Source-only change. Regression test and smoke script have not been executed. No build/typecheck, staging, real-user journey, deployment, production migration, or live RLS/grant verification was performed.
+- **Status unchanged:** WP-02 IN_PROGRESS; ENG-P04 IN_PROGRESS. Acceptance remains blocked on the full Web–Native route/UI parity inventory, execution/evidence under the approved acceptance process, and authorized live database grants/RLS plus cross-user privacy evidence. Do not start ENG-P05 until both gates have evidence-based acceptance.
