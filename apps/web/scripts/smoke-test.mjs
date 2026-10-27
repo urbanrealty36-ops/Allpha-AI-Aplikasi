@@ -263,6 +263,13 @@ assert.ok(webSearch.includes("useSearchParams"), "Search must react to global na
 assert.ok(webSearch.includes("lastUrlQuery.current === urlQuery"), "Search must avoid duplicate submissions for the same URL query");
 assert.ok(webSearch.includes("<Suspense"), "Search useSearchParams must be guarded by Suspense for production build");
 assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical authenticated Search API");
+for (const contract of [
+  "lastSessionUserId", "sessionEpoch.current += 1", "searchRequestSequence.current",
+  "trendsRequestSequence.current", "recommendationsRequestSequence.current", "creatorsRequestSequence.current",
+  "lastUrlQuery.current = null", "if (sequence !== searchRequestSequence.current) return",
+  "if (sequence === trendsRequestSequence.current)", "if (sequence === recommendationsRequestSequence.current)",
+  "if (sequence === creatorsRequestSequence.current)"
+]) assert.ok(webSearch.includes(contract), "Search must isolate in-flight requests across identities: " + contract);
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
