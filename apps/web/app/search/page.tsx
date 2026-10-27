@@ -190,6 +190,8 @@ function SearchPageContent() {
         recommendationsLoading={recommendationsBusy}
         recommendationsError={recommendationsError}
         productionMode
+        onOpenMarketplace={() => { window.location.assign("/marketplace"); }}
+        onOpenStoreAndBoothModal={() => { window.location.assign("/profile?open=store"); }}
         initialSearchQuery={query}
         searchLoading={busy}
         searchError={error}
