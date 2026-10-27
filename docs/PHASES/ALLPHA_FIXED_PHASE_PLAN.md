@@ -1958,3 +1958,38 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Additional read-only live privilege evidence: `authenticated` also has table-level `TRUNCATE` on `public.social_edges` and `public.user_interests`. RLS policies remain enabled, but RLS does not replace revocation of unsafe table privileges. Existing ENG-P04 migrations grant column-scoped update on follow status, yet current live ACLs still include this TRUNCATE privilege; a reviewed forward migration is needed. No production DDL was executed.
 - The canonical migration ledger does not include `20261027180000_eng_p03_user_settings_least_privilege_grants`; live `user_settings` grants remain overbroad. ENG-P04 cannot be closed until the repair migration is reviewed and applied through an approved process and the required two-user JWT/Realtime isolation evidence is accepted. Staging/live acceptance is deferred as instructed.
 - WP-02 remains `in_progress`: remaining work includes full component/layout/CSS/assets inventory and reconciliation, remaining route/action parity, and the rest of the Native deep-link journey matrix. No deployment, staging, or physical-device test is claimed. ENG-P05 remains gated on WP-02 and ENG-P04 dependency acceptance.
+
+
+## Execution update (2026-10-27, latest Feed/Native CI and grant review)
+
+### Actual CI evidence and correction
+- GitHub Actions run `40537136102` (Allpha Smoke, commit `aa5d6bf1468d5d346a3f2e1dcb93a6e7e751fab1`) reported `api-tests=success`, `native-client-checks=success`, and `web-build=failure`. The failing Web smoke assertion at `apps/web/scripts/smoke-test.mjs:527` incorrectly searched for the literal substring `!authEventSeen`; the Native implementation correctly guards the pending initial session read with `if (!active || authEventSeen) return;` and sets `authEventSeen = true;` inside `onAuthStateChange`. This was a test-contract mismatch, not evidence that the runtime guard was absent.
+- Corrected the smoke assertion in commit `beea42e0f8186600949cb4c2ee27999f60e39247` to assert the actual guard and auth-event assignment. Follow-up commits strengthen the `user_settings` migration and its contract test: `8ad17086a1aed03bb18c751e4c642650bb719b41` and `3bde8f15e8c2ac768d3445cf3382d6465b02d7d5`.
+- A new CI batch was observed in progress after the assertion fix. The latest head must be rechecked before claiming the fix passed; prior failures remain historical evidence until a new run completes. The current CI logs show that the earlier Web typecheck itself passed; the build's nested `npm test` failed at the same stale-session assertion before `next build` could run.
+- Vercel status checks continue to show `build-rate-limit`; no Vercel deployment was attempted.
+
+### Forward migration review — live evidence (read-only)
+- Latest read-only `has_table_privilege` results:
+  - `anon` on `public.user_settings`: SELECT/INSERT/UPDATE/DELETE/TRUNCATE all true; UPDATE on `user_id` and `updated_at` true.
+  - `authenticated` on `public.user_settings`: SELECT/INSERT/UPDATE/DELETE/TRUNCATE all true; UPDATE on `user_id` and `updated_at` true.
+  - `anon` on `public.social_edges` and `public.user_interests`: table privileges all false after the existing anonymous-revoke migration.
+  - `authenticated` on both Social Graph tables: TRUNCATE remains true. `social_edges` has table SELECT/INSERT/DELETE and column-level INSERT/SELECT/REFERENCES grants, plus UPDATE(status); `user_interests` has table SELECT/INSERT/UPDATE/DELETE and broad column-level INSERT/UPDATE/SELECT/REFERENCES grants.
+- RLS policies are still required but do not mitigate TRUNCATE. The existing `20261027180000_eng_p03_user_settings_least_privilege_grants.sql` was tightened so its column-level revoke includes `PUBLIC, anon, authenticated`, not only `anon, authenticated`. This is source-only; the live ledger still lacks version `20261027180000`, and no production DDL was executed.
+- Required new Social Graph forward migration design (not yet created or applied): revoke table-level and column-level privileges from `PUBLIC, anon, authenticated` on `public.social_edges` and `public.user_interests`; restore only `SELECT, DELETE` table privileges and `INSERT(actor_user_id, target_user_id, edge_type, status)` plus `UPDATE(status)` column privileges for `social_edges`; restore `SELECT, DELETE` on `user_interests`, `INSERT(user_id, interest_key, preference)`, and `UPDATE(user_id, interest_key, preference)` for authenticated users. The latter update columns preserve the existing atomic PostgREST `resolution=merge-duplicates` upsert contract while keeping `created_at` and `updated_at` client-read-only. Existing self/participant RLS policies remain in place. This SQL design must be committed as a newly generated migration and covered by source contract tests before it can be reviewed for application.
+- The environment currently has no local checkout or Supabase CLI available, and a GitHub clone attempt failed because `github.com` DNS could not be resolved from the execution container. Per Supabase workflow requirements, do not invent a migration filename or bypass `supabase migration new`; the Social Graph migration file is therefore still a blocking deliverable, not “completed”. Resume file creation only in a networked repo environment where the migration can be generated by the CLI.
+
+### Web / Native parity inventory (remaining acceptance work)
+| Surface | Current evidence | Remaining gap / acceptance |
+|---|---|---|
+| Web Feed — Following filter | Tab callback wired to `GET /v1/feed?mode=following`; API filters to active followed creators; guest state is explicit | Confirm latest Web smoke/build CI green; visual/responsive parity is still unverified |
+| Web Feed — selected content | Canonical `/v1/feed/item/{content_id}` supports the Native deep link path; Feed filter wiring is source-tested | Finish reference-style selected-content/Story viewer parity and verify the content-query route does not silently lose selection |
+| Web Feed — AI Agents filter | Explicit unavailable state, because canonical feed payload lacks verified Agent authorship | Requires an API contract with verified author attribution before enabling |
+| Native Feed deep link | `Feed: { content?: string }`; canonical item API used; signed-in and guest routes preserve the content ID | Latest Native CI must pass; verify route behavior for missing, expired, private, and malformed IDs using code-level contract tests |
+| Native Story deep link | `Stories: { story?: string }`; signed-in and guest branches preserve the Story ID; unavailable/expired public Story shows an honest state | Full route matrix and accessible Story viewer parity remain open |
+| UI source/layout/CSS/assets | Prior source-level manifest covers four Web routes and shared reference components/CSS; target behavior avoids demo data | Complete remaining component/route/action/asset checksum inventory; browser viewport checks at 360/390/820/1440 remain deferred per instruction |
+| Web/Native acceptance | Mocked API isolation contracts and smoke assertions exist | Mock tests are not database RLS or two-user JWT/Realtime evidence; staging/device checks remain deferred |
+
+### Gate decision
+- WP-02 remains `in_progress`; the source/target parity inventory and CI pass evidence are not yet complete.
+- ENG-P04 remains `in_progress`; the live grants are still unsafe and the new Social Graph forward migration has not yet been generated/applied/verified through an approved path.
+- ENG-P05 must not advance until WP-02 and ENG-P04 acceptance evidence is complete. No staging, physical-device test, production DDL, or Vercel deployment was run.
