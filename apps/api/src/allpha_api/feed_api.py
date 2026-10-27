@@ -398,11 +398,11 @@ async def discover_users_by_username(
         raise HTTPException(422, detail={"code": "SOCIAL_DISCOVERY_QUERY_INVALID", "message": "Masukkan minimal 2 karakter nama pengguna."})
     owner = str(user["id"])
     profiles = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility,account_status",
+        "select": "id,username,display_name,avatar_url,bio,visibility",
         "username": f"ilike.{query}*", "id": f"neq.{owner}",
         "order": "username.asc", "limit": "100",
     })
-    candidates = [row for row in (profiles or []) if row.get("visibility") in {"public", "private"} and row.get("account_status", "active") == "active" and row.get("username")]
+    candidates = [row for row in (profiles or []) if row.get("visibility") in {"public", "private"} and row.get("username")]
     if not candidates:
         return {"items": [], "count": 0, "query": query}
     candidate_ids = [str(row["id"]) for row in candidates]
