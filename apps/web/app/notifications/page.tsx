@@ -40,7 +40,14 @@ export default function NotificationsPage() {
     if (!supabase) { setLoading(false); return; }
     let active = true;
     void supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session); });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
+      requestSequence.current += 1;
+      setItems([]);
+      setUnreadCount(0);
+      setPreferences(null);
+      setSession(next);
+    });
     return () => { active = false; requestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
