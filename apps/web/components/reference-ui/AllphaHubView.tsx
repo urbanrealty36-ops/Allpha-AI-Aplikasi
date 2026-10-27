@@ -38,8 +38,7 @@ import {
   Store,
   Truck,
   QrCode,
-  Package,
-  ArrowUpRight
+  Package
 } from 'lucide-react';
 
 export type EventCategory = 
