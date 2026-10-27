@@ -57,7 +57,7 @@ interface CreatePostModalProps {
   onClose: () => void;
   humanUser: HumanProfile;
   agentProfile: AIAgentProfile | null;
-  onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE', mediaFile: File | null) => Promise<boolean>;
+  onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE', mediaFile: File | null) => Promise<{ accepted: boolean; message?: string }>;
   onLaunchLiveStage?: (
     title: string, 
     mode: string, 
@@ -187,9 +187,9 @@ export default function CreatePostModal({
 
     setIntegrationNotice(null);
     try {
-      const accepted = await onCreatePost(newPost, audience, postMediaFile);
-      if (!accepted) {
-        setIntegrationNotice('Konten belum dikonfirmasi oleh API kanonis. Form tetap terbuka dan tidak menampilkan status publikasi.');
+      const result = await onCreatePost(newPost, audience, postMediaFile);
+      if (!result.accepted) {
+        setIntegrationNotice(result.message || 'Konten belum dikonfirmasi oleh API kanonis. Form tetap terbuka dan tidak menampilkan status publikasi.');
         return;
       }
       setContent('');
