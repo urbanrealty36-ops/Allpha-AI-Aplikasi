@@ -143,6 +143,7 @@ assert.ok(app.includes('Stories: { story?: string } | undefined') && app.include
 assert.ok(app.includes("selectedStoryId") && app.includes("Story tidak tersedia, tidak dapat diakses, atau sudah kedaluwarsa."), "Native Story deep links must show selected Story or a truthful unavailable state");
 assert.ok(app.includes('Feed: { content?: string } | undefined') && app.includes('initialContentId={route.params?.content}'), "Native Feed deep links must preserve the selected content ID");
 assert.ok(app.includes('apiRequest("/v1/feed/item/" + encodeURIComponent(selectedFeedContentId))') && app.includes("selectedFeedContentId"), "Native Feed deep links must resolve the selected content through the canonical API");
+assert.ok(app.includes('<Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen>') && app.includes('<Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen>'), "Native public Feed and Story deep links must resolve while signed out");
 assert.ok(app.includes('updateInterestPreference') && app.includes('"not_interested"'), "Native Social Graph must persist both interested and not-interested preferences");
 assert.ok(app.includes('result.outcome === "follow_active"') && app.includes('result.outcome === "follow_request_created"'), "Native Social Graph must show the server-derived follow outcome");
 const guestWelcome = app.slice(app.indexOf("function Welcome"), app.indexOf("function Auth"));
