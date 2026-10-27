@@ -74,6 +74,18 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     owner_id = str(item.get("owner_id"))
     if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed):
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+
+    # Match feed/profile visibility rules before returning a server-fetched item.
+    # Server-role reads bypass RLS, so a public content flag must not override
+    # the owner's private profile setting.
+    profile_by_id = await _profiles_for({owner_id})
+    profile = profile_by_id.get(owner_id)
+    if not profile or (
+        viewer_id != owner_id
+        and profile.get("visibility") != "public"
+        and owner_id not in followed
+    ):
+        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     return item
 
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
