@@ -206,6 +206,7 @@ def test_share_records_event_and_returns_deep_link(monkeypatch):
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
         if table == "content_items": return [content]
+        if table == "profiles": return [{"id": content["owner_id"], "username": "author", "visibility": "public"}]
         if table == "social_edges": return []
         if method == "POST" and table == "content_shares":
             writes.append(body)
@@ -235,6 +236,7 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         if table == "content_items": return [content]
+        if table == "profiles": return [{"id": content["owner_id"], "username": "author", "visibility": "public"}]
         if table == "social_edges": return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}: return []
         raise AssertionError(f"unexpected {method} {table}")
@@ -838,3 +840,33 @@ def test_public_profile_hides_inactive_account_before_content_lookup(monkeypatch
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
     assert not any(table == "content_items" for _, table, _ in calls)
+
+
+def test_public_content_from_private_profile_is_hidden_from_non_followers(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000024"
+    owner_id = "eng-p14-private-author"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": owner_id, "body": "profile-private", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+    writes = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items": return [content]
+        if table == "profiles": return [{"id": owner_id, "username": "private_author", "visibility": "private"}]
+        if table == "social_edges": return []
+        if method == "POST":
+            writes.append((table, body))
+        raise AssertionError(f"private-profile content must not reach a write: {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).post(f"/v1/feed/{content_id}/share", json={"share_target": "copy_link"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    assert writes == []
