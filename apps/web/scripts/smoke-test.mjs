@@ -395,6 +395,11 @@ assert.ok(profileRoute.includes('signOut({scope:"others"})') && profileRoute.inc
 assert.ok(profileView.includes('onOpenAccountSettings("settings")'), "Profile privacy must route to canonical account privacy controls");
 assert.ok(profileView.includes('onOpenAccountSettings("profile")'), "Profile language preference must route to canonical profile settings");
 assert.ok(profileView.includes('onRevokeOtherSessions') && profileView.includes('onLogout'), "Profile session actions must not claim success without auth callbacks");
+assert.ok(profileView.includes('{humanVerified && (') && !profileView.includes('className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">\\n              ✓'), "Profile avatar must not show a verification badge without canonical verification");
+assert.ok(profileView.includes("ag.status === 'active' ? 'bg-emerald-500' : ag.status === 'draft' ? 'bg-amber-400' : 'bg-slate-400'"), "Owned Agent status indicator must reflect canonical Agent status");
+for (const demoMetric of ["142.840", "+24.8% bln ini", "489.200", "+38.1% bln ini", "+12.450", "18.2% conversion", "1.820 Sesi"]) assert.ok(!profileView.includes(demoMetric), `Profile analytics must not show fabricated metric: ${demoMetric}`);
+assert.ok(!profileView.includes("Royalti Kreator: 85%") && !profileView.includes("Platform Fee (15%)"), "Profile financial panel must not invent unconfigured royalty/platform rates");
+assert.ok(!profileView.includes("setSettingsLang(lang.code as any)") && profileView.includes("Bahasa akun dikelola melalui formulir profil kanonis"), "Language preference must not report local-only selection as persisted");
 const accountRoute = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
 assert.ok(accountRoute.includes('new URLSearchParams(window.location.search).get("tab")'), "Account must support direct tab deep links");
 for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
