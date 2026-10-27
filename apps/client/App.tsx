@@ -66,6 +66,7 @@ type SocialInterest = { interest_key: string; preference: "interested" | "not_in
 type NativeConversation = { id: string; title?: string | null; kind: "human" | "agent"; last_message?: { body: string; created_at: string; delivery_status: string } };
 type NativeMessage = { id: string; body: string; sender_type: string; sender_user_id?: string; created_at: string; delivery_status: string };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[] };
+type DiscoveredSocialUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000") : "https://api.allpha.web.id")).replace(/\/$/, "");
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
@@ -400,6 +401,11 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
+  const [socialDiscoveryQuery, setSocialDiscoveryQuery] = useState("");
+  const [socialDiscoveryUsers, setSocialDiscoveryUsers] = useState<DiscoveredSocialUser[]>([]);
+  const [socialDiscoveryBusy, setSocialDiscoveryBusy] = useState(false);
+  const [socialDiscoveryError, setSocialDiscoveryError] = useState("");
+  const socialDiscoveryRequestSequence = useRef(0);
   const [interestKey, setInterestKey] = useState("");
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
@@ -930,14 +936,37 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
     catch (e) { setError(e instanceof Error ? e.message : "Social Graph tidak dapat dimuat."); }
     finally { setSocialLoading(false); }
   }
-  async function addSocialEdge(edgeType: "follow" | "block" | "mute") {
+  async function searchSocialUsers() {
+    const query = socialDiscoveryQuery.trim().replace(/^@/, "");
+    const sequence = ++socialDiscoveryRequestSequence.current;
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(query)) {
+      setSocialDiscoveryUsers([]);
+      setSocialDiscoveryError("Masukkan username 3–30 karakter (huruf, angka, garis bawah).");
+      return;
+    }
+    setSocialDiscoveryBusy(true); setSocialDiscoveryError("");
+    try {
+      const payload = await apiRequest("/v1/social/discover-users?q=" + encodeURIComponent(query) + "&limit=20") as { items?: DiscoveredSocialUser[] };
+      if (sequence !== socialDiscoveryRequestSequence.current) return;
+      setSocialDiscoveryUsers(Array.isArray(payload.items) ? payload.items : []);
+    } catch (cause) {
+      if (sequence === socialDiscoveryRequestSequence.current) {
+        setSocialDiscoveryUsers([]);
+        setSocialDiscoveryError(cause instanceof Error ? cause.message : "Pencarian username tidak dapat dimuat.");
+      }
+    } finally { if (sequence === socialDiscoveryRequestSequence.current) setSocialDiscoveryBusy(false); }
+  }
+  async function addSocialEdge(edgeType: "follow" | "block" | "mute", targetOverride?: string) {
+    const targetId = (targetOverride ?? targetUserId).trim();
+    if (!targetId) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await apiRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
-      setTargetUserId("");
+      const result = await apiRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetId, edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
+      if (!targetOverride) setTargetUserId("");
       const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti akun ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : result.outcome === "user_blocked" ? "Akun diblokir." : result.outcome === "user_muted" ? "Akun dibisukan." : "Relasi sosial tersimpan.";
       setMessage(result.idempotent_replay ? "Relasi tersebut sudah ada; tidak dibuat duplikat." : outcomeMessage);
       await loadSocialGraph();
+      if (targetOverride && edgeType === "follow") await searchSocialUsers();
     } catch (e) { setError(e instanceof Error ? e.message : "Relasi sosial gagal disimpan."); }
     finally { setBusy(false); }
   }
@@ -1597,9 +1626,15 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
         {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{item.status === "failed" && <Button title="Pulihkan draft" secondary disabled={contentBusy} onPress={() => void retryNativeContent(item)}/>}{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}</View></View>)}
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
-        <Text style={s.muted}>Relasi dan preferensi minat disimpan melalui API kanonis. Pencarian username belum tersedia; gunakan ID pengguna target.</Text>
-        <TextInput accessibilityLabel="ID pengguna target" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder="UUID akun Allpha" placeholderTextColor="#8B94AC"/>
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Ikuti" disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("follow")}/><Button title="Blokir" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("block")}/><Button title="Bisukan" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("mute")}/></View>
+        <Text style={s.muted}>Relasi dan preferensi minat disimpan melalui API kanonis. Pencarian username menghormati pengaturan penemuan akun; profil privat hanya menampilkan identitas minimal.</Text>
+        <TextInput accessibilityLabel="Cari username" value={socialDiscoveryQuery} onChangeText={setSocialDiscoveryQuery} autoCapitalize="none" maxLength={40} style={field} placeholder="@username" placeholderTextColor="#8B94AC"/>
+        <Button title={socialDiscoveryBusy ? "Mencari…" : "Cari username"} disabled={socialDiscoveryBusy || socialDiscoveryQuery.trim().length < 3} onPress={() => void searchSocialUsers()}/>
+        {!!socialDiscoveryError && <Text accessibilityRole="alert" style={s.error}>{socialDiscoveryError}</Text>}
+        {socialDiscoveryUsers.map(discovered => <View key={discovered.id} style={s.socialRow}><View style={{ flex: 1 }}><Text style={s.body}>{discovered.display_name} · @{discovered.username}</Text><Text style={s.muted}>{discovered.visibility === "private" ? "Profil privat · detail disembunyikan" : discovered.bio || "Profil publik"}</Text></View><Button title="Ikuti" disabled={busy || socialDiscoveryBusy} onPress={() => void addSocialEdge("follow", discovered.id)}/></View>)}
+        {!socialDiscoveryBusy && !socialDiscoveryError && socialDiscoveryQuery.trim().length >= 3 && socialDiscoveryUsers.length === 0 && <Text style={s.muted}>Tidak ada akun yang dapat ditemukan untuk username tersebut.</Text>}
+        <Text style={s.kicker}>ID TARGET UNTUK BLOKIR / BISUKAN</Text>
+        <TextInput accessibilityLabel="ID pengguna target untuk blokir atau bisukan" value={targetUserId} onChangeText={setTargetUserId} autoCapitalize="none" style={field} placeholder="UUID akun Allpha" placeholderTextColor="#8B94AC"/>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Blokir" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("block")}/><Button title="Bisukan" secondary disabled={busy || !targetUserId.trim()} onPress={() => void addSocialEdge("mute")}/></View>
         <Text style={s.kicker}>PERMINTAAN MASUK ({socialGraph.incoming_requests.length})</Text>
         {socialGraph.incoming_requests.length ? socialGraph.incoming_requests.map(edge => <View key={edge.id} style={s.socialRow}><Text style={s.body}>{edge.actor_user_id}</Text><View style={{ flexDirection: "row", gap: 8 }}><Button title="Terima" disabled={busy} onPress={() => void resolveFollowRequest(edge.id, true)}/><Button title="Tolak" secondary disabled={busy} onPress={() => void resolveFollowRequest(edge.id, false)}/></View></View>) : <Text style={s.muted}>Belum ada permintaan masuk.</Text>}
         <Text style={s.kicker}>RELASI ({socialGraph.outgoing.length})</Text>
