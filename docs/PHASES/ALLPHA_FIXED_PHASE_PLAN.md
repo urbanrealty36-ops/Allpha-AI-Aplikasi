@@ -1910,3 +1910,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - The username discovery query now selects only profile columns already used by the canonical profile projection; no unverified account_status column is assumed.
 - Added a source-contract assertion for pending follow request state/cancellation. As before, assertions were **not run**; no build, typecheck, test, staging, migration application or deployment was executed.
 - Current branch head after this update is recorded in GitHub; PR #10 remains a draft. WP-02 must remain IN_PROGRESS / acceptance DEFERRED / NOT VERIFIED until shared-shell/source parity, privacy/schema/grant reconciliation, and the explicitly deferred verification gates are completed. The fixed phase plan explicitly says not to invent a separate WP-03; the next canonical engineering scope remains **ENG-P04 — Social Graph**, with cross-surface privacy/visibility and grant/migration reconciliation as the entry criteria.
+
+
+**ENG-P04 privacy consistency continuation (2026-10-27):**
+- The canonical feed-item visibility guard now checks the author's profile visibility as well as content visibility and block/mute/follow relationships before server-side interaction/deep-link actions. This prevents a public content flag from bypassing a private profile's access boundary when privileged server reads bypass RLS.
+- Added a regression test for a non-follower attempting to share public-flagged content owned by a private profile; test source was authored only and remains unexecuted under the current instruction.
+- This is an implementation improvement, not phase acceptance. WP-02 remains IN_PROGRESS / DEFERRED NOT VERIFIED, and ENG-P04 remains IN_PROGRESS. No tests/build/typecheck/staging/deployment or migration application were run.
