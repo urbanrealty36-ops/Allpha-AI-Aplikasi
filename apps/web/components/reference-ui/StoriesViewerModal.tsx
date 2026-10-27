@@ -34,8 +34,13 @@ interface StoriesViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialIndex?: number;
-  currentUser: HumanProfile;
-  currentAgent: AIAgentProfile;
+  currentUser?: HumanProfile;
+  currentAgent?: AIAgentProfile;
+  storiesData?: StoryItem[];
+  productionMode?: boolean;
+  enabledReactions?: string[];
+  onSendReaction?: (storyId: string, emoji: string) => Promise<void> | void;
+  onSendReply?: (storyId: string, body: string) => Promise<void> | void;
   onOpenAskAi?: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenLiveStage?: () => void;
 }
@@ -46,6 +51,11 @@ export default function StoriesViewerModal({
   initialIndex = 0,
   currentUser,
   currentAgent,
+  storiesData,
+  productionMode = false,
+  enabledReactions,
+  onSendReaction,
+  onSendReply,
   onOpenAskAi,
   onOpenLiveStage,
 }: StoriesViewerModalProps) {
@@ -95,14 +105,23 @@ export default function StoriesViewerModal({
     }
   ];
 
-  // Auto-progress timer
+  const stories = productionMode ? (storiesData ?? []) : STORIES;
+
   useEffect(() => {
-    if (!isOpen || isPaused || mode === 'CREATE') return;
+    if (!isOpen) return;
+    setActiveStoryIndex(Math.min(Math.max(initialIndex, 0), Math.max(0, stories.length - 1)));
+    setProgress(0);
+    if (productionMode) setMode('VIEW');
+  }, [isOpen, initialIndex, stories.length, productionMode]);
+
+  // Auto-progress uses the canonical Story list in production mode.
+  useEffect(() => {
+    if (!isOpen || isPaused || mode === 'CREATE' || stories.length === 0) return;
 
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
-          if (activeStoryIndex < STORIES.length - 1) {
+          if (activeStoryIndex < stories.length - 1) {
             setActiveStoryIndex((curr) => curr + 1);
             return 0;
           } else {
@@ -115,14 +134,13 @@ export default function StoriesViewerModal({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isOpen, isPaused, activeStoryIndex, mode, STORIES.length, onClose]);
+  }, [isOpen, isPaused, activeStoryIndex, mode, stories.length, onClose]);
 
-  if (!isOpen) return null;
-
-  const currentStory = STORIES[activeStoryIndex];
+  const currentStory = stories[activeStoryIndex] ?? null;
+  if (!isOpen || !currentStory) return null;
 
   const handleNext = () => {
-    if (activeStoryIndex < STORIES.length - 1) {
+    if (activeStoryIndex < stories.length - 1) {
       setActiveStoryIndex(activeStoryIndex + 1);
       setProgress(0);
     } else {
