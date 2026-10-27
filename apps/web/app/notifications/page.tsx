@@ -34,7 +34,8 @@ export default function NotificationsPage() {
   const [notice, setNotice] = useState("");
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [preferencesBusy, setPreferencesBusy] = useState(false);
-  const requestSequence = useRef(0);\n  const preferencesRequestSequence = useRef(0);
+  const requestSequence = useRef(0);
+  const preferencesRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
