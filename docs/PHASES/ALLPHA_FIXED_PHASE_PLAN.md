@@ -1858,3 +1858,10 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **Username lookup precision hardening (2026-10-27):**
 - Public profile lookup now queries an exact canonical username instead of a LIKE expression. Discovery still uses prefix lookup for efficiency but filters candidate handles with a literal case-folded prefix check, preventing underscore characters from acting as wildcards and changing which account a handle resolves to. Added a source-contract assertion; not executed.
 - Also corrected the legacy PUT /v1/social/follow/{target_user_id} endpoint to create requested edges for private profiles and active edges only for public profiles; this closes a remaining path that could have bypassed private-profile follow semantics.
+
+
+**Read-only Supabase grant/migration reconciliation (2026-10-27):**
+- Confirmed the bound Supabase project is `AllphaAiAplikasi-db` (`dvdziauyvuhcnqhrrvww`). Live schema inventory shows `profiles.username` check constraint `^[a-z0-9_]{3,30}$`; API validation has been aligned to that contract.
+- Read-only privilege inventory found table-level grants on `public.user_settings` for `anon` and `authenticated`, including `TRUNCATE`, despite row policies intended for authenticated self-access. The live `social_edges` table has its unique actor/target/type index and the live trigger function `public.enforce_social_edge_policy()` maps private-profile follows to `requested`; the deployed ENG-P04 migration history also includes the anonymous Social Graph grant repair.
+- Added source-only forward migration `apps/api/supabase/migrations/20261027180000_eng_p03_user_settings_least_privilege_grants.sql` to revoke all table/column privileges for `anon` and `authenticated`, then grant authenticated users only SELECT, INSERT on editable fields, and UPDATE on editable preference fields. `service_role` grants are intentionally unchanged.
+- **No migration was applied to Supabase.** The new migration has not been validated on an isolated database or executed; it remains a source change pending review/authorized verification. No tests, build, typecheck, staging or deployment were run.
