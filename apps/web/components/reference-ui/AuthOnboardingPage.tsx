@@ -217,10 +217,7 @@ export default function AuthOnboardingPage({
       onStartAuthentication();
       return;
     }
-    showToast(`Selamat datang kembali, ${humanName}!`);
-    setTimeout(() => {
-      onEnterApp();
-    }, 800);
+    showToast('Login belum terhubung ke autentikasi kanonis. Tidak ada sesi yang dibuat.');
   };
 
   return (
