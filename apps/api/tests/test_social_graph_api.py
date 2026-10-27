@@ -23,14 +23,16 @@ def _override_user():
 
 
 def test_follow_rejects_inactive_or_unprovisioned_target(monkeypatch):
-    calls = []
+    profile_calls = []
+    social_calls = []
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        profile_calls.append((method, table, params))
         assert method == "GET" and table == "profiles"
         return [{"id": TARGET_ID, "visibility": "public", "account_status": "suspended"}]
 
     async def fake_user_db_request(method, path, token, **kwargs):
-        calls.append((method, path, kwargs))
+        social_calls.append((method, path, kwargs))
         raise AssertionError(f"social write should not proceed: {method} {path}")
 
     monkeypatch.setattr("allpha_api.main._server_db", fake_server_db)
@@ -46,8 +48,9 @@ def test_follow_rejects_inactive_or_unprovisioned_target(monkeypatch):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "SOCIAL_TARGET_NOT_FOUND"
-    assert len(calls) == 1
-    assert calls[0][1] == "profiles"
+    assert len(profile_calls) == 1
+    assert profile_calls[0][1] == "profiles"
+    assert social_calls == []
 
 
 def test_follow_rejects_mutual_block_with_stable_policy_error(monkeypatch):
