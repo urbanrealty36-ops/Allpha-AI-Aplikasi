@@ -459,3 +459,5 @@ assert.ok(socialFeedApi.includes('privacy.get("discoverable_by_username") is not
 const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
 assert.ok(exploreView.includes('pendingFollowAccountIds?: string[]') && exploreView.includes('followStatus === "requested"'), "Reference account cards must distinguish pending follow requests");
 assert.ok(exploreView.includes('"/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))'), "Human account cards must navigate to the canonical public profile route");
+
+assert.ok(socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", handle)') && socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", query)'), "Profile routes and username discovery must reject malformed handles rather than normalize them into another account");
