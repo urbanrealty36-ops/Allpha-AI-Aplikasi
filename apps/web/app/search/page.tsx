@@ -44,9 +44,11 @@ function SearchPageContent() {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session); });
+    let authEventSeen = false;
+    void supabase.auth.getSession().then(({ data }) => { if (active && !authEventSeen) setSession(data.session); });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
+      authEventSeen = true;
       searchRequestSequence.current += 1;
       setItems([]);
       setDiscoveredUsers([]);
