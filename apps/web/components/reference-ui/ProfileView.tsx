@@ -250,9 +250,11 @@ export default function ProfileView({
               alt={humanUser.name}
               className="w-18 h-18 rounded-2xl object-cover border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]"
             />
-            <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">
-              ✓
-            </span>
+            {humanVerified && (
+              <span aria-label="Akun terverifikasi" title="Akun terverifikasi" className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">
+                ✓
+              </span>
+            )}
           </div>
         </div>
 
@@ -339,9 +341,10 @@ export default function ProfileView({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
                       <p className="text-xs font-black text-slate-950 truncate">{ag.name}</p>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 border border-slate-900" />
+                      <span aria-label={ag.status} title={ag.status} className={`w-2 h-2 rounded-full border border-slate-900 ${ag.status === 'active' ? 'bg-emerald-500' : ag.status === 'draft' ? 'bg-amber-400' : 'bg-slate-400'}`} />
                     </div>
                     <p className="text-[10px] text-slate-700 font-bold truncate">{ag.specialty}</p>
+                    <p className="text-[9px] text-slate-600 font-semibold">{ag.status === 'active' ? 'Aktif' : ag.status === 'draft' ? 'Draft' : ag.status === 'archived' ? 'Diarsipkan' : 'Status tidak tersedia'}</p>
                     {showCredits && ag.credits != null && (
                       <p className="text-[10px] font-mono font-black text-slate-950 mt-0.5">
                         +{ag.credits} Cr
