@@ -290,6 +290,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [contentBusy, setContentBusy] = useState(false);
   const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
   const [selectedFeedItem, setSelectedFeedItem] = useState<NativeFeedItem | null>(null);
+  const [selectedFeedContentId, setSelectedFeedContentId] = useState<string | null>(initialContentId ?? null);
   const [selectedFeedLoading, setSelectedFeedLoading] = useState(false);
   const [selectedFeedError, setSelectedFeedError] = useState("");
   const [reelsItems, setReelsItems] = useState<NativeFeedItem[]>([]);
@@ -609,9 +610,11 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat."); }
     finally { setFeedBusy(false); }
   }
+  useEffect(() => { setSelectedFeedContentId(initialContentId ?? null); }, [initialContentId]);
+
   useEffect(() => {
     let active = true;
-    if (!initialContentId) {
+    if (!selectedFeedContentId) {
       setSelectedFeedItem(null);
       setSelectedFeedError("");
       setSelectedFeedLoading(false);
@@ -620,15 +623,15 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     setSelectedFeedItem(null);
     setSelectedFeedError("");
     setSelectedFeedLoading(true);
-    void apiRequest("/v1/feed/item/" + encodeURIComponent(initialContentId)).then((payload: { item?: NativeFeedItem }) => {
+    void apiRequest("/v1/feed/item/" + encodeURIComponent(selectedFeedContentId)).then((payload: { item?: NativeFeedItem }) => {
       if (!active) return;
-      if (!payload.item || payload.item.id !== initialContentId) throw new Error("Konten tidak tersedia atau tidak dapat diakses.");
+      if (!payload.item || payload.item.id !== selectedFeedContentId) throw new Error("Konten tidak tersedia atau tidak dapat diakses.");
       setSelectedFeedItem(payload.item);
     }).catch((cause) => {
       if (active) setSelectedFeedError(cause instanceof Error ? cause.message : "Konten tidak tersedia atau tidak dapat diakses.");
     }).finally(() => { if (active) setSelectedFeedLoading(false); });
     return () => { active = false; };
-  }, [initialContentId, session.access_token]);
+  }, [selectedFeedContentId, session.access_token]);
 
   async function loadNativeReels(reset = true) {
     setReelsBusy(true); setError(""); setMessage("");
@@ -1600,14 +1603,14 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         {challengeRuns.map(run => <View key={run.id} style={s.socialRow}><Text style={s.body}>{run.challenge_key} · {run.status}</Text><Text style={s.muted}>Agent v{run.agent_version} · Skill v{run.skill_version} · {new Date(run.created_at).toLocaleString()}</Text></View>)}
         <Text style={s.muted}>Achievement hanya berupa bukti non-moneter. Reward finansial/AI Credits tidak diterbitkan sebelum kebijakan resmi dan ledger kanonis mengizinkan.</Text>
       </> : tab === "feed" ? <>
-        {initialContentId && <View style={s.socialRow}>
+        {selectedFeedContentId && <View style={s.socialRow}>
           <Text style={s.kicker}>KONTEN TERPILIH</Text>
           {selectedFeedLoading ? <Text style={s.muted}>Memuat konten…</Text> : selectedFeedError ? <Text style={s.muted}>{selectedFeedError}</Text> : selectedFeedItem ? <>
             <Text style={s.body}>{selectedFeedItem.creator?.display_name || selectedFeedItem.creator?.username || "Kreator"}</Text>
             {!!selectedFeedItem.body && <Text style={s.body}>{selectedFeedItem.body}</Text>}
             {(selectedFeedItem.media || []).map(media => media.preview_url ? <Button key={media.id} title={"Buka " + media.filename} secondary onPress={() => void Linking.openURL(media.preview_url!)} /> : null)}
           </> : <Text style={s.muted}>Konten tidak tersedia atau tidak dapat diakses.</Text>}
-          <Button title="Tutup konten" secondary onPress={() => setSelectedFeedItem(null)} />
+          <Button title="Tutup konten" secondary onPress={() => { setSelectedFeedContentId(null); setSelectedFeedItem(null); setSelectedFeedError(""); }} />
         </View>}
         <Text style={s.kicker}>ENG-P14 · SOCIAL FEED</Text><Text style={s.title}>Feed sosial</Text>
         <Text style={s.muted}>Konten publik yang telah disetujui. Ranking menghormati relasi follow, block, mute, dan preferensi Anda.</Text>
