@@ -374,6 +374,35 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
     assert payload["items"][0]["saved"] is False
     assert not any(table == "social_edges" for _, table, _ in calls)
 
+def test_guest_comments_and_shared_item_hide_inactive_public_profile(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000191"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {
+        "id": content_id, "owner_id": "inactive-public-owner", "body": "previously public",
+        "content_type": "text", "visibility": "public", "status": "published",
+        "moderation_status": "approved", "version": 1, "created_at": now,
+        "updated_at": now, "published_at": now,
+    }
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items":
+            return [content]
+        if table == "profiles":
+            return [{
+                "id": "inactive-public-owner", "username": "inactive_owner",
+                "display_name": "Inactive Owner", "avatar_url": None, "bio": "",
+                "visibility": "public", "account_status": "deactivation_requested",
+            }]
+        raise AssertionError(f"guest access must stop before querying {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    client = TestClient(app)
+    comments = client.get(f"/v1/feed/{content_id}/comments")
+    shared = client.get(f"/v1/feed/item/{content_id}")
+    assert comments.status_code == 404, comments.text
+    assert shared.status_code == 404, shared.text
+
+
 def test_public_creator_recommendations_require_real_public_profiles_and_posts(monkeypatch):
     now = datetime.now(timezone.utc).isoformat()
     public_id = "00000000-0000-0000-0000-000000000201"
