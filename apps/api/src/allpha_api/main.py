@@ -540,6 +540,9 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
 
     # Follow creation must enforce the same active-profile and reciprocal-block
     # rules as Feed discovery. RLS alone is not the product relationship policy.
+    # Private-profile follows are explicit requests; never rely on a database
+    # default that could silently grant an active relationship.
+    follow_status: str | None = None
     if payload.edge_type == "follow":
         target_profiles = await user_db_request("GET", "profiles", token, params={
             "select": "id,visibility,account_status",
@@ -556,6 +559,7 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
                 "code": "PUBLIC_PROFILE_NOT_FOUND",
                 "message": "Akun tidak ditemukan.",
             })
+        follow_status = "requested" if target_profile.get("visibility") == "private" else "active"
         for source_id, target_id in (
             (str(user["id"]), str(payload.target_user_id)),
             (str(payload.target_user_id), str(user["id"])),
@@ -577,7 +581,12 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
     try:
         rows = await user_db_request(
             "POST", "social_edges", token,
-            body={"actor_user_id": user["id"], "target_user_id": str(payload.target_user_id), "edge_type": payload.edge_type},
+            body={
+                "actor_user_id": user["id"],
+                "target_user_id": str(payload.target_user_id),
+                "edge_type": payload.edge_type,
+                **({"status": follow_status} if follow_status else {}),
+            },
             params={"select": edge_filter["select"]},
             prefer="return=representation",
         )
