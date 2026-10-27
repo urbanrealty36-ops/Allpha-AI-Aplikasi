@@ -324,6 +324,12 @@ assert.ok(storiesPage.includes("moderasi: ${moderation}"), "Stories must expose 
 assert.ok(reelsPageParity.includes("Coba lagi"), "Reels API failure must offer retry");
 assert.ok(reelsPageParity.includes("Media belum tersedia"), "Reels must explain unavailable media previews");
 const feedViewParity = readFileSync(new URL("../components/reference-ui/FeedView.tsx", import.meta.url), "utf8");
+const feedRouteParity = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+const feedApiParity = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
+assert.ok(feedViewParity.includes("onChangeFeedFilter") && feedViewParity.includes("selectFeedFilter('FOLLOWING')"), "Reference Feed Following tab must invoke the canonical filter adapter");
+assert.ok(feedViewParity.includes("feedFilter === 'AI_AGENTS' ? [] : posts"), "Feed must not mislabel generic posts as AI-authored content");
+assert.ok(feedRouteParity.includes('filter === "FOLLOWING" ? "following" : "for_you"') && feedRouteParity.includes("loadFeed(true, null, nextMode)"), "Web Following tab must request the canonical following feed mode");
+assert.ok(feedApiParity.includes('mode: Literal["for_you", "recent", "following"]') && feedApiParity.includes('effective_mode == "following"') && feedApiParity.includes('str(row.get("owner_id")) in followed'), "FastAPI following mode must filter by active follow edges");
 const searchViewParity = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
 const messagesViewParity = readFileSync(new URL("../components/reference-ui/MessagesView.tsx", import.meta.url), "utf8");
 const searchRouteParity = readFileSync(new URL("../app/search/page.tsx", import.meta.url), "utf8");
