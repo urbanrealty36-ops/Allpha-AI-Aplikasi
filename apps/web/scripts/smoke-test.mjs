@@ -449,6 +449,7 @@ assert.ok(messagesPage.includes("sessionEpoch.current") && messagesPage.includes
 const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
 assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
 assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", query)'), "Username discovery must fail closed for missing privacy settings, reject malformed handles, and exclude blocked/muted relationships");
+assert.ok(socialFeedApi.includes('"account_status"') && socialFeedApi.includes('row.get("account_status", "active") == "active"'), "Username discovery must not recommend deactivated accounts");
 
 
 const publicProfilePage = readFileSync(new URL("../app/profile/[username]/page.tsx", import.meta.url), "utf8");
