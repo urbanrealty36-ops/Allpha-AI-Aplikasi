@@ -64,7 +64,7 @@ export default function ReferenceNavigation() {
       <BottomNav
         activeTab={tabForPath(pathname)}
         setActiveTab={setActiveTab}
-        onOpenCreateModal={() => navigate("/create")}
+        onOpenCreateModal={() => navigate("/feed?compose=1")}
       />
     </>
   );
