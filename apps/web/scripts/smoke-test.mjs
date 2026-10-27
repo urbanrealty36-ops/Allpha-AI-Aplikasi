@@ -266,10 +266,14 @@ assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must us
 for (const contract of [
   "lastSessionUserId", "sessionEpoch.current += 1", "searchRequestSequence.current",
   "trendsRequestSequence.current", "recommendationsRequestSequence.current", "creatorsRequestSequence.current",
-  "lastUrlQuery.current = null", "if (sequence !== searchRequestSequence.current) return",
+  "socialGraphRequestSequence.current", "/v1/me/social-graph", "/v1/me/social-edges",
+  "pendingFollowAccountIds", "follow_request_created", "lastUrlQuery.current = null",
+  "if (sequence !== searchRequestSequence.current) return",
   "if (sequence === trendsRequestSequence.current)", "if (sequence === recommendationsRequestSequence.current)",
   "if (sequence === creatorsRequestSequence.current)"
-]) assert.ok(webSearch.includes(contract), "Search must isolate in-flight requests across identities: " + contract);
+]) assert.ok(webSearch.includes(contract), "Search must isolate sessions and use canonical Social Graph contracts: " + contract);
+const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
+assert.ok(exploreView.includes("pendingFollowAccountIds") && exploreView.includes("<span>Menunggu</span>") && exploreView.includes("Batalkan permintaan mengikuti"), "Explore must distinguish active follows from cancellable private-profile requests");
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
