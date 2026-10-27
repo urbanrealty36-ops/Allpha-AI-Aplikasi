@@ -101,6 +101,15 @@ export default function HomePage() {
     };
   }, [supabase, loadIdentity]);
 
+  // Keep account sub-sections addressable so native deep links and the Web route
+  // resolve the same canonical profile/settings/privacy/relationship view.
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (requestedTab === "profile" || requestedTab === "settings" || requestedTab === "social" || requestedTab === "consents") {
+      setTab(requestedTab);
+    }
+  }, []);
+
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!supabase) return;
     setSaving(true); setError(""); setMessage("");
