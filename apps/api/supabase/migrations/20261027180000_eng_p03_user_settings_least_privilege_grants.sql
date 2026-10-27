@@ -4,7 +4,7 @@
 -- privileges. Keep trusted service_role access unchanged.
 -- Source-only until reviewed and applied through the approved migration process.
 
-revoke all privileges on table public.user_settings from anon, authenticated;
+revoke all privileges on table public.user_settings from public, anon, authenticated;
 revoke all privileges (user_id, theme, notification_preferences, privacy_settings, updated_at)
   on table public.user_settings from anon, authenticated;
 
