@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import FeedView from "../../components/reference-ui/FeedView";
-import type { PostItem } from "../../lib/reference-store";
+import CreatePostModal from "../../components/reference-ui/CreatePostModal";
+import type { AIAgentProfile, HumanProfile, PostItem } from "../../lib/reference-store";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
@@ -17,6 +18,8 @@ type FeedItem = {
 };
 type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
 type FeedStory = { id: string; owner_id: string; created_at: string; discovery_group?: "following" | "suggested_public"; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: FeedMedia[] };
+type MeResponse = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null } | null };
+type ApiAgent = { id: string; display_name: string; handle: string; avatar_url?: string | null; description?: string | null; persona?: Record<string, unknown> | null; status: string; ownership?: { owner_user_id?: string; status?: string } | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -40,6 +43,9 @@ export default function FeedPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [authPrompt, setAuthPrompt] = useState("");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [composerHuman, setComposerHuman] = useState<HumanProfile | null>(null);
+  const [composerAgent, setComposerAgent] = useState<AIAgentProfile | null>(null);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -93,6 +99,69 @@ export default function FeedPage() {
   }, [request, session]);
 
   useEffect(() => { void loadFeed(true); }, [session, mode, loadFeed]);
+
+  // Load the actual signed-in Human and owned Agent before opening the copied source composer.
+  useEffect(() => {
+    if (!session) {
+      setComposerHuman(null);
+      setComposerAgent(null);
+      return;
+    }
+    let active = true;
+    const loadComposerIdentity = async () => {
+      try {
+        const [me, agentPayload] = await Promise.all([
+          request("/v1/me") as Promise<MeResponse>,
+          request("/v1/agents") as Promise<{ items?: ApiAgent[] }>,
+        ]);
+        if (!me.user) throw new Error("Identitas Human kanonis belum tersedia.");
+        const name = me.profile?.display_name?.trim() || me.user.email || "Pengguna";
+        const human: HumanProfile = {
+          id: me.user.id,
+          name,
+          username: me.profile?.username || "",
+          avatar: me.profile?.avatar_url || "/icon.svg",
+          bio: me.profile?.bio || "",
+          followers: 0,
+          following: 0,
+          postsCount: 0,
+          badge: "Human",
+        };
+        const owned = (agentPayload.items || []).filter(item =>
+          item.ownership?.owner_user_id === me.user!.id && item.ownership.status === "active"
+        );
+        const activeAgent = owned.find(item => item.status === "active") || null;
+        if (!active) return;
+        setComposerHuman(human);
+        setComposerAgent(activeAgent ? {
+          id: activeAgent.id,
+          name: activeAgent.display_name,
+          handle: activeAgent.handle,
+          avatar: activeAgent.avatar_url || "/icon.svg",
+          ownerId: me.user.id,
+          ownerName: name,
+          ownerHandle: me.profile?.username || "",
+          specialty: activeAgent.description || "Belum ditentukan",
+          category: typeof activeAgent.persona?.category === "string" ? activeAgent.persona.category : "Belum ditentukan",
+          bio: activeAgent.description || "",
+          skills: [],
+          creditsEarned: 0,
+          autoReply: false,
+          model: "Allpha AI Runtime",
+          goals: [],
+          tasks: [],
+        } : null);
+      } catch (cause) {
+        if (active) {
+          setComposerHuman(null);
+          setComposerAgent(null);
+          setError(cause instanceof Error ? cause.message : "Identitas untuk membuat konten belum tersedia.");
+        }
+      }
+    };
+    void loadComposerIdentity();
+    return () => { active = false; };
+  }, [request, session]);
 
   useEffect(() => {
     let active = true;
@@ -226,6 +295,40 @@ export default function FeedPage() {
     };
   });
 
+  async function createPostFromReference(post: PostItem, visibility: "PUBLIC" | "FOLLOWERS" | "PRIVATE"): Promise<boolean> {
+    if (!session) {
+      setAuthPrompt("Masuk untuk membuat postingan.");
+      return false;
+    }
+    setError("");
+    setNotice("");
+    let created: { item?: { id?: string; status?: string; moderation_status?: string }; message?: string } | null = null;
+    try {
+      created = await request("/v1/content", {
+        method: "POST",
+        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: "text" }),
+      }) as typeof created;
+      const contentId = created?.item?.id;
+      if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
+      const published = await request("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as {
+        item?: { status?: string; moderation_status?: string };
+        message?: string;
+      };
+      const status = published.item?.status ?? created.item?.status ?? "unknown";
+      const moderation = published.item?.moderation_status ?? created.item?.moderation_status ?? "unknown";
+      setNotice(published.message
+        ? `${published.message} Status: ${status}; moderasi: ${moderation}.`
+        : status === "published" && moderation === "approved"
+          ? "Konten disetujui dan dipublikasikan oleh API."
+          : `Konten diterima API. Status: ${status}; moderasi: ${moderation}. Konten belum dianggap publik sampai API menyatakan published dan approved.`);
+      await loadFeed(true);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Konten belum tersimpan melalui API.");
+      return false;
+    }
+  }
+
   async function addCommentFromReference(postId: string, body: string) {
     if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const item = items.find(row => row.id === postId);
@@ -265,10 +368,19 @@ export default function FeedPage() {
           onOpenReels={() => { window.location.assign("/reels"); }}
           onOpenStory={storyId => { window.location.assign("/stories?story=" + encodeURIComponent(storyId)); }}
           onOpenLiveStage={() => { window.location.assign("/live"); }}
-          onOpenCreateModal={() => { if (requireLogin("Masuk untuk membuat postingan.")) return; window.location.assign("/create"); }}
+          onOpenCreateModal={() => { if (requireLogin("Masuk untuk membuat postingan.")) return; if (!composerHuman) { setError("Identitas Human kanonis belum siap. Coba muat ulang sebelum membuat konten."); return; } setCreateModalOpen(true); }}
           onOpenFilmAi={() => { window.location.assign("/ai-cinema"); }}
           onOpenMessages={() => { window.location.assign("/messages"); }}
         />
+        {createModalOpen && composerHuman && (
+          <CreatePostModal
+            isOpen={createModalOpen}
+            onClose={() => setCreateModalOpen(false)}
+            humanUser={composerHuman}
+            agentProfile={composerAgent}
+            onCreatePost={createPostFromReference}
+          />
+        )}
         {cursor && <div className="mx-auto max-w-xl px-4 pb-6"><button className="w-full rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-black shadow-[3px_3px_0px_#0f172a]" onClick={() => void loadFeed(false, cursor)} disabled={loading}>Muat konten berikutnya</button></div>}
     </main>
   );
