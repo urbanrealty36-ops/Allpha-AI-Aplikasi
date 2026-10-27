@@ -1653,3 +1653,27 @@ The Product Owner explicitly authorizes moving past WP-01 / UI-COPY-03 without w
 - Changed Navbar's red notification dot to render only when an explicit canonical `hasUnreadNotifications={true}` value is supplied. The shared shell currently supplies no such value, so it no longer invents unread activity while preserving the exact dot style for a future API-backed state.
 - Commits: [BottomNav](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/528fd0df4dddef8e51113589c7ca8bfad9cfb60b), [Navbar](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/741514f722606fd95d6d75b1793c22b37b5b21a5), [ReferenceNavigation](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/c0b949a7f6cd24040c18d68ef4dfb917f934a8c3).
 - CI for the newest commit is queued/in progress at the time of this note. Do not claim this WP-02 slice validated until the current commit's typecheck/build/route checks complete.
+
+
+## UI-COPY-03 acceptance decision and next work package — 2026-10-27
+
+**Decision: UI-COPY-03 is accepted as the source-copy/design-system and responsive-layout work package. WP-02 is now the active next work package.** This decision is scoped to copying/preserving the reference UI layer; it does not assert that every feature-owner API, backend business lifecycle, authenticated-user flow, commerce capability, or production deployment is complete.
+
+### UI-COPY-03 acceptance evidence
+- Reference UI source snapshot refreshed from the current reference repository by successful workflow [40456928719](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40456928719).
+- Reference public binary assets captured from the pinned source revision and checksum-verified by successful workflow [40456928671](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40456928671).
+- Component inventory: all 34 source React component filenames exist in the target reference UI directory; 12 are exact Git-blob matches and 22 are production adaptations. All 40 source public assets audited are present at the same relative path with matching Git blob SHA.
+- Browser route evidence on code commit `952c85b8cbe835fa2971f55264d1235e3f96dc52`: [Reference UI Validation](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40456468557) passed smoke tests, typecheck, build and 27 routes × 4 viewports (360/390/820/1440; 108 screenshots). A mobile overflow in `/live` was corrected and the rerun passed. Artifact: [108 screenshot evidence bundle](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/40456468557/artifacts/12712776612).
+- Production safety preserved: reference demo balances, products, transactions, fake live status and simulated-success actions are not treated as business truth. Marketplace and Store & Booth backend operations are deferred to their owning work packages and remain fail-closed until canonical APIs exist.
+- Deployment to Vercel is not an acceptance prerequisite for this copy work package per the explicit project-owner decision; no staging environment or real-user production test was performed.
+- Authenticated screenshot capture is deferred because dedicated E2E identity/secrets are not configured. This is recorded as a deferred authenticated-E2E gap, not represented as passed evidence.
+- The route-level functional integration of Feed/Explore/Reels/Messages, shared identity/profile behavior, commerce, and other domain-specific actions is explicitly assigned to the relevant later WP/ENG owner phases. It is not claimed complete by this UI-copy acceptance.
+
+### Active work package: WP-02 — Shared shell, identity, navigation and profile parity
+Owner phases: ENG-P02, P03, P05, P14, P17, P18, P20.
+
+Scope: header and bottom navigation; canonical session state; search; notifications and inbox badges; Human profile and settings; privacy controls; profile-owned Feed/Reels tabs; My Agent list and Agent profile; web/native route and deep-link parity.
+
+Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real session/profile/relationship data; no fabricated counts/statuses; ownership/privacy enforced server-side; Web PWA and React Native + Expo navigation/deep links remain consistent; loading/empty/error/unauthenticated states are explicit; tests and evidence cover the changed journeys.
+
+**Phase gate:** UI-COPY-03 is closed only for the UI copy/responsive-layout scope above. WP-02 is active. Do not jump to WP-03 until WP-02 meets its own acceptance criteria. Marketplace/backend and Vercel deployment gaps are not blockers for beginning WP-02 and must be handled by their designated later work packages/release process.
