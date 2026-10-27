@@ -244,6 +244,89 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
             "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
 
 
+@router.get("/v1/me/profile-feed", tags=["social-feed"])
+async def get_my_profile_feed(
+    limit: int = Query(default=50, ge=1, le=100),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Return the authenticated owner's published, approved content with canonical engagement/media metadata."""
+    owner = str(user["id"])
+    rows = await _server_db("GET", "content_items", params={
+        "select": FIELDS, "owner_id": f"eq.{owner}", "content_type": "not.eq.story",
+        "status": "eq.published", "moderation_status": "eq.approved",
+        "order": "published_at.desc,id.desc", "limit": str(limit),
+    })
+    page = rows or []
+    if not page:
+        return {"items": [], "count": 0, "source": "authenticated_owner_content"}
+    ids = [str(row["id"]) for row in page]
+    in_ids = f"in.({','.join(ids)})"
+    reactions = await _server_db("GET", "content_reactions", params={
+        "select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000",
+    })
+    comments = await _server_db("GET", "content_comments", params={
+        "select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000",
+    })
+    saves = await _server_db("GET", "content_saves", params={
+        "select": "content_id,actor_user_id", "content_id": in_ids, "limit": "5000",
+    })
+    shares = await _server_db("GET", "content_shares", params={
+        "select": "content_id", "content_id": in_ids, "limit": "5000",
+    })
+    likes_by_id: dict[str, int] = {}
+    comments_by_id: dict[str, int] = {}
+    shares_by_id: dict[str, int] = {}
+    viewer_reactions: dict[str, str] = {}
+    viewer_saves: set[str] = set()
+    for row in reactions or []:
+        content_id = str(row["content_id"])
+        likes_by_id[content_id] = likes_by_id.get(content_id, 0) + 1
+        if str(row.get("actor_user_id")) == owner:
+            viewer_reactions[content_id] = str(row.get("reaction") or "like")
+    for row in comments or []:
+        content_id = str(row["content_id"])
+        comments_by_id[content_id] = comments_by_id.get(content_id, 0) + 1
+    for row in saves or []:
+        content_id = str(row["content_id"])
+        if str(row.get("actor_user_id")) == owner:
+            viewer_saves.add(content_id)
+    for row in shares or []:
+        content_id = str(row["content_id"])
+        shares_by_id[content_id] = shares_by_id.get(content_id, 0) + 1
+    media_by_id: dict[str, list[dict[str, Any]]] = {}
+    media = await _server_db("GET", "content_media", params={
+        "select": MEDIA_FIELDS, "content_id": in_ids, "owner_id": f"eq.{owner}",
+        "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, limit * 5)),
+    })
+    for row in media or []:
+        item = {key: value for key, value in row.items() if key != "storage_path"}
+        item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
+        media_by_id.setdefault(str(row["content_id"]), []).append(item)
+    profile_rows = await _profiles_for({owner})
+    creator = profile_rows.get(owner, {})
+    items = []
+    for row in page:
+        content_id = str(row["id"])
+        items.append({
+            **row,
+            "media": media_by_id.get(content_id, []),
+            "creator": {
+                "username": creator.get("username"),
+                "display_name": creator.get("display_name") or creator.get("username") or "Kreator",
+                "avatar_url": creator.get("avatar_url"),
+            },
+            "engagement": {
+                "likes": likes_by_id.get(content_id, 0),
+                "comments": comments_by_id.get(content_id, 0),
+                "saves": sum(1 for saved in saves or [] if str(saved.get("content_id")) == content_id),
+                "shares": shares_by_id.get(content_id, 0),
+            },
+            "viewer_reaction": viewer_reactions.get(content_id),
+            "saved": content_id in viewer_saves,
+        })
+    return {"items": items, "count": len(items), "source": "authenticated_owner_content"}
+
+
 @router.get("/v1/recommendations/creators", tags=["search-discovery"])
 async def get_public_creator_recommendations(
     limit: int = Query(default=12, ge=1, le=30),
