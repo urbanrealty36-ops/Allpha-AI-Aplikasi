@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   User, 
   Bot, 
@@ -85,6 +85,7 @@ interface ProfileViewProps {
   onDeductCredits?: (amount: number, reason: string) => void;
   onOpenNotifications?: () => void;
   onOpenStoreAndBooth?: () => void;
+  initialOpenStoreAndBooth?: boolean;
 }
 
 export default function ProfileView({
@@ -113,6 +114,7 @@ export default function ProfileView({
   onDeductCredits,
   onOpenNotifications,
   onOpenStoreAndBooth,
+  initialOpenStoreAndBooth = false,
 }: ProfileViewProps) {
   const hasAgentProfile = Boolean(selectedAgentProfile);
   const agentProfile: AIAgentProfile = selectedAgentProfile ?? {
@@ -137,6 +139,7 @@ export default function ProfileView({
   const [isCreatorStudioOpen, setIsCreatorStudioOpen] = useState(false);
   const [isThemeCatalogOpen, setIsThemeCatalogOpen] = useState(false);
   const [isStoreAndBoothModalOpen, setIsStoreAndBoothModalOpen] = useState(false);
+  useEffect(() => { if (initialOpenStoreAndBooth) setIsStoreAndBoothModalOpen(true); }, [initialOpenStoreAndBooth]);
 
   // Financial & Withdraw Form State
   const [withdrawAmount, setWithdrawAmount] = useState('');
