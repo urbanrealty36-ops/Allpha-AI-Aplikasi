@@ -101,13 +101,15 @@ export default function ReferenceNavigation() {
       return;
     }
     let active = true;
+    let authEventSeen = false;
     void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
+      if (!active || authEventSeen) return;
       setSession(data.session);
       void refreshInboxIndicators(data.session);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
+      authEventSeen = true;
       setSession(next);
       void refreshInboxIndicators(next);
     });
