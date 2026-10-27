@@ -381,3 +381,21 @@ const webLayout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "u
 assert.ok(pwaManifest.includes('display: "standalone"') && pwaManifest.includes('start_url: "/"') && pwaManifest.includes('scope: "/"'), "Web manifest must keep standalone PWA scope");
 assert.ok(pwaManifest.includes('src: "/icon.svg"'), "Web manifest must reference the canonical app icon");
 assert.ok(webLayout.includes("userScalable: true"), "Web viewport must preserve user zoom accessibility");
+
+// WP-02: profile/settings must bind real canonical data and account mutations.
+assert.ok(profileRoute.includes('/v1/feed?mode=recent&limit=50'), "Profile must load real published feed data from the canonical API");
+assert.ok(profileRoute.includes('item.owner_id === me.user!.id'), "Profile feed must be scoped to the authenticated identity");
+assert.ok(profileRoute.includes('/reaction') && profileRoute.includes('method: post.isLiked ? "DELETE" : "PUT"'), "Profile reactions must use canonical Feed mutation endpoints");
+assert.ok(profileRoute.includes('onSelectPost={(post)=>{window.location.assign("/feed?content="+encodeURIComponent(post.id))}}'), "Selecting a profile post must open its canonical Feed detail");
+assert.ok(profileRoute.includes('signOut({scope:"others"})') && profileRoute.includes('supabase.auth.signOut()'), "Profile session actions must use the configured Supabase Auth adapter");
+assert.ok(profileView.includes('onOpenAccountSettings("settings")'), "Profile privacy must route to canonical account privacy controls");
+assert.ok(profileView.includes('onOpenAccountSettings("profile")'), "Profile language preference must route to canonical profile settings");
+assert.ok(profileView.includes('onRevokeOtherSessions') && profileView.includes('onLogout'), "Profile session actions must not claim success without auth callbacks");
+const accountRoute = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
+assert.ok(accountRoute.includes('new URLSearchParams(window.location.search).get("tab")'), "Account must support direct tab deep links");
+for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
+const nativeApp = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
+for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"agents\"", "Feed: \"feed\"", "Reels: \"reels\"", "Stories: \"stories\"", "Search: \"search\"", "Messages: \"messages\"", "Notifications: \"notifications\"", "Communities: \"communities\""]) {
+  assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
+}
+assert.ok(nativeApp.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
