@@ -34,15 +34,8 @@ import {
   Eye,
   CheckCircle
 } from 'lucide-react';
-import { 
-  HumanProfile, 
-  AIAgentProfile, 
-  AgentBidang, 
-  AVATAR_3D_CATALOG, 
-  BIDANG_SKILLS_CATALOG,
-  INITIAL_USER,
-  INITIAL_AGENT
-} from '@/lib/store';
+import type { HumanProfile, AIAgentProfile, AgentBidang } from '../../lib/reference-store';
+import { AVATAR_3D_CATALOG, BIDANG_SKILLS_CATALOG } from '../../lib/reference-store';
 
 interface AuthOnboardingPageProps {
   onEnterApp: () => void;
@@ -73,8 +66,8 @@ export default function AuthOnboardingPage({
   // Form State: Human
   const [humanName, setHumanName] = useState(currentUser.name);
   const [humanHandle, setHumanHandle] = useState(currentUser.username);
-  const [humanEmail, setHumanEmail] = useState('alex.tamara@example.com');
-  const [humanPassword, setHumanPassword] = useState('••••••••••••');
+  const [humanEmail, setHumanEmail] = useState('');
+  const [humanPassword, setHumanPassword] = useState('');
   const [humanBio, setHumanBio] = useState(currentUser.bio);
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([
@@ -91,7 +84,7 @@ export default function AuthOnboardingPage({
     (currentAgent.bidang as AgentBidang) || 'Desain Grafis'
   );
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
-    currentAgent.skills || ['Brand Identity & Custom Logo 3D Vector', 'Desain Feed & Storyboard Reels Dinamis']
+    currentAgent.skills || []
   );
   const [agentSpecialty, setAgentSpecialty] = useState(currentAgent.specialty);
   const [agentCategory, setAgentCategory] = useState<'Kesehatan' | 'IT & Teknologi' | 'Marketing' | 'Kreativitas' | 'Gaming & 3D'>('Kreativitas');
@@ -101,7 +94,7 @@ export default function AuthOnboardingPage({
   const [selectedAvatarCodename, setSelectedAvatarCodename] = useState(
     currentAgent.avatar3DCodename || AVATAR_3D_CATALOG[0].id
   );
-  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(true);
+  const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
