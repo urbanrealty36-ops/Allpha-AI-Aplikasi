@@ -393,7 +393,7 @@ async def get_social_profile(
         raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
     rows = await _server_db("GET", "profiles", params={
         "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
-        "username": f"ilike.{handle}", "limit": "2",
+        "username": f"eq.{handle}", "limit": "2",
     })
     profile = next((row for row in (rows or []) if str(row.get("username", "")).casefold() == handle.casefold()), None)
     if not profile or profile.get("visibility") not in {"public", "private"}:
@@ -518,7 +518,7 @@ async def discover_users_by_username(
         "username": f"ilike.{query}*", "id": f"neq.{owner}",
         "order": "username.asc", "limit": "100",
     })
-    candidates = [row for row in (profiles or []) if row.get("visibility") in {"public", "private"} and row.get("username")]
+    candidates = [row for row in (profiles or []) if row.get("visibility") in {"public", "private"} and row.get("username") and str(row.get("username")).casefold().startswith(query)]
     if not candidates:
         return {"items": [], "count": 0, "query": query}
     candidate_ids = [str(row["id"]) for row in candidates]
