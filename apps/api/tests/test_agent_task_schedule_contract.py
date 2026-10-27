@@ -42,8 +42,8 @@ def test_weekly_schedule_respects_weekday_and_timezone():
 
 def test_once_schedule_requires_offset_and_future_timestamp():
     parsed = TaskScheduleCreate.model_validate(schedule_payload(
-        schedule_kind="once", run_at="2026-10-27T18:00:00+07:00"))
-    assert _next_occurrence(parsed, datetime(2026, 10, 26, tzinfo=timezone.utc)) == datetime(2026, 10, 27, 11, 0, tzinfo=timezone.utc)
+        schedule_kind="once", run_at="2099-10-27T18:00:00+07:00"))
+    assert _next_occurrence(parsed, datetime(2026, 10, 26, tzinfo=timezone.utc)) == datetime(2099, 10, 27, 11, 0, tzinfo=timezone.utc)
     with pytest.raises(ValidationError):
         TaskScheduleCreate.model_validate(schedule_payload(
             schedule_kind="once", run_at="2026-10-27T18:00:00"))

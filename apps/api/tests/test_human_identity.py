@@ -177,16 +177,24 @@ def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
     from allpha_api.auth import current_user
 
     calls = []
+    target_id = "00000000-0000-0000-0000-000000000002"
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
-        return [{
-            "id": "edge-123",
-            "target_user_id": "00000000-0000-0000-0000-000000000002",
-            "edge_type": "follow",
-            "status": "active",
-            "created_at": "2026-10-14T00:00:00Z",
-        }]
+        if method == "GET" and path == "social_edges":
+            return []
+        if method == "GET" and path == "profiles":
+            return [{"id": target_id, "visibility": "public", "account_status": "active"}]
+        if method == "POST" and path == "social_edges":
+            return [{
+                "id": "edge-123",
+                "actor_user_id": "human-123",
+                "target_user_id": target_id,
+                "edge_type": "follow",
+                "status": "active",
+                "created_at": "2026-10-14T00:00:00Z",
+            }]
+        raise AssertionError(f"unexpected database request: {method} {path}")
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "social-session-token"
@@ -198,17 +206,21 @@ def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
         response = client.post(
             "/v1/me/social-edges",
             headers={"Authorization": "Bearer test"},
-            json={"target_user_id": "00000000-0000-0000-0000-000000000002", "edge_type": "follow"},
+            json={"target_user_id": target_id, "edge_type": "follow"},
         )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 201
-    assert calls[0][0:3] == ("POST", "social_edges", "social-session-token")
-    assert calls[0][3]["body"] == {
+    assert response.json()["edge"]["target_user_id"] == target_id
+    assert response.json()["idempotent_replay"] is False
+    assert calls[0][0:3] == ("GET", "social_edges", "social-session-token")
+    assert calls[-1][0:3] == ("POST", "social_edges", "social-session-token")
+    assert calls[-1][3]["body"] == {
         "actor_user_id": "human-123",
-        "target_user_id": "00000000-0000-0000-0000-000000000002",
+        "target_user_id": target_id,
         "edge_type": "follow",
+        "status": "active",
     }
 
 

@@ -665,7 +665,7 @@ def test_canonical_social_edge_rejects_deactivated_profile_before_relationship_w
         app.dependency_overrides.clear()
 
     assert response.status_code == 404, response.text
-    assert response.json()["detail"]["code"] == "PUBLIC_PROFILE_NOT_FOUND"
+    assert response.json()["error"]["code"] == "PUBLIC_PROFILE_NOT_FOUND"
     assert not any(method == "POST" for method, _, _, _ in calls)
 
 
