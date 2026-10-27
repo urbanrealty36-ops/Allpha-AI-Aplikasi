@@ -41,9 +41,12 @@ export default function NotificationsPage() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session); });
+    let authEventSeen = false;
+    void supabase.auth.getSession().then(({ data }) => { if (active && !authEventSeen) setSession(data.session); });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
+      authEventSeen = true;
+      sessionEpoch.current += 1;
       requestSequence.current += 1;
       setItems([]);
       setUnreadCount(0);
