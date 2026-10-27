@@ -26,6 +26,7 @@ interface NavbarProps {
   onSearch?: (query: string) => void;
   isMessagesActive?: boolean;
   unreadMessagesCount?: number;
+  hasUnreadNotifications?: boolean | null;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   isHidden?: boolean;
@@ -45,6 +46,7 @@ export default function Navbar({
   onSearch,
   isMessagesActive = false,
   unreadMessagesCount,
+  hasUnreadNotifications,
   searchQuery,
   setSearchQuery,
   isHidden = false,
@@ -164,7 +166,7 @@ export default function Navbar({
             aria-label="Notifications"
           >
             <Bell className="w-4.5 h-4.5 stroke-[2.2px]" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 border border-white" />
+            {hasUnreadNotifications === true && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 border border-white" />}
           </button>
 
           {/* 5. Pesan / Messages Icon Button (Replaced from Bottom Nav to Top Header) */}
