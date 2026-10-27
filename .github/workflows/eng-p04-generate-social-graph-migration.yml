@@ -96,6 +96,14 @@ jobs:
           assert "alter default privileges" not in sql
           PY
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API test dependencies
+        working-directory: apps/api
+        run: python -m pip install -e ".[dev]"
+
       - name: Verify source migration contract
         working-directory: apps/api
         run: python -m pytest tests/test_eng_p04_privacy_migration_contract.py -q
