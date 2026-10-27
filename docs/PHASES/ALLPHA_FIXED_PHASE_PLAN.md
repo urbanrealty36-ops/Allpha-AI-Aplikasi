@@ -1814,3 +1814,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Username discovery excludes non-active profiles using the canonical `profiles.account_status` field: `3ed3fdcb1ae43ff2bc3b36295601b371ed1bf19b`.
 - Source assertions now cover the session-epoch mutation guards and inactive-profile exclusion: `97035662b5f16e204cf0e0cc91a838895c6eb1b2`. They remain unexecuted.
 - Final branch checkpoint SHA before this note: `97035662b5f16e204cf0e0cc91a838895c6eb1b2`; this plan-note commit follows it. No test/build/typecheck/staging/deployment was executed.
+
+
+**Identity race closure (2026-10-27):**
+- Notifications, Messages, and Search now prevent a delayed initial `getSession()` snapshot from overwriting a newer auth-state event: `9eae9b4c106d3ddfef6c33b207f34a292cd51ebe`, `e70344282eff42c3a89be9cf24b9e3dd98aeec2f`, `276d2f30625643fdb6628014bc7aee2575ae23b9`.
+- Notification inbox cleanup now invalidates both inbox and preference operations on unmount: `950a5d0920a5a9fb64a2b5149f2b556bf7ce6c3a`.
+- No tests/build/typecheck/staging/deployment were executed.
