@@ -31,7 +31,7 @@ interface AgentIdentityModalProps {
   isOpen: boolean;
   onClose: () => void;
   agent: AIAgentProfile;
-  onSaveAgent: (updatedAgent: AIAgentProfile) => void;
+  onSaveAgent: (updatedAgent: AIAgentProfile) => void | Promise<void>;
 }
 
 export default function AgentIdentityModal({
@@ -54,8 +54,8 @@ export default function AgentIdentityModal({
       : BIDANG_SKILLS_CATALOG[selectedBidang]?.skills.slice(0, 4) || []
   );
   const [bio, setBio] = useState(agent.bio);
-  const [model, setModel] = useState(agent.model || 'Allpha Neural Omni v3');
-  const [autoReply, setAutoReply] = useState(agent.autoReply ?? true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   // Modal to inspect full 3D Avatar turnarounds
   const [inspectingAvatar, setInspectingAvatar] = useState<Avatar3DItem | null>(null);
@@ -79,7 +79,7 @@ export default function AgentIdentityModal({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const chosenAvatar = AVATAR_3D_CATALOG.find(a => a.id === selectedAvatarId) || currentAvatar;
 
     const updated: AIAgentProfile = {
@@ -91,14 +91,19 @@ export default function AgentIdentityModal({
       avatar3DImage: chosenAvatar.image,
       bidang: selectedBidang,
       specialty: BIDANG_SKILLS_CATALOG[selectedBidang]?.label || 'Kreativitas & Desain 3D',
-      skills: selectedSkills,
       bio,
-      model,
-      autoReply,
     };
 
-    onSaveAgent(updated);
-    onClose();
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSaveAgent(updated);
+      onClose();
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : "Perubahan identitas Agent gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const bidangList: AgentBidang[] = [
@@ -266,7 +271,7 @@ export default function AgentIdentityModal({
           <div className="flex items-center justify-between">
             <label className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Saran Skills Bidang {selectedBidang} (belum diaktifkan):</span>
+              <span>Saran Skills Bidang {selectedBidang} (tidak disimpan di panel ini):</span>
             </label>
             <span className="text-xs font-black text-slate-900 bg-amber-200 px-2.5 py-0.5 rounded-lg border border-slate-900">
               {selectedSkills.length} dipilih
@@ -329,29 +334,28 @@ export default function AgentIdentityModal({
             />
           </div>
 
-          {/* Model AI Engine */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-            <div>
-              <p className="font-black text-slate-900">Model Neural Engine</p>
-              <p className="text-[10px] text-slate-600 font-bold">Didukung oleh Gemini 2.5 Flash Allpha Gateway</p>
-            </div>
-            <span className="font-mono text-xs font-black text-slate-950 bg-sky-200 px-2.5 py-1 rounded-xl border border-slate-900">
-              {model}
-            </span>
+          {/* Canonical model selection is owned by the AI Gateway/Model Router. */}
+          <div className="p-3 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
+            <p className="font-black text-slate-900">AI Gateway & Model Router</p>
+            <p className="text-[11px] text-slate-700 font-semibold">Pemilihan provider/model, biaya, budget, fallback, dan status runtime dikelola oleh backend kanonis. Panel profil tidak mengubah model atau mengaktifkan Auto-Reply.</p>
           </div>
         </div>
+
+        {saveError && <p role="alert" className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">{saveError}</p>}
 
         {/* Footer Action Buttons */}
         <div className="pt-2 flex gap-2">
           <button
-            onClick={handleSave}
-            className="flex-1 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 disabled:opacity-60 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Simpan Identitas Profil</span>
+            <span>{saving ? "Menyimpan…" : "Simpan Identitas Profil"}</span>
           </button>
           <button
             onClick={onClose}
+            disabled={saving}
             className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition active:translate-x-0.5 active:translate-y-0.5"
           >
             Batal
