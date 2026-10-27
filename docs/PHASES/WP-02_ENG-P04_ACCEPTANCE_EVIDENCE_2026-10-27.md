@@ -67,3 +67,42 @@ This finding is a release blocker for ENG-P04. Do not claim least-privilege gran
 ## Phase order
 
 Keep WP-02 and ENG-P04 `IN_PROGRESS` until the above evidence is reviewed and accepted. Only then begin ENG-P05 — Agent Identity. Runtime/Skills, Super Admin, and Spatial/GLB remain downstream of their canonical engine owners and dependencies.
+
+
+## Route parity inventory (source-level, not device acceptance)
+
+The reference shell's current `routeForTab` mapping in `apps/web/components/reference-ui/ReferenceNavigation.tsx` was compared with the Native stack and deep-link config in `apps/client/App.tsx`. This inventory is intentionally explicit about gaps rather than routing missing features to fake placeholders.
+
+| Reference shell tab / journey | Web canonical route | Native deep link / stack | Source disposition |
+|---|---|---|---|
+| FEED | `/feed` | `allpha://feed` → Feed tab | Route name exists; content/scroll/engagement parity still needs device evidence |
+| EXPLORE | `/search` | `allpha://search` → Discovery tab | Search/discovery API wired; device and visual parity not verified |
+| CREATE | `/create` | None in Native linking/stack | Open parity gap; do not simulate successful publishing |
+| LIVESTAGE | `/live` | None in Native linking/stack | Open parity gap; no placeholder route added |
+| WORLD3D | `/spatial/navigation` | None in Native linking/stack | Open parity gap; downstream Spatial owner/dependencies apply |
+| MESSAGES | `/messages` | `allpha://messages` → Messages tab | API-backed inbox and auth/session guards; realtime/device behavior unverified |
+| REELS | `/reels` | `allpha://reels` → Reels tab | Route name exists; playback/gesture parity needs device evidence |
+| SKILLS_CREDITS | `/skill-challenges` | No dedicated deep-link route; Native challenge UI is nested under existing profile/Agent journey | Direct-route parity gap; do not invent a separate engine |
+| MARKETPLACE | `/marketplace` | None in Native linking/stack | Open parity gap; Marketplace owner/dependencies apply |
+| PROFILE | `/profile` | `allpha://profile` → Profile tab | Route name exists; social metrics/verification/takeover intentionally not fabricated |
+| POST_DETAIL | `/feed?content=…` | `allpha://feed` has no source-level query-to-content mapping in linking config | Deep-link parameter parity gap; do not claim direct post detail parity |
+| TAKEOVER_CONTROL | `/agents` | `allpha://agents` → Agent tab | Route name exists; runtime state must remain canonical/API-derived |
+| ASK_AI_VIEW | `/ask-ai` | None in Native linking/stack | Open parity gap; no client-only AI response path added |
+| FILM_AI | `/ai-cinema` | None in Native linking/stack | Open parity gap |
+| Stories | `/stories` is treated as Feed by shared navigation's active-tab resolver; source also has story-viewer modal behavior | `allpha://stories` → Stories tab | Behavior mismatch remains: direct story viewer / selected-story deep-link contract needs owner/API decision |
+| Notifications | `/notifications` | `allpha://notifications` → Notifications tab | Route name exists; push/device delivery and realtime state not verified |
+| Communities | `/communities` | `allpha://communities` → Communities tab | Route name exists; device journey and visual parity not verified |
+| Account / settings / social / consent | `/account?tab=profile|settings|social|consents` | `allpha://account` with tab parameter | Source mapping exists; authenticated deep-link behavior still needs device evidence |
+
+This inventory demonstrates that **WP-02's source-level route parity is not complete**. The next implementation slice should not add fake routes or duplicate domain engines. Route gaps that belong to later canonical owners (Spatial, Marketplace, AI Cinema, Agent Runtime/Skills) must be linked to their owner phases and should remain blocked until those owners' contracts are ready. For WP-02-owned shell gaps, the owner must decide/implement an explicit deep-link contract for post detail and story selection without bypassing canonical API authorization.
+
+## Read-only Supabase evidence detail
+
+The live SQL catalog checks were read-only and inspected:
+- `pg_class.relrowsecurity` / `relforcerowsecurity` for the reviewed tables;
+- `pg_policies` for row policies;
+- `has_table_privilege(role, 'public.user_settings', privilege)` for SELECT/INSERT/UPDATE/DELETE/TRUNCATE;
+- `information_schema.column_privileges` for `user_settings` column grants;
+- live migration history for presence/absence of `20261027180000_eng_p03_user_settings_least_privilege_grants`.
+
+The results are recorded above. These queries do not exercise end-user JWT policy evaluation, so cross-user isolation remains unverified even where a policy expression appears correctly scoped.
