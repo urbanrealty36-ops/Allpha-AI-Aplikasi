@@ -299,7 +299,7 @@ export default function FeedPage() {
     };
   });
 
-  async function createPostFromReference(post: PostItem, visibility: "PUBLIC" | "FOLLOWERS" | "PRIVATE"): Promise<boolean> {
+  async function createPostFromReference(post: PostItem, visibility: "PUBLIC" | "FOLLOWERS" | "PRIVATE", mediaFile: File | null): Promise<boolean> {
     if (!session) {
       setAuthPrompt("Masuk untuk membuat postingan.");
       return false;
@@ -308,13 +308,36 @@ export default function FeedPage() {
     setNotice("");
     let createdId: string | null = null;
     try {
+      const allowedMedia: Record<string, { contentType: "image" | "video" | "audio"; maxBytes: number }> = {
+        "image/jpeg": { contentType: "image", maxBytes: 10 * 1024 * 1024 },
+        "image/png": { contentType: "image", maxBytes: 10 * 1024 * 1024 },
+        "image/webp": { contentType: "image", maxBytes: 10 * 1024 * 1024 },
+        "video/mp4": { contentType: "video", maxBytes: 50 * 1024 * 1024 },
+        "video/webm": { contentType: "video", maxBytes: 50 * 1024 * 1024 },
+        "audio/mpeg": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/mp4": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/aac": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/ogg": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/wav": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+        "audio/webm": { contentType: "audio", maxBytes: 50 * 1024 * 1024 },
+      };
+      const mediaPolicy = mediaFile ? allowedMedia[mediaFile.type] : undefined;
+      if (mediaFile && !mediaPolicy) throw new Error("Format media tidak didukung.");
+      if (mediaFile && mediaPolicy && mediaFile.size > mediaPolicy.maxBytes) {
+        throw new Error(`Ukuran media melewati batas ${mediaPolicy.maxBytes / (1024 * 1024)} MB.`);
+      }
       const created = await request("/v1/content", {
         method: "POST",
-        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: "text" }),
+        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text" }),
       }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
       const contentId = created.item?.id;
       createdId = contentId ?? null;
       if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
+      if (mediaFile) {
+        const form = new FormData();
+        form.append("file", mediaFile, mediaFile.name);
+        await request("/v1/content/" + encodeURIComponent(contentId) + "/media", { method: "POST", body: form });
+      }
       const published = await request("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as {
         item?: { status?: string; moderation_status?: string };
         message?: string;
