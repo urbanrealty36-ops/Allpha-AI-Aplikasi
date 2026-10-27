@@ -72,72 +72,9 @@ interface StoreAndBoothModalProps {
   onClose: () => void;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
-  onSaveStore?: (config: StoreConfig, products: StoreProduct[]) => void;
+  onSaveStore?: (config: StoreConfig, products: StoreProduct[]) => Promise<boolean> | boolean;
   onWarpToBooth?: (boothName: string) => void;
 }
-
-const DEFAULT_STORE_CONFIG: StoreConfig = {
-  brandName: 'Luna & Alex Spatial Lab',
-  tagline: 'Official 3D Assets, Procedural Shaders & Cyber Merchandise',
-  category: 'Aset 3D, AI Agent & Merchandise Fisik',
-  description: 'Toko resmi yang memproduksi model 3D spatial low-poly, shader GLSL performa tinggi, dan merchandise eksklusif Allpha Universe.',
-  logo: 'https://picsum.photos/seed/store-brand-logo/200/200',
-  originCity: 'Jakarta Selatan',
-  districtLocation: 'CRYSTAL_CITY',
-  boothTheme: 'MENGGU_PASTEL',
-  boothPrimaryColor: '#FEF08A',
-  boothSecondaryColor: '#DDD6FE',
-  boothBanner: 'https://picsum.photos/seed/booth-banner-3d/800/300',
-  isBoothLiveIn3D: true,
-  hasAiGreetingBot: true,
-  hasHoloShowcase: true,
-  warpCoordinates: 'Distrik Crystal City Atrium #B-14',
-  bankAccount: {
-    bankName: 'BCA (Bank Central Asia)',
-    accountNumber: '8830-1928-4410',
-    accountHolder: 'Alex Tamara',
-  },
-};
-
-const INITIAL_STORE_PRODUCTS: StoreProduct[] = [
-  {
-    id: 'sp-1',
-    name: 'Cybernetic Anime Avatar Rig 3D',
-    type: 'DIGITAL',
-    category: '3D_ASSET',
-    priceIdr: 450000,
-    priceCredits: 300,
-    stock: 99,
-    image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80',
-    description: 'Model 3D rig siap gerak dengan tekstur 4K untuk avatar 3D Universe District & VRChat.',
-    inBoothShowcase: true,
-  },
-  {
-    id: 'sp-2',
-    name: 'Kaos Oversize Allpha Universe 2026',
-    type: 'PHYSICAL',
-    category: 'PHYSICAL_MERCH',
-    priceIdr: 185000,
-    priceCredits: 120,
-    weightGram: 350,
-    stock: 45,
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=400&q=80',
-    description: 'Kaos katun combed 24s heavy-weight dengan sablon glow-in-the-dark logo Allpha.',
-    inBoothShowcase: true,
-  },
-  {
-    id: 'sp-3',
-    name: 'Luna AI Custom Agent Skill Blueprint',
-    type: 'DIGITAL',
-    category: 'AI_AGENT',
-    priceIdr: 250000,
-    priceCredits: 165,
-    stock: 250,
-    image: 'https://picsum.photos/seed/agent-skill/400/300',
-    description: 'Blueprint agen AI untuk otomasi video reels and spatial branding.',
-    inBoothShowcase: false,
-  },
-];
 
 export default function StoreAndBoothModal({
   isOpen,
@@ -148,8 +85,8 @@ export default function StoreAndBoothModal({
   onWarpToBooth,
 }: StoreAndBoothModalProps) {
   const [activeTab, setActiveTab] = useState<'BRAND' | 'BOOTH_3D' | 'PRODUCTS' | 'EARNINGS'>('BRAND');
-  const [config, setConfig] = useState<StoreConfig>(DEFAULT_STORE_CONFIG);
-  const [products, setProducts] = useState<StoreProduct[]>(INITIAL_STORE_PRODUCTS);
+  const [config, setConfig] = useState<StoreConfig>({ brandName: '', tagline: '', category: '', description: '', logo: '/icon.svg', originCity: '', districtLocation: 'CRYSTAL_CITY', boothTheme: 'MENGGU_PASTEL', boothPrimaryColor: '#FEF08A', boothSecondaryColor: '#DDD6FE', boothBanner: '/icon.svg', isBoothLiveIn3D: false, hasAiGreetingBot: false, hasHoloShowcase: false, warpCoordinates: '', bankAccount: { bankName: '', accountNumber: '', accountHolder: '' } });
+  const [products, setProducts] = useState<StoreProduct[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Form New Product Modal
@@ -157,10 +94,10 @@ export default function StoreAndBoothModal({
   const [newProdName, setNewProdName] = useState('');
   const [newProdType, setNewProdType] = useState<'DIGITAL' | 'PHYSICAL'>('DIGITAL');
   const [newProdCategory, setNewProdCategory] = useState<'AI_AGENT' | '3D_ASSET' | 'PHYSICAL_MERCH' | 'HARDWARE' | 'SERVICES'>('3D_ASSET');
-  const [newProdPriceIdr, setNewProdPriceIdr] = useState(150000);
-  const [newProdPriceCredits, setNewProdPriceCredits] = useState(100);
-  const [newProdWeight, setNewProdWeight] = useState(250);
-  const [newProdStock, setNewProdStock] = useState(50);
+  const [newProdPriceIdr, setNewProdPriceIdr] = useState(0);
+  const [newProdPriceCredits, setNewProdPriceCredits] = useState(0);
+  const [newProdWeight, setNewProdWeight] = useState(0);
+  const [newProdStock, setNewProdStock] = useState(0);
   const [newProdDesc, setNewProdDesc] = useState('');
   const [newProdShowcase, setNewProdShowcase] = useState(true);
 
@@ -171,44 +108,27 @@ export default function StoreAndBoothModal({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const handleSaveAndApply = () => {
-    if (onSaveStore) {
-      onSaveStore(config, products);
+  const handleSaveAndApply = async () => {
+    if (!onSaveStore) {
+      triggerToast('Penyimpanan toko belum tersedia: API kanonis Store & Booth belum terhubung.');
+      return;
     }
-    triggerToast('Toko & Booth 3D berhasil diperbarui dan live di distrik spatial!');
-    setTimeout(() => {
-      onClose();
-    }, 1200);
+    try {
+      const saved = await onSaveStore(config, products);
+      if (saved !== true) {
+        triggerToast('Toko belum disimpan. API kanonis belum mengonfirmasi perubahan.');
+        return;
+      }
+      triggerToast('Perubahan toko telah dikonfirmasi oleh API kanonis.');
+      setTimeout(() => onClose(), 1200);
+    } catch {
+      triggerToast('Toko gagal disimpan. Silakan coba lagi setelah layanan tersedia.');
+    }
   };
 
   const handleCreateProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdName.trim()) {
-      triggerToast('Nama produk tidak boleh kosong!');
-      return;
-    }
-
-    const created: StoreProduct = {
-      id: `sp-${Date.now()}`,
-      name: newProdName,
-      type: newProdType,
-      category: newProdCategory,
-      priceIdr: Number(newProdPriceIdr),
-      priceCredits: Number(newProdPriceCredits),
-      weightGram: newProdType === 'PHYSICAL' ? Number(newProdWeight) : 0,
-      stock: Number(newProdStock),
-      image: newProdType === 'DIGITAL' 
-        ? 'https://picsum.photos/seed/digital-asset-prod/400/300' 
-        : 'https://picsum.photos/seed/physical-merch-prod/400/300',
-      description: newProdDesc || 'Produk berkualitas resmi dari toko Allpha Universe.',
-      inBoothShowcase: newProdShowcase,
-    };
-
-    setProducts(prev => [created, ...prev]);
-    setIsAddingProduct(false);
-    setNewProdName('');
-    setNewProdDesc('');
-    triggerToast(`Produk "${created.name}" berhasil ditambahkan ke katalog toko & booth 3D!`);
+    triggerToast('Tambah produk belum tersedia: API katalog kanonis belum terhubung.');
   };
 
   return (
@@ -288,7 +208,7 @@ export default function StoreAndBoothModal({
               <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <img
-                    src={config.logo}
+                    src={config.logo || '/icon.svg'}
                     alt={config.brandName}
                     className="w-14 h-14 rounded-2xl object-cover border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]"
                   />
@@ -302,7 +222,7 @@ export default function StoreAndBoothModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => triggerToast('Fitur upload foto brand disimulasikan!')}
+                  onClick={() => triggerToast('Unggah logo memerlukan integrasi API Storage kanonis.')}
                   className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] cursor-pointer shrink-0"
                 >
                   Ganti Logo
@@ -600,10 +520,7 @@ export default function StoreAndBoothModal({
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => {
-                          setProducts(prev => prev.map(p => p.id === item.id ? { ...p, inBoothShowcase: !p.inBoothShowcase } : p));
-                          triggerToast(`Status showcase 3D untuk "${item.name}" diubah!`);
-                        }}
+                        onClick={() => triggerToast('Perubahan showcase memerlukan API Booth kanonis.')}
                         className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 text-[10px] font-bold cursor-pointer"
                         title="Tampilkan di Hologram Booth 3D"
                       >
@@ -611,10 +528,7 @@ export default function StoreAndBoothModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setProducts(prev => prev.filter(p => p.id !== item.id));
-                          triggerToast(`Produk "${item.name}" dihapus.`);
-                        }}
+                        onClick={() => triggerToast('Penghapusan produk memerlukan API katalog kanonis.')}
                         className="w-7 h-7 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-900 border-2 border-slate-900 flex items-center justify-center cursor-pointer font-black"
                       >
                         <X className="w-3.5 h-3.5 stroke-[2.5px]" />
@@ -636,15 +550,15 @@ export default function StoreAndBoothModal({
               <div className="p-4 rounded-2xl bg-[#BBF7D0] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] font-black uppercase text-emerald-950 bg-white/80 px-2 py-0.5 rounded-md border border-slate-900">
-                    Sistem Bagi Hasil Master PRD
+                    Ketentuan Pembagian Hasil
                   </span>
-                  <span className="font-black text-emerald-950">85% Penjual / 15% Platform</span>
+                  <span className="font-black text-emerald-950">Mengikuti kebijakan keuangan kanonis</span>
                 </div>
                 <h3 className="font-black text-sm text-slate-950">
-                  Hak Pendapatan Kreator Marketplace: 85% Bersih Masuk ke Dompet Anda!
+                  Ringkasan pendapatan kreator
                 </h3>
                 <p className="text-[11px] font-semibold text-slate-800 leading-relaxed">
-                  Setiap transaksi produk digital atau fisik di toko Anda otomatis dipotong platform fee 15%, dan 85% langsung masuk ke saldo siap tarik. Khusus royalti penonton Film AI mendapat porsi 90%.
+                  Rincian pendapatan, biaya platform, dan royalti akan ditampilkan setelah layanan keuangan kanonis tersedia.
                 </p>
               </div>
 
@@ -652,14 +566,14 @@ export default function StoreAndBoothModal({
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
                   <span className="text-[10px] font-bold text-slate-500">Saldo Penjualan Siap Tarik</span>
-                  <p className="text-lg font-mono font-black text-emerald-700 mt-0.5">Rp 3.840.000</p>
-                  <span className="text-[9.5px] font-bold text-slate-500">Setara ~2.560 AI Credits</span>
+                  <p className="text-lg font-mono font-black text-emerald-700 mt-0.5">—</p>
+                  <span className="text-[9.5px] font-bold text-slate-500">Data saldo belum tersedia</span>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
                   <span className="text-[10px] font-bold text-slate-500">Total Produk Terjual</span>
-                  <p className="text-lg font-mono font-black text-indigo-700 mt-0.5">38 Transaksi</p>
-                  <span className="text-[9.5px] font-bold text-slate-500">Rating Toko: 4.9 ★ (120 Review)</span>
+                  <p className="text-lg font-mono font-black text-indigo-700 mt-0.5">—</p>
+                  <span className="text-[9.5px] font-bold text-slate-500">Data transaksi dan ulasan belum tersedia</span>
                 </div>
               </div>
 
@@ -711,7 +625,7 @@ export default function StoreAndBoothModal({
 
                 <button
                   type="button"
-                  onClick={() => triggerToast('Penarikan dana Rp 3.840.000 sedang diproses ke rekening BCA!')}
+                  onClick={() => triggerToast('Penarikan belum tersedia: layanan payout kanonis belum terhubung.')}
                   className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   Ajukan Penarikan Dana (Withdraw Instant)
