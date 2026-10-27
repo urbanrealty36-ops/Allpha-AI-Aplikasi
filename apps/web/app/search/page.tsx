@@ -186,7 +186,7 @@ function SearchPageContent() {
     }
   }
 
-  async function loadDiscoveredUsers(value: string) {
+  const loadDiscoveredUsers = useCallback(async (value: string) => {
     const normalized = value.trim().replace(/^@/, "");
     const sequence = ++discoveryRequestSequence.current;
     if (!session || !/^[a-zA-Z0-9_]{3,30}$/.test(normalized)) {
@@ -210,7 +210,7 @@ function SearchPageContent() {
         setDiscoveryError(cause instanceof Error ? cause.message : "Pencarian username belum dapat dimuat.");
       }
     }
-  }
+  }, [session]);
 
   useEffect(() => {
     void loadTrends();
@@ -246,7 +246,7 @@ function SearchPageContent() {
         setItems([]);
       }
     } finally { if (sequence === searchRequestSequence.current) setBusy(false); }
-  }, [query, session]);
+  }, [query, session, loadDiscoveredUsers]);
 
   const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
 
