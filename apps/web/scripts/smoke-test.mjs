@@ -395,6 +395,14 @@ assert.ok(profileRoute.includes('signOut({scope:"others"})') && profileRoute.inc
 assert.ok(profileView.includes('onOpenAccountSettings("settings")'), "Profile privacy must route to canonical account privacy controls");
 assert.ok(profileView.includes('onOpenAccountSettings("profile")'), "Profile language preference must route to canonical profile settings");
 assert.ok(profileView.includes('onRevokeOtherSessions') && profileView.includes('onLogout'), "Profile session actions must not claim success without auth callbacks");
+assert.ok(profileRoute.includes('async function updateProfileAgent') && profileRoute.includes('method: "PATCH"') && profileRoute.includes('"/v1/agents/"'), "Profile Agent identity edits must persist through the canonical FastAPI Agent endpoint");
+assert.ok(profileRoute.includes('"/skills"') && profileRoute.includes('"/knowledge/sources"') && profileRoute.includes('skill.status === "published"'), "Profile Agent summary must use canonical published Skills and Knowledge source endpoints");
+assert.ok(profileRoute.includes('source.status === "ready" && source.latest_job?.status === "succeeded"'), "Profile Knowledge count must include only completed ready sources");
+assert.ok(profileView.includes('onOpenAgentStudio') && profileView.includes('onOpenAgentPassport'), "Profile Agent runtime and public Passport actions must route to canonical pages");
+assert.ok(!profileView.includes('tasks?.length || 4'), "Profile must not fabricate a scheduled task count");
+const agentIdentityModal = readFileSync(new URL("../components/reference-ui/AgentIdentityModal.tsx", import.meta.url), "utf8");
+assert.ok(agentIdentityModal.includes("AI Gateway & Model Router") && !agentIdentityModal.includes("Gemini 2.5 Flash Allpha Gateway"), "Profile must defer provider/model selection to the canonical Model Router");
+assert.ok(agentIdentityModal.includes('await onSaveAgent(updated)') && agentIdentityModal.includes('saving ? "Menyimpan…"'), "Agent profile modal must await canonical persistence before closing");
 assert.ok(profileView.includes('{humanVerified && (') && !profileView.includes('className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">\\n              ✓'), "Profile avatar must not show a verification badge without canonical verification");
 assert.ok(profileView.includes("ag.status === 'active' ? 'bg-emerald-500' : ag.status === 'draft' ? 'bg-amber-400' : 'bg-slate-400'"), "Owned Agent status indicator must reflect canonical Agent status");
 for (const demoMetric of ["142.840", "+24.8% bln ini", "489.200", "+38.1% bln ini", "+12.450", "18.2% conversion", "1.820 Sesi"]) assert.ok(!profileView.includes(demoMetric), `Profile analytics must not show fabricated metric: ${demoMetric}`);
