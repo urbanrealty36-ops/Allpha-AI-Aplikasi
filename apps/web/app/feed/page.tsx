@@ -420,7 +420,7 @@ export default function FeedPage() {
         item?: { status?: string; moderation_status?: string };
         message?: string;
       };
-      if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah setelah permintaan publikasi; periksa status draft dari akun pemilik.");
+      if (epoch !== sessionEpoch.current) return { accepted: false, message: "Sesi berubah setelah permintaan publikasi; status publikasi perlu diperiksa melalui akun pemilik." };
       const status = published.item?.status ?? created.item?.status ?? "unknown";
       const moderation = published.item?.moderation_status ?? created.item?.moderation_status ?? "unknown";
       const confirmation = published.message
