@@ -75,19 +75,23 @@ export default function HomePage() {
     void supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSession(data.session);
+      socialRequestSequence.current += 1; consentRequestSequence.current += 1;
+      setSocialGraph(null); setConsentHistory(null);
       if (data.session) void loadIdentity(data.session); else {
-        identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1;
-        setProfile(null); setSettings(null); setSocialGraph(null); setConsentHistory(null); setLoading(false);
+        identityRequestSequence.current += 1;
+        setProfile(null); setSettings(null); setLoading(false);
       }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
       setSession(next);
+      socialRequestSequence.current += 1; consentRequestSequence.current += 1;
+      setSocialGraph(null); setConsentHistory(null);
+      setSocialLoading(false); setConsentLoading(false);
       if (next) void loadIdentity(next);
       else {
-        identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1;
-        setProfile(null); setSettings(null); setSocialGraph(null); setConsentHistory(null); setLoading(false);
-        setSocialLoading(false); setConsentLoading(false);
+        identityRequestSequence.current += 1;
+        setProfile(null); setSettings(null); setLoading(false);
       }
     });
     return () => {
