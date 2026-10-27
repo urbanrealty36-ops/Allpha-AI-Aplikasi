@@ -207,8 +207,9 @@ def test_social_edge_uses_authenticated_actor_and_validated_target(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 201
-    assert calls[0][0:3] == ("POST", "social_edges", "social-session-token")
-    assert calls[0][3]["body"] == {
+    assert calls[0][0:3] == ("GET", "social_edges", "social-session-token")
+    assert calls[1][0:3] == ("POST", "social_edges", "social-session-token")
+    assert calls[1][3]["body"] == {
         "actor_user_id": "human-123",
         "target_user_id": "00000000-0000-0000-0000-000000000002",
         "edge_type": "follow",
