@@ -1871,3 +1871,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Username validation now matches the live profiles constraint exactly after case-folding: `^[a-z0-9_]{3,30}$`. Search-prefix results are additionally filtered with a literal prefix comparison.
 - The source-only user_settings grant repair also revokes privileges granted to PUBLIC, in addition to anon/authenticated, before restoring only required authenticated SELECT/INSERT/UPDATE permissions. service_role remains unchanged.
 - Live migration history was inspected read-only; the new grant repair is not present in live history and was not applied. No test/build/typecheck/staging/deployment was run.
+
+
+**Shared shell navigation auth sequencing (2026-10-27):**
+- Fixed a race in ReferenceNavigation where a delayed initial getSession() response could overwrite a newer onAuthStateChange session and refresh inbox indicators for the wrong identity. The initial read is now ignored once an auth event has been observed. File: apps/web/components/reference-ui/ReferenceNavigation.tsx.
+- Added an unexecuted source-contract assertion. No test/build/typecheck/staging/deployment was run.
