@@ -466,6 +466,7 @@ if (existsSync(apiMainPath)) {
   assert.ok(apiMain.includes("discoverable_by_username"), "Canonical discovery API must enforce the saved username-discovery preference");
   assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
   assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
+  assert.ok(apiMain.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Private profile follow must be persisted as requested, not rely on DB defaults");
 }
 const nativeSocialPath = new URL("../../client/App.tsx", import.meta.url);
 if (existsSync(nativeSocialPath)) {
@@ -525,7 +526,6 @@ for (const contract of [
   "commentRequestSequence.current", "if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return",
   "Sesi berubah; proses publikasi dihentikan."
 ]) assert.ok(feedSessionIsolationSource.includes(contract), "Feed must isolate sessions and stale interactions: " + contract);
-assert.ok(apiMain.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Private profile follow must be persisted as requested, not rely on DB defaults");
 
 const socialFeedLegacyFollowPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
 if (existsSync(socialFeedLegacyFollowPath)) {
