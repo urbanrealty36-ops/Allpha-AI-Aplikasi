@@ -33,7 +33,7 @@ function SearchPageContent() {
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
   const [authPrompt, setAuthPrompt] = useState("");
-  const lastUrlQuery = useRef<string | null>(null);
+  const lastUrlQuery = useRef<string | null>(null);\n  const searchRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) return;
