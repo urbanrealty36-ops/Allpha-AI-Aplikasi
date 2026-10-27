@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { 
   Sparkles, 
   User, 
@@ -54,6 +55,7 @@ interface AuthOnboardingFlowProps {
   }) => Promise<void>;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
+  onGoogleSignIn?: () => Promise<void>;
 }
 
 export type OnboardingStep = 'SPLASH' | 'HUMAN_REGISTER' | 'AGENT_ONBOARDING' | 'SUCCESS';
@@ -64,9 +66,62 @@ export default function AuthOnboardingFlow({
   onComplete,
   currentUser,
   currentAgent,
+  onGoogleSignIn,
 }: AuthOnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('SPLASH');
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
+  const [selectedLang, setSelectedLang] = useState<'id' | 'en' | 'ja' | 'ms'>('id');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [flowToast, setFlowToast] = useState<string | null>(null);
+  const pwaInstall = usePWAInstall();
+
+  const showFlowToast = (message: string) => {
+    setFlowToast(message);
+    window.setTimeout(() => setFlowToast(null), 3000);
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!onGoogleSignIn) {
+      showFlowToast('Google Sign-In belum dikonfigurasi.');
+      return;
+    }
+    setIsGoogleLoading(true);
+    try {
+      await onGoogleSignIn();
+    } catch (cause) {
+      setIsGoogleLoading(false);
+      showFlowToast(cause instanceof Error ? cause.message : 'Google Sign-In gagal.');
+    }
+  };
+
+  const handleAndroidInstall = async () => {
+    if (pwaInstall.isInstalled) {
+      showFlowToast('Allpha sudah terpasang di perangkat ini.');
+      return;
+    }
+    if (!pwaInstall.isInstallable) {
+      showFlowToast('Browser belum menawarkan dialog instalasi. Buka menu browser dan pilih Install app jika tersedia.');
+      return;
+    }
+    try {
+      const accepted = await pwaInstall.install();
+      showFlowToast(accepted ? 'Permintaan instalasi diterima oleh browser.' : 'Instalasi tidak diselesaikan.');
+    } catch {
+      showFlowToast('Browser tidak dapat memulai instalasi. Coba melalui menu browser.');
+    }
+  };
+
+  const handleIOSInstall = () => {
+    if (pwaInstall.isInstalled) {
+      showFlowToast('Allpha sudah terpasang di perangkat ini.');
+      return;
+    }
+    if (pwaInstall.isIOS) {
+      showFlowToast('Di Safari, tekan Bagikan lalu pilih Tambahkan ke Layar Utama.');
+      return;
+    }
+    void handleAndroidInstall();
+  };
 
   // Human Identity Form State
   const [humanName, setHumanName] = useState(currentUser.name);
@@ -227,26 +282,57 @@ export default function AuthOnboardingFlow({
         {/* STEP 1: SPLASH ONBOARDING HERO                          */}
         {/* ======================================================== */}
         {step === 'SPLASH' && (
-          <div className="p-6 sm:p-8 flex flex-col items-center text-center space-y-5 overflow-y-auto">
+          <div className="p-5 sm:p-7 flex flex-col items-center text-center space-y-4 overflow-y-auto">
+            {/* Language Selector Bar with Flags */}
+            <div className="w-full flex items-center justify-between pb-2 border-b-2 border-slate-900">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <Globe className="w-3.5 h-3.5 text-slate-700" />
+                <span>Pilih Bahasa / Language:</span>
+              </span>
+              <div className="flex items-center gap-1">
+                {[
+                  { code: 'id', flag: '🇮🇩', name: 'ID' },
+                  { code: 'en', flag: '🇺🇸', name: 'EN' },
+                  { code: 'ja', flag: '🇯🇵', name: 'JA' },
+                  { code: 'ms', flag: '🇸🇬', name: 'SG' },
+                ].map((l) => (
+                  <button
+                    key={l.code}
+                    onClick={() => {
+                      setSelectedLang(l.code as 'id' | 'en' | 'ja' | 'ms');
+                    }}
+                    className={`px-2 py-1 rounded-lg text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 cursor-pointer ${
+                      selectedLang === l.code
+                        ? 'bg-[#FEF08A] text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a] scale-105'
+                        : 'bg-white hover:bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    <span>{l.flag}</span>
+                    <span className="text-[10px]">{l.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Logo Lockup */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-16 h-16 rounded-2xl bg-[#0284C7] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center justify-center">
-                <span className="text-white font-black text-3xl tracking-tighter">A</span>
+            <div className="flex flex-col items-center gap-1.5 pt-1">
+              <div className="w-14 h-14 rounded-2xl bg-[#0284C7] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center justify-center">
+                <span className="text-white font-black text-2xl tracking-tighter">A</span>
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <h1 className="text-2xl font-black tracking-tight text-slate-900">ALLPHA UNIVERSE</h1>
-                <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-300 text-slate-950 tracking-wider uppercase border border-slate-900">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">ALLPHA UNIVERSE</h1>
+                <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-[#FEF08A] text-slate-950 tracking-wider uppercase border-2 border-slate-900">
                   2026
                 </span>
               </div>
-              <p className="text-xs font-black text-[#0284C7] tracking-wider uppercase">
+              <p className="text-[11px] font-black text-[#0284C7] tracking-wider uppercase">
                 PEOPLE × AI AGENTS × WORLDS × OPPORTUNITIES
               </p>
             </div>
 
-            {/* Headline & Subhead from Pitch Deck */}
-            <div className="space-y-1.5 max-w-md">
-              <h2 className="text-base sm:text-lg font-black text-slate-900">
+            {/* Headline & Subhead */}
+            <div className="space-y-1 max-w-md">
+              <h2 className="text-sm sm:text-base font-black text-slate-900">
                 Satu Ekosistem untuk Manusia dan AI Agent
               </h2>
               <p className="text-xs text-slate-600 font-semibold leading-relaxed">
@@ -255,10 +341,10 @@ export default function AuthOnboardingFlow({
             </div>
 
             {/* Feature Highlights Grid */}
-            <div className="grid grid-cols-2 gap-2.5 w-full text-left">
-              <div className="p-3.5 rounded-2xl bg-sky-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-sky-200 border border-slate-900 text-sky-800 flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4" />
+            <div className="grid grid-cols-2 gap-2 w-full text-left">
+              <div className="p-3 rounded-2xl bg-[#BAE6FD]/40 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2">
+                <div className="w-7 h-7 rounded-xl bg-sky-200 border border-slate-900 text-sky-800 flex items-center justify-center shrink-0">
+                  <User className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <h3 className="text-xs font-black text-slate-900">Dual Identity Feed</h3>
@@ -266,9 +352,9 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-purple-200 border border-slate-900 text-purple-800 flex items-center justify-center shrink-0">
-                  <Box className="w-4 h-4" />
+              <div className="p-3 rounded-2xl bg-[#DDD6FE]/40 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2">
+                <div className="w-7 h-7 rounded-xl bg-purple-200 border border-slate-900 text-purple-800 flex items-center justify-center shrink-0">
+                  <Box className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <h3 className="text-xs font-black text-slate-900">3D Spatial Universe</h3>
@@ -276,9 +362,9 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-rose-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-rose-200 border border-slate-900 text-rose-800 flex items-center justify-center shrink-0">
-                  <Radio className="w-4 h-4" />
+              <div className="p-3 rounded-2xl bg-[#FECDD3]/40 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2">
+                <div className="w-7 h-7 rounded-xl bg-rose-200 border border-slate-900 text-rose-800 flex items-center justify-center shrink-0">
+                  <Radio className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <h3 className="text-xs font-black text-slate-900">Live Stage Podcast</h3>
@@ -286,9 +372,9 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-200 border border-slate-900 text-amber-800 flex items-center justify-center shrink-0">
-                  <Coins className="w-4 h-4" />
+              <div className="p-3 rounded-2xl bg-[#FEF08A]/40 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-2">
+                <div className="w-7 h-7 rounded-xl bg-amber-200 border border-slate-900 text-amber-800 flex items-center justify-center shrink-0">
+                  <Coins className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <h3 className="text-xs font-black text-slate-900">AI Credits Economy</h3>
@@ -297,32 +383,109 @@ export default function AuthOnboardingFlow({
               </div>
             </div>
 
-            {/* CTAs */}
-            <div className="w-full space-y-2.5 pt-1">
+            {/* Google Sign In & Auth Actions */}
+            <div className="w-full space-y-2 pt-1">
+              {/* Prominent Google Sign-In Button */}
               <button
-                onClick={() => {
-                  setAuthMode('REGISTER');
-                  setStep('HUMAN_REGISTER');
-                }}
-                className="w-full py-3 px-4 rounded-2xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-2 transition"
+                onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading}
+                className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-2.5 transition cursor-pointer"
               >
-                <span>Mulai Sekarang / Daftar Human Identity</span>
-                <ArrowRight className="w-4 h-4" />
+                {/* Official Google G Logo */}
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.15 0 9.92 0 12s.45 3.85 1.24 5.42l4.04-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+                <span>{isGoogleLoading ? 'Menghubungkan ke Google...' : 'Lanjutkan Masuk dengan Google'}</span>
               </button>
 
-              <button
-                onClick={() => {
-                  setAuthMode('LOGIN');
-                  setStep('HUMAN_REGISTER');
-                }}
-                className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition"
-              >
-                Sudah Punya Akun? Masuk di Sini
-              </button>
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="h-0.5 flex-1 bg-slate-200" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">atau</span>
+                <div className="h-0.5 flex-1 bg-slate-200" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setAuthMode('REGISTER');
+                    setStep('HUMAN_REGISTER');
+                  }}
+                  className="w-full py-2.5 px-3 rounded-2xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1 transition"
+                >
+                  <span>Daftar Akun</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    setAuthMode('LOGIN');
+                    setStep('HUMAN_REGISTER');
+                  }}
+                  className="w-full py-2.5 px-3 rounded-2xl bg-[#DDD6FE] hover:bg-purple-200 text-purple-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition"
+                >
+                  Masuk Manual
+                </button>
+              </div>
+
+              {/* Play Store & App Store Download Cards */}
+              <div className="pt-2">
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider text-left mb-1.5 flex items-center justify-between">
+                  <span>Unduh Aplikasi Mobile Resmi:</span>
+                  <span className="text-amber-600">PWA Mobile First</span>
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Google Play Store Card */}
+                  <div
+                    onClick={handleAndroidInstall}
+                    className="p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition text-left"
+                  >
+                    <div className="w-7 h-7 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0">
+                      <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
+                        <path d="M3 20.5v-17c0-.83.67-1.5 1.5-1.5.38 0 .73.14 1 .4l10.8 9.6-10.8 9.6c-.27.26-.62.4-1 .4-.83 0-1.5-.67-1.5-1.5zm13.3-8.5l2.7-2.4c.53-.47.8-.93.8-1.6 0-.83-.67-1.5-1.5-1.5-.38 0-.73.14-1 .4l-2 1.8 1 3.3zm-11-8.5l8.6 7.6-8.6 7.6V3.5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[8.5px] font-extrabold text-slate-500 uppercase leading-none">Temukan di</p>
+                      <p className="text-[11px] font-black text-slate-900 leading-tight">Android / Chrome</p>
+                    </div>
+                  </div>
+
+                  {/* Apple App Store Card */}
+                  <div
+                    onClick={handleIOSInstall}
+                    className="p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center gap-2 cursor-pointer active:translate-x-0.5 active:translate-y-0.5 transition text-left"
+                  >
+                    <div className="w-7 h-7 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0">
+                      <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.66-.82 1.11-1.96.99-3.1-.96.04-2.13.64-2.82 1.45-.61.71-1.15 1.87-1.01 2.98 1.08.08 2.18-.51 2.84-1.33z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[8.5px] font-extrabold text-slate-500 uppercase leading-none">Unduh di</p>
+                      <p className="text-[11px] font-black text-slate-900 leading-tight">iOS / Safari</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <button
                 onClick={onClose}
-                className="text-[11px] font-black text-slate-600 hover:text-slate-900 underline transition pt-1"
+                className="text-[11px] font-black text-slate-600 hover:text-slate-900 underline transition pt-1 block mx-auto"
               >
                 Jelajahi Dulu sebagai Tamu (Guest Mode)
               </button>
@@ -765,6 +928,11 @@ export default function AuthOnboardingFlow({
             <span className="px-3.5 py-1.5 rounded-xl bg-amber-200 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
               Saldo AI Credits mengikuti ledger akun
             </span>
+          </div>
+        )}
+        {flowToast && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-black border-2 border-slate-700 shadow-xl flex items-center gap-1.5">
+            {flowToast}
           </div>
         )}
       </div>

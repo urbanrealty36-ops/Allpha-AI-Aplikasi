@@ -61,6 +61,18 @@ export default function AuthOnboardingRoute() {
     return requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/feed";
   }, []);
 
+  async function googleSignIn() {
+    if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
+    const redirectTo = typeof window === "undefined"
+      ? undefined
+      : window.location.origin + "/agents?onboarding=required";
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: redirectTo ? { redirectTo } : {},
+    });
+    if (error) throw error;
+  }
+
   async function complete(payload: {
     user: HumanProfile;
     agent: AIAgentProfile;
@@ -180,6 +192,7 @@ export default function AuthOnboardingRoute() {
         isOpen
         onClose={() => router.replace(returnTo)}
         onComplete={complete}
+        onGoogleSignIn={googleSignIn}
         currentUser={emptyHuman}
         currentAgent={emptyAgent}
       />
