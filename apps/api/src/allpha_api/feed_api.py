@@ -119,7 +119,7 @@ def _published(row: dict[str, Any]) -> datetime:
         return datetime.fromtimestamp(0, tz=timezone.utc)
 
 @router.get("/v1/feed")
-async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_you",
+async def get_feed(request: Request, mode: Literal["for_you", "recent", "following"] = "for_you",
                    limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
                    user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
     # Guest reads are public-only and chronological. Personalization and relationship filters require identity.
@@ -130,7 +130,10 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
             "select": "personalization_enabled,ranking_mode", "user_id": f"eq.{owner}", "limit": "1"})
         prefs = prefs_rows[0] if prefs_rows else {"personalization_enabled": True, "ranking_mode": "for_you"}
         enabled = bool(prefs.get("personalization_enabled", True))
-        effective_mode = "recent" if not enabled else (prefs.get("ranking_mode", "for_you") if mode == "for_you" else "recent")
+        if mode == "following":
+            effective_mode = "following"
+        else:
+            effective_mode = "recent" if not enabled else (prefs.get("ranking_mode", "for_you") if mode == "for_you" else "recent")
         visibility_filter = "in.(public,followers)"
     else:
         prefs = {"personalization_enabled": False, "ranking_mode": "recent"}
@@ -157,6 +160,11 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
             or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed)
         )
     ]
+    # "Following" is an explicit relationship feed, not a ranking hint: return only
+    # active followed creators. Guest requests already fall back to chronological public feed.
+    if owner and effective_mode == "following":
+        candidates = [row for row in candidates if str(row.get("owner_id")) in followed]
+
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
     if owner and effective_mode == "for_you" and enabled:
