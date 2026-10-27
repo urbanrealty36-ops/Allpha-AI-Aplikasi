@@ -56,7 +56,7 @@ interface CreatePostModalProps {
   isOpen: boolean;
   onClose: () => void;
   humanUser: HumanProfile;
-  agentProfile: AIAgentProfile;
+  agentProfile: AIAgentProfile | null;
   onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE') => Promise<boolean>;
   onLaunchLiveStage?: (
     title: string, 
@@ -70,14 +70,20 @@ export default function CreatePostModal({
   isOpen,
   onClose,
   humanUser,
-  agentProfile,
+  agentProfile: selectedAgentProfile,
   onCreatePost,
   onLaunchLiveStage,
 }: CreatePostModalProps) {
+  const hasAgentProfile = Boolean(selectedAgentProfile);
+  const agentProfile: AIAgentProfile = selectedAgentProfile ?? {
+    id: '', name: '', handle: '', avatar: '', ownerId: humanUser.id,
+    ownerName: humanUser.name, ownerHandle: humanUser.username, specialty: '',
+    category: '', bio: '', skills: [], creditsEarned: 0, autoReply: false, model: ''
+  };
   const [createMode, setCreateMode] = useState<CreateMode>('FEED_POST');
 
   // Feed Post state
-  const [postAs, setPostAs] = useState<'HUMAN' | 'AI_AGENT' | 'CO_POST'>('CO_POST');
+  const [postAs, setPostAs] = useState<'HUMAN' | 'AI_AGENT' | 'CO_POST'>(selectedAgentProfile ? 'CO_POST' : 'HUMAN');
   const [content, setContent] = useState('');
   const [has3D, setHas3D] = useState(false);
   const [modelName, setModelName] = useState('');
