@@ -155,7 +155,7 @@ export default function StoreAndBoothModal({
                   Buat Toko & Booth 3D Spatial
                 </h2>
                 <span className="text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-200 border border-slate-900 text-emerald-950 uppercase shadow-2xs">
-                  {config.isBoothLiveIn3D ? '🟢 BOOTH LIVE' : '⚪ DRAFT'}
+                  {config.isBoothLiveIn3D ? '🟡 KONFIGURASI AKTIF' : '⚪ DRAFT'}
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs font-semibold text-slate-800 line-clamp-1 sm:line-clamp-none mt-0.5">
@@ -178,7 +178,7 @@ export default function StoreAndBoothModal({
             { id: 'BRAND', label: '🏬 Brand & Toko' },
             { id: 'BOOTH_3D', label: '🎪 Booth 3D Spatial' },
             { id: 'PRODUCTS', label: `📦 Produk (${products.length})` },
-            { id: 'EARNINGS', label: '💰 Royalti & Payout (85%)' },
+            { id: 'EARNINGS', label: '💰 Royalti & Payout' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -320,7 +320,7 @@ export default function StoreAndBoothModal({
                     config.isBoothLiveIn3D ? 'bg-emerald-300 text-slate-950' : 'bg-slate-200 text-slate-700'
                   }`}
                 >
-                  {config.isBoothLiveIn3D ? 'AKTIF (LIVE) ✓' : 'NON-AKTIF (DRAFT)'}
+                  {config.isBoothLiveIn3D ? 'AKTIF (KONFIGURASI)' : 'NON-AKTIF (DRAFT)'}
                 </button>
               </div>
 
@@ -541,7 +541,7 @@ export default function StoreAndBoothModal({
           )}
 
           {/* ============================================================ */}
-          {/* TAB 4: ROYALTI & PENARIKAN DANA (UNIT ECONOMICS 85%)        */}
+          {/* TAB 4: ROYALTI & PENARIKAN DANA        */}
           {/* ============================================================ */}
           {activeTab === 'EARNINGS' && (
             <div className="space-y-4 text-xs">
