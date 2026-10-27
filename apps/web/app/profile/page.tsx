@@ -111,7 +111,7 @@ export default function ProfilePage() {
           const knowledgePayload = await knowledgeResult.value.json() as { items?: ApiKnowledgeSource[] };
           readyKnowledgeDocs = (knowledgePayload.items || [])
             .filter(source => source.status === "ready" && source.latest_job?.status === "succeeded")
-            .map(source => ({
+            .map((source): KnowledgeDocument => ({
               id: source.id,
               title: source.filename,
               type: source.filename.toLowerCase().endsWith(".pdf") ? "EBOOK_PDF" : source.filename.toLowerCase().endsWith(".json") ? "PLUGIN_JSON" : "MARKDOWN_DOC",
