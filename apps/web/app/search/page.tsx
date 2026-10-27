@@ -34,6 +34,7 @@ function SearchPageContent() {
   const [creatorsBusy, setCreatorsBusy] = useState(false);
   const [creatorsError, setCreatorsError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
+  const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
@@ -60,6 +61,7 @@ function SearchPageContent() {
       setRecommendationsBusy(false);
       setCreatorsBusy(false);
       setFollowedAccountIds([]);
+      setPendingFollowAccountIds([]);
       setSession(next);
     });
     return () => { active = false; searchRequestSequence.current += 1; data.subscription.unsubscribe(); };
@@ -118,7 +120,7 @@ function SearchPageContent() {
   }, [session?.access_token]);
 
   useEffect(() => {
-    if (!session) { setFollowedAccountIds([]); return; }
+    if (!session) { setFollowedAccountIds([]); setPendingFollowAccountIds([]); return; }
     let active = true;
     void fetch(apiBase + "/v1/me/social-graph", {
       headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
@@ -129,6 +131,9 @@ function SearchPageContent() {
       if (!active) return;
       setFollowedAccountIds((payload.outgoing || [])
         .filter(edge => edge.edge_type === "follow" && edge.status === "active")
+        .map(edge => edge.target_user_id));
+      setPendingFollowAccountIds((payload.outgoing || [])
+        .filter(edge => edge.edge_type === "follow" && edge.status === "requested")
         .map(edge => edge.target_user_id));
     }).catch(() => { if (active) setFollowedAccountIds([]); });
     return () => { active = false; };
@@ -243,22 +248,34 @@ function SearchPageContent() {
         accountsError={searched ? discoveryError : creatorsError}
         onRetryAccounts={() => { if (searched) void runSearch(undefined, query); else void loadCreators(); }}
         followedAccountIds={followedAccountIds}
-        onFollowAccount={async (accountId, currentlyFollowed) => {
+        pendingFollowAccountIds={pendingFollowAccountIds}
+        onFollowAccount={async (accountId, followStatus) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
+          const requestSessionToken = session.access_token;
+          const cancel = followStatus === "active" || followStatus === "requested";
           try {
-            const response = await fetch(currentlyFollowed
+            const response = await fetch(cancel
               ? apiBase + "/v1/me/social-edges/" + encodeURIComponent(accountId) + "/follow"
               : apiBase + "/v1/me/social-edges", {
-              method: currentlyFollowed ? "DELETE" : "POST",
+              method: cancel ? "DELETE" : "POST",
               headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", Accept: "application/json" },
-              body: currentlyFollowed ? undefined : JSON.stringify({ target_user_id: accountId, edge_type: "follow" }),
+              body: cancel ? undefined : JSON.stringify({ target_user_id: accountId, edge_type: "follow" }),
               cache: "no-store",
             });
             const payload = await response.json().catch(() => ({}));
+            if (requestSessionToken !== sessionTokenRef.current) return;
             if (!response.ok) throw new Error(payload?.detail?.message || "Status mengikuti akun tidak dapat diubah.");
             const outcome = payload?.outcome as string | undefined;
-            setFollowedAccountIds(previous => currentlyFollowed ? previous.filter(id => id !== accountId) : [...new Set([...previous, accountId])]);
-            setAuthPrompt(outcome === "follow_request_created" ? "Permintaan mengikuti akun privat telah dikirim." : currentlyFollowed ? "Berhenti mengikuti akun." : "Anda sekarang mengikuti akun ini.");
+            if (cancel) {
+              setFollowedAccountIds(previous => previous.filter(id => id !== accountId));
+              setPendingFollowAccountIds(previous => previous.filter(id => id !== accountId));
+            } else if (outcome === "follow_request_created") {
+              setPendingFollowAccountIds(previous => [...new Set([...previous, accountId])]);
+            } else {
+              setFollowedAccountIds(previous => [...new Set([...previous, accountId])]);
+              setPendingFollowAccountIds(previous => previous.filter(id => id !== accountId));
+            }
+            setAuthPrompt(outcome === "follow_request_created" ? "Permintaan mengikuti akun privat telah dikirim." : cancel ? "Status mengikuti dibatalkan." : "Anda sekarang mengikuti akun ini.");
           } catch (cause) { setAuthPrompt(cause instanceof Error ? cause.message : "Status mengikuti akun tidak dapat diubah."); }
         }}
         trendsLoading={trendsBusy}
