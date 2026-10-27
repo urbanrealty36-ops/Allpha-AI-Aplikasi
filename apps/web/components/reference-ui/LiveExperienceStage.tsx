@@ -161,21 +161,21 @@ export default function LiveExperienceStage({
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
-        <div className="flex items-start sm:items-center gap-3 min-w-0">
-          <div className="w-3.5 h-3.5 mt-1 sm:mt-0 rounded-full bg-rose-500 border border-slate-900 animate-pulse shrink-0" />
+      <div className="flex items-center justify-between bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
+        <div className="flex items-center gap-3">
+          <div className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-slate-900 animate-pulse" />
           <div>
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-200 border-2 border-slate-900 font-black uppercase tracking-wider text-rose-950 shadow-2xs shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-200 border-2 border-slate-900 font-black uppercase tracking-wider text-rose-950 shadow-2xs">
                 LIVE STAGE
               </span>
-              <h1 className="text-sm font-black text-slate-950 break-words">Podcast & Live Experience Arena</h1>
+              <h1 className="text-sm font-black text-slate-950">Podcast & Live Experience Arena</h1>
             </div>
             <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{activeTopic}</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
             <Users className="w-3.5 h-3.5" />
             <span>{viewerCount === null ? '—' : viewerCount.toLocaleString()} Penonton</span>
