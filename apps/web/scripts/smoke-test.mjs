@@ -520,7 +520,8 @@ for (const contract of ["authEventSeen", "indicatorRequestSequence.current", "re
 const accountSessionSource = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
 const profileSessionSource = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
 for (const [name, source] of [["Account", accountSessionSource], ["Profile", profileSessionSource]]) {
-  assert.ok(source.includes("authEventSeen") && source.includes("!authEventSeen"), name + " must not let a stale getSession read override a newer auth event");
+  const guardsStaleSessionRead = source.includes("!authEventSeen") || source.includes("if (!active || authEventSeen) return;");
+  assert.ok(source.includes("authEventSeen") && guardsStaleSessionRead, name + " must not let a stale getSession read override a newer auth event");
 }
 
 assert.ok(nativeApp.includes("authEventSeen") && nativeApp.includes("!authEventSeen"), "Native navigation must not let a stale initial session read override a newer auth event");
