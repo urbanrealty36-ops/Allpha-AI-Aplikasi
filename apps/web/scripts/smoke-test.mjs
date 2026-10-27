@@ -274,7 +274,7 @@ for (const contract of [
 ]) assert.ok(webSearch.includes(contract), "Search must isolate sessions and use canonical Social Graph contracts: " + contract);
 const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
 assert.ok(exploreView.includes("pendingFollowAccountIds") && exploreView.includes("<span>Menunggu</span>") && exploreView.includes("Batalkan permintaan mengikuti"), "Explore must distinguish active follows from cancellable private-profile requests");
-assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("discoverable"), "Explore must connect username discovery to the canonical opt-in API");
+assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("discoverable"), "Explore must connect username discovery to the canonical saved-preference API");
 assert.ok(exploreView.includes("discoveryError") && exploreView.includes("relationshipError"), "Explore must expose explicit discovery and relationship error states");
 const socialFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
 if (existsSync(socialFeedApiPath)) {
