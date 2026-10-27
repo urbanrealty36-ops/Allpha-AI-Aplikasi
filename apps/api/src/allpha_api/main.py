@@ -42,7 +42,7 @@ from allpha_api.spatial_theme_api import router as spatial_theme_router
 from allpha_api.spatial_ingest_api import router as spatial_ingest_router
 from allpha_api.spatial_navigation_api import router as spatial_navigation_router
 from allpha_api.spatial_governance_api import router as spatial_governance_router
-from allpha_api.content_api import router as content_router
+from allpha_api.content_api import _server_db, router as content_router
 from allpha_api.feed_api import router as feed_router
 from allpha_api.stories_api import router as stories_router
 from allpha_api.messaging_api import router as messaging_router
@@ -519,6 +519,54 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Relasi sosial tidak dapat ditujukan ke akun sendiri."})
 
     token = request.state.supabase_access_token
+
+    # Follow requests may only target an active, addressable profile. The client
+    # cannot use a valid Auth UUID to create relationships with suspended or
+    # partially provisioned identities. Blocks/mutes remain available for an
+    # existing Auth identity so users can protect themselves from inactive accounts.
+    if payload.edge_type == "follow":
+        # The authenticated profile SELECT policy intentionally hides private
+        # profiles from non-followers. Use the server-only projection here so a
+        # private account can receive a follow request without exposing profile
+        # data to the caller; the response below remains a generic not-found.
+        target_profiles = await _server_db(
+            "GET", "profiles",
+            params={"select": "id,visibility,account_status", "id": f"eq.{payload.target_user_id}", "limit": "1"},
+        )
+        target_profile = target_profiles[0] if target_profiles else None
+        if (
+            not target_profile
+            or target_profile.get("visibility") not in {"public", "private"}
+            or target_profile.get("account_status", "active") != "active"
+        ):
+            raise HTTPException(status_code=404, detail={
+                "code": "SOCIAL_TARGET_NOT_FOUND",
+                "message": "Akun tidak ditemukan atau tidak dapat diikuti.",
+            })
+
+        # Return a stable policy error instead of leaking a Postgres trigger
+        # exception when either participant has blocked the other.
+        for source_id, destination_id in (
+            (str(user["id"]), str(payload.target_user_id)),
+            (str(payload.target_user_id), str(user["id"])),
+        ):
+            blocks = await user_db_request(
+                "GET", "social_edges", token,
+                params={
+                    "select": "id",
+                    "actor_user_id": f"eq.{source_id}",
+                    "target_user_id": f"eq.{destination_id}",
+                    "edge_type": "eq.block",
+                    "status": "eq.active",
+                    "limit": "1",
+                },
+            )
+            if blocks:
+                raise HTTPException(status_code=403, detail={
+                    "code": "SOCIAL_EDGE_BLOCKED",
+                    "message": "Tindakan ini tidak tersedia karena pembatasan akun.",
+                })
+
     edge_filter = {
         "select": "id,actor_user_id,target_user_id,edge_type,status,created_at",
         "actor_user_id": f"eq.{user['id']}",

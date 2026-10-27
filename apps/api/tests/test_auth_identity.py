@@ -547,8 +547,11 @@ def test_social_edge_create_uses_authenticated_actor_and_caller_token(monkeypatc
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
         calls.append((method, path, access_token, kwargs))
+        if method == "GET":
+            return []
         return [{
             "id": "edge-1",
+            "actor_user_id": "authenticated-social-actor",
             "target_user_id": target_user_id,
             "edge_type": "follow",
             "status": "requested",
@@ -572,7 +575,19 @@ def test_social_edge_create_uses_authenticated_actor_and_caller_token(monkeypatc
 
     assert response.status_code == 201
     assert response.json()["edge"]["target_user_id"] == target_user_id
-    assert calls == [(
+    assert calls[0] == (
+        "GET",
+        "social_edges",
+        "social-write-session-token",
+        {"params": {
+            "select": "id,actor_user_id,target_user_id,edge_type,status,created_at",
+            "actor_user_id": "eq.authenticated-social-actor",
+            "target_user_id": f"eq.{target_user_id}",
+            "edge_type": "eq.follow",
+            "limit": "1",
+        }},
+    )
+    assert calls[1] == (
         "POST",
         "social_edges",
         "social-write-session-token",
@@ -582,10 +597,10 @@ def test_social_edge_create_uses_authenticated_actor_and_caller_token(monkeypatc
                 "target_user_id": target_user_id,
                 "edge_type": "follow",
             },
-            "params": {"select": "id,target_user_id,edge_type,status,created_at"},
+            "params": {"select": "id,actor_user_id,target_user_id,edge_type,status,created_at"},
             "prefer": "return=representation",
         },
-    )]
+    )
 
 
 def test_social_edge_rejects_self_target_before_database_write(monkeypatch):

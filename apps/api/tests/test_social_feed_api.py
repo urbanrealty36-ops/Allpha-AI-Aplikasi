@@ -148,6 +148,8 @@ def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatc
         params = params or {}
         if table == "content_items":
             return [content]
+        if table == "profiles":
+            return [{"id": owner_id, "visibility": "public", "account_status": "active"}]
         if table == "social_edges" and params.get("actor_user_id") == "eq.eng-p14-viewer":
             return [{"target_user_id": owner_id, "edge_type": "follow", "status": "active"}]
         if table == "social_edges":
@@ -206,6 +208,7 @@ def test_share_records_event_and_returns_deep_link(monkeypatch):
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
         if table == "content_items": return [content]
+        if table == "profiles": return [{"id": content["owner_id"], "username": "author", "visibility": "public"}]
         if table == "social_edges": return []
         if method == "POST" and table == "content_shares":
             writes.append(body)
@@ -235,6 +238,7 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         if table == "content_items": return [content]
+        if table == "profiles": return [{"id": content["owner_id"], "username": "author", "visibility": "public"}]
         if table == "social_edges": return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}: return []
         raise AssertionError(f"unexpected {method} {table}")
@@ -584,3 +588,320 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
     assert payload["idempotent_replay"] is False
     assert payload["outcome"] == "follow_request_created"
     assert len(calls) == 2
+
+
+
+def test_social_profile_rejects_malformed_handle_without_database_lookup(monkeypatch):
+    async def fail_db(*args, **kwargs):
+        raise AssertionError("Malformed handles must be rejected before database lookup")
+
+    monkeypatch.setattr(feed_api, "_server_db", fail_db)
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/profiles/not%20the%20same%20handle")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+
+
+def test_private_social_profile_requires_explicit_discoverability(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000901"
+    viewer_id = "eng-p14-viewer"
+    db_calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        db_calls.append((method, table, params or {}))
+        if table == "profiles":
+            return [{
+                "id": target_id, "username": "privatehandle", "display_name": "Private Account",
+                "avatar_url": "https://example.invalid/private-avatar.png", "bio": "private bio",
+                "visibility": "private",
+            }]
+        if table == "social_edges":
+            return []
+        if table == "user_settings":
+            return [{"privacy_settings": {"discoverable_by_username": False}}]
+        raise AssertionError(f"Unexpected table access: {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), set()
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/profiles/privatehandle")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert not any(table == "content_items" for _, table, _ in db_calls)
+
+
+def test_discoverable_private_profile_returns_minimal_preview_only(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000902"
+    viewer_id = "eng-p14-viewer"
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "profiles":
+            return [{
+                "id": target_id, "username": "discoverableprivate", "display_name": "Private Account",
+                "avatar_url": "https://example.invalid/private-avatar.png", "bio": "private bio",
+                "visibility": "private",
+            }]
+        if table == "social_edges":
+            return []
+        if table == "user_settings":
+            return [{"privacy_settings": {"discoverable_by_username": True}}]
+        raise AssertionError(f"Private preview must not access {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), set()
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/profiles/discoverableprivate")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["can_view_content"] is False
+    assert payload["items"] == []
+    assert payload["profile"]["avatar_url"] is None
+    assert payload["profile"]["bio"] == ""
+    assert payload["profile"]["visibility"] == "private"
+
+
+
+def test_legacy_follow_route_creates_requested_edge_for_private_profile(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000903"
+    created = {
+        "id": "00000000-0000-0000-0000-000000000904",
+        "target_user_id": target_id,
+        "status": "requested",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "profiles":
+            return [{"id": target_id, "visibility": "private"}]
+        if method == "GET" and table == "social_edges":
+            return []
+        if method == "POST" and table == "social_edges":
+            assert body["status"] == "requested"
+            assert body["edge_type"] == "follow"
+            return [created]
+        raise AssertionError(f"Unexpected database request: {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/social/follow/{target_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "requested"
+    assert response.json()["outcome"] == "follow_request_created"
+
+
+def test_username_discovery_requires_explicit_opt_in_and_limits_private_fields(monkeypatch):
+    viewer_id = "eng-p14-viewer"
+    public_id = "00000000-0000-0000-0000-000000000911"
+    private_id = "00000000-0000-0000-0000-000000000912"
+    profiles = [
+        {"id": public_id, "username": "allpha_public", "display_name": "Public",
+         "avatar_url": "https://example.invalid/public.png", "bio": "public bio", "visibility": "public"},
+        {"id": private_id, "username": "allpha_private", "display_name": "Private",
+         "avatar_url": "https://example.invalid/private.png", "bio": "private bio", "visibility": "private"},
+        {"id": "00000000-0000-0000-0000-000000000913", "username": "allpha_optout",
+         "display_name": "Opt out", "avatar_url": None, "bio": "", "visibility": "public"},
+        {"id": "00000000-0000-0000-0000-000000000914", "username": "allpha_inactive",
+         "display_name": "Inactive", "avatar_url": None, "bio": "", "visibility": "public", "account_status": "deactivation_requested"},
+    ]
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if method == "GET" and table == "profiles":
+            assert params["id"] == f"neq.{viewer_id}"
+            return profiles
+        if method == "GET" and table == "user_settings":
+            return [
+                {"user_id": public_id, "privacy_settings": {"discoverable_by_username": True}},
+                {"user_id": private_id, "privacy_settings": {"discoverable_by_username": True}},
+                {"user_id": "00000000-0000-0000-0000-000000000913", "privacy_settings": {"discoverable_by_username": False}},
+                {"user_id": "00000000-0000-0000-0000-000000000914", "privacy_settings": {"discoverable_by_username": True}},
+            ]
+        if method == "GET" and table == "social_edges":
+            return []
+        raise AssertionError(f"Unexpected database request: {method} {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), set()
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=allpha")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert {item["id"] for item in payload["items"]} == {public_id, private_id}
+    private = next(item for item in payload["items"] if item["id"] == private_id)
+    assert private["avatar_url"] is None
+    assert private["bio"] == ""
+    assert payload["source"] == "explicit_username_opt_in"
+
+
+def test_username_discovery_excludes_blocked_and_existing_follow_edges(monkeypatch):
+    viewer_id = "eng-p14-viewer"
+    ids = [
+        "00000000-0000-0000-0000-000000000921",
+        "00000000-0000-0000-0000-000000000922",
+        "00000000-0000-0000-0000-000000000923",
+    ]
+    profiles = [
+        {"id": ids[0], "username": "allpha_one", "display_name": "One", "visibility": "public"},
+        {"id": ids[1], "username": "allpha_two", "display_name": "Two", "visibility": "public"},
+        {"id": ids[2], "username": "allpha_three", "display_name": "Three", "visibility": "public"},
+    ]
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if method == "GET" and table == "profiles":
+            return profiles
+        if method == "GET" and table == "user_settings":
+            return [{"user_id": target, "privacy_settings": {"discoverable_by_username": True}} for target in ids]
+        if method == "GET" and table == "social_edges":
+            return [{"target_user_id": ids[2], "status": "requested"}]
+        raise AssertionError(f"Unexpected database request: {method} {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), {ids[0]}
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=allpha")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == [ids[1]]
+
+
+def test_username_discovery_rejects_malformed_handles_before_database_lookup(monkeypatch):
+    async def fail_db(*args, **kwargs):
+        raise AssertionError("Malformed handles must not trigger a database lookup")
+
+    monkeypatch.setattr(feed_api, "_server_db", fail_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=allpha%20other")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert response.json()["source"] == "explicit_username_opt_in"
+
+
+def test_public_profile_hides_inactive_account_before_content_lookup(monkeypatch):
+    calls = []
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}))
+        if method == "GET" and table == "profiles":
+            return [{
+                "id": "00000000-0000-0000-0000-000000000931",
+                "username": "inactive_profile",
+                "display_name": "Inactive",
+                "visibility": "public",
+                "account_status": "deactivation_requested",
+            }]
+        raise AssertionError(f"Inactive profiles must not load social data: {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[optional_current_user] = lambda: None
+    try:
+        response = TestClient(app).get("/v1/social/profiles/inactive_profile")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert not any(table == "content_items" for _, table, _ in calls)
+
+
+def test_public_content_from_private_profile_is_hidden_from_non_followers(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000024"
+    owner_id = "eng-p14-private-author"
+    now = datetime.now(timezone.utc).isoformat()
+    content = {"id": content_id, "owner_id": owner_id, "body": "profile-private", "content_type": "text",
+               "visibility": "public", "status": "published", "moderation_status": "approved",
+               "version": 1, "created_at": now, "updated_at": now, "published_at": now}
+    writes = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_items": return [content]
+        if table == "profiles": return [{"id": owner_id, "username": "private_author", "visibility": "private"}]
+        if table == "social_edges": return []
+        if method == "POST":
+            writes.append((table, body))
+        raise AssertionError(f"private-profile content must not reach a write: {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    app.dependency_overrides[optional_current_user] = _fixture_user
+    try:
+        response = TestClient(app).post(f"/v1/feed/{content_id}/share", json={"share_target": "copy_link"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    assert writes == []
+
+
+def test_expired_story_rejects_feed_interactions(monkeypatch):
+    story_id = "00000000-0000-0000-0000-000000000099"
+    expired_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET"
+        assert table == "content_items"
+        assert "expires_at" in params["select"]
+        return [{
+            "id": story_id,
+            "owner_id": "eng-p16-story-owner",
+            "content_type": "story",
+            "body": "expired story",
+            "visibility": "public",
+            "status": "published",
+            "moderation_status": "approved",
+            "version": 1,
+            "created_at": expired_at,
+            "updated_at": expired_at,
+            "published_at": expired_at,
+            "expires_at": expired_at,
+        }]
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/feed/{story_id}/reaction", json={"reaction": "like"})
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+    finally:
+        app.dependency_overrides.clear()

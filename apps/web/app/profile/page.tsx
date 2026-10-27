@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -13,7 +13,7 @@ type ApiAgentSkill = { id: string; name: string; slug: string; status: "draft" |
 type ApiKnowledgeSource = { id: string; filename: string; media_type: string; size_bytes: number; status: string; processing_stage?: string; created_at: string; latest_job?: { status?: string; stage?: string } | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 export default function ProfilePage() {
- const supabase = useMemo(() => getBrowserSupabase(), []); const [session,setSession] = useState<Session|null>(null); const [human,setHuman] = useState<HumanProfile|null>(null); const [agents,setAgents] = useState<ApiAgent[]>([]); const [posts,setPosts] = useState<PostItem[]>([]); const [knowledgeDocs,setKnowledgeDocs] = useState<KnowledgeDocument[]>([]); const [selectedAgent,setSelectedAgent] = useState<AIAgentProfile|null>(null); const [selectedAgentStatus,setSelectedAgentStatus] = useState(""); const [loading,setLoading] = useState(true); const [error,setError] = useState(""); const [openStoreAndBooth,setOpenStoreAndBooth] = useState(false);
+ const supabase = useMemo(() => getBrowserSupabase(), []); const lastUserId = useRef<string|null>(null); const [session,setSession] = useState<Session|null>(null); const [human,setHuman] = useState<HumanProfile|null>(null); const [agents,setAgents] = useState<ApiAgent[]>([]); const [posts,setPosts] = useState<PostItem[]>([]); const [knowledgeDocs,setKnowledgeDocs] = useState<KnowledgeDocument[]>([]); const [selectedAgent,setSelectedAgent] = useState<AIAgentProfile|null>(null); const [selectedAgentStatus,setSelectedAgentStatus] = useState(""); const [loading,setLoading] = useState(true); const [error,setError] = useState(""); const [openStoreAndBooth,setOpenStoreAndBooth] = useState(false);
  useEffect(()=>{ if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("open") === "store") setOpenStoreAndBooth(true); },[]);
  useEffect(() => {
   if (!supabase) {
@@ -22,12 +22,18 @@ export default function ProfilePage() {
     return;
   }
   let active = true;
+  let authEventSeen = false;
   let requestSequence = 0;
 
   const loadProfile = async (current: Session | null) => {
     const sequence = ++requestSequence;
     setSession(current);
     setError("");
+    const nextUserId = current?.user.id ?? null;
+    if (lastUserId.current !== nextUserId) {
+      lastUserId.current = nextUserId;
+      setHuman(null); setAgents([]); setPosts([]); setKnowledgeDocs([]); setSelectedAgent(null); setSelectedAgentStatus("");
+    }
     if (!current) {
       setHuman(null);
       setAgents([]);
@@ -166,10 +172,12 @@ export default function ProfilePage() {
   };
 
   void supabase.auth.getSession().then(({ data }) => {
-    if (active) void loadProfile(data.session);
+    if (active && !authEventSeen) void loadProfile(data.session);
   });
   const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-    if (active) void loadProfile(next);
+    if (!active) return;
+    authEventSeen = true;
+    void loadProfile(next);
   });
   return () => {
     active = false;

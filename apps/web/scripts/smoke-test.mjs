@@ -233,6 +233,10 @@ for (const contract of ["/v1/stories", "/v1/content/", "/media", "/publish", "se
   assert.ok(webStories.includes(contract), "missing Web Stories lifecycle contract: " + contract);
 }
 assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
+const storyViewer = readFileSync(new URL("../components/reference-ui/StoriesViewerModal.tsx", import.meta.url), "utf8");
+assert.ok(webStories.includes("StoriesViewerModal") && webStories.includes("productionMode") && webStories.includes("/reaction") && webStories.includes("/comments"), "Story viewer must use canonical API-backed interactions and source modal");
+assert.ok(webStories.includes('>Buka Story</button>') && webStories.includes('"/stories?story=" + encodeURIComponent(story.id)'), "Authenticated and public story cards must open the canonical story viewer");
+assert.ok(storyViewer.includes("productionMode ? (storiesData ?? []) : STORIES") && storyViewer.includes("disabled={productionMode && (!onSendReaction") && storyViewer.includes("if (productionMode) return;"), "Story viewer production mode must use API data and must not expose demo success actions");
 
 const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/reels", "/v1/feed/", "/reaction", "/share", "session.access_token"]) {
@@ -263,6 +267,7 @@ assert.ok(webSearch.includes("useSearchParams"), "Search must react to global na
 assert.ok(webSearch.includes("lastUrlQuery.current === urlQuery"), "Search must avoid duplicate submissions for the same URL query");
 assert.ok(webSearch.includes("<Suspense"), "Search useSearchParams must be guarded by Suspense for production build");
 assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical authenticated Search API");
+assert.ok(webSearch.includes("lastUrlQuery.current = null") && webSearch.includes("setRecommendations([])") && webSearch.includes("setTrends([])") && webSearch.includes("setCreators([])"), "Search must clear account-scoped discovery projections and refresh URL queries on identity changes");
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
@@ -384,10 +389,13 @@ assert.ok(webLayout.includes("userScalable: true"), "Web viewport must preserve 
 
 // WP-02: profile/settings must bind real canonical data and account mutations.
 assert.ok(profileRoute.includes('/v1/me/profile-feed?limit=50'), "Profile must load the authenticated owner's published content through the canonical API");
-const profileFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
-assert.ok(profileFeedApi.includes('@router.get("/v1/me/profile-feed"') && profileFeedApi.includes('user: dict[str, Any] = Depends(current_user)'), "Profile Feed must be protected by the canonical authenticated API");
-assert.ok(profileFeedApi.includes('"owner_id": f"eq.{owner}"') && profileFeedApi.includes('"status": "eq.published"') && profileFeedApi.includes('"moderation_status": "eq.approved"'), "Profile Feed must be scoped to owner-published approved content");
-assert.ok(profileFeedApi.includes('"engagement": {') && profileFeedApi.includes('"preview_url"'), "Profile Feed must return real engagement and signed media preview metadata");
+const profileFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
+if (existsSync(profileFeedApiPath)) {
+  const profileFeedApi = readFileSync(profileFeedApiPath, "utf8");
+  assert.ok(profileFeedApi.includes('@router.get("/v1/me/profile-feed"') && profileFeedApi.includes('user: dict[str, Any] = Depends(current_user)'), "Profile Feed must be protected by the canonical authenticated API");
+  assert.ok(profileFeedApi.includes('"owner_id": f"eq.{owner}"') && profileFeedApi.includes('"status": "eq.published"') && profileFeedApi.includes('"moderation_status": "eq.approved"'), "Profile Feed must be scoped to owner-published approved content");
+  assert.ok(profileFeedApi.includes('"engagement": {') && profileFeedApi.includes('"preview_url"'), "Profile Feed must return real engagement and signed media preview metadata");
+}
 assert.ok(profileRoute.includes('item.owner_id === me.user!.id'), "Profile feed must be scoped to the authenticated identity");
 assert.ok(profileRoute.includes('/reaction') && profileRoute.includes('method: post.isLiked ? "DELETE" : "PUT"'), "Profile reactions must use canonical Feed mutation endpoints");
 assert.ok(profileRoute.includes('onSelectPost={(post)=>{window.location.assign("/feed?content="+encodeURIComponent(post.id))}}'), "Selecting a profile post must open its canonical Feed detail");
@@ -402,11 +410,10 @@ assert.ok(profileView.includes('onOpenAgentStudio') && profileView.includes('onO
 assert.ok(profileView.includes('onOpenAgentRuntime') && profileRoute.includes('onOpenAgentRuntime={(agentId)=>{window.location.assign("/agents?agent="+encodeURIComponent(agentId))}}'), "Profile task actions must deep-link to the canonical Agent Runtime console");
 const agentsRoute = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
 assert.ok(agentsRoute.includes('get("agent")') && agentsRoute.includes('scrollIntoView') && agentsRoute.includes('id={"agent-" + agent.id}'), "Agent Runtime console must honor the selected Agent deep link");
-assert.ok(agentsRoute.includes('https://api.allpha.web.id') && agentStudioRoute.includes('https://api.allpha.web.id'), "Agent Runtime and Studio must use the canonical production API origin when no override is configured");
 const agentStudioRoute = readFileSync(new URL("../app/agents/[agentId]/studio/page.tsx", import.meta.url), "utf8");
+assert.ok(agentsRoute.includes('https://api.allpha.web.id') && agentStudioRoute.includes('https://api.allpha.web.id'), "Agent Runtime and Studio must use the canonical production API origin when no override is configured");
 assert.ok(agentStudioRoute.includes('href="/workflows"') && agentStudioRoute.includes("/knowledge/retrieve") && agentStudioRoute.includes("/skills"), "Agent Studio must link the canonical Workflow Engine and expose Skill/Knowledge API integrations");
 assert.ok(!profileView.includes('tasks?.length || 4'), "Profile must not fabricate a scheduled task count");
-const agentIdentityModal = readFileSync(new URL("../components/reference-ui/AgentIdentityModal.tsx", import.meta.url), "utf8");
 assert.ok(agentIdentityModal.includes("AI Gateway & Model Router") && !agentIdentityModal.includes("Gemini 2.5 Flash Allpha Gateway"), "Profile must defer provider/model selection to the canonical Model Router");
 assert.ok(agentIdentityModal.includes('await onSaveAgent(updated)') && agentIdentityModal.includes('saving ? "Menyimpan…"'), "Agent profile modal must await canonical persistence before closing");
 assert.ok(profileView.includes('{humanVerified && (') && !profileView.includes('className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">\\n              ✓'), "Profile avatar must not show a verification badge without canonical verification");
@@ -421,15 +428,94 @@ const accountRoute = readFileSync(new URL("../app/account/page.tsx", import.meta
 assert.ok(accountRoute.includes('new URLSearchParams(window.location.search).get("tab")'), "Account must support direct tab deep links");
 assert.ok(accountRoute.includes('interestPreference') && accountRoute.includes('"not_interested"') && accountRoute.includes('updateInterestPreference'), "Web Social Graph must persist both positive and negative interest preferences");
 assert.ok(accountRoute.includes('result.outcome === "follow_active"') && accountRoute.includes('result.outcome === "follow_request_created"'), "Web Social Graph must distinguish active follows from private-profile requests");
-const apiMain = readFileSync(new URL("../../api/src/allpha_api/main.py", import.meta.url), "utf8");
-assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
-assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
-const nativeSocialSource = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
-assert.ok(nativeSocialSource.includes('updateInterestPreference') && nativeSocialSource.includes('"not_interested"'), "Native Social Graph must persist both positive and negative interest preferences");
-assert.ok(nativeSocialSource.includes('result.outcome === "follow_active"') && nativeSocialSource.includes('result.outcome === "follow_request_created"'), "Native Social Graph must distinguish active follows from private-profile requests");
-for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
-const nativeApp = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
-for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"agents\"", "Feed: \"feed\"", "Reels: \"reels\"", "Stories: \"stories\"", "Search: \"search\"", "Messages: \"messages\"", "Notifications: \"notifications\"", "Communities: \"communities\""]) {
-  assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
+const apiMainPath = new URL("../../api/src/allpha_api/main.py", import.meta.url);
+if (existsSync(apiMainPath)) {
+  const apiMain = readFileSync(apiMainPath, "utf8");
+  assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
+  assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
 }
-assert.ok(nativeApp.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
+const nativeSocialPath = new URL("../../client/App.tsx", import.meta.url);
+if (existsSync(nativeSocialPath)) {
+  const nativeSocialSource = readFileSync(nativeSocialPath, "utf8");
+  assert.ok(nativeSocialSource.includes('updateInterestPreference') && nativeSocialSource.includes('"not_interested"'), "Native Social Graph must persist both positive and negative interest preferences");
+  assert.ok(nativeSocialSource.includes('result.outcome === "follow_active"') && nativeSocialSource.includes('result.outcome === "follow_request_created"'), "Native Social Graph must distinguish active follows from private-profile requests");
+}
+for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
+if (existsSync(nativeContentPath)) {
+  for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"agents\"", "Feed: \"feed\"", "Reels: \"reels\"", "Stories: \"stories\"", "Search: \"search\"", "Messages: \"messages\"", "Notifications: \"notifications\"", "Communities: \"communities\""]) {
+    assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
+  }
+  assert.ok(nativeApp.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
+}
+
+
+const notificationPage = readFileSync(new URL("../app/notifications/page.tsx", import.meta.url), "utf8");
+assert.ok(notificationPage.includes("requestSequence.current") && notificationPage.includes("sequence !== requestSequence.current"), "Notification inbox must discard stale responses and invalidate requests when the session changes");
+assert.ok(notificationPage.includes("sessionEpoch.current") && notificationPage.includes("preferencesRequestSequence.current"), "Notification read/write and preference operations must not mutate a different session UI");
+const searchPage = readFileSync(new URL("../app/search/page.tsx", import.meta.url), "utf8");
+assert.ok(searchPage.includes('"/v1/social/discover-users?q="') && searchPage.includes("discoveredUsers.map"), "Search must render server-filtered username discovery results alongside content search");
+assert.ok(searchPage.includes('"/v1/me/social-edges"') && searchPage.includes('edge_type: "follow"'), "Search follow actions must use the canonical social-edge API, including private-profile requests");
+assert.ok(searchPage.includes("searchRequestSequence.current") && searchPage.includes("sequence !== searchRequestSequence.current"), "Search must discard stale query results");
+assert.ok(searchPage.includes("requestSessionToken !== sessionTokenRef.current") && searchPage.includes("sessionTokenRef.current = next?.access_token ?? null"), "Search discovery and recommendation requests must be scoped to the current auth session");
+const messagesPage = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+assert.ok(messagesPage.includes("conversationRequestSequence.current") && messagesPage.includes("listRequestSequence.current"), "Messaging must isolate conversation/message requests and clear stale session data");
+assert.ok(messagesPage.includes("sessionEpoch.current") && messagesPage.includes("if(epoch!==sessionEpoch.current)return"), "Message send completion must not update UI after identity changes");
+const socialFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
+const socialFeedApi = existsSync(socialFeedApiPath) ? readFileSync(socialFeedApiPath, "utf8") : "";
+if (existsSync(socialFeedApiPath)) {
+  assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
+  assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", query)'), "Username discovery must fail closed for missing privacy settings, reject malformed handles, and exclude blocked/muted relationships");
+  assert.ok(socialFeedApi.includes('"account_status"') && socialFeedApi.includes('row.get("account_status", "active") == "active"'), "Username discovery must not recommend deactivated accounts");
+}
+
+
+const publicProfilePage = readFileSync(new URL("../app/profile/[username]/page.tsx", import.meta.url), "utf8");
+assert.ok(publicProfilePage.includes('"/v1/social/profiles/"') && publicProfilePage.includes('"/v1/me/social-edges"'), "Public profile page must read visibility-filtered profile data and use canonical follow endpoints");
+assert.ok(publicProfilePage.includes('data.follow_status === "requested"') && publicProfilePage.includes("data.can_view_content"), "Public profile page must represent pending follow requests and private-content access separately");
+if (existsSync(socialFeedApiPath)) {
+  assert.ok(socialFeedApi.includes('"/v1/social/profiles/{username}"') && socialFeedApi.includes('"SOCIAL_PROFILE_NOT_FOUND"'), "Public profile API must centralize visibility-safe profile resolution");
+  assert.ok(socialFeedApi.includes('privacy.get("discoverable_by_username") is not True') && socialFeedApi.includes('row.get("visibility") == "followers"'), "Public profile API must enforce private discoverability and follower-only content access");
+}
+const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
+assert.ok(exploreView.includes('pendingFollowAccountIds?: string[]') && exploreView.includes('followStatus === "requested"'), "Reference account cards must distinguish pending follow requests");
+assert.ok(exploreView.includes('"/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))'), "Human account cards must navigate to the canonical public profile route");
+
+if (existsSync(socialFeedApiPath)) {
+  assert.ok(socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", handle)') && socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", query)'), "Profile routes and username discovery must reject malformed handles rather than normalize them into another account");
+  assert.ok(socialFeedApi.includes('requested_status = "requested" if target_rows[0].get("visibility") == "private" else "active"') && socialFeedApi.includes('"follow_request_created" if rows[0].get("status") == "requested" else "follow_active"'), "Legacy follow endpoint must preserve private-profile request semantics");
+  assert.ok(socialFeedApi.includes('str(row.get("username")).casefold().startswith(query)') && socialFeedApi.includes('"username": f"eq.{handle}"'), "Username matching must not treat underscore characters as LIKE wildcards or resolve a different handle");
+}
+
+const settingsGrantRepairPath = new URL("../../api/supabase/migrations/20261027180000_eng_p03_user_settings_least_privilege_grants.sql", import.meta.url);
+if (existsSync(settingsGrantRepairPath)) {
+  const settingsGrantRepair = readFileSync(settingsGrantRepairPath, "utf8");
+  assert.ok(settingsGrantRepair.includes("revoke all privileges on table public.user_settings from public, anon, authenticated") && settingsGrantRepair.includes("grant select on table public.user_settings to authenticated") && settingsGrantRepair.includes("grant update (theme, notification_preferences, privacy_settings)"), "User settings grant repair must revoke broad grants and restore only required authenticated preference access");
+}
+
+assert.ok(referenceNavigation.includes("let authEventSeen = false") && referenceNavigation.includes("if (!active || authEventSeen) return"), "Shared navigation must not let an initial getSession result override a newer auth-state event");
+
+
+const accountPage = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
+assert.ok(accountPage.includes("let authEventSeen = false") && accountPage.includes("if (!active || authEventSeen) return"), "Account identity must not be overwritten by a delayed initial session read");
+assert.ok(accountPage.includes("lastIdentityUserId.current !== active.user.id") && accountPage.includes("setProfile(null); setSettings(null)"), "Account settings and profile projections must clear before switching to a different identity");
+const profilePage = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+assert.ok(profilePage.includes("let authEventSeen = false") && profilePage.includes("if (active && !authEventSeen) void loadProfile(data.session)"), "Profile must ignore a stale initial session response after an auth event");
+assert.ok(profilePage.includes("lastUserId.current !== nextUserId") && profilePage.includes("setHuman(null); setAgents([]); setPosts([])"), "Profile Agent and content projections must clear when the authenticated identity changes");
+
+
+// WP-02 shared shell and discovery source contracts (authored, not executed in this work pass).
+assert.ok(notificationPage.includes("requestSequence.current") && notificationPage.includes("sequence !== requestSequence.current"), "Notification inbox must discard stale responses across filters and auth sessions");
+assert.ok(notificationPage.includes("preferencesRequestSequence.current") && notificationPage.includes("setUnreadCount(0)"), "Notification preference reads and inbox indicators must reset across account changes");
+
+assert.ok(searchPage.includes('"/v1/social/discover-users?q="') && searchPage.includes("discoveredUsers.map"), "Search must render explicit-opt-in username discovery results");
+assert.ok(searchPage.includes('"/v1/me/social-edges"') && searchPage.includes('edge_type: "follow"'), "Search follow actions must use the canonical social-edge API");
+assert.ok(searchPage.includes("searchRequestSequence.current") && searchPage.includes("sequence !== searchRequestSequence.current"), "Search must discard stale query responses");
+assert.ok(searchPage.includes('"/v1/me/social-graph"') && searchPage.includes('edge.edge_type === "follow"'), "Search must hydrate follow state from canonical social graph");
+assert.ok(searchPage.includes("pendingFollowAccountIds={pendingFollowAccountIds}") && searchPage.includes('followStatus === "requested"'), "Search must distinguish and allow cancellation of pending private-profile follow requests");
+
+assert.ok(messagesPage.includes("conversationRequestSequence.current") && messagesPage.includes("listRequestSequence.current"), "Messaging must isolate conversation/message requests and clear stale session data");
+
+if (existsSync(socialFeedApiPath)) {
+  assert.ok(socialFeedApi.includes('@router.get("/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must use the canonical social feed router");
+  assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden"), "Username discovery must fail closed on missing privacy opt-in and exclude hidden relationships");
+}

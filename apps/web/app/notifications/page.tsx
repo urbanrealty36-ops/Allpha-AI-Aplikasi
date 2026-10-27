@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 
@@ -34,12 +34,30 @@ export default function NotificationsPage() {
   const [notice, setNotice] = useState("");
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [preferencesBusy, setPreferencesBusy] = useState(false);
+  const requestSequence = useRef(0);
+  const preferencesRequestSequence = useRef(0);
+  const sessionEpoch = useRef(0);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
+    let active = true;
+    let authEventSeen = false;
+    void supabase.auth.getSession().then(({ data }) => { if (active && !authEventSeen) setSession(data.session); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
+      authEventSeen = true;
+      sessionEpoch.current += 1;
+      requestSequence.current += 1;
+      setItems([]);
+      setUnreadCount(0);
+      setPreferences(null);
+      setBusyId(null);
+      setPreferencesBusy(false);
+      setError("");
+      setNotice("");
+      setSession(next);
+    });
+    return () => { active = false; sessionEpoch.current += 1; requestSequence.current += 1; preferencesRequestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
   const api = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -56,63 +74,73 @@ export default function NotificationsPage() {
 
   const load = useCallback(async () => {
     if (!session) { setItems([]); setUnreadCount(0); setLoading(false); return; }
+    const sequence = ++requestSequence.current;
     setLoading(true); setError("");
     try {
       const query = unreadOnly ? "?unread_only=true&limit=100" : "?limit=100";
       const result = await api<InboxResponse>("/v1/notifications" + query);
+      if (sequence !== requestSequence.current) return;
       setItems(result.items || []);
       setUnreadCount(result.unread_count || 0);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat dimuat.");
-    } finally { setLoading(false); }
+      if (sequence === requestSequence.current) setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat dimuat.");
+    } finally { if (sequence === requestSequence.current) setLoading(false); }
   }, [api, session, unreadOnly]);
 
   useEffect(() => { void load(); }, [load]);
 
   const loadPreferences = useCallback(async () => {
+    const sequence = ++preferencesRequestSequence.current;
+    const epoch = sessionEpoch.current;
     if (!session) { setPreferences(null); return; }
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
-      setPreferences(result.preferences);
+      if (sequence === preferencesRequestSequence.current && epoch === sessionEpoch.current) setPreferences(result.preferences);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
+      if (sequence === preferencesRequestSequence.current && epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
     }
   }, [api, session]);
 
   useEffect(() => { void loadPreferences(); }, [loadPreferences]);
 
   async function updatePreference(key: keyof NotificationPreferences, value: boolean) {
+    const epoch = sessionEpoch.current;
+    const sequence = ++preferencesRequestSequence.current;
     setPreferencesBusy(true); setError("");
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences", {
         method: "PATCH", body: JSON.stringify({ [key]: value }),
       });
-      setPreferences(result.preferences);
+      if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setPreferences(result.preferences);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
-    } finally { setPreferencesBusy(false); }
+      if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
+    } finally { if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setPreferencesBusy(false); }
   }
 
   async function markRead(item: NotificationItem) {
     if (item.read_at) return;
+    const epoch = sessionEpoch.current;
     setBusyId(item.id); setError(""); setNotice("");
     try {
       await api("/v1/notifications/" + encodeURIComponent(item.id) + "/read", { method: "PATCH", body: "{}" });
+      if (epoch !== sessionEpoch.current) return;
       setItems(current => current.map(row => row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row));
       setUnreadCount(count => Math.max(0, count - 1));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Status baca tidak dapat disimpan."); }
-    finally { setBusyId(null); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Status baca tidak dapat disimpan."); }
+    finally { if (epoch === sessionEpoch.current) setBusyId(null); }
   }
 
   async function markAllRead() {
+    const epoch = sessionEpoch.current;
     setBusyId("all"); setError(""); setNotice("");
     try {
       const result = await api<{ updated_count: number }>("/v1/notifications/read-all", { method: "POST", body: "{}" });
+      if (epoch !== sessionEpoch.current) return;
       setItems(current => current.map(row => row.read_at ? row : { ...row, read_at: new Date().toISOString() }));
       setUnreadCount(0);
       setNotice(result.updated_count + " notifikasi ditandai sudah dibaca.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat ditandai sudah dibaca."); }
-    finally { setBusyId(null); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat ditandai sudah dibaca."); }
+    finally { if (epoch === sessionEpoch.current) setBusyId(null); }
   }
 
   if (!session) return <><main className="allpha-page allpha-notifications-page mx-auto max-w-3xl p-6 text-slate-100"><h1 className="text-2xl font-semibold">Notifikasi</h1><p className="mt-3 text-slate-300">Masuk melalui halaman utama Allpha untuk melihat kotak notifikasi.</p><a className="mt-4 inline-block underline" href="/">Kembali ke Allpha</a></main></>;

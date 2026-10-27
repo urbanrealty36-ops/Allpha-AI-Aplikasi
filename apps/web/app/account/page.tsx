@@ -46,11 +46,16 @@ export default function HomePage() {
   const [interestKey, setInterestKey] = useState("");
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const identityRequestSequence = useRef(0);
+  const lastIdentityUserId = useRef<string | null>(null);
   const socialRequestSequence = useRef(0);
   const consentRequestSequence = useRef(0);
 
   const loadIdentity = useCallback(async (active: Session) => {
     const sequence = ++identityRequestSequence.current;
+    if (lastIdentityUserId.current !== active.user.id) {
+      lastIdentityUserId.current = active.user.id;
+      setProfile(null); setSettings(null); setSocialGraph(null); setConsentHistory(null);
+    }
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
@@ -73,24 +78,28 @@ export default function HomePage() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     let active = true;
+    let authEventSeen = false;
     void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
+      if (!active || authEventSeen) return;
       setSession(data.session);
       socialRequestSequence.current += 1; consentRequestSequence.current += 1;
       setSocialGraph(null); setConsentHistory(null);
       if (data.session) void loadIdentity(data.session); else {
+        lastIdentityUserId.current = null;
         identityRequestSequence.current += 1;
         setProfile(null); setSettings(null); setLoading(false);
       }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
+      authEventSeen = true;
       setSession(next);
       socialRequestSequence.current += 1; consentRequestSequence.current += 1;
       setSocialGraph(null); setConsentHistory(null);
       setSocialLoading(false); setConsentLoading(false);
       if (next) void loadIdentity(next);
       else {
+        lastIdentityUserId.current = null;
         identityRequestSequence.current += 1;
         setProfile(null); setSettings(null); setLoading(false);
       }
