@@ -49,7 +49,8 @@ import {
   Repeat2,
   Film,
   Flame,
-  ArrowRight
+  ArrowRight,
+  Store
 } from 'lucide-react';
 import type {
   SkillBlueprint,
@@ -77,7 +78,22 @@ export interface SocialAccountItem {
 export const SOCIAL_ACCOUNTS_SAMPLE: SocialAccountItem[] = [];
 export const POPULAR_HASHTAGS: Array<{ tag: string; count: string; trending: boolean }> = [];
 
+export interface ExploreMarketplaceItem {
+  id: string;
+  name: string;
+  type: string;
+  price?: string | null;
+  credits?: number | null;
+  seller?: string | null;
+  image?: string | null;
+  badge?: string | null;
+  booth?: string | null;
+}
+
 interface ExploreViewProps {
+  marketplaceItems?: ExploreMarketplaceItem[];
+  onOpenMarketplace?: () => void;
+  onOpenStoreAndBoothModal?: () => void;
   posts?: PostItem[];
   onSelectPost?: (post: PostItem) => void;
   onOpenAskAi: (agentName: string, ownerName: string, specialty: string) => void;
@@ -147,6 +163,9 @@ export default function ExploreView({
   searchError = '',
   searchEmpty = false,
   searchPrompt = false,
+  marketplaceItems = [],
+  onOpenMarketplace,
+  onOpenStoreAndBoothModal,
 }: ExploreViewProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   useEffect(() => { setSearchQuery(initialSearchQuery); }, [initialSearchQuery]);
@@ -407,6 +426,79 @@ export default function ExploreView({
                   )}
                 </button>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* ======================================================== */}
+        {/* SECTION A.2: MARKETPLACE & 3D BOOTH SPOTLIGHT (JELAJAHI) */}
+        {/* ======================================================== */}
+        {(activeSearchTab === 'ALL' || activeSearchTab === 'MARKETPLACE') && (
+          <section className="space-y-3.5">
+            <div className="p-4 sm:p-5 rounded-3xl bg-[#FEF08A] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-xl bg-white border-2 border-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a]">
+                      <ShoppingBag className="w-3.5 h-3.5 text-slate-950 stroke-[2.5px]" />
+                    </span>
+                    <h2 className="text-sm sm:text-base font-black text-slate-950 tracking-tight">
+                      Marketplace & Stan Booth 3D Spatial
+                    </h2>
+                  </div>
+                  <p className="text-[11.5px] font-semibold text-slate-800">
+                    Beli aset 3D, companion AI Agent, merchandise fisik & kunjungi stan pameran di distrik 3D
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {onOpenStoreAndBoothModal && (
+                    <button onClick={onOpenStoreAndBoothModal} className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer">
+                      <Store className="w-3.5 h-3.5 text-slate-900 stroke-[2.5px]" />
+                      <span>Buat Toko & Booth</span>
+                    </button>
+                  )}
+                  {onOpenMarketplace && (
+                    <button onClick={onOpenMarketplace} className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-white font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer">
+                      <span>Buka Marketplace</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar text-[10px] font-black text-slate-900 pt-0.5">
+                <span className="px-2 py-0.5 rounded-lg bg-white/80 border border-slate-900 shrink-0">✨ Royalti seller mengikuti ketentuan kanonis</span>
+                <span className="px-2 py-0.5 rounded-lg bg-white/80 border border-slate-900 shrink-0">📦 Pengiriman sesuai layanan yang tersedia</span>
+                <span className="px-2 py-0.5 rounded-lg bg-white/80 border border-slate-900 shrink-0">💳 Pembayaran sesuai konfigurasi aktif</span>
+                <span className="px-2 py-0.5 rounded-lg bg-white/80 border border-slate-900 shrink-0">🎪 Warp Pad 3D Districts</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {marketplaceItems.map((item) => (
+                <div key={item.id} className="p-2.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-1.5 flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <div className="relative h-24 rounded-xl overflow-hidden border border-slate-900">
+                      {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : <div className="flex h-full w-full items-center justify-center bg-slate-100"><Box className="w-7 h-7 text-slate-400" /></div>}
+                      <span className="absolute top-1 left-1 px-1.5 py-0.2 rounded font-mono text-[8px] font-black bg-white/90 border border-slate-900 text-slate-950">{item.type}</span>
+                    </div>
+                    <h4 className="font-black text-xs text-slate-950 line-clamp-1 leading-snug">{item.name}</h4>
+                    <p className="text-[10px] font-semibold text-slate-500 line-clamp-1">{item.seller || "Penjual belum tersedia"}</p>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="font-mono font-black text-emerald-700 text-[11px] leading-tight">{item.price || "Harga belum tersedia"}</p>
+                      <span className="font-mono text-[9px] text-amber-900 font-bold block">{item.credits == null ? "—" : item.credits} Cr</span>
+                    </div>
+                    {onOpenMarketplace && <button onClick={onOpenMarketplace} className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] border border-slate-900 cursor-pointer">Beli</button>}
+                  </div>
+                </div>
+              ))}
+              {marketplaceItems.length === 0 && (
+                <div className="col-span-full rounded-2xl border-2 border-dashed border-slate-900 bg-white/70 p-5 text-center">
+                  <ShoppingBag className="mx-auto mb-2 h-6 w-6 text-slate-500" />
+                  <p className="text-xs font-black text-slate-900">Katalog Marketplace belum tersedia.</p>
+                  <p className="mt-1 text-[10px] font-semibold text-slate-600">Produk contoh tidak ditampilkan. Item akan muncul setelah API katalog kanonis mengembalikan data.</p>
+                </div>
+              )}
             </div>
           </section>
         )}
