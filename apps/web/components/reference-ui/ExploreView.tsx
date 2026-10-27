@@ -114,6 +114,7 @@ interface ExploreViewProps {
   accountsData?: SocialAccountItem[];
   accountsLoading?: boolean;
   accountsError?: string;
+  discoveryError?: string;
   relationshipError?: string;
   onRetryAccounts?: () => void;
   followedAccountIds?: string[];
@@ -153,6 +154,7 @@ export default function ExploreView({
   accountsData = [],
   accountsLoading = false,
   accountsError = "",
+  discoveryError = "",
   relationshipError = "",
   onRetryAccounts,
   followedAccountIds = [],
@@ -524,6 +526,12 @@ export default function ExploreView({
               )}
             </div>
 
+            {productionMode && discoveryError && (
+              <div role="alert" className="mb-3 rounded-2xl border-2 border-rose-700 bg-rose-50 p-3 text-xs font-bold text-rose-950">
+                <p>{discoveryError}</p>
+                {onRetryAccounts && <button type="button" onClick={onRetryAccounts} className="mt-2 rounded-xl border-2 border-rose-900 px-3 py-2">Coba ulang pencarian username</button>}
+              </div>
+            )}
             {productionMode && relationshipError && (
               <div role="alert" className="mb-3 rounded-2xl border-2 border-amber-700 bg-amber-50 p-3 text-xs font-bold text-amber-950">
                 <p>{relationshipError}</p>
