@@ -53,8 +53,21 @@ function SearchPageContent() {
       authEventSeen = true;
       sessionTokenRef.current = next?.access_token ?? null;
       searchRequestSequence.current += 1;
+      // Remove every account-scoped projection before rendering the next identity.
+      // The sequence/token guards prevent late responses; clearing state prevents
+      // the previous account's personalized data flashing during the new load.
+      lastUrlQuery.current = null;
       setItems([]);
       setDiscoveredUsers([]);
+      setCreators([]);
+      setRecommendations([]);
+      setTrends([]);
+      setDiscoveryError("");
+      setCreatorsError("");
+      setRecommendationsError("");
+      setTrendsError("");
+      setError("");
+      setSearched(false);
       setDiscoveryBusy(false);
       setBusy(false);
       setTrendsBusy(false);
