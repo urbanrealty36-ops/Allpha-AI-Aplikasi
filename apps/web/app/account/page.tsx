@@ -44,6 +44,7 @@ export default function HomePage() {
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
+  const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const identityRequestSequence = useRef(0);
   const socialRequestSequence = useRef(0);
   const consentRequestSequence = useRef(0);
@@ -174,8 +175,10 @@ export default function HomePage() {
   async function addSocialEdge(edgeType: "follow" | "block" | "mute") {
     setSaving(true); setError(""); setMessage("");
     try {
-      await socialRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) });
-      setTargetUserId(""); setMessage(edgeType === "follow" ? "Permintaan mengikuti berhasil dikirim." : edgeType === "block" ? "Akun berhasil diblokir." : "Akun berhasil dibisukan.");
+      const result = await socialRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
+      setTargetUserId("");
+      const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti akun ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : result.outcome === "user_blocked" ? "Akun berhasil diblokir." : result.outcome === "user_muted" ? "Akun berhasil dibisukan." : "Relasi sosial tersimpan.";
+      setMessage(result.idempotent_replay ? "Relasi tersebut sudah ada; tidak dibuat duplikat." : outcomeMessage);
       await loadSocialGraph();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Relasi sosial gagal disimpan."); }
     finally { setSaving(false); }
@@ -206,9 +209,19 @@ export default function HomePage() {
     if (!key) return;
     setSaving(true); setError(""); setMessage("");
     try {
-      await socialRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference: "interested" }) });
-      setInterestKey(""); setMessage("Minat berhasil disimpan."); await loadSocialGraph();
+      await socialRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference: interestPreference }) });
+      setInterestKey(""); setMessage(interestPreference === "interested" ? "Preferensi minat disimpan." : "Preferensi tidak diminati disimpan."); await loadSocialGraph();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Minat tidak dapat disimpan."); }
+    finally { setSaving(false); }
+  }
+
+  async function updateInterestPreference(key: string, preference: "interested" | "not_interested") {
+    setSaving(true); setError(""); setMessage("");
+    try {
+      await socialRequest("/v1/me/interests", { method: "PUT", body: JSON.stringify({ interest_key: key, preference }) });
+      setMessage(preference === "interested" ? "Minat diaktifkan kembali." : "Minat ditandai tidak diminati.");
+      await loadSocialGraph();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi minat tidak dapat diperbarui."); }
     finally { setSaving(false); }
   }
 
@@ -285,14 +298,14 @@ export default function HomePage() {
     <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button><button className={tab === "consents" ? "active" : ""} onClick={() => { setTab("consents"); void loadConsentHistory(); }}>Riwayat persetujuan</button></nav>
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
     {loading ? <section className="panel loading-panel" role="status">Mengambil profil dan pengaturan dari backend…</section> : !profile || !settings ? <section className="panel loading-panel">{error ? <><p className="muted">Profil dan pengaturan belum berhasil dimuat. Periksa koneksi atau sesi, lalu coba lagi.</p><button type="button" className="button-primary" onClick={() => { if (session) void loadIdentity(session); }}>Coba lagi</button></> : <><p className="muted">Profil belum tersedia.</p><button type="button" className="button-quiet" onClick={() => { if (session) void loadIdentity(session); }}>Muat ulang</button></>}</section> : tab === "social" ? <section className="panel settings-panel social-panel">
-      <div className="panel-heading"><span className="section-kicker">SOCIAL GRAPH</span><h2>Relasi dan minat Anda</h2><p>Relasi disimpan melalui API terautentikasi. Untuk saat ini, gunakan ID pengguna target; pencarian akun akan menjadi bagian dari discovery.</p></div>
+      <div className="panel-heading"><span className="section-kicker">SOCIAL GRAPH</span><h2>Relasi dan minat Anda</h2><p>Relasi dan preferensi minat disimpan melalui API terautentikasi. Pencarian akun berdasarkan username belum tersedia; gunakan ID pengguna target.</p></div>
       <div className="social-add-row"><label>ID pengguna target<input value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} placeholder="UUID akun Allpha" autoComplete="off" /></label><div className="form-actions"><button type="button" className="button-primary" disabled={saving || !targetUserId.trim()} onClick={() => void addSocialEdge("follow")}>Ikuti</button><button type="button" className="button-quiet" disabled={saving || !targetUserId.trim()} onClick={() => void addSocialEdge("block")}>Blokir</button><button type="button" className="button-quiet" disabled={saving || !targetUserId.trim()} onClick={() => void addSocialEdge("mute")}>Bisukan</button></div></div>
       {socialLoading ? <p className="muted" role="status">Memuat relasi…</p> : socialGraph ? <>
         <div className="social-columns">
           <section><h3>Permintaan masuk ({socialGraph.incoming_requests.length})</h3>{socialGraph.incoming_requests.length ? socialGraph.incoming_requests.map((edge) => <div className="social-row" key={edge.id}><code>{edge.actor_user_id}</code><span className="muted">meminta mengikuti</span><div className="form-actions"><button type="button" className="button-primary" disabled={saving} onClick={() => void resolveFollowRequest(edge.id, true)}>Terima</button><button type="button" className="button-quiet" disabled={saving} onClick={() => void resolveFollowRequest(edge.id, false)}>Tolak</button></div></div>) : <p className="muted">Belum ada permintaan masuk.</p>}</section>
           <section><h3>Relasi Anda ({socialGraph.outgoing.length})</h3>{socialGraph.outgoing.length ? socialGraph.outgoing.map((edge) => <div className="social-row" key={edge.id}><code>{edge.target_user_id}</code><span className="muted">{edge.edge_type} · {edge.status || "active"}</span><button type="button" className="button-quiet" disabled={saving} onClick={() => void removeSocialEdge(edge)}>Hapus</button></div>) : <p className="muted">Belum ada relasi.</p>}</section>
         </div>
-        <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<input value={interestKey} onChange={(e) => setInterestKey(e.target.value.toLowerCase())} maxLength={80} pattern="[a-z0-9][a-z0-9._-]{0,79}" placeholder="contoh: desain.3d" /></label><button type="button" className="button-primary" disabled={saving || !interestKey.trim()} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}>{item.interest_key}<button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
+        <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<input value={interestKey} onChange={(e) => setInterestKey(e.target.value.toLowerCase())} maxLength={80} pattern="[a-z0-9][a-z0-9._-]{0,79}" placeholder="contoh: desain.3d" /></label><label>Preferensi<select value={interestPreference} onChange={(e) => setInterestPreference(e.target.value as "interested" | "not_interested")}><option value="interested">Diminati</option><option value="not_interested">Tidak diminati</option></select></label><button type="button" className="button-primary" disabled={saving || !interestKey.trim()} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}><span>{item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</span><button type="button" className="button-quiet" aria-label={"Ubah preferensi " + item.interest_key} disabled={saving} onClick={() => void updateInterestPreference(item.interest_key, item.preference === "interested" ? "not_interested" : "interested")}>{item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"}</button><button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
         {socialGraph.blocked_by.length > 0 && <p className="muted">Akun yang memblokir Anda: {socialGraph.blocked_by.map((edge) => edge.actor_user_id).join(", ")}</p>}
       </> : <div><p className="muted">Data Social Graph belum dimuat atau terjadi gangguan koneksi.</p><button type="button" className="button-quiet" onClick={() => void loadSocialGraph()}>Coba lagi</button></div>}
     </section> : tab === "consents" ? <section className="panel settings-panel social-panel" aria-labelledby="consent-history-title">
