@@ -382,6 +382,121 @@ async def get_public_creator_recommendations(
     return {"items": items, "count": len(items), "source": "eligible_public_content"}
 
 
+@router.get("/v1/social/profiles/{username}", tags=["social-graph"])
+async def get_social_profile(
+    username: str,
+    user: dict[str, Any] | None = Depends(optional_current_user),
+) -> dict[str, Any]:
+    """Return a visibility-filtered profile and only content the viewer may access."""
+    handle = re.sub(r"[^a-zA-Z0-9._-]", "", username.lstrip("@"))
+    if len(handle) < 2 or len(handle) > 40:
+        raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+    rows = await _server_db("GET", "profiles", params={
+        "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
+        "username": f"ilike.{handle}", "limit": "2",
+    })
+    profile = next((row for row in (rows or []) if str(row.get("username", "")).casefold() == handle.casefold()), None)
+    if not profile or profile.get("visibility") not in {"public", "private"}:
+        raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+
+    target_id = str(profile["id"])
+    viewer_id = str(user["id"]) if user else None
+    is_self = viewer_id == target_id
+    followed: set[str] = set()
+    hidden: set[str] = set()
+    follow_status: str | None = None
+    if viewer_id:
+        followed, hidden = await _edges(viewer_id)
+        if not is_self and target_id in hidden:
+            raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+        current_edges = await _server_db("GET", "social_edges", params={
+            "select": "status", "actor_user_id": f"eq.{viewer_id}", "target_user_id": f"eq.{target_id}",
+            "edge_type": "eq.follow", "status": "in.(active,requested)", "limit": "1",
+        })
+        follow_status = str(current_edges[0].get("status")) if current_edges else None
+
+    can_view_content = is_self or (profile.get("visibility") == "public") or target_id in followed
+    if profile.get("visibility") == "private" and not can_view_content:
+        settings = await _server_db("GET", "user_settings", params={
+            "select": "privacy_settings", "user_id": f"eq.{target_id}", "limit": "1",
+        })
+        privacy = settings[0].get("privacy_settings") if settings else None
+        if not isinstance(privacy, dict) or privacy.get("discoverable_by_username") is not True:
+            raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+        return {
+            "profile": {
+                "id": target_id, "username": profile.get("username"),
+                "display_name": profile.get("display_name") or profile.get("username"),
+                "avatar_url": None, "bio": "", "visibility": "private",
+                "created_at": profile.get("created_at"),
+            },
+            "items": [], "count": 0, "can_view_content": False,
+            "follow_status": follow_status, "is_self": False,
+        }
+
+    content_visibility = "in.(public,followers)" if (is_self or target_id in followed) else "eq.public"
+    content_rows = await _server_db("GET", "content_items", params={
+        "select": FIELDS, "owner_id": f"eq.{target_id}", "content_type": "not.eq.story",
+        "status": "eq.published", "moderation_status": "eq.approved",
+        "visibility": content_visibility, "order": "published_at.desc,id.desc", "limit": "50",
+    })
+    eligible = [
+        row for row in (content_rows or [])
+        if row.get("visibility") == "public" or (row.get("visibility") == "followers" and (is_self or target_id in followed))
+    ]
+    ids = [str(row["id"]) for row in eligible]
+    media_by_id: dict[str, list[dict[str, Any]]] = {}
+    counts: dict[str, dict[str, int]] = {
+        content_id: {"likes": 0, "comments": 0, "shares": 0} for content_id in ids
+    }
+    if ids:
+        media_rows = await _server_db("GET", "content_media", params={
+            "select": MEDIA_FIELDS, "content_id": f"in.({','.join(ids)})",
+            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": "250",
+        })
+        for media in media_rows or []:
+            safe_media = {key: value for key, value in media.items() if key != "storage_path"}
+            safe_media["preview_url"] = await _signed_media_preview_url(str(media["storage_path"]))
+            media_by_id.setdefault(str(media["content_id"]), []).append(safe_media)
+        reactions = await _server_db("GET", "content_reactions", params={
+            "select": "content_id", "content_id": f"in.({','.join(ids)})", "limit": "5000",
+        })
+        comments = await _server_db("GET", "content_comments", params={
+            "select": "content_id", "content_id": f"in.({','.join(ids)})", "status": "eq.visible", "limit": "5000",
+        })
+        shares = await _server_db("GET", "content_shares", params={
+            "select": "content_id", "content_id": f"in.({','.join(ids)})", "limit": "5000",
+        })
+        for row in reactions or []:
+            content_id = str(row.get("content_id"))
+            if content_id in counts: counts[content_id]["likes"] += 1
+        for row in comments or []:
+            content_id = str(row.get("content_id"))
+            if content_id in counts: counts[content_id]["comments"] += 1
+        for row in shares or []:
+            content_id = str(row.get("content_id"))
+            if content_id in counts: counts[content_id]["shares"] += 1
+
+    items = [{
+        **row, "media": media_by_id.get(str(row["id"]), []), "engagement": counts[str(row["id"])],
+        "creator": {
+            "username": profile.get("username"),
+            "display_name": profile.get("display_name") or profile.get("username") or "Kreator",
+            "avatar_url": profile.get("avatar_url"),
+        },
+    } for row in eligible]
+    public_profile = {
+        "id": target_id, "username": profile.get("username"),
+        "display_name": profile.get("display_name") or profile.get("username"),
+        "avatar_url": profile.get("avatar_url"), "bio": profile.get("bio") or "",
+        "visibility": profile.get("visibility"), "created_at": profile.get("created_at"),
+    }
+    return {
+        "profile": public_profile, "items": items, "count": len(items),
+        "can_view_content": True, "follow_status": follow_status, "is_self": is_self,
+    }
+
+
 @router.get("/v1/social/discover-users", tags=["social-graph"])
 async def discover_users_by_username(
     q: str = Query(min_length=2, max_length=40),
