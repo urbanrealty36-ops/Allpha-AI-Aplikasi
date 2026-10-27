@@ -45,12 +45,17 @@ export default function HomePage() {
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
-  const identityRequestSequence = useRef(0);\n  const lastIdentityUserId = useRef<string | null>(null);
+  const identityRequestSequence = useRef(0);
+  const lastIdentityUserId = useRef<string | null>(null);
   const socialRequestSequence = useRef(0);
   const consentRequestSequence = useRef(0);
 
   const loadIdentity = useCallback(async (active: Session) => {
     const sequence = ++identityRequestSequence.current;
+    if (lastIdentityUserId.current !== active.user.id) {
+      lastIdentityUserId.current = active.user.id;
+      setProfile(null); setSettings(null); setSocialGraph(null); setConsentHistory(null);
+    }
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
@@ -80,6 +85,7 @@ export default function HomePage() {
       socialRequestSequence.current += 1; consentRequestSequence.current += 1;
       setSocialGraph(null); setConsentHistory(null);
       if (data.session) void loadIdentity(data.session); else {
+        lastIdentityUserId.current = null;
         identityRequestSequence.current += 1;
         setProfile(null); setSettings(null); setLoading(false);
       }
@@ -93,6 +99,7 @@ export default function HomePage() {
       setSocialLoading(false); setConsentLoading(false);
       if (next) void loadIdentity(next);
       else {
+        lastIdentityUserId.current = null;
         identityRequestSequence.current += 1;
         setProfile(null); setSettings(null); setLoading(false);
       }
