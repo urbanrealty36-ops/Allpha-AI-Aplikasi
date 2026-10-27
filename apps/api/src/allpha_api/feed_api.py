@@ -513,11 +513,11 @@ async def discover_users_by_username(
         return {"items": [], "count": 0, "query": "", "source": "explicit_username_opt_in"}
     owner = str(user["id"])
     profiles = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility",
+        "select": "id,username,display_name,avatar_url,bio,visibility,account_status",
         "username": f"ilike.{query}*", "id": f"neq.{owner}",
         "order": "username.asc", "limit": "100",
     })
-    candidates = [row for row in (profiles or []) if row.get("visibility") in {"public", "private"} and row.get("username") and str(row.get("username")).casefold().startswith(query)]
+    candidates = [row for row in (profiles or []) if row.get("visibility") in {"public", "private"} and row.get("account_status", "active") == "active" and row.get("username") and str(row.get("username")).casefold().startswith(query)]
     if not candidates:
         return {"items": [], "count": 0, "query": query}
     candidate_ids = [str(row["id"]) for row in candidates]
