@@ -1902,3 +1902,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **ENG-P04 privilege migration source guard — 2026-10-27:**
 - Added a source-contract assertion in `apps/web/scripts/smoke-test.mjs` for the `user_settings` broad table revoke, explicit column revoke, authenticated SELECT, and restricted INSERT/UPDATE grants. Commit: `37f3822c7d64bdb6e7659b59bb54848e71eb856b`.
 - The assertion is source-only and has not been executed. Live Supabase still shows broad grants and the forward migration remains unapplied. ENG-P04 remains `IN_PROGRESS`; no production DDL was performed.
+
+
+**WP-02 UI source checksum manifest — 2026-10-27:**
+- Expanded the acceptance evidence register with GitHub blob SHAs and byte counts for the reference SPA, base CSS, Navbar, BottomNav, ProfileView, ExploreView and MessagesView, alongside the target navigation/components and Feed/Search/Messages/Notifications/Profile/Account routes. Evidence doc commit: `235a3716f4f1930ea1c534484a3dc4d08d441f10`.
+- The target global stylesheet is 21,310 bytes versus the reference base stylesheet at 49 bytes; this size difference is not itself a defect, but confirms CSS parity cannot be inferred from source-component similarity. Public asset/font/icon manifest and responsive visual comparison remain outstanding.
+- No tests, build/typecheck, screenshots, viewport QA or device journeys were run. WP-02 and ENG-P04 remain `IN_PROGRESS`.
