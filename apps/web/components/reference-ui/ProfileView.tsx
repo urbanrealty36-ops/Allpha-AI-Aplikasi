@@ -1152,7 +1152,7 @@ export default function ProfileView({
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900">
                     <p className="text-[9.5px] font-bold text-slate-500 uppercase">Tanya Jawab AI Agent</p>
                     <p className="text-base font-black text-slate-900 font-mono">1.820 Sesi</p>
-                    <span className="text-[9px] text-purple-600 font-bold">🪙 +27.300 Credits</span>
+                    <span className="text-[9px] text-purple-600 font-bold">🪙 Saldo belum tersedia</span>
                   </div>
                 </div>
               </div>
@@ -1174,11 +1174,11 @@ export default function ProfileView({
                 <div className="p-3 rounded-xl bg-white border-2 border-slate-900 space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-slate-600 font-bold">Total Pendapatan Akumulasi:</span>
-                    <span className="font-mono font-black text-slate-900">Rp 14.850.000</span>
+                    <span className="font-mono font-black text-slate-900">Belum tersedia</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-slate-600 font-bold">Platform Fee (15%):</span>
-                    <span className="font-mono font-black text-slate-400">-Rp 2.227.500</span>
+                    <span className="font-mono font-black text-slate-400">Belum tersedia</span>
                   </div>
                   <div className="flex justify-between items-center border-t border-slate-200 pt-1.5">
                     <span className="text-emerald-950 font-black">Saldo Bersih Siap Ditarik:</span>
@@ -1244,9 +1244,9 @@ export default function ProfileView({
                   <p className="text-[11px] font-bold text-slate-700">Pilih Paket Isi Ulang AI Credits:</p>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { cr: 100, price: 'Rp 50.000' },
-                      { cr: 250, price: 'Rp 100.000' },
-                      { cr: 600, price: 'Rp 200.000' },
+                      { cr: null, price: 'Harga belum tersedia' },
+                      { cr: null, price: 'Harga belum tersedia' },
+                      { cr: null, price: 'Harga belum tersedia' }
                     ].map((pkg) => (
                       <button
                         key={pkg.cr}
@@ -1255,7 +1255,7 @@ export default function ProfileView({
                         }}
                         className="p-2.5 rounded-xl bg-white border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] hover:bg-amber-100 text-center cursor-pointer transition active:translate-x-0.5 active:translate-y-0.5"
                       >
-                        <p className="font-mono font-black text-sm text-slate-900">+{pkg.cr} Cr</p>
+                        <p className="font-mono font-black text-sm text-slate-900">{pkg.cr == null ? "— Cr" : `+${pkg.cr} Cr`}</p>
                         <p className="text-[10px] font-bold text-slate-600 mt-0.5">{pkg.price}</p>
                       </button>
                     ))}
