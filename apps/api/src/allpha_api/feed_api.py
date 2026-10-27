@@ -589,9 +589,13 @@ async def follow_public_profile(
     if actor_id == target_id:
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Akun tidak dapat mengikuti dirinya sendiri."})
     target_rows = await _server_db("GET", "profiles", params={
-        "select": "id,visibility", "id": f"eq.{target_id}", "limit": "1",
+        "select": "id,visibility,account_status", "id": f"eq.{target_id}", "limit": "1",
     })
-    if not target_rows or target_rows[0].get("visibility") not in {"public", "private"}:
+    if (
+        not target_rows
+        or target_rows[0].get("visibility") not in {"public", "private"}
+        or target_rows[0].get("account_status", "active") != "active"
+    ):
         raise HTTPException(status_code=404, detail={"code": "PUBLIC_PROFILE_NOT_FOUND", "message": "Akun tidak ditemukan."})
     requested_status = "requested" if target_rows[0].get("visibility") == "private" else "active"
     for source, target in ((actor_id, target_id), (target_id, actor_id)):
