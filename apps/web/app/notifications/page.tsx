@@ -38,9 +38,10 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
+    return () => { active = false; requestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
   const api = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -57,15 +58,17 @@ export default function NotificationsPage() {
 
   const load = useCallback(async () => {
     if (!session) { setItems([]); setUnreadCount(0); setLoading(false); return; }
+    const sequence = ++requestSequence.current;
     setLoading(true); setError("");
     try {
       const query = unreadOnly ? "?unread_only=true&limit=100" : "?limit=100";
       const result = await api<InboxResponse>("/v1/notifications" + query);
+      if (sequence !== requestSequence.current) return;
       setItems(result.items || []);
       setUnreadCount(result.unread_count || 0);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat dimuat.");
-    } finally { setLoading(false); }
+      if (sequence === requestSequence.current) setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat dimuat.");
+    } finally { if (sequence === requestSequence.current) setLoading(false); }
   }, [api, session, unreadOnly]);
 
   useEffect(() => { void load(); }, [load]);
