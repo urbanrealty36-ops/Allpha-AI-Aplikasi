@@ -34,49 +34,109 @@ function SearchPageContent() {
   const [searched, setSearched] = useState(false);
   const [authPrompt, setAuthPrompt] = useState("");
   const lastUrlQuery = useRef<string | null>(null);
+  const lastSessionUserId = useRef<string | null>(null);
+  const sessionEpoch = useRef(0);
+  const searchRequestSequence = useRef(0);
+  const trendsRequestSequence = useRef(0);
+  const recommendationsRequestSequence = useRef(0);
+  const creatorsRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
+    let active = true;
+    let authEventSeen = false;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active && !authEventSeen) setSession(data.session);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
+      authEventSeen = true;
+      setSession(next);
+    });
+    return () => {
+      active = false;
+      sessionEpoch.current += 1;
+      searchRequestSequence.current += 1;
+      trendsRequestSequence.current += 1;
+      recommendationsRequestSequence.current += 1;
+      creatorsRequestSequence.current += 1;
+      data.subscription.unsubscribe();
+    };
   }, [supabase]);
 
+  useEffect(() => {
+    const nextUserId = session?.user.id ?? null;
+    if (lastSessionUserId.current === nextUserId) return;
+    lastSessionUserId.current = nextUserId;
+    sessionEpoch.current += 1;
+    searchRequestSequence.current += 1;
+    trendsRequestSequence.current += 1;
+    recommendationsRequestSequence.current += 1;
+    creatorsRequestSequence.current += 1;
+    lastUrlQuery.current = null;
+    setQuery("");
+    setItems([]);
+    setTrends([]);
+    setRecommendations([]);
+    setCreators([]);
+    setFollowedAccountIds([]);
+    setBusy(false);
+    setTrendsBusy(false);
+    setRecommendationsBusy(false);
+    setCreatorsBusy(false);
+    setError("");
+    setTrendsError("");
+    setRecommendationsError("");
+    setCreatorsError("");
+    setSearched(false);
+    setAuthPrompt("");
+  }, [session?.user.id]);
+
   async function loadTrends() {
+    const sequence = ++trendsRequestSequence.current;
     setTrendsBusy(true); setTrendsError("");
     try {
       const response = await fetch(apiBase + "/v1/trends?limit=10", { headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store" });
       const payload = await response.json() as Payload<Trend>;
+      if (sequence !== trendsRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Tren belum dapat dimuat.");
       setTrends(payload.items || []);
-    } catch (cause) { setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat."); }
-    finally { setTrendsBusy(false); }
+    } catch (cause) {
+      if (sequence === trendsRequestSequence.current) setTrendsError(cause instanceof Error ? cause.message : "Tren belum dapat dimuat.");
+    } finally { if (sequence === trendsRequestSequence.current) setTrendsBusy(false); }
   }
 
   async function loadRecommendations() {
+    const sequence = ++recommendationsRequestSequence.current;
     setRecommendationsBusy(true); setRecommendationsError("");
     try {
       const response = await fetch(apiBase + "/v1/recommendations?limit=10", { headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store" });
       const payload = await response.json() as Payload<Recommendation>;
+      if (sequence !== recommendationsRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Rekomendasi belum dapat dimuat.");
       setRecommendations(payload.items || []);
-    } catch (cause) { setRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi belum dapat dimuat."); }
-    finally { setRecommendationsBusy(false); }
+    } catch (cause) {
+      if (sequence === recommendationsRequestSequence.current) setRecommendationsError(cause instanceof Error ? cause.message : "Rekomendasi belum dapat dimuat.");
+    } finally { if (sequence === recommendationsRequestSequence.current) setRecommendationsBusy(false); }
   }
 
   async function loadCreators() {
+    const sequence = ++creatorsRequestSequence.current;
     setCreatorsBusy(true); setCreatorsError("");
     try {
       const response = await fetch(apiBase + "/v1/recommendations/creators?limit=20", {
         headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store",
       });
       const payload = await response.json() as Payload<Creator>;
+      if (sequence !== creatorsRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Rekomendasi akun belum dapat dimuat.");
       setCreators(payload.items || []);
     } catch (cause) {
-      setCreatorsError(cause instanceof Error ? cause.message : "Rekomendasi akun belum dapat dimuat.");
-      setCreators([]);
-    } finally { setCreatorsBusy(false); }
+      if (sequence === creatorsRequestSequence.current) {
+        setCreatorsError(cause instanceof Error ? cause.message : "Rekomendasi akun belum dapat dimuat.");
+        setCreators([]);
+      }
+    } finally { if (sequence === creatorsRequestSequence.current) setCreatorsBusy(false); }
   }
 
   useEffect(() => {
@@ -88,19 +148,29 @@ function SearchPageContent() {
 
   const runSearch = useCallback(async (event?: FormEvent, value = query) => {
     event?.preventDefault();
-    if (value.trim().length < 2) { setError("Masukkan minimal 2 karakter."); return; }
+    const sequence = ++searchRequestSequence.current;
+    if (value.trim().length < 2) {
+      setItems([]);
+      setBusy(false);
+      setSearched(false);
+      setError("Masukkan minimal 2 karakter.");
+      return;
+    }
     setBusy(true); setError(""); setSearched(true);
     try {
       const response = await fetch(apiBase + "/v1/search?q=" + encodeURIComponent(value.trim()) + "&limit=30", {
         headers: session ? { Authorization: "Bearer " + session.access_token } : {}, cache: "no-store",
       });
       const payload = await response.json() as Payload<SearchItem>;
+      if (sequence !== searchRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Pencarian gagal.");
       setItems(payload.items || []);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Pencarian gagal.");
-      setItems([]);
-    } finally { setBusy(false); }
+      if (sequence === searchRequestSequence.current) {
+        setError(cause instanceof Error ? cause.message : "Pencarian gagal.");
+        setItems([]);
+      }
+    } finally { if (sequence === searchRequestSequence.current) setBusy(false); }
   }, [query, session]);
 
   const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
@@ -172,6 +242,7 @@ function SearchPageContent() {
         followedAccountIds={followedAccountIds}
         onFollowAccount={async (accountId, currentlyFollowed) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
+          const mutationEpoch = sessionEpoch.current;
           try {
             const response = await fetch(apiBase + "/v1/social/follow/" + encodeURIComponent(accountId), {
               method: currentlyFollowed ? "DELETE" : "PUT",
@@ -179,7 +250,8 @@ function SearchPageContent() {
               cache: "no-store",
             });
             const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload?.detail?.message || "Status mengikuti akun tidak dapat diubah.");
+            if (!response.ok) throw new Error(payload?.detail?.message || payload?.error?.message || "Status mengikuti akun tidak dapat diubah.");
+            if (sessionEpoch.current !== mutationEpoch) return;
             setFollowedAccountIds(previous => currentlyFollowed ? previous.filter(id => id !== accountId) : [...new Set([...previous, accountId])]);
             setAuthPrompt("");
           } catch (cause) { setAuthPrompt(cause instanceof Error ? cause.message : "Status mengikuti akun tidak dapat diubah."); }
