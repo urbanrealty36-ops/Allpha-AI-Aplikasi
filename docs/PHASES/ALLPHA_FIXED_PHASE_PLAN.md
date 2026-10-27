@@ -1853,3 +1853,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **Relationship privacy parity correction (2026-10-27):**
 - The legacy `PUT /v1/social/follow/{target_user_id}` route previously forced every new follow to `active`, which could bypass private-profile request semantics for any remaining caller. It now derives `requested` vs `active` from canonical profile visibility, rejects unsupported visibility, preserves idempotent existing-edge behavior, reconciles concurrent conflicts by re-reading the winning edge, and returns an explicit outcome. File: `apps/api/src/allpha_api/feed_api.py`.
 - Added unexecuted API regression coverage in `apps/api/tests/test_social_feed_api.py` and a source-contract assertion for the legacy route parity. No test/build/typecheck/staging/deployment was run.
+
+
+**Username lookup precision hardening (2026-10-27):**
+- Public profile lookup now queries an exact canonical username instead of a LIKE expression. Discovery still uses prefix lookup for efficiency but filters candidate handles with a literal case-folded prefix check, preventing underscore characters from acting as wildcards and changing which account a handle resolves to. Added a source-contract assertion; not executed.
+- Also corrected the legacy PUT /v1/social/follow/{target_user_id} endpoint to create requested edges for private profiles and active edges only for public profiles; this closes a remaining path that could have bypassed private-profile follow semantics.
