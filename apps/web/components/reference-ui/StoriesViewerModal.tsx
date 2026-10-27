@@ -25,6 +25,9 @@ export interface StoryItem {
   mediaUrl: string;
   caption: string;
   timestamp: string;
+  mediaType?: string;
+  ownerId?: string;
+  expiresAt?: string;
 }
 
 interface StoriesViewerModalProps {
