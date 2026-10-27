@@ -524,7 +524,7 @@ for (const [name, source] of [["Account", accountSessionSource], ["Profile", pro
   assert.ok(source.includes("authEventSeen") && guardsStaleSessionRead, name + " must not let a stale getSession read override a newer auth event");
 }
 
-assert.ok(nativeApp.includes("authEventSeen") && nativeApp.includes("!authEventSeen"), "Native navigation must not let a stale initial session read override a newer auth event");
+assert.ok(nativeApp.includes("if (!active || authEventSeen) return;") && nativeApp.includes("authEventSeen = true;"), "Native navigation must ignore the initial getSession result after a newer auth event");
 
 const userSettingsPrivilegeMigration = readFileSync(new URL("../../api/supabase/migrations/20261027180000_eng_p03_user_settings_least_privilege_grants.sql", import.meta.url), "utf8");
 for (const contract of [
