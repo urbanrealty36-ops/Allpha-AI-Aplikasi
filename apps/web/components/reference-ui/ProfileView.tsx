@@ -1321,11 +1321,12 @@ export default function ProfileView({
                 <button
                   onClick={() => {
                     setIsSettingsOpen(false);
-                    onOpenCreditsHub();
+                    if (hasAgentProfile && agentProfile.id && onOpenAgentStudio) onOpenAgentStudio(agentProfile.id);
+                    else showToast("Knowledge Base dan Skills memerlukan Agent aktif yang dimiliki akun ini.");
                   }}
                   className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs border border-slate-900 shadow-[1px_1px_0px_#0f172a]"
                 >
-                  Buka Knowledge & Skills Challenge Hub →
+                  Buka Knowledge & Skills Studio →
                 </button>
               </div>
             )}
