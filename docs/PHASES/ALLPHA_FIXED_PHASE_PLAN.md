@@ -1865,3 +1865,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Read-only privilege inventory found table-level grants on `public.user_settings` for `anon` and `authenticated`, including `TRUNCATE`, despite row policies intended for authenticated self-access. The live `social_edges` table has its unique actor/target/type index and the live trigger function `public.enforce_social_edge_policy()` maps private-profile follows to `requested`; the deployed ENG-P04 migration history also includes the anonymous Social Graph grant repair.
 - Added source-only forward migration `apps/api/supabase/migrations/20261027180000_eng_p03_user_settings_least_privilege_grants.sql` to revoke all table/column privileges for `anon` and `authenticated`, then grant authenticated users only SELECT, INSERT on editable fields, and UPDATE on editable preference fields. `service_role` grants are intentionally unchanged.
 - **No migration was applied to Supabase.** The new migration has not been validated on an isolated database or executed; it remains a source change pending review/authorized verification. No tests, build, typecheck, staging or deployment were run.
+
+
+**Schema-contract and grant-repair refinement (2026-10-27):**
+- Username validation now matches the live profiles constraint exactly after case-folding: `^[a-z0-9_]{3,30}$`. Search-prefix results are additionally filtered with a literal prefix comparison.
+- The source-only user_settings grant repair also revokes privileges granted to PUBLIC, in addition to anon/authenticated, before restoring only required authenticated SELECT/INSERT/UPDATE permissions. service_role remains unchanged.
+- Live migration history was inspected read-only; the new grant repair is not present in live history and was not applied. No test/build/typecheck/staging/deployment was run.
