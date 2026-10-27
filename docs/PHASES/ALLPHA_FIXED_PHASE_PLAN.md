@@ -1993,3 +1993,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - WP-02 remains `in_progress`; the source/target parity inventory and CI pass evidence are not yet complete.
 - ENG-P04 remains `in_progress`; the live grants are still unsafe and the new Social Graph forward migration has not yet been generated/applied/verified through an approved path.
 - ENG-P05 must not advance until WP-02 and ENG-P04 acceptance evidence is complete. No staging, physical-device test, production DDL, or Vercel deployment was run.
+
+
+**Follow-up after the above review (2026-10-27):**
+- Added `docs/PHASES/ENG-P04_SOCIAL_GRAPH_GRANT_REPAIR_DRAFT.sql` as a clearly marked design-only SQL draft. It revokes table-level and column-level grants before restoring the minimum permissions needed by current FastAPI/PostgREST contracts. It is not under the migrations directory, is not registered in the migration ledger, and must not be applied directly.
+- The draft preserves the current Social Graph contract: follow-request acceptance updates only `status`; interest preferences use `resolution=merge-duplicates` with `user_id, interest_key`, so the insert/update grants retain those submitted columns while excluding client writes to `created_at`/`updated_at`.
+- The actual Social Graph forward migration remains outstanding until it is generated with `supabase migration new` in a networked repository environment, the draft is copied into that generated file, source contract tests are added, and the generated migration is reviewed. The repository clone attempt from the execution container failed on DNS resolution for `github.com`; no filename was invented to bypass the CLI workflow.
