@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   X, 
   Send, 
@@ -23,11 +23,34 @@ import {
   Flame,
   ArrowRight,
   Mic,
-  Camera
+  Camera,
+  Upload,
+  ShoppingBag,
+  FileText,
+  CheckCircle2,
+  Trash2,
+  Store
 } from 'lucide-react';
 import type { PostItem, AIAgentProfile, HumanProfile } from '../../lib/reference-store';
 
 type CreateMode = 'FEED_POST' | 'STORY' | 'LIVE_STAGE' | 'LIVE_STREAMING' | 'LIVE_COLLAB';
+
+export interface LiveAttachedProduct {
+  id: string;
+  title: string;
+  priceIdr: number;
+  priceCredits: number;
+  image: string;
+  type: 'DIGITAL' | 'PHYSICAL';
+  category: string;
+}
+
+export interface LiveSlideItem {
+  title: string;
+  subtitle: string;
+  bullets: string[];
+  diagram?: string;
+}
 
 interface CreatePostModalProps {
   isOpen: boolean;
@@ -35,7 +58,12 @@ interface CreatePostModalProps {
   humanUser: HumanProfile;
   agentProfile: AIAgentProfile;
   onCreatePost: (newPost: PostItem) => void;
-  onLaunchLiveStage?: (title: string, mode: string) => void;
+  onLaunchLiveStage?: (
+    title: string, 
+    mode: string, 
+    customSlides?: LiveSlideItem[], 
+    attachedProducts?: LiveAttachedProduct[]
+  ) => void;
 }
 
 export default function CreatePostModal({
@@ -52,7 +80,7 @@ export default function CreatePostModal({
   const [postAs, setPostAs] = useState<'HUMAN' | 'AI_AGENT' | 'CO_POST'>('CO_POST');
   const [content, setContent] = useState('');
   const [has3D, setHas3D] = useState(false);
-  const [modelName, setModelName] = useState('Crystal City Booth & Neon Canopy');
+  const [modelName, setModelName] = useState('');
   const [audience, setAudience] = useState<'PUBLIC' | 'FOLLOWERS' | 'PRIVATE'>('PUBLIC');
   const [taggedAgents, setTaggedAgents] = useState<Array<{ name: string; specialty: string }>>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -62,9 +90,48 @@ export default function CreatePostModal({
   const [storyMedia, setStoryMedia] = useState<string>('');
 
   // Live Stage / Streaming state
-  const [liveTitle, setLiveTitle] = useState('Podcast Interaktif: Kolaborasi Human × AI Agent 2026');
+  const [liveTitle, setLiveTitle] = useState('');
   const [liveStageTemplate, setLiveStageTemplate] = useState<'PODCAST' | 'TALKSHOW' | 'CLASSROOM' | 'PITCHING'>('PODCAST');
   const [aiRoleInLive, setAiRoleInLive] = useState<'CO_HOST' | 'PRESENTER' | 'MODERATOR'>('CO_HOST');
+
+  // File Manager Document Upload State
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadedDocument, setUploadedDocument] = useState<{
+    fileName: string;
+    fileSize: string;
+    pageCount: number;
+    slides: LiveSlideItem[];
+  } | null>(null);
+
+  // Store Marketplace Catalog Attachment State
+  // Canonical product adapter is not connected here yet; preserve the reference catalog UI without seeded demo products.
+  const STORE_CATALOG_PRESETS: LiveAttachedProduct[] = [];
+
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    const fileName = file.name;
+    const baseName = fileName.replace(/\.[^/.]+$/, "");
+
+    // File selection is local-only. Do not claim parsing or invent presentation slides without the canonical document pipeline.
+    const generatedSlides: LiveSlideItem[] = [];
+    setUploadedDocument({
+      fileName,
+      fileSize: `${sizeMb} MB`,
+      pageCount: 0,
+      slides: generatedSlides,
+    });
+  };
+
+  const handleToggleProduct = (prodId: string) => {
+    setSelectedProductIds(prev => 
+      prev.includes(prodId) ? prev.filter(id => id !== prodId) : [...prev, prodId]
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -80,7 +147,7 @@ export default function CreatePostModal({
         name: humanUser.name,
         handle: humanUser.username,
         avatar: humanUser.avatar,
-        verified: false,
+        verified: true,
       },
       aiAgent: {
         name: agentProfile.name,
@@ -89,16 +156,16 @@ export default function CreatePostModal({
         specialty: agentProfile.specialty,
       },
       takeoverMode: postAs === 'HUMAN',
-      timestamp: new Date().toISOString(),
+      timestamp: 'Baru saja',
       content: content.trim(),
-      tags: [],
+      tags: ['#AllphaUniverse', '#AIAgent', '#CrystalCity'],
       image: selectedImage || undefined,
       has3DModel: has3D,
       modelName: has3D ? modelName : undefined,
-      likes: 0,
+      likes: 1,
       commentsCount: 0,
       reposts: 0,
-      isLiked: false,
+      isLiked: true,
       comments: [],
     };
 
@@ -110,7 +177,8 @@ export default function CreatePostModal({
 
   const handleLaunchLive = () => {
     if (onLaunchLiveStage) {
-      onLaunchLiveStage(liveTitle, liveStageTemplate);
+      const attached = STORE_CATALOG_PRESETS.filter(p => selectedProductIds.includes(p.id));
+      onLaunchLiveStage(liveTitle, liveStageTemplate, uploadedDocument?.slides, attached);
     }
     onClose();
   };
@@ -446,6 +514,131 @@ export default function CreatePostModal({
               </select>
             </div>
 
+            {/* Hidden Document File Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".pdf,.pptx,.ppt,.docx,.doc,.md,.txt"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            {/* SECTION: Upload Dokumen dari File Manager untuk Slide Live */}
+            <div className="p-4 rounded-3xl bg-sky-50 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-slate-950 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-sky-700 stroke-[2.5px]" />
+                  <span>Upload Dokumen / Slide dari File Manager</span>
+                </span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-sky-200 border border-slate-900 text-sky-950">
+                  PDF • PPTX • DOCX
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">
+                Lampirkan slide presentasi, dokumen pitch deck, atau materi kurikulum untuk dibahas live bersama AI Agent di panggung virtual 3D.
+              </p>
+
+              {uploadedDocument ? (
+                <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-100 border border-slate-900 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-700 stroke-[2.5px]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-xs text-slate-950 truncate">{uploadedDocument.fileName}</p>
+                        <p className="text-[10px] font-mono text-slate-500 font-bold">
+                          {uploadedDocument.fileSize} • {uploadedDocument.pageCount} slide terdeteksi oleh pipeline dokumen
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadedDocument(null)}
+                      className="w-7 h-7 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-900 border border-slate-900 flex items-center justify-center cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Slide cards preview */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 pt-1">
+                    {uploadedDocument.slides.map((s, idx) => (
+                      <div key={idx} className="p-2 rounded-xl bg-sky-50 border border-slate-900 text-[10px]">
+                        <span className="font-mono font-black text-sky-800 block">Slide {idx + 1}</span>
+                        <p className="font-bold text-slate-900 truncate">{s.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 stroke-[2.5px] text-sky-700" />
+                  <span>Pilih File Dokumen / Slide dari Device</span>
+                </button>
+              )}
+            </div>
+
+            {/* SECTION: Lampirkan Katalog Produk Toko Marketplace untuk Checkout Langsung */}
+            <div className="p-4 rounded-3xl bg-[#FEF08A] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-slate-950 flex items-center gap-1.5">
+                  <ShoppingBag className="w-4 h-4 text-slate-950 stroke-[2.5px]" />
+                  <span>Lampirkan Katalog Toko untuk Checkout Langsung</span>
+                </span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-white border border-slate-900 text-slate-950">
+                  {selectedProductIds.length} Terpilih
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-slate-800 leading-relaxed">
+                Produk terpilih akan disematkan di etalase panggung live, sehingga penonton dapat langsung <strong>&quot;Checkout Langsung&quot;</strong> saat siaran berlangsung.
+              </p>
+
+              {/* Product Checkbox Selection */}
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {STORE_CATALOG_PRESETS.map((prod) => {
+                  const isChecked = selectedProductIds.includes(prod.id);
+                  return (
+                    <div
+                      key={prod.id}
+                      onClick={() => handleToggleProduct(prod.id)}
+                      className={`p-2 rounded-2xl border-2 border-slate-900 flex items-center justify-between gap-2.5 cursor-pointer transition ${
+                        isChecked ? 'bg-white shadow-[2px_2px_0px_#0f172a]' : 'bg-white/60 opacity-80 hover:opacity-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <img
+                          src={prod.image}
+                          alt={prod.title}
+                          className="w-9 h-9 rounded-xl object-cover border border-slate-900 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="font-black text-xs text-slate-950 truncate">{prod.title}</p>
+                          <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-slate-600">
+                            <span className="text-emerald-800">Rp {prod.priceIdr.toLocaleString('id-ID')}</span>
+                            <span>•</span>
+                            <span className="text-amber-900">{prod.priceCredits} Cr</span>
+                            <span>•</span>
+                            <span className="text-sky-900 font-sans font-black">{prod.type}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`w-5 h-5 rounded-lg border-2 border-slate-900 flex items-center justify-center shrink-0 ${
+                        isChecked ? 'bg-emerald-400 text-slate-950' : 'bg-white'
+                      }`}>
+                        {isChecked && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="pt-2 flex gap-2">
               <button
                 onClick={handleLaunchLive}
@@ -487,6 +680,36 @@ export default function CreatePostModal({
                 onChange={(e) => setLiveTitle(e.target.value)}
                 className="w-full p-3.5 rounded-2xl border-2 border-slate-900 bg-slate-50 focus:bg-white text-xs font-bold text-slate-950 outline-none shadow-[2px_2px_0px_#0f172a]"
               />
+            </div>
+
+            {/* Quick Attachments for Live Streaming */}
+            <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-black text-slate-950 flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5" />
+                  <span>Katalog Produk Live Checkout:</span>
+                </span>
+                <span className="font-mono font-bold text-amber-950 bg-amber-200 px-2 py-0.5 rounded-md border border-slate-900 text-[10px]">
+                  {selectedProductIds.length} Terpilih
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-black text-slate-950 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Dokumen Slide AI:</span>
+                </span>
+                <span className="font-mono font-bold text-sky-950 bg-sky-200 px-2 py-0.5 rounded-md border border-slate-900 text-[10px]">
+                  {uploadedDocument ? uploadedDocument.fileName : 'Belum diunggah'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2 px-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-900 text-[11px] font-black text-slate-900 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+              >
+                <Upload className="w-3 h-3 text-sky-700" />
+                <span>{uploadedDocument ? 'Ganti File Dokumen' : 'Upload File Presentasi dari Device'}</span>
+              </button>
             </div>
 
             <div className="flex gap-2 pt-2">
