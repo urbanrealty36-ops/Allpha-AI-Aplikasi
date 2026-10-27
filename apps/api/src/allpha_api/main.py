@@ -532,11 +532,11 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
     # reconciled by reading the winning row instead of surfacing a false failure.
     existing = await user_db_request("GET", "social_edges", token, params=edge_filter)
     if existing:
-        return {
+        return JSONResponse(status_code=200, content={
             "edge": existing[0],
             "idempotent_replay": True,
             "outcome": _social_edge_outcome(existing[0]),
-        }
+        })
 
     try:
         rows = await user_db_request(
@@ -551,11 +551,11 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
         existing = await user_db_request("GET", "social_edges", token, params=edge_filter)
         if not existing:
             raise
-        return {
+        return JSONResponse(status_code=200, content={
             "edge": existing[0],
             "idempotent_replay": True,
             "outcome": _social_edge_outcome(existing[0]),
-        }
+        })
 
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SOCIAL_EDGE_NOT_RECORDED", "message": "Relasi sosial tidak dapat disimpan."})
