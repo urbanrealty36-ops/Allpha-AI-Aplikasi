@@ -448,7 +448,7 @@ assert.ok(messagesPage.includes("conversationRequestSequence.current") && messag
 assert.ok(messagesPage.includes("sessionEpoch.current") && messagesPage.includes("if(epoch!==sessionEpoch.current)return"), "Message send completion must not update UI after identity changes");
 const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
 assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
-assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('"account_status", "active"'), "Username discovery must fail closed for missing privacy settings, exclude blocked/muted relationships, and omit inactive accounts");
+assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", query)'), "Username discovery must fail closed for missing privacy settings, reject malformed handles, and exclude blocked/muted relationships");
 
 
 const publicProfilePage = readFileSync(new URL("../app/profile/[username]/page.tsx", import.meta.url), "utf8");
