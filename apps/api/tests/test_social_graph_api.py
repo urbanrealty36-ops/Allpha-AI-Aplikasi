@@ -24,12 +24,15 @@ def _override_user():
 def test_follow_rejects_inactive_or_unprovisioned_target(monkeypatch):
     calls = []
 
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET" and table == "profiles"
+        return [{"id": TARGET_ID, "visibility": "public", "account_status": "suspended"}]
+
     async def fake_user_db_request(method, path, token, **kwargs):
         calls.append((method, path, kwargs))
-        if path == "profiles":
-            return [{"id": TARGET_ID, "visibility": "public", "account_status": "suspended"}]
         raise AssertionError(f"social write should not proceed: {method} {path}")
 
+    monkeypatch.setattr("allpha_api.main._server_db", fake_server_db)
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     _override_user()
     try:
@@ -49,17 +52,20 @@ def test_follow_rejects_inactive_or_unprovisioned_target(monkeypatch):
 def test_follow_rejects_mutual_block_with_stable_policy_error(monkeypatch):
     calls = []
 
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET" and table == "profiles"
+        return [{"id": TARGET_ID, "visibility": "public", "account_status": "active"}]
+
     async def fake_user_db_request(method, path, token, **kwargs):
         params = kwargs.get("params") or {}
         calls.append((method, path, params))
-        if path == "profiles":
-            return [{"id": TARGET_ID, "visibility": "public", "account_status": "active"}]
         if path == "social_edges" and params.get("edge_type") == "eq.block":
             if params.get("actor_user_id") == f"eq.{TARGET_ID}":
                 return [{"id": "33333333-3333-4333-8333-333333333333"}]
             return []
         raise AssertionError(f"follow write should not proceed: {method} {path} {params}")
 
+    monkeypatch.setattr("allpha_api.main._server_db", fake_server_db)
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     _override_user()
     try:
@@ -78,12 +84,14 @@ def test_follow_rejects_mutual_block_with_stable_policy_error(monkeypatch):
 def test_follow_request_uses_authenticated_actor_and_preserves_private_request_state(monkeypatch):
     calls = []
 
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET" and table == "profiles"
+        return [{"id": TARGET_ID, "visibility": "private", "account_status": "active"}]
+
     async def fake_user_db_request(method, path, token, **kwargs):
         params = kwargs.get("params") or {}
         body = kwargs.get("body") or {}
         calls.append((method, path, params, body, token))
-        if path == "profiles":
-            return [{"id": TARGET_ID, "visibility": "private", "account_status": "active"}]
         if path == "social_edges" and params.get("edge_type") == "eq.block":
             return []
         if path == "social_edges" and method == "GET":
@@ -99,6 +107,7 @@ def test_follow_request_uses_authenticated_actor_and_preserves_private_request_s
             }]
         raise AssertionError(f"unexpected request: {method} {path} {params}")
 
+    monkeypatch.setattr("allpha_api.main._server_db", fake_server_db)
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
     _override_user()
     try:
