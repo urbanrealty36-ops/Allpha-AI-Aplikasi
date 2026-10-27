@@ -250,15 +250,15 @@ export default function ProfileView({
         {/* Stats Row */}
         <div className="flex items-center gap-6 mt-4 pt-3 border-t-2 border-slate-100 text-xs">
           <div>
-            <span className="font-black text-slate-900">{humanUser.postsCount}</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? humanUser.postsCount : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Postingan</span>
           </div>
           <div>
-            <span className="font-black text-slate-900">{(humanUser.followers / 1000).toFixed(1)}K</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? `${(humanUser.followers / 1000).toFixed(1)}K` : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Pengikut</span>
           </div>
           <div>
-            <span className="font-black text-slate-900">{(humanUser.following / 1000).toFixed(1)}K</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? `${(humanUser.following / 1000).toFixed(1)}K` : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Mengikuti</span>
           </div>
         </div>
@@ -872,10 +872,7 @@ export default function ProfileView({
               
               {/* 1. CREATOR STUDIO HUB (Featured Option) */}
               <button
-                onClick={() => {
-                  setIsSettingsOpen(false);
-                  setIsCreatorStudioOpen(true);
-                }}
+                onClick={() => { if (showCredits && onDeductCredits) setIsCreatorStudioOpen(true); else showToast('Creator Studio belum terhubung ke saldo dan billing kanonis.'); }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-[#FEF08A]/70 hover:bg-[#FEF08A] border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">
@@ -1179,7 +1176,7 @@ export default function ProfileView({
                   </div>
                   <div className="flex justify-between items-center border-t border-slate-200 pt-1.5">
                     <span className="text-emerald-950 font-black">Saldo Bersih Siap Ditarik:</span>
-                    <span className="font-mono font-black text-base text-emerald-700">Rp 4.250.000</span>
+                    <span className="font-mono font-black text-base text-emerald-700">Belum tersedia</span>
                   </div>
                 </div>
 
@@ -1215,8 +1212,7 @@ export default function ProfileView({
                     />
                     <button
                       onClick={() => {
-                        showToast(`Penarikan Rp ${Number(withdrawAmount).toLocaleString('id-ID')} ke ${withdrawBank} berhasil diajukan!`);
-                        setSelectedSettingDetail(null);
+                        showToast('Penarikan belum terhubung ke layanan keuangan. Tidak ada transaksi yang dibuat.');
                       }}
                       className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl border border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]"
                     >
@@ -1235,7 +1231,7 @@ export default function ProfileView({
                     <Coins className="w-4 h-4 text-amber-600" />
                     <span>Top-Up AI Credits & Mutasi</span>
                   </h4>
-                  <span className="font-mono font-black text-xs text-amber-900">Saldo: {userCredits} Cr</span>
+                  <span className="font-mono font-black text-xs text-amber-900">Saldo: {showCredits ? userCredits.toLocaleString('id-ID') : '—'} Cr</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -1249,8 +1245,7 @@ export default function ProfileView({
                       <button
                         key={pkg.cr}
                         onClick={() => {
-                          showToast(`+${pkg.cr} AI Credits berhasil ditambahkan via Midtrans (${pkg.price})!`);
-                          setSelectedSettingDetail(null);
+                          showToast('Pembelian AI Credits belum terhubung ke payment provider. Tidak ada kredit yang ditambahkan.');
                         }}
                         className="p-2.5 rounded-xl bg-white border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] hover:bg-amber-100 text-center cursor-pointer transition active:translate-x-0.5 active:translate-y-0.5"
                       >
@@ -1359,7 +1354,7 @@ export default function ProfileView({
                 </p>
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-bold text-purple-950">Enkripsi End-to-End:</span>
-                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-300 text-slate-950 font-black text-[10px] border border-slate-900">AKTIF</span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-emerald-300 text-slate-950 font-black text-[10px] border border-slate-900">BELUM DIVERIFIKASI</span>
                 </div>
               </div>
             )}
@@ -1369,13 +1364,12 @@ export default function ProfileView({
               <div className="p-4 bg-rose-50 border-t-2 border-slate-900 text-xs space-y-2.5">
                 <h4 className="font-black text-rose-950">Sesi Login Aktif & Keamanan:</h4>
                 <p className="text-rose-900 font-bold text-[11px]">
-                  • Sesi Web PWA (Aktif sekarang di Jakarta, ID)
+                  • Status sesi aktif akan ditampilkan setelah layanan keamanan terhubung.
                 </p>
                 <div className="flex gap-2 pt-1">
                   <button 
                     onClick={() => {
-                      showToast('Semua sesi eksternal lain berhasil dicabut!');
-                      setSelectedSettingDetail(null);
+                      showToast('Pencabutan sesi belum terhubung ke layanan keamanan. Tidak ada sesi yang dicabut.');
                     }}
                     className="flex-1 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs border border-slate-900 shadow-[1px_1px_0px_#0f172a]"
                   >
@@ -1383,10 +1377,7 @@ export default function ProfileView({
                   </button>
                   <button 
                     onClick={() => {
-                      showToast('Logout berhasil! Mengalihkan ke mode tamu...');
-                      setIsSettingsOpen(false);
-                      setSelectedSettingDetail(null);
-                      if (onOpenOnboarding) onOpenOnboarding();
+                      showToast('Logout belum terhubung ke adapter autentikasi. Sesi tidak diubah.');
                     }}
                     className="flex-1 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs border border-slate-900 shadow-[1px_1px_0px_#0f172a]"
                   >
@@ -1427,7 +1418,7 @@ export default function ProfileView({
         agent={agentProfile}
         onSaveAgent={(updated) => {
           if (onUpdateAgent) onUpdateAgent(updated);
-          showToast(onUpdateAgent ? `Identitas ${updated.name} dikirim ke penyimpanan.` : "Endpoint penyimpanan identitas Agent belum terhubung.");
+          showToast(onUpdateAgent ? `Perubahan identitas ${updated.name} diteruskan ke adapter.` : "Endpoint penyimpanan identitas Agent belum terhubung.");
         }}
       />
 
