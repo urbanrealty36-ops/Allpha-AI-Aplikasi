@@ -468,3 +468,18 @@ const notificationsRoute = readFileSync(new URL("../app/notifications/page.tsx",
 for (const contract of ["authEventSeen", "sessionEpoch", "inboxSequence", "preferencesSequence", "sessionUserId", "encodeURIComponent(item.id)"]) {
   assert.ok(notificationsRoute.includes(contract), "Notifications must isolate account sessions and guard stale requests: " + contract);
 }
+
+const webNotifications = readFileSync(new URL("../app/notifications/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "sessionEpoch.current += 1", "inboxSequence.current += 1", "preferencesSequence.current += 1",
+  "if (epoch !== sessionEpoch.current || sequence !== inboxSequence.current) return",
+  "if (epoch === sessionEpoch.current && sequence === preferencesSequence.current)",
+  "/v1/notifications/preferences", "/v1/notifications/read-all"
+]) assert.ok(webNotifications.includes(contract), "Notifications must isolate account sessions and stale requests: " + contract);
+
+for (const contract of [
+  "sessionEpoch.current += 1", "listSequence.current += 1", "messageSequence.current += 1",
+  "if(epoch!==sessionEpoch.current||sequence!==listSequence.current)return",
+  "if(epoch!==sessionEpoch.current||sequence!==messageSequence.current)return",
+  "client_message_id", "postgres_changes", "payload.detail?.message"
+]) assert.ok(webMessages.includes(contract), "Messages must isolate account sessions and handle canonical API errors: " + contract);
