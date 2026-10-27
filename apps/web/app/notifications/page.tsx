@@ -34,7 +34,7 @@ export default function NotificationsPage() {
   const [notice, setNotice] = useState("");
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [preferencesBusy, setPreferencesBusy] = useState(false);
-  const requestSequence = useRef(0);
+  const requestSequence = useRef(0);\n  const preferencesRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -81,12 +81,13 @@ export default function NotificationsPage() {
   useEffect(() => { void load(); }, [load]);
 
   const loadPreferences = useCallback(async () => {
+    const sequence = ++preferencesRequestSequence.current;
     if (!session) { setPreferences(null); return; }
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
-      setPreferences(result.preferences);
+      if (sequence === preferencesRequestSequence.current) setPreferences(result.preferences);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
+      if (sequence === preferencesRequestSequence.current) setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
     }
   }, [api, session]);
 
