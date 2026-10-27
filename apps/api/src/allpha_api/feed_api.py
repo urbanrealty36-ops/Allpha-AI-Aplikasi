@@ -486,8 +486,9 @@ async def follow_public_profile(
     })
     if existing:
         return {"target_user_id": target_id, "status": existing[0].get("status"), "created": False}
+    follow_status = "requested" if target_profile.get("visibility") == "private" else "active"
     rows = await _server_db("POST", "social_edges", params={"select": "id,target_user_id,status,created_at"},
-        body={"actor_user_id": actor_id, "target_user_id": target_id, "edge_type": "follow", "status": "active"},
+        body={"actor_user_id": actor_id, "target_user_id": target_id, "edge_type": "follow", "status": follow_status},
         prefer="return=representation")
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SOCIAL_FOLLOW_NOT_RECORDED", "message": "Permintaan mengikuti akun tidak dapat disimpan."})
