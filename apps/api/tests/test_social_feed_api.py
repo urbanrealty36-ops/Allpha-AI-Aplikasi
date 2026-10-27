@@ -812,3 +812,29 @@ def test_username_discovery_rejects_malformed_handles_before_database_lookup(mon
     assert response.status_code == 200
     assert response.json()["items"] == []
     assert response.json()["source"] == "explicit_username_opt_in"
+
+
+def test_public_profile_hides_inactive_account_before_content_lookup(monkeypatch):
+    calls = []
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}))
+        if method == "GET" and table == "profiles":
+            return [{
+                "id": "00000000-0000-0000-0000-000000000931",
+                "username": "inactive_profile",
+                "display_name": "Inactive",
+                "visibility": "public",
+                "account_status": "deactivation_requested",
+            }]
+        raise AssertionError(f"Inactive profiles must not load social data: {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[optional_current_user] = lambda: None
+    try:
+        response = TestClient(app).get("/v1/social/profiles/inactive_profile")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert not any(table == "content_items" for _, table, _ in calls)
