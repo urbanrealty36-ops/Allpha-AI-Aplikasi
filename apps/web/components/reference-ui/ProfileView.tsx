@@ -83,6 +83,7 @@ interface ProfileViewProps {
   onOpenGenerate?: (contextPost: PostItem) => void;
   onUpdateAgent?: (updatedAgent: AIAgentProfile) => void | Promise<void>;
   onOpenAgentStudio?: (agentId: string) => void;
+  onOpenAgentPassport?: (handle: string) => void;
   onOpenFilmAi?: () => void;
   userCredits?: number;
   onDeductCredits?: (amount: number, reason: string) => void;
@@ -115,6 +116,7 @@ export default function ProfileView({
   onOpenGenerate,
   onUpdateAgent,
   onOpenAgentStudio,
+  onOpenAgentPassport,
   onOpenFilmAi,
   userCredits = 0,
   onDeductCredits,
@@ -1038,7 +1040,7 @@ export default function ProfileView({
               <button
                 onClick={() => {
                   setIsSettingsOpen(false);
-                  if (hasAgentProfile) setIsPassportOpen(true); else showToast('Agent Passport belum tersedia karena belum ada Agent aktif.');
+                  if (hasAgentProfile && onOpenAgentPassport) onOpenAgentPassport(agentProfile.handle); else if (hasAgentProfile) setIsPassportOpen(true); else showToast('Agent Passport belum tersedia karena belum ada Agent aktif.');
                 }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-indigo-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left cursor-pointer"
               >
