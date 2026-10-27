@@ -114,6 +114,7 @@ interface ExploreViewProps {
   accountsData?: SocialAccountItem[];
   accountsLoading?: boolean;
   accountsError?: string;
+  relationshipError?: string;
   onRetryAccounts?: () => void;
   followedAccountIds?: string[];
   pendingFollowAccountIds?: string[];
@@ -152,6 +153,7 @@ export default function ExploreView({
   accountsData = [],
   accountsLoading = false,
   accountsError = "",
+  relationshipError = "",
   onRetryAccounts,
   followedAccountIds = [],
   pendingFollowAccountIds = [],
@@ -522,6 +524,12 @@ export default function ExploreView({
               )}
             </div>
 
+            {productionMode && relationshipError && (
+              <div role="alert" className="mb-3 rounded-2xl border-2 border-amber-700 bg-amber-50 p-3 text-xs font-bold text-amber-950">
+                <p>{relationshipError}</p>
+                {onRetryAccounts && <button type="button" onClick={onRetryAccounts} className="mt-2 rounded-xl border-2 border-amber-900 px-3 py-2">Muat ulang status relasi</button>}
+              </div>
+            )}
             {productionMode && accountsLoading ? (
               <div role="status" className="p-6 text-center bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] text-slate-600 text-xs font-bold">Memuat akun publik…</div>
             ) : productionMode && accountsError ? (
