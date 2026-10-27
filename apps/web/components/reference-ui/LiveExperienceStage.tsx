@@ -399,7 +399,7 @@ export default function LiveExperienceStage({
                 )}
               </div>
             ) : (
-              <p className="px-5 py-8 text-center text-sm font-bold text-slate-600">Belum ada presentasi aktif dari layanan Live Allpha.</p>
+              <p className="px-5 py-8 text-center text-sm font-bold text-slate-600">Belum ada sesi atau pesan Live. Belum ada presentasi aktif dari layanan Live Allpha.</p>
             )}
           </div>
 
