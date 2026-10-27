@@ -37,9 +37,10 @@ function SearchPageContent() {
 
   useEffect(() => {
     if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => { if (active) setSession(data.session); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
+    return () => { active = false; searchRequestSequence.current += 1; data.subscription.unsubscribe(); };
   }, [supabase]);
 
   async function loadTrends() {
@@ -89,6 +90,7 @@ function SearchPageContent() {
   const runSearch = useCallback(async (event?: FormEvent, value = query) => {
     event?.preventDefault();
     if (value.trim().length < 2) { setError("Masukkan minimal 2 karakter."); return; }
+    const sequence = ++searchRequestSequence.current;
     setBusy(true); setError(""); setSearched(true);
     try {
       const response = await fetch(apiBase + "/v1/search?q=" + encodeURIComponent(value.trim()) + "&limit=30", {
@@ -96,11 +98,13 @@ function SearchPageContent() {
       });
       const payload = await response.json() as Payload<SearchItem>;
       if (!response.ok) throw new Error(payload.error?.message || "Pencarian gagal.");
+      if (sequence !== searchRequestSequence.current) return;
       setItems(payload.items || []);
     } catch (cause) {
+      if (sequence !== searchRequestSequence.current) return;
       setError(cause instanceof Error ? cause.message : "Pencarian gagal.");
       setItems([]);
-    } finally { setBusy(false); }
+    } finally { if (sequence === searchRequestSequence.current) setBusy(false); }
   }, [query, session]);
 
   const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
