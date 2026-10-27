@@ -495,7 +495,7 @@ for (const contract of [
 ]) assert.ok(webNotifications.includes(contract), "Notifications must isolate account sessions and stale requests: " + contract);
 
 for (const contract of [
-  "sessionEpoch.current += 1", "listSequence.current += 1", "messageSequence.current += 1",
+  "sessionEpoch.current+=1", "listSequence.current+=1", "messageSequence.current+=1",
   "if(epoch!==sessionEpoch.current||sequence!==listSequence.current)return",
   "if(epoch!==sessionEpoch.current||sequence!==messageSequence.current)return",
   "client_message_id", "postgres_changes", "payload.detail?.message"
