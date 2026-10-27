@@ -148,6 +148,9 @@ def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatc
         params = params or {}
         if table == "content_items":
             return [content]
+        if table == "profiles":
+            return [{"id": owner_id, "username": "followed", "display_name": "Followed", "avatar_url": None,
+                     "bio": "", "visibility": "public", "account_status": "active"}]
         if table == "social_edges" and params.get("actor_user_id") == "eq.eng-p14-viewer":
             return [{"target_user_id": owner_id, "edge_type": "follow", "status": "active"}]
         if table == "social_edges":
@@ -206,6 +209,9 @@ def test_share_records_event_and_returns_deep_link(monkeypatch):
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
         if table == "content_items": return [content]
+        if table == "profiles":
+            return [{"id": "eng-p14-author", "username": "author", "display_name": "Author", "avatar_url": None,
+                     "bio": "", "visibility": "public", "account_status": "active"}]
         if table == "social_edges": return []
         if method == "POST" and table == "content_shares":
             writes.append(body)
@@ -235,6 +241,9 @@ def test_shared_item_deep_link_returns_viewer_state(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         if table == "content_items": return [content]
+        if table == "profiles":
+            return [{"id": "eng-p14-author", "username": "author", "display_name": "Author", "avatar_url": None,
+                     "bio": "", "visibility": "public", "account_status": "active"}]
         if table == "social_edges": return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}: return []
         raise AssertionError(f"unexpected {method} {table}")
