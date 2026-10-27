@@ -1897,3 +1897,9 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - **Known gate items:** live schema/RLS and privacy grant/migration parity still require reviewed evidence; the exact response contracts and Web/Native deep-link parity still require the deferred checks; user-facing private follow/request and error states require acceptance review. No source-only assertion is represented as runtime verification.
 - **Status:** WP-02 is source-implemented across the documented integration slice but its acceptance gate remains **DEFERRED / NOT VERIFIED**, so it must not be marked `acceptance_passed` or production-verified. ENG-P04 remains `IN_PROGRESS` because privacy/visibility parity and grant/migration reconciliation are still open.
 - **Next canonical work item:** continue ENG-P04 — Social Graph (the Master PRD's product Phase 09). The fixed plan does not define a separate canonical WP-03; do not invent one. ENG-P04 may continue at source level, but do not claim WP-02 acceptance or close ENG-P04 until the corresponding evidence gates are met.
+
+
+**ENG-P04 continuation — 2026-10-27 (account lifecycle parity):**
+- Public profile resolution and public creator recommendations now exclude accounts whose canonical `profiles.account_status` is not `active`; public profile resolution returns the existing not-found contract before reading any content for an inactive account. Missing `account_status` remains treated as `active` only for legacy fixtures/source compatibility; the deployed schema contract still needs review.
+- Added a regression test source for the inactive-profile boundary. It was not executed per instruction.
+- This narrows one visibility gap; it does not close ENG-P04. Remaining blockers are cross-surface privacy/visibility review, canonical grant/migration reconciliation and deferred verification.
