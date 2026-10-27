@@ -68,3 +68,23 @@ def test_social_graph_grant_repair_draft_is_least_privilege_and_non_destructive(
     assert "drop policy" not in sql
     assert "drop table" not in sql
 
+def test_cli_generated_social_graph_grant_repair_migration_is_least_privilege():
+    matches = list(MIGRATIONS.glob("*_eng_p04_social_graph_least_privilege_grants.sql"))
+    assert len(matches) == 1, f"Expected one CLI-generated Social Graph grant migration, got {len(matches)}"
+    sql = " ".join(matches[0].read_text().lower().split())
+
+    for table in ("social_edges", "user_interests"):
+        assert f"revoke all privileges on table public.{table} from public, anon, authenticated" in sql
+        assert f"revoke all privileges (" in sql
+    assert "grant select, delete on table public.social_edges to authenticated" in sql
+    assert "grant insert (actor_user_id, target_user_id, edge_type, status)" in sql
+    assert "grant update (status) on table public.social_edges to authenticated" in sql
+    assert "grant select, delete on table public.user_interests to authenticated" in sql
+    assert "grant insert (user_id, interest_key, preference)" in sql
+    assert "grant update (user_id, interest_key, preference)" in sql
+    assert "grant truncate" not in sql
+    assert "grant all" not in sql
+    assert "alter default privileges" not in sql
+    assert "drop policy" not in sql
+    assert "drop table" not in sql
+
