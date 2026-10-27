@@ -678,3 +678,82 @@ def test_private_profile_public_content_requires_active_follow_for_interactions(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "FEED_CONTENT_NOT_FOUND"
+
+
+def test_username_discovery_respects_saved_preference_status_and_private_projection(monkeypatch):
+    public_id = "eng-p04-discovery-public"
+    private_id = "eng-p04-discovery-private"
+    opted_out_id = "eng-p04-discovery-opted-out"
+    inactive_id = "eng-p04-discovery-inactive"
+    profiles = [
+        {"id": public_id, "username": "alice_public", "display_name": "Alice Public", "avatar_url": "/alice.png",
+         "bio": "Public bio", "visibility": "public", "account_status": "active"},
+        {"id": private_id, "username": "alice_private", "display_name": "Alice Private", "avatar_url": "/private.png",
+         "bio": "Private bio", "visibility": "private", "account_status": "active"},
+        {"id": opted_out_id, "username": "alice_hidden", "display_name": "Alice Hidden", "avatar_url": "/hidden.png",
+         "bio": "Hidden bio", "visibility": "public", "account_status": "active"},
+        {"id": inactive_id, "username": "alice_inactive", "display_name": "Alice Inactive", "avatar_url": "/inactive.png",
+         "bio": "Inactive bio", "visibility": "public", "account_status": "deactivation_requested"},
+    ]
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles":
+            return profiles
+        if table == "user_settings":
+            return [
+                {"user_id": public_id, "privacy_settings": {"discoverable_by_username": True}},
+                {"user_id": private_id, "privacy_settings": {"discoverable_by_username": True}},
+                {"user_id": opted_out_id, "privacy_settings": {"discoverable_by_username": False}},
+            ]
+        if table == "social_edges":
+            return []
+        raise AssertionError(f"unexpected {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=alice")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    items = {item["id"]: item for item in response.json()["items"]}
+    assert set(items) == {public_id, private_id}
+    assert items[public_id]["avatar_url"] == "/alice.png"
+    assert items[private_id]["avatar_url"] is None
+    assert items[private_id]["bio"] == ""
+    assert items[private_id]["visibility"] == "private"
+
+
+def test_username_discovery_excludes_accounts_hidden_by_block_or_mute(monkeypatch):
+    hidden_id = "eng-p04-discovery-blocked"
+    visible_id = "eng-p04-discovery-visible"
+    profiles = [
+        {"id": hidden_id, "username": "alex_blocked", "display_name": "Alex Blocked", "avatar_url": None,
+         "bio": "", "visibility": "public", "account_status": "active"},
+        {"id": visible_id, "username": "alex_visible", "display_name": "Alex Visible", "avatar_url": None,
+         "bio": "", "visibility": "public", "account_status": "active"},
+    ]
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles":
+            return profiles
+        if table == "user_settings":
+            return [{"user_id": profile["id"], "privacy_settings": {"discoverable_by_username": True}} for profile in profiles]
+        if table == "social_edges":
+            if params.get("edge_type") == "in.(follow,block,mute)":
+                return [{"target_user_id": hidden_id, "edge_type": "block", "status": "active"}]
+            return []
+        raise AssertionError(f"unexpected {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=alex")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == [visible_id]
