@@ -33,7 +33,7 @@ function SearchPageContent() {
   const [discoveryError, setDiscoveryError] = useState("");
   const [creatorsBusy, setCreatorsBusy] = useState(false);
   const [creatorsError, setCreatorsError] = useState("");
-  const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
+  const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);\n  const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -135,7 +135,7 @@ function SearchPageContent() {
       setPendingFollowAccountIds((payload.outgoing || [])
         .filter(edge => edge.edge_type === "follow" && edge.status === "requested")
         .map(edge => edge.target_user_id));
-    }).catch(() => { if (active) setFollowedAccountIds([]); });
+    }).catch(() => { if (active) { setFollowedAccountIds([]); setPendingFollowAccountIds([]); } });
     return () => { active = false; };
   }, [session?.access_token]);
 
