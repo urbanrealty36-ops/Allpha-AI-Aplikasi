@@ -165,10 +165,12 @@ export default function ProfilePage() {
     }
   };
 
+  let authEventSeen = false;
   void supabase.auth.getSession().then(({ data }) => {
-    if (active) void loadProfile(data.session);
+    if (active && !authEventSeen) void loadProfile(data.session);
   });
   const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+    authEventSeen = true;
     if (active) void loadProfile(next);
   });
   return () => {
