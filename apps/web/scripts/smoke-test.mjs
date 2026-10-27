@@ -492,4 +492,5 @@ for (const contract of [
 ]) assert.ok(feedSessionIsolationSource.includes(contract), "Feed must isolate sessions and stale interactions: " + contract);
 assert.ok(apiMain.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Private profile follow must be persisted as requested, not rely on DB defaults");
 
-assert.ok(socialFeedApi.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Legacy follow endpoint must not bypass private-profile approval");
+const socialFeedLegacyFollowSource = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
+assert.ok(socialFeedLegacyFollowSource.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Legacy follow endpoint must not bypass private-profile approval");
