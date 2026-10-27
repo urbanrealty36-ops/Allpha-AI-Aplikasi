@@ -802,3 +802,26 @@ def test_username_discovery_excludes_accounts_hidden_by_block_or_mute(monkeypatc
 
     assert response.status_code == 200, response.text
     assert [item["id"] for item in response.json()["items"]] == [visible_id]
+
+def test_legacy_follow_route_persists_private_profile_follow_as_requested(monkeypatch):
+    target_id = "22222222-2222-4222-8222-222222222223"
+    writes = []
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "profiles":
+            return [{"id": target_id, "visibility": "private", "account_status": "active"}]
+        if table == "social_edges" and method == "GET":
+            return []
+        if table == "social_edges" and method == "POST":
+            writes.append(body)
+            return [{"id": "legacy-private-follow", "target_user_id": target_id, "status": body["status"],
+                     "created_at": datetime.now(timezone.utc).isoformat()}]
+        raise AssertionError(f"unexpected relationship operation {method} {table}")
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/social/follow/{target_id}")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "requested"
+    assert writes and writes[0]["status"] == "requested"
