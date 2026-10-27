@@ -9,7 +9,7 @@ import type { PostItem } from "../../lib/reference-store";
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
-type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
+type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };\ntype DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -25,7 +25,7 @@ function SearchPageContent() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationsBusy, setRecommendationsBusy] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState("");
-  const [creators, setCreators] = useState<Creator[]>([]);
+  const [creators, setCreators] = useState<Creator[]>([]);\n  const [discoveredUsers, setDiscoveredUsers] = useState<DiscoveredUser[]>([]);\n  const [discoveryBusy, setDiscoveryBusy] = useState(false);\n  const [discoveryError, setDiscoveryError] = useState("");
   const [creatorsBusy, setCreatorsBusy] = useState(false);
   const [creatorsError, setCreatorsError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
@@ -100,6 +100,27 @@ function SearchPageContent() {
       if (!response.ok) throw new Error(payload.error?.message || "Pencarian gagal.");
       if (sequence !== searchRequestSequence.current) return;
       setItems(payload.items || []);
+      if (session) {
+        setDiscoveryBusy(true);
+        setDiscoveryError("");
+        try {
+          const accountsResponse = await fetch(apiBase + "/v1/social/discover-users?q=" + encodeURIComponent(value.trim().replace(/^@/, "")) + "&limit=20", {
+            headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" }, cache: "no-store",
+          });
+          const accountsPayload = await accountsResponse.json() as Payload<DiscoveredUser>;
+          if (!accountsResponse.ok) throw new Error(accountsPayload.error?.message || "Pencarian nama pengguna gagal.");
+          if (sequence !== searchRequestSequence.current) return;
+          setDiscoveredUsers(accountsPayload.items || []);
+        } catch (accountCause) {
+          if (sequence === searchRequestSequence.current) {
+            setDiscoveredUsers([]);
+            setDiscoveryError(accountCause instanceof Error ? accountCause.message : "Pencarian nama pengguna gagal.");
+          }
+        } finally { if (sequence === searchRequestSequence.current) setDiscoveryBusy(false); }
+      } else {
+        setDiscoveredUsers([]);
+        setDiscoveryError("Masuk untuk mencari akun berdasarkan nama pengguna.");
+      }
     } catch (cause) {
       if (sequence !== searchRequestSequence.current) return;
       setError(cause instanceof Error ? cause.message : "Pencarian gagal.");
@@ -120,17 +141,18 @@ function SearchPageContent() {
     void runSearch(undefined, urlQuery);
   }, [session, urlQuery, runSearch]);
 
-  const accountsForReference: SocialAccountItem[] = creators.map(item => ({
-    id: item.id,
-    name: item.display_name || item.username || "Kreator",
-    handle: item.username || "",
-    avatar: item.avatar_url || "/icon.svg",
-    isAi: item.is_ai,
-    specialty: "Kreator publik",
-    bio: item.bio || "",
-    publicPostCount: item.public_post_count,
-    tags: [],
-  }));
+  const accountsForReference: SocialAccountItem[] = searched
+    ? discoveredUsers.map(item => ({
+        id: item.id, name: item.display_name || item.username || "Akun", handle: item.username,
+        avatar: item.avatar_url || "/icon.svg", isAi: false,
+        specialty: item.visibility === "private" ? "Profil privat" : "Akun publik",
+        bio: item.bio || "", publicPostCount: 0, tags: [],
+      }))
+    : creators.map(item => ({
+        id: item.id, name: item.display_name || item.username || "Kreator", handle: item.username || "",
+        avatar: item.avatar_url || "/icon.svg", isAi: item.is_ai, specialty: "Kreator publik",
+        bio: item.bio || "", publicPostCount: item.public_post_count, tags: [],
+      }));
 
   const postsForReference: PostItem[] = items.map(item => ({
     id: item.id,
@@ -170,22 +192,26 @@ function SearchPageContent() {
         posts={postsForReference}
         trendsData={trends}
         accountsData={accountsForReference}
-        accountsLoading={creatorsBusy}
-        accountsError={creatorsError}
-        onRetryAccounts={() => { void loadCreators(); }}
+        accountsLoading={searched ? discoveryBusy : creatorsBusy}
+        accountsError={searched ? discoveryError : creatorsError}
+        onRetryAccounts={() => { if (searched) void runSearch(undefined, query); else void loadCreators(); }}
         followedAccountIds={followedAccountIds}
         onFollowAccount={async (accountId, currentlyFollowed) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
           try {
-            const response = await fetch(apiBase + "/v1/social/follow/" + encodeURIComponent(accountId), {
-              method: currentlyFollowed ? "DELETE" : "PUT",
-              headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+            const response = await fetch(currentlyFollowed
+              ? apiBase + "/v1/me/social-edges/" + encodeURIComponent(accountId) + "/follow"
+              : apiBase + "/v1/me/social-edges", {
+              method: currentlyFollowed ? "DELETE" : "POST",
+              headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", Accept: "application/json" },
+              body: currentlyFollowed ? undefined : JSON.stringify({ target_user_id: accountId, edge_type: "follow" }),
               cache: "no-store",
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(payload?.detail?.message || "Status mengikuti akun tidak dapat diubah.");
+            const outcome = payload?.outcome as string | undefined;
             setFollowedAccountIds(previous => currentlyFollowed ? previous.filter(id => id !== accountId) : [...new Set([...previous, accountId])]);
-            setAuthPrompt("");
+            setAuthPrompt(outcome === "follow_request_created" ? "Permintaan mengikuti akun privat telah dikirim." : currentlyFollowed ? "Berhenti mengikuti akun." : "Anda sekarang mengikuti akun ini.");
           } catch (cause) { setAuthPrompt(cause instanceof Error ? cause.message : "Status mengikuti akun tidak dapat diubah."); }
         }}
         trendsLoading={trendsBusy}
