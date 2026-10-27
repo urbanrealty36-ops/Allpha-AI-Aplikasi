@@ -33,7 +33,7 @@ export default function FeedPage() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [stories, setStories] = useState<FeedStory[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [mode, setMode] = useState<"for_you" | "recent">("for_you");
+  const [mode, setMode] = useState<"for_you" | "recent" | "following">("for_you");
   const [personalizationEnabled, setPersonalizationEnabled] = useState(true);
   const [comments, setComments] = useState<Record<string, FeedComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -62,7 +62,8 @@ export default function FeedPage() {
     return response.status === 204 ? null : response.json();
   }, [session]);
 
-  const loadFeed = useCallback(async (reset = true, nextCursor?: string | null) => {
+  const loadFeed = useCallback(async (reset = true, nextCursor?: string | null, requestedMode?: "for_you" | "recent" | "following") => {
+    const requestedFeedMode = requestedMode ?? mode;
     const epoch = sessionEpoch.current;
     const sequence = ++feedRequestSequence.current;
     setLoading(true); setError("");
@@ -73,14 +74,14 @@ export default function FeedPage() {
         if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
         setItems([direct.item]); setCursor(null); return;
       }
-      const params = new URLSearchParams({ mode, limit: "20" });
+      const params = new URLSearchParams({ mode: requestedFeedMode, limit: "20" });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/feed?" + params.toString()) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
       if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
       if (typeof data.personalization_enabled === "boolean") setPersonalizationEnabled(data.personalization_enabled);
-      if (data.mode === "for_you" || data.mode === "recent") setMode(data.mode);
+      if (data.mode === "for_you" || data.mode === "recent" || data.mode === "following") setMode(data.mode);
     } catch (cause) {
       if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat.");
     } finally { if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setLoading(false); }
@@ -463,6 +464,20 @@ export default function FeedPage() {
       {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-sm font-black">Jelajahi Allpha</h1><p className="my-2 text-xs leading-5">{authPrompt || "Lihat postingan publik. Masuk atau daftar untuk menyukai, mengikuti kreator, dan berkomentar."}</p><div className="flex gap-2"><Link className="inline-flex rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" href={"/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search)}>Masuk</Link><Link className="inline-flex rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search)}>Daftar</Link></div></section>}
         <FeedView
           productionMode
+          onChangeFeedFilter={filter => {
+            if (filter === "AI_AGENTS") {
+              setNotice("Filter AI Agents belum dapat diterapkan: API konten belum menyediakan atribusi penulis Agent yang terverifikasi.");
+              return true;
+            }
+            if (filter === "FOLLOWING" && !session) {
+              setNotice("Masuk untuk melihat konten dari akun yang Anda ikuti.");
+              return false;
+            }
+            const nextMode = filter === "FOLLOWING" ? "following" : "for_you";
+            setMode(nextMode);
+            void loadFeed(true, null, nextMode);
+            return true;
+          }}
           loading={loading}
           errorMessage={error}
           onRetry={() => { void loadFeed(true); }}
