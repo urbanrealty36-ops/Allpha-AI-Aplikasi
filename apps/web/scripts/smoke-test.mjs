@@ -274,6 +274,16 @@ for (const contract of [
 ]) assert.ok(webSearch.includes(contract), "Search must isolate sessions and use canonical Social Graph contracts: " + contract);
 const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
 assert.ok(exploreView.includes("pendingFollowAccountIds") && exploreView.includes("<span>Menunggu</span>") && exploreView.includes("Batalkan permintaan mengikuti"), "Explore must distinguish active follows from cancellable private-profile requests");
+assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("discoverable"), "Explore must connect username discovery to the canonical opt-in API");
+assert.ok(exploreView.includes("discoveryError") && exploreView.includes("relationshipError"), "Explore must expose explicit discovery and relationship error states");
+const socialFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
+if (existsSync(socialFeedApiPath)) {
+  const socialFeedApi = readFileSync(socialFeedApiPath, "utf8");
+  for (const contract of [
+    '"/v1/social/discover-users"', "discoverable_by_username", '"account_status": "eq.active"',
+    "owner_profile.get(\"account_status\", \"active\")", '"/v1/social/follow/{target_user_id}"'
+  ]) assert.ok(socialFeedApi.includes(contract), "Social Graph API must enforce discovery and active-profile privacy: " + contract);
+}
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
