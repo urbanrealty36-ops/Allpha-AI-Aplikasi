@@ -232,7 +232,7 @@ export default function AuthOnboardingPage({
 
       {/* TOP NAVBAR (Neo-Brutalist Soft Pastel) */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b-2 border-slate-900 px-4 sm:px-6 py-3 shadow-xs">
-        <div className="max-w-6xl mx-auto flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
           {/* Logo & Brand */}
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-[#0284C7] border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-center text-white font-black text-xl">
@@ -252,7 +252,7 @@ export default function AuthOnboardingPage({
           </div>
 
           {/* Section Navigation Tabs */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-1 sm:gap-2 max-w-full">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={() => setActiveSection('SLIDES')}
               className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 border-slate-900 transition cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${
