@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+from allpha_api import feed_api
 from allpha_api.auth import current_user
 from allpha_api.main import app
 
@@ -125,3 +126,19 @@ def test_follow_request_uses_authenticated_actor_and_preserves_private_request_s
     assert write[3]["actor_user_id"] == ACTOR_ID
     assert write[3]["target_user_id"] == TARGET_ID
     assert write[4] == "isolated-eng-p04-token"
+
+
+def test_compatibility_follow_endpoint_also_rejects_inactive_target(monkeypatch):
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET" and table == "profiles"
+        return [{"id": TARGET_ID, "visibility": "public", "account_status": "suspended"}]
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_server_db)
+    _override_user()
+    try:
+        response = client.put(f"/v1/social/follow/{TARGET_ID}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PUBLIC_PROFILE_NOT_FOUND"
