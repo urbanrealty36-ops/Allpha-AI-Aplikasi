@@ -492,6 +492,7 @@ assert.ok(searchPage.includes('"/v1/social/discover-users?q="') && searchPage.in
 assert.ok(searchPage.includes('"/v1/me/social-edges"') && searchPage.includes('edge_type: "follow"'), "Search follow actions must use the canonical social-edge API");
 assert.ok(searchPage.includes("searchRequestSequence.current") && searchPage.includes("sequence !== searchRequestSequence.current"), "Search must discard stale query responses");
 assert.ok(searchPage.includes('"/v1/me/social-graph"') && searchPage.includes('edge.edge_type === "follow"'), "Search must hydrate follow state from canonical social graph");
+assert.ok(searchPage.includes("pendingFollowAccountIds={pendingFollowAccountIds}") && searchPage.includes('followStatus === "requested"'), "Search must distinguish and allow cancellation of pending private-profile follow requests");
 
 const messagesPage = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
 assert.ok(messagesPage.includes("conversationRequestSequence.current") && messagesPage.includes("listRequestSequence.current"), "Messaging must isolate conversation/message requests and clear stale session data");
