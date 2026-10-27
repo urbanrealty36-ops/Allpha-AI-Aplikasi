@@ -46,3 +46,5 @@ GRANT UPDATE (user_id, interest_key, preference)
 -- Reviewed source revision: 2026-10-27; CLI generation is intentionally isolated in the ENG-P04 workflow.
 
 -- CLI workflow trigger revision: 2026-10-27T16:40Z.
+
+-- Generator recheck after adding Python test dependencies: 2026-10-27.
