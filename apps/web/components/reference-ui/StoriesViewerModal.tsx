@@ -155,17 +155,39 @@ export default function StoriesViewerModal({
     }
   };
 
-  const handleSendReaction = (emoji: string) => {
+  const handleSendReaction = async (emoji: string) => {
+    if (productionMode) {
+      if (!onSendReaction || !enabledReactions?.includes(emoji)) return;
+      try {
+        await onSendReaction(currentStory.id, emoji);
+        showToast(`Reaksi ${emoji} berhasil disimpan.`);
+      } catch (cause) {
+        showToast(cause instanceof Error ? cause.message : 'Reaksi belum dapat disimpan.');
+      }
+      return;
+    }
     showToast(`Reaksi ${emoji} terkirim ke ${currentStory.creatorName}!`);
   };
 
-  const handleSendReply = () => {
+  const handleSendReply = async () => {
     if (!replyText.trim()) return;
+    if (productionMode) {
+      if (!onSendReply) return;
+      try {
+        await onSendReply(currentStory.id, replyText.trim());
+        showToast('Balasan Story berhasil dikirim.');
+        setReplyText('');
+      } catch (cause) {
+        showToast(cause instanceof Error ? cause.message : 'Balasan Story belum dapat dikirim.');
+      }
+      return;
+    }
     showToast(`Pesan balasan "${replyText}" terkirim ke ${currentStory.creatorName}!`);
     setReplyText('');
   };
 
   const handleCreateMoment = () => {
+    if (productionMode) return;
     if (!newStoryPrompt.trim()) {
       showToast('Masukkan ide Moment atau Story terlebih dahulu!');
       return;
