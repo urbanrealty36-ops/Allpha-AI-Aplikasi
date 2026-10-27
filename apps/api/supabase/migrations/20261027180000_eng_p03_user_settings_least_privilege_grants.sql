@@ -6,7 +6,7 @@
 
 revoke all privileges on table public.user_settings from public, anon, authenticated;
 revoke all privileges (user_id, theme, notification_preferences, privacy_settings, updated_at)
-  on table public.user_settings from anon, authenticated;
+  on table public.user_settings from public, anon, authenticated;
 
 -- API-backed user settings are row-scoped by the existing RLS policies.
 -- Clients can read their own settings and write only editable preference fields.
