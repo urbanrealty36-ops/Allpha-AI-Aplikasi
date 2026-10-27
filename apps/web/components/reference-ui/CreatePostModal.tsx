@@ -600,7 +600,7 @@ export default function CreatePostModal({
                       <div className="min-w-0">
                         <p className="font-black text-xs text-slate-950 truncate">{uploadedDocument.fileName}</p>
                         <p className="text-[10px] font-mono text-slate-500 font-bold">
-                          {uploadedDocument.fileSize} • {uploadedDocument.pageCount} slide terdeteksi oleh pipeline dokumen
+                          {uploadedDocument.fileSize} • {uploadedDocument.pageCount > 0 ? `${uploadedDocument.pageCount} slide terdeteksi oleh pipeline dokumen` : "Pemrosesan dokumen belum terhubung"}
                         </p>
                       </div>
                     </div>
@@ -621,6 +621,11 @@ export default function CreatePostModal({
                         <p className="font-bold text-slate-900 truncate">{s.title}</p>
                       </div>
                     ))}
+                    {uploadedDocument.slides.length === 0 && (
+                      <p className="col-span-full rounded-xl border border-dashed border-slate-400 bg-white/70 p-2 text-[10px] font-bold text-slate-600">
+                        File hanya dipilih secara lokal. Slide belum dibuat atau diunggah karena pipeline dokumen belum terhubung.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
