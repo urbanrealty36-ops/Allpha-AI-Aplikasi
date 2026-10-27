@@ -570,8 +570,9 @@ async def follow_public_profile(
     target_rows = await _server_db("GET", "profiles", params={
         "select": "id,visibility", "id": f"eq.{target_id}", "limit": "1",
     })
-    if not target_rows:
+    if not target_rows or target_rows[0].get("visibility") not in {"public", "private"}:
         raise HTTPException(status_code=404, detail={"code": "PUBLIC_PROFILE_NOT_FOUND", "message": "Akun tidak ditemukan."})
+    requested_status = "requested" if target_rows[0].get("visibility") == "private" else "active"
     for source, target in ((actor_id, target_id), (target_id, actor_id)):
         blocks = await _server_db("GET", "social_edges", params={
             "select": "id", "actor_user_id": f"eq.{source}", "target_user_id": f"eq.{target}",
@@ -579,18 +580,30 @@ async def follow_public_profile(
         })
         if blocks:
             raise HTTPException(status_code=403, detail={"code": "SOCIAL_EDGE_BLOCKED", "message": "Tindakan ini tidak tersedia karena pembatasan akun."})
-    existing = await _server_db("GET", "social_edges", params={
+    edge_filter = {
         "select": "id,status", "actor_user_id": f"eq.{actor_id}", "target_user_id": f"eq.{target_id}",
         "edge_type": "eq.follow", "limit": "1",
-    })
+    }
+    existing = await _server_db("GET", "social_edges", params=edge_filter)
     if existing:
         return {"target_user_id": target_id, "status": existing[0].get("status"), "created": False}
-    rows = await _server_db("POST", "social_edges", params={"select": "id,target_user_id,status,created_at"},
-        body={"actor_user_id": actor_id, "target_user_id": target_id, "edge_type": "follow", "status": "active"},
-        prefer="return=representation")
+    try:
+        rows = await _server_db("POST", "social_edges", params={"select": "id,target_user_id,status,created_at"},
+            body={"actor_user_id": actor_id, "target_user_id": target_id, "edge_type": "follow", "status": requested_status},
+            prefer="return=representation")
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        existing = await _server_db("GET", "social_edges", params=edge_filter)
+        if not existing:
+            raise
+        return {"target_user_id": target_id, "status": existing[0].get("status"), "created": False, "idempotent_replay": True}
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SOCIAL_FOLLOW_NOT_RECORDED", "message": "Permintaan mengikuti akun tidak dapat disimpan."})
-    return {"target_user_id": target_id, "status": rows[0].get("status"), "created": True}
+    return {
+        "target_user_id": target_id, "status": rows[0].get("status"), "created": True,
+        "outcome": "follow_request_created" if rows[0].get("status") == "requested" else "follow_active",
+    }
 
 
 @router.delete("/v1/social/follow/{target_user_id}", tags=["social-graph"])
