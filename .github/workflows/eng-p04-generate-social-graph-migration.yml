@@ -6,6 +6,11 @@ on:
       - work/wp02-engp04-evidence-20261027
     paths:
       - "docs/PHASES/ENG-P04_SOCIAL_GRAPH_GRANT_REPAIR_DRAFT.sql"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "docs/PHASES/ENG-P04_SOCIAL_GRAPH_GRANT_REPAIR_DRAFT.sql"
   workflow_dispatch:
 
 permissions:
@@ -24,7 +29,7 @@ jobs:
       - name: Checkout the working branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           persist-credentials: true
 
       - name: Install Supabase CLI
@@ -40,14 +45,12 @@ jobs:
           supabase --version
           supabase migration new --help
           test -d supabase/migrations
-          if find supabase/migrations -maxdepth 1 -type f -name '*_eng_p04_social_graph_least_privilege_grants.sql' | grep -q .; then
-            echo "A generated Social Graph grant migration already exists; refusing to create a duplicate."
-            exit 1
-          fi
-          supabase migration new eng_p04_social_graph_least_privilege_grants
           migration_file="$(find supabase/migrations -maxdepth 1 -type f -name '*_eng_p04_social_graph_least_privilege_grants.sql' -print | sort | tail -n 1)"
-          test -n "$migration_file"
-          python - "$migration_file" <<'PY'
+          if [ -z "$migration_file" ]; then
+            supabase migration new eng_p04_social_graph_least_privilege_grants
+            migration_file="$(find supabase/migrations -maxdepth 1 -type f -name '*_eng_p04_social_graph_least_privilege_grants.sql' -print | sort | tail -n 1)"
+            test -n "$migration_file"
+            python - "$migration_file" <<'PY'
           from pathlib import Path
           import sys
 
@@ -73,6 +76,9 @@ jobs:
           target.write_text(sql)
           print(f"Generated migration SQL at {target}")
           PY
+          else
+            echo "Found existing CLI-generated migration: $migration_file"
+          fi
           python - <<'PY'
           from pathlib import Path
           matches = list(Path("supabase/migrations").glob("*_eng_p04_social_graph_least_privilege_grants.sql"))
@@ -90,6 +96,10 @@ jobs:
           assert "alter default privileges" not in sql
           PY
 
+      - name: Verify source migration contract
+        working-directory: apps/api
+        run: python -m pytest tests/test_eng_p04_privacy_migration_contract.py -q
+
       - name: Commit generated migration to the same working branch
         shell: bash
         run: |
@@ -102,4 +112,4 @@ jobs:
             exit 1
           fi
           git commit -m "db: generate ENG-P04 Social Graph least-privilege migration"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}"
