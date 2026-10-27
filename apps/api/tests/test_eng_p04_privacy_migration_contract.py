@@ -48,3 +48,23 @@ def test_social_graph_anonymous_access_is_revoked_without_broad_default_privileg
     assert "revoke all privileges on table public.user_interests from anon" in sql
     assert "alter default privileges" not in sql
     assert "drop table" not in sql
+
+def test_social_graph_grant_repair_draft_is_least_privilege_and_non_destructive():
+    draft_path = Path(__file__).parents[3] / "docs" / "PHASES" / "ENG-P04_SOCIAL_GRAPH_GRANT_REPAIR_DRAFT.sql"
+    sql = " ".join(draft_path.read_text().lower().split())
+
+    assert "design draft only — not a supabase migration" in sql
+    for table in ("social_edges", "user_interests"):
+        assert f"revoke all privileges on table public.{table} from public, anon, authenticated" in sql
+        assert f"from public, anon, authenticated" in sql
+    assert "grant select, delete on table public.social_edges to authenticated" in sql
+    assert "grant insert (actor_user_id, target_user_id, edge_type, status)" in sql
+    assert "grant update (status) on table public.social_edges to authenticated" in sql
+    assert "grant select, delete on table public.user_interests to authenticated" in sql
+    assert "grant insert (user_id, interest_key, preference)" in sql
+    assert "grant update (user_id, interest_key, preference)" in sql
+    assert "grant truncate" not in sql
+    assert "alter default privileges" not in sql
+    assert "drop policy" not in sql
+    assert "drop table" not in sql
+
