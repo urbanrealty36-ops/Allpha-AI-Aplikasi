@@ -12,6 +12,7 @@ def test_user_settings_grants_are_column_scoped_and_keep_api_owned_fields_read_o
     sql = " ".join(USER_SETTINGS_GRANTS.read_text().lower().split())
 
     assert "revoke all privileges on table public.user_settings from public, anon, authenticated" in sql
+    assert "revoke all privileges (user_id, theme, notification_preferences, privacy_settings, updated_at) on table public.user_settings from public, anon, authenticated" in sql
     assert "grant select on table public.user_settings to authenticated" in sql
     assert "grant insert (user_id, theme, notification_preferences, privacy_settings)" in sql
     assert "grant update (theme, notification_preferences, privacy_settings)" in sql
