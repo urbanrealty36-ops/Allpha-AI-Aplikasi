@@ -471,3 +471,11 @@ assert.ok(settingsGrantRepair.includes("revoke all privileges on table public.us
 
 const referenceNavigation = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
 assert.ok(referenceNavigation.includes("let authEventSeen = false") && referenceNavigation.includes("if (!active || authEventSeen) return"), "Shared navigation must not let an initial getSession result override a newer auth-state event");
+
+
+const accountPage = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
+assert.ok(accountPage.includes("let authEventSeen = false") && accountPage.includes("if (!active || authEventSeen) return"), "Account identity must not be overwritten by a delayed initial session read");
+assert.ok(accountPage.includes("lastIdentityUserId.current !== active.user.id") && accountPage.includes("setProfile(null); setSettings(null)"), "Account settings and profile projections must clear before switching to a different identity");
+const profilePage = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+assert.ok(profilePage.includes("let authEventSeen = false") && profilePage.includes("if (active && !authEventSeen) void loadProfile(data.session)"), "Profile must ignore a stale initial session response after an auth event");
+assert.ok(profilePage.includes("lastUserId.current !== nextUserId") && profilePage.includes("setHuman(null); setAgents([]); setPosts([])"), "Profile Agent and content projections must clear when the authenticated identity changes");
