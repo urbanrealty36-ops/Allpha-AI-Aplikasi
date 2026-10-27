@@ -114,6 +114,7 @@ export default function ProfileView({
   onOpenAskAi,
   onOpenGenerate,
   onUpdateAgent,
+  onOpenAgentStudio,
   onOpenFilmAi,
   userCredits = 0,
   onDeductCredits,
