@@ -22,7 +22,7 @@ type Capability = {
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
 };
 type SkillVersion = { id: string; version: number; created_at: string; snapshot: { name?: string; changelog?: string; status?: string } };
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function readError(response: Response) {
   try {
