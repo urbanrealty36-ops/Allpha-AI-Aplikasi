@@ -465,3 +465,6 @@ assert.ok(socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", handle)') && 
 assert.ok(socialFeedApi.includes('requested_status = "requested" if target_rows[0].get("visibility") == "private" else "active"') && socialFeedApi.includes('"follow_request_created" if rows[0].get("status") == "requested" else "follow_active"'), "Legacy follow endpoint must preserve private-profile request semantics");
 
 assert.ok(socialFeedApi.includes('str(row.get("username")).casefold().startswith(query)') && socialFeedApi.includes('"username": f"eq.{handle}"'), "Username matching must not treat underscore characters as LIKE wildcards or resolve a different handle");
+
+const settingsGrantRepair = readFileSync(new URL("../../api/supabase/migrations/20261027180000_eng_p03_user_settings_least_privilege_grants.sql", import.meta.url), "utf8");
+assert.ok(settingsGrantRepair.includes("revoke all privileges on table public.user_settings from anon, authenticated") && settingsGrantRepair.includes("grant select on table public.user_settings to authenticated") && settingsGrantRepair.includes("grant update (theme, notification_preferences, privacy_settings)"), "User settings grant repair must revoke broad grants and restore only required authenticated preference access");
