@@ -74,9 +74,9 @@ def test_cli_generated_social_graph_grant_repair_migration_is_least_privilege():
     sql = " ".join(matches[0].read_text().lower().split())
 
     assert "revoke all privileges on table public.social_edges from public, anon, authenticated" in sql
-    assert "revoke all privileges (id, actor_user_id, target_user_id, edge_type, status, created_at) on table public.social_edges from public, anon, authenticated" in sql
+    assert "revoke all privileges ( id, actor_user_id, target_user_id, edge_type, status, created_at ) on table public.social_edges from public, anon, authenticated" in sql
     assert "revoke all privileges on table public.user_interests from public, anon, authenticated" in sql
-    assert "revoke all privileges (user_id, interest_key, preference, created_at, updated_at) on table public.user_interests from public, anon, authenticated" in sql
+    assert "revoke all privileges ( user_id, interest_key, preference, created_at, updated_at ) on table public.user_interests from public, anon, authenticated" in sql
     assert "grant select, delete on table public.social_edges to authenticated" in sql
     assert "grant insert (actor_user_id, target_user_id, edge_type, status)" in sql
     assert "grant update (status) on table public.social_edges to authenticated" in sql
