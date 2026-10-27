@@ -148,6 +148,8 @@ def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatc
         params = params or {}
         if table == "content_items":
             return [content]
+        if table == "profiles":
+            return [{"id": owner_id, "visibility": "public", "account_status": "active"}]
         if table == "social_edges" and params.get("actor_user_id") == "eq.eng-p14-viewer":
             return [{"target_user_id": owner_id, "edge_type": "follow", "status": "active"}]
         if table == "social_edges":
@@ -601,7 +603,7 @@ def test_social_profile_rejects_malformed_handle_without_database_lookup(monkeyp
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
 
 
 def test_private_social_profile_requires_explicit_discoverability(monkeypatch):
@@ -636,7 +638,7 @@ def test_private_social_profile_requires_explicit_discoverability(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
     assert not any(table == "content_items" for _, table, _ in db_calls)
 
 
@@ -838,7 +840,7 @@ def test_public_profile_hides_inactive_account_before_content_lookup(monkeypatch
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
+    assert response.json()["error"]["code"] == "SOCIAL_PROFILE_NOT_FOUND"
     assert not any(table == "content_items" for _, table, _ in calls)
 
 
