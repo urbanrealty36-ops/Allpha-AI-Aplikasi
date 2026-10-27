@@ -57,7 +57,7 @@ interface CreatePostModalProps {
   onClose: () => void;
   humanUser: HumanProfile;
   agentProfile: AIAgentProfile;
-  onCreatePost: (newPost: PostItem) => void;
+  onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE') => Promise<boolean>;
   onLaunchLiveStage?: (
     title: string, 
     mode: string, 
@@ -108,6 +108,7 @@ export default function CreatePostModal({
   const STORE_CATALOG_PRESETS: LiveAttachedProduct[] = [];
 
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [integrationNotice, setIntegrationNotice] = useState<string | null>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -137,17 +138,17 @@ export default function CreatePostModal({
 
   const sampleImages: string[] = [];
 
-  const handlePostSubmit = (e: React.FormEvent) => {
+  const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
 
     const newPost: PostItem = {
-      id: `p-${Date.now()}`,
+      id: '',
       humanOwner: {
         name: humanUser.name,
         handle: humanUser.username,
         avatar: humanUser.avatar,
-        verified: true,
+        verified: false,
       },
       aiAgent: {
         name: agentProfile.name,
@@ -158,33 +159,44 @@ export default function CreatePostModal({
       takeoverMode: postAs === 'HUMAN',
       timestamp: 'Baru saja',
       content: content.trim(),
-      tags: ['#AllphaUniverse', '#AIAgent', '#CrystalCity'],
+      tags: [],
       image: selectedImage || undefined,
       has3DModel: has3D,
       modelName: has3D ? modelName : undefined,
-      likes: 1,
+      likes: 0,
       commentsCount: 0,
       reposts: 0,
-      isLiked: true,
+      isLiked: false,
       comments: [],
     };
 
-    onCreatePost(newPost);
-    setContent('');
-    setSelectedImage(null);
-    onClose();
+    setIntegrationNotice(null);
+    try {
+      const accepted = await onCreatePost(newPost, audience);
+      if (!accepted) {
+        setIntegrationNotice('Konten belum dikonfirmasi oleh API kanonis. Form tetap terbuka dan tidak menampilkan status publikasi.');
+        return;
+      }
+      setContent('');
+      setSelectedImage(null);
+      onClose();
+    } catch {
+      setIntegrationNotice('Konten belum tersimpan. Periksa koneksi API sebelum mencoba kembali.');
+    }
   };
 
   const handleLaunchLive = () => {
-    if (onLaunchLiveStage) {
-      const attached = STORE_CATALOG_PRESETS.filter(p => selectedProductIds.includes(p.id));
-      onLaunchLiveStage(liveTitle, liveStageTemplate, uploadedDocument?.slides, attached);
+    if (!onLaunchLiveStage || !liveTitle.trim()) {
+      setIntegrationNotice('Pembuatan sesi Live belum terhubung ke layanan sesi kanonis.');
+      return;
     }
+    const attached = STORE_CATALOG_PRESETS.filter(p => selectedProductIds.includes(p.id));
+    onLaunchLiveStage(liveTitle, liveStageTemplate, uploadedDocument?.slides, attached);
     onClose();
   };
 
   const handleStoryPublish = () => {
-    onClose();
+    setIntegrationNotice('Publikasi Story belum terhubung ke endpoint Story kanonis. Tidak ada Story yang dipublikasikan.');
   };
 
   return (
@@ -208,6 +220,8 @@ export default function CreatePostModal({
             <X className="w-4 h-4 stroke-[2.5px]" />
           </button>
         </div>
+
+        {integrationNotice && <div role="status" className="mx-4 mt-3 rounded-2xl border-2 border-slate-900 bg-amber-100 px-3 py-2 text-xs font-bold text-slate-900 shadow-[2px_2px_0px_#0f172a]">{integrationNotice}</div>}
 
         {/* Create Mode Switcher Tabs */}
         <div className="px-4 py-2.5 border-b-2 border-slate-900 bg-white flex gap-1.5 overflow-x-auto no-scrollbar">
