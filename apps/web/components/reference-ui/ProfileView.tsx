@@ -83,6 +83,7 @@ interface ProfileViewProps {
   onOpenGenerate?: (contextPost: PostItem) => void;
   onUpdateAgent?: (updatedAgent: AIAgentProfile) => void | Promise<void>;
   onOpenAgentStudio?: (agentId: string) => void;
+  onOpenAgentRuntime?: (agentId: string) => void;
   onOpenAgentPassport?: (handle: string) => void;
   onOpenFilmAi?: () => void;
   userCredits?: number;
@@ -116,6 +117,7 @@ export default function ProfileView({
   onOpenGenerate,
   onUpdateAgent,
   onOpenAgentStudio,
+  onOpenAgentRuntime,
   onOpenAgentPassport,
   onOpenFilmAi,
   userCredits = 0,
@@ -709,7 +711,7 @@ export default function ProfileView({
               </button>
 
               <button
-                onClick={() => { if (hasAgentProfile && agentProfile.id && onOpenAgentStudio) onOpenAgentStudio(agentProfile.id); else showToast('Agent Studio kanonis belum tersedia untuk identitas ini.'); }}
+                onClick={() => { if (hasAgentProfile && agentProfile.id && onOpenAgentRuntime) onOpenAgentRuntime(agentProfile.id); else showToast('Agent Runtime kanonis belum tersedia untuk identitas ini.'); }}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-purple-400 hover:bg-purple-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Target className="w-4 h-4 text-slate-950" />
@@ -746,7 +748,7 @@ export default function ProfileView({
                 </h4>
               </div>
               <button
-                onClick={() => { if (hasAgentProfile && agentProfile.id && onOpenAgentStudio) onOpenAgentStudio(agentProfile.id); else showToast('Agent Studio kanonis belum tersedia untuk identitas ini.'); }}
+                onClick={() => { if (hasAgentProfile && agentProfile.id && onOpenAgentRuntime) onOpenAgentRuntime(agentProfile.id); else showToast('Agent Runtime kanonis belum tersedia untuk identitas ini.'); }}
                 className="text-xs text-slate-950 font-black hover:underline"
               >
                 Kelola Semua →
