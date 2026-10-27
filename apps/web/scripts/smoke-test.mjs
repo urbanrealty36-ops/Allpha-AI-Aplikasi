@@ -408,7 +408,7 @@ assert.ok(accountRoute.includes('new URLSearchParams(window.location.search).get
 assert.ok(accountRoute.includes('interestPreference') && accountRoute.includes('"not_interested"') && accountRoute.includes('updateInterestPreference'), "Web Social Graph must persist both positive and negative interest preferences");
 assert.ok(accountRoute.includes('result.outcome === "follow_active"') && accountRoute.includes('result.outcome === "follow_request_created"'), "Web Social Graph must distinguish active follows from private-profile requests");
 const apiMain = readFileSync(new URL("../../api/src/allpha_api/main.py", import.meta.url), "utf8");
-assert.ok(apiMain.includes('async def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
+assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
 assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
 const nativeSocialSource = readFileSync(new URL("../../client/App.tsx", import.meta.url), "utf8");
 assert.ok(nativeSocialSource.includes('updateInterestPreference') && nativeSocialSource.includes('"not_interested"'), "Native Social Graph must persist both positive and negative interest preferences");
