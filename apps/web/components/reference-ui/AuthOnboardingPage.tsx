@@ -58,7 +58,7 @@ export default function AuthOnboardingPage({
   currentAgent,
   humanAvatarOptions = currentUser.avatar ? [currentUser.avatar] : [],
   avatarCatalog = [],
-  skillCatalog = [],
+  skillCatalog = BIDANG_SKILLS_CATALOG,
 }: AuthOnboardingPageProps) {
   const [activeSection, setActiveSection] = useState<PageSection>('SLIDES');
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
