@@ -517,15 +517,64 @@ async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(c
 async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if str(payload.target_user_id) == str(user["id"]):
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Relasi sosial tidak dapat ditujukan ke akun sendiri."})
-    rows = await user_db_request(
-        "POST", "social_edges", request.state.supabase_access_token,
-        body={"actor_user_id": user["id"], "target_user_id": str(payload.target_user_id), "edge_type": payload.edge_type},
-        params={"select": "id,target_user_id,edge_type,status,created_at"},
-        prefer="return=representation",
-    )
+
+    token = request.state.supabase_access_token
+    edge_filter = {
+        "select": "id,actor_user_id,target_user_id,edge_type,status,created_at",
+        "actor_user_id": f"eq.{user['id']}",
+        "target_user_id": f"eq.{payload.target_user_id}",
+        "edge_type": f"eq.{payload.edge_type}",
+        "limit": "1",
+    }
+
+    # The database unique key is the final concurrency guard. Read-before-write
+    # gives normal retries a stable result; a concurrent unique conflict is
+    # reconciled by reading the winning row instead of surfacing a false failure.
+    existing = await user_db_request("GET", "social_edges", token, params=edge_filter)
+    if existing:
+        return {
+            "edge": existing[0],
+            "idempotent_replay": True,
+            "outcome": _social_edge_outcome(existing[0]),
+        }
+
+    try:
+        rows = await user_db_request(
+            "POST", "social_edges", token,
+            body={"actor_user_id": user["id"], "target_user_id": str(payload.target_user_id), "edge_type": payload.edge_type},
+            params={"select": edge_filter["select"]},
+            prefer="return=representation",
+        )
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        existing = await user_db_request("GET", "social_edges", token, params=edge_filter)
+        if not existing:
+            raise
+        return {
+            "edge": existing[0],
+            "idempotent_replay": True,
+            "outcome": _social_edge_outcome(existing[0]),
+        }
+
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SOCIAL_EDGE_NOT_RECORDED", "message": "Relasi sosial tidak dapat disimpan."})
-    return {"edge": rows[0]}
+    return {
+        "edge": rows[0],
+        "idempotent_replay": False,
+        "outcome": _social_edge_outcome(rows[0]),
+    }
+
+
+def _social_edge_outcome(edge: dict[str, Any]) -> str:
+    edge_type = edge.get("edge_type")
+    if edge_type == "follow":
+        return "follow_request_created" if edge.get("status") == "requested" else "follow_active"
+    if edge_type == "block":
+        return "user_blocked"
+    if edge_type == "mute":
+        return "user_muted"
+    return "social_edge_created"
 
 
 @app.post("/v1/me/follow-requests/{edge_id}/accept", tags=["social"])
