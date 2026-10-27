@@ -66,7 +66,7 @@ export default function ProfilePage() {
       );
       let profilePosts: PostItem[] = [];
       try {
-        const feedResponse = await fetch(apiBase + "/v1/feed?mode=recent&limit=50", { headers, cache: "no-store" });
+        const feedResponse = await fetch(apiBase + "/v1/me/profile-feed?limit=50", { headers, cache: "no-store" });
         if (feedResponse.ok) {
           const feedPayload = await feedResponse.json() as { items?: ApiFeedItem[] };
           profilePosts = (feedPayload.items || []).filter(item => item.owner_id === me.user!.id).map(item => {
