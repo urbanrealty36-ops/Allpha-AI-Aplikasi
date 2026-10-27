@@ -100,6 +100,17 @@ export default function FeedPage() {
 
   useEffect(() => { void loadFeed(true); }, [session, mode, loadFeed]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const composeRequested = new URLSearchParams(window.location.search).get("compose") === "1";
+    if (!composeRequested) return;
+    if (!session) {
+      setAuthPrompt("Masuk untuk membuat postingan.");
+      return;
+    }
+    if (composerHuman) setCreateModalOpen(true);
+  }, [session, composerHuman]);
+
   // Load the actual signed-in Human and owned Agent before opening the copied source composer.
   useEffect(() => {
     if (!session) {
