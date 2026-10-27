@@ -38,7 +38,7 @@ export default function BottomNav({
   activeTab,
   setActiveTab,
   onOpenCreateModal,
-  unreadCount = 2,
+  unreadCount,
 }: BottomNavProps) {
   // Hide in detail sub-views or full-page onboarding
   if (activeTab === 'POST_DETAIL' || activeTab === 'ASK_AI_VIEW' || activeTab === 'ONBOARDING_PAGE') {
