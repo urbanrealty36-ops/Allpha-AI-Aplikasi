@@ -1897,3 +1897,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Explicit gaps recorded: no Native route for Create, Live Stage, Spatial Navigation, Marketplace, Ask AI, or AI Cinema; Skills Challenge has no dedicated Native deep link; POST_DETAIL query parameters are not mapped to a selected Native post; story selection/deep-link semantics differ. These must not be masked with fake routes or client-only success states. Downstream domain routes must follow canonical owner phases.
 - This is a source inventory, not device acceptance. No UI build, screenshot/viewport checks, Native device/deep-link flow, smoke tests or automated tests were run.
 - **Status unchanged:** WP-02 `IN_PROGRESS`; ENG-P04 `IN_PROGRESS`. ENG-P04 also remains blocked by the live `user_settings` privilege finding and unapplied forward migration described in the evidence register.
+
+
+**ENG-P04 privilege migration source guard — 2026-10-27:**
+- Added a source-contract assertion in `apps/web/scripts/smoke-test.mjs` for the `user_settings` broad table revoke, explicit column revoke, authenticated SELECT, and restricted INSERT/UPDATE grants. Commit: `37f3822c7d64bdb6e7659b59bb54848e71eb856b`.
+- The assertion is source-only and has not been executed. Live Supabase still shows broad grants and the forward migration remains unapplied. ENG-P04 remains `IN_PROGRESS`; no production DDL was performed.
