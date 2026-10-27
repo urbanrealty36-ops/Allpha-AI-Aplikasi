@@ -480,3 +480,22 @@ assert.ok(accountPage.includes("lastIdentityUserId.current !== active.user.id") 
 const profilePage = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
 assert.ok(profilePage.includes("let authEventSeen = false") && profilePage.includes("if (active && !authEventSeen) void loadProfile(data.session)"), "Profile must ignore a stale initial session response after an auth event");
 assert.ok(profilePage.includes("lastUserId.current !== nextUserId") && profilePage.includes("setHuman(null); setAgents([]); setPosts([])"), "Profile Agent and content projections must clear when the authenticated identity changes");
+
+
+// WP-02 shared shell and discovery source contracts (authored, not executed in this work pass).
+const notificationPage = readFileSync(new URL("../app/notifications/page.tsx", import.meta.url), "utf8");
+assert.ok(notificationPage.includes("requestSequence.current") && notificationPage.includes("sequence !== requestSequence.current"), "Notification inbox must discard stale responses across filters and auth sessions");
+assert.ok(notificationPage.includes("preferencesRequestSequence.current") && notificationPage.includes("setUnreadCount(0)"), "Notification preference reads and inbox indicators must reset across account changes");
+
+const searchPage = readFileSync(new URL("../app/search/page.tsx", import.meta.url), "utf8");
+assert.ok(searchPage.includes('"/v1/social/discover-users?q="') && searchPage.includes("discoveredUsers.map"), "Search must render explicit-opt-in username discovery results");
+assert.ok(searchPage.includes('"/v1/me/social-edges"') && searchPage.includes('edge_type: "follow"'), "Search follow actions must use the canonical social-edge API");
+assert.ok(searchPage.includes("searchRequestSequence.current") && searchPage.includes("sequence !== searchRequestSequence.current"), "Search must discard stale query responses");
+assert.ok(searchPage.includes('"/v1/me/social-graph"') && searchPage.includes('edge.edge_type === "follow"'), "Search must hydrate follow state from canonical social graph");
+
+const messagesPage = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+assert.ok(messagesPage.includes("conversationRequestSequence.current") && messagesPage.includes("listRequestSequence.current"), "Messaging must isolate conversation/message requests and clear stale session data");
+
+const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
+assert.ok(socialFeedApi.includes('@router.get("/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must use the canonical social feed router");
+assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden"), "Username discovery must fail closed on missing privacy opt-in and exclude hidden relationships");
