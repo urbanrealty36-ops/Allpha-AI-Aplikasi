@@ -1,0 +1,69 @@
+# WP-02 / ENG-P04 Acceptance Evidence Register — 2026-10-27
+
+## Decision
+
+**Both phases remain IN_PROGRESS / NOT ACCEPTED.** This register records source inspection and read-only live Supabase catalog evidence. It is not an acceptance sign-off. No tests, smoke scripts, typecheck, build, staging, device journey, deployment, write transaction, or migration was executed/applied for this review.
+
+## Canonical scope and source evidence
+
+Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, default branch `main`.
+Canonical plan: `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md`.
+Operating gate: `AGENTS.md` requires the complete Master PRD, phase dependencies, existing source/schema, security/privacy contracts, and explicit evidence before advancing a phase.
+
+### WP-02 — shared shell, identity, navigation and profile parity
+
+Read-only source inventory reviewed:
+- Web shared navigation: `apps/web/components/reference-ui/ReferenceNavigation.tsx`.
+- Web account/settings/social/privacy route: `apps/web/app/account/page.tsx`.
+- Web profile route: `apps/web/app/profile/page.tsx`.
+- Web Search / discovery: `apps/web/app/search/page.tsx`.
+- Web inbox and notifications: `apps/web/app/messages/page.tsx`, `apps/web/app/notifications/page.tsx`.
+- Native stack, deep links, shared tab adapters and authenticated identity journey: `apps/client/App.tsx`.
+- Source-contract assertions: `apps/web/scripts/smoke-test.mjs`.
+
+Source-level evidence found:
+1. Native deep-link route names exist for Profile, Account, Agents, Feed, Reels, Stories, Search, Messages, Notifications and Communities. The authenticated Native stack adapts these routes to Profile tabs; Account carries profile/settings/social/consents tab parameters.
+2. Web Account persists preferences through authenticated FastAPI `/v1/me/settings`, rather than directly writing the table from the client. The Native settings flow also uses the API.
+3. Search uses the canonical social graph and username discovery endpoints; pending private-profile follow requests are distinguished from active follows.
+4. Messages and Notifications now invalidate prior-account state and sequence asynchronous requests across auth changes. Source assertions were added, but have not been executed.
+5. Profile adapter intentionally does not invent takeover state, social counts, or verification status when canonical data is unavailable.
+
+WP-02 remains open because source inspection is not proof of full reference UI parity, successful compilation, responsive rendering, deep-link behavior on devices, real-time inbox behavior, or end-to-end route completion. The fixed plan already records unresolved story viewer / reference-menu interactions and broader source-to-route and CSS/assets reconciliation. Those must be reconciled against the reference UI rather than simulated.
+
+### ENG-P04 — social graph, privacy and database privileges
+
+Read-only live Supabase project inspected through the connected AllphaAiAplikasi-db project:
+- Project ref: `dvdziauyvuhcnqhrrvww`.
+- Live migration history includes migrations through `20261021113639_eng_p22_theme_builder_registry`.
+- The source migration `20261027180000_eng_p03_user_settings_least_privilege_grants.sql` is **not present** in the live migration history.
+- RLS is enabled on `user_settings`, `profiles`, `social_edges`, `conversation_participants`, `conversations`, `messages`, and `notifications`; `relforcerowsecurity` is false on these tables.
+- Existing `user_settings` policies scope SELECT/INSERT/UPDATE rows to `auth.uid()`. The inspected profile policy allows authenticated SELECT for public profiles or the caller's own profile; social-edge policies are actor/participant scoped; message and conversation-participant SELECT policies call `eng_p18_can_read_conversation(conversation_id)`.
+- **Blocking live grant finding:** read-only `has_table_privilege` reports `anon` and `authenticated` can SELECT, INSERT, UPDATE, DELETE and TRUNCATE `public.user_settings`. Catalog column grants also list INSERT/SELECT/UPDATE/REFERENCES on every `user_settings` column for `anon` and `authenticated`. RLS is not a substitute for revoking excess SQL privileges.
+- The version-controlled forward migration source revokes table and column privileges from `public`, `anon`, and `authenticated`, then grants authenticated SELECT plus narrowly scoped INSERT/UPDATE columns. It has not been applied, and no production DDL was performed during this review.
+
+This finding is a release blocker for ENG-P04. Do not claim least-privilege grants are effective until the approved migration process applies the reviewed migration and read-only catalog queries confirm the expected grants. Do not apply the migration ad hoc as part of this evidence-only review.
+
+## Verification boundaries
+
+- Read-only: repository source retrieval, Supabase migration history, table/RLS catalog, policy catalog, table and column privilege catalog.
+- Not performed: authenticated two-user allow/deny tests; API integration tests; RLS behavior under end-user JWTs; Realtime cross-user isolation; browser/device QA; build/typecheck/test/smoke execution; production migration or deployment.
+- Source regression tests and smoke assertions are contracts only until an authorized validation window permits execution.
+- No Agent Identity, Runtime/Skills, Super Admin or Spatial/GLB phase is promoted by this evidence register.
+
+## Required exit evidence
+
+### WP-02
+- Complete reference-to-target route/component/asset/CSS manifest with checksums and explicit disposition for every gap.
+- Approved validation window: Web typecheck/build/smoke and responsive screenshots at 360/390/820/1440 px, plus Native typecheck and deep-link/device acceptance. This register does not authorize those checks.
+- Evidence for identity switching, session expiry, search/follow/request/cancel, profile visibility, notifications and Messages/Reatime states, including error/empty/loading paths.
+- Resolve or explicitly defer with owner/ADR the story viewer and reference-menu gaps; no fake success states.
+
+### ENG-P04
+- Review and approve the existing least-privilege migration.
+- Apply only through the authorized migration process; verify migration history and exact table/column grants afterward.
+- Execute authorized two-user privacy checks for private profiles, discoverability preferences, follow requests, block/mute, inactive accounts, shared links/comments, inbox/notifications and realtime membership.
+- Capture API/RLS allow/deny evidence and confirm no cross-user data leakage.
+
+## Phase order
+
+Keep WP-02 and ENG-P04 `IN_PROGRESS` until the above evidence is reviewed and accepted. Only then begin ENG-P05 — Agent Identity. Runtime/Skills, Super Admin, and Spatial/GLB remain downstream of their canonical engine owners and dependencies.
