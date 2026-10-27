@@ -51,6 +51,10 @@ export default function NotificationsPage() {
       setItems([]);
       setUnreadCount(0);
       setPreferences(null);
+      setBusyId(null);
+      setPreferencesBusy(false);
+      setError("");
+      setNotice("");
       setSession(next);
     });
     return () => { active = false; sessionEpoch.current += 1; requestSequence.current += 1; preferencesRequestSequence.current += 1; data.subscription.unsubscribe(); };
