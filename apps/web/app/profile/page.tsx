@@ -32,6 +32,7 @@ export default function ProfilePage() {
       setHuman(null);
       setAgents([]);
       setPosts([]);
+      setKnowledgeDocs([]);
       setSelectedAgent(null);
       setSelectedAgentStatus("");
       setLoading(false);
@@ -154,6 +155,7 @@ export default function ProfilePage() {
         setHuman(null);
         setAgents([]);
         setPosts([]);
+        setKnowledgeDocs([]);
         setSelectedAgent(null);
         setSelectedAgentStatus("");
         setError(cause instanceof Error ? cause.message : "Profil tidak dapat dimuat.");
