@@ -688,6 +688,11 @@ export default function CreatePostModal({
                     </div>
                   );
                 })}
+                {STORE_CATALOG_PRESETS.length === 0 && (
+                  <p className="rounded-2xl border-2 border-dashed border-slate-900 bg-white/70 px-3 py-3 text-[11px] font-bold text-slate-700">
+                    Katalog produk kanonis belum tersedia. Produk contoh tidak ditampilkan dan tidak dapat disematkan ke sesi Live.
+                  </p>
+                )}
               </div>
             </div>
 
