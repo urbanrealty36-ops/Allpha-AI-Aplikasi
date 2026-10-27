@@ -65,6 +65,10 @@ interface LiveExperienceStageProps {
   userCredits: number | null;
   agentCredits: number | null;
   liveStateAvailable?: boolean;
+  hostName?: string;
+  agentName?: string;
+  hostAvatarUrl?: string;
+  agentAvatarUrl?: string;
   initialTopic?: string;
   initialSlides?: StageSlideItem[];
   initialAttachedProducts?: StageProductItem[];
@@ -82,6 +86,10 @@ export default function LiveExperienceStage({
   userCredits,
   agentCredits,
   liveStateAvailable = false,
+  hostName,
+  agentName,
+  hostAvatarUrl,
+  agentAvatarUrl,
   initialTopic,
   initialSlides,
   initialAttachedProducts,
@@ -92,7 +100,7 @@ export default function LiveExperienceStage({
   // Live state
   const [isLive, setIsLive] = useState(false);
   const [isHostMicMuted, setIsHostMicMuted] = useState(false);
-  const [isHostCameraOn, setIsHostCameraOn] = useState(true);
+  const [isHostCameraOn, setIsHostCameraOn] = useState(false);
   const [isAiAgentSpeaking, setIsAiAgentSpeaking] = useState(false);
   const [isAiAgentMuted, setIsAiAgentMuted] = useState(false);
   const [likesCount, setLikesCount] = useState<number | null>(null);
@@ -198,8 +206,8 @@ export default function LiveExperienceStage({
                   <div className="text-center">
                     <div className="w-24 h-24 mx-auto rounded-full ring-4 ring-sky-300 p-1 bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-2xl">
                       <img
-                        src="/icon.svg"
-                        alt="Alex Tamara"
+                        src={hostAvatarUrl || "/icon.svg"}
+                        alt={hostName || "Human Host belum tersedia"}
                         className="w-full h-full rounded-full object-cover border-2 border-slate-900"
                       />
                     </div>
@@ -219,10 +227,10 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between">
                 <span className="px-2.5 py-1 rounded-full bg-white/95 text-slate-950 text-[11px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1.5">
                   <User className="w-3 h-3 text-sky-600 stroke-[2.5px]" />
-                  Alex Tamara · Human Owner
+                  {hostName || 'Human Host belum tersedia'} · Human Owner
                 </span>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-200 border border-slate-900 text-sky-950 font-mono font-bold">
-                  1080p 60fps
+                  {liveStateAvailable ? '1080p 60fps' : 'Stream belum tersedia'}
                 </span>
               </div>
 
@@ -267,8 +275,8 @@ export default function LiveExperienceStage({
                 <div className="text-center">
                   <div className={`w-24 h-24 mx-auto rounded-full ring-4 ${isAiAgentSpeaking ? 'ring-purple-300 animate-pulse' : 'ring-purple-500/40'} p-1 bg-gradient-to-tr from-cyan-400 to-purple-500 shadow-2xl`}>
                     <img
-                      src="/icon.svg"
-                      alt="Luna AI"
+                      src={agentAvatarUrl || "/icon.svg"}
+                      alt={agentName || "AI Agent belum tersedia"}
                       className="w-full h-full rounded-full object-cover border-2 border-slate-900"
                     />
                   </div>
@@ -277,7 +285,7 @@ export default function LiveExperienceStage({
                       ? 'bg-purple-200 text-purple-950'
                       : 'bg-white text-slate-800'
                   }`}>
-                    {isAiAgentSpeaking ? '🤖 Luna AI Berbicara...' : 'Luna AI Standby'}
+                    {liveStateAvailable ? (isAiAgentSpeaking ? `🤖 ${agentName || 'AI Agent'} Berbicara...` : `${agentName || 'AI Agent'} Standby`) : 'AI Agent belum terhubung'}
                   </span>
                 </div>
               </div>
@@ -286,10 +294,10 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between">
                 <span className="px-2.5 py-1 rounded-full bg-white/95 text-slate-950 text-[11px] font-black border-2 border-slate-900 shadow-2xs flex items-center gap-1.5">
                   <Bot className="w-3 h-3 text-purple-700 stroke-[2.5px]" />
-                  Luna AI · AI Agent milik @alextamara
+                  {agentName || 'AI Agent belum tersedia'} · AI Agent
                 </span>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-mono font-bold">
-                  Neural Audio 48kHz
+                  {liveStateAvailable ? 'Neural Audio 48kHz' : 'Audio belum tersedia'}
                 </span>
               </div>
 
