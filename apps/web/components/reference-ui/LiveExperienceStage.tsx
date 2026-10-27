@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Radio, 
   Play, 
@@ -170,10 +170,10 @@ export default function LiveExperienceStage({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
             <Users className="w-3.5 h-3.5" />
-            <span>{viewerCount.toLocaleString()} Penonton</span>
+            <span>{viewerCount === null ? '—' : viewerCount.toLocaleString()} Penonton</span>
           </div>
           <button
-            onClick={() => setIsLive(!isLive)}
+            onClick={() => setIsLive(!isLive)} disabled={!liveStateAvailable}
             className={`px-4 py-1.5 rounded-2xl text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
               isLive ? 'bg-rose-400 hover:bg-rose-500 text-slate-950' : 'bg-emerald-300 hover:bg-emerald-400 text-slate-950'
             }`}
@@ -230,7 +230,7 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between pt-2">
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => setIsHostMicMuted(!isHostMicMuted)}
+                    onClick={() => setIsHostMicMuted(!isHostMicMuted)} disabled={!liveStateAvailable}
                     className={`p-2 rounded-xl transition ${
                       isHostMicMuted ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
                     }`}
@@ -239,7 +239,7 @@ export default function LiveExperienceStage({
                     {isHostMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                   </button>
                   <button
-                    onClick={() => setIsHostCameraOn(!isHostCameraOn)}
+                    onClick={() => setIsHostCameraOn(!isHostCameraOn)} disabled={!liveStateAvailable}
                     className={`p-2 rounded-xl transition ${
                       !isHostCameraOn ? 'bg-rose-600 text-white' : 'bg-slate-800/90 text-white hover:bg-slate-700'
                     }`}
@@ -297,7 +297,7 @@ export default function LiveExperienceStage({
               <div className="relative z-10 flex items-center justify-between pt-2">
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => setIsAiAgentMuted(!isAiAgentMuted)}
+                    onClick={() => setIsAiAgentMuted(!isAiAgentMuted)} disabled={!liveStateAvailable}
                     className={`p-2 rounded-2xl border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer ${
                       isAiAgentMuted ? 'bg-rose-500 text-white' : 'bg-white text-slate-900 hover:bg-slate-100'
                     }`}
@@ -307,8 +307,7 @@ export default function LiveExperienceStage({
                   </button>
                   <button
                     onClick={() => {
-                      setStageToast('Takeover Mikrofon aktif: Human Owner mengambil alih siaran panggung!');
-                      setTimeout(() => setStageToast(null), 3500);
+                      setStageToast('Takeover mikrofon belum terhubung ke layanan sesi Live.');
                     }}
                     className="px-3 py-1.5 rounded-2xl bg-sky-300 hover:bg-sky-400 border-2 border-slate-900 text-slate-950 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                   >
@@ -342,6 +341,7 @@ export default function LiveExperienceStage({
               <div className="flex items-center gap-2">
                 <input
                   type="file"
+                  disabled={!liveStateAvailable}
                   ref={stageFileInputRef}
                   accept=".pdf,.pptx,.ppt,.docx,.doc,.md,.txt"
                   onChange={handleStageDocUpload}
@@ -349,7 +349,7 @@ export default function LiveExperienceStage({
                 />
 
                 <button
-                  onClick={() => stageFileInputRef.current?.click()}
+                  onClick={() => stageFileInputRef.current?.click()} disabled={!liveStateAvailable}
                   className="px-2.5 py-1.5 rounded-xl bg-sky-200 hover:bg-sky-300 text-sky-950 font-black text-[11px] border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                   title="Upload Slide Baru dari File Manager"
                 >
@@ -358,7 +358,7 @@ export default function LiveExperienceStage({
                 </button>
 
                 <button
-                  onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : stageSlides.length - 1))}
+                  onClick={() => setActiveSlideIndex((prev) => (prev > 0 ? prev - 1 : stageSlides.length - 1))} disabled={!liveStateAvailable || stageSlides.length === 0}
                   className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.5px]" />
@@ -367,7 +367,7 @@ export default function LiveExperienceStage({
                   {activeSlideIndex + 1} / {stageSlides.length}
                 </span>
                 <button
-                  onClick={() => setActiveSlideIndex((prev) => (prev < stageSlides.length - 1 ? prev + 1 : 0))}
+                  onClick={() => setActiveSlideIndex((prev) => (prev < stageSlides.length - 1 ? prev + 1 : 0))} disabled={!liveStateAvailable || stageSlides.length === 0}
                   className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
                 >
                   <ChevronRight className="w-4 h-4 stroke-[2.5px]" />
@@ -376,7 +376,7 @@ export default function LiveExperienceStage({
             </div>
 
             {/* Slide Body */}
-            {stageSlides[activeSlideIndex] && (
+            {stageSlides[activeSlideIndex] ? (
               <div className="p-4 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs space-y-2.5">
                 <span className="text-[10px] text-sky-700 font-mono font-black uppercase tracking-wider block">
                   {stageSlides[activeSlideIndex].subtitle}
@@ -398,6 +398,8 @@ export default function LiveExperienceStage({
                   </div>
                 )}
               </div>
+            ) : (
+              <p className="px-5 py-8 text-center text-sm font-bold text-slate-600">Belum ada presentasi aktif dari layanan Live Allpha.</p>
             )}
           </div>
 
@@ -486,11 +488,11 @@ export default function LiveExperienceStage({
               </span>
             </div>
             <button
-              onClick={handleLike}
+              onClick={handleLike} disabled={!liveStateAvailable}
               className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-200 text-rose-950 border-2 border-slate-900 text-xs font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Heart className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
-              <span>{likesCount}</span>
+              <span>{likesCount === null ? '—' : likesCount}</span>
             </button>
           </div>
 
@@ -532,7 +534,7 @@ export default function LiveExperienceStage({
             />
             <button
               type="submit"
-              disabled={!chatInput.trim()}
+              disabled={!liveStateAvailable || !chatInput.trim()}
               className="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 disabled:bg-slate-200 text-slate-950 font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
             >
               <Send className="w-4 h-4 stroke-[2.5px]" />
