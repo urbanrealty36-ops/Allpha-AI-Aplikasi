@@ -481,6 +481,11 @@ export default function LiveExperienceStage({
                   </button>
                 </div>
               ))}
+              {attachedCatalog.length === 0 && (
+                <p className="col-span-full rounded-2xl border-2 border-dashed border-slate-300 bg-white/70 px-3 py-5 text-center text-xs font-bold text-slate-600">
+                  Katalog produk kanonis belum tersedia.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -492,7 +497,7 @@ export default function LiveExperienceStage({
             <div className="flex items-center gap-2">
               <span className="font-black text-xs text-slate-950">Live Chat Pemirsa</span>
               <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-200 border border-slate-900 text-emerald-950 font-black">
-                ● Aktif
+{liveStateAvailable ? '● Aktif' : 'Belum tersedia'}
               </span>
             </div>
             <button
