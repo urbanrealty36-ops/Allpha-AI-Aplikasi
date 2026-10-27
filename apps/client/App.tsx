@@ -941,6 +941,7 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
     const sequence = ++socialDiscoveryRequestSequence.current;
     if (!/^[a-zA-Z0-9_]{3,30}$/.test(query)) {
       setSocialDiscoveryUsers([]);
+      setSocialDiscoveryBusy(false);
       setSocialDiscoveryError("Masukkan username 3–30 karakter (huruf, angka, garis bawah).");
       return;
     }
