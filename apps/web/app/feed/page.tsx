@@ -306,12 +306,14 @@ export default function FeedPage() {
     }
     setError("");
     setNotice("");
+    let createdId: string | null = null;
     try {
       const created = await request("/v1/content", {
         method: "POST",
         body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: "text" }),
       }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
       const contentId = created.item?.id;
+      createdId = contentId ?? null;
       if (!contentId) throw new Error("API tidak mengembalikan ID konten kanonis.");
       const published = await request("/v1/content/" + encodeURIComponent(contentId) + "/publish", { method: "POST" }) as {
         item?: { status?: string; moderation_status?: string };
@@ -328,7 +330,10 @@ export default function FeedPage() {
       setNotice(confirmation);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Konten belum tersimpan melalui API.");
+      const message = cause instanceof Error ? cause.message : "Konten belum tersimpan melalui API.";
+      setError(createdId
+        ? `Draft ${createdId} sudah dibuat. ${message} Draft tidak dianggap terpublikasi; periksa statusnya sebelum mencoba ulang.`
+        : message);
       return false;
     }
   }
