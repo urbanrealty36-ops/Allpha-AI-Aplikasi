@@ -9,7 +9,8 @@ import type { PostItem } from "../../lib/reference-store";
 type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
-type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };\ntype DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
+type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
+type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -25,7 +26,10 @@ function SearchPageContent() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [recommendationsBusy, setRecommendationsBusy] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState("");
-  const [creators, setCreators] = useState<Creator[]>([]);\n  const [discoveredUsers, setDiscoveredUsers] = useState<DiscoveredUser[]>([]);\n  const [discoveryBusy, setDiscoveryBusy] = useState(false);\n  const [discoveryError, setDiscoveryError] = useState("");
+  const [creators, setCreators] = useState<Creator[]>([]);
+  const [discoveredUsers, setDiscoveredUsers] = useState<DiscoveredUser[]>([]);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState("");
   const [creatorsBusy, setCreatorsBusy] = useState(false);
   const [creatorsError, setCreatorsError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
@@ -33,7 +37,8 @@ function SearchPageContent() {
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
   const [authPrompt, setAuthPrompt] = useState("");
-  const lastUrlQuery = useRef<string | null>(null);\n  const searchRequestSequence = useRef(0);
+  const lastUrlQuery = useRef<string | null>(null);
+  const searchRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) return;
