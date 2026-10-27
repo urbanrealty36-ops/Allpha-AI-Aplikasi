@@ -45,7 +45,7 @@ export default function HomePage() {
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
-  const identityRequestSequence = useRef(0);
+  const identityRequestSequence = useRef(0);\n  const lastIdentityUserId = useRef<string | null>(null);
   const socialRequestSequence = useRef(0);
   const consentRequestSequence = useRef(0);
 
