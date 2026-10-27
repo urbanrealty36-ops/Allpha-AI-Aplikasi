@@ -1852,3 +1852,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Native Navigator now ignores a delayed initial getSession result after a newer auth-state event has arrived, matching the Web shared-shell, Account and Profile guard. Added a smoke-source assertion; no Native typecheck/device test or smoke execution was performed.
 - Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/3471e03b73df4d7ef8f8063ccfd7a2c84e1a479c, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/fc147133ab679c48abb4893a96db51f87cd57027.
 - WP-02 remains IN_PROGRESS. Native navigation's asynchronous Agent-journey lookup sequencing, broader Web–Native source-to-route parity, and the remaining acceptance inventory are still open. ENG-P04 remains IN_PROGRESS; no acceptance or production verification is claimed.
+
+
+**WP-02 Feed publishing truth-state — 2026-10-27:**
+- Feed post creation now checks the session epoch between draft creation, media upload and publish steps, and stops advancing the workflow if the account changes. If the publish response returns after an account switch, the UI reports that the owning account must verify the publication status instead of displaying a success for the new account. Commit: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/c0c9c2e1cd744bdc7bbc542b8920cb56b3bdf2ee.
+- Source-only. No smoke/test/build execution. WP-02 remains IN_PROGRESS.
