@@ -1289,7 +1289,7 @@ export default function ProfileView({
                 </h4>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900 text-center">
-                    <p className="text-base font-black text-slate-500">—</p>
+                    <p className="text-base font-black text-slate-900 font-mono">—</p>
                     <p className="text-[10px] font-bold text-slate-500">Postingan Arsip</p>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900 text-center">
