@@ -25,7 +25,6 @@ export default function MessagesPage(){
  useEffect(()=>{if(!session)return;void load()},[session]);
  useEffect(()=>{if(!active||!session||!supabase)return;let stopped=false;let channel:any=null;let retryTimer:ReturnType<typeof setTimeout>|undefined;const connect=()=>{if(stopped)return;channel=supabase.channel("messages:"+active.id+":"+Math.random().toString(36).slice(2)).on("postgres_changes",{event:"*",schema:"public",table:"messages",filter:"conversation_id=eq."+active.id},()=>{void open(active)}).subscribe((status:string)=>{if(stopped)return;setRealtimeStatus(status.toLowerCase());if(status==="SUBSCRIBED")void open(active);else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){if(retryTimer)clearTimeout(retryTimer);retryTimer=setTimeout(()=>{if(channel)void supabase.removeChannel(channel);connect()},2500)}})};connect();return()=>{stopped=true;if(retryTimer)clearTimeout(retryTimer);if(channel)void supabase.removeChannel(channel)}},[active?.id,session,supabase]);
  const referenceConversations = items.map(conversation => {
-  const participant = conversation.participants?.find(person => person.participant_type !== "self");
   const title = conversation.title?.trim() || (conversation.kind === "agent" ? "Percakapan AI Agent" : "Percakapan Human");
   const lastMessage = conversation.last_message?.body || "";
   const time = conversation.last_message?.created_at ? new Date(conversation.last_message.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
