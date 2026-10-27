@@ -433,3 +433,16 @@ for (const route of ["Profile: \"profile\"", "Account: \"account\"", "Agents: \"
   assert.ok(nativeApp.includes(route), `Native deep-link route missing: ${route}`);
 }
 assert.ok(nativeApp.includes('tab?: "profile" | "settings" | "social" | "consents"'), "Native account route must accept canonical account tab parameters");
+
+
+const notificationPage = readFileSync(new URL("../app/notifications/page.tsx", import.meta.url), "utf8");
+assert.ok(notificationPage.includes("requestSequence.current") && notificationPage.includes("sequence !== requestSequence.current"), "Notification inbox must discard stale responses and invalidate requests when the session changes");
+const searchPage = readFileSync(new URL("../app/search/page.tsx", import.meta.url), "utf8");
+assert.ok(searchPage.includes('"/v1/social/discover-users?q="') && searchPage.includes("discoveredUsers.map"), "Search must render server-filtered username discovery results alongside content search");
+assert.ok(searchPage.includes('"/v1/me/social-edges"') && searchPage.includes('edge_type: "follow"'), "Search follow actions must use the canonical social-edge API, including private-profile requests");
+assert.ok(searchPage.includes("searchRequestSequence.current") && searchPage.includes("sequence !== searchRequestSequence.current"), "Search must discard stale query results");
+const messagesPage = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+assert.ok(messagesPage.includes("conversationRequestSequence.current") && messagesPage.includes("listRequestSequence.current"), "Messaging must isolate conversation/message requests and clear stale session data");
+const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
+assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
+assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden"), "Username discovery must fail closed for missing privacy settings and exclude blocked/muted relationships");
