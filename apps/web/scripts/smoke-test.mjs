@@ -499,3 +499,9 @@ const sharedNavigationSource = readFileSync(new URL("../components/reference-ui/
 for (const contract of ["authEventSeen", "indicatorRequestSequence.current", "refreshInboxIndicators(next)"]) {
   assert.ok(sharedNavigationSource.includes(contract), "Shared navigation must guard session-scoped inbox indicators: " + contract);
 }
+
+const accountSessionSource = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
+const profileSessionSource = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+for (const [name, source] of [["Account", accountSessionSource], ["Profile", profileSessionSource]]) {
+  assert.ok(source.includes("authEventSeen") && source.includes("!authEventSeen"), name + " must not let a stale getSession read override a newer auth event");
+}
