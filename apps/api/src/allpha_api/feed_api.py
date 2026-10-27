@@ -388,8 +388,8 @@ async def get_social_profile(
     user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
     """Return a visibility-filtered profile and only content the viewer may access."""
-    handle = re.sub(r"[^a-zA-Z0-9._-]", "", username.lstrip("@"))
-    if len(handle) < 2 or len(handle) > 40:
+    handle = username.strip().lstrip("@")
+    if not re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", handle):
         raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
     rows = await _server_db("GET", "profiles", params={
         "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
@@ -508,9 +508,10 @@ async def discover_users_by_username(
     Private profiles expose only a minimal identity projection. Block/mute
     relationships are excluded in both directions and missing preferences fail closed.
     """
-    query = re.sub(r"[^a-z0-9._-]", "", q.casefold().lstrip("@"))
-    if len(query) < 2:
-        raise HTTPException(422, detail={"code": "SOCIAL_DISCOVERY_QUERY_INVALID", "message": "Masukkan minimal 2 karakter nama pengguna."})
+    query = q.strip().lstrip("@")
+    if not re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", query):
+        return {"items": [], "count": 0, "query": "", "source": "explicit_username_opt_in"}
+    query = query.casefold()
     owner = str(user["id"])
     profiles = await _server_db("GET", "profiles", params={
         "select": "id,username,display_name,avatar_url,bio,visibility",
