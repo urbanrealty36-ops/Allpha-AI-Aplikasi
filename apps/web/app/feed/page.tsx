@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -46,6 +46,10 @@ export default function FeedPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [composerHuman, setComposerHuman] = useState<HumanProfile | null>(null);
   const [composerAgent, setComposerAgent] = useState<AIAgentProfile | null>(null);
+  const sessionEpoch = useRef(0);
+  const sessionUserId = useRef<string | null>(null);
+  const feedRequestSequence = useRef(0);
+  const preferencesRequestSequence = useRef(0);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -58,22 +62,27 @@ export default function FeedPage() {
   }, [session]);
 
   const loadFeed = useCallback(async (reset = true, nextCursor?: string | null) => {
+    const epoch = sessionEpoch.current;
+    const sequence = ++feedRequestSequence.current;
     setLoading(true); setError("");
     try {
       const sharedContentId = reset && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("content") : null;
       if (sharedContentId) {
         const direct = await request("/v1/feed/item/" + encodeURIComponent(sharedContentId)) as { item: FeedItem };
+        if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
         setItems([direct.item]); setCursor(null); return;
       }
       const params = new URLSearchParams({ mode, limit: "20" });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/feed?" + params.toString()) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
+      if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
       if (typeof data.personalization_enabled === "boolean") setPersonalizationEnabled(data.personalization_enabled);
       if (data.mode === "for_you" || data.mode === "recent") setMode(data.mode);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat."); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat.");
+    } finally { if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setLoading(false); }
   }, [mode, request, session]);
 
   useEffect(() => {
@@ -82,19 +91,53 @@ export default function FeedPage() {
     // the public API read; protected actions still fail closed in the API.
     if (!supabase) { setSession(null); setLoading(false); return; }
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => { if (active) { setSession(data.session); if (!data.session) setLoading(false); } });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
+    let authEventSeen = false;
+    const applySession = (next: Session | null) => {
+      const nextUserId = next?.user.id || null;
+      if (sessionUserId.current !== nextUserId) {
+        sessionUserId.current = nextUserId;
+        sessionEpoch.current += 1;
+        feedRequestSequence.current += 1;
+        preferencesRequestSequence.current += 1;
+        setItems([]);
+        setStories([]);
+        setCursor(null);
+        setComments({});
+        setCommentDrafts({});
+        setCommentsOpen({});
+        setComposerHuman(null);
+        setComposerAgent(null);
+        setBusyKey("");
+        setError("");
+        setNotice("");
+        setAuthPrompt("");
+        setLoading(Boolean(next));
+      }
+      setSession(next);
+    };
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
+      if (active) applySession(next);
+    });
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active && !authEventSeen) applySession(data.session);
+    });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
 
   useEffect(() => {
     if (!session) return;
+    const epoch = sessionEpoch.current;
+    const sequence = ++preferencesRequestSequence.current;
     void (async () => {
       try {
         const prefs = await request("/v1/feed/preferences") as { preferences?: { personalization_enabled?: boolean; ranking_mode?: "for_you" | "recent" } };
+        if (epoch !== sessionEpoch.current || sequence !== preferencesRequestSequence.current) return;
         if (typeof prefs.preferences?.personalization_enabled === "boolean") setPersonalizationEnabled(prefs.preferences.personalization_enabled);
         if (prefs.preferences?.ranking_mode) setMode(prefs.preferences.ranking_mode);
-      } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi feed tidak dapat dimuat."); }
+      } catch (cause) {
+        if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setError(cause instanceof Error ? cause.message : "Preferensi feed tidak dapat dimuat.");
+      }
     })();
   }, [request, session]);
 
