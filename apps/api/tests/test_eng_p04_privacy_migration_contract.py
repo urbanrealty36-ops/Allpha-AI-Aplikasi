@@ -73,9 +73,10 @@ def test_cli_generated_social_graph_grant_repair_migration_is_least_privilege():
     assert len(matches) == 1, f"Expected one CLI-generated Social Graph grant migration, got {len(matches)}"
     sql = " ".join(matches[0].read_text().lower().split())
 
-    for table in ("social_edges", "user_interests"):
-        assert f"revoke all privileges on table public.{table} from public, anon, authenticated" in sql
-        assert f"revoke all privileges (" in sql
+    assert "revoke all privileges on table public.social_edges from public, anon, authenticated" in sql
+    assert "revoke all privileges (id, actor_user_id, target_user_id, edge_type, status, created_at) on table public.social_edges from public, anon, authenticated" in sql
+    assert "revoke all privileges on table public.user_interests from public, anon, authenticated" in sql
+    assert "revoke all privileges (user_id, interest_key, preference, created_at, updated_at) on table public.user_interests from public, anon, authenticated" in sql
     assert "grant select, delete on table public.social_edges to authenticated" in sql
     assert "grant insert (actor_user_id, target_user_id, edge_type, status)" in sql
     assert "grant update (status) on table public.social_edges to authenticated" in sql
