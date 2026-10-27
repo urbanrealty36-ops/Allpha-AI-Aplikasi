@@ -267,6 +267,7 @@ assert.ok(webSearch.includes("useSearchParams"), "Search must react to global na
 assert.ok(webSearch.includes("lastUrlQuery.current === urlQuery"), "Search must avoid duplicate submissions for the same URL query");
 assert.ok(webSearch.includes("<Suspense"), "Search useSearchParams must be guarded by Suspense for production build");
 assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must use the canonical authenticated Search API");
+assert.ok(webSearch.includes("lastUrlQuery.current = null") && webSearch.includes("setRecommendations([])") && webSearch.includes("setTrends([])") && webSearch.includes("setCreators([])"), "Search must clear account-scoped discovery projections and refresh URL queries on identity changes");
 assert.doesNotMatch(webSearch, /SOCIAL_ACCOUNTS_SAMPLE|INITIAL_POSTS|mockSearchResults|fakeSearch/);
 
 const webMessages = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
