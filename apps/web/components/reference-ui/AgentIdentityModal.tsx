@@ -146,7 +146,7 @@ export default function AgentIdentityModal({
                 AI Agent Identity & 3D Avatar Studio
               </h2>
               <p className="text-[11px] font-bold text-slate-500">
-                Pilih Avatar 3D, Bidang Profesi, dan Katalog Skills resmi AI Agent Anda
+                Pilih avatar profil dan bidang profesi; aktivasi Skills dikelola di Agent Studio
               </p>
             </div>
           </div>
@@ -266,10 +266,10 @@ export default function AgentIdentityModal({
           <div className="flex items-center justify-between">
             <label className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Katalog Skills Bidang {selectedBidang}:</span>
+              <span>Saran Skills Bidang {selectedBidang} (belum diaktifkan):</span>
             </label>
             <span className="text-xs font-black text-slate-900 bg-amber-200 px-2.5 py-0.5 rounded-lg border border-slate-900">
-              {selectedSkills.length} Aktif
+              {selectedSkills.length} dipilih
             </span>
           </div>
 
@@ -348,7 +348,7 @@ export default function AgentIdentityModal({
             className="flex-1 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Simpan Identitas & Avatar 3D</span>
+            <span>Simpan Identitas Profil</span>
           </button>
           <button
             onClick={onClose}
