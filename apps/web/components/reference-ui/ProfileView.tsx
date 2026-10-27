@@ -623,8 +623,8 @@ export default function ProfileView({
                 <div className="relative shrink-0">
                   <div className="w-16 h-16 rounded-2xl overflow-hidden ring-2 ring-cyan-400 bg-black border-2 border-white">
                     <img
-                      src={agentProfile.avatar3DImage || agentProfile.avatar}
-                      alt={agentProfile.name}
+                      src={hasAgentProfile ? (agentProfile.avatar3DImage || agentProfile.avatar) : "/icon.svg"}
+                      alt={hasAgentProfile ? agentProfile.name : agentStatusLabel}
                       className="w-full h-full object-cover object-top hover:scale-105 transition"
                     />
                   </div>
@@ -635,12 +635,12 @@ export default function ProfileView({
 
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-black text-base text-white">{agentProfile.name}</h4>
+                    <h4 className="font-black text-base text-white">{hasAgentProfile ? agentProfile.name : agentStatusLabel}</h4>
                     <span className="text-[10px] px-2.5 py-0.5 rounded-lg bg-cyan-400 text-slate-950 font-black border border-cyan-300">
                       {agentProfile.bidang || 'Desain Grafis'}
                     </span>
                     <span className="text-[9px] px-2 py-0.5 rounded-lg bg-white/20 text-white font-mono font-bold">
-                      {agentProfile.avatar3DCodename || 'LV-01'}
+                      {agentProfile.avatar3DCodename || (hasAgentProfile ? '—' : 'Belum ada Agent')}
                     </span>
                   </div>
 
@@ -684,7 +684,7 @@ export default function ProfileView({
             {/* Core Action Buttons */}
             <div className="pt-2 flex flex-wrap gap-2.5">
               <button
-                onClick={() => setIsIdentityModalOpen(true)}
+                onClick={() => { if (hasAgentProfile && onUpdateAgent) setIsIdentityModalOpen(true); else showToast('Identitas Agent belum tersedia atau endpoint penyimpanan belum terhubung.'); }}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Palette className="w-4 h-4 text-slate-950" />
@@ -692,7 +692,7 @@ export default function ProfileView({
               </button>
 
               <button
-                onClick={() => setIsGoalsTasksModalOpen(true)}
+                onClick={() => { if (hasAgentProfile && onUpdateAgent) setIsGoalsTasksModalOpen(true); else showToast('Goals & Tasks belum terhubung ke Agent Runtime API.'); }}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-purple-400 hover:bg-purple-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Target className="w-4 h-4 text-slate-950" />
@@ -729,7 +729,7 @@ export default function ProfileView({
                 </h4>
               </div>
               <button
-                onClick={() => setIsGoalsTasksModalOpen(true)}
+                onClick={() => { if (hasAgentProfile && onUpdateAgent) setIsGoalsTasksModalOpen(true); else showToast('Goals & Tasks belum terhubung ke Agent Runtime API.'); }}
                 className="text-xs text-slate-950 font-black hover:underline"
               >
                 Kelola Semua →
@@ -1020,7 +1020,7 @@ export default function ProfileView({
               <button
                 onClick={() => {
                   setIsSettingsOpen(false);
-                  setIsPassportOpen(true);
+                  if (hasAgentProfile) setIsPassportOpen(true); else showToast('Agent Passport belum tersedia karena belum ada Agent aktif.');
                 }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-indigo-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left cursor-pointer"
               >
