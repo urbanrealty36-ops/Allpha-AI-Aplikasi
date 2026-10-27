@@ -448,7 +448,7 @@ assert.ok(messagesPage.includes("conversationRequestSequence.current") && messag
 assert.ok(messagesPage.includes("sessionEpoch.current") && messagesPage.includes("if(epoch!==sessionEpoch.current)return"), "Message send completion must not update UI after identity changes");
 const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
 assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
-assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", query)'), "Username discovery must fail closed for missing privacy settings, reject malformed handles, and exclude blocked/muted relationships");
+assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", query)'), "Username discovery must fail closed for missing privacy settings, reject malformed handles, and exclude blocked/muted relationships");
 
 
 const publicProfilePage = readFileSync(new URL("../app/profile/[username]/page.tsx", import.meta.url), "utf8");
@@ -460,7 +460,7 @@ const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView
 assert.ok(exploreView.includes('pendingFollowAccountIds?: string[]') && exploreView.includes('followStatus === "requested"'), "Reference account cards must distinguish pending follow requests");
 assert.ok(exploreView.includes('"/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))'), "Human account cards must navigate to the canonical public profile route");
 
-assert.ok(socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", handle)') && socialFeedApi.includes('re.fullmatch(r"[a-zA-Z0-9._-]{2,40}", query)'), "Profile routes and username discovery must reject malformed handles rather than normalize them into another account");
+assert.ok(socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", handle)') && socialFeedApi.includes('re.fullmatch(r"[a-z0-9_]{3,30}", query)'), "Profile routes and username discovery must reject malformed handles rather than normalize them into another account");
 
 assert.ok(socialFeedApi.includes('requested_status = "requested" if target_rows[0].get("visibility") == "private" else "active"') && socialFeedApi.includes('"follow_request_created" if rows[0].get("status") == "requested" else "follow_active"'), "Legacy follow endpoint must preserve private-profile request semantics");
 
