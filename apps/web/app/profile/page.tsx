@@ -29,6 +29,11 @@ export default function ProfilePage() {
     const sequence = ++requestSequence;
     setSession(current);
     setError("");
+    const nextUserId = current?.user.id ?? null;
+    if (lastUserId.current !== nextUserId) {
+      lastUserId.current = nextUserId;
+      setHuman(null); setAgents([]); setPosts([]); setKnowledgeDocs([]); setSelectedAgent(null); setSelectedAgentStatus("");
+    }
     if (!current) {
       setHuman(null);
       setAgents([]);
