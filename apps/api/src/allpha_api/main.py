@@ -42,7 +42,7 @@ from allpha_api.spatial_theme_api import router as spatial_theme_router
 from allpha_api.spatial_ingest_api import router as spatial_ingest_router
 from allpha_api.spatial_navigation_api import router as spatial_navigation_router
 from allpha_api.spatial_governance_api import router as spatial_governance_router
-from allpha_api.content_api import router as content_router
+from allpha_api.content_api import _server_db, router as content_router
 from allpha_api.feed_api import router as feed_router
 from allpha_api.stories_api import router as stories_router
 from allpha_api.messaging_api import router as messaging_router
@@ -525,8 +525,12 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
     # partially provisioned identities. Blocks/mutes remain available for an
     # existing Auth identity so users can protect themselves from inactive accounts.
     if payload.edge_type == "follow":
-        target_profiles = await user_db_request(
-            "GET", "profiles", token,
+        # The authenticated profile SELECT policy intentionally hides private
+        # profiles from non-followers. Use the server-only projection here so a
+        # private account can receive a follow request without exposing profile
+        # data to the caller; the response below remains a generic not-found.
+        target_profiles = await _server_db(
+            "GET", "profiles",
             params={"select": "id,visibility,account_status", "id": f"eq.{payload.target_user_id}", "limit": "1"},
         )
         target_profile = target_profiles[0] if target_profiles else None
