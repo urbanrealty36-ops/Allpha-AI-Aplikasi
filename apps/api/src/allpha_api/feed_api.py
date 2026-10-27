@@ -390,6 +390,70 @@ async def get_public_creator_recommendations(
     return {"items": items, "count": len(items), "source": "eligible_public_content"}
 
 
+@router.get("/v1/social/discover-users", tags=["social-graph"])
+async def discover_users_by_username(
+    q: str = Query(min_length=2, max_length=40),
+    limit: int = Query(default=20, ge=1, le=30),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Return username-prefix matches respecting account status, visibility and discovery preferences."""
+    query = q.strip().lstrip("@").casefold()
+    if not re.fullmatch(r"[a-z0-9_]{3,30}", query):
+        return {"items": [], "count": 0, "query": "", "source": "saved_discovery_preference"}
+
+    owner = str(user["id"])
+    profiles = await _server_db("GET", "profiles", params={
+        "select": "id,username,display_name,avatar_url,bio,visibility,account_status",
+        "username": f"ilike.{query}*", "id": f"neq.{owner}",
+        "order": "username.asc", "limit": "100",
+    })
+    candidates = [
+        row for row in (profiles or [])
+        if row.get("visibility") in {"public", "private"}
+        and row.get("account_status", "active") == "active"
+        and row.get("username")
+        and str(row.get("username")).casefold().startswith(query)
+    ]
+    if not candidates:
+        return {"items": [], "count": 0, "query": query, "source": "saved_discovery_preference"}
+
+    candidate_ids = [str(row["id"]) for row in candidates]
+    settings = await _server_db("GET", "user_settings", params={
+        "select": "user_id,privacy_settings", "user_id": f"in.({','.join(candidate_ids)})",
+        "limit": str(min(100, len(candidate_ids))),
+    })
+    discoverable = {
+        str(row.get("user_id")) for row in (settings or [])
+        if isinstance(row.get("privacy_settings"), dict)
+        and row["privacy_settings"].get("discoverable_by_username") is True
+    }
+    followed, hidden = await _edges(owner)
+    existing_follows = await _server_db("GET", "social_edges", params={
+        "select": "target_user_id,status", "actor_user_id": f"eq.{owner}",
+        "target_user_id": f"in.({','.join(candidate_ids)})", "edge_type": "eq.follow",
+        "status": "in.(active,requested)", "limit": str(min(100, len(candidate_ids))),
+    })
+    already_related = {str(row.get("target_user_id")) for row in (existing_follows or [])}
+    items = []
+    for profile in candidates:
+        target = str(profile["id"])
+        if target not in discoverable or target in hidden or target in followed or target in already_related:
+            continue
+        is_public = profile.get("visibility") == "public"
+        items.append({
+            "id": target,
+            "username": profile.get("username"),
+            "display_name": profile.get("display_name") or profile.get("username"),
+            "avatar_url": profile.get("avatar_url") if is_public else None,
+            "bio": (profile.get("bio") or "") if is_public else "",
+            "visibility": profile.get("visibility"),
+            "is_ai": False,
+        })
+        if len(items) >= limit:
+            break
+    return {"items": items, "count": len(items), "query": query, "source": "saved_discovery_preference"}
+
+
 @router.put("/v1/social/follow/{target_user_id}", tags=["social-graph"])
 async def follow_public_profile(
     target_user_id: uuid.UUID,
