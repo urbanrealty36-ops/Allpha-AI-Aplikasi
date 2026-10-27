@@ -1468,8 +1468,9 @@ export default function ProfileView({
       <ThemeCatalogModal
         isOpen={isThemeCatalogOpen}
         onClose={() => setIsThemeCatalogOpen(false)}
-        onSelectTheme={(id, name) => {
+        onSelectTheme={(_id, _name) => {
           showToast("Penerapan tema belum terhubung ke layanan tema kanonis.");
+          return false;
         }}
       />
 
