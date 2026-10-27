@@ -109,7 +109,7 @@ jobs:
           git add apps/api/supabase/migrations/*_eng_p04_social_graph_least_privilege_grants.sql
           if git diff --cached --quiet; then
             echo "No generated migration changes to commit."
-            exit 1
+            exit 0
           fi
           git commit -m "db: generate ENG-P04 Social Graph least-privilege migration"
           git push origin "HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}"
