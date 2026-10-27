@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, 
   Send, 
@@ -57,7 +57,7 @@ interface CreatePostModalProps {
   onClose: () => void;
   humanUser: HumanProfile;
   agentProfile: AIAgentProfile | null;
-  onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE') => Promise<boolean>;
+  onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE', mediaFile: File | null) => Promise<boolean>;
   onLaunchLiveStage?: (
     title: string, 
     mode: string, 
@@ -90,6 +90,15 @@ export default function CreatePostModal({
   const [audience, setAudience] = useState<'PUBLIC' | 'FOLLOWERS' | 'PRIVATE'>('PUBLIC');
   const [taggedAgents, setTaggedAgents] = useState<Array<{ name: string; specialty: string }>>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const postMediaInputRef = useRef<HTMLInputElement | null>(null);
+  const [postMediaFile, setPostMediaFile] = useState<File | null>(null);
+  const [postMediaPreview, setPostMediaPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!postMediaFile) { setPostMediaPreview(null); return; }
+    const previewUrl = URL.createObjectURL(postMediaFile);
+    setPostMediaPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [postMediaFile]);
 
   // Story state
   const [storyCaption, setStoryCaption] = useState('');
@@ -166,7 +175,7 @@ export default function CreatePostModal({
       timestamp: 'Baru saja',
       content: content.trim(),
       tags: [],
-      image: selectedImage || undefined,
+      image: selectedImage || postMediaPreview || undefined,
       has3DModel: has3D,
       modelName: has3D ? modelName : undefined,
       likes: 0,
@@ -178,13 +187,14 @@ export default function CreatePostModal({
 
     setIntegrationNotice(null);
     try {
-      const accepted = await onCreatePost(newPost, audience);
+      const accepted = await onCreatePost(newPost, audience, postMediaFile);
       if (!accepted) {
         setIntegrationNotice('Konten belum dikonfirmasi oleh API kanonis. Form tetap terbuka dan tidak menampilkan status publikasi.');
         return;
       }
       setContent('');
       setSelectedImage(null);
+      setPostMediaFile(null);
       onClose();
     } catch {
       setIntegrationNotice('Konten belum tersimpan. Periksa koneksi API sebelum mencoba kembali.');
@@ -359,13 +369,35 @@ export default function CreatePostModal({
                   >
                     <img src={img} alt="Thumb" className="w-full h-full object-cover" />
                     {selectedImage === img && (
-                      <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-sky-400 text-slate-950 flex items-center justify-center text-[10px] font-black border border-slate-900">
-                        ✓
-                      </span>
+                      <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-sky-400 text-slate-950 flex items-center justify-center text-[10px] font-black border border-slate-900">✓</span>
                     )}
                   </div>
                 ))}
+                <input
+                  ref={postMediaInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm"
+                  className="hidden"
+                  onChange={(event) => setPostMediaFile(event.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => postMediaInputRef.current?.click()}
+                  className="relative shrink-0 w-22 h-18 rounded-2xl overflow-hidden cursor-pointer border-2 border-slate-900 bg-sky-100 text-sky-900 transition active:translate-x-0.5 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_#0f172a] flex flex-col items-center justify-center gap-1"
+                >
+                  <ImageIcon className="w-5 h-5 stroke-[2.5px]" />
+                  <span className="text-[9px] font-black">Pilih Media</span>
+                </button>
               </div>
+              {postMediaFile && (
+                <div className="mt-2 flex items-center gap-2 rounded-xl border-2 border-slate-900 bg-white p-2 shadow-[1.5px_1.5px_0px_#0f172a]">
+                  {postMediaFile.type.startsWith("image/") && postMediaPreview
+                    ? <img src={postMediaPreview} alt="Pratinjau lampiran" className="h-12 w-12 rounded-lg border border-slate-300 object-cover" />
+                    : <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-sky-100"><ImageIcon className="h-5 w-5" /></div>}
+                  <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-black">{postMediaFile.name}</p><p className="text-[9px] font-semibold text-slate-500">{(postMediaFile.size / (1024 * 1024)).toFixed(2)} MB · divalidasi API saat kirim</p></div>
+                  <button type="button" onClick={() => { setPostMediaFile(null); if (postMediaInputRef.current) postMediaInputRef.current.value = ""; }} className="rounded-lg border border-slate-900 px-2 py-1 text-[10px] font-black">Hapus</button>
+                </div>
+              )}
             </div>
 
             {/* 3D Model Attachment */}
