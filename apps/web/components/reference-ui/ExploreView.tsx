@@ -433,7 +433,7 @@ export default function ExploreView({
         {/* ======================================================== */}
         {/* SECTION A.2: MARKETPLACE & 3D BOOTH SPOTLIGHT (JELAJAHI) */}
         {/* ======================================================== */}
-        {(activeSearchTab === 'ALL' || activeSearchTab === 'MARKETPLACE') && (
+        {activeSearchTab === 'ALL' && (
           <section className="space-y-3.5">
             <div className="p-4 sm:p-5 rounded-3xl bg-[#FEF08A] border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
