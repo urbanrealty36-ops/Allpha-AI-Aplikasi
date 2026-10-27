@@ -10,7 +10,7 @@ type SearchItem = { id: string; body: string; content_type: string; owner_id: st
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
 type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
-type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
+type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };\ntype SocialEdgeSummary = { target_user_id: string; edge_type: "follow" | "block" | "mute"; status?: string };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -97,6 +97,23 @@ function SearchPageContent() {
     void loadRecommendations();
     void loadCreators();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
+
+  useEffect(() => {
+    if (!session) { setFollowedAccountIds([]); return; }
+    let active = true;
+    void fetch(apiBase + "/v1/me/social-graph", {
+      headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+      cache: "no-store",
+    }).then(async response => {
+      const payload = await response.json().catch(() => ({})) as { outgoing?: SocialEdgeSummary[] };
+      if (!response.ok) throw new Error("Status relasi akun belum tersedia.");
+      if (!active) return;
+      setFollowedAccountIds((payload.outgoing || [])
+        .filter(edge => edge.edge_type === "follow" && edge.status === "active")
+        .map(edge => edge.target_user_id));
+    }).catch(() => { if (active) setFollowedAccountIds([]); });
+    return () => { active = false; };
   }, [session?.access_token]);
 
   const runSearch = useCallback(async (event?: FormEvent, value = query) => {
