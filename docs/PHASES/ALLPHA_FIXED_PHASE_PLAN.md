@@ -1848,3 +1848,8 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 **API regression coverage authored (2026-10-27):**
 - Added unexecuted API tests in `apps/api/tests/test_social_feed_api.py` for malformed-handle rejection before database access, hidden private profile when username discovery is disabled, and minimal preview for explicitly discoverable private profiles.
 - These are test definitions only; no API test runner or any other test/build/typecheck/staging/deployment command was executed.
+
+
+**Relationship privacy parity correction (2026-10-27):**
+- The legacy `PUT /v1/social/follow/{target_user_id}` route previously forced every new follow to `active`, which could bypass private-profile request semantics for any remaining caller. It now derives `requested` vs `active` from canonical profile visibility, rejects unsupported visibility, preserves idempotent existing-edge behavior, reconciles concurrent conflicts by re-reading the winning edge, and returns an explicit outcome. File: `apps/api/src/allpha_api/feed_api.py`.
+- Added unexecuted API regression coverage in `apps/api/tests/test_social_feed_api.py` and a source-contract assertion for the legacy route parity. No test/build/typecheck/staging/deployment was run.
