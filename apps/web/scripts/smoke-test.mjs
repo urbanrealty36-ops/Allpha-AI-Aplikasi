@@ -399,6 +399,9 @@ assert.ok(profileView.includes('{humanVerified && (') && !profileView.includes('
 assert.ok(profileView.includes("ag.status === 'active' ? 'bg-emerald-500' : ag.status === 'draft' ? 'bg-amber-400' : 'bg-slate-400'"), "Owned Agent status indicator must reflect canonical Agent status");
 for (const demoMetric of ["142.840", "+24.8% bln ini", "489.200", "+38.1% bln ini", "+12.450", "18.2% conversion", "1.820 Sesi"]) assert.ok(!profileView.includes(demoMetric), `Profile analytics must not show fabricated metric: ${demoMetric}`);
 assert.ok(!profileView.includes("Royalti Kreator: 85%") && !profileView.includes("Platform Fee (15%)"), "Profile financial panel must not invent unconfigured royalty/platform rates");
+assert.ok(!profileView.includes("'Desain Grafis'") && !profileView.includes("'Auto-Reply Aktif'"), "Agent profile must not invent a category or claim runtime is active");
+assert.ok(profileView.includes("Status runtime belum tersedia") && profileView.includes("Katalog Skills belum tersedia"), "Agent profile must expose unavailable runtime and Skill state honestly");
+assert.ok(profileRoute.includes("isTakeoverActive={null}"), "Profile adapter must not assume takeover/runtime state without a canonical response");
 assert.ok(!profileView.includes("setSettingsLang(lang.code as any)") && profileView.includes("Bahasa akun dikelola melalui formulir profil kanonis"), "Language preference must not report local-only selection as persisted");
 const accountRoute = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
 assert.ok(accountRoute.includes('new URLSearchParams(window.location.search).get("tab")'), "Account must support direct tab deep links");
