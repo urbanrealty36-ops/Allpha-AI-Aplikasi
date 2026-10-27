@@ -36,6 +36,7 @@ export default function NotificationsPage() {
   const [preferencesBusy, setPreferencesBusy] = useState(false);
   const requestSequence = useRef(0);
   const preferencesRequestSequence = useRef(0);
+  const sessionEpoch = useRef(0);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -83,49 +84,56 @@ export default function NotificationsPage() {
 
   const loadPreferences = useCallback(async () => {
     const sequence = ++preferencesRequestSequence.current;
+    const epoch = sessionEpoch.current;
     if (!session) { setPreferences(null); return; }
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences");
-      if (sequence === preferencesRequestSequence.current) setPreferences(result.preferences);
+      if (sequence === preferencesRequestSequence.current && epoch === sessionEpoch.current) setPreferences(result.preferences);
     } catch (cause) {
-      if (sequence === preferencesRequestSequence.current) setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
+      if (sequence === preferencesRequestSequence.current && epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat dimuat.");
     }
   }, [api, session]);
 
   useEffect(() => { void loadPreferences(); }, [loadPreferences]);
 
   async function updatePreference(key: keyof NotificationPreferences, value: boolean) {
+    const epoch = sessionEpoch.current;
+    const sequence = ++preferencesRequestSequence.current;
     setPreferencesBusy(true); setError("");
     try {
       const result = await api<{ preferences: NotificationPreferences }>("/v1/notifications/preferences", {
         method: "PATCH", body: JSON.stringify({ [key]: value }),
       });
-      setPreferences(result.preferences);
+      if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setPreferences(result.preferences);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
-    } finally { setPreferencesBusy(false); }
+      if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setError(cause instanceof Error ? cause.message : "Preferensi notifikasi tidak dapat disimpan.");
+    } finally { if (epoch === sessionEpoch.current && sequence === preferencesRequestSequence.current) setPreferencesBusy(false); }
   }
 
   async function markRead(item: NotificationItem) {
     if (item.read_at) return;
+    const epoch = sessionEpoch.current;
     setBusyId(item.id); setError(""); setNotice("");
     try {
       await api("/v1/notifications/" + encodeURIComponent(item.id) + "/read", { method: "PATCH", body: "{}" });
+      if (epoch !== sessionEpoch.current) return;
       setItems(current => current.map(row => row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row));
       setUnreadCount(count => Math.max(0, count - 1));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Status baca tidak dapat disimpan."); }
-    finally { setBusyId(null); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Status baca tidak dapat disimpan."); }
+    finally { if (epoch === sessionEpoch.current) setBusyId(null); }
   }
 
   async function markAllRead() {
+    const epoch = sessionEpoch.current;
     setBusyId("all"); setError(""); setNotice("");
     try {
       const result = await api<{ updated_count: number }>("/v1/notifications/read-all", { method: "POST", body: "{}" });
+      if (epoch !== sessionEpoch.current) return;
       setItems(current => current.map(row => row.read_at ? row : { ...row, read_at: new Date().toISOString() }));
       setUnreadCount(0);
       setNotice(result.updated_count + " notifikasi ditandai sudah dibaca.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat ditandai sudah dibaca."); }
-    finally { setBusyId(null); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat ditandai sudah dibaca."); }
+    finally { if (epoch === sessionEpoch.current) setBusyId(null); }
   }
 
   if (!session) return <><main className="allpha-page allpha-notifications-page mx-auto max-w-3xl p-6 text-slate-100"><h1 className="text-2xl font-semibold">Notifikasi</h1><p className="mt-3 text-slate-300">Masuk melalui halaman utama Allpha untuk melihat kotak notifikasi.</p><a className="mt-4 inline-block underline" href="/">Kembali ke Allpha</a></main></>;
