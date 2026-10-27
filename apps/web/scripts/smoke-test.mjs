@@ -233,6 +233,9 @@ for (const contract of ["/v1/stories", "/v1/content/", "/media", "/publish", "se
   assert.ok(webStories.includes(contract), "missing Web Stories lifecycle contract: " + contract);
 }
 assert.doesNotMatch(webStories, /mockStories|fakeStoryItems/);
+const storyViewer = readFileSync(new URL("../components/reference-ui/StoriesViewerModal.tsx", import.meta.url), "utf8");
+assert.ok(webStories.includes("StoriesViewerModal") && webStories.includes("productionMode") && webStories.includes("/reaction") && webStories.includes("/comments"), "Story viewer must use canonical API-backed interactions and source modal");
+assert.ok(storyViewer.includes("productionMode ? (storiesData ?? []) : STORIES") && storyViewer.includes("disabled={productionMode && (!onSendReaction") && storyViewer.includes("if (productionMode) return;"), "Story viewer production mode must use API data and must not expose demo success actions");
 
 const webReels = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/reels", "/v1/feed/", "/reaction", "/share", "session.access_token"]) {
