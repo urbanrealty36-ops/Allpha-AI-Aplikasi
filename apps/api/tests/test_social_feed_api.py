@@ -674,3 +674,36 @@ def test_discoverable_private_profile_returns_minimal_preview_only(monkeypatch):
     assert payload["profile"]["avatar_url"] is None
     assert payload["profile"]["bio"] == ""
     assert payload["profile"]["visibility"] == "private"
+
+
+
+def test_legacy_follow_route_creates_requested_edge_for_private_profile(monkeypatch):
+    target_id = "00000000-0000-0000-0000-000000000903"
+    created = {
+        "id": "00000000-0000-0000-0000-000000000904",
+        "target_user_id": target_id,
+        "status": "requested",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "profiles":
+            return [{"id": target_id, "visibility": "private"}]
+        if method == "GET" and table == "social_edges":
+            return []
+        if method == "POST" and table == "social_edges":
+            assert body["status"] == "requested"
+            assert body["edge_type"] == "follow"
+            return [created]
+        raise AssertionError(f"Unexpected database request: {method} {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/social/follow/{target_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "requested"
+    assert response.json()["outcome"] == "follow_request_created"
