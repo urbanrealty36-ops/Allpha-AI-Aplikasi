@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import StoriesViewerModal from "../../components/reference-ui/StoriesViewerModal";
+import type { StoryItem } from "../../components/reference-ui/StoriesViewerModal";
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
