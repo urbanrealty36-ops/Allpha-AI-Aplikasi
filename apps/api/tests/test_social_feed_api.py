@@ -584,3 +584,32 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
     assert payload["idempotent_replay"] is False
     assert payload["outcome"] == "follow_request_created"
     assert len(calls) == 2
+
+
+def test_follow_rejects_deactivated_profile_before_relationship_write(monkeypatch):
+    target_id = "22222222-2222-4222-8222-222222222222"
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}, body))
+        if table == "profiles":
+            assert method == "GET"
+            assert params["select"] == "id,visibility,account_status"
+            return [{
+                "id": target_id,
+                "visibility": "public",
+                "account_status": "deactivation_requested",
+            }]
+        raise AssertionError(f"relationship access must stop before {table}")
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).put(f"/v1/social/follow/{target_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PUBLIC_PROFILE_NOT_FOUND"
+    assert len(calls) == 1
+    assert calls[0][1] == "profiles"
