@@ -40,6 +40,7 @@ export default function AgentsPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -114,6 +115,16 @@ export default function AgentsPage() {
   useEffect(() => {
     setOnboardingRequired(new URLSearchParams(window.location.search).get("onboarding") === "required");
   }, []);
+
+  useEffect(() => {
+    const requestedAgentId = new URLSearchParams(window.location.search).get("agent");
+    if (requestedAgentId && /^[0-9a-f-]{36}$/i.test(requestedAgentId)) setFocusedAgentId(requestedAgentId);
+  }, []);
+
+  useEffect(() => {
+    if (!focusedAgentId || !agents.some(agent => agent.id === focusedAgentId)) return;
+    document.getElementById("agent-" + focusedAgentId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedAgentId, agents]);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -314,7 +325,7 @@ export default function AgentsPage() {
       </form>
       <section className="agent-list-section"><div className="panel-heading"><span className="section-kicker">PASSPORT & OWNERSHIP</span><h2>Agent Anda</h2><p>Profil Agent berbeda dari profil manusia. Status aktif tidak menjalankan runtime AI dengan sendirinya.</p></div>
         {loading ? <section className="panel loading-panel">Memuat identitas Agent dari API…</section> : agents.length === 0 ? <section className="panel agent-empty"><strong>Belum ada Agent</strong><p className="muted">Buat Agent pertama. Identitas akan tersimpan pada database dan terhubung dengan Human pemiliknya.</p></section> :
-          <div className="agent-cards">{agents.map((agent) => <article className="panel agent-card" key={agent.id}>
+          <div className="agent-cards">{agents.map((agent) => <article id={"agent-" + agent.id} className="panel agent-card" key={agent.id} style={focusedAgentId === agent.id ? { outline: "3px solid #0284C7", outlineOffset: "3px" } : undefined}>
             <div className="agent-card-head"><div className="agent-avatar">{agent.display_name.slice(0, 1).toUpperCase()}</div><div className="agent-title"><h3>{agent.display_name}</h3><span>@{agent.handle}</span></div><span className={"agent-status status-" + agent.status}>{agent.status}</span></div>
             <p className="agent-description">{agent.description || "Belum ada deskripsi."}</p>{agent.disclosure && <p className="agent-disclosure"><strong>Disclosure:</strong> {agent.disclosure}</p>}
             <div className="detail-line"><span>Relasi</span><strong>Human owner · {agent.ownership?.role ?? "owner"}</strong></div>
