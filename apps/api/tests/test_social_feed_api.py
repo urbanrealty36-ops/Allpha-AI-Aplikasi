@@ -707,3 +707,105 @@ def test_legacy_follow_route_creates_requested_edge_for_private_profile(monkeypa
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "requested"
     assert response.json()["outcome"] == "follow_request_created"
+
+
+def test_username_discovery_requires_explicit_opt_in_and_limits_private_fields(monkeypatch):
+    viewer_id = "eng-p14-viewer"
+    public_id = "00000000-0000-0000-0000-000000000911"
+    private_id = "00000000-0000-0000-0000-000000000912"
+    profiles = [
+        {"id": public_id, "username": "allpha_public", "display_name": "Public",
+         "avatar_url": "https://example.invalid/public.png", "bio": "public bio", "visibility": "public"},
+        {"id": private_id, "username": "allpha_private", "display_name": "Private",
+         "avatar_url": "https://example.invalid/private.png", "bio": "private bio", "visibility": "private"},
+        {"id": "00000000-0000-0000-0000-000000000913", "username": "allpha_optout",
+         "display_name": "Opt out", "avatar_url": None, "bio": "", "visibility": "public"},
+    ]
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if method == "GET" and table == "profiles":
+            assert params["id"] == f"neq.{viewer_id}"
+            return profiles
+        if method == "GET" and table == "user_settings":
+            return [
+                {"user_id": public_id, "privacy_settings": {"discoverable_by_username": True}},
+                {"user_id": private_id, "privacy_settings": {"discoverable_by_username": True}},
+                {"user_id": "00000000-0000-0000-0000-000000000913", "privacy_settings": {"discoverable_by_username": False}},
+            ]
+        if method == "GET" and table == "social_edges":
+            return []
+        raise AssertionError(f"Unexpected database request: {method} {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), set()
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=allpha")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert {item["id"] for item in payload["items"]} == {public_id, private_id}
+    private = next(item for item in payload["items"] if item["id"] == private_id)
+    assert private["avatar_url"] is None
+    assert private["bio"] == ""
+    assert payload["source"] == "explicit_username_opt_in"
+
+
+def test_username_discovery_excludes_blocked_and_existing_follow_edges(monkeypatch):
+    viewer_id = "eng-p14-viewer"
+    ids = [
+        "00000000-0000-0000-0000-000000000921",
+        "00000000-0000-0000-0000-000000000922",
+        "00000000-0000-0000-0000-000000000923",
+    ]
+    profiles = [
+        {"id": ids[0], "username": "allpha_one", "display_name": "One", "visibility": "public"},
+        {"id": ids[1], "username": "allpha_two", "display_name": "Two", "visibility": "public"},
+        {"id": ids[2], "username": "allpha_three", "display_name": "Three", "visibility": "public"},
+    ]
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if method == "GET" and table == "profiles":
+            return profiles
+        if method == "GET" and table == "user_settings":
+            return [{"user_id": target, "privacy_settings": {"discoverable_by_username": True}} for target in ids]
+        if method == "GET" and table == "social_edges":
+            return [{"target_user_id": ids[2], "status": "requested"}]
+        raise AssertionError(f"Unexpected database request: {method} {table}")
+
+    async def fake_edges(user_id):
+        assert user_id == viewer_id
+        return set(), {ids[0]}
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_edges", fake_edges)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=allpha")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == [ids[1]]
+
+
+def test_username_discovery_rejects_malformed_handles_before_database_lookup(monkeypatch):
+    async def fail_db(*args, **kwargs):
+        raise AssertionError("Malformed handles must not trigger a database lookup")
+
+    monkeypatch.setattr(feed_api, "_server_db", fail_db)
+    app.dependency_overrides[current_user] = _fixture_user
+    try:
+        response = TestClient(app).get("/v1/social/discover-users?q=allpha%20other")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert response.json()["source"] == "explicit_username_opt_in"
