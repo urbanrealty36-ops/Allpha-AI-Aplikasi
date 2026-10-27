@@ -72,7 +72,14 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     item = rows[0]
     followed, hidden = await _edges(viewer_id)
     owner_id = str(item.get("owner_id"))
-    if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed):
+    owner_profile = (await _profiles_for({owner_id})).get(owner_id)
+    if (
+        not owner_profile
+        or owner_profile.get("account_status", "active") != "active"
+        or owner_id in hidden
+        or (item.get("visibility") == "followers" and owner_id not in followed)
+        or (owner_profile.get("visibility") != "public" and owner_id not in followed and owner_id != viewer_id)
+    ):
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     return item
 
@@ -98,7 +105,7 @@ async def _profiles_for(user_ids: set[str]) -> dict[str, dict[str, Any]]:
     if not ids:
         return {}
     rows = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility",
+        "select": "id,username,display_name,avatar_url,bio,visibility,account_status",
         "id": f"in.({','.join(ids)})", "limit": str(min(1000, len(ids))),
     })
     return {str(row.get("id")): row for row in (rows or [])}
@@ -141,6 +148,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent"] = "for_y
         row for row in candidates
         if str(row.get("owner_id")) not in hidden
         and str(row.get("owner_id")) in profile_by_id
+        and profile_by_id[str(row.get("owner_id"))].get("account_status", "active") == "active"
         and (
             (row.get("visibility") == "public" and (
                 profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
@@ -359,8 +367,8 @@ async def get_public_creator_recommendations(
     if not candidate_ids:
         return {"items": [], "count": 0, "source": "eligible_public_content"}
     profiles = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
-        "id": f"in.({','.join(candidate_ids)})", "visibility": "eq.public",
+        "select": "id,username,display_name,avatar_url,bio,visibility,account_status,created_at",
+        "id": f"in.({','.join(candidate_ids)})", "visibility": "eq.public", "account_status": "eq.active",
         "limit": str(min(100, max(limit * 5, limit))),
     })
     by_id = {str(row.get("id")): row for row in (profiles or [])}
@@ -392,9 +400,14 @@ async def follow_public_profile(
     if actor_id == target_id:
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Akun tidak dapat mengikuti dirinya sendiri."})
     target_rows = await _server_db("GET", "profiles", params={
-        "select": "id,visibility", "id": f"eq.{target_id}", "limit": "1",
+        "select": "id,visibility,account_status", "id": f"eq.{target_id}", "limit": "1",
     })
-    if not target_rows:
+    target_profile = target_rows[0] if target_rows else None
+    if (
+        not target_profile
+        or target_profile.get("visibility") not in {"public", "private"}
+        or target_profile.get("account_status", "active") != "active"
+    ):
         raise HTTPException(status_code=404, detail={"code": "PUBLIC_PROFILE_NOT_FOUND", "message": "Akun tidak ditemukan."})
     for source, target in ((actor_id, target_id), (target_id, actor_id)):
         blocks = await _server_db("GET", "social_edges", params={
@@ -461,6 +474,7 @@ async def search_content(
     eligible = [
         row for row in eligible
         if str(row.get("owner_id")) in profile_by_id
+        and profile_by_id[str(row.get("owner_id"))].get("account_status", "active") == "active"
         and (profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
              or (owner and str(row.get("owner_id")) in followed))
     ]
@@ -528,6 +542,7 @@ async def get_trends(
     visible = [
         row for row in visible
         if str(row.get("owner_id")) in profile_by_id
+        and profile_by_id[str(row.get("owner_id"))].get("account_status", "active") == "active"
         and (profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
              or (owner and str(row.get("owner_id")) in followed))
     ]
