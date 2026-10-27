@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 
@@ -44,8 +44,12 @@ export default function HomePage() {
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
   const [interestKey, setInterestKey] = useState("");
+  const identityRequestSequence = useRef(0);
+  const socialRequestSequence = useRef(0);
+  const consentRequestSequence = useRef(0);
 
   const loadIdentity = useCallback(async (active: Session) => {
+    const sequence = ++identityRequestSequence.current;
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
@@ -57,9 +61,12 @@ export default function HomePage() {
       if (!responses[1].ok) throw new Error(await apiError(responses[1]));
       const identity = await responses[0].json() as IdentityResponse;
       const prefs = await responses[1].json() as SettingsResponse;
+      if (sequence !== identityRequestSequence.current) return;
+      if (identity.user?.id !== active.user.id) throw new Error("Identitas kanonis tidak cocok dengan sesi aktif.");
       setProfile(identity.profile); setSettings(prefs.settings);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Data identitas tidak dapat dimuat."); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (sequence === identityRequestSequence.current) setError(cause instanceof Error ? cause.message : "Data identitas tidak dapat dimuat.");
+    } finally { if (sequence === identityRequestSequence.current) setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -68,15 +75,26 @@ export default function HomePage() {
     void supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSession(data.session);
-      if (data.session) void loadIdentity(data.session); else setLoading(false);
+      if (data.session) void loadIdentity(data.session); else {
+        identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1;
+        setProfile(null); setSettings(null); setSocialGraph(null); setConsentHistory(null); setLoading(false);
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
       setSession(next);
       if (next) void loadIdentity(next);
-      else { setProfile(null); setSettings(null); setLoading(false); }
+      else {
+        identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1;
+        setProfile(null); setSettings(null); setSocialGraph(null); setConsentHistory(null); setLoading(false);
+        setSocialLoading(false); setConsentLoading(false);
+      }
     });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    return () => {
+      active = false;
+      identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1;
+      listener.subscription.unsubscribe();
+    };
   }, [supabase, loadIdentity]);
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
@@ -105,26 +123,32 @@ export default function HomePage() {
 
   async function loadConsentHistory() {
     if (!session) return;
+    const sequence = ++consentRequestSequence.current;
+    const token = session.access_token;
     setConsentLoading(true); setConsentError("");
     try {
-      const response = await fetch(apiBase + "/v1/me/consents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const response = await fetch(apiBase + "/v1/me/consents", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
       if (!response.ok) throw new Error(await apiError(response));
       const payload = await response.json() as { items?: ConsentRecord[] };
-      setConsentHistory(Array.isArray(payload.items) ? payload.items : []);
+      if (sequence === consentRequestSequence.current && session?.access_token === token) setConsentHistory(Array.isArray(payload.items) ? payload.items : []);
     } catch (cause) {
-      setConsentError(cause instanceof Error ? cause.message : "Riwayat persetujuan tidak dapat dimuat.");
-    } finally { setConsentLoading(false); }
+      if (sequence === consentRequestSequence.current && session?.access_token === token) setConsentError(cause instanceof Error ? cause.message : "Riwayat persetujuan tidak dapat dimuat.");
+    } finally { if (sequence === consentRequestSequence.current) setConsentLoading(false); }
   }
 
   async function loadSocialGraph() {
     if (!session) return;
+    const sequence = ++socialRequestSequence.current;
+    const token = session.access_token;
     setSocialLoading(true); setError(""); setMessage("");
     try {
-      const response = await fetch(apiBase + "/v1/me/social-graph", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const response = await fetch(apiBase + "/v1/me/social-graph", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
       if (!response.ok) throw new Error(await apiError(response));
-      setSocialGraph(await response.json() as SocialGraph);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Social Graph tidak dapat dimuat."); }
-    finally { setSocialLoading(false); }
+      const graph = await response.json() as SocialGraph;
+      if (sequence === socialRequestSequence.current && session?.access_token === token) setSocialGraph(graph);
+    } catch (cause) {
+      if (sequence === socialRequestSequence.current && session?.access_token === token) setError(cause instanceof Error ? cause.message : "Social Graph tidak dapat dimuat.");
+    } finally { if (sequence === socialRequestSequence.current) setSocialLoading(false); }
   }
 
   async function socialRequest(path: string, init: RequestInit = {}) {
