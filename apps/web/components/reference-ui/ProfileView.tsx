@@ -216,9 +216,11 @@ export default function ProfileView({
             {/* Name + Verified Badge */}
             <div className="flex items-center gap-1.5">
               <h1 className="text-xl font-black tracking-tight text-slate-900">{humanUser.name}</h1>
-              <span className="w-4 h-4 rounded-full bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">
-                ✓
-              </span>
+              {humanVerified && (
+                <span className="w-4 h-4 rounded-full bg-[#0284C7] text-white flex items-center justify-center text-[10px] font-black border border-slate-900">
+                  ✓
+                </span>
+              )}
             </div>
 
             {/* Handle & Badge */}
