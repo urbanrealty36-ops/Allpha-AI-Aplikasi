@@ -32,7 +32,7 @@ type Routes = {
   Agents: undefined;
   Feed: undefined;
   Reels: undefined;
-  Stories: undefined;
+  Stories: { story?: string } | undefined;
   Search: undefined;
   Messages: undefined;
   Notifications: undefined;
@@ -277,7 +277,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 
 function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
 
-function Profile({ session, initialTab = "profile" }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities" }) {
+function Profile({ session, initialTab = "profile", initialStoryId }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities"; initialStoryId?: string }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "agents" | "challenges" | "content" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities">(initialTab);
@@ -292,6 +292,7 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
   const [reelsItems, setReelsItems] = useState<NativeFeedItem[]>([]);
   const [storyItems, setStoryItems] = useState<NativeStory[]>([]);
   const [activeStories, setActiveStories] = useState<NativeStory[]>([]);
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(initialStoryId ?? null);
   const [storyBody, setStoryBody] = useState("");
   const [storyVisibility, setStoryVisibility] = useState<"public" | "followers" | "private">("public");
   const [storyTtl, setStoryTtl] = useState(24);
@@ -616,6 +617,8 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels tidak dapat dimuat."); }
     finally { setReelsBusy(false); }
   }
+  useEffect(() => { setSelectedStoryId(initialStoryId ?? null); }, [initialStoryId]);
+
   async function loadNativeStories() {
     setStoryBusy(true); setError(""); setMessage("");
     try {
@@ -1455,6 +1458,15 @@ function Profile({ session, initialTab = "profile" }: { session: Session; initia
         </View>}
         <Text style={s.muted}>Reward finansial tidak diterbitkan otomatis. Progres diproses oleh API dengan kunci idempotensi.</Text>
       </> : tab === "stories" ? <>
+        {initialStoryId && <View style={s.socialRow}>
+          <Text style={s.kicker}>STORY TERPILIH</Text>
+          {storyBusy ? <Text style={s.muted}>Memuat Story…</Text> : activeStories.find(story => story.id === selectedStoryId) ? <>
+            <Text style={s.body}>{activeStories.find(story => story.id === selectedStoryId)?.creator?.display_name || activeStories.find(story => story.id === selectedStoryId)?.creator?.username || "Story"}</Text>
+            <Text style={s.muted}>{activeStories.find(story => story.id === selectedStoryId)?.body || "Momen media"}</Text>
+            {(activeStories.find(story => story.id === selectedStoryId)?.media || []).map(media => media.preview_url ? <Button key={media.id} title={"Buka " + media.filename} secondary onPress={() => void Linking.openURL(media.preview_url!)} /> : null)}
+          </> : <Text style={s.muted}>Story tidak tersedia, tidak dapat diakses, atau sudah kedaluwarsa.</Text>}
+          <Button title="Tutup Story" secondary onPress={() => setSelectedStoryId(null)} />
+        </View>}
         <Text style={s.kicker}>ENG-P16 · STORIES & MOMENTS</Text><Text style={s.title}>Momen sementara</Text>
         <Text style={s.muted}>Story masuk moderasi sebelum tayang. Kedaluwarsa ditetapkan server saat publikasi disetujui; konten yang sudah berakhir tidak muncul di feed.</Text>
         <TextInput accessibilityLabel="Isi Story" value={storyBody} onChangeText={setStoryBody} multiline maxLength={2000} style={[field,{minHeight:90,textAlignVertical:"top",paddingTop:12}]} placeholder="Apa yang sedang terjadi? (opsional jika ada media)" placeholderTextColor="#8B94AC"/>
@@ -1737,7 +1749,7 @@ function Navigator() {
     <Stack.Screen name="Agents">{() => <Profile session={session} initialTab="agents"/>}</Stack.Screen>
     <Stack.Screen name="Feed">{() => <Profile session={session} initialTab="feed"/>}</Stack.Screen>
     <Stack.Screen name="Reels">{() => <Profile session={session} initialTab="reels"/>}</Stack.Screen>
-    <Stack.Screen name="Stories">{() => <Profile session={session} initialTab="stories"/>}</Stack.Screen>
+    <Stack.Screen name="Stories">{({ route }) => <Profile session={session} initialTab="stories" initialStoryId={route.params?.story}/>}</Stack.Screen>
     <Stack.Screen name="Search">{() => <Profile session={session} initialTab="discovery"/>}</Stack.Screen>
     <Stack.Screen name="Messages">{() => <Profile session={session} initialTab="messages"/>}</Stack.Screen>
     <Stack.Screen name="Notifications">{() => <Profile session={session} initialTab="notifications"/>}</Stack.Screen>
