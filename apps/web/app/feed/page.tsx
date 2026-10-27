@@ -50,6 +50,7 @@ export default function FeedPage() {
   const sessionUserId = useRef<string | null>(null);
   const feedRequestSequence = useRef(0);
   const preferencesRequestSequence = useRef(0);
+  const commentRequestSequence = useRef(0);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -237,31 +238,39 @@ export default function FeedPage() {
 
   async function savePreferences(enabled: boolean, rankingMode = mode) {
     if (requireLogin("Masuk untuk mengubah preferensi Feed.")) return;
+    const epoch = sessionEpoch.current;
     setBusyKey("preferences"); setError(""); setNotice("");
     try {
       await request("/v1/feed/preferences", { method: "PUT", body: JSON.stringify({ personalization_enabled: enabled, ranking_mode: rankingMode }) });
+      if (epoch !== sessionEpoch.current) return;
       setPersonalizationEnabled(enabled); setMode(rankingMode); setNotice("Preferensi feed disimpan."); await loadFeed(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi feed gagal disimpan."); }
-    finally { setBusyKey(""); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Preferensi feed gagal disimpan."); }
+    finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
   async function toggleReaction(item: FeedItem) {
     if (requireLogin("Masuk untuk menyukai postingan.")) return;
+    const epoch = sessionEpoch.current;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/reaction", item.viewer_reaction
         ? { method: "DELETE" } : { method: "PUT", body: JSON.stringify({ reaction: "like" }) });
+      if (epoch !== sessionEpoch.current) return;
       await loadFeed(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Reaksi gagal disimpan."); }
-    finally { setBusyKey(""); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Reaksi gagal disimpan."); }
+    finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
   async function toggleSave(item: FeedItem) {
     if (requireLogin("Masuk untuk menyimpan postingan.")) return;
+    const epoch = sessionEpoch.current;
     setBusyKey(item.id); setError(""); setNotice("");
-    try { await request("/v1/feed/" + encodeURIComponent(item.id) + "/save", { method: item.saved ? "DELETE" : "PUT" }); await loadFeed(true); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Simpan konten gagal."); }
-    finally { setBusyKey(""); }
+    try {
+      await request("/v1/feed/" + encodeURIComponent(item.id) + "/save", { method: item.saved ? "DELETE" : "PUT" });
+      if (epoch !== sessionEpoch.current) return;
+      await loadFeed(true);
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Simpan konten gagal."); }
+    finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
   async function openComments(item: FeedItem) {
@@ -270,35 +279,44 @@ export default function FeedPage() {
     const opening = !commentsOpen[item.id];
     setCommentsOpen(current => ({ ...current, [item.id]: opening }));
     if (!opening || comments[item.id]) return;
+    const epoch = sessionEpoch.current;
+    const sequence = ++commentRequestSequence.current;
     try {
       const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments") as { items?: FeedComment[] };
+      if (epoch !== sessionEpoch.current || sequence !== commentRequestSequence.current) return;
       setComments(current => ({ ...current, [item.id]: data.items ?? [] }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar tidak dapat dimuat."); }
+    } catch (cause) {
+      if (epoch === sessionEpoch.current && sequence === commentRequestSequence.current) setError(cause instanceof Error ? cause.message : "Komentar tidak dapat dimuat.");
+    }
   }
 
   async function submitComment(item: FeedItem) {
     if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const body = (commentDrafts[item.id] ?? "").trim();
     if (!body) return;
+    const epoch = sessionEpoch.current;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { method: "POST", body: JSON.stringify({ body }) }) as { comment: FeedComment };
+      if (epoch !== sessionEpoch.current) return;
       setComments(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), data.comment] }));
       setCommentDrafts(current => ({ ...current, [item.id]: "" }));
       setItems(current => current.map(row => row.id === item.id ? { ...row, engagement: { likes: row.engagement?.likes ?? 0, saves: row.engagement?.saves ?? 0, comments: (row.engagement?.comments ?? 0) + 1 } } : row));
       setNotice("Komentar ditambahkan.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar gagal dikirim."); }
-    finally { setBusyKey(""); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Komentar gagal dikirim."); }
+    finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
   async function report(item: FeedItem, reason: "spam" | "harassment" | "privacy" | "misinformation" | "other" = "other") {
     if (requireLogin("Masuk untuk melaporkan konten.")) return;
+    const epoch = sessionEpoch.current;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
       await request("/v1/feed/" + encodeURIComponent(item.id) + "/report", { method: "POST", body: JSON.stringify({ reason }) });
+      if (epoch !== sessionEpoch.current) return;
       setNotice("Laporan diterima untuk ditinjau.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Laporan gagal dikirim."); }
-    finally { setBusyKey(""); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Laporan gagal dikirim."); }
+    finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
   async function share(item: FeedItem) {
@@ -309,19 +327,21 @@ export default function FeedPage() {
       catch { setNotice("Tautan publik: " + url); }
       return;
     }
+    const epoch = sessionEpoch.current;
     setBusyKey(item.id);
     try {
       const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
         method: "POST", body: JSON.stringify({ share_target: "copy_link" }),
       }) as { share_url: string };
+      if (epoch !== sessionEpoch.current) return;
       try {
         await navigator.clipboard.writeText(data.share_url);
         setNotice("Tautan konten disalin.");
       } catch {
         setNotice("Tautan untuk dibagikan: " + data.share_url);
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Tautan berbagi gagal dibuat."); }
-    finally { setBusyKey(""); }
+    } catch (cause) { if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Tautan berbagi gagal dibuat."); }
+    finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
   const initialCommentsPostId = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("comments") === "1"
