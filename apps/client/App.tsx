@@ -1670,34 +1670,39 @@ function Navigator() {
   const [ready, setReady] = useState(false);
   const [journeyReady, setJourneyReady] = useState(false);
   const [journeyTab, setJourneyTab] = useState<"agents" | "feed">("feed");
+  const journeyRequestSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
     let authEventSeen = false;
     const resolveJourney = async (next: Session | null) => {
       if (!active) return;
+      const sequence = ++journeyRequestSequence.current;
       setSession(next);
+      setJourneyReady(false);
       if (!next) {
         setJourneyTab("feed");
-        setJourneyReady(true);
+        if (active && sequence === journeyRequestSequence.current) setJourneyReady(true);
         return;
       }
-      setJourneyReady(false);
       try {
         const response = await fetch(apiBase + "/v1/agents", {
           headers: { Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
+        if (sequence !== journeyRequestSequence.current) return;
         if (!response.ok) {
           setJourneyTab("agents");
         } else {
           const payload = await response.json() as { items?: AgentIdentity[] };
+          if (sequence !== journeyRequestSequence.current) return;
           setJourneyTab(Array.isArray(payload.items) && payload.items.length > 0 ? "feed" : "agents");
         }
       } catch {
         // Fail closed into the Agent screen; its own API-backed loader shows the actionable error.
-        setJourneyTab("agents");
+        if (sequence === journeyRequestSequence.current) setJourneyTab("agents");
+      } finally {
+        if (active && sequence === journeyRequestSequence.current) setJourneyReady(true);
       }
-      if (active) setJourneyReady(true);
     };
 
     if (!supabase) {
