@@ -1807,3 +1807,10 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Search clears discovery state on account changes and seeds followed-account state from canonical `GET /v1/me/social-graph`: `7ed34161368ee8aa67f325cd6d4741d1b87e3668`, `c2615bf8e5dfb616e66c6764995f986d2408f7b6`, `c1f06bb70c5c3ad2d6adc449d6bade3a6df88f1a`.
 - Username discovery now excludes non-active profiles using the existing `profiles.account_status` field: `3ed3fdcb1ae43ff2bc3b36295601b371ed1bf19b`.
 - This remains a source-only checkpoint. No tests, build, typecheck, staging, or deployment were run.
+
+
+**Final source-only follow-up (2026-10-27):**
+- Notification mark-read, mark-all-read and preference read/write responses are now guarded by identity epoch/request sequence so an in-flight operation cannot update another session's UI: `202b5b2474494cfa8477a90b208dbc3c4ddd99fa`.
+- Username discovery excludes non-active profiles using the canonical `profiles.account_status` field: `3ed3fdcb1ae43ff2bc3b36295601b371ed1bf19b`.
+- Source assertions now cover the session-epoch mutation guards and inactive-profile exclusion: `97035662b5f16e204cf0e0cc91a838895c6eb1b2`. They remain unexecuted.
+- Final branch checkpoint SHA before this note: `97035662b5f16e204cf0e0cc91a838895c6eb1b2`; this plan-note commit follows it. No test/build/typecheck/staging/deployment was executed.
