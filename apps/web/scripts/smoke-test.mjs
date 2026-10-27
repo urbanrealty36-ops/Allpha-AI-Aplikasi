@@ -445,7 +445,7 @@ assert.ok(searchPage.includes("searchRequestSequence.current") && searchPage.inc
 assert.ok(searchPage.includes("requestSessionToken !== sessionTokenRef.current") && searchPage.includes("sessionTokenRef.current = next?.access_token ?? null"), "Search discovery and recommendation requests must be scoped to the current auth session");
 const messagesPage = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
 assert.ok(messagesPage.includes("conversationRequestSequence.current") && messagesPage.includes("listRequestSequence.current"), "Messaging must isolate conversation/message requests and clear stale session data");
-assert.ok(messagesPage.includes("sessionEpoch.current") && s.includes("if(epoch!==sessionEpoch.current)return"), "Message send completion must not update UI after identity changes");
+assert.ok(messagesPage.includes("sessionEpoch.current") && messagesPage.includes("if(epoch!==sessionEpoch.current)return"), "Message send completion must not update UI after identity changes");
 const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
 assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
 assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('"account_status", "active"'), "Username discovery must fail closed for missing privacy settings, exclude blocked/muted relationships, and omit inactive accounts");
