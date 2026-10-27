@@ -113,10 +113,10 @@ export default function StoriesPage() {
   }
 
   const selectedStory = active.find(story => story.id === selectedStoryId) ?? null;
-  const closeStory = () => {
+  const closeStory = useCallback(() => {
     setSelectedStoryId(null);
     window.history.replaceState(null, "", "/stories");
-  };
+  }, []);
 
   return (
     <>
@@ -126,13 +126,47 @@ export default function StoriesPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Stories & Moments</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Momen sementara dengan audience scope dan waktu kedaluwarsa yang ditegakkan server. Story baru masuk moderasi sebelum ditampilkan.</p>
       </header>
-      {selectedStoryId && <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900" aria-label="Story viewer">
-        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">Story publik</p><h2 className="text-lg font-semibold">{selectedStory?.creator?.display_name || selectedStory?.creator?.username || "Story"}</h2></div><button type="button" onClick={closeStory} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-sm font-semibold">Tutup</button></div>
-        {loading && !selectedStory ? <p role="status" className="text-sm text-slate-500">Memuat Story…</p> : !selectedStory ? <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan.</p> : <div className="mx-auto max-w-lg">
-          {selectedStory.media?.map(media => media.preview_url ? (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline className="mb-3 max-h-[70dvh] w-full rounded-2xl bg-black" /> : media.media_type.startsWith("image/") ? <img key={media.id} src={media.preview_url} alt={selectedStory.body || "Media Story"} className="mb-3 max-h-[70dvh] w-full rounded-2xl object-contain bg-slate-950" /> : null) : null)}
-          {selectedStory.body && <p className="whitespace-pre-wrap text-sm">{selectedStory.body}</p>}
-          {selectedStory.expires_at && <p className="mt-2 text-xs text-slate-500">Berakhir {new Date(selectedStory.expires_at).toLocaleString("id-ID")}</p>}
-        </div>}
+      {selectedStoryId && selectedStory && <StoriesViewerModal
+        isOpen
+        productionMode
+        initialIndex={Math.max(0, active.findIndex(story => story.id === selectedStoryId))}
+        onClose={closeStory}
+        storiesData={active.map(story => {
+          const media = story.media?.find(item => item.preview_url && (item.media_type.startsWith("image/") || item.media_type.startsWith("video/")));
+          return {
+            id: story.id,
+            creatorName: story.creator?.display_name || story.creator?.username || "Kreator",
+            creatorHandle: story.creator?.username || "",
+            creatorAvatar: story.creator?.avatar_url || "",
+            isAiAgent: false,
+            mediaUrl: media?.preview_url || "",
+            mediaType: media?.media_type,
+            ownerId: story.owner_id,
+            caption: story.body || "",
+            timestamp: new Date(story.created_at).toLocaleString("id-ID"),
+            expiresAt: story.expires_at || undefined,
+          } satisfies StoryItem;
+        })}
+        enabledReactions={session && selectedStory.owner_id !== session.user.id ? ["❤️"] : []}
+        onSendReaction={session && selectedStory.owner_id !== session.user.id ? async (storyId, emoji) => {
+          if (emoji !== "❤️") throw new Error("Reaksi ini belum didukung kontrak API.");
+          await request("/v1/feed/" + encodeURIComponent(storyId) + "/reaction", {
+            method: "PUT",
+            body: JSON.stringify({ reaction: "like" }),
+          });
+          setNotice("Reaksi Story tersimpan melalui API.");
+        } : undefined}
+        onSendReply={session ? async (storyId, body) => {
+          await request("/v1/feed/" + encodeURIComponent(storyId) + "/comments", {
+            method: "POST",
+            body: JSON.stringify({ body }),
+          });
+          setNotice("Balasan Story tersimpan melalui API.");
+        } : undefined}
+      />}
+      {selectedStoryId && !selectedStory && !loading && <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900" aria-label="Story unavailable">
+        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">Story publik</p><h2 className="text-lg font-semibold">Story tidak tersedia</h2></div><button type="button" onClick={closeStory} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-sm font-semibold">Tutup</button></div>
+        <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Story tidak tersedia untuk akun ini, sudah kedaluwarsa, atau tidak ditemukan.</p>
       </section>}
       {!session ? <>
         <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900"><h2 className="text-sm font-black">Temukan Stories publik</h2><p className="my-2 text-xs leading-5 text-slate-600 dark:text-slate-300">Lihat momen publik dari kreator yang belum Anda ikuti. Masuk atau daftar untuk membuat Story dan menggunakan fitur akun.</p><div className="flex gap-2"><Link className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent("/stories")}>Masuk</Link><Link className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black" href={"/login?next=" + encodeURIComponent("/stories")}>Daftar</Link></div></section>
