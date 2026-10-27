@@ -474,7 +474,7 @@ export default function FeedView({
                     onClick={() => onRepostPost?.(post.id)}
                     disabled={!onRepostPost}
                     title={onRepostPost ? "Repost konten" : "Repost belum tersedia pada API produksi"}
-                    className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center gap-1.5 hover:text-emerald-600 transition cursor-pointer"
                   >
                     <Repeat2 className="w-4.5 h-4.5 text-slate-700 hover:text-emerald-600" />
                     {!productionMode && <span>{post.reposts}</span>}
