@@ -81,7 +81,8 @@ interface ProfileViewProps {
   onSelectPost?: (post: PostItem) => void;
   onOpenAskAi?: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenGenerate?: (contextPost: PostItem) => void;
-  onUpdateAgent?: (updatedAgent: AIAgentProfile) => void;
+  onUpdateAgent?: (updatedAgent: AIAgentProfile) => void | Promise<void>;
+  onOpenAgentStudio?: (agentId: string) => void;
   onOpenFilmAi?: () => void;
   userCredits?: number;
   onDeductCredits?: (amount: number, reason: string) => void;
@@ -705,7 +706,7 @@ export default function ProfileView({
               </button>
 
               <button
-                onClick={() => { if (hasAgentProfile && onUpdateAgent) setIsGoalsTasksModalOpen(true); else showToast('Goals & Tasks belum terhubung ke Agent Runtime API.'); }}
+                onClick={() => { if (hasAgentProfile && agentProfile.id && onOpenAgentStudio) onOpenAgentStudio(agentProfile.id); else showToast('Agent Studio kanonis belum tersedia untuk identitas ini.'); }}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-purple-400 hover:bg-purple-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Target className="w-4 h-4 text-slate-950" />
@@ -738,11 +739,11 @@ export default function ProfileView({
               <div className="flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-slate-950" />
                 <h4 className="text-xs font-black text-slate-950 uppercase">
-                  Tugas Otonom Terjadwal ({agentProfile.tasks?.length || 4})
+                  Tugas Otonom Terjadwal ({agentProfile.tasks?.length ?? 0})
                 </h4>
               </div>
               <button
-                onClick={() => { if (hasAgentProfile && onUpdateAgent) setIsGoalsTasksModalOpen(true); else showToast('Goals & Tasks belum terhubung ke Agent Runtime API.'); }}
+                onClick={() => { if (hasAgentProfile && agentProfile.id && onOpenAgentStudio) onOpenAgentStudio(agentProfile.id); else showToast('Agent Studio kanonis belum tersedia untuk identitas ini.'); }}
                 className="text-xs text-slate-950 font-black hover:underline"
               >
                 Kelola Semua →
@@ -750,6 +751,7 @@ export default function ProfileView({
             </div>
 
             <div className="space-y-2">
+              {!(agentProfile.tasks?.length) && <p className="text-[11px] font-semibold text-slate-700">Task runtime belum dimuat pada ringkasan profil. Buka Agent Studio untuk melihat status task kanonis.</p>}
               {(agentProfile.tasks || []).slice(0, 2).map((t) => (
                 <div
                   key={t.id}
@@ -1421,8 +1423,10 @@ export default function ProfileView({
         onClose={() => setIsIdentityModalOpen(false)}
         agent={agentProfile}
         onSaveAgent={(updated) => {
-          if (onUpdateAgent) onUpdateAgent(updated);
-          showToast(onUpdateAgent ? `Perubahan identitas ${updated.name} diteruskan ke adapter.` : "Endpoint penyimpanan identitas Agent belum terhubung.");
+          if (!onUpdateAgent) { showToast("Endpoint penyimpanan identitas Agent belum terhubung."); return; }
+          void Promise.resolve(onUpdateAgent(updated))
+            .then(() => showToast(`Identitas ${updated.name} tersimpan. Kelola Skills dan runtime melalui Agent Studio.`))
+            .catch((cause) => showToast(cause instanceof Error ? cause.message : "Perubahan identitas Agent gagal disimpan."));
         }}
       />
 
