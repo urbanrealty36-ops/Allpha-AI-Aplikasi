@@ -73,8 +73,9 @@ export default function HomePage() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     let active = true;
+    let authEventSeen = false;
     void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
+      if (!active || authEventSeen) return;
       setSession(data.session);
       socialRequestSequence.current += 1; consentRequestSequence.current += 1;
       setSocialGraph(null); setConsentHistory(null);
@@ -84,6 +85,7 @@ export default function HomePage() {
       }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
       if (!active) return;
       setSession(next);
       socialRequestSequence.current += 1; consentRequestSequence.current += 1;
