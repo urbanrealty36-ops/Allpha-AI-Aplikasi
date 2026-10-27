@@ -51,3 +51,47 @@ def test_settings_reads_are_scoped_to_each_authenticated_identity_and_forward_it
         ("GET", "user_settings", "token-user-a"),
         ("GET", "user_settings", "token-user-b"),
     ]
+
+
+def test_social_graph_reads_are_scoped_to_each_authenticated_identity_and_forward_its_jwt(monkeypatch):
+    user_by_token = {
+        "token-social-a": "00000000-0000-0000-0000-0000000000a1",
+        "token-social-b": "00000000-0000-0000-0000-0000000000b2",
+    }
+    calls = []
+
+    async def fake_current_user(request: Request):
+        token = request.headers["Authorization"].removeprefix("Bearer ")
+        request.state.supabase_access_token = token
+        return {"id": user_by_token[token], "email": token + "@example.invalid"}
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        expected_user_id = user_by_token[access_token]
+        params = kwargs["params"]
+        assert method == "GET"
+        if path == "social_edges":
+            assert params.get("actor_user_id") == "eq." + expected_user_id or params.get("target_user_id") == "eq." + expected_user_id
+            if params.get("actor_user_id"):
+                return [{"id": "edge-" + access_token, "target_user_id": expected_user_id, "edge_type": "mute", "status": "active"}]
+            return []
+        if path == "user_interests":
+            assert params["user_id"] == "eq." + expected_user_id
+            return [{"interest_key": "ai", "preference": "interested", "created_at": "2026-10-27T00:00:00Z", "updated_at": "2026-10-27T00:00:00Z"}]
+        raise AssertionError(f"unexpected table {path}")
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    client = TestClient(app)
+    try:
+        response_a = client.get("/v1/me/social-graph", headers={"Authorization": "Bearer token-social-a"})
+        response_b = client.get("/v1/me/social-graph", headers={"Authorization": "Bearer token-social-b"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response_a.status_code == 200, response_a.text
+    assert response_b.status_code == 200, response_b.text
+    assert response_a.json()["outgoing"][0]["id"] == "edge-token-social-a"
+    assert response_b.json()["outgoing"][0]["id"] == "edge-token-social-b"
+    assert response_a.json()["outgoing"][0]["id"] != response_b.json()["outgoing"][0]["id"]
+    assert [call[2] for call in calls] == ["token-social-a"] * 4 + ["token-social-b"] * 4
