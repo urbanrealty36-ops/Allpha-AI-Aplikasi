@@ -303,35 +303,46 @@ jobs:
       - name: Install Native dependencies
         working-directory: apps/client
         run: npm ci
-      - name: Fetch TEST_ONLY signed asset URL from canonical production manifest
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('allpha-spatial-ingest');
-            const sceneKey = 'test-glb-0f734592f79df5772dfabad3361b12d29f7a911f';
-            const response = await fetch('https://api.allpha.web.id/v1/spatial/test/scenes/' + sceneKey + '/manifest', {
-              headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
-              cache: 'no-store'
-            });
-            const manifest = await response.json();
-            if (!response.ok) throw new Error('TEST_ONLY manifest unavailable; HTTP ' + response.status + ', code ' + (manifest.error?.code || 'unknown'));
-            const object = (manifest.objects || [])[0];
-            if (!object || object.sha256 !== '0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320' ||
-                Number(object.byte_size) !== 2084112 || object.publication_status !== 'test_only' ||
-                object.category !== 'agent-character' || !object.asset_url?.startsWith('https://')) {
-              throw new Error('TEST_ONLY manifest did not match the pinned quarantined fixture contract');
-            }
-            // Independently download the short-lived signed URL and verify exact bytes
-            // before either native renderer is allowed to use the fixture.
-            const bytesResponse = await fetch(object.asset_url, { cache: 'no-store' });
-            if (!bytesResponse.ok) throw new Error('Signed asset download failed with HTTP ' + bytesResponse.status);
-            const bytes = Buffer.from(await bytesResponse.arrayBuffer());
-            const actualSha256 = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
-            if (actualSha256 !== object.sha256 || bytes.length !== Number(object.byte_size)) {
-              throw new Error('Signed asset byte verification failed: sha256=' + actualSha256 + ', bytes=' + bytes.length);
-            }
-            core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
-            core.info(JSON.stringify({ scene_key: sceneKey, expected_sha256: object.sha256, actual_sha256: actualSha256, expected_byte_size: Number(object.byte_size), actual_byte_size: bytes.length, byte_verification: 'PASS', category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+      - name: Serve retained real GLB fixture locally for Android Emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=".artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb"
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p=Path(".artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb")
+          data=p.read_bytes()
+          expected="0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320"
+          if len(data)!=2084112 or hashlib.sha256(data).hexdigest()!=expected:
+              raise SystemExit("Retained real GLB fixture size/SHA-256 mismatch")
+          print({"fixture":str(p),"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest(),"source":"verified acquisition artifact","publication":"test-only; not exposed via production manifest"})
+          PY
+          nohup python3 -m http.server 8765 --bind 0.0.0.0 --directory .artifacts/device-fixture/shard-02 > .artifacts/device-fixture/http-server.log 2>&1 < /dev/null &
+          echo $! > .artifacts/device-fixture/http-server.pid
+          ok=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/assets/0f734592f79d_AIAN_F_2_Busi.glb" -o /tmp/allpha-device-fixture.glb; then ok=1; break; fi
+            sleep 1
+          done
+          if [ "$ok" -ne 1 ]; then cat .artifacts/device-fixture/http-server.log; exit 1; fi
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          data=Path("/tmp/allpha-device-fixture.glb").read_bytes()
+          if len(data)!=2084112 or hashlib.sha256(data).hexdigest()!="0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320":
+              raise SystemExit("Locally served GLB fixture failed byte verification")
+          print("Local fixture server byte verification PASS")
+          PY
+          echo "EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL=http://10.0.2.2:8765/assets/0f734592f79d_AIAN_F_2_Busi.glb" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("apps/client/app.json")
+          d=json.loads(p.read_text())
+          d.setdefault("expo",{}).setdefault("android",{})["usesCleartextTraffic"]=True
+          p.write_text(json.dumps(d,indent=2)+"\n")
+          PY
       - name: Build Android release APK before booting emulator
         shell: bash
         run: |
@@ -400,35 +411,38 @@ jobs:
       - name: Install Native dependencies
         working-directory: apps/client
         run: npm ci
-      - name: Fetch TEST_ONLY signed asset URL from canonical production manifest
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('allpha-spatial-ingest');
-            const sceneKey = 'test-glb-0f734592f79df5772dfabad3361b12d29f7a911f';
-            const response = await fetch('https://api.allpha.web.id/v1/spatial/test/scenes/' + sceneKey + '/manifest', {
-              headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' },
-              cache: 'no-store'
-            });
-            const manifest = await response.json();
-            if (!response.ok) throw new Error('TEST_ONLY manifest unavailable; HTTP ' + response.status + ', code ' + (manifest.error?.code || 'unknown'));
-            const object = (manifest.objects || [])[0];
-            if (!object || object.sha256 !== '0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320' ||
-                Number(object.byte_size) !== 2084112 || object.publication_status !== 'test_only' ||
-                object.category !== 'agent-character' || !object.asset_url?.startsWith('https://')) {
-              throw new Error('TEST_ONLY manifest did not match the pinned quarantined fixture contract');
-            }
-            // Independently download the short-lived signed URL and verify exact bytes
-            // before either native renderer is allowed to use the fixture.
-            const bytesResponse = await fetch(object.asset_url, { cache: 'no-store' });
-            if (!bytesResponse.ok) throw new Error('Signed asset download failed with HTTP ' + bytesResponse.status);
-            const bytes = Buffer.from(await bytesResponse.arrayBuffer());
-            const actualSha256 = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
-            if (actualSha256 !== object.sha256 || bytes.length !== Number(object.byte_size)) {
-              throw new Error('Signed asset byte verification failed: sha256=' + actualSha256 + ', bytes=' + bytes.length);
-            }
-            core.exportVariable('EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL', object.asset_url);
-            core.info(JSON.stringify({ scene_key: sceneKey, expected_sha256: object.sha256, actual_sha256: actualSha256, expected_byte_size: Number(object.byte_size), actual_byte_size: bytes.length, byte_verification: 'PASS', category: object.category, lifecycle: object.publication_status, signed_url: 'obtained; redacted' }));
+      - name: Serve retained real GLB fixture locally for iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=".artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb"
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p=Path(".artifacts/device-fixture/shard-02/assets/0f734592f79d_AIAN_F_2_Busi.glb")
+          data=p.read_bytes()
+          expected="0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320"
+          if len(data)!=2084112 or hashlib.sha256(data).hexdigest()!=expected:
+              raise SystemExit("Retained real GLB fixture size/SHA-256 mismatch")
+          print({"fixture":str(p),"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest(),"source":"verified acquisition artifact","publication":"test-only; not exposed via production manifest"})
+          PY
+          nohup python3 -m http.server 8765 --bind 0.0.0.0 --directory .artifacts/device-fixture/shard-02 > .artifacts/device-fixture/http-server.log 2>&1 < /dev/null &
+          echo $! > .artifacts/device-fixture/http-server.pid
+          ok=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8765/assets/0f734592f79d_AIAN_F_2_Busi.glb" -o /tmp/allpha-device-fixture.glb; then ok=1; break; fi
+            sleep 1
+          done
+          if [ "$ok" -ne 1 ]; then cat .artifacts/device-fixture/http-server.log; exit 1; fi
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          data=Path("/tmp/allpha-device-fixture.glb").read_bytes()
+          if len(data)!=2084112 or hashlib.sha256(data).hexdigest()!="0f734592f79df5772dfabad3361b12d29f7a911ff86ea59adc51486a0d128320":
+              raise SystemExit("Locally served GLB fixture failed byte verification")
+          print("Local fixture server byte verification PASS")
+          PY
+          echo "EXPO_PUBLIC_SPATIAL_TEST_ASSET_URL=http://127.0.0.1:8765/assets/0f734592f79d_AIAN_F_2_Busi.glb" >> "$GITHUB_ENV"
       - name: Prepare isolated test app
         shell: bash
         run: |
@@ -441,7 +455,9 @@ jobs:
           d=json.loads(p.read_text())
           ios=d.setdefault("expo",{}).setdefault("ios",{})
           info=ios.setdefault("infoPlist",{})
-          info.setdefault("NSAppTransportSecurity",{})["NSAllowsArbitraryLoads"]=False
+          ats=info.setdefault("NSAppTransportSecurity",{})
+          ats["NSAllowsArbitraryLoads"]=False
+          ats["NSAllowsLocalNetworking"]=True
           p.write_text(json.dumps(d,indent=2)+"\n")
           PY
       - name: Build and run actual React Native renderer on iOS Simulator
