@@ -161,7 +161,7 @@ export default function LiveExperienceStage({
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
+      <div className="flex items-center justify-between bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
         <div className="flex items-center gap-3">
           <div className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-slate-900 animate-pulse" />
           <div>
