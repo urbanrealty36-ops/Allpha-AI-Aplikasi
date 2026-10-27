@@ -1084,7 +1084,7 @@ export default function ProfileView({
 
               {/* 10. PILIHAN BAHASA / LANGUAGE */}
               <button
-                onClick={() => setSelectedSettingDetail('LANGUAGE')}
+                onClick={() => onOpenAccountSettings ? onOpenAccountSettings("profile") : setSelectedSettingDetail('LANGUAGE')}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-slate-50 hover:bg-slate-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">
