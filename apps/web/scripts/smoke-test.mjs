@@ -402,8 +402,8 @@ assert.ok(profileView.includes('onOpenAgentStudio') && profileView.includes('onO
 assert.ok(profileView.includes('onOpenAgentRuntime') && profileRoute.includes('onOpenAgentRuntime={(agentId)=>{window.location.assign("/agents?agent="+encodeURIComponent(agentId))}}'), "Profile task actions must deep-link to the canonical Agent Runtime console");
 const agentsRoute = readFileSync(new URL("../app/agents/page.tsx", import.meta.url), "utf8");
 assert.ok(agentsRoute.includes('get("agent")') && agentsRoute.includes('scrollIntoView') && agentsRoute.includes('id={"agent-" + agent.id}'), "Agent Runtime console must honor the selected Agent deep link");
-assert.ok(agentsRoute.includes('https://api.allpha.web.id') && agentStudioRoute.includes('https://api.allpha.web.id'), "Agent Runtime and Studio must use the canonical production API origin when no override is configured");
 const agentStudioRoute = readFileSync(new URL("../app/agents/[agentId]/studio/page.tsx", import.meta.url), "utf8");
+assert.ok(agentsRoute.includes('https://api.allpha.web.id') && agentStudioRoute.includes('https://api.allpha.web.id'), "Agent Runtime and Studio must use the canonical production API origin when no override is configured");
 assert.ok(agentStudioRoute.includes('href="/workflows"') && agentStudioRoute.includes("/knowledge/retrieve") && agentStudioRoute.includes("/skills"), "Agent Studio must link the canonical Workflow Engine and expose Skill/Knowledge API integrations");
 assert.ok(!profileView.includes('tasks?.length || 4'), "Profile must not fabricate a scheduled task count");
 assert.ok(agentIdentityModal.includes("AI Gateway & Model Router") && !agentIdentityModal.includes("Gemini 2.5 Flash Allpha Gateway"), "Profile must defer provider/model selection to the canonical Model Router");
