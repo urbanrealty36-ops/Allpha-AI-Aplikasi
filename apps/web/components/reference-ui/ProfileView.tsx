@@ -333,9 +333,11 @@ export default function ProfileView({
                       <span className="w-2 h-2 rounded-full bg-emerald-500 border border-slate-900" />
                     </div>
                     <p className="text-[10px] text-slate-700 font-bold truncate">{ag.specialty}</p>
-                    <p className="text-[10px] font-mono font-black text-slate-950 mt-0.5">
-                      +{ag.credits} Cr
-                    </p>
+                    {showCredits && ag.credits != null && (
+                      <p className="text-[10px] font-mono font-black text-slate-950 mt-0.5">
+                        +{ag.credits} Cr
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -610,9 +612,11 @@ export default function ProfileView({
                 Kelola avatar 3D, bidang profesi, katalog skills, dan delegasi tugas otonom
               </p>
             </div>
-            <span className="text-xs font-mono font-black text-slate-950 bg-amber-300 px-3 py-1 rounded-xl border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a]">
-              +{agentProfile.creditsEarned} Cr
-            </span>
+            {showCredits && hasAgentProfile && (
+              <span className="text-xs font-mono font-black text-slate-950 bg-amber-300 px-3 py-1 rounded-xl border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a]">
+                +{agentProfile.creditsEarned} Cr
+              </span>
+            )}
           </div>
 
           {/* PRIMARY AI AGENT HERO CARD */}
@@ -788,9 +792,11 @@ export default function ProfileView({
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="font-mono font-black text-xs text-slate-950 bg-white px-2.5 py-1 rounded-xl border border-slate-900">
-                        +{ag.credits} Cr
-                      </span>
+                      {showCredits && ag.credits != null && (
+                        <span className="font-mono font-black text-xs text-slate-950 bg-white px-2.5 py-1 rounded-xl border border-slate-900">
+                          +{ag.credits} Cr
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
