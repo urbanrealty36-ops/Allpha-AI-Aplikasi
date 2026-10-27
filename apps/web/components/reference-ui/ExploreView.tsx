@@ -116,7 +116,8 @@ interface ExploreViewProps {
   accountsError?: string;
   onRetryAccounts?: () => void;
   followedAccountIds?: string[];
-  onFollowAccount?: (accountId: string, currentlyFollowed: boolean) => void;
+  pendingFollowAccountIds?: string[];
+  onFollowAccount?: (accountId: string, followStatus: "active" | "requested" | null) => void;
   recommendationsLoading?: boolean;
   recommendationsError?: string;
   trendsLoading?: boolean;
@@ -153,6 +154,7 @@ export default function ExploreView({
   accountsError = "",
   onRetryAccounts,
   followedAccountIds = [],
+  pendingFollowAccountIds = [],
   onFollowAccount,
   recommendationsLoading = false,
   recommendationsError = "",
@@ -176,7 +178,8 @@ export default function ExploreView({
 
   const toggleFollow = (handle: string, accountId?: string) => {
     if (productionMode && accountId) {
-      onFollowAccount?.(accountId, followedAccountIds.includes(accountId));
+      const followStatus = followedAccountIds.includes(accountId) ? "active" : pendingFollowAccountIds.includes(accountId) ? "requested" : null;
+      onFollowAccount?.(accountId, followStatus);
       return;
     }
     setFollowedAccounts(prev => ({
@@ -531,7 +534,8 @@ export default function ExploreView({
             ) : (
               <div className="space-y-3">
                 {filteredAccounts.map((acc, idx) => {
-                  const isFollowed = productionMode ? followedAccountIds.includes(acc.id) : (followedAccounts[acc.handle] || false);
+                  const followStatus = followedAccountIds.includes(acc.id) ? "active" : pendingFollowAccountIds.includes(acc.id) ? "requested" : null;
+                  const isFollowed = productionMode ? followStatus === "active" : (followedAccounts[acc.handle] || false);
                   const bgColors = ['bg-white', 'bg-sky-50/50', 'bg-emerald-50/50', 'bg-amber-50/50', 'bg-purple-50/50'];
                   const cardBg = bgColors[idx % bgColors.length];
 
@@ -577,7 +581,7 @@ export default function ExploreView({
                           {/* Profile Details */}
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <h3 className="text-xs sm:text-sm font-black text-slate-900">{acc.name}</h3>
+                              <h3 className="text-xs sm:text-sm font-black text-slate-900"><a className="hover:underline" href={acc.isAi ? "/agents/passport/" + encodeURIComponent(acc.handle.replace(/^@/, "")) : "/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))}>{acc.name}</a></h3>
                               {acc.verified && (
                                 <span className="w-4 h-4 rounded-full bg-sky-500 border border-slate-900 text-white flex items-center justify-center text-[8px] font-black shadow-2xs">
                                   ✓
@@ -593,7 +597,7 @@ export default function ExploreView({
                             </div>
 
                             <p className="text-[11px] text-slate-700 font-mono font-bold">
-                              {acc.handle}
+                              <a className="hover:underline" href={acc.isAi ? "/agents/passport/" + encodeURIComponent(acc.handle.replace(/^@/, "")) : "/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))}>{acc.handle}</a>
                               {acc.ownerName && (
                                 <span className="text-slate-600 font-sans ml-1">
                                   • Milik <strong>{acc.ownerName}</strong>
@@ -621,6 +625,8 @@ export default function ExploreView({
                               <Check className="w-3.5 h-3.5 text-emerald-800 stroke-[3px]" />
                               <span>Mengikuti</span>
                             </>
+                          ) : followStatus === "requested" ? (
+                            <><Check className="w-3.5 h-3.5" /><span>Diminta</span></>
                           ) : (
                             <>
                               <UserPlus className="w-3.5 h-3.5 stroke-[2.5px]" />
