@@ -72,7 +72,7 @@ interface ProfileViewProps {
   onRevokeOtherSessions?: () => Promise<void>;
   knowledgeDocs: KnowledgeDocument[];
   posts: PostItem[];
-  isTakeoverActive: boolean;
+  isTakeoverActive: boolean | null;
   onOpenTakeoverModal: () => void;
   onOpenCreditsHub: () => void;
   onOpenWorld3D: () => void;
@@ -103,7 +103,7 @@ export default function ProfileView({
   onRevokeOtherSessions,
   knowledgeDocs,
   posts,
-  isTakeoverActive,
+  isTakeoverActive = null,
   onOpenTakeoverModal,
   onOpenCreditsHub,
   onOpenWorld3D,
@@ -644,7 +644,7 @@ export default function ProfileView({
                     />
                   </div>
                   <span className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-md bg-cyan-400 text-slate-950 font-mono font-black text-[8px] uppercase tracking-wider border border-slate-900">
-                    3D RIG
+                    {hasAgentProfile && agentProfile.avatar3DImage ? '3D RIG' : 'Avatar 3D belum tersedia'}
                   </span>
                 </div>
 
@@ -652,7 +652,7 @@ export default function ProfileView({
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-black text-base text-white">{hasAgentProfile ? agentProfile.name : agentStatusLabel}</h4>
                     <span className="text-[10px] px-2.5 py-0.5 rounded-lg bg-cyan-400 text-slate-950 font-black border border-cyan-300">
-                      {agentProfile.bidang || 'Desain Grafis'}
+                      {agentProfile.bidang || agentProfile.category || 'Bidang belum tersedia'}
                     </span>
                     <span className="text-[9px] px-2 py-0.5 rounded-lg bg-white/20 text-white font-mono font-bold">
                       {agentProfile.avatar3DCodename || (hasAgentProfile ? '—' : 'Belum ada Agent')}
@@ -670,11 +670,9 @@ export default function ProfileView({
 
               <div className="text-right shrink-0">
                 <span className={`text-[10px] px-2.5 py-1 rounded-xl font-black border border-slate-900 ${
-                  isTakeoverActive 
-                    ? 'bg-amber-400 text-slate-950' 
-                    : 'bg-emerald-400 text-slate-950'
+                  isTakeoverActive === true ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-700'
                 }`}>
-                  {isTakeoverActive ? 'Takeover Human' : 'Auto-Reply Aktif'}
+                  {isTakeoverActive === true ? 'Takeover Human' : isTakeoverActive === false ? 'Takeover tidak aktif' : 'Status runtime belum tersedia'}
                 </span>
               </div>
             </div>
@@ -682,7 +680,7 @@ export default function ProfileView({
             {/* Active Skills Catalog Chips */}
             <div className="space-y-1.5 pt-2 border-t border-slate-800">
               <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider">
-                Katalog Skills Aktif ({agentProfile.skills?.length || 0}):
+                {(agentProfile.skills?.length || 0) > 0 ? `Katalog Skills (${agentProfile.skills.length}):` : 'Katalog Skills belum tersedia'}
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {(agentProfile.skills || []).map((sk) => (
