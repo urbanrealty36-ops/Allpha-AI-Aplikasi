@@ -72,12 +72,12 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     item = rows[0]
     followed, hidden = await _edges(viewer_id)
     owner_id = str(item.get("owner_id"))
+    if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed):
+        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     owner_profile = (await _profiles_for({owner_id})).get(owner_id)
     if (
         not owner_profile
         or owner_profile.get("account_status", "active") != "active"
-        or owner_id in hidden
-        or (item.get("visibility") == "followers" and owner_id not in followed)
         or (owner_profile.get("visibility") != "public" and owner_id not in followed and owner_id != viewer_id)
     ):
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
