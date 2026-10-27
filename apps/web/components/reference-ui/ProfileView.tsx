@@ -1148,22 +1148,22 @@ export default function ProfileView({
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900">
                     <p className="text-[9.5px] font-bold text-slate-500 uppercase">Total Profil Views</p>
-                    <p className="text-base font-black text-slate-900 font-mono">142.840</p>
-                    <span className="text-[9px] text-emerald-600 font-bold">▲ +24.8% bln ini</span>
+                    <p className="text-base font-black text-slate-900 font-mono">Belum tersedia</p>
+                    <span className="text-[9px] text-emerald-600 font-bold">▲ Data analitik belum tersedia</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900">
                     <p className="text-[9.5px] font-bold text-slate-500 uppercase">Jangkauan Postingan</p>
-                    <p className="text-base font-black text-slate-900 font-mono">489.200</p>
-                    <span className="text-[9px] text-emerald-600 font-bold">▲ +38.1% bln ini</span>
+                    <p className="text-base font-black text-slate-900 font-mono">Belum tersedia</p>
+                    <span className="text-[9px] text-emerald-600 font-bold">▲ Data analitik belum tersedia</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900">
                     <p className="text-[9.5px] font-bold text-slate-500 uppercase">Pertumbuhan Followers</p>
-                    <p className="text-base font-black text-slate-900 font-mono">+12.450</p>
-                    <span className="text-[9px] text-emerald-600 font-bold">▲ 18.2% conversion</span>
+                    <p className="text-base font-black text-slate-900 font-mono">Belum tersedia</p>
+                    <span className="text-[9px] text-emerald-600 font-bold">▲ Data analitik belum tersedia</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900">
                     <p className="text-[9.5px] font-bold text-slate-500 uppercase">Tanya Jawab AI Agent</p>
-                    <p className="text-base font-black text-slate-900 font-mono">1.820 Sesi</p>
+                    <p className="text-base font-black text-slate-900 font-mono">Belum tersedia</p>
                     <span className="text-[9px] text-purple-600 font-bold">🪙 Saldo belum tersedia</span>
                   </div>
                 </div>
@@ -1179,7 +1179,7 @@ export default function ProfileView({
                     <span>Unit Economics & Penarikan Saldo</span>
                   </h4>
                   <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-950 border border-emerald-400">
-                    Royalti Kreator: 85%
+                    Skema royalti belum tersedia
                   </span>
                 </div>
 
@@ -1189,7 +1189,7 @@ export default function ProfileView({
                     <span className="font-mono font-black text-slate-900">Belum tersedia</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600 font-bold">Platform Fee (15%):</span>
+                    <span className="text-slate-600 font-bold">Biaya platform:</span>
                     <span className="font-mono font-black text-slate-400">Belum tersedia</span>
                   </div>
                   <div className="flex justify-between items-center border-t border-slate-200 pt-1.5">
@@ -1285,15 +1285,15 @@ export default function ProfileView({
                 </h4>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900 text-center">
-                    <p className="text-base font-black text-slate-900">12</p>
+                    <p className="text-base font-black text-slate-500">—</p>
                     <p className="text-[10px] font-bold text-slate-500">Postingan Arsip</p>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900 text-center">
-                    <p className="text-base font-black text-slate-900">28</p>
+                    <p className="text-base font-black text-slate-500">—</p>
                     <p className="text-[10px] font-bold text-slate-500">Stories Arsip</p>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white border border-slate-900 text-center">
-                    <p className="text-base font-black text-slate-900">5</p>
+                    <p className="text-base font-black text-slate-500">—</p>
                     <p className="text-[10px] font-bold text-slate-500">Reels Arsip</p>
                   </div>
                 </div>
@@ -1344,9 +1344,10 @@ export default function ProfileView({
                     <button
                       key={lang.code}
                       onClick={() => {
-                        setSettingsLang(lang.code as any);
-                        showToast(`Bahasa diatur ke ${lang.name} ${lang.flag}`);
+                        setIsSettingsOpen(false);
                         setSelectedSettingDetail(null);
+                        if (onOpenAccountSettings) onOpenAccountSettings("profile");
+                        else showToast("Pengaturan bahasa belum terhubung ke formulir profil kanonis.");
                       }}
                       className={`w-full p-2.5 rounded-xl border-2 border-slate-900 flex items-center justify-between transition ${
                         settingsLang === lang.code ? 'bg-[#FEF08A] font-black' : 'bg-white hover:bg-slate-50 font-bold'
