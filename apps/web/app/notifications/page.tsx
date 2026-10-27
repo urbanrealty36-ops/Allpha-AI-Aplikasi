@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 
@@ -34,6 +34,7 @@ export default function NotificationsPage() {
   const [notice, setNotice] = useState("");
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [preferencesBusy, setPreferencesBusy] = useState(false);
+  const requestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
