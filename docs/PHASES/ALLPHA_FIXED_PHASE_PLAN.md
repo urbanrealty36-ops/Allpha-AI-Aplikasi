@@ -1820,3 +1820,11 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Notifications, Messages, and Search now prevent a delayed initial `getSession()` snapshot from overwriting a newer auth-state event: `9eae9b4c106d3ddfef6c33b207f34a292cd51ebe`, `e70344282eff42c3a89be9cf24b9e3dd98aeec2f`, `276d2f30625643fdb6628014bc7aee2575ae23b9`.
 - Notification inbox cleanup now invalidates both inbox and preference operations on unmount: `950a5d0920a5a9fb64a2b5149f2b556bf7ce6c3a`.
 - No tests/build/typecheck/staging/deployment were executed.
+
+
+**Final session-isolation hardening (2026-10-27):**
+- Search discovery/trends/recommendations now discard results when the initiating access-token session is no longer current; follow actions are guarded against late completion after account changes: `5e753a42e961eb291ac91ed98386fec61bb8766c`, `c44bf5115abd90fa850a2a95a5800fb50d6b4022`, `6ee0450cf539b3e3d4afb214f9b15f2780f450be`.
+- Messaging send completion is guarded by a session epoch and account switches reset composer/loading state: `b7c152aef5a4ddf676fa0d8187c16ac4b4d2dbf9`, `d5566883f128ff6c49e1308adc7bd5a6cbaa8d9f`.
+- Notification inbox/preferences reset busy state and reject old-session completions: `202b5b2474494cfa8477a90b208dbc3c4ddd99fa`, `950a5d0920a5a9fb64a2b5149f2b556bf7ce6c3a`.
+- Source assertions cover the new session-scoped behavior in `apps/web/scripts/smoke-test.mjs`: `09a0c09d55e8151d94f3cda48bede56a24a92ee8`, `78c5db000485a6ceec64ac2531bd2d3c8e09c238`. These assertions were not run.
+- No test, build, typecheck, staging or deployment was executed.
