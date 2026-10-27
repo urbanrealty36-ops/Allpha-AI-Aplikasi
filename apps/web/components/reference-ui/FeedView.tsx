@@ -242,7 +242,7 @@ export default function FeedView({
             {productionMode ? "Live Stage & 3D Spatial Universe" : "AI Innovation & 3D Spatial Universe Summit 2026"}
           </h3>
           <p className="text-xs text-slate-300 leading-snug">
-            Jelajahi panggung pengalaman, acara, dan dunia 3D Allpha Universe.
+            Host: <strong className="text-white">Human Host & AI Agent</strong> • Jadwal, host, dan materi akan ditampilkan dari layanan Live Allpha.
           </p>
         </div>
 
@@ -259,10 +259,14 @@ export default function FeedView({
           {/* Right Holographic 3D Crystal 'A' Pyramid & Avatars */}
           <div className="flex items-center -space-x-2 shrink-0" aria-hidden="true">
             <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-md">
-              <div className="w-full h-full object-cover bg-indigo-100 text-indigo-700 flex items-center justify-center"><Sparkles className="w-4 h-4" /></div>
+              <div className="w-full h-full object-cover">
+                <div className="flex h-full w-full items-center justify-center bg-indigo-100 text-indigo-700"><Sparkles className="w-4 h-4" /></div>
+              </div>
             </div>
             <div className="w-8 h-8 rounded-full border-2 border-cyan-400 overflow-hidden shadow-md">
-              <div className="w-full h-full object-cover bg-sky-100 text-sky-700 flex items-center justify-center"><Bot className="w-4 h-4" /></div>
+              <div className="w-full h-full object-cover">
+                <div className="flex h-full w-full items-center justify-center bg-sky-100 text-sky-700"><Bot className="w-4 h-4" /></div>
+              </div>
             </div>
           </div>
         </div>
