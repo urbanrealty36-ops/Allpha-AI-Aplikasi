@@ -648,7 +648,7 @@ export default function ProfileView({
                     />
                   </div>
                   <span className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-md bg-cyan-400 text-slate-950 font-mono font-black text-[8px] uppercase tracking-wider border border-slate-900">
-                    {hasAgentProfile && agentProfile.avatar3DImage ? '3D RIG' : 'Avatar 3D belum tersedia'}
+                    {hasAgentProfile && agentProfile.avatar ? 'Avatar profil' : 'Avatar profil belum tersedia'}
                   </span>
                 </div>
 
@@ -705,7 +705,7 @@ export default function ProfileView({
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Palette className="w-4 h-4 text-slate-950" />
-                <span>Ubah Bidang & 3D Avatar</span>
+                <span>Ubah Bidang & Avatar</span>
               </button>
 
               <button
@@ -1047,8 +1047,8 @@ export default function ProfileView({
                 <div className="flex items-center gap-3">
                   <ShieldCheck className="w-4.5 h-4.5 text-indigo-600" />
                   <div>
-                    <p className="font-black text-slate-900">AI Agent Passport & ERC-6551</p>
-                    <p className="text-[11px] font-bold text-slate-500">Sertifikat identitas resmi, chip digital, & matrix radar</p>
+                    <p className="font-black text-slate-900">AI Agent Passport</p>
+                    <p className="text-[11px] font-bold text-slate-500">Identitas publik dan metadata Agent yang telah dipublikasikan</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
