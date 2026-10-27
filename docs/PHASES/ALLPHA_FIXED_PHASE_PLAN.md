@@ -1881,3 +1881,12 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Added a smoke-source assertion for the sequence guard. It has not been executed.
 - Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/9b7feffefbee04384df50e13eff62a44fa014cfc, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/79462004c81405e9e4561a46ce450576d9e02c7a.
 - WP-02 and ENG-P04 remain IN_PROGRESS. No test, smoke, typecheck/build, staging, device flow, production migration, or deployment was run. The remaining Web–Native route/UI parity and live database grant/RLS/privacy evidence are still required before either acceptance gate can close.
+
+
+**WP-02 / ENG-P04 live read-only acceptance evidence — 2026-10-27:**
+- Added `docs/PHASES/WP-02_ENG-P04_ACCEPTANCE_EVIDENCE_2026-10-27.md` at commit `37d5cb7914a4e3af4c51f1f72e3a4a7ad6961733`. It records source inventory, the Native deep-link route names, source-only request/session guards, live RLS/policy catalog observations, verification limits, and exact exit evidence.
+- Read-only inspection of connected Supabase project `dvdziauyvuhcnqhrrvww` confirms RLS is enabled on the reviewed identity/social/inbox tables, but this alone does not prove cross-user behavior. The existing `user_settings` policies are self-row scoped.
+- **ENG-P04 blocker confirmed:** live catalog queries still report `anon` and `authenticated` have table-level SELECT/INSERT/UPDATE/DELETE/TRUNCATE privileges on `public.user_settings`, plus column-level INSERT/SELECT/UPDATE/REFERENCES on all columns. The source forward migration `20261027180000_eng_p03_user_settings_least_privilege_grants.sql` is absent from live migration history. It was not applied; no production DDL was run.
+- WP-02 source route names exist for the core Native journeys, but complete reference-to-target component/CSS/asset parity and actual responsive/deep-link/device acceptance remain unverified. The source smoke assertions have not been executed.
+- No authenticated two-user tests, build/typecheck, smoke/test execution, staging, device flow or deployment was run. The live inspection was read-only.
+- **Status unchanged:** WP-02 `IN_PROGRESS`; ENG-P04 `IN_PROGRESS`. This evidence identifies an actual database privilege blocker and does not authorize advancing to ENG-P05. Follow the existing approved migration/validation process; do not apply production DDL ad hoc.
