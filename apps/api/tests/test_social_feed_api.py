@@ -720,6 +720,8 @@ def test_username_discovery_requires_explicit_opt_in_and_limits_private_fields(m
          "avatar_url": "https://example.invalid/private.png", "bio": "private bio", "visibility": "private"},
         {"id": "00000000-0000-0000-0000-000000000913", "username": "allpha_optout",
          "display_name": "Opt out", "avatar_url": None, "bio": "", "visibility": "public"},
+        {"id": "00000000-0000-0000-0000-000000000914", "username": "allpha_inactive",
+         "display_name": "Inactive", "avatar_url": None, "bio": "", "visibility": "public", "account_status": "deactivation_requested"},
     ]
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
@@ -731,6 +733,7 @@ def test_username_discovery_requires_explicit_opt_in_and_limits_private_fields(m
                 {"user_id": public_id, "privacy_settings": {"discoverable_by_username": True}},
                 {"user_id": private_id, "privacy_settings": {"discoverable_by_username": True}},
                 {"user_id": "00000000-0000-0000-0000-000000000913", "privacy_settings": {"discoverable_by_username": False}},
+                {"user_id": "00000000-0000-0000-0000-000000000914", "privacy_settings": {"discoverable_by_username": True}},
             ]
         if method == "GET" and table == "social_edges":
             return []
