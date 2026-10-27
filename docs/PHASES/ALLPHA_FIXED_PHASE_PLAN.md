@@ -1606,3 +1606,11 @@ For every package, maintain a source-to-domain trace from Web PWA, Native React 
 - Source-level assertions on the final component confirm the seeded hoodie listing, `picsum.photos` marketplace avatar, fabricated order ID, and simulated payment-success setter are absent. This is not build/typecheck/visual/runtime acceptance evidence.
 - Vercel deployment for the first component commit was observed `ERROR`; the follow-up commit deployment was `QUEUED` at inspection. GitHub status contexts for the follow-up showed Web and Vercel contexts pending; no build success is claimed. No staging, authenticated production checkout, or device test was run.
 - UI-COPY-03 remains `in_progress`. Next: inspect the current Vercel build result and repair any type/build regression; then apply the same source-structure-preserving, API-backed treatment to Feed/CreatePost, LiveExperienceStage and Profile, while keeping all fake business data and simulated side effects out of production.
+
+
+### UI-COPY-03 — Marketplace regression assertion reconciliation (2026-10-27)
+
+- The first Vercel build for Marketplace source restoration, deployment `dpl_GJ48yE3r1DzQiFkrzvaVLxgqhmgr`, failed because the existing source smoke assertion required the previous shortened adapter expression `catalogItems ?? (productionMode ? [] : referenceItems)`; it did not fail on a reported TypeScript compiler error. The assertion was stale relative to the new full-source adapter contract.
+- Updated `apps/web/scripts/smoke-test.mjs` to assert that the route passes an empty API-backed catalog in production, the component uses `const PRODUCTS: ProductItem[] = catalogItems ?? []`, and the seeded hoodie / fabricated `MID-ALPH-2026` order identifier are absent. Commit: `00a9488398e1731e36f628c5702a7f607a33b22d`.
+- Follow-up Vercel production deployment `dpl_Am7q1rKWdHuvGBLXgGN1DutccXu9` was observed `QUEUED`; CI status at the latest inspection still had Web and Vercel checks pending. Do not mark the fix passed until the new run is complete and its logs are inspected.
+- UI-COPY-03 remains `in_progress`; the Marketplace source-layout restoration is not accepted until build/typecheck/smoke evidence is green. No staging or authenticated purchase tests were run.
