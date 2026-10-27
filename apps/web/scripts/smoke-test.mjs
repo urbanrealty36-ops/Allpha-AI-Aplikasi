@@ -483,3 +483,11 @@ for (const contract of [
   "if(epoch!==sessionEpoch.current||sequence!==messageSequence.current)return",
   "client_message_id", "postgres_changes", "payload.detail?.message"
 ]) assert.ok(webMessages.includes(contract), "Messages must isolate account sessions and handle canonical API errors: " + contract);
+
+const feedSessionIsolationSource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "sessionEpoch.current += 1", "feedRequestSequence.current += 1", "preferencesRequestSequence.current += 1",
+  "commentRequestSequence.current", "if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return",
+  "Sesi berubah; proses publikasi dihentikan."
+]) assert.ok(feedSessionIsolationSource.includes(contract), "Feed must isolate sessions and stale interactions: " + contract);
+assert.ok(apiMain.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Private profile follow must be persisted as requested, not rely on DB defaults");
