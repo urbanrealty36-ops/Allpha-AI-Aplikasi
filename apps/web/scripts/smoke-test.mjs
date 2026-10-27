@@ -518,3 +518,12 @@ for (const [name, source] of [["Account", accountSessionSource], ["Profile", pro
 }
 
 assert.ok(nativeApp.includes("authEventSeen") && nativeApp.includes("!authEventSeen"), "Native navigation must not let a stale initial session read override a newer auth event");
+
+const userSettingsPrivilegeMigration = readFileSync(new URL("../../api/supabase/migrations/20261027180000_eng_p03_user_settings_least_privilege_grants.sql", import.meta.url), "utf8");
+for (const contract of [
+  "revoke all privileges on table public.user_settings from public, anon, authenticated",
+  "revoke all privileges (user_id, theme, notification_preferences, privacy_settings, updated_at)",
+  "grant select on table public.user_settings to authenticated",
+  "grant insert (user_id, theme, notification_preferences, privacy_settings)",
+  "grant update (theme, notification_preferences, privacy_settings)"
+]) assert.ok(userSettingsPrivilegeMigration.includes(contract), "user_settings migration must enforce least-privilege grants: " + contract);
