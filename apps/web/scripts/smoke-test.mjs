@@ -383,7 +383,11 @@ assert.ok(pwaManifest.includes('src: "/icon.svg"'), "Web manifest must reference
 assert.ok(webLayout.includes("userScalable: true"), "Web viewport must preserve user zoom accessibility");
 
 // WP-02: profile/settings must bind real canonical data and account mutations.
-assert.ok(profileRoute.includes('/v1/feed?mode=recent&limit=50'), "Profile must load real published feed data from the canonical API");
+assert.ok(profileRoute.includes('/v1/me/profile-feed?limit=50'), "Profile must load the authenticated owner's published content through the canonical API");
+const profileFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
+assert.ok(profileFeedApi.includes('@router.get("/v1/me/profile-feed"') && profileFeedApi.includes('user: dict[str, Any] = Depends(current_user)'), "Profile Feed must be protected by the canonical authenticated API");
+assert.ok(profileFeedApi.includes('"owner_id": f"eq.{owner}"') && profileFeedApi.includes('"status": "eq.published"') && profileFeedApi.includes('"moderation_status": "eq.approved"'), "Profile Feed must be scoped to owner-published approved content");
+assert.ok(profileFeedApi.includes('"engagement": {') && profileFeedApi.includes('"preview_url"'), "Profile Feed must return real engagement and signed media preview metadata");
 assert.ok(profileRoute.includes('item.owner_id === me.user!.id'), "Profile feed must be scoped to the authenticated identity");
 assert.ok(profileRoute.includes('/reaction') && profileRoute.includes('method: post.isLiked ? "DELETE" : "PUT"'), "Profile reactions must use canonical Feed mutation endpoints");
 assert.ok(profileRoute.includes('onSelectPost={(post)=>{window.location.assign("/feed?content="+encodeURIComponent(post.id))}}'), "Selecting a profile post must open its canonical Feed detail");
