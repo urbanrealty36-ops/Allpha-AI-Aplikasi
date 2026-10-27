@@ -359,11 +359,11 @@ async def get_public_creator_recommendations(
     if not candidate_ids:
         return {"items": [], "count": 0, "source": "eligible_public_content"}
     profiles = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
+        "select": "id,username,display_name,avatar_url,bio,visibility,account_status,created_at",
         "id": f"in.({','.join(candidate_ids)})", "visibility": "eq.public",
         "limit": str(min(100, max(limit * 5, limit))),
     })
-    by_id = {str(row.get("id")): row for row in (profiles or [])}
+    by_id = {str(row.get("id")): row for row in (profiles or []) if row.get("account_status", "active") == "active"}
     ranked = sorted((creator_id for creator_id in candidate_ids if creator_id in by_id),
                     key=lambda creator_id: (counts[creator_id], latest.get(creator_id, "")), reverse=True)
     items = []
@@ -392,11 +392,11 @@ async def get_social_profile(
     if not re.fullmatch(r"[a-z0-9_]{3,30}", handle):
         raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
     rows = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility,created_at",
+        "select": "id,username,display_name,avatar_url,bio,visibility,account_status,created_at",
         "username": f"eq.{handle}", "limit": "2",
     })
     profile = next((row for row in (rows or []) if str(row.get("username", "")).casefold() == handle.casefold()), None)
-    if not profile or profile.get("visibility") not in {"public", "private"}:
+    if not profile or profile.get("visibility") not in {"public", "private"} or profile.get("account_status", "active") != "active":
         raise HTTPException(404, detail={"code": "SOCIAL_PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
 
     target_id = str(profile["id"])
