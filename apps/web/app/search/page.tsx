@@ -11,6 +11,8 @@ type Trend = { topic: string; content_count: number; example_content_id: string 
 type Recommendation = SearchItem;
 type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
+type SocialGraphEdge = { target_user_id: string; edge_type: "follow" | "block" | "mute"; status: "requested" | "active" };
+type SocialGraphPayload = { outgoing?: SocialGraphEdge[] };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 function SearchPageContent() {
@@ -29,6 +31,8 @@ function SearchPageContent() {
   const [creatorsBusy, setCreatorsBusy] = useState(false);
   const [creatorsError, setCreatorsError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
+  const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
+  const [socialGraphError, setSocialGraphError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
@@ -40,6 +44,7 @@ function SearchPageContent() {
   const trendsRequestSequence = useRef(0);
   const recommendationsRequestSequence = useRef(0);
   const creatorsRequestSequence = useRef(0);
+  const socialGraphRequestSequence = useRef(0);
 
   useEffect(() => {
     if (!supabase) return;
@@ -60,6 +65,7 @@ function SearchPageContent() {
       trendsRequestSequence.current += 1;
       recommendationsRequestSequence.current += 1;
       creatorsRequestSequence.current += 1;
+      socialGraphRequestSequence.current += 1;
       data.subscription.unsubscribe();
     };
   }, [supabase]);
@@ -73,6 +79,7 @@ function SearchPageContent() {
     trendsRequestSequence.current += 1;
     recommendationsRequestSequence.current += 1;
     creatorsRequestSequence.current += 1;
+    socialGraphRequestSequence.current += 1;
     lastUrlQuery.current = null;
     setQuery("");
     setItems([]);
@@ -80,6 +87,8 @@ function SearchPageContent() {
     setRecommendations([]);
     setCreators([]);
     setFollowedAccountIds([]);
+    setPendingFollowAccountIds([]);
+    setSocialGraphError("");
     setBusy(false);
     setTrendsBusy(false);
     setRecommendationsBusy(false);
@@ -139,10 +148,41 @@ function SearchPageContent() {
     } finally { if (sequence === creatorsRequestSequence.current) setCreatorsBusy(false); }
   }
 
+  async function loadSocialGraph() {
+    if (!session) {
+      socialGraphRequestSequence.current += 1;
+      setFollowedAccountIds([]);
+      setPendingFollowAccountIds([]);
+      setSocialGraphError("");
+      return;
+    }
+    const sequence = ++socialGraphRequestSequence.current;
+    setSocialGraphError("");
+    try {
+      const response = await fetch(apiBase + "/v1/me/social-graph", {
+        headers: { Authorization: "Bearer " + session.access_token },
+        cache: "no-store",
+      });
+      const payload = await response.json() as SocialGraphPayload & { error?: { message?: string } };
+      if (sequence !== socialGraphRequestSequence.current) return;
+      if (!response.ok) throw new Error(payload.error?.message || "Status relasi sosial belum dapat dimuat.");
+      const follows = (payload.outgoing || []).filter(edge => edge.edge_type === "follow");
+      setFollowedAccountIds(follows.filter(edge => edge.status === "active").map(edge => edge.target_user_id));
+      setPendingFollowAccountIds(follows.filter(edge => edge.status === "requested").map(edge => edge.target_user_id));
+    } catch (cause) {
+      if (sequence === socialGraphRequestSequence.current) {
+        setFollowedAccountIds([]);
+        setPendingFollowAccountIds([]);
+        setSocialGraphError(cause instanceof Error ? cause.message : "Status relasi sosial belum dapat dimuat.");
+      }
+    }
+  }
+
   useEffect(() => {
     void loadTrends();
     void loadRecommendations();
     void loadCreators();
+    void loadSocialGraph();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
 
@@ -237,24 +277,50 @@ function SearchPageContent() {
         trendsData={trends}
         accountsData={accountsForReference}
         accountsLoading={creatorsBusy}
-        accountsError={creatorsError}
-        onRetryAccounts={() => { void loadCreators(); }}
+        accountsError={socialGraphError || creatorsError}
+        onRetryAccounts={() => { void loadCreators(); void loadSocialGraph(); }}
         followedAccountIds={followedAccountIds}
-        onFollowAccount={async (accountId, currentlyFollowed) => {
+        pendingFollowAccountIds={pendingFollowAccountIds}
+        onFollowAccount={async (accountId, currentlyFollowed, currentlyPending = false) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
           const mutationEpoch = sessionEpoch.current;
+          const removingRelationship = currentlyFollowed || currentlyPending;
           try {
-            const response = await fetch(apiBase + "/v1/social/follow/" + encodeURIComponent(accountId), {
-              method: currentlyFollowed ? "DELETE" : "PUT",
-              headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
-              cache: "no-store",
-            });
+            const response = await fetch(
+              removingRelationship
+                ? apiBase + "/v1/me/social-edges/" + encodeURIComponent(accountId) + "/follow"
+                : apiBase + "/v1/me/social-edges",
+              {
+                method: removingRelationship ? "DELETE" : "POST",
+                headers: {
+                  Authorization: "Bearer " + session.access_token,
+                  Accept: "application/json",
+                  ...(removingRelationship ? {} : { "Content-Type": "application/json" }),
+                },
+                ...(removingRelationship ? {} : { body: JSON.stringify({ target_user_id: accountId, edge_type: "follow" }) }),
+                cache: "no-store",
+              },
+            );
             const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload?.detail?.message || payload?.error?.message || "Status mengikuti akun tidak dapat diubah.");
+            if (!response.ok) throw new Error(payload?.error?.message || payload?.detail?.message || "Status mengikuti akun tidak dapat diubah.");
             if (sessionEpoch.current !== mutationEpoch) return;
-            setFollowedAccountIds(previous => currentlyFollowed ? previous.filter(id => id !== accountId) : [...new Set([...previous, accountId])]);
+            if (removingRelationship) {
+              setFollowedAccountIds(previous => previous.filter(id => id !== accountId));
+              setPendingFollowAccountIds(previous => previous.filter(id => id !== accountId));
+            } else if (payload?.outcome === "follow_request_created" || payload?.edge?.status === "requested") {
+              setFollowedAccountIds(previous => previous.filter(id => id !== accountId));
+              setPendingFollowAccountIds(previous => [...new Set([...previous, accountId])]);
+            } else {
+              setFollowedAccountIds(previous => [...new Set([...previous, accountId])]);
+              setPendingFollowAccountIds(previous => previous.filter(id => id !== accountId));
+            }
+            setSocialGraphError("");
             setAuthPrompt("");
-          } catch (cause) { setAuthPrompt(cause instanceof Error ? cause.message : "Status mengikuti akun tidak dapat diubah."); }
+          } catch (cause) {
+            if (sessionEpoch.current === mutationEpoch) {
+              setSocialGraphError(cause instanceof Error ? cause.message : "Status mengikuti akun tidak dapat diubah.");
+            }
+          }
         }}
         trendsLoading={trendsBusy}
         trendsError={trendsError}
