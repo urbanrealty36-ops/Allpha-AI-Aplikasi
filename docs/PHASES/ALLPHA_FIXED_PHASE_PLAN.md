@@ -1828,3 +1828,10 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Updated the existing regression-test source to assert that a private-profile follow insert carries status=requested, and added a smoke source assertion for the explicit policy. Tests/smoke checks have not been run.
 - Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/d7dad96abcfe6d79969e22e07110749cc380ea73, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/75766dbda57793cb945fd031d7f01e6803e0c700, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/1e54103030da949aa03c7ee727b8fc96f4f78937.
 - This is source implementation only. WP-02 and ENG-P04 remain IN_PROGRESS; no build/typecheck/test execution, staging, real-user flow, deployment, or production migration was performed. Acceptance remains open until evidence is gathered through the approved consolidated acceptance process.
+
+
+**ENG-P04 follow-policy reconciliation — 2026-10-27 (legacy social route):**
+- The legacy PUT /v1/social/follow/{target_user_id} endpoint also explicitly wrote status=active for every follow, even for private profiles. It now uses status=requested for private profiles and status=active for public profiles, matching canonical POST /v1/me/social-edges.
+- Added a source regression test for the legacy private-profile route and a smoke-source assertion for both route contracts. Neither has been executed.
+- Commits: https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/d3bc5c118be53d564fc91f1c4c29058eb0de4eea, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/df257c07f1801cb3244507ea96e284a3f8f08572, https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/1c1467e3940a9a7a2494d412864181d510ba96ed.
+- WP-02 and ENG-P04 remain IN_PROGRESS. No test/build/typecheck execution, staging, real-user flow, deployment or production migration was run. The acceptance gate remains open.
