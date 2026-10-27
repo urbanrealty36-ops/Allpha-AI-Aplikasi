@@ -147,7 +147,7 @@ assert.ok(app.includes('<Stack.Screen name="Feed">{({ route }) => <Welcome initi
 assert.ok(app.includes('encodeURIComponent(selectedPublicFeedId)') && app.includes('payload.item.id !== selectedPublicFeedId') && app.includes('if (active) setSelectedPublicFeedError'), "Guest Feed deep links must safely encode IDs and reject unavailable or mismatched content");
 assert.ok(app.includes('encodeURIComponent(selectedFeedContentId)') && app.includes('payload.item.id !== selectedFeedContentId') && app.includes('setSelectedFeedError'), "Authenticated Feed deep links must reject unavailable or mismatched content");
 assert.ok(app.includes('initialStoryId && !selectedStory && !guestLoading') && app.includes('initialStoryId && <View style={s.socialRow}>'), "Guest and authenticated Story deep links must render truthful unavailable states");
-assert.ok(app.includes('if (active) setSelectedFeedItem(payload.item)') && app.includes('return () => { active = false; };'), "Feed deep-link requests must ignore stale results after route changes or unmount");
+assert.ok(app.includes('if (!active) return;') && app.includes('setSelectedFeedItem(payload.item)') && app.includes('return () => { active = false; };'), "Feed deep-link requests must ignore stale results after route changes or unmount");
 assert.ok(app.includes('updateInterestPreference') && app.includes('"not_interested"'), "Native Social Graph must persist both interested and not-interested preferences");
 assert.ok(app.includes('result.outcome === "follow_active"') && app.includes('result.outcome === "follow_request_created"'), "Native Social Graph must show the server-derived follow outcome");
 const guestWelcome = app.slice(app.indexOf("function Welcome"), app.indexOf("function Auth"));
