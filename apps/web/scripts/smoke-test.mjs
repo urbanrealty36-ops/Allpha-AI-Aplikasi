@@ -449,3 +449,13 @@ assert.ok(messagesPage.includes("sessionEpoch.current") && messagesPage.includes
 const socialFeedApi = readFileSync(new URL("../../api/src/allpha_api/feed_api.py", import.meta.url), "utf8");
 assert.ok(socialFeedApi.includes('"/v1/social/discover-users"') && socialFeedApi.includes('"explicit_username_opt_in"'), "Username discovery must require explicit privacy opt-in");
 assert.ok(socialFeedApi.includes('row["privacy_settings"].get("discoverable_by_username") is True') && socialFeedApi.includes("target in hidden") && socialFeedApi.includes('"account_status", "active"'), "Username discovery must fail closed for missing privacy settings, exclude blocked/muted relationships, and omit inactive accounts");
+
+
+const publicProfilePage = readFileSync(new URL("../app/profile/[username]/page.tsx", import.meta.url), "utf8");
+assert.ok(publicProfilePage.includes('"/v1/social/profiles/"') && publicProfilePage.includes('"/v1/me/social-edges"'), "Public profile page must read visibility-filtered profile data and use canonical follow endpoints");
+assert.ok(publicProfilePage.includes('data.follow_status === "requested"') && publicProfilePage.includes("data.can_view_content"), "Public profile page must represent pending follow requests and private-content access separately");
+assert.ok(socialFeedApi.includes('"/v1/social/profiles/{username}"') && socialFeedApi.includes('"SOCIAL_PROFILE_NOT_FOUND"'), "Public profile API must centralize visibility-safe profile resolution");
+assert.ok(socialFeedApi.includes('privacy.get("discoverable_by_username") is not True') && socialFeedApi.includes('row.get("visibility") == "followers"'), "Public profile API must enforce private discoverability and follower-only content access");
+const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
+assert.ok(exploreView.includes('pendingFollowAccountIds?: string[]') && exploreView.includes('followStatus === "requested"'), "Reference account cards must distinguish pending follow requests");
+assert.ok(exploreView.includes('"/profile/" + encodeURIComponent(acc.handle.replace(/^@/, ""))'), "Human account cards must navigate to the canonical public profile route");
