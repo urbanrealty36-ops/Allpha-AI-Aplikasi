@@ -56,6 +56,7 @@ interface AuthOnboardingFlowProps {
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
   onGoogleSignIn?: () => Promise<void>;
+  initialAuthMode?: 'REGISTER' | 'LOGIN';
 }
 
 export type OnboardingStep = 'SPLASH' | 'HUMAN_REGISTER' | 'AGENT_ONBOARDING' | 'SUCCESS';
@@ -67,9 +68,16 @@ export default function AuthOnboardingFlow({
   currentUser,
   currentAgent,
   onGoogleSignIn,
+  initialAuthMode,
 }: AuthOnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('SPLASH');
-  const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
+  const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>(initialAuthMode ?? 'REGISTER');
+
+  useEffect(() => {
+    if (!isOpen || !initialAuthMode) return;
+    setAuthMode(initialAuthMode);
+    setStep('HUMAN_REGISTER');
+  }, [initialAuthMode, isOpen]);
   const [selectedLang, setSelectedLang] = useState<'id' | 'en' | 'ja' | 'ms'>('id');
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [flowToast, setFlowToast] = useState<string | null>(null);
