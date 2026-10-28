@@ -111,7 +111,7 @@ export default function TakeoverModal({
           </button>
 
           <button
-            onClick={() => setActiveNotice('Jadwal auto-reply: Aktif 24/7 dengan batas 50 respon/jam')}
+            onClick={() => setActiveNotice('Jadwal auto-reply belum tersedia karena API penjadwalan kanonis belum dihubungkan.')}
             className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
@@ -122,7 +122,7 @@ export default function TakeoverModal({
           </button>
 
           <button
-            onClick={() => setActiveNotice('Aturan filter: Memblokir kata tidak pantas & fokus pada kreativitas, 3D, dan kolaborasi.')}
+            onClick={() => setActiveNotice('Aturan topik dan etika belum dibaca atau disimpan melalui API kanonis.')}
             className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
