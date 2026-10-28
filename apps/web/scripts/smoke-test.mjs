@@ -637,3 +637,13 @@ assert.doesNotMatch(takeoverModal, /Aktif 24\/7 dengan batas 50 respon\/jam/);
 const messagesRoute = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/messages/conversations", "/read", "client_message_id", "postgres_changes", "Respons layanan pesan tidak berformat JSON.", "void load()"])
   assert.ok(messagesRoute.includes(contract), "DM must retain canonical send/read/realtime and inbox reconciliation: " + contract);
+
+
+// Agent Identity modal is opened from canonical Agent records; takeover stays disabled without an API contract.
+assert.ok(agents.includes('import AgentPassportModal from "../../components/reference-ui/AgentPassportModal"'));
+assert.ok(agents.includes("setPassportAgent(agent)"));
+assert.ok(agents.includes("passportAgent.id"));
+const takeoverActions = readFileSync(new URL("../components/reference-ui/TakeoverModal.tsx", import.meta.url), "utf8");
+assert.ok(takeoverActions.includes("actionsEnabled = false"));
+assert.ok(takeoverActions.includes("Status aktual belum dikonfirmasi API"));
+assert.ok(takeoverActions.includes("Kontrol takeover dinonaktifkan sampai status dan mutasi tersedia melalui API kanonis."));
