@@ -634,7 +634,6 @@ assert.ok(takeoverModal.includes("Jadwal auto-reply belum tersedia"));
 assert.ok(takeoverModal.includes("belum dibaca atau disimpan melalui API kanonis"));
 assert.doesNotMatch(takeoverModal, /Aktif 24\/7 dengan batas 50 respon\/jam/);
 
-const messagesRoute = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/messages/conversations", "/read", "client_message_id", "postgres_changes", "Respons layanan pesan tidak berformat JSON.", "void load()"])
   assert.ok(messagesRoute.includes(contract), "DM must retain canonical send/read/realtime and inbox reconciliation: " + contract);
 
@@ -662,3 +661,6 @@ assert.ok(profileRoute.includes("sequence !== requestSequence"), "Profile must d
 const accountRoute = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/me/profile", "/v1/me/settings", "/v1/me/social-graph", "privacy_settings", "notification_preferences", "role=alert", "Coba lagi"])
   assert.ok(accountRoute.includes(contract), "WP-02 account/settings/privacy must remain backed by canonical APIs: " + contract);
+
+const feedPageAuthPromptSource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+assert.ok(!feedPageAuthPromptSource.includes("setAuthPrompt("), "Feed must not reference an undefined auth prompt state");
