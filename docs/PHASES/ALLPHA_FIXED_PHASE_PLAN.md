@@ -1777,7 +1777,7 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - [1d39a87](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/commit/1d39a873095a8c4ec60b74e5bc6f6e1386c77b18) adds source-contract assertions for the Agent profile PATCH adapter, published Skills/ready Knowledge projection, canonical Studio/Passport routes and model-router truth-state. These assertions were added but not executed.
 - **Canonical engine integration map (do not duplicate engines):** Human identity/settings `/v1/me*` → `main.py` + `profiles/user_settings/user_consents`; Social Graph `/v1/me/social-graph`, `/v1/me/social-edges`, `/v1/me/interests` → `social_edges/user_interests` + existing feed/messaging access checks; Agent identity `/v1/agents*` → `ai_agents/agent_ownerships`; Skills `/v1/agents/{id}/skills` → `agent_skills/agent_skill_versions` + canonical policy/tool registry; Knowledge/Memory `/v1/agents/{id}/knowledge/*` → `knowledge.py/knowledge_retrieval.py/knowledge_vector_store.py/knowledge_worker.py`; LLM/provider selection and usage → `model_router.py/text_generation_adapters.py/model_costs_api.py`; durable Agent task execution → `agent_runtime_api.py/agent_runtime.py/agent_runtime_store.py`; durable workflow lifecycle → `workflow_api.py/workflow_engine.py/workflow_store.py/workflow_worker.py`. Web/Native must call these canonical FastAPI contracts; no direct client business writes or provider calls.
 - **Validation status:** all changes in this continuation are source-only. Per Product Owner instruction, no builds, typechecks, automated tests, staging, real-user flows, or deployment were run. Mark those `DEFERRED / NOT VERIFIED`; no integration/acceptance/production success is claimed.
-- **Current status:** WP-02 remains `IN_PROGRESS` pending remaining shared shell/navigation/search/notification/inbox and source-parity review. ENG-P04 remains `IN_PROGRESS` pending full privacy/visibility consistency and the already-documented grant/migration-source reconciliation; no production DDL was applied. Continue on these existing canonical work items; do not create a parallel engine or phase.
+- **Current status:** WP-02 remains `IN_PROGRESS` pending remaining shared shell/navigation/search/notification/inbox and source-parity review. ENG-P04 remains `IN_PROGRESS` pending full privacy/visibility consistency, source-migration/ledger reconciliation, and two-user JWT/API/Realtime isolation evidence. The least-privilege grant migration was applied to production on 2026-10-28; do not repeat it without reviewing the live migration ledger. Continue on these existing canonical work items; do not create a parallel engine or phase.
 
 
 **WP-02 final source-integration continuation — 2026-10-27 (Agent Runtime/Studio routing):**
@@ -1896,7 +1896,7 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - Expanded `docs/PHASES/WP-02_ENG-P04_ACCEPTANCE_EVIDENCE_2026-10-27.md` with a source-level comparison of the reference shell's 14 route/tab journeys against Native deep links and stack routes, plus Stories, Notifications, Communities and Account subsections.
 - Explicit gaps recorded: no Native route for Create, Live Stage, Spatial Navigation, Marketplace, Ask AI, or AI Cinema; Skills Challenge has no dedicated Native deep link; POST_DETAIL query parameters are not mapped to a selected Native post; story selection/deep-link semantics differ. These must not be masked with fake routes or client-only success states. Downstream domain routes must follow canonical owner phases.
 - This is a source inventory, not device acceptance. No UI build, screenshot/viewport checks, Native device/deep-link flow, smoke tests or automated tests were run.
-- **Status unchanged:** WP-02 `IN_PROGRESS`; ENG-P04 `IN_PROGRESS`. ENG-P04 also remains blocked by the live `user_settings` privilege finding and unapplied forward migration described in the evidence register.
+- **Status unchanged:** WP-02 `IN_PROGRESS`; ENG-P04 `IN_PROGRESS`. ENG-P04 remains `in_progress`; the Social Graph grants migration has been applied, but the evidence register's `user_settings` privilege finding and the broader cross-user JWT/API/Realtime isolation checks still require verification.
 
 
 **ENG-P04 privilege migration source guard — 2026-10-27:**
@@ -2013,7 +2013,7 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - The generated migration now exists at `apps/api/supabase/migrations/20261027163225_eng_p04_social_graph_least_privilege_grants.sql`. The CLI-generated file revokes table and column grants from `PUBLIC, anon, authenticated`, then restores only the grants required by current FastAPI/PostgREST operations. It does not change schema, rows, RLS policies, or default privileges.
 - Added a source contract test in `apps/api/tests/test_eng_p04_privacy_migration_contract.py` that requires exactly one CLI-generated migration and asserts the exact table/column revocations, required grants, and absence of TRUNCATE grants, broad grants, default-privilege changes, policy drops, or table drops.
 - First workflow run `40542069756` failed after locating the already-generated migration because `pytest` was not installed in the runner. The workflow was corrected to set up Python 3.12 and install `apps/api` dev dependencies before running the contract test. The next generator run `40542341378` and Allpha Smoke run `40542341522` were queued at the latest check; their conclusions are pending, so do not report them as green until completed.
-- The generator is source-only and does not connect to or apply DDL to production. Production migration ledger and ACLs have not been changed by this workflow. ENG-P04 remains `in_progress` pending green CI, approved application of the migration, and accepted database isolation evidence.
+- The generator is source-only and does not connect to or apply DDL to production. The production least-privilege grant migration was applied on 2026-10-28 and recorded in the Supabase migration ledger; current verification is limited to grants/catalog checks. ENG-P04 remains `in_progress` pending green CI, reconciliation of the repository migration source with the applied ledger entry, and accepted two-user JWT/API/Realtime isolation evidence.
 
 
 ## Latest verification and remaining acceptance gates (2026-10-27)
@@ -2031,7 +2031,7 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 
 ### Phase acceptance decision
 - **WP-02 remains `in_progress`**. Feed filter/deep-link source contracts and code-level CI now pass, but complete visual/component/layout/CSS/asset parity and the remaining route/action matrix have not been accepted. Browser viewport/device checks remain deferred per instruction.
-- **ENG-P04 remains `in_progress`**. The forward migration exists and its contract test passes, but live ACLs remain unchanged until the approved application/verification path is used.
+- **ENG-P04 remains `in_progress`**. The forward migration source exists and its contract test passes. The corresponding least-privilege grants were applied to production on 2026-10-28; live ACL catalog checks were reviewed, but cross-user JWT/API/Realtime behavior remains NOT VERIFIED.
 - **ENG-P05 remains blocked** until both WP-02 and ENG-P04 acceptance evidence is complete. No PR merge, Vercel deployment, staging test, physical-device test, or production DDL was performed.
 
 
@@ -2050,3 +2050,11 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 
 ### Dependency decision
 - ENG-P05 remains blocked until WP-02 and ENG-P04 acceptance evidence is complete.
+
+
+**Execution update (2026-10-28, direct-to-main continuation):**
+- Reels route now guards account-switch and stale request races using a session epoch and request sequence; initial getSession() no longer overrides a newer auth event. Smoke assertions were added for these contracts.
+- Commits: Reels session isolation `b842497b2870cb28fe245c91ad3ea58f9d5e7b16`; Reels smoke assertions `50182552a55903e0d8e825f4ec3fd83dedf7c063`.
+- Current main production deployment for commit `4eed1f0369b8c1c02ea72c0c8f0fb1749beaccdd` was observed in Vercel state `QUEUED`; build logs show smoke tests passed and Next.js production build started, but the deployment is not yet `READY` and is not evidence for the later Reels commits. Latest checks must be re-evaluated against the latest main SHA.
+- ENG-P04 is still `in_progress`: production grants migration applied, but no actual two-user JWT/API/Realtime isolation proof is available in this execution. Do not report it as accepted.
+- WP-02 remains `in_progress`: source-level parity inventory exists for Feed/Explore/Reels/Messages/navigation/CSS, but story viewer route, source More-menu action, complete CSS/assets/routing/interaction parity and responsive browser evidence remain unresolved. Do not mark acceptance passed based on static smoke assertions alone.
