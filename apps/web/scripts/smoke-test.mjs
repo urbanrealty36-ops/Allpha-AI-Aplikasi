@@ -577,3 +577,20 @@ for (const contract of [
   "if (epoch === sessionEpoch.current && sequence === requestSequence.current)",
   "let authEventSeen = false", "if (active && !authEventSeen) applySession(data.session)"
 ]) assert.ok(reelsSessionSource.includes(contract), "Reels must isolate auth sessions and stale loads: " + contract);
+
+const authFlowSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+const authRouteSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
+const feedAuthEntrySource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "initialAuthMode?: 'REGISTER' | 'LOGIN'",
+  "setStep('HUMAN_REGISTER')",
+  "setAuthMode(initialAuthMode)",
+  'get("mode")',
+  'initialAuthMode={initialAuthMode}'
+]) assert.ok((authFlowSource + authRouteSource).includes(contract), "Canonical auth modal must support direct login/register entry: " + contract);
+for (const contract of [
+  'router.push("/login?next="',
+  '&mode=login',
+  '&mode=register',
+  "Reuse the canonical reference AuthOnboardingRoute/AuthOnboardingFlow modal"
+]) assert.ok(feedAuthEntrySource.includes(contract), "Public Feed auth actions must enter the canonical auth modal: " + contract);
