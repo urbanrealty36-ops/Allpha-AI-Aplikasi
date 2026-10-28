@@ -29,6 +29,11 @@ interface NotificationItem {
 interface NotificationsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  notifications: NotificationItem[];
+  loading?: boolean;
+  error?: string;
+  onMarkRead: (id: string) => void;
+  onMarkAllRead: () => void;
   onNavigateToTab?: (tab: string) => void;
   onOpenCreditsHub?: () => void;
   onOpenMessages?: () => void;
@@ -38,70 +43,19 @@ interface NotificationsModalProps {
 export default function NotificationsModal({
   isOpen,
   onClose,
+  notifications,
+  loading = false,
+  error = "",
+  onMarkRead,
+  onMarkAllRead,
   onNavigateToTab,
   onOpenCreditsHub,
   onOpenMessages,
   onOpenLiveStage,
 }: NotificationsModalProps) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'AI_AGENT' | 'SOCIAL' | 'CREDITS' | 'SYSTEM'>('ALL');
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: 'notif-1',
-      category: 'AI_AGENT',
-      title: 'Luna AI Membalas Konsultasi',
-      message: 'Luna AI telah menjawab 3 pertanyaan seputar Desain 3D dan menghasilkan +45 AI Credits untuk Anda.',
-      timestamp: '5 menit lalu',
-      isRead: false,
-      avatar: 'https://picsum.photos/seed/luna-cyber/80/80',
-      badge: '+45 Credits',
-      badgeColor: 'bg-amber-100 text-amber-900 border-amber-300'
-    },
-    {
-      id: 'notif-2',
-      category: 'CREDITS',
-      title: 'Settlement Royalti Konten',
-      message: 'Royalti 85% dari unduhan paket Crystal City Pack sebesar Rp 212.500 telah masuk ke saldo pendapatan Anda.',
-      timestamp: '25 menit lalu',
-      isRead: false,
-      avatar: 'https://picsum.photos/seed/coin/80/80',
-      badge: 'Rp 212.500',
-      badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300'
-    },
-    {
-      id: 'notif-3',
-      category: 'SOCIAL',
-      title: 'Raka Pratama Menyukai Postingan Anda',
-      message: 'Postingan Anda tentang "Peta Arsitektur Crystal City" disukai oleh 24 orang baru.',
-      timestamp: '1 jam lalu',
-      isRead: true,
-      avatar: 'https://picsum.photos/seed/raka/80/80',
-    },
-    {
-      id: 'notif-4',
-      category: 'AI_AGENT',
-      title: 'Nova AI Menyelesaikan Quest 3D',
-      message: 'Nova AI menyelesaikan eksplorasi 3 district di Crystal City dan membuka bonus reputasi.',
-      timestamp: '2 jam lalu',
-      isRead: true,
-      avatar: 'https://picsum.photos/seed/technova/80/80',
-    },
-    {
-      id: 'notif-5',
-      category: 'SYSTEM',
-      title: 'Pembaruan ERC-6551 TBA Berhasil',
-      message: 'Kontrak Token-Bound Account agen Anda telah diperbarui ke Allpha Spatial Rollup L2.',
-      timestamp: '5 jam lalu',
-      isRead: true,
-      badge: 'Keamanan',
-      badgeColor: 'bg-blue-100 text-blue-900 border-blue-300'
-    },
-  ]);
 
   if (!isOpen) return null;
-
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-  };
 
   const filtered = notifications.filter((n) => {
     if (activeTab === 'ALL') return true;
@@ -126,7 +80,7 @@ export default function NotificationsModal({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleMarkAllRead}
+              onClick={onMarkAllRead}
               className="text-[10px] font-black text-slate-800 bg-white hover:bg-slate-50 px-2 py-1 rounded-lg border border-slate-900 shadow-[1px_1px_0px_#0f172a] flex items-center gap-1 cursor-pointer"
             >
               <CheckCheck className="w-3 h-3 text-emerald-700" />
@@ -166,16 +120,23 @@ export default function NotificationsModal({
 
         {/* Notifications List */}
         <div className="p-3 sm:p-4 overflow-y-auto space-y-2.5 flex-1">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div role="status" className="py-12 text-center text-slate-500 space-y-1"><Bell className="w-8 h-8 mx-auto text-slate-300 stroke-[1.5]" /><p className="text-xs font-bold">Memuat notifikasi…</p></div>
+          ) : error ? (
+            <div role="alert" className="py-8 text-center text-rose-700 text-xs font-bold">{error}</div>
+          ) : filtered.length === 0 ? (
             <div className="py-12 text-center text-slate-500 space-y-1">
               <Bell className="w-8 h-8 mx-auto text-slate-300 stroke-[1.5]" />
               <p className="text-xs font-bold">Tidak ada notifikasi di kategori ini</p>
             </div>
           ) : (
             filtered.map((item) => (
-              <div
+              <button
+                type="button"
                 key={item.id}
-                className={`p-3 rounded-2xl border-2 border-slate-900 transition flex items-start gap-3 ${
+                onClick={() => { if (!item.isRead) onMarkRead(item.id); }}
+                aria-label={item.isRead ? item.title : item.title + " — tandai dibaca"}
+                className={`w-full text-left p-3 rounded-2xl border-2 border-slate-900 transition flex items-start gap-3 ${
                   item.isRead ? 'bg-white shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-[#FEF08A]/30 shadow-[2.5px_2.5px_0px_#0f172a]'
                 }`}
               >
@@ -207,7 +168,7 @@ export default function NotificationsModal({
                     </span>
                   )}
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
