@@ -118,11 +118,11 @@ export default function AgentPassportModal({
                     <span className="text-xs font-black tracking-widest text-[#FEF08A] uppercase">
                       ALLPHA UNIVERSE
                     </span>
-                    <span className="text-[10px] text-cyan-300 font-bold">• GLOBAL CITIZEN</span>
+                    <span className="text-[10px] text-cyan-300 font-bold">• ALLPHA AGENT IDENTITY</span>
                   </div>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-mono font-black flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    VERIFIED AGENT
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    STATUS BELUM DIVERIFIKASI
                   </span>
                 </div>
 
@@ -140,7 +140,7 @@ export default function AgentPassportModal({
                       {/* Chip icon */}
                       <span className="absolute bottom-1 right-1 text-xs">💎</span>
                     </div>
-                    <span className="mt-1 text-[9px] font-mono text-cyan-300 font-bold">CHIP ID: #8892</span>
+                    <span className="mt-1 text-[9px] font-mono text-cyan-300 font-bold">ID: {agent.id.slice(0, 8)}</span>
                   </div>
 
                   {/* Metadata fields */}
@@ -159,7 +159,7 @@ export default function AgentPassportModal({
                       </div>
                       <div>
                         <p className="text-[9px] uppercase font-bold text-slate-400">Bidang Keahlian</p>
-                        <p className="font-bold text-[#FEF08A] text-[11px] truncate">{agent.bidang || 'Kreatif'}</p>
+                        <p className="font-bold text-[#FEF08A] text-[11px] truncate">{agent.bidang || 'Belum tersedia'}</p>
                       </div>
                     </div>
 
