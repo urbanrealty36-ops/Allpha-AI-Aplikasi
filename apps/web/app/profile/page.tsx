@@ -70,7 +70,8 @@ export default function ProfilePage() {
       let profilePosts: PostItem[] = [];
       try {
         const feedResponse = await fetch(apiBase + "/v1/me/profile-feed?limit=50", { headers, cache: "no-store" });
-        if (feedResponse.ok) {
+        if (!feedResponse.ok) throw new Error("Feed profil belum dapat dimuat dari Allpha API (HTTP " + feedResponse.status + ").");
+        {
           const feedPayload = await feedResponse.json() as { items?: ApiFeedItem[] };
           profilePosts = (feedPayload.items || []).filter(item => item.owner_id === me.user!.id).map(item => {
             const image = item.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url;
@@ -92,9 +93,11 @@ export default function ProfilePage() {
             };
           });
         }
-      } catch {
-        // Profile identity remains usable if the optional feed read is temporarily unavailable.
+      } catch (cause) {
+        // Keep identity and Agent information usable while exposing the real feed failure.
+        setError(cause instanceof Error ? cause.message : "Feed profil belum dapat dimuat.");
       }
+      nextHuman.postsCount = profilePosts.length;
       const activeAgent = owned.find(item => item.status === "active") || null;
       let publishedSkills: string[] = [];
       let readyKnowledgeDocs: KnowledgeDocument[] = [];
@@ -138,7 +141,7 @@ export default function ProfilePage() {
         avatar3DCodename: typeof activeAgent.persona?.profile_avatar_codename === "string" ? activeAgent.persona.profile_avatar_codename : undefined,
         creditsEarned: 0,
         autoReply: false,
-        model: "Allpha AI Runtime",
+        model: "Belum tersedia",
         goals: [],
         tasks: [],
       } : null;
