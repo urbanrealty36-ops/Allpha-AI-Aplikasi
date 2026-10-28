@@ -6,11 +6,14 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import Navbar from "./Navbar";
 import BottomNav, { type TabType } from "./BottomNav";
+import NotificationsModal from "./NotificationsModal";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 type NotificationSummary = { unread_count?: number };
 type ConversationSummary = { unread_count?: number };
+type ApiNotification = { id: string; event_key: string; title: string; body: string; read_at: string | null; created_at: string; payload?: Record<string, unknown> };
+type NotificationItem = { id: string; category: "ALL" | "AI_AGENT" | "SOCIAL" | "CREDITS" | "SYSTEM"; title: string; message: string; timestamp: string; isRead: boolean; avatar?: string; badge?: string; badgeColor?: string };
 
 function tabForPath(path: string): TabType {
   if (path.startsWith("/create")) return "CREATE";
@@ -53,6 +56,11 @@ export default function ReferenceNavigation() {
   const [session, setSession] = useState<Session | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState<number | undefined>(undefined);
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState<boolean | null>(null);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
+  const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
+  const notificationRequestSequence = useRef(0);
 
   const refreshInboxIndicators = useCallback(async (current: Session | null) => {
     const sequence = ++indicatorRequestSequence.current;
@@ -120,6 +128,88 @@ export default function ReferenceNavigation() {
     };
   }, [supabase, refreshInboxIndicators]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!session) {
+      const returnTo = typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search;
+      router.push("/login?next=" + encodeURIComponent(returnTo) + "&mode=login");
+      setNotificationsModalOpen(false);
+      return;
+    }
+    const sequence = ++notificationRequestSequence.current;
+    setNotificationsLoading(true);
+    setNotificationsError("");
+    try {
+      const response = await fetch(apiBase + "/v1/notifications?limit=50", {
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Notifikasi gagal dimuat (HTTP " + response.status + ").");
+      const data = await response.json() as { items?: ApiNotification[] };
+      if (sequence !== notificationRequestSequence.current) return;
+      setNotificationItems((data.items ?? []).map((item) => {
+        const key = (item.event_key || "").toLowerCase();
+        const category: NotificationItem["category"] = /credit|billing|settlement|royalt/.test(key)
+          ? "CREDITS" : /agent|skill|runtime/.test(key) ? "AI_AGENT" : /social|follow|like|comment|message/.test(key)
+          ? "SOCIAL" : /security|system|policy/.test(key) ? "SYSTEM" : "ALL";
+        return {
+          id: item.id,
+          category,
+          title: item.title,
+          message: item.body,
+          timestamp: new Date(item.created_at).toLocaleString("id-ID"),
+          isRead: Boolean(item.read_at),
+        };
+      }));
+    } catch (cause) {
+      if (sequence === notificationRequestSequence.current) {
+        setNotificationsError(cause instanceof Error ? cause.message : "Notifikasi gagal dimuat.");
+      }
+    } finally {
+      if (sequence === notificationRequestSequence.current) setNotificationsLoading(false);
+    }
+  }, [router, session]);
+
+  useEffect(() => {
+    if (notificationsModalOpen) void loadNotifications();
+    else notificationRequestSequence.current += 1;
+  }, [notificationsModalOpen, loadNotifications]);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    if (!session) return;
+    setNotificationsError("");
+    try {
+      const response = await fetch(apiBase + "/v1/notifications/" + encodeURIComponent(id) + "/read", {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" },
+        body: "{}",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Status baca notifikasi gagal disimpan (HTTP " + response.status + ").");
+      setNotificationItems(current => current.map(item => item.id === id ? { ...item, isRead: true } : item));
+      void refreshInboxIndicators(session);
+    } catch (cause) {
+      setNotificationsError(cause instanceof Error ? cause.message : "Status baca notifikasi gagal disimpan.");
+    }
+  }, [refreshInboxIndicators, session]);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!session) return;
+    setNotificationsError("");
+    try {
+      const response = await fetch(apiBase + "/v1/notifications/read-all", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" },
+        body: "{}",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Notifikasi gagal ditandai dibaca (HTTP " + response.status + ").");
+      setNotificationItems(current => current.map(item => ({ ...item, isRead: true })));
+      void refreshInboxIndicators(session);
+    } catch (cause) {
+      setNotificationsError(cause instanceof Error ? cause.message : "Notifikasi gagal ditandai dibaca.");
+    }
+  }, [refreshInboxIndicators, session]);
+
   const navigate = (path: string) => router.push(path);
   const setActiveTab = (tab: TabType) => navigate(routeForTab[tab] ?? "/feed");
 
@@ -135,7 +225,7 @@ export default function ReferenceNavigation() {
         onOpenCreditsHub={() => navigate("/skill-challenges")}
         onOpenOnboarding={() => navigate("/agents?onboarding=required")}
         onOpenMessages={() => navigate("/messages")}
-        onOpenNotifications={() => navigate("/notifications")}
+        onOpenNotifications={() => setNotificationsModalOpen(true)}
         isMessagesActive={pathname.startsWith("/messages")}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
@@ -145,6 +235,19 @@ export default function ReferenceNavigation() {
         activeTab={tabForPath(pathname)}
         setActiveTab={setActiveTab}
         onOpenCreateModal={() => navigate("/feed?compose=1")}
+      />
+      <NotificationsModal
+        isOpen={notificationsModalOpen}
+        onClose={() => setNotificationsModalOpen(false)}
+        notifications={notificationItems}
+        loading={notificationsLoading}
+        error={notificationsError}
+        onMarkRead={(id) => { void markNotificationRead(id); }}
+        onMarkAllRead={() => { void markAllNotificationsRead(); }}
+        onOpenMessages={() => { setNotificationsModalOpen(false); navigate("/messages"); }}
+        onOpenCreditsHub={() => { setNotificationsModalOpen(false); navigate("/skill-challenges"); }}
+        onOpenLiveStage={() => { setNotificationsModalOpen(false); navigate("/live"); }}
+        onNavigateToTab={(tab) => { setNotificationsModalOpen(false); navigate(routeForTab[tab as TabType] ?? "/feed"); }}
       />
     </>
   );
