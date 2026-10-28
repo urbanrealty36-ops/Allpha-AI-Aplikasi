@@ -3,15 +3,9 @@
 import React, { useState } from 'react';
 import { 
   Bell, 
-  Bot, 
-  Heart, 
-  MessageCircle, 
-  Coins, 
-  ShieldCheck, 
   X, 
   CheckCheck, 
-  Sparkles,
-  ArrowRight
+  Sparkles
 } from 'lucide-react';
 
 interface NotificationItem {
@@ -48,10 +42,6 @@ export default function NotificationsModal({
   error = "",
   onMarkRead,
   onMarkAllRead,
-  onNavigateToTab,
-  onOpenCreditsHub,
-  onOpenMessages,
-  onOpenLiveStage,
 }: NotificationsModalProps) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'AI_AGENT' | 'SOCIAL' | 'CREDITS' | 'SYSTEM'>('ALL');
 
