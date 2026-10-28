@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Bell, 
   X, 
@@ -44,6 +44,49 @@ export default function NotificationsModal({
   onMarkAllRead,
 }: NotificationsModalProps) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'AI_AGENT' | 'SOCIAL' | 'CREDITS' | 'SYSTEM'>('ALL');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable?.length) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -53,8 +96,8 @@ export default function NotificationsModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl border-3 border-slate-900 shadow-[6px_6px_0px_#0f172a] overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="notifications-modal-title" tabIndex={-1} className="relative w-full max-w-lg bg-white rounded-3xl border-3 border-slate-900 shadow-[6px_6px_0px_#0f172a] overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header */}
         <div className="p-4 border-b-2 border-slate-900 bg-[#BAE6FD] flex items-center justify-between">
@@ -63,7 +106,7 @@ export default function NotificationsModal({
               <Bell className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900 tracking-tight">NOTIFIKASI AKTIVITAS</h2>
+              <h2 id="notifications-modal-title" className="text-sm font-black text-slate-900 tracking-tight">NOTIFIKASI AKTIVITAS</h2>
               <p className="text-[10px] font-bold text-slate-700">Pemberitahuan Sosial, AI Agent, & Credits</p>
             </div>
           </div>
@@ -77,6 +120,9 @@ export default function NotificationsModal({
               <span>Tandai Semua Dibaca</span>
             </button>
             <button
+              ref={closeButtonRef}
+              type="button"
+              aria-label="Tutup notifikasi"
               onClick={onClose}
               className="p-1.5 rounded-xl bg-white border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] text-slate-700 hover:bg-slate-100"
             >
