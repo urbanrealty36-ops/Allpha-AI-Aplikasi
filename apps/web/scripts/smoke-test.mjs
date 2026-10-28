@@ -594,3 +594,11 @@ for (const contract of [
   '&mode=register',
   "Reuse the canonical reference AuthOnboardingRoute/AuthOnboardingFlow modal"
 ]) assert.ok(feedAuthEntrySource.includes(contract), "Public Feed auth actions must enter the canonical auth modal: " + contract);
+
+const aiCinemaViewSource = readFileSync(new URL("../components/reference-ui/AiCinemaView.tsx", import.meta.url), "utf8");
+for (const contract of [
+  'productionMode ? "Langganan VIP — harga belum tersedia"',
+  'productionMode ? "Total Royalti: belum tersedia"',
+  "Ketentuan bagi hasil akan ditampilkan setelah layanan billing dan settlement aktif.",
+  'productionMode ? "Program Royalti Kreator"'
+]) assert.ok(aiCinemaViewSource.includes(contract), "AI Cinema must not present demo pricing or earnings as production data: " + contract);
