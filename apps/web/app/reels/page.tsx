@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -28,6 +28,9 @@ export default function ReelsPage() {
   const [loadError, setLoadError] = useState(false);
   const [notice, setNotice] = useState("");
   const [authPrompt, setAuthPrompt] = useState("");
+  const sessionEpoch = useRef(0);
+  const requestSequence = useRef(0);
+  const sessionUserId = useRef<string | null>(null);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -40,29 +43,53 @@ export default function ReelsPage() {
   }, [session]);
 
   const load = useCallback(async (reset = true, nextCursor?: string | null) => {
+    const epoch = sessionEpoch.current;
+    const sequence = ++requestSequence.current;
     setLoading(true); setError(""); setLoadError(false);
     try {
       const params = new URLSearchParams({ limit: "20", mode: "recent" });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/reels?" + params.toString()) as { items?: Reel[]; next_cursor?: string | null };
+      if (epoch !== sessionEpoch.current || sequence !== requestSequence.current) return;
       setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
       setCursor(data.next_cursor ?? null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Reels gagal dimuat."); setLoadError(true); }
-    finally { setLoading(false); }
-  }, [request, session]);
+    } catch (cause) {
+      if (epoch === sessionEpoch.current && sequence === requestSequence.current) {
+        setError(cause instanceof Error ? cause.message : "Reels gagal dimuat.");
+        setLoadError(true);
+      }
+    } finally {
+      if (epoch === sessionEpoch.current && sequence === requestSequence.current) setLoading(false);
+    }
+  }, [request]);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      if (!data.session) setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (!active) return;
+    let authEventSeen = false;
+    const applySession = (next: Session | null) => {
+      const nextUserId = next?.user.id ?? null;
+      if (sessionUserId.current !== nextUserId) {
+        sessionUserId.current = nextUserId;
+        sessionEpoch.current += 1;
+        requestSequence.current += 1;
+        setItems([]);
+        setCursor(null);
+        setError("");
+        setNotice("");
+        setAuthPrompt("");
+        setLoading(Boolean(next));
+      }
       setSession(next);
-      if (!next) { setItems([]); setCursor(null); setLoading(false); }
+    };
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
+      if (active) applySession(next);
+    });
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active && !authEventSeen) applySession(data.session);
+    }).catch(() => {
+      if (active && !authEventSeen) { setSession(null); setLoading(false); }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [supabase]);
