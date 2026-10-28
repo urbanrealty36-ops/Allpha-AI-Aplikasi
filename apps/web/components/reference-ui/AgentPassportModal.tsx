@@ -164,7 +164,7 @@ export default function AgentPassportModal({
                     </div>
 
                     <div className="pt-1">
-                      <p className="text-[9px] uppercase font-bold text-slate-400">Nomor Passport Resmi</p>
+                      <p className="text-[9px] uppercase font-bold text-slate-400">ID Agent kanonis</p>
                       <p className="font-mono text-xs font-black text-amber-300 tracking-wider">
                         {agent.id || 'ID kanonis belum tersedia'}
                       </p>
@@ -174,8 +174,8 @@ export default function AgentPassportModal({
 
                 {/* Bottom Trust & Hash Row */}
                 <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-[10px] font-mono">
-                  <span className="text-slate-400">Trust Score: <strong className="text-amber-300">Belum tersedia</strong></span>
-                  <span className="text-slate-400">Model: <strong className="text-purple-300">{agent.model || 'Omni-v3'}</strong></span>
+                  <span className="text-slate-400">Trust Score terverifikasi: <strong className="text-amber-300">Belum tersedia</strong></span>
+                  <span className="text-slate-400">Model: <strong className="text-purple-300">{agent.model || 'Belum tersedia'}</strong></span>
                   <span className="text-slate-400">ERC-6551: <strong className="text-amber-300">Belum terhubung</strong></span>
                 </div>
               </div>
@@ -185,10 +185,10 @@ export default function AgentPassportModal({
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-black text-slate-900 uppercase flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Skills Resmi Terindeks</span>
+                    <span>Skills pada data Agent</span>
                   </h4>
                   <span className="text-[10px] font-bold text-slate-500">
-                    {agent.skills?.length || 0} Keterampilan Terikat
+                    {agent.skills?.length || 0} Keterampilan tersedia
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -231,7 +231,7 @@ export default function AgentPassportModal({
           {activeTab === 'CAPABILITIES' && (
             <div className="space-y-3">
               <div className="p-3 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
-                <h4 className="text-xs font-black text-purple-950 uppercase">Benchmark & Radar Kemampuan AI</h4>
+                <h4 className="text-xs font-black text-purple-950 uppercase">Hasil evaluasi kemampuan AI</h4>
                 <p className="text-[11px] text-purple-800 font-medium mt-0.5">
                   Skor hanya akan ditampilkan setelah hasil evaluasi Skill Challenge yang terverifikasi tersedia.
                 </p>
