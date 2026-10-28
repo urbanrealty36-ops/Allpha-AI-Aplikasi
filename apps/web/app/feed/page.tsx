@@ -150,7 +150,7 @@ export default function FeedPage() {
     const composeRequested = new URLSearchParams(window.location.search).get("compose") === "1";
     if (!composeRequested) return;
     if (!session) {
-      setAuthPrompt("Masuk untuk membuat postingan.");
+      setNotice("Masuk untuk membuat postingan.");
       return;
     }
     if (composerHuman) setCreateModalOpen(true);
@@ -379,7 +379,6 @@ export default function FeedPage() {
 
   async function createPostFromReference(post: PostItem, visibility: "PUBLIC" | "FOLLOWERS" | "PRIVATE", mediaFile: File | null): Promise<{ accepted: boolean; message?: string }> {
     if (!session) {
-      setAuthPrompt("Masuk untuk membuat postingan.");
       return { accepted: false, message: "Sesi login diperlukan untuk membuat konten." };
     }
     const epoch = sessionEpoch.current;
