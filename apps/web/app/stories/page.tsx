@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -32,6 +32,9 @@ export default function StoriesPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
+  const sessionEpoch = useRef(0);
+  const reloadSequence = useRef(0);
+  const sessionUserId = useRef<string | null>(null);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const method = (init.method || "GET").toUpperCase();
@@ -46,25 +49,61 @@ export default function StoriesPage() {
   }, [session]);
 
   const reload = useCallback(async () => {
+    const epoch = sessionEpoch.current;
+    const sequence = ++reloadSequence.current;
     setLoading(true); setError("");
     try {
       const activeResult = await request("/v1/stories?limit=100") as { items?: Story[] };
+      if (epoch !== sessionEpoch.current || sequence !== reloadSequence.current) return;
       setActive(activeResult.items ?? []);
       if (session) {
         const mineResult = await request("/v1/stories/mine?limit=50") as { items?: Story[] };
+        if (epoch !== sessionEpoch.current || sequence !== reloadSequence.current) return;
         setMine(mineResult.items ?? []);
       } else {
         setMine([]);
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Stories belum dapat dimuat."); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (epoch === sessionEpoch.current && sequence === reloadSequence.current) {
+        setError(cause instanceof Error ? cause.message : "Stories belum dapat dimuat.");
+      }
+    } finally {
+      if (epoch === sessionEpoch.current && sequence === reloadSequence.current) setLoading(false);
+    }
   }, [request, session]);
 
   useEffect(() => {
-    if (!supabase) { setSession(null); setLoading(false); return; }
     let alive = true;
-    void supabase.auth.getSession().then(({ data }) => { if (alive) { setSession(data.session); if (!data.session) setLoading(false); } });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => { if (alive) setSession(next); });
+    let authEventSeen = false;
+    const applySession = (next: Session | null) => {
+      if (!alive) return;
+      const nextUserId = next?.user.id ?? null;
+      if (sessionUserId.current !== nextUserId) {
+        sessionUserId.current = nextUserId;
+        sessionEpoch.current += 1;
+        reloadSequence.current += 1;
+        setActive([]);
+        setMine([]);
+        setError("");
+        setNotice("");
+        setSelectedStoryId(null);
+      }
+      setSession(next);
+      if (!next) setLoading(false);
+    };
+    if (!supabase) {
+      applySession(null);
+      return () => { alive = false; };
+    }
+    void supabase.auth.getSession().then(({ data }) => {
+      if (alive && !authEventSeen) applySession(data.session);
+    }).catch(() => {
+      if (alive && !authEventSeen) { setSession(null); setLoading(false); }
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
+      applySession(next);
+    });
     return () => { alive = false; data.subscription.unsubscribe(); };
   }, [supabase]);
   useEffect(() => { void reload(); }, [session, reload]);
