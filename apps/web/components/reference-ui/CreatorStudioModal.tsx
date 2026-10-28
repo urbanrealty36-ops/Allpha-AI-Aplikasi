@@ -42,19 +42,18 @@ export default function CreatorStudioModal({
   agent,
   user,
   userCredits,
-  onDeductCredits,
   onOpenFilmAi,
 }: CreatorStudioModalProps) {
   const [activeTool, setActiveTool] = useState<StudioTool>('IMAGE');
   const [prompt, setPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  const isGenerating = false;
   const [generatedResult, setGeneratedResult] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState('Cyberpunk 3D');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<'1:1' | '16:9' | '9:16'>('1:1');
   const [codeLanguage, setCodeLanguage] = useState<'typescript' | 'python' | 'solidity'>('typescript');
 
   // Agent Chat Simulation State
-  const [chatMessages, setChatMessages] = useState<Array<{ sender: string; text: string; isAi: boolean }>>([]);
+  const chatMessages: Array<{ sender: string; text: string; isAi: boolean }> = [];
   const [chatInput, setChatInput] = useState('');
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
