@@ -662,3 +662,8 @@ for (const contract of ["/v1/me/profile", "/v1/me/settings", "/v1/me/social-grap
 
 const feedPageAuthPromptSource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
 assert.ok(!feedPageAuthPromptSource.includes("setAuthPrompt("), "Feed must not reference an undefined auth prompt state");
+
+const referenceNavbar = readFileSync(new URL("../components/reference-ui/Navbar.tsx", import.meta.url), "utf8");
+assert.ok(referenceNavbar.includes("event.key === 'Escape'"), "Search must close with Escape");
+assert.ok(referenceNavbar.includes("searchButtonRef.current?.focus()"), "Closing Search must restore keyboard focus to its trigger");
+assert.ok(referenceNavbar.includes('aria-label="Tutup pencarian"'), "Search close control must have an accessible name");
