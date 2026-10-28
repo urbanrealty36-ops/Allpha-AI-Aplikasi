@@ -630,7 +630,7 @@ export default function AiCinemaView({
                 className="px-3.5 py-2 rounded-2xl bg-amber-300 hover:bg-amber-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Crown className="w-3.5 h-3.5 stroke-[2.5px]" />
-                <span>Langganan VIP (150 Cr / Bln)</span>
+                <span>{productionMode ? "Langganan VIP — harga belum tersedia" : "Langganan VIP (150 Cr / Bln)"}</span>
               </button>
             )}
 
@@ -653,7 +653,7 @@ export default function AiCinemaView({
             </span>
           </div>
           <span className="text-[11px] font-mono text-amber-900 font-black shrink-0 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300">
-            Total Royalti: 74,650 Cr
+            {productionMode ? "Total Royalti: belum tersedia" : "Total Royalti: 74,650 Cr"}
           </span>
         </div>
       </div>
