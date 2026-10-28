@@ -44,8 +44,6 @@ export default function AgentPassportModal({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const passportNumber = `ID-ALPH-2026-${agent.name.toUpperCase().slice(0, 3)}-9942`;
-  const tokenBoundAddress = `0x71C...B82a7F4E`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
@@ -168,7 +166,7 @@ export default function AgentPassportModal({
                     <div className="pt-1">
                       <p className="text-[9px] uppercase font-bold text-slate-400">Nomor Passport Resmi</p>
                       <p className="font-mono text-xs font-black text-amber-300 tracking-wider">
-                        {passportNumber}
+                        {agent.id || 'ID kanonis belum tersedia'}
                       </p>
                     </div>
                   </div>
@@ -176,9 +174,9 @@ export default function AgentPassportModal({
 
                 {/* Bottom Trust & Hash Row */}
                 <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-[10px] font-mono">
-                  <span className="text-slate-400">Trust Score: <strong className="text-emerald-400">99.8%</strong></span>
+                  <span className="text-slate-400">Trust Score: <strong className="text-amber-300">Belum tersedia</strong></span>
                   <span className="text-slate-400">Model: <strong className="text-purple-300">{agent.model || 'Omni-v3'}</strong></span>
-                  <span className="text-slate-400">ERC-6551: <strong className="text-cyan-300">Bound</strong></span>
+                  <span className="text-slate-400">ERC-6551: <strong className="text-amber-300">Belum terhubung</strong></span>
                 </div>
               </div>
 
@@ -190,11 +188,11 @@ export default function AgentPassportModal({
                     <span>Skills Resmi Terindeks</span>
                   </h4>
                   <span className="text-[10px] font-bold text-slate-500">
-                    {agent.skills?.length || 2} Keterampilan Terikat
+                    {agent.skills?.length || 0} Keterampilan Terikat
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {(agent.skills && agent.skills.length > 0 ? agent.skills : ['Brand Identity 3D', 'Reels Dynamic Motion']).map((sk) => (
+                  {(agent.skills ?? []).map((sk) => (
                     <span
                       key={sk}
                       className="px-2.5 py-1 rounded-xl bg-white border-2 border-slate-900 text-slate-900 text-[11px] font-bold shadow-[1px_1px_0px_#0f172a]"
@@ -208,7 +206,7 @@ export default function AgentPassportModal({
               {/* Actions */}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
-                  onClick={() => showToast('Passport Digital berhasil diunduh sebagai sertifikat NFT/PWA!')}
+                  onClick={() => { window.print(); showToast('Dialog cetak dibuka. Ini bukan penerbitan sertifikat NFT.'); }}
                   className="py-2.5 px-3 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-slate-900 font-black text-xs flex items-center justify-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -217,9 +215,9 @@ export default function AgentPassportModal({
                 <button
                   onClick={() => {
                     if (navigator.clipboard) {
-                      navigator.clipboard.writeText(`https://allpha.universe/passport/${passportNumber}`);
+                      navigator.clipboard.writeText(`${window.location.origin}/agents/passport/${encodeURIComponent(agent.handle)}`);
                     }
-                    showToast('Tautan publik Passport AI disalin!');
+                    showToast('Tautan passport kanonis disalin. Pastikan endpoint passport publik tersedia.');
                   }}
                   className="py-2.5 px-3 rounded-2xl bg-[#0284C7] hover:bg-sky-600 text-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] font-black text-xs flex items-center justify-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
                 >
@@ -235,19 +233,13 @@ export default function AgentPassportModal({
               <div className="p-3 rounded-2xl bg-purple-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
                 <h4 className="text-xs font-black text-purple-950 uppercase">Benchmark & Radar Kemampuan AI</h4>
                 <p className="text-[11px] text-purple-800 font-medium mt-0.5">
-                  Diukur otomatis melalui arena Skill Challenge dan penilaian konsensus Allpha.
+                  Skor hanya akan ditampilkan setelah hasil evaluasi Skill Challenge yang terverifikasi tersedia.
                 </p>
               </div>
 
               {/* Capability Bars */}
               <div className="space-y-3">
-                {[
-                  { label: 'Kreativitas & Desain 3D', score: 98, color: 'bg-pink-500' },
-                  { label: 'Coding & Logika Algoritma', score: 94, color: 'bg-sky-500' },
-                  { label: 'Kecepatan Respon / SLA Real-time', score: 99, color: 'bg-emerald-500' },
-                  { label: 'Empati & Natural Conversation', score: 96, color: 'bg-purple-500' },
-                  { label: 'Konsistensi Gaya & Brand Memory', score: 95, color: 'bg-amber-500' },
-                ].map((cap) => (
+                {([] as Array<{ label: string; score: number; color: string }>).map((cap) => (
                   <div key={cap.label} className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] space-y-1">
                     <div className="flex justify-between items-center text-xs font-black">
                       <span className="text-slate-900">{cap.label}</span>
@@ -270,22 +262,22 @@ export default function AgentPassportModal({
                   <h4 className="text-xs font-black text-cyan-950 uppercase">Token Bound Account (TBA / ERC-6551)</h4>
                 </div>
                 <p className="text-[11px] text-slate-700 font-semibold leading-relaxed">
-                  AI Agent memiliki dompet pintar mandiri yang dapat menyimpan aset 3D, menerima AI Credits royalti, dan menandatangani otorisasi secara aman.
+                  Informasi wallet/TBA hanya akan ditampilkan setelah kontrak, jaringan, kepemilikan, dan saldo diverifikasi melalui layanan kanonis.
                 </p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2 text-xs">
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-500">Contract Address:</span>
-                  <span className="font-mono font-black text-slate-900">{tokenBoundAddress}</span>
+                  <span className="font-mono font-black text-slate-900">Belum diterbitkan</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-500">Network:</span>
-                  <span className="font-bold text-emerald-700">Allpha Spatial Rollup L2</span>
+                  <span className="font-bold text-amber-700">Belum dikonfigurasi</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-500">Saldo Mandiri Agent:</span>
-                  <span className="font-mono font-black text-amber-700">🪙 {agent.creditsEarned} AI Credits</span>
+                  <span className="font-mono font-black text-amber-700">Belum tersedia</span>
                 </div>
               </div>
             </div>
