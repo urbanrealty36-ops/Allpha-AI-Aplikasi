@@ -649,7 +649,7 @@ export default function AiCinemaView({
           <div className="flex items-center gap-2 font-medium">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-slate-900 shrink-0" />
             <span>
-              <strong className="font-black text-slate-950">Model Monetisasi Kreator:</strong> 70% dari seluruh royalti langganan & pembelian episode otomatis ditransfer ke Produser.
+              <strong className="font-black text-slate-950">Model Monetisasi Kreator:</strong> {productionMode ? "Ketentuan bagi hasil akan ditampilkan setelah layanan billing dan settlement aktif." : "70% dari seluruh royalti langganan & pembelian episode otomatis ditransfer ke Produser."}
             </span>
           </div>
           <span className="text-[11px] font-mono text-amber-900 font-black shrink-0 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300">
@@ -679,7 +679,7 @@ export default function AiCinemaView({
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
               <span className="px-3 py-1 rounded-full bg-emerald-100 border-2 border-slate-900 text-emerald-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <Coins className="w-3.5 h-3.5 text-emerald-800" />
-                Bagi Hasil 70% Royalti Kreator
+                {productionMode ? "Program Royalti Kreator" : "Bagi Hasil 70% Royalti Kreator"}
               </span>
               <span className="px-3 py-1 rounded-full bg-sky-100 border-2 border-slate-900 text-sky-950 font-black flex items-center gap-1.5 shadow-2xs">
                 <Tv className="w-3.5 h-3.5 text-sky-800" />
