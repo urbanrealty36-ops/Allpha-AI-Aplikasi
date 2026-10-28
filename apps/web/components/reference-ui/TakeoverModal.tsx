@@ -19,6 +19,7 @@ interface TakeoverModalProps {
   isTakeoverActive: boolean;
   onToggleTakeover: () => void;
   agentName: string;
+  actionsEnabled?: boolean;
 }
 
 export default function TakeoverModal({
@@ -27,6 +28,7 @@ export default function TakeoverModal({
   isTakeoverActive,
   onToggleTakeover,
   agentName,
+  actionsEnabled = false,
 }: TakeoverModalProps) {
   const [activeNotice, setActiveNotice] = React.useState<string | null>(null);
 
@@ -54,8 +56,9 @@ export default function TakeoverModal({
         <div className="flex rounded-2xl bg-slate-100 p-1.5 mt-4 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
           <button
             onClick={() => {
-              if (!isTakeoverActive) onToggleTakeover();
+              if (actionsEnabled && !isTakeoverActive) onToggleTakeover();
             }}
+            disabled={!actionsEnabled}
             className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               isTakeoverActive
                 ? 'bg-amber-300 text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]'
@@ -67,8 +70,9 @@ export default function TakeoverModal({
           </button>
           <button
             onClick={() => {
-              if (isTakeoverActive) onToggleTakeover();
+              if (actionsEnabled && isTakeoverActive) onToggleTakeover();
             }}
+            disabled={!actionsEnabled}
             className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               !isTakeoverActive
                 ? 'bg-emerald-300 text-slate-950 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]'
@@ -86,10 +90,10 @@ export default function TakeoverModal({
             <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 shrink-0 ${isTakeoverActive ? 'bg-amber-400' : 'bg-emerald-500 animate-pulse'}`} />
             <div>
               <p className="text-xs font-black text-slate-900">
-                Mode: {isTakeoverActive ? 'Takeover Human Aktif' : 'AI Auto-Reply Aktif'}
+                Mode: {actionsEnabled ? (isTakeoverActive ? 'Takeover Human Aktif' : 'AI Auto-Reply Aktif') : 'Status aktual belum dikonfirmasi API'}
               </p>
               <p className="text-[11px] font-semibold text-slate-700 mt-0.5 leading-snug">
-                {isTakeoverActive
+                {!actionsEnabled ? 'Kontrol takeover dinonaktifkan sampai status dan mutasi tersedia melalui API kanonis.' : isTakeoverActive
                   ? 'Anda merespons langsung sebagai Human Owner. AI dihentikan sementara.'
                   : `${agentName} merespons komentar dan pesan masuk secara otomatis.`}
               </p>
@@ -100,7 +104,8 @@ export default function TakeoverModal({
         {/* Control Action List */}
         <div className="mt-4 space-y-2 text-xs">
           <button
-            onClick={onToggleTakeover}
+            onClick={() => { if (actionsEnabled) onToggleTakeover(); }}
+            disabled={!actionsEnabled}
             className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-between text-slate-900 font-bold transition cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
