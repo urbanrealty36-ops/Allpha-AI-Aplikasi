@@ -558,3 +558,14 @@ if (existsSync(userSettingsPrivilegeMigrationPath)) {
     "grant update (theme, notification_preferences, privacy_settings)"
   ]) assert.ok(userSettingsPrivilegeMigration.includes(contract), "user_settings migration must enforce least-privilege grants: " + contract);
 }
+
+
+const storiesRoute = readFileSync(new URL("../app/stories/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "sessionEpoch.current += 1", "reloadSequence.current += 1",
+  "if (epoch !== sessionEpoch.current || sequence !== reloadSequence.current) return",
+  "if (epoch === sessionEpoch.current && sequence === reloadSequence.current)",
+  "let authEventSeen = false", "if (alive && !authEventSeen) applySession(data.session)",
+  'new URLSearchParams(window.location.search).get("story")',
+  "Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan."
+]) assert.ok(storiesRoute.includes(contract), "Stories must isolate auth sessions, stale loads, and deep-link negative states: " + contract);
