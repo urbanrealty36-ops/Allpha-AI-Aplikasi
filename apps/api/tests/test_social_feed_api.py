@@ -902,3 +902,56 @@ def test_following_feed_returns_only_active_followed_creators(monkeypatch):
         assert [item["owner_id"] for item in payload["items"]] == [followed_owner]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_two_principal_social_graph_reads_are_owner_scoped(monkeypatch):
+    """Isolated two-principal contract: social graph reads never use a shared owner."""
+    principals = [
+        ("11111111-1111-4111-8111-111111111111", "token-a"),
+        ("22222222-2222-4222-8222-222222222222", "token-b"),
+    ]
+    calls = []
+
+    async def fake_user_db_request(method, table, token, *, params=None, body=None, prefer=None):
+        assert method == "GET"
+        assert token in {item[1] for item in principals}
+        params = params or {}
+        calls.append((token, table, params))
+        if table == "social_edges":
+            owner = params.get("actor_user_id") or params.get("target_user_id")
+            assert owner in {f"eq.{item[0]}" for item in principals}
+            return [{"scope": owner, "edge_type": params.get("edge_type", "eq.follow")}]
+        if table == "user_interests":
+            owner = params.get("user_id")
+            assert owner in {f"eq.{item[0]}" for item in principals}
+            return [{"scope": owner, "interest_key": "test-only"}]
+        raise AssertionError(f"unexpected table {table}")
+
+    monkeypatch.setattr(main_api, "user_db_request", fake_user_db_request)
+    client = TestClient(app)
+    try:
+        for user_id, token in principals:
+            def _principal(request: Request, uid=user_id, access_token=token):
+                request.state.user_id = uid
+                request.state.supabase_access_token = access_token
+                return {"id": uid, "email": "isolated-test@example.invalid"}
+
+            app.dependency_overrides[current_user] = _principal
+            response = client.get("/v1/me/social-graph")
+            assert response.status_code == 200, response.text
+            payload = response.json()
+            assert all(item["scope"] == f"eq.{user_id}" for item in payload["outgoing"])
+            assert all(item["scope"] == f"eq.{user_id}" for item in payload["incoming_requests"])
+            assert all(item["scope"] == f"eq.{user_id}" for item in payload["blocked_by"])
+            assert all(item["scope"] == f"eq.{user_id}" for item in payload["interests"])
+    finally:
+        app.dependency_overrides.clear()
+
+    assert len(calls) == 8
+    for token, table, params in calls:
+        user_id = next(uid for uid, principal_token in principals if principal_token == token)
+        assert (
+            params.get("actor_user_id") == f"eq.{user_id}"
+            or params.get("target_user_id") == f"eq.{user_id}"
+            or params.get("user_id") == f"eq.{user_id}"
+        )
