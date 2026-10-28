@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
@@ -28,6 +29,7 @@ async function errorMessage(response: Response) {
 }
 
 export default function FeedPage() {
+  const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -234,6 +236,10 @@ export default function FeedPage() {
   function requireLogin(action: string) {
     if (session) { setAuthPrompt(""); return false; }
     setAuthPrompt(action);
+    // Reuse the canonical reference AuthOnboardingRoute/AuthOnboardingFlow modal
+    // instead of leaving the visitor on a feed-only login/register imitation.
+    const returnTo = typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search;
+    router.push("/login?next=" + encodeURIComponent(returnTo) + "&prompt=" + encodeURIComponent(action));
     return true;
   }
 
@@ -461,7 +467,7 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen w-full bg-sky-50 px-0 pb-24 pt-2 text-slate-900">
-      {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-sm font-black">Jelajahi Allpha</h1><p className="my-2 text-xs leading-5">{authPrompt || "Lihat postingan publik. Masuk atau daftar untuk menyukai, mengikuti kreator, dan berkomentar."}</p><div className="flex gap-2"><Link className="inline-flex rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" href={"/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search)}>Masuk</Link><Link className="inline-flex rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search)}>Daftar</Link></div></section>}
+      {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-sm font-black">Jelajahi Allpha</h1><p className="my-2 text-xs leading-5">Lihat postingan publik. Masuk atau daftar untuk menyukai, mengikuti kreator, dan berkomentar.</p><div className="flex gap-2"><button type="button" className="inline-flex rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" onClick={() => router.push("/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search) + "&mode=login")}>Masuk</button><button type="button" className="inline-flex rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-950" onClick={() => router.push("/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search) + "&mode=register")}>Daftar</button></div></section>}
         <FeedView
           productionMode
           onChangeFeedFilter={filter => {
