@@ -616,3 +616,24 @@ for (const contract of [
   "onOpenNotifications={() => setNotificationsModalOpen(true)}",
   "<NotificationsModal"
 ]) assert.ok(referenceNavigationNotifications.includes(contract), "Global navigation must wire the source notification modal to canonical inbox APIs: " + contract);
+
+
+// Modal production safety: source styling remains, but unsupported business actions must fail closed.
+const creatorStudioModal = readFileSync(new URL("../components/reference-ui/CreatorStudioModal.tsx", import.meta.url), "utf8");
+assert.ok(creatorStudioModal.includes("layanan generasi dan ledger kredit belum terhubung"));
+assert.ok(creatorStudioModal.includes("Chat Agent dari Creator Studio belum terhubung"));
+assert.doesNotMatch(creatorStudioModal, /setTimeout\(\(\) => \{[\s\S]{0,500}onDeductCredits\(/, "Creator Studio must not simulate generation or deduct local credits");
+assert.doesNotMatch(creatorStudioModal, /images\.unsplash\.com|royalti 85%|Indexing 12 chunks selesai|status: \\"SETTLED\\"/i);
+
+const agentPassportModal = readFileSync(new URL("../components/reference-ui/AgentPassportModal.tsx", import.meta.url), "utf8");
+for (const contract of ["agent.id || 'ID kanonis belum tersedia'", "Belum diterbitkan", "Belum dikonfigurasi", "Belum tersedia"]) assert.ok(agentPassportModal.includes(contract), "Agent Passport must not invent identifiers, wallet or trust metrics: " + contract);
+assert.doesNotMatch(agentPassportModal, /99\.8%|0x71C\.\.\.B82a7F4E|ID-ALPH-2026-|Allpha Spatial Rollup L2|creditsEarned\} AI Credits/);
+
+const takeoverModal = readFileSync(new URL("../components/reference-ui/TakeoverModal.tsx", import.meta.url), "utf8");
+assert.ok(takeoverModal.includes("Jadwal auto-reply belum tersedia"));
+assert.ok(takeoverModal.includes("belum dibaca atau disimpan melalui API kanonis"));
+assert.doesNotMatch(takeoverModal, /Aktif 24\/7 dengan batas 50 respon\/jam/);
+
+const messagesRoute = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+for (const contract of ["/v1/messages/conversations", "/read", "client_message_id", "postgres_changes", "Respons layanan pesan tidak berformat JSON.", "void load()"])
+  assert.ok(messagesRoute.includes(contract), "DM must retain canonical send/read/realtime and inbox reconciliation: " + contract);
