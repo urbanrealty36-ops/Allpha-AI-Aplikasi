@@ -40,7 +40,6 @@ export default function CreatorStudioModal({
   isOpen,
   onClose,
   agent,
-  user,
   userCredits,
   onOpenFilmAi,
 }: CreatorStudioModalProps) {
