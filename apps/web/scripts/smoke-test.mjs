@@ -666,3 +666,9 @@ assert.ok(!feedPageAuthPromptSource.includes("setAuthPrompt("), "Feed must not r
 assert.ok(referenceNavbar.includes("event.key === 'Escape'"), "Search must close with Escape");
 assert.ok(referenceNavbar.includes("searchButtonRef.current?.focus()"), "Closing Search must restore keyboard focus to its trigger");
 assert.ok(referenceNavbar.includes('aria-label="Tutup pencarian"'), "Search close control must have an accessible name");
+
+assert.ok(referenceNotificationsModal.includes("aria-modal=\"true\""), "Notifications must be an accessible modal dialog");
+assert.ok(referenceNotificationsModal.includes("event.key === 'Escape'"), "Notifications modal must close with Escape");
+assert.ok(referenceNotificationsModal.includes("document.body.style.overflow = 'hidden'"), "Notifications modal must prevent background scrolling");
+assert.ok(referenceNotificationsModal.includes("previousActiveElement?.focus()"), "Closing Notifications must restore keyboard focus");
+assert.ok(referenceNotificationsModal.includes("aria-label=\"Tutup notifikasi\""), "Notifications close control must have an accessible name");
