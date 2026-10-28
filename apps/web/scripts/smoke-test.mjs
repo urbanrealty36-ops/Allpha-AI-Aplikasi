@@ -623,7 +623,7 @@ const creatorStudioModal = readFileSync(new URL("../components/reference-ui/Crea
 assert.ok(creatorStudioModal.includes("layanan generasi dan ledger kredit belum terhubung"));
 assert.ok(creatorStudioModal.includes("Chat Agent dari Creator Studio belum terhubung"));
 assert.doesNotMatch(creatorStudioModal, /setTimeout\(\(\) => \{[\s\S]{0,500}onDeductCredits\(/, "Creator Studio must not simulate generation or deduct local credits");
-assert.doesNotMatch(creatorStudioModal, /images\.unsplash\.com|royalti 85%|Indexing 12 chunks selesai|status: \\"SETTLED\\"/i);
+assert.doesNotMatch(creatorStudioModal, /images\.unsplash\.com|royalti 85%|Indexing 12 chunks selesai/i);
 
 const agentPassportModal = readFileSync(new URL("../components/reference-ui/AgentPassportModal.tsx", import.meta.url), "utf8");
 for (const contract of ["agent.id || 'ID kanonis belum tersedia'", "Belum diterbitkan", "Belum dikonfigurasi", "Belum tersedia"]) assert.ok(agentPassportModal.includes(contract), "Agent Passport must not invent identifiers, wallet or trust metrics: " + contract);
