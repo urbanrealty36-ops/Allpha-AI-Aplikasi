@@ -261,12 +261,12 @@ def test_notification_storage_failure_is_fail_closed(monkeypatch):
 def test_two_principal_notification_isolation_contract(monkeypatch):
     """Test-only two-principal contract: list/read queries must follow the caller identity."""
     users = [
-        ("11111111-1111-4111-8111-111111111111", "n-user-a"),
-        ("22222222-2222-4222-8222-222222222222", "n-user-b"),
+        ("11111111-1111-4111-8111-111111111111", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        ("22222222-2222-4222-8222-222222222222", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
     ]
     stored = [
-        {"id": "n-user-a", "user_id": users[0][0], "title": "A only", "read_at": None},
-        {"id": "n-user-b", "user_id": users[1][0], "title": "B only", "read_at": None},
+        {"id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "user_id": users[0][0], "title": "A only", "read_at": None},
+        {"id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "user_id": users[1][0], "title": "B only", "read_at": None},
     ]
     seen_scopes = []
 
@@ -299,7 +299,7 @@ def test_two_principal_notification_isolation_contract(monkeypatch):
             assert listing.status_code == 200, listing.text
             payload_ids = {item["id"] for item in listing.json()["items"]}
             assert payload_ids == {own_notification_id}
-            foreign_notification_id = "n-user-b" if own_notification_id == "n-user-a" else "n-user-a"
+            foreign_notification_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" if own_notification_id == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" else "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             denied = client.patch(f"/v1/notifications/{foreign_notification_id}/read", json={})
             assert denied.status_code == 404
             own_read = client.patch(f"/v1/notifications/{own_notification_id}/read", json={})
