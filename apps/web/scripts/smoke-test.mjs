@@ -569,3 +569,11 @@ for (const contract of [
   'new URLSearchParams(window.location.search).get("story")',
   "Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan."
 ]) assert.ok(storiesRoute.includes(contract), "Stories must isolate auth sessions, stale loads, and deep-link negative states: " + contract);
+
+const reelsSessionSource = readFileSync(new URL("../app/reels/page.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "sessionEpoch.current += 1", "requestSequence.current += 1",
+  "if (epoch !== sessionEpoch.current || sequence !== requestSequence.current) return",
+  "if (epoch === sessionEpoch.current && sequence === requestSequence.current)",
+  "let authEventSeen = false", "if (active && !authEventSeen) applySession(data.session)"
+]) assert.ok(reelsSessionSource.includes(contract), "Reels must isolate auth sessions and stale loads: " + contract);
