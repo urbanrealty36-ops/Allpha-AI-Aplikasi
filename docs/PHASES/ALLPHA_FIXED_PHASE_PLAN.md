@@ -2033,3 +2033,20 @@ Acceptance: source-faithful UI retained; canonical FastAPI APIs supply real sess
 - **WP-02 remains `in_progress`**. Feed filter/deep-link source contracts and code-level CI now pass, but complete visual/component/layout/CSS/asset parity and the remaining route/action matrix have not been accepted. Browser viewport/device checks remain deferred per instruction.
 - **ENG-P04 remains `in_progress`**. The forward migration exists and its contract test passes, but live ACLs remain unchanged until the approved application/verification path is used.
 - **ENG-P05 remains blocked** until both WP-02 and ENG-P04 acceptance evidence is complete. No PR merge, Vercel deployment, staging test, physical-device test, or production DDL was performed.
+
+
+## Execution update — WP-02 / ENG-P04 (2026-10-28, direct-to-main)
+
+### ENG-P04 production migration result
+- Applied the existing CLI-generated migration `20261027163225_eng_p04_social_graph_least_privilege_grants.sql` to the canonical Supabase project `AllphaAiAplikasi-db` (`dvdziauyvuhcnqhrrvww`) using the Supabase migration action. The operation returned success and the production migration ledger now records version `20261028035220`, name `eng_p04_social_graph_least_privilege_grants`.
+- Post-apply read-only ACL verification confirms `anon` has no table privileges on `social_edges` / `user_interests`; `authenticated` no longer has `TRUNCATE`; column grants are restricted to the intended follow-status and interest-upsert fields. `id`, `created_at`, and `updated_at` are not client-writable through the verified column grants.
+- Security/performance advisor scan was run after migration. It reports broader pre-existing findings elsewhere in the database (including RLS-enabled tables with no policies and multiple permissive policies); these are not silently treated as resolved by ENG-P04.
+- ENG-P04 remains `in_progress` until the real two-user JWT/Realtime isolation journey and affected FastAPI/PostgREST flows are verified. Source tests and ACL inspection are not substitutes for that acceptance evidence.
+
+### WP-02 status — no premature acceptance
+- Current canonical Web route implementations inspected include `apps/web/app/feed/page.tsx`, `apps/web/app/stories/page.tsx`, `apps/web/app/reels/page.tsx`, and `apps/web/components/reference-ui/ReferenceNavigation.tsx`. ADR-0003 requires parity with `urbanrealty36-ops/Allpha-Front-End-UI-New`, preserving reference route, layout, CSS, component, navigation, and workflow behavior while replacing mock data with canonical API integration.
+- WP-02 remains `in_progress`. Remaining acceptance still includes complete reference-to-target component/layout/CSS/asset inventory, remaining route/action and selected-content/story viewer matrix, and actual responsive/browser evidence. A source smoke/build result alone does not close visual parity.
+- Production deploy and visual acceptance for the latest `main` head are not yet confirmed; Vercel previously returned build-rate-limit checks. Do not mark the current UI production-verified until a successful deployment for the current `main` SHA and live route checks are observed.
+
+### Dependency decision
+- ENG-P05 remains blocked until WP-02 and ENG-P04 acceptance evidence is complete.
