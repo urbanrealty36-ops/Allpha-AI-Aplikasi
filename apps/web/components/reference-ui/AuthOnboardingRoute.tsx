@@ -60,6 +60,11 @@ export default function AuthOnboardingRoute() {
     const requested = new URLSearchParams(window.location.search).get("next");
     return requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/feed";
   }, []);
+  const initialAuthMode = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    const mode = new URLSearchParams(window.location.search).get("mode");
+    return mode === "login" ? "LOGIN" as const : mode === "register" ? "REGISTER" as const : undefined;
+  }, []);
 
   async function googleSignIn() {
     if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
@@ -195,6 +200,7 @@ export default function AuthOnboardingRoute() {
         onGoogleSignIn={googleSignIn}
         currentUser={emptyHuman}
         currentAgent={emptyAgent}
+        initialAuthMode={initialAuthMode}
       />
     </>
   );
