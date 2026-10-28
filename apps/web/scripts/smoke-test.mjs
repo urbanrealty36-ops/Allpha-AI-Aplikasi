@@ -602,3 +602,17 @@ for (const contract of [
   "Ketentuan bagi hasil akan ditampilkan setelah layanan billing dan settlement aktif.",
   'productionMode ? "Program Royalti Kreator"'
 ]) assert.ok(aiCinemaViewSource.includes(contract), "AI Cinema must not present demo pricing or earnings as production data: " + contract);
+
+const referenceNotificationsModal = readFileSync(new URL("../components/reference-ui/NotificationsModal.tsx", import.meta.url), "utf8");
+const referenceNavigationNotifications = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");
+for (const contract of [
+  "notifications: NotificationItem[]", "onMarkRead: (id: string) => void", "onMarkAllRead: () => void",
+  "loading ? (", "error ? (", "onClick={() => { if (!item.isRead) onMarkRead(item.id); }}"
+]) assert.ok(referenceNotificationsModal.includes(contract), "Reference notification modal must render API-backed state and real read actions: " + contract);
+for (const contract of [
+  'fetch(apiBase + "/v1/notifications?limit=50"',
+  '"/v1/notifications/" + encodeURIComponent(id) + "/read"',
+  'apiBase + "/v1/notifications/read-all"',
+  "onOpenNotifications={() => setNotificationsModalOpen(true)}",
+  "<NotificationsModal"
+]) assert.ok(referenceNavigationNotifications.includes(contract), "Global navigation must wire the source notification modal to canonical inbox APIs: " + contract);
