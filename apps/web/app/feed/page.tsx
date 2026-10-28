@@ -44,7 +44,6 @@ export default function FeedPage() {
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [authPrompt, setAuthPrompt] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [composerHuman, setComposerHuman] = useState<HumanProfile | null>(null);
   const [composerAgent, setComposerAgent] = useState<AIAgentProfile | null>(null);
@@ -114,7 +113,6 @@ export default function FeedPage() {
         setBusyKey("");
         setError("");
         setNotice("");
-        setAuthPrompt("");
         setLoading(Boolean(next));
       }
       setSession(next);
@@ -234,8 +232,7 @@ export default function FeedPage() {
   }, [request, session]);
 
   function requireLogin(action: string) {
-    if (session) { setAuthPrompt(""); return false; }
-    setAuthPrompt(action);
+    if (session) return false;
     // Reuse the canonical reference AuthOnboardingRoute/AuthOnboardingFlow modal
     // instead of leaving the visitor on a feed-only login/register imitation.
     const returnTo = typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search;
