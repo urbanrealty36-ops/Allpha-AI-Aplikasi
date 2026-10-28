@@ -256,3 +256,56 @@ def test_notification_storage_failure_is_fail_closed(monkeypatch):
     except HTTPException as exc:
         assert exc.status_code == 503
         assert exc.detail["code"] == "NOTIFICATIONS_NOT_CONFIGURED"
+
+
+def test_two_principal_notification_isolation_contract(monkeypatch):
+    """Test-only two-principal contract: list/read queries must follow the caller identity."""
+    users = [
+        ("11111111-1111-4111-8111-111111111111", "n-user-a"),
+        ("22222222-2222-4222-8222-222222222222", "n-user-b"),
+    ]
+    stored = [
+        {"id": "n-user-a", "user_id": users[0][0], "title": "A only", "read_at": None},
+        {"id": "n-user-b", "user_id": users[1][0], "title": "B only", "read_at": None},
+    ]
+    seen_scopes = []
+
+    async def fake_request(method, table, *, params, body=None, prefer=None):
+        assert table == "notifications"
+        owner_filter = params.get("user_id")
+        seen_scopes.append((method, owner_filter))
+        assert owner_filter in {f"eq.{users[0][0]}", f"eq.{users[1][0]}"}
+        owner_id = owner_filter.removeprefix("eq.")
+        if method == "GET":
+            return [row for row in stored if row["user_id"] == owner_id]
+        if method == "PATCH":
+            row_id = params.get("id", "").removeprefix("eq.")
+            return [
+                {"id": row["id"], "read_at": "2026-10-28T00:00:00+00:00"}
+                for row in stored if row["user_id"] == owner_id and row["id"] == row_id
+            ]
+        raise AssertionError(f"unexpected method {method}")
+
+    monkeypatch.setattr(notification_api, "_request", fake_request)
+    client = TestClient(app)
+    try:
+        for user_id, own_notification_id in users:
+            def _principal(request: Request, uid=user_id):
+                request.state.user_id = uid
+                return {"id": uid, "email": "isolated-test@example.invalid"}
+
+            app.dependency_overrides[current_user] = _principal
+            listing = client.get("/v1/notifications")
+            assert listing.status_code == 200, listing.text
+            payload_ids = {item["id"] for item in listing.json()["items"]}
+            assert payload_ids == {own_notification_id}
+            foreign_notification_id = "n-user-b" if own_notification_id == "n-user-a" else "n-user-a"
+            denied = client.patch(f"/v1/notifications/{foreign_notification_id}/read", json={})
+            assert denied.status_code == 404
+            own_read = client.patch(f"/v1/notifications/{own_notification_id}/read", json={})
+            assert own_read.status_code == 200
+    finally:
+        _clear()
+
+    assert seen_scopes
+    assert all(scope in {f"eq.{users[0][0]}", f"eq.{users[1][0]}"} for _, scope in seen_scopes)
