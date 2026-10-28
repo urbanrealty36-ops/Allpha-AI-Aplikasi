@@ -277,7 +277,12 @@ def test_two_principal_notification_isolation_contract(monkeypatch):
         assert owner_filter in {f"eq.{users[0][0]}", f"eq.{users[1][0]}"}
         owner_id = owner_filter.removeprefix("eq.")
         if method == "GET":
-            return [row for row in stored if row["user_id"] == owner_id]
+            row_id = params.get("id")
+            return [
+                row for row in stored
+                if row["user_id"] == owner_id
+                and (row_id is None or row["id"] == row_id.removeprefix("eq."))
+            ]
         if method == "PATCH":
             row_id = params.get("id", "").removeprefix("eq.")
             return [
