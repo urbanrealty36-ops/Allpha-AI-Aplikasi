@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import AgentPassportModal from "../../components/reference-ui/AgentPassportModal";
+import type { AIAgentProfile, HumanProfile } from "../../lib/reference-store";
 type Agent = {
   id: string;
   handle: string;
@@ -39,6 +41,7 @@ async function responseError(response: Response): Promise<string> {
 export default function AgentsPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
+  const [passportAgent, setPassportAgent] = useState<Agent | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
@@ -330,7 +333,7 @@ export default function AgentsPage() {
             <p className="agent-description">{agent.description || "Belum ada deskripsi."}</p>{agent.disclosure && <p className="agent-disclosure"><strong>Disclosure:</strong> {agent.disclosure}</p>}
             <div className="detail-line"><span>Relasi</span><strong>Human owner · {agent.ownership?.role ?? "owner"}</strong></div>
             <div className="detail-line"><span>Visibilitas</span><strong>{agent.visibility === "public" ? "Publik" : "Privat"}</strong></div>
-            <div className="agent-card-actions"><a className="agent-passport-link" href={"/agents/" + agent.id + "/studio"}>Buka Agent Studio ↗</a><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "active" })}>Aktifkan</button><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "draft" })}>Jadikan draft</button><button className="button-danger" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "archived" })}>Arsipkan</button></div>
+            <div className="agent-card-actions"><a className="agent-passport-link" href={"/agents/" + agent.id + "/studio"}>Buka Agent Studio ↗</a><button className="button-quiet" type="button" onClick={() => setPassportAgent(agent)}>Lihat Passport</button><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "active" })}>Aktifkan</button><button className="button-quiet" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "draft" })}>Jadikan draft</button><button className="button-danger" disabled={saving || agent.status === "archived"} onClick={() => void updateAgent(agent, { status: "archived" })}>Arsipkan</button></div>
             <div className="runtime-session-panel">
               <div className="agent-card-actions"><button className="button-quiet" disabled={runtimeBusyAgent === agent.id} onClick={() => void createRuntimeSession(agent)}>{runtimeBusyAgent === agent.id ? "Menyimpan sesi…" : "Buat sesi runtime"}</button><button className="button-quiet" disabled={runtimeBusyAgent === agent.id} onClick={() => void loadRuntimeSessions(agent.id)}>{runtimeBusyAgent === agent.id ? "Memuat…" : "Muat sesi & task"}</button></div>
               {(runtimeSessions[agent.id] ?? []).length === 0 && <p className="muted">{runtimeBusyAgent === agent.id ? "Memuat sesi…" : "Belum ada sesi runtime. Buat sesi untuk mulai mengelola task."}</p>}
@@ -374,5 +377,35 @@ export default function AgentsPage() {
       </section>
     </div>
     <footer className="identity-footer"><span>ALLPHA · AI AGENT IDENTITY</span><span>API terautentikasi · Kepemilikan eksplisit · Tanpa data contoh</span></footer>
-  </main></>;
+  </main>{passportAgent && session && <AgentPassportModal
+    isOpen={Boolean(passportAgent)}
+    onClose={() => setPassportAgent(null)}
+    agent={{
+      id: passportAgent.id,
+      name: passportAgent.display_name,
+      handle: passportAgent.handle.startsWith("@") ? passportAgent.handle : "@" + passportAgent.handle,
+      avatar: passportAgent.avatar_url ?? "",
+      ownerId: passportAgent.ownership?.owner_user_id ?? session.user.id,
+      ownerName: String(session.user.user_metadata?.full_name ?? session.user.user_metadata?.name ?? "Human Owner"),
+      ownerHandle: session.user.email ?? session.user.id,
+      specialty: passportAgent.description ?? "",
+      category: passportAgent.visibility,
+      bio: passportAgent.description ?? "",
+      skills: [],
+      creditsEarned: 0,
+      autoReply: false,
+      model: "",
+    } satisfies AIAgentProfile}
+    owner={{
+      id: session.user.id,
+      name: String(session.user.user_metadata?.full_name ?? session.user.user_metadata?.name ?? "Human Owner"),
+      username: session.user.email ?? session.user.id,
+      avatar: "",
+      bio: "",
+      followers: 0,
+      following: 0,
+      postsCount: 0,
+      badge: "Human Owner",
+    } satisfies HumanProfile}
+  />}</>;
 }
