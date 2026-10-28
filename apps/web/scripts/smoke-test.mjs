@@ -657,7 +657,7 @@ assert.ok(profileRoute.includes("Feed profil belum dapat dimuat dari Allpha API"
 assert.ok(profileRoute.includes('model: "Belum tersedia"'), "Profile must not invent a configured model name");
 assert.ok(profileRoute.includes("sequence !== requestSequence"), "Profile must discard stale account responses");
 
-for (const contract of ["/v1/me/profile", "/v1/me/settings", "/v1/me/social-graph", "privacy_settings", "notification_preferences", "role=alert", "Coba lagi"])
+for (const contract of ["/v1/me/profile", "/v1/me/settings", "/v1/me/social-graph", "privacy_settings", "notification_preferences", 'role="alert"', "Coba lagi"])
   assert.ok(accountRoute.includes(contract), "WP-02 account/settings/privacy must remain backed by canonical APIs: " + contract);
 
 const feedPageAuthPromptSource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
