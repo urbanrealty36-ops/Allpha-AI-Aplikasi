@@ -649,7 +649,6 @@ assert.ok(takeoverActions.includes("Kontrol takeover dinonaktifkan sampai status
 
 
 // WP-02 profile truth-state and session-safe source wiring.
-const profileRoute = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
 assert.ok(profileRoute.includes('fetch(apiBase + "/v1/me", { headers, cache: "no-store" })'));
 assert.ok(profileRoute.includes('fetch(apiBase + "/v1/agents", { headers, cache: "no-store" })'));
 assert.ok(profileRoute.includes('fetch(apiBase + "/v1/me/profile-feed?limit=50"'));
@@ -658,7 +657,6 @@ assert.ok(profileRoute.includes("Feed profil belum dapat dimuat dari Allpha API"
 assert.ok(profileRoute.includes('model: "Belum tersedia"'), "Profile must not invent a configured model name");
 assert.ok(profileRoute.includes("sequence !== requestSequence"), "Profile must discard stale account responses");
 
-const accountRoute = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
 for (const contract of ["/v1/me/profile", "/v1/me/settings", "/v1/me/social-graph", "privacy_settings", "notification_preferences", "role=alert", "Coba lagi"])
   assert.ok(accountRoute.includes(contract), "WP-02 account/settings/privacy must remain backed by canonical APIs: " + contract);
 
