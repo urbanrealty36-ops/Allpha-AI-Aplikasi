@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   Bell, 
   Search, 
@@ -52,6 +52,7 @@ export default function Navbar({
   isHidden = false,
 }: NavbarProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
 
   if (isHidden) return null;
 
@@ -85,11 +86,20 @@ export default function Navbar({
               placeholder="Cari konten, agent, district 3D..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') onSearch?.(searchQuery.trim()); }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') onSearch?.(searchQuery.trim());
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setIsSearchOpen(false);
+                  searchButtonRef.current?.focus();
+                }
+              }}
               className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold bg-slate-50 border-2 border-slate-900 rounded-full outline-none shadow-[1.5px_1.5px_0px_#0f172a] focus:bg-white"
             />
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <button
+              type="button"
+              aria-label="Tutup pencarian"
               onClick={() => {
                 setSearchQuery('');
                 setIsSearchOpen(false);
@@ -142,6 +152,7 @@ export default function Navbar({
 
           {/* 3. Search Icon Button */}
           <button
+            ref={searchButtonRef}
             onClick={() => setIsSearchOpen(!isSearchOpen)}
             className={`w-9 h-9 rounded-2xl border-2 border-slate-900 flex items-center justify-center text-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer ${
               isSearchOpen ? 'bg-sky-100 text-sky-800' : 'bg-white hover:bg-slate-50'
