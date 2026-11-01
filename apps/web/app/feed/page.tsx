@@ -63,6 +63,21 @@ export default function FeedPage() {
     return response.status === 204 ? null : response.json();
   }, [session]);
 
+  async function recordFeedSignal(contentId: string, eventType: "impression" | "view", position: number, feedMode: "for_you" | "following" | "recent" = mode) {
+    if (!session) return;
+    const impressionKey = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+    try {
+      await request("/v1/feed/" + encodeURIComponent(contentId) + "/impression", {
+        method: "POST",
+        body: JSON.stringify({ impression_key: impressionKey, event_type: eventType, feed_mode: feedMode, position, ranking_version: "feed-rank-v1" }),
+      });
+    } catch {
+      // Telemetry is best-effort and must never block content rendering or navigation.
+    }
+  }
+
   const loadFeed = useCallback(async (reset = true, nextCursor?: string | null, requestedMode?: "for_you" | "recent" | "following") => {
     const requestedFeedMode = requestedMode ?? mode;
     const epoch = sessionEpoch.current;
@@ -73,13 +88,15 @@ export default function FeedPage() {
       if (sharedContentId) {
         const direct = await request("/v1/feed/item/" + encodeURIComponent(sharedContentId)) as { item: FeedItem };
         if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
-        setItems([direct.item]); setCursor(null); return;
+        setItems([direct.item]); setCursor(null); void recordFeedSignal(direct.item.id, "view", 0, requestedFeedMode); return;
       }
       const params = new URLSearchParams({ mode: requestedFeedMode, limit: "20" });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/feed?" + params.toString()) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
       if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
-      setItems(current => reset ? (data.items ?? []) : [...current, ...(data.items ?? [])]);
+      const receivedItems = data.items ?? [];
+      setItems(current => reset ? receivedItems : [...current, ...receivedItems]);
+      if (session && receivedItems.length) void Promise.all(receivedItems.map((item, index) => recordFeedSignal(item.id, "impression", reset ? index : items.length + index, requestedFeedMode)));
       setCursor(data.next_cursor ?? null);
       if (typeof data.personalization_enabled === "boolean") setPersonalizationEnabled(data.personalization_enabled);
       if (data.mode === "for_you" || data.mode === "recent" || data.mode === "following") setMode(data.mode);
@@ -323,6 +340,23 @@ export default function FeedPage() {
     finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
+  async function submitFeedFeedback(item: FeedItem, feedbackType: "not_interested" | "hide_creator") {
+    if (requireLogin("Masuk untuk mengatur preferensi Feed.")) return;
+    const epoch = sessionEpoch.current;
+    setBusyKey(item.id); setError(""); setNotice("");
+    try {
+      await request("/v1/feed/" + encodeURIComponent(item.id) + "/feedback", {
+        method: "POST", body: JSON.stringify({ feedback_type: feedbackType }),
+      });
+      if (epoch !== sessionEpoch.current) return;
+      setItems(current => current.filter(row => row.id !== item.id && (feedbackType !== "hide_creator" || row.owner_id !== item.owner_id)));
+      setNotice(feedbackType === "hide_creator" ? "Konten dari kreator ini disembunyikan dari Feed Anda." : "Preferensi tidak tertarik disimpan.");
+      await loadFeed(true);
+    } catch (cause) {
+      if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Preferensi Feed gagal disimpan.");
+    } finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
+  }
+
   async function share(item: FeedItem) {
     setError(""); setNotice("");
     if (!session) {
@@ -490,13 +524,14 @@ export default function FeedPage() {
           onLoadComments={postId => { const item = items.find(row => row.id === postId); if (item) void openComments(item); }}
           onSharePost={postId => { const item = items.find(row => row.id === postId); if (item) void share(item); }}
           onReportPost={(postId, reason) => { const item = items.find(row => row.id === postId); if (item) void report(item, reason); }}
+          onFeedbackPost={(postId, feedbackType) => { const item = items.find(row => row.id === postId); if (item) void submitFeedFeedback(item, feedbackType); }}
           storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: story.creator?.display_name || story.creator?.username || (story.discovery_group === "suggested_public" ? "Disarankan" : "Momen"), img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
           onLikePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleReaction(item); }}
           onOpenAskAi={(agentName) => { if (requireLogin("Masuk untuk menggunakan Tanya AI Agent.")) return; window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
           onOpenGenerate={() => { if (requireLogin("Masuk untuk menggunakan Generate AI.")) return; window.location.assign("/create"); }}
           onOpenWorld3D={() => { if (requireLogin("Masuk untuk memasuki Universe 3D.")) return; window.location.assign("/spatial/navigation"); }}
           onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
-          onSelectPost={post => { window.location.assign("/feed?content=" + encodeURIComponent(post.id)); }}
+          onSelectPost={post => { void recordFeedSignal(post.id, "view", Math.max(0, items.findIndex(item => item.id === post.id))); window.location.assign("/feed?content=" + encodeURIComponent(post.id)); }}
           onOpenReels={() => { window.location.assign("/reels"); }}
           onOpenStory={storyId => { window.location.assign("/stories?story=" + encodeURIComponent(storyId)); }}
           onOpenLiveStage={() => { window.location.assign("/live"); }}
