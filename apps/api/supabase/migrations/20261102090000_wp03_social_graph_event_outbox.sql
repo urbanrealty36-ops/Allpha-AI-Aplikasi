@@ -16,8 +16,8 @@ create table if not exists public.social_graph_events (
     'interest.preference.updated',
     'interest.preference.removed'
   )),
-  actor_user_id uuid,
-  target_user_id uuid,
+  actor_user_id uuid references auth.users(id) on delete set null,
+  target_user_id uuid references auth.users(id) on delete set null,
   entity_key text,
   payload jsonb not null default '{}'::jsonb check (jsonb_typeof(payload) = 'object'),
   delivery_state text not null default 'pending' check (delivery_state in ('pending','processing','processed','dead')),
