@@ -2221,3 +2221,13 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Source changes include the private graph event outbox migration, owner-scoped active follower read policy, API follower/summary response, Web username discovery and follower summary UI, and Native follower summary UI. Details and the acceptance register are in `docs/PHASES/WP03_SOCIAL_GRAPH_FEED_FOUNDATIONS.md`.
 - No staging, real-user test, live JWT/RLS/Realtime test, physical-device test, or other real integration test was executed. The additive production migration `wp03_social_graph_event_outbox` was applied successfully (ledger version `20261101184803`). WP-03 code was merged through PR #12 as commit `3f45de82d07f98feb1d2b0ed1f5f20a51732c021`. The first Vercel production deployment for that SHA was queued and Railway statuses were pending at last inspection; READY/runtime verification is not yet claimed.
 - **Status:** WP-02 `accepted_by_product_owner_with_evidence_waiver`; WP-03 `in_progress / implementation_not_verified`. Do not use `integration_verified`, `acceptance_passed`, `DONE-VERIFIED`, or `production_verified` until corresponding evidence is actually available or a later explicit risk-acceptance disposition is recorded.
+
+
+### WP-03 implementation extension — impressions and negative feedback (2026-11-02)
+
+- Added and applied production migration `wp03_feed_impressions_and_feedback` (Supabase ledger version `20261101185040`), aligned to `apps/api/supabase/migrations/20261101185040_wp03_feed_impressions_and_feedback.sql`.
+- Added authenticated API writes for idempotent feed delivery impressions and explicit content-open/view events. Each event records feed mode, position and `feed-rank-v1`; telemetry does not count as public engagement.
+- Added owner-private `not_interested` and `hide_creator` feedback, and applied active feedback to future feed candidate filtering.
+- Integrated Web Feed overflow actions and Web/Native client telemetry/feedback actions into the refreshed UI.
+- No real integration/browser/device/JWT/RLS/Realtime tests were executed. Existing Vercel production build pipeline is queued for the new main head; do not mark runtime acceptance from source commits alone.
+- Current WP-03 remains `IMPLEMENTED / DEPLOYMENT_PENDING / NOT_VERIFIED`; WP-04 — Content and media lifecycle is the next planned work package after the WP-03 rollout state is reconciled.
