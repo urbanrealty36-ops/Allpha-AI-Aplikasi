@@ -487,11 +487,18 @@ async def request_account_deactivation(request: Request, user: dict[str, Any] = 
 
 @app.get("/v1/me/social-graph", tags=["social"])
 async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Return only the caller's relationship edges and owner-private interest preferences."""
     token = request.state.supabase_access_token
     outgoing = await user_db_request(
         "GET", "social_edges", token,
         params={"select": "id,target_user_id,edge_type,status,created_at",
                 "actor_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "500"},
+    )
+    incoming_followers = await user_db_request(
+        "GET", "social_edges", token,
+        params={"select": "id,actor_user_id,edge_type,status,created_at",
+                "target_user_id": f"eq.{user['id']}", "edge_type": "eq.follow",
+                "status": "eq.active", "order": "created_at.desc", "limit": "500"},
     )
     incoming_blocks = await user_db_request(
         "GET", "social_edges", token,
@@ -510,8 +517,27 @@ async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(c
         params={"select": "interest_key,preference,created_at,updated_at",
                 "user_id": f"eq.{user['id']}", "order": "interest_key.asc", "limit": "500"},
     )
-    return {"outgoing": outgoing, "incoming_requests": incoming_requests, "blocked_by": incoming_blocks, "interests": interests}
-
+    active_follows = sum(1 for edge in outgoing if edge.get("edge_type") == "follow" and edge.get("status") == "active")
+    pending_follows = sum(1 for edge in outgoing if edge.get("edge_type") == "follow" and edge.get("status") == "requested")
+    blocks = sum(1 for edge in outgoing if edge.get("edge_type") == "block")
+    mutes = sum(1 for edge in outgoing if edge.get("edge_type") == "mute")
+    return {
+        "outgoing": outgoing,
+        "incoming_followers": incoming_followers,
+        "incoming_requests": incoming_requests,
+        "blocked_by": incoming_blocks,
+        "interests": interests,
+        "summary": {
+            "following": active_follows,
+            "followers": len(incoming_followers),
+            "pending_follow_requests": pending_follows + len(incoming_requests),
+            "blocked": blocks,
+            "muted": mutes,
+            "interests": len(interests),
+            "truncated": any(len(items) >= 500 for items in (outgoing, incoming_followers, incoming_blocks, incoming_requests, interests)),
+        },
+        "contract_version": 2,
+    }
 
 @app.post("/v1/me/social-edges", status_code=201, tags=["social"])
 async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:

@@ -18,7 +18,8 @@ type IdentityResponse = { user: { id: string; email?: string; email_confirmed_at
 type SettingsResponse = { settings: Settings | null };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string; created_at?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested"; created_at?: string; updated_at?: string };
-type SocialGraph = { outgoing: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[] };
+type DiscoveredSocialUser = { id: string; username: string; display_name?: string | null; avatar_url?: string | null; visibility: "public" | "private" };
+type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean }; };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -43,6 +44,10 @@ export default function HomePage() {
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
+  const [socialQuery, setSocialQuery] = useState("");
+  const [discoveredSocialUsers, setDiscoveredSocialUsers] = useState<DiscoveredSocialUser[]>([]);
+  const [socialDiscoveryLoading, setSocialDiscoveryLoading] = useState(false);
+  const [socialDiscoveryError, setSocialDiscoveryError] = useState("");
   const [interestKey, setInterestKey] = useState("");
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const identityRequestSequence = useRef(0);
@@ -174,11 +179,13 @@ export default function HomePage() {
     return response.status === 204 ? {} : response.json();
   }
 
-  async function addSocialEdge(edgeType: "follow" | "block" | "mute") {
+  async function addSocialEdge(edgeType: "follow" | "block" | "mute", targetOverride?: string) {
+    const target = (targetOverride || targetUserId).trim();
+    if (!target) return;
     setSaving(true); setError(""); setMessage("");
     try {
-      const result = await socialRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetUserId.trim(), edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
-      setTargetUserId("");
+      const result = await socialRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: target, edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
+      if (!targetOverride) setTargetUserId("");
       const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti akun ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : result.outcome === "user_blocked" ? "Akun berhasil diblokir." : result.outcome === "user_muted" ? "Akun berhasil dibisukan." : "Relasi sosial tersimpan.";
       setMessage(result.idempotent_replay ? "Relasi tersebut sudah ada; tidak dibuat duplikat." : outcomeMessage);
       await loadSocialGraph();
@@ -204,6 +211,19 @@ export default function HomePage() {
       setMessage(accept ? "Permintaan mengikuti diterima." : "Permintaan mengikuti ditolak."); await loadSocialGraph();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Permintaan mengikuti gagal diproses."); }
     finally { setSaving(false); }
+  }
+
+  async function discoverSocialUsers() {
+    const query = socialQuery.trim().replace(/^@/, "");
+    if (query.length < 3) { setSocialDiscoveryError("Masukkan minimal 3 karakter username."); setDiscoveredSocialUsers([]); return; }
+    setSocialDiscoveryLoading(true); setSocialDiscoveryError("");
+    try {
+      const payload = await socialRequest("/v1/social/discover-users?q=" + encodeURIComponent(query) + "&limit=20") as { items?: DiscoveredSocialUser[] };
+      setDiscoveredSocialUsers(payload.items || []);
+    } catch (cause) {
+      setDiscoveredSocialUsers([]);
+      setSocialDiscoveryError(cause instanceof Error ? cause.message : "Pencarian akun belum tersedia.");
+    } finally { setSocialDiscoveryLoading(false); }
   }
 
   async function saveInterest() {
@@ -301,12 +321,27 @@ export default function HomePage() {
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
     {loading ? <section className="panel loading-panel" role="status">Mengambil profil dan pengaturan dari backend…</section> : !profile || !settings ? <section className="panel loading-panel">{error ? <><p className="muted">Profil dan pengaturan belum berhasil dimuat. Periksa koneksi atau sesi, lalu coba lagi.</p><button type="button" className="button-primary" onClick={() => { if (session) void loadIdentity(session); }}>Coba lagi</button></> : <><p className="muted">Profil belum tersedia.</p><button type="button" className="button-quiet" onClick={() => { if (session) void loadIdentity(session); }}>Muat ulang</button></>}</section> : tab === "social" ? <section className="panel settings-panel social-panel">
       <div className="panel-heading"><span className="section-kicker">SOCIAL GRAPH</span><h2>Relasi dan minat Anda</h2><p>Relasi dan preferensi minat disimpan melalui API terautentikasi. Pencarian akun berdasarkan username belum tersedia; gunakan ID pengguna target.</p></div>
+      <div className="social-add-row"><label>Cari akun berdasarkan username<input value={socialQuery} onChange={(e) => setSocialQuery(e.target.value)} placeholder="@username" autoComplete="off" maxLength={40} /></label><button type="button" className="button-primary" disabled={socialDiscoveryLoading || socialQuery.trim().length < 3} onClick={() => void discoverSocialUsers()}>{socialDiscoveryLoading ? "Mencari…" : "Cari akun"}</button></div>
+      {socialDiscoveryError && <p className="notice error" role="alert">{socialDiscoveryError}</p>}
+      {discoveredSocialUsers.length > 0 && <section className="social-columns" aria-label="Hasil pencarian akun">{discoveredSocialUsers.map((candidate) => <div className="social-row" key={candidate.id}><span><strong>{candidate.display_name || candidate.username}</strong><small className="muted"> @{candidate.username} · {candidate.visibility === "private" ? "Akun privat" : "Akun publik"}</small></span><div className="form-actions"><button type="button" className="button-primary" disabled={saving} onClick={() => void addSocialEdge("follow", candidate.id)}>Ikuti</button><button type="button" className="button-quiet" disabled={saving} onClick={() => void addSocialEdge("block", candidate.id)}>Blokir</button><button type="button" className="button-quiet" disabled={saving} onClick={() => void addSocialEdge("mute", candidate.id)}>Bisukan</button></div></div>)}</section>}
       <div className="social-add-row"><label>ID pengguna target<input value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} placeholder="UUID akun Allpha" autoComplete="off" /></label><div className="form-actions"><button type="button" className="button-primary" disabled={saving || !targetUserId.trim()} onClick={() => void addSocialEdge("follow")}>Ikuti</button><button type="button" className="button-quiet" disabled={saving || !targetUserId.trim()} onClick={() => void addSocialEdge("block")}>Blokir</button><button type="button" className="button-quiet" disabled={saving || !targetUserId.trim()} onClick={() => void addSocialEdge("mute")}>Bisukan</button></div></div>
       {socialLoading ? <p className="muted" role="status">Memuat relasi…</p> : socialGraph ? <>
         <div className="social-columns">
           <section><h3>Permintaan masuk ({socialGraph.incoming_requests.length})</h3>{socialGraph.incoming_requests.length ? socialGraph.incoming_requests.map((edge) => <div className="social-row" key={edge.id}><code>{edge.actor_user_id}</code><span className="muted">meminta mengikuti</span><div className="form-actions"><button type="button" className="button-primary" disabled={saving} onClick={() => void resolveFollowRequest(edge.id, true)}>Terima</button><button type="button" className="button-quiet" disabled={saving} onClick={() => void resolveFollowRequest(edge.id, false)}>Tolak</button></div></div>) : <p className="muted">Belum ada permintaan masuk.</p>}</section>
           <section><h3>Relasi Anda ({socialGraph.outgoing.length})</h3>{socialGraph.outgoing.length ? socialGraph.outgoing.map((edge) => <div className="social-row" key={edge.id}><code>{edge.target_user_id}</code><span className="muted">{edge.edge_type} · {edge.status || "active"}</span><button type="button" className="button-quiet" disabled={saving} onClick={() => void removeSocialEdge(edge)}>Hapus</button></div>) : <p className="muted">Belum ada relasi.</p>}</section>
         </div>
+        <section className="social-followers">
+          <h3>Pengikut Anda ({socialGraph.summary?.followers ?? socialGraph.incoming_followers?.length ?? 0})</h3>
+          {(socialGraph.incoming_followers || []).length ? socialGraph.incoming_followers!.map((edge) => <div className="social-row" key={edge.id}><code>{edge.actor_user_id}</code><span className="muted">mengikuti Anda</span></div>) : <p className="muted">Belum ada pengikut yang dapat ditampilkan.</p>}
+        </section>
+        {socialGraph.summary && <div className="social-interest-list" aria-label="Ringkasan Social Graph">
+          <span className="social-interest">Mengikuti: {socialGraph.summary.following}</span>
+          <span className="social-interest">Pengikut: {socialGraph.summary.followers}</span>
+          <span className="social-interest">Permintaan: {socialGraph.summary.pending_follow_requests}</span>
+          <span className="social-interest">Diblokir: {socialGraph.summary.blocked}</span>
+          <span className="social-interest">Dibisukan: {socialGraph.summary.muted}</span>
+          {socialGraph.summary.truncated && <span className="social-interest">Daftar dibatasi 500; pagination lanjutan diperlukan</span>}
+        </div>}
         <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<input value={interestKey} onChange={(e) => setInterestKey(e.target.value.toLowerCase())} maxLength={80} pattern="[a-z0-9][a-z0-9._-]{0,79}" placeholder="contoh: desain.3d" /></label><label>Preferensi<select value={interestPreference} onChange={(e) => setInterestPreference(e.target.value as "interested" | "not_interested")}><option value="interested">Diminati</option><option value="not_interested">Tidak diminati</option></select></label><button type="button" className="button-primary" disabled={saving || !interestKey.trim()} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}><span>{item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</span><button type="button" className="button-quiet" aria-label={"Ubah preferensi " + item.interest_key} disabled={saving} onClick={() => void updateInterestPreference(item.interest_key, item.preference === "interested" ? "not_interested" : "interested")}>{item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"}</button><button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
         {socialGraph.blocked_by.length > 0 && <p className="muted">Akun yang memblokir Anda: {socialGraph.blocked_by.map((edge) => edge.actor_user_id).join(", ")}</p>}
       </> : <div><p className="muted">Data Social Graph belum dimuat atau terjadi gangguan koneksi.</p><button type="button" className="button-quiet" onClick={() => void loadSocialGraph()}>Coba lagi</button></div>}

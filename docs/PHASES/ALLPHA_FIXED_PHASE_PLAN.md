@@ -2210,3 +2210,14 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Queried combined commit statuses for that commit. Railway and Vercel deployment contexts reported `success`; these are deployment-provider statuses and **not test-run evidence**. No GitHub Actions job log or test report was available through the connector response.
 - The connector exposed no workflow-dispatch or list-all-workflow-runs operation in the available tools. The remote browser runner remains unavailable due to insufficient service credits, and local checkout remains blocked by DNS resolution. Therefore a fresh test execution and browser screenshots could not be completed via the available execution paths in this session.
 - **Evidence outcome unchanged:** API isolation tests, browser journeys/screenshots, and JWT/RLS/Realtime checks remain not freshly verified. WP-02 remains `IN_PROGRESS`; WP-03 remains `BLOCKED`. Do not interpret deployment success as CI test success.
+
+
+## Product Owner decision and WP-03 parallel implementation (2026-11-02)
+
+- The Product Owner explicitly states that WP-02 testing has been completed and accepts WP-03 proceeding in parallel. The Product Owner also explicitly waives staging and real integration testing for this WP-03 implementation window.
+- For sequencing, WP-02 is treated as **Product-Owner accepted for transition with evidence waiver**. This is not retroactively represented as `DONE-VERIFIED`: previously documented gaps in latest-head authenticated browser evidence, real two-principal JWT/RLS/Realtime isolation, and production deployment binding remain `NOT VERIFIED` because those checks are waived/not supplied in the captured evidence.
+- ADR-0012 records the accepted parallel-execution exception. WP-03 is now `IN_PROGRESS` on branch `feat/wp-03-social-graph-feed-foundations`.
+- WP-03 reuses the existing canonical Social Graph and Feed tables, FastAPI API boundary, Feed ranking/filtering implementation, and refreshed Web/Native UI. It does not introduce a second graph/feed engine or database.
+- Source changes include the private graph event outbox migration, owner-scoped active follower read policy, API follower/summary response, Web username discovery and follower summary UI, and Native follower summary UI. Details and the acceptance register are in `docs/PHASES/WP03_SOCIAL_GRAPH_FEED_FOUNDATIONS.md`.
+- No staging, real-user test, live JWT/RLS/Realtime test, physical-device test, or other real integration test was executed. No production migration application or deployment is claimed by this phase-plan entry.
+- **Status:** WP-02 `accepted_by_product_owner_with_evidence_waiver`; WP-03 `in_progress / implementation_not_verified`. Do not use `integration_verified`, `acceptance_passed`, `DONE-VERIFIED`, or `production_verified` until corresponding evidence is actually available or a later explicit risk-acceptance disposition is recorded.
