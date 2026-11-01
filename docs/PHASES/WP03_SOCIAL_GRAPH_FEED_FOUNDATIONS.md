@@ -23,7 +23,7 @@
 
 ## WP-03 changes in this branch
 
-1. **Private graph event outbox migration** — `apps/api/supabase/migrations/20261102090000_wp03_social_graph_event_outbox.sql`.
+1. **Private graph event outbox migration** — `apps/api/supabase/migrations/20261101184803_wp03_social_graph_event_outbox.sql`.
    - Adds `social_graph_events` as an additive transactional outbox.
    - Captures follow request/creation/acceptance/removal, block/mute creation/removal, and interest preference create/update/remove.
    - Trigger execution uses a fixed empty search path and a restricted security-definer function.
@@ -47,8 +47,8 @@
 - No staging environment created.
 - No real-user, production-data, authenticated browser, live JWT/RLS, Realtime, physical-device, or other real integration test executed, as explicitly waived.
 - No test result is claimed for this branch.
-- Migration source is committed but **not applied to the production database** in this branch record.
-- Deployment is not claimed. The new API response and UI integration require the migration and API release to be deployed in the correct order.
+- The additive migration was applied successfully to production. Supabase migration ledger records version `20261101184803`, name `wp03_social_graph_event_outbox`. The SQL filename is aligned to that applied ledger version.
+- The code was merged to `main` in commit `3f45de82d07f98feb1d2b0ed1f5f20a51732c021`. The first Vercel production deployment for this SHA was observed as `QUEUED`; Railway service statuses were `pending` at the time of inspection. Deployment completion is not yet claimed.
 - Before marking `integration_verified`, `acceptance_passed`, or `production_verified`, obtain a later authorized verification window for migration state, actual JWT/RLS behavior, Realtime isolation if/when subscribed, Web/Native runtime, and rollback readiness.
 
 ## Acceptance register
@@ -64,9 +64,9 @@
 | Durable graph-change event contract | Implemented in migration source; consumer not yet active |
 | Web Account social UI | Implemented in branch |
 | Native Account social UI | Implemented in branch |
-| Production migration application | Not applied |
+| Production migration application | Applied; ledger version `20261101184803` |
 | Runtime/API/RLS/Realtime integration | Not verified by waiver |
-| Production deployment | Not verified |
+| Production deployment | Queued/pending at last inspection; not verified ready |
 
 ## Next phase
 
