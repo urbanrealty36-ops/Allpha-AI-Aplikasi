@@ -640,13 +640,38 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     finally { setDiscoveryBusy(false); }
   }
 
+  async function recordNativeFeedSignal(contentId: string, eventType: "impression" | "view", position: number) {
+    if (!session) return;
+    try {
+      await apiRequest("/v1/feed/" + encodeURIComponent(contentId) + "/impression", {
+        method: "POST",
+        body: JSON.stringify({ impression_key: createMessageId(), event_type: eventType, feed_mode: feedMode, position, ranking_version: "feed-rank-v1" }),
+      });
+    } catch {
+      // Telemetry must not block native feed rendering or navigation.
+    }
+  }
+
+  async function submitNativeFeedFeedback(item: NativeFeedItem, feedbackType: "not_interested" | "hide_creator") {
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/feedback", { method: "POST", body: JSON.stringify({ feedback_type: feedbackType }) });
+      setFeedItems(current => current.filter(row => row.id !== item.id && (feedbackType !== "hide_creator" || row.owner_id !== item.owner_id)));
+      setMessage(feedbackType === "hide_creator" ? "Kreator disembunyikan dari Feed Anda." : "Preferensi tidak tertarik disimpan.");
+      await loadNativeFeed(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Preferensi Feed gagal disimpan."); }
+    finally { setFeedBusy(false); }
+  }
+
   async function loadNativeFeed(reset = true) {
     setFeedBusy(true); setError("");
     try {
       const params = new URLSearchParams({ mode: feedMode, limit: "10" });
       if (!reset && feedCursor) params.set("cursor", feedCursor);
       const result = await apiRequest("/v1/feed?" + params.toString()) as { items?: NativeFeedItem[]; next_cursor?: string | null; mode?: "for_you" | "recent"; personalization_enabled?: boolean };
-      setFeedItems(current => reset ? (result.items ?? []) : [...current, ...(result.items ?? [])]);
+      const receivedItems = result.items ?? [];
+      setFeedItems(current => reset ? receivedItems : [...current, ...receivedItems]);
+      if (receivedItems.length) void Promise.all(receivedItems.map((item, index) => recordNativeFeedSignal(item.id, "impression", reset ? index : feedItems.length + index)));
       setFeedCursor(result.next_cursor ?? null);
       if (result.mode) setFeedMode(result.mode);
       if (typeof result.personalization_enabled === "boolean") setFeedPersonalization(result.personalization_enabled);
@@ -1668,11 +1693,13 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         {feedItems.map(item => <View key={item.id} style={s.socialRow}>
           <Text style={s.muted}>Creator {item.owner_id.slice(0, 8)} · {new Date(item.published_at || item.created_at).toLocaleString()}</Text>
           {!!item.body && <Text style={s.body}>{item.body}</Text>}
-          {item.media?.map(media => media.preview_url ? <Button key={media.id} title={"Buka " + media.filename} secondary onPress={() => void Linking.openURL(media.preview_url!)}/> : null)}
+          {item.media?.map(media => media.preview_url ? <Button key={media.id} title={"Buka " + media.filename} secondary onPress={() => { void recordNativeFeedSignal(item.id, "view", Math.max(0, feedItems.findIndex(row => row.id === item.id))); void Linking.openURL(media.preview_url!); }}/> : null)}
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "like")}/>
             <Button title={(item.saved ? "Tersimpan" : "Simpan") + " · " + (item.engagement?.saves ?? 0)} secondary={!!item.saved} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "save")}/>
             <Button title={"Bagikan · " + (item.engagement?.shares ?? 0)} secondary disabled={feedBusy} onPress={() => void shareNativeContent(item)}/>
+            <Button title="Tidak tertarik" secondary disabled={feedBusy} onPress={() => void submitNativeFeedFeedback(item, "not_interested")}/>
+            <Button title="Sembunyikan kreator" secondary disabled={feedBusy} onPress={() => void submitNativeFeedFeedback(item, "hide_creator")}/>
             <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => chooseNativeReportReason(item)}/>
             <Button title={feedCommentsOpen[item.id] ? "Tutup komentar" : "Lihat komentar"} secondary disabled={feedBusy} onPress={() => void toggleNativeComments(item)}/>
           </View>
