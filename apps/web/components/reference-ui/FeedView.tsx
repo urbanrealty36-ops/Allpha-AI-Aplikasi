@@ -44,6 +44,7 @@ interface FeedViewProps {
   onRepostPost?: (postId: string) => void;
   onLoadComments?: (postId: string) => void;
   onReportPost?: (postId: string, reason: FeedReportReason) => void;
+  onFeedbackPost?: (postId: string, feedbackType: "not_interested" | "hide_creator") => void;
   initialCommentsPostId?: string | null;
   loading?: boolean;
   errorMessage?: string;
@@ -73,6 +74,7 @@ export default function FeedView({
   onRepostPost,
   onLoadComments,
   onReportPost,
+  onFeedbackPost,
   initialCommentsPostId,
   loading = false,
   errorMessage = '',
@@ -333,6 +335,9 @@ export default function FeedView({
                     </button>
                     {openPostMenuId === post.id && (
                       <div className="absolute right-0 top-8 z-40 w-56 rounded-2xl border-2 border-slate-900 bg-white p-3 shadow-[3px_3px_0px_#0f172a]">
+                        <p className="mb-2 text-xs font-black text-slate-900">Preferensi feed</p>
+                        <button type="button" disabled={!onFeedbackPost} onClick={() => { onFeedbackPost?.(post.id, "not_interested"); setOpenPostMenuId(null); }} className="mb-2 w-full rounded-xl border-2 border-slate-900 bg-amber-100 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50">Tidak tertarik dengan konten ini</button>
+                        <button type="button" disabled={!onFeedbackPost} onClick={() => { onFeedbackPost?.(post.id, "hide_creator"); setOpenPostMenuId(null); }} className="mb-3 w-full rounded-xl border-2 border-slate-900 bg-slate-100 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50">Sembunyikan kreator ini</button>
                         <p className="mb-2 text-xs font-black text-slate-900">Laporkan konten</p>
                         <select aria-label="Alasan laporan" value={reportReasons[post.id] ?? 'other'} onChange={event => setReportReasons(current => ({ ...current, [post.id]: event.target.value as FeedReportReason }))} className="w-full rounded-xl border-2 border-slate-900 bg-white px-2 py-2 text-xs font-semibold text-slate-900">
                           <option value="spam">Spam</option>
