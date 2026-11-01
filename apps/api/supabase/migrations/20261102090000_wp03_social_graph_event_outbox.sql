@@ -135,7 +135,7 @@ begin
     return new;
   end if;
 
-  return coalesce(new, old);
+  return null;
 end;
 $$;
 
@@ -150,3 +150,14 @@ drop trigger if exists user_interests_capture_graph_event on public.user_interes
 create trigger user_interests_capture_graph_event
 after insert or update or delete on public.user_interests
 for each row execute function public.capture_social_graph_event();
+
+-- A user may inspect their own active incoming follower edges. Other users' graph
+-- edges remain private; this policy does not make follower lists globally public.
+drop policy if exists social_edges_select_incoming_active_follow on public.social_edges;
+create policy social_edges_select_incoming_active_follow on public.social_edges
+for select to authenticated
+using (
+  target_user_id = (select auth.uid())
+  and edge_type = 'follow'
+  and status = 'active'
+);
