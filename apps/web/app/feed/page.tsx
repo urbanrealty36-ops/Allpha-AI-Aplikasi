@@ -63,7 +63,7 @@ export default function FeedPage() {
     return response.status === 204 ? null : response.json();
   }, [session]);
 
-  async function recordFeedSignal(contentId: string, eventType: "impression" | "view", position: number, feedMode: "for_you" | "following" | "recent" = mode) {
+  const recordFeedSignal = useCallback(async (contentId: string, eventType: "impression" | "view", position: number, feedMode: "for_you" | "following" | "recent" = mode) => {
     if (!session) return;
     const impressionKey = typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -76,7 +76,7 @@ export default function FeedPage() {
     } catch {
       // Telemetry is best-effort and must never block content rendering or navigation.
     }
-  }
+  }, [items.length, mode, recordFeedSignal, request, session]);
 
   const loadFeed = useCallback(async (reset = true, nextCursor?: string | null, requestedMode?: "for_you" | "recent" | "following") => {
     const requestedFeedMode = requestedMode ?? mode;
