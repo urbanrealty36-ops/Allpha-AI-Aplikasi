@@ -40,14 +40,15 @@
 
 5. **Native Account / Social Graph UI** — `apps/client/App.tsx` displays the caller's own follower list and relationship summary using the same API response. Existing native username discovery, follow/block/mute, pending request and interest controls remain.
 
-6. **Feed/Explore integration** — the refreshed Web Feed and Explore components already consume the canonical Feed and Social Graph APIs. This branch keeps their current source-based layouts and API contracts; it does not fork or replace those components.
+6. **Feed delivery/view telemetry and feedback** — adds owner-private `feed_impressions` and `feed_feedback` tables, authenticated FastAPI endpoints for idempotent `impression`/`view` events, and persistent `not_interested`/`hide_creator` feedback. Active negative feedback is applied to future feed candidate filtering. Ranking responses expose `feed-rank-v1` and the existing observed ranking signals; telemetry is not counted as public engagement.
+7. **Feed/Explore integration** — the refreshed Web Feed menu now offers “Tidak tertarik” and “Sembunyikan kreator”; the Web and Native feed clients record delivery impressions and explicit content opens. Existing source-based Feed/Explore layouts remain canonical; no duplicate feed engine is introduced.
 
 ## Verification and production application
 
 - No staging environment created.
 - No real-user, production-data, authenticated browser, live JWT/RLS, Realtime, physical-device, or other real integration test executed, as explicitly waived.
 - No test result is claimed for this branch.
-- The additive migration was applied successfully to production. Supabase migration ledger records version `20261101184803`, name `wp03_social_graph_event_outbox`. The SQL filename is aligned to that applied ledger version.
+- Both additive migrations were applied successfully to production. Supabase migration ledger records `20261101184803 / wp03_social_graph_event_outbox` and `20261101185040 / wp03_feed_impressions_and_feedback`. The SQL filenames are aligned to those applied ledger versions.
 - The code was merged to `main` in commit `3f45de82d07f98feb1d2b0ed1f5f20a51732c021`. The first Vercel production deployment for this SHA was observed as `QUEUED`; Railway service statuses were `pending` at the time of inspection. Deployment completion is not yet claimed.
 - Before marking `integration_verified`, `acceptance_passed`, or `production_verified`, obtain a later authorized verification window for migration state, actual JWT/RLS behavior, Realtime isolation if/when subscribed, Web/Native runtime, and rollback readiness.
 
@@ -61,10 +62,10 @@
 | Interest preference management | Existing API and Web/Native UI reused |
 | Feed For You / Recent / Following | Existing API and Web/Native UI reused |
 | Privacy-aware discovery | Existing API and Web/Native UI reused |
-| Durable graph-change event contract | Implemented in migration source; consumer not yet active |
-| Web Account social UI | Implemented in branch |
-| Native Account social UI | Implemented in branch |
-| Production migration application | Applied; ledger version `20261101184803` |
+| Durable graph-change event contract | Implemented and applied; asynchronous consumer not active; feed currently reads live canonical graph state |
+| Web Account social UI | Merged to main |
+| Native Account social UI | Merged to main |
+| Production migration application | Both migrations applied; ledger versions `20261101184803`, `20261101185040` |
 | Runtime/API/RLS/Realtime integration | Not verified by waiver |
 | Production deployment | Queued/pending at last inspection; not verified ready |
 
