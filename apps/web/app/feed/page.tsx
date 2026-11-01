@@ -76,7 +76,7 @@ export default function FeedPage() {
     } catch {
       // Telemetry is best-effort and must never block content rendering or navigation.
     }
-  }, [items.length, mode, recordFeedSignal, request, session]);
+  }, [mode, request, session]);
 
   const loadFeed = useCallback(async (reset = true, nextCursor?: string | null, requestedMode?: "for_you" | "recent" | "following") => {
     const requestedFeedMode = requestedMode ?? mode;
@@ -103,7 +103,7 @@ export default function FeedPage() {
     } catch (cause) {
       if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat.");
     } finally { if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setLoading(false); }
-  }, [mode, request, session]);
+  }, [items.length, mode, recordFeedSignal, request, session]);
 
   useEffect(() => {
     // Authentication is optional for public Feed browsing. If the browser auth
