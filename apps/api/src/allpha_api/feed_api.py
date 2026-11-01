@@ -31,6 +31,20 @@ class ShareCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     share_target: Literal["copy_link", "native_share", "external"] = "copy_link"
 
+class ImpressionWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    impression_key: str = Field(min_length=12, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    event_type: Literal["impression", "view"] = "impression"
+    feed_mode: Literal["for_you", "following", "recent", "reels"] = "for_you"
+    position: int = Field(ge=0, lt=1000)
+    ranking_version: str = Field(default="feed-rank-v1", min_length=1, max_length=80)
+
+
+class FeedbackWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feedback_type: Literal["not_interested", "hide_creator"]
+
+
 class PreferencesWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     personalization_enabled: bool
@@ -165,6 +179,27 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     if owner and effective_mode == "following":
         candidates = [row for row in candidates if str(row.get("owner_id")) in followed]
 
+    # Explicit viewer feedback is authoritative for that viewer's future feed.
+    # It is private owner-scoped data and never becomes a public engagement metric.
+    if owner:
+        feedback_rows = await _server_db("GET", "feed_feedback", params={
+            "select": "content_id,target_owner_id,feedback_type", "viewer_user_id": f"eq.{owner}",
+            "status": "eq.active", "limit": "2000",
+        })
+        excluded_content_ids = {
+            str(row.get("content_id")) for row in (feedback_rows or [])
+            if row.get("feedback_type") == "not_interested"
+        }
+        hidden_creator_ids = {
+            str(row.get("target_owner_id")) for row in (feedback_rows or [])
+            if row.get("feedback_type") == "hide_creator"
+        }
+        candidates = [
+            row for row in candidates
+            if str(row.get("id")) not in excluded_content_ids
+            and str(row.get("owner_id")) not in hidden_creator_ids
+        ]
+
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
     if owner and effective_mode == "for_you" and enabled:
@@ -183,7 +218,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         candidates = [row for row in candidates if not any(matches_interest(str(row.get("body") or ""), key) for key in not_interested_keys)]
     ids = [str(r["id"]) for r in candidates]
     if not ids:
-        return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
+        return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": "feed-rank-v1", "as_of": as_of.isoformat()}
     in_ids = f"in.({','.join(ids)})"
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000"})
@@ -254,10 +289,11 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         item["media"] = media_by_id.get(cid, [])
         creator = profile_by_id.get(str(row.get("owner_id")), {})
         item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}
+        item["ranking_version"] = "feed-rank-v1"
         items.append(item)
     next_offset = offset + len(page)
     return {"items": items, "next_cursor": _cursor_encode(next_offset, as_of) if next_offset < len(ranked) and next_offset < CANDIDATES else None,
-            "mode": effective_mode, "personalization_enabled": enabled, "as_of": as_of.isoformat()}
+            "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": "feed-rank-v1", "as_of": as_of.isoformat()}
 
 
 @router.get("/v1/me/profile-feed", tags=["social-feed"])
@@ -808,6 +844,69 @@ async def report_content(content_id: uuid.UUID, payload: ReportCreate, user: dic
               "details": (payload.details or "").strip() or None, "status": "pending"}, prefer="return=representation")
     if not rows: raise HTTPException(409, detail={"code": "REPORT_NOT_RECORDED", "message": "Laporan tidak dapat disimpan."})
     return {"report": rows[0]}
+
+@router.post("/v1/feed/{content_id}/impression", status_code=202)
+async def record_feed_impression(
+    content_id: uuid.UUID,
+    payload: ImpressionWrite,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Record a delivered feed impression or an explicit open/view event idempotently."""
+    viewer_id = str(user["id"])
+    await _visible_content(content_id, viewer_id)
+    rows = await _server_db("POST", "feed_impressions", params={
+        "on_conflict": "viewer_user_id,content_id,impression_key",
+        "select": "id,event_type,created_at",
+    }, body={
+        "viewer_user_id": viewer_id,
+        "content_id": str(content_id),
+        "impression_key": payload.impression_key,
+        "event_type": payload.event_type,
+        "feed_mode": payload.feed_mode,
+        "position": payload.position,
+        "ranking_version": payload.ranking_version,
+    }, prefer="resolution=merge-duplicates,return=representation")
+    item = rows[0] if rows else {}
+    return {"recorded": True, "event": item, "semantics": "client_delivery" if payload.event_type == "impression" else "explicit_open"}
+
+
+@router.post("/v1/feed/{content_id}/feedback", status_code=201)
+async def record_feed_feedback(
+    content_id: uuid.UUID,
+    payload: FeedbackWrite,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Persist viewer-owned negative feedback; never count it as public engagement."""
+    viewer_id = str(user["id"])
+    content = await _visible_content(content_id, viewer_id)
+    rows = await _server_db("POST", "feed_feedback", params={
+        "on_conflict": "viewer_user_id,content_id,feedback_type",
+        "select": "id,content_id,feedback_type,status,created_at",
+    }, body={
+        "viewer_user_id": viewer_id,
+        "content_id": str(content_id),
+        "target_owner_id": str(content["owner_id"]),
+        "feedback_type": payload.feedback_type,
+        "status": "active",
+    }, prefer="resolution=merge-duplicates,return=representation")
+    return {"feedback": rows[0] if rows else None, "applied": True}
+
+
+@router.delete("/v1/feed/{content_id}/feedback")
+async def retract_feed_feedback(
+    content_id: uuid.UUID,
+    feedback_type: Literal["not_interested", "hide_creator"] = Query(...),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    viewer_id = str(user["id"])
+    await _visible_content(content_id, viewer_id)
+    rows = await _server_db("PATCH", "feed_feedback", params={
+        "viewer_user_id": f"eq.{viewer_id}", "content_id": f"eq.{content_id}",
+        "feedback_type": f"eq.{feedback_type}", "status": "eq.active",
+        "select": "id,content_id,feedback_type,status",
+    }, body={"status": "retracted"}, prefer="return=representation")
+    return {"retracted": bool(rows), "feedback": rows[0] if rows else None}
+
 
 @router.get("/v1/feed/preferences")
 async def get_preferences(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
