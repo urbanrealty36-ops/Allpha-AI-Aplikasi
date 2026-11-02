@@ -11,7 +11,10 @@
     "export:android": "expo export --platform android",
     "export:ios": "expo export --platform ios",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/smoke-test.mjs"
+    "test": "node scripts/smoke-test.mjs",
+    "build:android": "npx eas-cli build --platform android --profile production",
+    "build:ios": "npx eas-cli build --platform ios --profile production",
+    "build:all": "npx eas-cli build --platform all --profile production"
   },
   "dependencies": {
     "@react-navigation/native": "^7.1.17",
