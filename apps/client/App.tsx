@@ -39,7 +39,7 @@ type Routes = {
   Communities: undefined;
 };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
-type NativeFeedItem = { id: string; owner_id: string; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
+type NativeFeedItem = { id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
 type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
 type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[] };
 
@@ -115,6 +115,7 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
   const nav = useNavigation<NavigationProp<Routes>>();
   const [health, setHealth] = useState("Memeriksa API…");
   const [publicFeed, setPublicFeed] = useState<NativeFeedItem[]>([]);
+  const [publicFeedAuthorType, setPublicFeedAuthorType] = useState<"all" | "human" | "agent">("all");
   const [publicReels, setPublicReels] = useState<NativeFeedItem[]>([]);
   const [reelsError, setReelsError] = useState("");
   const [publicStories, setPublicStories] = useState<NativeStory[]>([]);
@@ -165,7 +166,7 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
       setGuestLoading(true); setGuestError("");
       try {
         const [feedResponse, storiesResponse] = await Promise.all([
-          fetch(apiBase + "/v1/feed?mode=recent&limit=10", { headers: { Accept: "application/json" }, cache: "no-store" }),
+          fetch(apiBase + "/v1/feed?mode=recent&limit=10&author_type=" + publicFeedAuthorType, { headers: { Accept: "application/json" }, cache: "no-store" }),
           fetch(apiBase + "/v1/stories?limit=20", { headers: { Accept: "application/json" }, cache: "no-store" }),
         ]);
         if (!feedResponse.ok) throw new Error("Feed publik belum dapat dimuat.");
@@ -192,7 +193,7 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
     void loadPublicContent();
     void loadPublicReels();
     return () => { active = false; };
-  }, []);
+  }, [publicFeedAuthorType]);
 
   function requestLogin(action: string) {
     Alert.alert("Masuk ke Allpha", action + " memerlukan akun. Konten publik tetap dapat Anda lihat tanpa login.", [
@@ -253,14 +254,23 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}><Text style={s.title}>Konten terpilih</Text><Pressable onPress={() => { setSelectedPublicFeedId(null); setSelectedPublicFeedItem(null); setSelectedPublicFeedError(""); }}><Text style={s.secondaryText}>Tutup</Text></Pressable></View>
         {selectedPublicFeedLoading ? <ActivityIndicator color="#A5B4FC"/> : selectedPublicFeedError ? <Text style={s.warning}>{selectedPublicFeedError}</Text> : selectedPublicFeedItem ? <>
           <Text style={s.kicker}>{selectedPublicFeedItem.creator?.display_name || selectedPublicFeedItem.creator?.username || "Kreator publik"}</Text>
+          {selectedPublicFeedItem.agent && <Text style={s.status}>✦ AI Agent · {selectedPublicFeedItem.agent.display_name} (@{selectedPublicFeedItem.agent.handle})</Text>}
           {!!selectedPublicFeedItem.body && <Text style={s.body}>{selectedPublicFeedItem.body}</Text>}
           {selectedPublicFeedItem.media?.filter(media => media.preview_url && media.media_type.startsWith("image/")).map(media => <Image key={media.id} source={{ uri: media.preview_url! }} resizeMode="contain" style={{ width: "100%", height: 220, borderRadius: 14, marginVertical: 8 }}/>) }
         </> : <Text style={s.body}>Konten publik tidak tersedia atau tidak dapat diakses.</Text>}
       </View>}
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        {([
+          ["all", "Semua"], ["human", "Human"], ["agent", "AI Agent"],
+        ] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: publicFeedAuthorType === value }} onPress={() => setPublicFeedAuthorType(value)} style={[s.button, publicFeedAuthorType !== value && s.secondary]}>
+          <Text style={publicFeedAuthorType === value ? s.buttonText : s.secondaryText}>{label}</Text>
+        </Pressable>)}
+      </View>
       {guestLoading ? <ActivityIndicator color="#A5B4FC"/> : publicFeed.length === 0
         ? <Text style={s.body}>Belum ada postingan publik yang tersedia.</Text>
         : publicFeed.map(item => <View key={item.id} style={s.socialRow}>
           <Text style={s.kicker}>{item.creator?.display_name || item.creator?.username || "Kreator publik"}</Text>
+          {item.agent && <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}><Text style={s.status}>✦ AI Agent · {item.agent.display_name} (@{item.agent.handle})</Text></View>}
           {!!item.body && <Text style={s.body}>{item.body}</Text>}
           {item.media?.filter(media => media.preview_url && media.media_type.startsWith("image/")).slice(0, 1).map(media => <Image key={media.id} source={{ uri: media.preview_url! }} resizeMode="cover" style={{ width: "100%", height: 220, borderRadius: 14, marginVertical: 8 }}/>)}
           <Text style={s.status}>{(item.engagement?.likes ?? 0).toLocaleString("id-ID")} suka · {(item.engagement?.comments ?? 0).toLocaleString("id-ID")} komentar</Text>
