@@ -63,7 +63,7 @@ app = FastAPI(
 app.state.text_generation_router = build_text_generation_router_from_environment()
 
 # Browser origins are explicit and configurable. The default includes the canonical
-# production web/admin origins plus local development. Railway should set
+# production web/admin origins plus local development. Vercel production environment should set
 # ALLPHA_CORS_ORIGINS explicitly to the same exact origin allowlist.
 cors_origins = [
     origin.strip()
