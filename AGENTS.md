@@ -5,9 +5,9 @@
 **Every AI coding agent, autonomous agent, contributor, and implementation workflow MUST read and understand the complete current Master PRD before planning, generating, editing, deleting, migrating, deploying, or executing project changes. This is a hard gate, not a suggestion.**
 
 Canonical product specification:
-- `docs/PRD/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE.md`
+- `docs/PRD/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE.md (canonical repository path; current contents are consolidated v3.1.0)`
 - Document ID: `ALLPHA-MPRD-003`
-- Version: `3.0.0`
+- Version: `3.1.0` (approved by Product Owner on 2026-11-02; original v3.0.0 baseline is preserved above the v3.1.0 addendum)
 - Treat this file as the primary product and engineering contract unless a formally approved ADR changes a specific decision.
 
 Before making any change, an agent MUST:
