@@ -39,7 +39,7 @@ interface FeedViewProps {
   onOpenMessages?: () => void;
   storiesData?: Array<{ id: string; name: string; img?: string; isAdd?: boolean; isLive?: boolean; ringColor?: string }>;
   productionMode?: boolean;
-  onChangeFeedFilter?: (filter: 'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS') => boolean | void;
+  onChangeFeedFilter?: (filter: 'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS' | 'HUMAN') => boolean | void;
   onSharePost?: (postId: string) => void;
   onRepostPost?: (postId: string) => void;
   onLoadComments?: (postId: string) => void;
@@ -82,7 +82,7 @@ export default function FeedView({
   noticeMessage = '',
   emptyState = false,
 }: FeedViewProps) {
-  const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS'>('FOR_YOU');
+  const [feedFilter, setFeedFilter] = useState<'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS' | 'HUMAN'>('FOR_YOU');
   const [commentInput, setCommentInput] = useState<{ [postId: string]: string }>({});
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
   const [initialCommentsHandled, setInitialCommentsHandled] = useState(false);
@@ -102,9 +102,9 @@ export default function FeedView({
   const stories = productionMode
     ? [{ id: 's-tambah', name: 'Tambah', isAdd: true }, ...(storiesData ?? []).filter(story => !story.isAdd)]
     : storiesData ?? referenceStories;
-  const visiblePosts = productionMode && feedFilter === 'AI_AGENTS' ? [] : posts;
+  const visiblePosts = posts;
 
-  const selectFeedFilter = (filter: 'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS') => {
+  const selectFeedFilter = (filter: 'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS' | 'HUMAN') => {
     if (productionMode && onChangeFeedFilter?.(filter) === false) return;
     setFeedFilter(filter);
   };
@@ -167,6 +167,18 @@ export default function FeedView({
         >
           <Bot className="w-3.5 h-3.5 text-slate-700" />
           <span>AI Agents</span>
+        </button>
+
+        <button
+          onClick={() => selectFeedFilter('HUMAN')}
+          className={`px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            feedFilter === 'HUMAN'
+              ? 'bg-slate-900 text-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]'
+              : 'bg-white text-slate-800 border-2 border-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5 text-slate-700" />
+          <span>Human</span>
         </button>
 
         {/* '🎞️ Reels / Video' (Soft Pastel Pink/Rose Pill) */}
@@ -297,7 +309,7 @@ export default function FeedView({
         )}
         {loading && visiblePosts.length === 0 && <p role="status" className="py-8 text-center text-sm font-semibold text-slate-500">Memuat feed…</p>}
         {emptyState && feedFilter === 'FOR_YOU' && !loading && !errorMessage && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-8 text-center"><h2 className="font-black text-slate-900">Belum ada konten publik</h2><p className="mt-2 text-sm text-slate-500">Konten akan tampil setelah dipublikasikan dan disetujui.</p></section>}
-        {productionMode && feedFilter !== 'FOR_YOU' && visiblePosts.length === 0 && !loading && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><p className="text-sm font-black text-slate-900">{feedFilter === 'FOLLOWING' ? 'Belum ada konten dari akun yang Anda ikuti' : 'Feed AI Agents belum tersedia'}</p><p className="mt-1 text-xs text-slate-500">{feedFilter === 'FOLLOWING' ? 'Postingan dari kreator yang Anda ikuti akan tampil di sini.' : 'Atribusi penulis AI Agent belum tersedia pada kontrak konten kanonis. Konten tidak diklasifikasikan berdasarkan tebakan.'}</p></section>}
+        {productionMode && feedFilter !== 'FOR_YOU' && visiblePosts.length === 0 && !loading && <section className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-5 text-center"><p className="text-sm font-black text-slate-900">{feedFilter === 'FOLLOWING' ? 'Belum ada konten dari akun yang Anda ikuti' : feedFilter === 'HUMAN' ? 'Belum ada konten Human' : 'Belum ada konten AI Agent'}</p><p className="mt-1 text-xs text-slate-500">{feedFilter === 'FOLLOWING' ? 'Postingan dari kreator yang Anda ikuti akan tampil di sini.' : feedFilter === 'HUMAN' ? 'Postingan Human yang terverifikasi akan tampil di sini.' : 'Postingan dengan atribusi Agent aktif dan kepemilikan valid akan tampil di sini.'}</p></section>}
         {visiblePosts.map((post) => {
           const isCommentsOpen = expandedCommentsPostId === post.id;
 
