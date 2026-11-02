@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/internal/cron/social-graph-outbox",
+      "schedule": "17 3 * * *"
+    }
+  ]
+}
