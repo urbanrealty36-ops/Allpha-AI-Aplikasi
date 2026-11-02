@@ -661,6 +661,7 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
 
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SOCIAL_EDGE_NOT_RECORDED", "message": "Relasi sosial tidak dapat disimpan."})
+    await _drain_social_graph_outbox(batch_size=1)
     return {
         "edge": rows[0],
         "idempotent_replay": False,
@@ -690,6 +691,7 @@ async def accept_my_follow_request(edge_id: uuid.UUID, request: Request, user: d
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan mengikuti tidak ditemukan atau sudah diproses."})
+    await _drain_social_graph_outbox(batch_size=1)
     return {"edge": rows[0]}
 
 
@@ -703,6 +705,7 @@ async def reject_my_follow_request(edge_id: uuid.UUID, request: Request, user: d
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan mengikuti tidak ditemukan atau sudah diproses."})
+    await _drain_social_graph_outbox(batch_size=1)
     return {"removed": rows[0]}
 
 
@@ -718,6 +721,7 @@ async def delete_my_social_edge(target_user_id: uuid.UUID, edge_type: Literal["f
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "SOCIAL_EDGE_NOT_FOUND", "message": "Relasi sosial tidak ditemukan."})
+    await _drain_social_graph_outbox(batch_size=1)
     return {"removed": rows[0]}
 
 
@@ -741,6 +745,7 @@ async def upsert_my_interest(payload: InterestPreferenceCreate, request: Request
     )
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "INTEREST_NOT_RECORDED", "message": "Preferensi minat tidak dapat disimpan."})
+    await _drain_social_graph_outbox(batch_size=1)
     return {"item": rows[0]}
 
 
