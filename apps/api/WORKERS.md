@@ -1,21 +1,36 @@
 # API background workers
 
-## Social Graph Outbox
+## Social Graph Outbox — Vercel deployment
 
-Entry point: `allpha-social-graph-outbox-worker` (registered in `pyproject.toml`). The worker uses the canonical `social_graph_events` outbox and the existing FastAPI/Supabase service-role boundary; it does not create a second workflow engine.
+The production consumer is hosted by the existing **Vercel `api-allpha` project**. No Railway service, second database, or separate queue is created.
 
-### Production worker service configuration
-- Create/attach a dedicated Railway worker process in the existing Allpha production project (same repository and `apps/api` root; do not create another database).
-- Build using `apps/api/Dockerfile`; override the container start command with `allpha-social-graph-outbox-worker`.
-- Configure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or the already-supported server secret alias `SUPABASE_SECRET_KEY`) from the existing Railway environment. Never copy credentials into the repository or client apps.
-- Optional settings: `SOCIAL_OUTBOX_BATCH_SIZE` (default 25, max 100), `SOCIAL_OUTBOX_LEASE_SECONDS` (default 45, range 10–300), `SOCIAL_OUTBOX_POLL_SECONDS` (default 2), `SOCIAL_OUTBOX_MAX_ATTEMPTS` (default 8, max 20), and `LOG_LEVEL`.
-- Use one or more replicas safely: claims use `FOR UPDATE SKIP LOCKED`, each claim has a unique lease token, and the downstream effect ledger is unique by event ID.
+### Primary delivery path
+- Social graph mutations (follow, follow-request accept/reject, unfollow/block/mute removal, and interest preference changes) commit to canonical Supabase first.
+- After a successful mutation, FastAPI performs a bounded best-effort inline drain of one durable outbox event.
+- A drain failure does not reverse or misreport the already committed mutation. The event remains pending and lease/retry policy remains owned by Postgres.
+- The effect is idempotent: `apply_social_graph_event_effect` verifies the live lease, inserts the unique event effect, invalidates actor/target feed snapshots, and marks the event processed atomically.
 
-### Effect and retry contract
-- The committed downstream effect invalidates feed snapshots belonging to the event actor and target participants. This is the correct cache invalidation for follow/block/mute changes; interest events invalidate the owner's personalized snapshots.
-- `apply_social_graph_event_effect` verifies the live lease and atomically inserts the unique effect record, invalidates the affected snapshots, and marks the event processed in one database transaction.
-- Failures are returned to `pending` with bounded exponential backoff; the configured maximum attempt count transitions the event to `dead`. Expired processing leases can be reclaimed.
-- Do not manually mark an event processed. The worker only uses the claim/apply/fail RPCs.
+### Recovery schedule
+- `apps/api/vercel.json` registers `GET /internal/cron/social-graph-outbox` as a daily Vercel Cron recovery sweep.
+- The API route requires `Authorization: Bearer <CRON_SECRET>`, uses constant-time comparison, and fails closed when the secret is absent.
+- The current Vercel team is on the Hobby plan. Vercel Hobby permits at most one cron execution per day, so this is a **recovery sweep only**, not the primary low-latency delivery mechanism. Social mutation requests trigger the normal inline drain. If a higher-frequency scheduled sweep is required, the Vercel plan must support per-minute cron execution.
+- Vercel Cron does not guarantee retries. The durable outbox lease expiry and bounded Postgres retry/dead-letter policy provide recovery; the next cron or graph mutation can reclaim eligible events.
+- The cron endpoint is deliberately a single bounded batch so it remains within serverless execution limits.
+
+### Vercel project configuration
+- Project: `api-allpha` (existing Vercel project linked to this monorepo; project root is `apps/api`).
+- Required production environment variables: existing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or the already-supported `SUPABASE_SECRET_KEY` alias), and `CRON_SECRET`.
+- `CRON_SECRET` is stored as a sensitive Vercel Production environment variable. Never commit or expose its value to clients.
+- Cron registration occurs only after a successful production deployment containing `apps/api/vercel.json`. Verify it in Vercel Project → Settings → Cron Jobs and inspect runtime logs for `/internal/cron/social-graph-outbox`.
+- The legacy `allpha-social-graph-outbox-worker` CLI remains available for controlled local/standalone operations, but is **not** the Vercel production runtime and must not be configured as a Railway service.
+
+### Retry, lease and idempotency contract
+- Claims use `FOR UPDATE SKIP LOCKED`, expiring lease tokens and bounded batch/lease configuration.
+- The event effect ledger is unique by event ID. Effect insertion, invalidation and event completion are one Postgres transaction.
+- Failures return to pending with bounded exponential backoff; the configured maximum attempt count transitions the event to dead. Expired processing leases can be reclaimed.
+- Never mark an event processed manually; use only the claim/apply/fail RPCs.
 
 ### Activation and evidence
-The worker code, CLI entry point, SQL functions, grants, and schema are committed and the database migration has been applied. The worker is **not operationally active** until the dedicated Railway worker process is configured with the existing production credentials and its runtime logs/queue effects are observed. This implementation did not create a new environment, send test events, or activate production consumption.
+- The source endpoint, daily Vercel Cron declaration and production `CRON_SECRET` variable are configured in the existing Vercel project.
+- Runtime activation is verified only after the deployment containing the cron declaration reaches READY, Vercel lists the cron job, and an authorized invocation is visible in runtime logs with corresponding outbox effect/processed-state evidence.
+- No synthetic production event is to be injected for this verification. Do not claim a worker event was processed merely because deployment or cron registration succeeded.
