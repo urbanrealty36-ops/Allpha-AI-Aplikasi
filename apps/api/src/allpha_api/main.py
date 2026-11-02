@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
+import logging
 from datetime import datetime, timezone
 import json
 import re
@@ -48,10 +50,12 @@ from allpha_api.stories_api import router as stories_router
 from allpha_api.messaging_api import router as messaging_router
 from allpha_api.community_api import router as community_router
 from allpha_api.notification_api import router as notification_router
+from allpha_api.social_graph_outbox_worker import OutboxWorker
 
 APP_NAME = "allpha-api"
 APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
 STARTED_AT = time.time()
+logger = logging.getLogger('allpha.api')
 
 app = FastAPI(
     title="Allpha Platform API",
@@ -483,6 +487,33 @@ async def request_account_deactivation(request: Request, user: dict[str, Any] = 
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "PROFILE_NOT_FOUND", "message": "Profil tidak ditemukan."})
     return {"profile": rows[0], "message": "Permintaan penonaktifan akun tercatat. Akun belum dihapus."}
+
+
+async def _drain_social_graph_outbox(*, batch_size: int = 1) -> int:
+    """Best-effort inline drain after a committed graph mutation."""
+    worker: OutboxWorker | None = None
+    try:
+        worker = OutboxWorker()
+        worker.batch_size = max(1, min(batch_size, 10))
+        return await worker.process_batch()
+    except Exception:
+        logger.exception("social graph outbox inline drain failed")
+        return 0
+    finally:
+        if worker is not None:
+            await worker.client.aclose()
+
+
+@app.get("/internal/cron/social-graph-outbox", tags=["internal"], include_in_schema=False)
+async def run_social_graph_outbox_cron(request: Request) -> dict[str, Any]:
+    secret = os.getenv("CRON_SECRET", "")
+    authorization = request.headers.get("authorization", "")
+    if not secret:
+        raise HTTPException(status_code=503, detail={"code": "CRON_NOT_CONFIGURED", "message": "Cron secret belum dikonfigurasi."})
+    if not hmac.compare_digest(authorization, f"Bearer {secret}"):
+        raise HTTPException(status_code=401, detail={"code": "CRON_UNAUTHORIZED", "message": "Akses cron tidak diizinkan."})
+    processed = await _drain_social_graph_outbox(batch_size=5)
+    return {"ok": True, "claimed": processed, "consumer": "social-graph-outbox", "mode": "vercel-cron-backstop"}
 
 
 @app.get("/v1/me/social-graph", tags=["social"])
