@@ -761,6 +761,7 @@ async def delete_my_interest(interest_key: str, request: Request, user: dict[str
     )
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "INTEREST_NOT_FOUND", "message": "Preferensi minat tidak ditemukan."})
+    await _drain_social_graph_outbox(batch_size=1)
     return {"removed": rows[0]}
 
 
