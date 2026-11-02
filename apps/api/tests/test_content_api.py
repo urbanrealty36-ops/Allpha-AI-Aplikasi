@@ -340,3 +340,13 @@ def test_operator_review_queue_includes_short_lived_private_media_previews(monke
     assert result["media_preview_expires_in"] == 300
     assert calls[0][2]["params"]["status"] == "eq.review"
     assert calls[1][2]["params"]["content_id"] == "in.(" + content_id + ")"
+
+
+def test_audio_upload_contract_matches_database_and_private_storage_allowlist():
+    path = Path(__file__).parents[1] / "supabase/migrations/20261102090000_eng_p13_content_media_audio_support.sql"
+    sql = path.read_text(encoding="utf-8").lower()
+    for mime in ("audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/wav", "audio/webm"):
+        assert mime in sql
+    assert "public=false" in sql.replace(" ", "")
+    assert "file_size_limit=52428800" in sql.replace(" ", "")
+    assert "content_media_media_type_check" in sql
