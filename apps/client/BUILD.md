@@ -40,3 +40,7 @@ The submit.production entry is configuration only. Submission requires approved 
 - Never place Supabase service-role keys in app config or EXPO_PUBLIC variables.
 - Record EAS build ID, commit SHA, profile, platform, and artifact checksum for accepted builds.
 - JS export is not native-build evidence; EAS build is not publication evidence.
+
+## Current EAS project-link status
+
+The current app.json contains the Android package and iOS bundle identifier but does not yet contain extra.eas.projectId. Therefore the build scripts are prepared, but an EAS native build cannot be started safely until the existing approved Allpha EAS project ID is supplied/linked. Do not run project initialization in a way that creates a second project. Once the existing project ID is confirmed, add expo.extra.eas.projectId to app.json and verify it with npx eas-cli project:info. No EAS project ID or signing credential is inferred or fabricated here.
