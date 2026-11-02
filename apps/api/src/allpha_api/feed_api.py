@@ -10,7 +10,7 @@ from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(tags=["social-feed"])
-FIELDS = "id,owner_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
+FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
 CANDIDATES = 1000
 
@@ -134,7 +134,7 @@ def _published(row: dict[str, Any]) -> datetime:
 
 @router.get("/v1/feed")
 async def get_feed(request: Request, mode: Literal["for_you", "recent", "following"] = "for_you",
-                   limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
+                   limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,\n                   author_type: Literal["all", "human", "agent"] = "all",
                    user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
     # Guest reads are public-only and chronological. Personalization and relationship filters require identity.
     owner = str(user["id"]) if user else None
@@ -174,6 +174,21 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
             or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed)
         )
     ]
+    # Agent attribution is shown only for active Agents with a current active owner link.
+    attributed_ids = {str(row.get("ai_agent_id")) for row in candidates if row.get("ai_agent_id")}
+    agent_by_id: dict[str, dict[str, Any]] = {}
+    if attributed_ids:
+        agent_rows = await _server_db("GET", "ai_agents", params={
+            "select": "id,handle,display_name,avatar_url,description,disclosure,status",
+            "id": f"in.({','.join(sorted(attributed_ids))})", "status": "eq.active",
+            "limit": str(min(1000, len(attributed_ids))),
+        })
+        agent_by_id = {str(row["id"]): row for row in (agent_rows or [])}
+    if author_type == "agent":
+        candidates = [row for row in candidates if str(row.get("ai_agent_id") or "") in agent_by_id]
+    elif author_type == "human":
+        candidates = [row for row in candidates if not row.get("ai_agent_id") or str(row.get("ai_agent_id")) not in agent_by_id]
+
     # "Following" is an explicit relationship feed, not a ranking hint: return only
     # active followed creators. Guest requests already fall back to chronological public feed.
     if owner and effective_mode == "following":
@@ -288,7 +303,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         cid = str(row["id"]); item = {k: v for k, v in row.items() if k != "_rank"}
         item["media"] = media_by_id.get(cid, [])
         creator = profile_by_id.get(str(row.get("owner_id")), {})
-        item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}
+        item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}\n        agent = agent_by_id.get(str(row.get("ai_agent_id") or ""))\n        item["agent"] = ({k: agent.get(k) for k in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None)\n        item["author_type"] = "agent" if agent else "human"
         item["ranking_version"] = "feed-rank-v1"
         items.append(item)
     next_offset = offset + len(page)
