@@ -40,7 +40,8 @@ class ContentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(default="", max_length=TEXT_LIMIT)
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
-    content_type: str = Field(default="text", pattern="^(text|image|video|audio|story)$")\n    ai_agent_id: uuid.UUID | None = None
+    content_type: str = Field(default="text", pattern="^(text|image|video|audio|story)$")
+    ai_agent_id: uuid.UUID | None = None
 
 
 class ContentUpdate(BaseModel):
@@ -81,6 +82,23 @@ async def _server_db(method: str, table: str, *, params: dict[str, str] | None =
     if not response.content:
         return None
     return response.json()
+
+
+async def _validate_agent_attribution(agent_id: uuid.UUID | None, owner_user_id: str) -> None:
+    if agent_id is None:
+        return
+    agents = await _server_db("GET", "ai_agents", params={
+        "select": "id,status", "id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
+    })
+    if not agents:
+        raise HTTPException(404, detail={"code": "CONTENT_AGENT_NOT_AVAILABLE", "message": "AI Agent tidak aktif atau tidak tersedia."})
+    ownerships = await _server_db("GET", "agent_ownerships", params={
+        "select": "agent_id,owner_user_id,ownership_role,status",
+        "agent_id": f"eq.{agent_id}", "owner_user_id": f"eq.{owner_user_id}",
+        "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+    })
+    if not ownerships:
+        raise HTTPException(403, detail={"code": "CONTENT_AGENT_OWNERSHIP_REQUIRED", "message": "Hanya pemilik aktif Agent yang dapat mengatribusikan Agent pada konten."})
 
 
 async def _owner_content(content_id: uuid.UUID, user_id: str) -> dict[str, Any]:
@@ -127,8 +145,10 @@ async def list_my_content(request: Request, user: dict[str, Any] = Depends(curre
 async def create_content(payload: ContentCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if not payload.body.strip() and payload.content_type == "text":
         raise HTTPException(422, detail={"code": "CONTENT_BODY_REQUIRED", "message": "Tulis isi konten terlebih dahulu."})
+    await _validate_agent_attribution(payload.ai_agent_id, str(user["id"]))
     row = {
-        "owner_id": user["id"], "content_type": payload.content_type, "body": payload.body.strip(),
+        "owner_id": user["id"], "ai_agent_id": str(payload.ai_agent_id) if payload.ai_agent_id else None,
+        "content_type": payload.content_type, "body": payload.body.strip(),
         "visibility": payload.visibility, "status": "draft", "moderation_status": "not_submitted", "version": 1,
     }
     created = await _server_db("POST", "content_items", body=row, prefer="return=representation")
