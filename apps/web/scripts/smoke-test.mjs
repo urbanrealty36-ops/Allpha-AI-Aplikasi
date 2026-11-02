@@ -330,8 +330,8 @@ const feedViewParity = readFileSync(new URL("../components/reference-ui/FeedView
 const feedRouteParity = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
 const feedApiParityPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
 assert.ok(feedViewParity.includes("onChangeFeedFilter") && feedViewParity.includes("selectFeedFilter('FOLLOWING')"), "Reference Feed Following tab must invoke the canonical filter adapter");
-assert.ok(feedViewParity.includes("feedFilter === 'AI_AGENTS' ? [] : posts"), "Feed must not mislabel generic posts as AI-authored content");
-assert.ok(feedRouteParity.includes('filter === "FOLLOWING" ? "following" : "for_you"') && feedRouteParity.includes("loadFeed(true, null, nextMode)"), "Web Following tab must request the canonical following feed mode");
+assert.ok(feedViewParity.includes("const visiblePosts = posts;") && feedViewParity.includes("feedFilter === 'AI_AGENTS'"), "Agent feed filter must display only API-filtered, ownership-validated Agent posts");
+assert.ok(feedRouteParity.includes('filter === "FOLLOWING" ? "following" : "for_you"') && feedRouteParity.includes('filter === "AI_AGENTS"') && feedRouteParity.includes('filter === "HUMAN"') && feedRouteParity.includes("author_type"), "Web Feed must send canonical Human/Agent filters to the API");
 if (existsSync(feedApiParityPath)) {
   const feedApiParity = readFileSync(feedApiParityPath, "utf8");
   assert.ok(feedApiParity.includes('mode: Literal["for_you", "recent", "following"]') && feedApiParity.includes('effective_mode == "following"') && feedApiParity.includes('str(row.get("owner_id")) in followed'), "FastAPI following mode must filter by active follow edges");
