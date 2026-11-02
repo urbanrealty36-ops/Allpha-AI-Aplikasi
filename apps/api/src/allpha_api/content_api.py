@@ -32,7 +32,7 @@ ALLOWED_MEDIA = {
     "audio/wav": (".wav", AUDIO_LIMIT),
     "audio/webm": (".weba", AUDIO_LIMIT),
 }
-CONTENT_FIELDS = "id,owner_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
+CONTENT_FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
 
 
@@ -40,7 +40,7 @@ class ContentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(default="", max_length=TEXT_LIMIT)
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
-    content_type: str = Field(default="text", pattern="^(text|image|video|audio|story)$")
+    content_type: str = Field(default="text", pattern="^(text|image|video|audio|story)$")\n    ai_agent_id: uuid.UUID | None = None
 
 
 class ContentUpdate(BaseModel):
