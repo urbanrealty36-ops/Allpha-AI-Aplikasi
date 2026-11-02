@@ -338,11 +338,12 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     if snapshot:
         snapshot_rows = await _server_db("GET", "feed_snapshot_items", params={
             "select": "ordinal,content_id", "snapshot_id": f"eq.{snapshot_id}",
-            "ordinal": f"gte.{offset}", "order": "ordinal.asc", "limit": "1000",
+            "ordinal": f"gte.{offset}", "order": "ordinal.asc", "limit": str(limit),
         })
         rank_by_id = {str(row["id"]): row for row in ranked}
         ordered_ids = [str(x["content_id"]) for x in (snapshot_rows or [])]
         page = [rank_by_id[cid] for cid in ordered_ids if cid in rank_by_id][:limit]
+        page_advance = len(snapshot_rows or [])
         snapshot_count = int(snapshot.get("item_count") or 0)
         snapshot_expires = datetime.fromisoformat(str(snapshot["expires_at"]).replace("Z","+00:00"))
     else:
@@ -362,6 +363,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
                               for index, row in enumerate(ranked)]
             await _server_db("POST", "feed_snapshot_items", body=snapshot_items, prefer="return=minimal")
         page = ranked[:limit]
+        page_advance = len(page)
     selected = [str(r["id"]) for r in page]
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     if selected:
@@ -383,7 +385,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         item["author_type"] = "agent" if agent else "human"
         item["ranking_version"] = "feed-rank-v1"
         items.append(item)
-    next_offset = offset + len(page)
+    next_offset = offset + page_advance
     has_more = next_offset < snapshot_count
     next_cursor = _cursor_encode(snapshot_id, next_offset, owner, mode, author_type, snapshot_expires) if has_more else None
     return {"items": items, "next_cursor": next_cursor, "mode": effective_mode,
