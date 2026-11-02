@@ -117,6 +117,27 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     return item
 
+async def _agent_for_attributed_content(item: dict[str, Any]) -> dict[str, Any] | None:
+    agent_id = item.get("ai_agent_id")
+    if not agent_id:
+        return None
+    owner_id = str(item.get("owner_id") or "")
+    agents = await _server_db("GET", "ai_agents", params={
+        "select": "id,handle,display_name,avatar_url,description,disclosure,status",
+        "id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
+    })
+    if not agents:
+        return None
+    ownerships = await _server_db("GET", "agent_ownerships", params={
+        "select": "agent_id,owner_user_id,ownership_role,status", "agent_id": f"eq.{agent_id}",
+        "owner_user_id": f"eq.{owner_id}", "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+    })
+    if not ownerships:
+        return None
+    agent = agents[0]
+    return {key: agent.get(key) for key in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")}
+
+
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
     outgoing = await _server_db("GET", "social_edges", params={
         "select": "target_user_id,edge_type,status", "actor_user_id": f"eq.{user_id}",
@@ -910,6 +931,12 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
         if not public_profile or public_profile.get("visibility") != "public" or public_profile.get("account_status", "active") != "active":
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         item["creator"] = {"username": public_profile.get("username"), "display_name": public_profile.get("display_name") or public_profile.get("username") or "Kreator", "avatar_url": public_profile.get("avatar_url")}
+    creator_profile = (await _profiles_for({str(item.get("owner_id") or "")})).get(str(item.get("owner_id") or ""), {})
+    item["creator"] = {"username": creator_profile.get("username"),
+                       "display_name": creator_profile.get("display_name") or creator_profile.get("username") or "Kreator",
+                       "avatar_url": creator_profile.get("avatar_url")}
+    item["agent"] = await _agent_for_attributed_content(item)
+    item["author_type"] = "agent" if item["agent"] else "human"
     cid = str(content_id)
     reactions = await _server_db("GET", "content_reactions", params={"select": "actor_user_id,reaction", "content_id": f"eq.{cid}", "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "id", "content_id": f"eq.{cid}", "status": "eq.visible", "limit": "5000"})
