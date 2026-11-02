@@ -348,7 +348,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     else:
         snapshot_expires = _now() + __import__("datetime").timedelta(minutes=15)
         created_snapshot = await _server_db("POST", "feed_snapshots", body={
-            "viewer_user_id": owner, "feed_mode": effective_mode, "author_type": author_type,
+            "viewer_user_id": owner, "feed_mode": mode, "author_type": author_type,
             "ranking_version": "feed-rank-v1", "expires_at": snapshot_expires.isoformat(),
             "item_count": len(ranked),
         }, prefer="return=representation")
