@@ -441,7 +441,7 @@ export default function FeedPage() {
       }
       const created = await request("/v1/content", {
         method: "POST",
-        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text" }),
+        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text", ai_agent_id: composerAgent?.id ?? null }),
       }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
       if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat draft dibuat; proses publikasi dihentikan.");
       const contentId = created.item?.id;
