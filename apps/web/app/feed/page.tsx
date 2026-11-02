@@ -11,7 +11,7 @@ import type { AIAgentProfile, HumanProfile, PostItem } from "../../lib/reference
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type FeedItem = {
-  id: string; owner_id: string; body: string; content_type: string; visibility: string;
+  id: string; owner_id: string; ai_agent_id?: string | null; author_type?: 'human' | 'agent'; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; body: string; content_type: string; visibility: string;
   published_at?: string | null; created_at: string; media?: FeedMedia[];
   creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null };
   engagement?: { likes: number; comments: number; saves: number; shares?: number };
@@ -36,6 +36,7 @@ export default function FeedPage() {
   const [stories, setStories] = useState<FeedStory[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [mode, setMode] = useState<"for_you" | "recent" | "following">("for_you");
+  const [authorType, setAuthorType] = useState<"all" | "human" | "agent">("all");
   const [personalizationEnabled, setPersonalizationEnabled] = useState(true);
   const [comments, setComments] = useState<Record<string, FeedComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -78,7 +79,7 @@ export default function FeedPage() {
     }
   }, [mode, request, session]);
 
-  const loadFeed = useCallback(async (reset = true, nextCursor?: string | null, requestedMode?: "for_you" | "recent" | "following") => {
+  const loadFeed = useCallback(async (reset = true, nextCursor?: string | null, requestedMode?: "for_you" | "recent" | "following", requestedAuthorType?: "all" | "human" | "agent") => {
     const requestedFeedMode = requestedMode ?? mode;
     const epoch = sessionEpoch.current;
     const sequence = ++feedRequestSequence.current;
@@ -90,7 +91,7 @@ export default function FeedPage() {
         if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
         setItems([direct.item]); setCursor(null); void recordFeedSignal(direct.item.id, "view", 0, requestedFeedMode); return;
       }
-      const params = new URLSearchParams({ mode: requestedFeedMode, limit: "20" });
+      const params = new URLSearchParams({ mode: requestedFeedMode, limit: "20", author_type: requestedAuthorType ?? authorType });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
       const data = await request("/v1/feed?" + params.toString()) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
       if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
@@ -103,7 +104,7 @@ export default function FeedPage() {
     } catch (cause) {
       if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat.");
     } finally { if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setLoading(false); }
-  }, [items.length, mode, recordFeedSignal, request, session]);
+  }, [authorType, items.length, mode, recordFeedSignal, request, session]);
 
   useEffect(() => {
     // Authentication is optional for public Feed browsing. If the browser auth
@@ -160,7 +161,7 @@ export default function FeedPage() {
     })();
   }, [request, session]);
 
-  useEffect(() => { void loadFeed(true); }, [session, mode, loadFeed]);
+  useEffect(() => { void loadFeed(true); }, [session, mode, authorType, loadFeed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -391,7 +392,7 @@ export default function FeedPage() {
     return {
       id: item.id,
       humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username || "", avatar: item.creator?.avatar_url || "", verified: false },
-      aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
+      aiAgent: item.agent ? { name: item.agent.display_name, handle: item.agent.handle, avatar: item.agent.avatar_url || "", specialty: item.agent.description || item.agent.disclosure || "AI Agent" } : { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
       takeoverMode: false,
       timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
       content: item.body,
@@ -501,10 +502,13 @@ export default function FeedPage() {
         <FeedView
           productionMode
           onChangeFeedFilter={filter => {
-            if (filter === "AI_AGENTS") {
-              setNotice("Filter AI Agents belum dapat diterapkan: API konten belum menyediakan atribusi penulis Agent yang terverifikasi.");
+            if (filter === "AI_AGENTS" || filter === "HUMAN") {
+              const nextAuthorType = filter === "AI_AGENTS" ? "agent" : "human";
+              setAuthorType(nextAuthorType);
+              void loadFeed(true, null, mode, nextAuthorType);
               return true;
             }
+            setAuthorType("all");
             if (filter === "FOLLOWING" && !session) {
               setNotice("Masuk untuk melihat konten dari akun yang Anda ikuti.");
               return false;
