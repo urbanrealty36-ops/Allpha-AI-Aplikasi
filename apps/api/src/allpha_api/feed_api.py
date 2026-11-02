@@ -1,6 +1,6 @@
 """ENG-P14 social feed, interactions and user controls."""
 from __future__ import annotations
-import base64, json, re, uuid
+import base64, hashlib, hmac, json, os, re, uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -58,23 +58,43 @@ class ReportReview(BaseModel):
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
-def _cursor_encode(offset: int, as_of: datetime) -> str:
-    raw = json.dumps({"v": 1, "offset": offset, "as_of": as_of.isoformat()}, separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+def _cursor_secret() -> bytes:
+    secret = os.getenv("ALLPHA_FEED_CURSOR_SECRET") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+    if not secret:
+        raise HTTPException(503, detail={"code": "FEED_CURSOR_NOT_CONFIGURED", "message": "Penandatangan cursor Feed belum dikonfigurasi di server."})
+    return secret.encode()
 
-def _cursor_decode(cursor: str | None) -> tuple[int, datetime]:
+
+def _cursor_encode(snapshot_id: str, offset: int, viewer_id: str | None, mode: str, author_type: str, expires_at: datetime) -> str:
+    payload = {"v": 2, "snapshot": snapshot_id, "offset": offset,
+               "viewer": viewer_id or "guest", "mode": mode, "author_type": author_type,
+               "exp": int(expires_at.timestamp())}
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    signature = hmac.new(_cursor_secret(), raw, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=") + "." + base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+
+def _cursor_decode(cursor: str | None, viewer_id: str | None, mode: str, author_type: str) -> tuple[str | None, int]:
     if not cursor:
-        return 0, _now()
+        return None, 0
     try:
-        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        encoded, signed = cursor.split(".", 1)
+        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        signature = base64.urlsafe_b64decode(signed + "=" * (-len(signed) % 4))
+        expected = hmac.new(_cursor_secret(), raw, hashlib.sha256).digest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("signature")
         data = json.loads(raw)
+        expected_viewer = viewer_id or "guest"
         offset = data["offset"]
-        as_of = datetime.fromisoformat(str(data["as_of"]).replace("Z", "+00:00"))
-        if data.get("v") != 1 or not isinstance(offset, int) or isinstance(offset, bool) or not 0 <= offset < 5000 or as_of.tzinfo is None:
-            raise ValueError("cursor")
-        return offset, as_of.astimezone(timezone.utc)
-    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
-        raise HTTPException(422, detail={"code": "FEED_CURSOR_INVALID", "message": "Cursor feed tidak valid; muat ulang feed."}) from exc
+        if (data.get("v") != 2 or data.get("viewer") != expected_viewer
+                or data.get("mode") != mode or data.get("author_type") != author_type
+                or not isinstance(offset, int) or isinstance(offset, bool) or offset < 0
+                or int(data.get("exp", 0)) <= int(_now().timestamp())):
+            raise ValueError("scope")
+        return str(uuid.UUID(data["snapshot"])), offset
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError, base64.binascii.Error) as exc:
+        raise HTTPException(422, detail={"code": "FEED_CURSOR_INVALID", "message": "Cursor Feed tidak valid atau sudah kedaluwarsa; muat ulang Feed."}) from exc
 
 async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, Any]:
     rows = await _server_db("GET", "content_items", params={
@@ -134,11 +154,27 @@ def _published(row: dict[str, Any]) -> datetime:
 
 @router.get("/v1/feed")
 async def get_feed(request: Request, mode: Literal["for_you", "recent", "following"] = "for_you",
-                   limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,\n                   author_type: Literal["all", "human", "agent"] = "all",
+                   limit: int = Query(default=20, ge=1, le=50), cursor: str | None = None,
+                   author_type: Literal["all", "human", "agent"] = "all",
                    user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
     # Guest reads are public-only and chronological. Personalization and relationship filters require identity.
     owner = str(user["id"]) if user else None
-    offset, as_of = _cursor_decode(cursor)
+    snapshot_id, offset = _cursor_decode(cursor, owner, mode, author_type)
+    snapshot = None
+    if snapshot_id:
+        viewer_filter = f"eq.{owner}" if owner else "is.null"
+        snapshots = await _server_db("GET", "feed_snapshots", params={
+            "select": "id,viewer_user_id,feed_mode,author_type,ranking_version,created_at,expires_at,invalidated_at,item_count",
+            "id": f"eq.{snapshot_id}", "viewer_user_id": viewer_filter, "feed_mode": f"eq.{mode}",
+            "author_type": f"eq.{author_type}", "limit": "1",
+        })
+        snapshot = snapshots[0] if snapshots else None
+        if (not snapshot or snapshot.get("invalidated_at") or
+                datetime.fromisoformat(str(snapshot["expires_at"]).replace("Z","+00:00")) <= _now()):
+            raise HTTPException(409, detail={"code": "FEED_SNAPSHOT_EXPIRED", "message": "Snapshot Feed sudah tidak berlaku. Muat ulang Feed."})
+        as_of = datetime.fromisoformat(str(snapshot["created_at"]).replace("Z","+00:00"))
+    else:
+        as_of = _now()
     if owner:
         prefs_rows = await _server_db("GET", "feed_preferences", params={
             "select": "personalization_enabled,ranking_mode", "user_id": f"eq.{owner}", "limit": "1"})
@@ -183,9 +219,20 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
             "id": f"in.({','.join(sorted(attributed_ids))})", "status": "eq.active",
             "limit": str(min(1000, len(attributed_ids))),
         })
+        ownership_rows = await _server_db("GET", "agent_ownerships", params={
+            "select": "agent_id,owner_user_id,ownership_role,status",
+            "agent_id": f"in.({','.join(sorted(attributed_ids))})", "ownership_role": "eq.owner",
+            "status": "eq.active", "limit": "2000",
+        })
+        active_owner_pairs = {(str(x.get("agent_id")), str(x.get("owner_user_id")))
+                              for x in (ownership_rows or [])}
         agent_by_id = {str(row["id"]): row for row in (agent_rows or [])}
+        candidates = [row for row in candidates
+                      if not row.get("ai_agent_id") or
+                      (str(row.get("ai_agent_id")) in agent_by_id and
+                       (str(row.get("ai_agent_id")), str(row.get("owner_id"))) in active_owner_pairs)]
     if author_type == "agent":
-        candidates = [row for row in candidates if str(row.get("ai_agent_id") or "") in agent_by_id]
+        candidates = [row for row in candidates if row.get("ai_agent_id") and str(row.get("ai_agent_id")) in agent_by_id]
     elif author_type == "human":
         candidates = [row for row in candidates if not row.get("ai_agent_id") or str(row.get("ai_agent_id")) not in agent_by_id]
 
@@ -287,7 +334,34 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         creator_counts[creator_id] = creator_counts.get(creator_id, 0) + 1
         diverse.append(row)
     ranked = diverse
-    page = ranked[offset:offset + limit]
+    snapshot_expires = _now().replace(microsecond=0)
+    if snapshot:
+        snapshot_rows = await _server_db("GET", "feed_snapshot_items", params={
+            "select": "ordinal,content_id", "snapshot_id": f"eq.{snapshot_id}",
+            "ordinal": f"gte.{offset}", "order": "ordinal.asc", "limit": "1000",
+        })
+        rank_by_id = {str(row["id"]): row for row in ranked}
+        ordered_ids = [str(x["content_id"]) for x in (snapshot_rows or [])]
+        page = [rank_by_id[cid] for cid in ordered_ids if cid in rank_by_id][:limit]
+        snapshot_count = int(snapshot.get("item_count") or 0)
+        snapshot_expires = datetime.fromisoformat(str(snapshot["expires_at"]).replace("Z","+00:00"))
+    else:
+        snapshot_expires = _now() + __import__("datetime").timedelta(minutes=15)
+        created_snapshot = await _server_db("POST", "feed_snapshots", body={
+            "viewer_user_id": owner, "feed_mode": effective_mode, "author_type": author_type,
+            "ranking_version": "feed-rank-v1", "expires_at": snapshot_expires.isoformat(),
+            "item_count": len(ranked),
+        }, prefer="return=representation")
+        if not created_snapshot:
+            raise HTTPException(503, detail={"code": "FEED_SNAPSHOT_CREATE_FAILED", "message": "Snapshot Feed tidak dapat disimpan."})
+        snapshot_id = str(created_snapshot[0]["id"])
+        snapshot_count = len(ranked)
+        if ranked:
+            snapshot_items = [{"snapshot_id": snapshot_id, "ordinal": index, "content_id": str(row["id"]),
+                               "owner_id": str(row["owner_id"]), "rank_signals": row.get("ranking_signals", [])}
+                              for index, row in enumerate(ranked)]
+            await _server_db("POST", "feed_snapshot_items", body=snapshot_items, prefer="return=minimal")
+        page = ranked[:limit]
     selected = [str(r["id"]) for r in page]
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     if selected:
@@ -303,12 +377,18 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         cid = str(row["id"]); item = {k: v for k, v in row.items() if k != "_rank"}
         item["media"] = media_by_id.get(cid, [])
         creator = profile_by_id.get(str(row.get("owner_id")), {})
-        item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}\n        agent = agent_by_id.get(str(row.get("ai_agent_id") or ""))\n        item["agent"] = ({k: agent.get(k) for k in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None)\n        item["author_type"] = "agent" if agent else "human"
+        item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}
+        agent = agent_by_id.get(str(row.get("ai_agent_id") or ""))
+        item["agent"] = ({k: agent.get(k) for k in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None)
+        item["author_type"] = "agent" if agent else "human"
         item["ranking_version"] = "feed-rank-v1"
         items.append(item)
     next_offset = offset + len(page)
-    return {"items": items, "next_cursor": _cursor_encode(next_offset, as_of) if next_offset < len(ranked) and next_offset < CANDIDATES else None,
-            "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": "feed-rank-v1", "as_of": as_of.isoformat()}
+    has_more = next_offset < snapshot_count
+    next_cursor = _cursor_encode(snapshot_id, next_offset, owner, mode, author_type, snapshot_expires) if has_more else None
+    return {"items": items, "next_cursor": next_cursor, "mode": effective_mode,
+            "personalization_enabled": enabled, "ranking_version": "feed-rank-v1",
+            "snapshot_id": snapshot_id, "snapshot_expires_at": snapshot_expires.isoformat(), "as_of": as_of.isoformat()}
 
 
 @router.get("/v1/me/profile-feed", tags=["social-feed"])
