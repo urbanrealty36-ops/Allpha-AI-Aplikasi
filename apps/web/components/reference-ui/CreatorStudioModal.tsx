@@ -71,12 +71,12 @@ export default function CreatorStudioModal({
     // No canonical generation-job, media, or credit-ledger contract is currently
     // wired to this reference modal. Never simulate output or deduct local credits.
     setGeneratedResult(null);
-    showToast('Fitur ini belum tersedia: layanan generasi dan ledger kredit belum terhubung.');
+    showToast('Generasi belum tersedia: belum ada kebijakan kredit/tarif yang disetujui. Tidak ada kredit yang dipotong.');
   };
 
   const handleSendChatMessage = () => {
     if (!chatInput.trim()) return;
-    showToast('Chat Agent dari Creator Studio belum terhubung ke endpoint generasi kanonis.');
+    showToast('Chat Agent belum tersedia dari Creator Studio sampai kontrak runtime, otorisasi, dan budget kanonis siap.');
   };
 
   return (
@@ -118,13 +118,13 @@ export default function CreatorStudioModal({
         {/* Studio Tool Selection Tabs */}
         <div className="flex border-b-2 border-slate-900 bg-slate-100 p-2 gap-1.5 overflow-x-auto no-scrollbar">
           {[
-            { id: 'IMAGE', label: '🎨 Image 3D', cost: '10 Cr' },
-            { id: 'CONTENT', label: '✍️ Text / Content', cost: '10 Cr' },
-            { id: 'VIDEO', label: '🎥 Video AI', cost: '25 Cr' },
-            { id: 'DOCS', label: '📄 Dokumen & RAG', cost: '10 Cr' },
-            { id: 'CODING', label: '💻 Coding / Code', cost: '10 Cr' },
-            { id: 'AGENT_CHAT', label: '💬 Tanya Agent', cost: 'Gratis' },
-            { id: 'AI_CINEMA', label: '🎬 Film AI', cost: '40 Cr' },
+            { id: 'IMAGE', label: '🎨 Image 3D', cost: 'Tarif belum tersedia' },
+            { id: 'CONTENT', label: '✍️ Text / Content', cost: 'Tarif belum tersedia' },
+            { id: 'VIDEO', label: '🎥 Video AI', cost: 'Tarif belum tersedia' },
+            { id: 'DOCS', label: '📄 Dokumen & RAG', cost: 'Tarif belum tersedia' },
+            { id: 'CODING', label: '💻 Coding / Code', cost: 'Tarif belum tersedia' },
+            { id: 'AGENT_CHAT', label: '💬 Tanya Agent', cost: 'Sesuai kebijakan Agent' },
+            { id: 'AI_CINEMA', label: '🎬 Film AI', cost: 'Tarif belum tersedia' },
           ].map((tool) => (
             <button
               key={tool.id}
