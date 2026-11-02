@@ -350,3 +350,22 @@ def test_audio_upload_contract_matches_database_and_private_storage_allowlist():
     assert "public=false" in sql.replace(" ", "")
     assert "file_size_limit=52428800" in sql.replace(" ", "")
     assert "content_media_media_type_check" in sql
+
+
+def test_ai_cinema_catalog_and_creator_contracts_are_registered_and_fail_closed():
+    api_path = Path(__file__).parents[1] / "src/allpha_api/cinema_api.py"
+    main_path = Path(__file__).parents[1] / "src/allpha_api/main.py"
+    migration_path = Path(__file__).parents[1] / "supabase/migrations/20261102100000_eng_p13_ai_cinema_creator_catalog.sql"
+    api = api_path.read_text(encoding="utf-8")
+    main = main_path.read_text(encoding="utf-8")
+    sql = migration_path.read_text(encoding="utf-8").lower()
+    assert 'router = apirouter(prefix="/v1/cinema"' in api.lower()
+    assert 'app.include_router(cinema_router)' in main
+    for endpoint in ('/catalog', '/creator/titles', '/creator/titles/{title_id}/episodes'):
+        assert endpoint in api
+    assert 'depends(current_user)' in api
+    assert 'moderation_status="eq.approved"' in api
+    assert 'rights_status="eq.cleared"' in api
+    assert 'enable row level security' in sql
+    assert 'cinema_publication_gate' in sql
+    assert 'create policy cinema_titles_public_catalog_read' in sql
