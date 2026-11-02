@@ -515,7 +515,7 @@ export default function FeedPage() {
             }
             const nextMode = filter === "FOLLOWING" ? "following" : "for_you";
             setMode(nextMode);
-            void loadFeed(true, null, nextMode);
+            void loadFeed(true, null, nextMode, "all");
             return true;
           }}
           loading={loading}
