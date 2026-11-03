@@ -642,3 +642,107 @@ async def review_content_appeal(
         "item": result["appeal"], "content": result.get("content"),
         "message": "Banding diterima; konten dikembalikan ke antrean moderasi independen." if payload.decision == "approve" else "Banding ditolak.",
     }
+
+@router.post("/internal/providers/cloudinary/eager-callback", include_in_schema=False)
+async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
+    """Accept only fresh, signed Cloudinary callbacks; canonicalize derivatives into private Storage."""
+    import hashlib
+    import hmac
+    import json
+    import time
+    from urllib.parse import urlparse
+
+    secret = os.getenv("CLOUDINARY_API_SECRET", "")
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+    signature = request.headers.get("X-Cld-Signature", "")
+    timestamp = request.headers.get("X-Cld-Timestamp", "")
+    raw = await request.body()
+    if not secret or not cloud_name or not signature or not timestamp:
+        raise HTTPException(503, detail={"code": "MEDIA_PROVIDER_NOT_CONFIGURED", "message": "Callback media provider belum dikonfigurasi."})
+    try:
+        issued_at = int(timestamp)
+    except ValueError as exc:
+        raise HTTPException(401, detail={"code": "MEDIA_CALLBACK_SIGNATURE_INVALID", "message": "Callback provider tidak valid."}) from exc
+    if abs(int(time.time()) - issued_at) > 7200:
+        raise HTTPException(401, detail={"code": "MEDIA_CALLBACK_EXPIRED", "message": "Callback provider sudah kedaluwarsa."})
+    signed = raw + timestamp.encode("ascii") + secret.encode("utf-8")
+    valid = any(hmac.compare_digest(hashlib.new(algorithm, signed).hexdigest(), signature.lower())
+                for algorithm in ("sha1", "sha256"))
+    if not valid:
+        raise HTTPException(401, detail={"code": "MEDIA_CALLBACK_SIGNATURE_INVALID", "message": "Tanda tangan callback provider tidak cocok."})
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, detail={"code": "MEDIA_CALLBACK_PAYLOAD_INVALID", "message": "Payload callback tidak valid."}) from exc
+    if not isinstance(payload, dict) or payload.get("notification_type") != "eager":
+        raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_TYPE_UNSUPPORTED", "message": "Jenis callback tidak didukung."})
+    public_id = payload.get("public_id")
+    eager = payload.get("eager")
+    if not isinstance(public_id, str) or not public_id.startswith("allpha/") or not isinstance(eager, list) or not eager:
+        raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_ASSET_INVALID", "message": "Identitas asset atau derivative tidak lengkap."})
+    media_id = public_id.split("/", 1)[1]
+    try:
+        media_uuid = uuid.UUID(media_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_ASSET_INVALID", "message": "Identitas media tidak valid."}) from exc
+    media_rows = await _server_db("GET", "content_media", params={
+        "select": "id,content_id,owner_id,bucket_id,storage_path,media_type,status,provider_asset_id,provider_public_id",
+        "id": f"eq.{media_uuid}", "status": "eq.processing", "provider_public_id": f"eq.{public_id}", "limit": "1",
+    })
+    if not media_rows:
+        raise HTTPException(404, detail={"code": "MEDIA_CALLBACK_MEDIA_NOT_FOUND", "message": "Media tidak ditemukan atau callback sudah diproses."})
+    media = media_rows[0]
+    jobs = await _server_db("GET", "content_lifecycle_jobs", params={
+        "select": "id,media_id,status,payload", "media_id": f"eq.{media_uuid}",
+        "job_type": "eq.media_transcode", "status": "eq.awaiting_provider", "limit": "1",
+    })
+    if not jobs:
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_JOB_NOT_FOUND", "message": "Job transcoding tidak sedang menunggu callback."})
+    job = jobs[0]
+    if not media.get("provider_asset_id") or (job.get("payload") or {}).get("provider_asset_id") != media["provider_asset_id"]:
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Asset callback tidak cocok dengan job aktif."})
+    if any(item.get("status") == "failed" for item in eager if isinstance(item, dict)):
+        await _server_db("PATCH", "content_lifecycle_jobs", params={"id": f"eq.{job['id']}", "status": "eq.awaiting_provider"},
+            body={"status": "failed", "last_error_code": "CLOUDINARY_EAGER_FAILED", "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()})
+        await _server_db("PATCH", "content_media", params={"id": f"eq.{media_uuid}", "status": "eq.processing"},
+            body={"status": "failed", "scan_status": "unavailable"})
+        raise HTTPException(422, detail={"code": "MEDIA_TRANSCODE_FAILED", "message": "Provider gagal membuat derivative media."})
+    derivatives = []
+    base = os.getenv("SUPABASE_URL", "").rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY", "")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=5), follow_redirects=False,
+        headers={"apikey": key, "Authorization": f"Bearer {key}"}) as client:
+        for index, item in enumerate(eager):
+            if not isinstance(item, dict):
+                raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVE_INVALID", "message": "Metadata derivative tidak valid."})
+            url = item.get("secure_url")
+            if not isinstance(url, str):
+                raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVE_MISSING", "message": "URL derivative tidak tersedia."})
+            parsed = urlparse(url)
+            if parsed.scheme != "https" or parsed.hostname != "res.cloudinary.com" or not parsed.path.startswith(f"/{cloud_name}/video/upload/"):
+                raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_URL_REJECTED", "message": "Sumber derivative tidak diizinkan."})
+            response = await client.get(url)
+            if response.status_code != 200 or len(response.content) > 100 * 1024 * 1024:
+                raise HTTPException(503, detail={"code": "MEDIA_DERIVATIVE_FETCH_FAILED", "message": "Derivative provider belum dapat disalin."})
+            binary = response.content
+            mime = response.headers.get("content-type", "").split(";")[0].lower()
+            if not (mime.startswith("video/") or mime.startswith("audio/")):
+                raise HTTPException(422, detail={"code": "MEDIA_DERIVATIVE_MIME_INVALID", "message": "Format derivative provider tidak valid."})
+            suffix = "mp4" if mime == "video/mp4" else "mp3" if mime == "audio/mpeg" else "bin"
+            kind = f"rendition_{index + 1}"
+            path = f"{media['storage_path']}.derived/{kind}.{suffix}"
+            await _storage("POST", f"{media['bucket_id']}/{path}", data=binary, media_type=mime, upsert=True)
+            derivatives.append({"kind": kind, "storage_path": path, "mime_type": mime,
+                "size_bytes": len(binary), "sha256": hashlib.sha256(binary).hexdigest(),
+                "width": item.get("width"), "height": item.get("height"), "duration": item.get("duration")})
+    callback_id = str(payload.get("request_id") or payload.get("batch_id") or hashlib.sha256(raw).hexdigest())
+    digest = hashlib.sha256(raw).hexdigest()
+    result = await _server_db("POST", "rpc/complete_content_provider_job", body={
+        "p_job_id": job["id"], "p_media_id": str(media_uuid), "p_provider": "cloudinary",
+        "p_provider_asset_id": media["provider_asset_id"], "p_provider_public_id": public_id,
+        "p_provider_event_id": callback_id, "p_payload_sha256": digest,
+        "p_derivatives": derivatives, "p_scan_status": "clean",
+    })
+    if not isinstance(result, dict) or result.get("outcome") != "completed":
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_COMPLETION_CONFLICT", "message": "Callback diterima tetapi penyelesaian job tidak dapat dikonfirmasi."})
+    return {"status": "accepted", "media_id": str(media_uuid), "derivative_count": len(derivatives)}
