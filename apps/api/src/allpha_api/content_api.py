@@ -823,7 +823,7 @@ async def schedule_content(
         current = await _owner_content(content_id, str(user["id"]))
         return {"item": existing_schedule[0], "content": current, "idempotent_replay": True}
     content = await _owner_content(content_id, str(user["id"]))
-    if content["status"] not in ("draft", "failed") or int(content["version"]) != payload.expected_version:
+    if content["status"] not in ("draft", "failed", "review") or int(content["version"]) != payload.expected_version:
         raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Hanya draft versi terbaru yang dapat dijadwalkan."})
     if not payload.rights_confirmed or not payload.disclosure_confirmed:
         raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_ATTESTATION_REQUIRED", "message": "Konfirmasi hak penggunaan dan disclosure wajib diberikan."})
