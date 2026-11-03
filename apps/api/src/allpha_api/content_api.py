@@ -34,7 +34,7 @@ ALLOWED_MEDIA = {
     "audio/wav": (".wav", AUDIO_LIMIT),
     "audio/webm": (".weba", AUDIO_LIMIT),
 }
-CONTENT_FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
+CONTENT_FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at,deleted_at,purge_started_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
 
 
@@ -154,12 +154,13 @@ async def _storage(method: str, path: str, *, data: bytes | None = None, media_t
 
 
 @router.get("/mine")
-async def list_my_content(request: Request, user: dict[str, Any] = Depends(current_user), limit: int = 30) -> dict[str, Any]:
+async def list_my_content(request: Request, user: dict[str, Any] = Depends(current_user), limit: int = 30, include_deleted: bool = False) -> dict[str, Any]:
     if limit < 1 or limit > 100:
         raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas daftar harus 1–100."})
-    rows = await _server_db("GET", "content_items", params={
-        "select": CONTENT_FIELDS, "owner_id": f"eq.{user['id']}", "status": "neq.deleted", "order": "updated_at.desc", "limit": str(limit),
-    })
+    content_params = {"select": CONTENT_FIELDS, "owner_id": f"eq.{user['id']}", "order": "updated_at.desc", "limit": str(limit)}
+    if not include_deleted:
+        content_params["status"] = "neq.deleted"
+    rows = await _server_db("GET", "content_items", params=content_params)
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "owner_id": f"eq.{user['id']}", "order": "created_at.asc", "limit": str(limit * 5),
     })
@@ -683,6 +684,8 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     signature = request.headers.get("X-Cld-Signature", "")
     timestamp = request.headers.get("X-Cld-Timestamp", "")
     raw = await request.body()
+    if len(raw) > 1024 * 1024:
+        raise HTTPException(413, detail={"code": "MEDIA_CALLBACK_TOO_LARGE", "message": "Payload callback terlalu besar."})
     if not secret or not cloud_name or not signature or not timestamp:
         raise HTTPException(503, detail={"code": "MEDIA_PROVIDER_NOT_CONFIGURED", "message": "Callback media provider belum dikonfigurasi."})
     try:
