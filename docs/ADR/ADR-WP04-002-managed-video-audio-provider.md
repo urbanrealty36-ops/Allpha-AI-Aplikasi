@@ -13,7 +13,8 @@ Allpha retains Supabase Storage as the canonical private source for uploaded ori
 Use Cloudinary Image & Video APIs as the managed transformation provider for video and audio.
 
 - Audio is submitted using Cloudinary's `video` resource type (Cloudinary documentation explicitly describes MP3/WAV/FLAC as video asset type for audio transformations).
-- Uploads are server-to-server from the isolated media worker. Provider credentials never reach clients.
+- Uploads are server-to-server from the isolated media worker using Cloudinary delivery type `authenticated`; both originals and all eager derivatives require signed delivery URLs. Provider credentials never reach clients.
+- Callback derivative URLs must use the configured Cloudinary HTTPS host and authenticated video delivery path; the callback is signed, and the API copies derivatives immediately into the private canonical Supabase bucket. Cloudinary URLs are never returned to clients.
 - Generate bounded, pre-approved eager derivatives asynchronously; use an eager notification URL.
 - Configure webhook trigger signing as `legacy_hmac` until EdDSA v2 public-key verification is separately implemented. Validate `X-Cld-Timestamp` freshness and HMAC signature against the exact raw request body plus timestamp using constant-time comparison.
 - Callback must correlate the provider public ID, provider asset ID, media ID, lifecycle job ID and immutable processing attempt. It must reject stale, duplicate, mismatched or failed events.
