@@ -405,6 +405,13 @@ async def publish_content(content_id: uuid.UUID, request: Request, user: dict[st
     }, prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "CONTENT_PUBLISH_CONFLICT", "message": "Status konten berubah; muat ulang sebelum mengirim lagi."})
+    scheduled = await _server_db("GET", "content_schedules", params={
+        "select": "id", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "status": "eq.scheduled", "limit": "1",
+    })
+    if scheduled:
+        await _server_db("PATCH", "content_schedules", params={"id": f"eq.{scheduled[0]['id']}", "status": "eq.scheduled"},
+            body={"content_version": int(rows[0]["version"]), "updated_at": datetime.now(timezone.utc).isoformat()})
     return {"item": rows[0], "message": "Konten masuk antrean moderasi; belum ditampilkan ke publik."}
 
 
@@ -550,6 +557,9 @@ async def review_content(
     }, body=changes, prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "CONTENT_REVIEW_CONFLICT", "message": "Konten berubah saat moderasi; keputusan tidak diterapkan."})
+    if scheduled:
+        await _server_db("PATCH", "content_schedules", params={"id": f"eq.{schedule_rows[0]['id']}", "status": "in.(scheduled,processing)"},
+            body={"content_version": int(rows[0]["version"]), "updated_at": datetime.now(timezone.utc).isoformat()})
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
         metadata={"decision": payload.decision, "version": payload.expected_version + 1, "reason": payload.reason})
