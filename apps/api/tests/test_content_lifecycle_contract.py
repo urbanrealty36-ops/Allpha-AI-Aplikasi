@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 API_SOURCE = (ROOT / "src" / "allpha_api" / "content_api.py").read_text(encoding="utf-8")
 MAIN_SOURCE = (ROOT / "src" / "allpha_api" / "main.py").read_text(encoding="utf-8")
 BASELINE_MIGRATION = (ROOT / "supabase" / "migrations" / "20261018153035_eng_p13_content_media_pipeline.sql").read_text(encoding="utf-8")
+VERSION_MIGRATION = (ROOT / "supabase" / "migrations" / "20261103150000_wp04_content_item_versions.sql").read_text(encoding="utf-8")
 
 
 def test_content_archive_is_owner_scoped_and_removes_public_eligibility():
@@ -53,3 +54,19 @@ def test_media_upload_reserves_idempotency_before_storage_and_can_resume():
 
 def test_browser_cors_allows_media_idempotency_header():
     assert '"Idempotency-Key"' in MAIN_SOURCE
+
+
+
+def test_content_updates_use_expected_version_compare_and_set():
+    assert "expected_version: int = Field(ge=1)" in API_SOURCE
+    assert '"version": f"eq.{payload.expected_version}"' in API_SOURCE
+    assert "CONTENT_VERSION_CHANGED" in API_SOURCE
+    assert "CONTENT_UPDATE_CONFLICT" in API_SOURCE
+
+
+def test_content_version_history_is_owner_scoped_and_snapshotted_by_database():
+    assert '@router.get("/{content_id}/versions")' in API_SOURCE
+    assert '"content_item_versions"' in API_SOURCE
+    assert "content_item_versions_owner_select" in VERSION_MIGRATION
+    assert "content_items_capture_version" in VERSION_MIGRATION
+    assert "on conflict (content_id, version) do nothing" in VERSION_MIGRATION
