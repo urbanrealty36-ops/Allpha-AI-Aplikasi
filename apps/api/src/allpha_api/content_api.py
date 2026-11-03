@@ -213,12 +213,12 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
     import hashlib
     digest = hashlib.sha256(data).hexdigest()
     existing = await _server_db("GET", "content_media", params={
-        "select": MEDIA_FIELDS, "id": f"eq.{media_id}", "content_id": f"eq.{content_id}",
+        "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
         "owner_id": f"eq.{user['id']}", "limit": "1",
     })
     if existing:
         prior = existing[0]
-        if prior.get("sha256") != digest or prior.get("media_type") != media_type or int(prior.get("size_bytes") or 0) != len(data):
+        if str(prior.get("content_id")) != str(content_id) or prior.get("sha256") != digest or prior.get("media_type") != media_type or int(prior.get("size_bytes") or 0) != len(data):
             raise HTTPException(409, detail={"code": "MEDIA_IDEMPOTENCY_KEY_REUSED", "message": "Idempotency-Key sudah digunakan untuk file media yang berbeda."})
         return {"item": prior, "content": content, "idempotent_replay": True}
     storage_path = f"{user['id']}/{content_id}/{media_id}-{safe_name}"
