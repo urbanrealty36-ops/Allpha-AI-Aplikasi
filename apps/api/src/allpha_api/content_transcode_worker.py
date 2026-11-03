@@ -30,7 +30,7 @@ class TranscodeWorker:
    for offset in range(0,len(data),64*1024):
     chunk=data[offset:offset+64*1024];sock.sendall(struct.pack("!I",len(chunk))+chunk)
    sock.sendall(struct.pack("!I",0));result=sock.recv(4096).decode("utf-8","replace")
-  if "OK" not in result or "FOUND" in result or "ERROR" in result:raise ValueError("MEDIA_SCAN_NOT_CLEAN")
+  if not result.strip().endswith("OK") or "FOUND" in result or "ERROR" in result:raise ValueError("MEDIA_SCAN_NOT_CLEAN")
  async def run_job(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);mid=str(job["media_id"]);p=job.get("payload") or {}
   try:
