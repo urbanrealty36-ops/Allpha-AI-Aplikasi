@@ -816,6 +816,15 @@ async def schedule_content(
     content_id: uuid.UUID, payload: ContentScheduleRequest, request: Request,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
+    key = request.headers.get("Idempotency-Key") or f"content-schedule:{content_id}:{payload.expected_version}:{payload.publish_at.isoformat()}"
+    if len(key) > 200:
+        raise HTTPException(400, detail={"code": "IDEMPOTENCY_KEY_INVALID", "message": "Idempotency-Key terlalu panjang."})
+    existing_schedule = await _server_db("GET", "content_schedules", params={
+        "select": "*", "idempotency_key": f"eq.{key}", "owner_id": f"eq.{user['id']}", "content_id": f"eq.{content_id}", "limit": "1",
+    })
+    if existing_schedule:
+        current = await _owner_content(content_id, str(user["id"]))
+        return {"item": existing_schedule[0], "content": current, "idempotent_replay": True}
     content = await _owner_content(content_id, str(user["id"]))
     if content["status"] not in ("draft", "failed") or int(content["version"]) != payload.expected_version:
         raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Hanya draft versi terbaru yang dapat dijadwalkan."})
@@ -835,9 +844,6 @@ async def schedule_content(
     })
     if any(row.get("status") not in ("ready", "processing", "uploaded") for row in media or []):
         raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Media gagal atau tidak valid; perbaiki sebelum menjadwalkan."})
-    key = request.headers.get("Idempotency-Key") or str(uuid.uuid4())
-    if len(key) > 200:
-        raise HTTPException(400, detail={"code": "IDEMPOTENCY_KEY_INVALID", "message": "Idempotency-Key terlalu panjang."})
     result = await _server_db("POST", "rpc/create_content_schedule", body={
         "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
         "p_expected_version": payload.expected_version, "p_publish_at": publish_at.isoformat(),
@@ -902,7 +908,7 @@ async def reschedule_content(
     updated_content = [result["content"]]
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.reschedule",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
-        metadata={"schedule_id": updated[0]["id"], "publish_at": payload.publish_at.astimezone(timezone.utc).isoformat()})
+        metadata={"schedule_id": schedule[0]["id"], "publish_at": payload.publish_at.astimezone(timezone.utc).isoformat()})
     return {"item": schedule[0], "content": updated_content[0]}
 
 
@@ -924,7 +930,7 @@ async def cancel_content_schedule(
     updated = [result["schedule"]]
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.cancel",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
-        metadata={"schedule_id": schedules[0]["id"]})
+        metadata={"schedule_id": updated[0]["id"]})
     return {"item": updated[0], "message": "Jadwal publikasi dibatalkan."}
 
 
