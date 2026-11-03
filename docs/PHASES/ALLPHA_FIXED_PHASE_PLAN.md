@@ -2411,3 +2411,15 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Cloudinary eager callbacks are persisted with their signed raw payload and digest, then processed by a dedicated durable callback worker. The webhook no longer downloads large derivatives synchronously. Each derivative is independently scanned before private Storage persistence.
 - Provider cleanup removes authenticated Cloudinary intermediates after the canonical Supabase copy. Worker lease checks cover image completion, provider handoff, callback processing, scheduled publication, retention authorization/completion and provider cleanup.
 - These changes remain source-only and unverified. No provider secrets, ClamAV endpoint, worker execution environment, Supabase migrations, backup/PITR settings or production data were configured or changed.
+
+
+### WP-04 follow-up — ClamAV INSTREAM framing correction (2026-11-04)
+
+- A source audit of the managed-transcoding path found that the Cloudinary transcode dispatcher and asynchronous provider-callback worker sent a literal backslash-plus-zero terminator to ClamAV rather than the required NUL byte. This would cause the ClamAV INSTREAM protocol to fail and keep video/audio processing from completing.
+- Corrected both workers to send the NUL-terminated zINSTREAM command. The image worker already used the correct framing.
+- Added a source-contract test covering the three media workers and guarding against regression.
+- Commits: transcode worker 594fd65811c7f672229f210720fbb8c5a9dbf185; callback worker 51589839a59cc68e3b128c56f860a93c6f0f3611; regression assertion cf99633324ca1dad5d055fea5316f24c5fb6e692.
+- The regression test has been committed but has NOT been executed in this environment. Railway API/worker-related status checks for the latest commit are still pending; Web and Super Admin Railway checks report success.
+- Supabase production migration ledger was inspected and currently ends at 20261102021534; the WP-04 lifecycle migrations recorded in source are not yet present in the applied ledger. No migration was applied in this follow-up.
+- No Cloudinary credentials/webhook configuration, ClamAV endpoint, dedicated worker runtime, or backup/PITR lifecycle configuration was provisioned or verified. No media was transcoded or promoted to ready.
+- WP-04 remains in_progress / NOT VERIFIED. Next gates: review and reconcile every pending WP-04 migration against the live schema; apply them through the approved migration process; configure Cloudinary and dedicated worker services/secrets plus ClamAV; verify Supabase backup/PITR restore evidence; run the full API/DB/Web/Native/Super Admin integration and recovery acceptance suite. Do not start WP-05.
