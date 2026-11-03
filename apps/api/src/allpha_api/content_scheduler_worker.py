@@ -15,7 +15,7 @@ class ContentScheduler:
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
  async def batch(self):
-  jobs=await self.rpc("claim_due_content_schedules",{"p_worker_id":self.worker_id,"p_limit":20,"p_lease_seconds":180}) or []
+  jobs=await self.rpc("claim_due_content_schedules",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300}) or []
   for job in jobs:
    try:
     result=await self.rpc("publish_scheduled_content",{"p_schedule_id":job["id"],"p_lease_token":job["lease_token"]})
