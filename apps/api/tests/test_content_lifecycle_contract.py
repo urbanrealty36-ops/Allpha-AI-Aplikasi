@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 API_SOURCE = (ROOT / "src" / "allpha_api" / "content_api.py").read_text(encoding="utf-8")
+MAIN_SOURCE = (ROOT / "src" / "allpha_api" / "main.py").read_text(encoding="utf-8")
 BASELINE_MIGRATION = (ROOT / "supabase" / "migrations" / "20261018153035_eng_p13_content_media_pipeline.sql").read_text(encoding="utf-8")
 
 
@@ -47,3 +48,8 @@ def test_media_upload_reserves_idempotency_before_storage_and_can_resume():
     assert '"status": "in.(uploading,failed)"' in API_SOURCE
     assert '"status": "uploaded"' in API_SOURCE
     assert "MEDIA_UPLOAD_STATE_CONFLICT" in API_SOURCE
+
+
+
+def test_browser_cors_allows_media_idempotency_header():
+    assert '"Idempotency-Key"' in MAIN_SOURCE
