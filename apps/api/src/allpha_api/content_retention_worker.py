@@ -1,6 +1,6 @@
 """Auditable, idempotent retention executor. Destructive jobs are never run in dry-run mode."""
 from __future__ import annotations
-import asyncio, logging, os, signal, uuid
+import asyncio, logging, os, signal, uuid\nfrom datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 import httpx
@@ -63,7 +63,7 @@ class RetentionWorker:
     "backup_expiry_policy":"immutable_backup_expiry",
    },prefer="return=minimal")
    await self.db("PATCH","content_lifecycle_jobs",{"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},{
-    "status":"succeeded","lease_token":None,"lease_expires_at":None,"completed_at":"now()"
+    "status":"succeeded","lease_token":None,"lease_expires_at":None,"completed_at":datetime.now(timezone.utc).isoformat()
    })
   except Exception as exc:
    log.exception("retention job failed job=%s",jid)
