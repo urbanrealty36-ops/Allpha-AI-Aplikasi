@@ -2403,3 +2403,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Scheduled publication creation is atomic with content submission to the moderation queue. It requires all attached media ready, stores UTC + IANA timezone and owner rights/disclosure attestation. Approval changes content to scheduled; rejection cancels the schedule. Web Creator Studio now exposes schedule/reschedule/cancel and deleted-content restore controls.
 - Native Creator Studio includes appeal history/submission and 30-day restore; Super Admin lifecycle console includes failed/dead worker jobs and failed schedule recovery.
 - New source migrations extend through 20261103450000. These are still NOT applied. Provider account, ClamAV runtime, worker runtime and backup/PITR configuration remain NOT configured/verified.
+
+
+### WP-04 checkpoint addendum — creator scheduling and provider callback hardening
+
+- Web Creator Studio now includes schedule create/reschedule/cancel and explicit deleted-content restore controls. Scheduling requires ready media, stores the creator IANA timezone and UTC instant, records rights/disclosure attestation, and atomically submits the item to moderation. Moderator approval activates the schedule; rejection cancels it.
+- Cloudinary eager callbacks are persisted with their signed raw payload and digest, then processed by a dedicated durable callback worker. The webhook no longer downloads large derivatives synchronously. Each derivative is independently scanned before private Storage persistence.
+- Provider cleanup removes authenticated Cloudinary intermediates after the canonical Supabase copy. Worker lease checks cover image completion, provider handoff, callback processing, scheduled publication, retention authorization/completion and provider cleanup.
+- These changes remain source-only and unverified. No provider secrets, ClamAV endpoint, worker execution environment, Supabase migrations, backup/PITR settings or production data were configured or changed.
