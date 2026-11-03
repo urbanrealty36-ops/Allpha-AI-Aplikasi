@@ -609,42 +609,28 @@ async def review_content_appeal(
     request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
 ) -> dict[str, Any]:
-    appeals = await _server_db("GET", "content_appeals", params={
-        "select": "id,content_id,owner_id,submitted_version,reason,status",
-        "id": f"eq.{appeal_id}", "status": "eq.pending", "limit": "1",
-    })
-    if not appeals:
-        raise HTTPException(404, detail={"code": "CONTENT_APPEAL_NOT_FOUND", "message": "Banding tidak ditemukan atau sudah diputuskan."})
-    appeal = appeals[0]
+    # The RPC locks the appeal and content rows and commits both lifecycle
+    # transitions in one PostgreSQL transaction (or changes neither).
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.appeal.review",
         outcome="attempted", resource_type="content_appeal", resource_id=str(appeal_id),
         metadata={"decision": payload.decision, "reason": payload.reason})
-    updated_appeal = await _server_db("PATCH", "content_appeals", params={
-        "id": f"eq.{appeal_id}", "status": "eq.pending", "select": "id,content_id,owner_id,submitted_version,reason,status,decision_reason,decided_by,decided_at",
-    }, body={
-        "status": "approved" if payload.decision == "approve" else "rejected",
-        "decision_reason": payload.reason.strip(), "decided_by": operator["id"],
-        "decided_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-    }, prefer="return=representation")
-    if not updated_appeal:
-        raise HTTPException(409, detail={"code": "CONTENT_APPEAL_CONFLICT", "message": "Banding berubah saat keputusan disimpan."})
-    content_update = None
-    if payload.decision == "approve":
-        content_rows = await _server_db("PATCH", "content_items", params={
-            "id": f"eq.{appeal['content_id']}", "owner_id": f"eq.{appeal['owner_id']}",
-            "status": "eq.failed", "moderation_status": "eq.rejected",
-            "version": f"eq.{appeal['submitted_version']}", "select": CONTENT_FIELDS,
-        }, body={
-            "status": "review", "moderation_status": "pending",
-            "error_code": None, "version": int(appeal["submitted_version"]) + 1,
-        }, prefer="return=representation")
-        if not content_rows:
-            raise HTTPException(409, detail={"code": "CONTENT_APPEAL_CONTENT_CHANGED", "message": "Konten berubah setelah banding diajukan; keputusan banding tercatat tetapi konten tidak otomatis dipublikasikan."})
-        content_update = content_rows[0]
+    result = await _server_db("POST", "rpc/decide_content_appeal", body={
+        "p_appeal_id": str(appeal_id),
+        "p_operator_id": str(operator["id"]),
+        "p_decision": payload.decision,
+        "p_reason": payload.reason.strip(),
+    })
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome == "appeal_conflict":
+        raise HTTPException(409, detail={"code": "CONTENT_APPEAL_CONFLICT", "message": "Banding tidak ditemukan atau sudah diputuskan."})
+    if outcome == "content_conflict":
+        raise HTTPException(409, detail={"code": "CONTENT_APPEAL_CONTENT_CHANGED", "message": "Konten berubah setelah banding diajukan; tidak ada perubahan yang diterapkan."})
+    if outcome in ("invalid_decision", "invalid_reason") or outcome != "committed":
+        raise HTTPException(422, detail={"code": "CONTENT_APPEAL_DECISION_INVALID", "message": "Keputusan banding tidak valid."})
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.appeal.review",
         outcome="allowed", resource_type="content_appeal", resource_id=str(appeal_id),
-        metadata={"decision": payload.decision, "content_id": appeal["content_id"]})
+        metadata={"decision": payload.decision, "content_id": result["appeal"]["content_id"]})
     return {
-        "item": updated_appeal[0], "content": content_update,
+        "item": result["appeal"], "content": result.get("content"),
         "message": "Banding diterima; konten dikembalikan ke antrean moderasi independen." if payload.decision == "approve" else "Banding ditolak.",
     }
