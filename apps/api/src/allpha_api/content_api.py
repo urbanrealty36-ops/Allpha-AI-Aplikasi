@@ -835,22 +835,30 @@ async def schedule_content(
     })
     if any(row.get("status") not in ("ready", "processing", "uploaded") for row in media or []):
         raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Media gagal atau tidak valid; perbaiki sebelum menjadwalkan."})
-    provenance = dict(content.get("provenance") or {})
-    provenance.update({"rights_confirmed": True, "disclosure_confirmed": True, "rights_attested_at": datetime.now(timezone.utc).isoformat()})
-    updated = await _server_db("PATCH", "content_items", params={
-        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "status": f"eq.{content['status']}",
-        "version": f"eq.{payload.expected_version}", "select": CONTENT_FIELDS,
-    }, body={"provenance": provenance, "version": payload.expected_version + 1}, prefer="return=representation")
-    if not updated:
-        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Konten berubah saat jadwal disimpan."})
     key = request.headers.get("Idempotency-Key") or str(uuid.uuid4())
     if len(key) > 200:
         raise HTTPException(400, detail={"code": "IDEMPOTENCY_KEY_INVALID", "message": "Idempotency-Key terlalu panjang."})
-    rows = await _server_db("POST", "content_schedules", body={
-        "content_id": str(content_id), "owner_id": str(user["id"]), "content_version": payload.expected_version + 1,
-        "publish_at": publish_at.isoformat(), "creator_timezone": payload.creator_timezone,
-        "status": "scheduled", "idempotency_key": key,
-    }, prefer="return=representation")
+    result = await _server_db("POST", "rpc/create_content_schedule", body={
+        "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
+        "p_expected_version": payload.expected_version, "p_publish_at": publish_at.isoformat(),
+        "p_creator_timezone": payload.creator_timezone, "p_idempotency_key": key,
+        "p_rights_confirmed": payload.rights_confirmed, "p_disclosure_confirmed": payload.disclosure_confirmed,
+    })
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome == "content_conflict":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Konten berubah atau tidak dapat dijadwalkan."})
+    if outcome == "schedule_exists":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_EXISTS", "message": "Konten sudah memiliki jadwal aktif."})
+    if outcome == "idempotency_conflict":
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED", "message": "Idempotency-Key digunakan untuk jadwal lain."})
+    if outcome == "invalid_timezone":
+        raise HTTPException(422, detail={"code": "CONTENT_TIMEZONE_INVALID", "message": "Gunakan IANA timezone yang valid."})
+    if outcome == "invalid_schedule":
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_INVALID", "message": "Waktu atau konfirmasi jadwal tidak valid."})
+    if outcome not in ("created", "replayed"):
+        raise HTTPException(503, detail={"code": "CONTENT_SCHEDULE_UNAVAILABLE", "message": "Jadwal belum dapat disimpan."})
+    rows = [result["schedule"]]
+    updated = [result["content"]]
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.create",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
         metadata={"schedule_id": rows[0]["id"], "publish_at": publish_at.isoformat(), "timezone": payload.creator_timezone})
@@ -877,20 +885,24 @@ async def reschedule_content(
     })
     if not schedules:
         raise HTTPException(404, detail={"code": "CONTENT_SCHEDULE_NOT_FOUND", "message": "Jadwal aktif tidak ditemukan."})
-    updated_content = await _server_db("PATCH", "content_items", params={
-        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "version": f"eq.{payload.expected_version}",
-        "status": f"eq.{content['status']}", "select": CONTENT_FIELDS,
-    }, body={"version": payload.expected_version + 1}, prefer="return=representation")
-    if not updated_content:
-        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Versi konten berubah."})
-    schedule = await _server_db("PATCH", "content_schedules", params={
-        "id": f"eq.{schedules[0]['id']}", "status": "eq.scheduled", "select": "*",
-    }, body={"publish_at": payload.publish_at.astimezone(timezone.utc).isoformat(),
-        "creator_timezone": payload.creator_timezone, "content_version": payload.expected_version + 1,
-        "updated_by": user["id"]}, prefer="return=representation")
+    result = await _server_db("POST", "rpc/reschedule_content_schedule", body={
+        "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
+        "p_expected_version": payload.expected_version,
+        "p_publish_at": payload.publish_at.astimezone(timezone.utc).isoformat(),
+        "p_creator_timezone": payload.creator_timezone,
+    })
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome == "schedule_not_found":
+        raise HTTPException(404, detail={"code": "CONTENT_SCHEDULE_NOT_FOUND", "message": "Jadwal aktif tidak ditemukan."})
+    if outcome == "content_conflict":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Konten berubah atau tidak dapat dijadwalkan ulang."})
+    if outcome != "rescheduled":
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_INVALID", "message": "Waktu atau timezone jadwal tidak valid."})
+    schedule = [result["schedule"]]
+    updated_content = [result["content"]]
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.reschedule",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
-        metadata={"schedule_id": schedules[0]["id"], "publish_at": payload.publish_at.astimezone(timezone.utc).isoformat()})
+        metadata={"schedule_id": updated[0]["id"], "publish_at": payload.publish_at.astimezone(timezone.utc).isoformat()})
     return {"item": schedule[0], "content": updated_content[0]}
 
 
@@ -899,20 +911,17 @@ async def cancel_content_schedule(
     content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
-    schedules = await _server_db("GET", "content_schedules", params={
-        "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
-        "status": "eq.scheduled", "limit": "1",
+    result = await _server_db("POST", "rpc/cancel_content_schedule", body={
+        "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
     })
-    if not schedules:
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome == "content_not_found":
+        raise HTTPException(404, detail={"code": "CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan."})
+    if outcome == "schedule_not_found":
         raise HTTPException(404, detail={"code": "CONTENT_SCHEDULE_NOT_FOUND", "message": "Jadwal aktif tidak ditemukan."})
-    updated = await _server_db("PATCH", "content_schedules", params={
-        "id": f"eq.{schedules[0]['id']}", "status": "eq.scheduled", "select": "*",
-    }, body={"status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": user["id"]}, prefer="return=representation")
-    if content["status"] == "scheduled":
-        await _server_db("PATCH", "content_items", params={
-            "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "status": "eq.scheduled",
-        }, body={"status": "draft", "version": int(content["version"]) + 1})
+    if outcome != "cancelled":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CANCEL_CONFLICT", "message": "Jadwal tidak dapat dibatalkan."})
+    updated = [result["schedule"]]
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.cancel",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
         metadata={"schedule_id": schedules[0]["id"]})
