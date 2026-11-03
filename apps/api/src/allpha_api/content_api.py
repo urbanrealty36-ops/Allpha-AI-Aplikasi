@@ -443,7 +443,7 @@ async def delete_content(content_id: uuid.UUID, request: Request, user: dict[str
     rows = await _server_db("PATCH", "content_items", params={
         "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
         "status": f"eq.{content['status']}", "select": CONTENT_FIELDS,
-    }, body={"status": "deleted", "moderation_status": "removed", "version": int(content["version"]) + 1}, prefer="return=representation")
+    }, body={"status": "deleted", "moderation_status": "removed", "deleted_at": datetime.now(timezone.utc).isoformat(), "version": int(content["version"]) + 1}, prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "CONTENT_DELETE_CONFLICT", "message": "Status konten berubah; muat ulang sebelum menghapus."})
     return {"item": rows[0], "message": "Konten dihapus dari akun dan Feed. Salinan media privat tidak dihapus otomatis."}
@@ -762,3 +762,210 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     if not isinstance(result, dict) or result.get("outcome") != "completed":
         raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_COMPLETION_CONFLICT", "message": "Callback diterima tetapi penyelesaian job tidak dapat dikonfirmasi."})
     return {"status": "accepted", "media_id": str(media_uuid), "derivative_count": len(derivatives)}
+
+
+@router.post("/{content_id}/restore", tags=["content-retention"])
+async def restore_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] != "deleted" or not content.get("deleted_at"):
+        raise HTTPException(409, detail={"code": "CONTENT_NOT_RESTORABLE", "message": "Konten tidak berada dalam masa pemulihan."})
+    deleted_at = datetime.fromisoformat(str(content["deleted_at"]).replace("Z", "+00:00"))
+    if (datetime.now(timezone.utc) - deleted_at).total_seconds() > 30 * 86400:
+        raise HTTPException(410, detail={"code": "CONTENT_RECOVERY_EXPIRED", "message": "Masa pemulihan 30 hari telah berakhir."})
+    if content.get("purge_started_at"):
+        raise HTTPException(409, detail={"code": "CONTENT_PURGE_STARTED", "message": "Penghapusan fisik sudah dimulai dan konten tidak dapat dipulihkan."})
+    versions = await _server_db("GET", "content_item_versions", params={
+        "select": "snapshot,version", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "order": "version.desc", "limit": "1",
+    })
+    snapshot = versions[0]["snapshot"] if versions else {}
+    restored_status = "archived" if snapshot.get("status") == "archived" else "draft"
+    rows = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "status": "eq.deleted",
+        "version": f"eq.{content['version']}", "purge_started_at": "is.null", "select": CONTENT_FIELDS,
+    }, body={
+        "status": restored_status, "moderation_status": snapshot.get("moderation_status", "not_submitted"),
+        "body": snapshot.get("body", content["body"]), "visibility": snapshot.get("visibility", content["visibility"]),
+        "deleted_at": None, "version": int(content["version"]) + 1,
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CONTENT_RESTORE_CONFLICT", "message": "Konten berubah atau penghapusan fisik sudah dimulai."})
+    await _server_db("POST", "content_lifecycle_events", body={
+        "event_key": f"content.restored:{content_id}:{rows[0]['version']}", "event_type": "content.restored",
+        "content_id": str(content_id), "owner_id": str(user["id"]),
+        "payload": {"restored_status": restored_status, "version": rows[0]["version"]},
+    }, prefer="return=minimal")
+    return {"item": rows[0], "message": "Konten berhasil dipulihkan."}
+
+
+@router.post("/{content_id}/schedule", status_code=201, tags=["content-scheduling"])
+async def schedule_content(
+    content_id: uuid.UUID, payload: ContentScheduleRequest, request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] not in ("draft", "failed") or int(content["version"]) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Hanya draft versi terbaru yang dapat dijadwalkan."})
+    if not payload.rights_confirmed or not payload.disclosure_confirmed:
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_ATTESTATION_REQUIRED", "message": "Konfirmasi hak penggunaan dan disclosure wajib diberikan."})
+    try:
+        ZoneInfo(payload.creator_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(422, detail={"code": "CONTENT_TIMEZONE_INVALID", "message": "Gunakan IANA timezone yang valid."}) from exc
+    if payload.publish_at.tzinfo is None or payload.publish_at.utcoffset() is None:
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_TIMEZONE_REQUIRED", "message": "Waktu publikasi harus memiliki timezone."})
+    publish_at = payload.publish_at.astimezone(timezone.utc)
+    if publish_at <= datetime.now(timezone.utc):
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_MUST_BE_FUTURE", "message": "Waktu publikasi harus berada di masa depan."})
+    media = await _server_db("GET", "content_media", params={
+        "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "100",
+    })
+    if any(row.get("status") not in ("ready", "processing", "uploaded") for row in media or []):
+        raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Media gagal atau tidak valid; perbaiki sebelum menjadwalkan."})
+    provenance = dict(content.get("provenance") or {})
+    provenance.update({"rights_confirmed": True, "disclosure_confirmed": True, "rights_attested_at": datetime.now(timezone.utc).isoformat()})
+    updated = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "status": f"eq.{content['status']}",
+        "version": f"eq.{payload.expected_version}", "select": CONTENT_FIELDS,
+    }, body={"provenance": provenance, "version": payload.expected_version + 1}, prefer="return=representation")
+    if not updated:
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Konten berubah saat jadwal disimpan."})
+    key = request.headers.get("Idempotency-Key") or str(uuid.uuid4())
+    if len(key) > 200:
+        raise HTTPException(400, detail={"code": "IDEMPOTENCY_KEY_INVALID", "message": "Idempotency-Key terlalu panjang."})
+    rows = await _server_db("POST", "content_schedules", body={
+        "content_id": str(content_id), "owner_id": str(user["id"]), "content_version": payload.expected_version + 1,
+        "publish_at": publish_at.isoformat(), "creator_timezone": payload.creator_timezone,
+        "status": "scheduled", "idempotency_key": key,
+    }, prefer="return=representation")
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.create",
+        outcome="allowed", resource_type="content_item", resource_id=str(content_id),
+        metadata={"schedule_id": rows[0]["id"], "publish_at": publish_at.isoformat(), "timezone": payload.creator_timezone})
+    return {"item": rows[0], "content": updated[0]}
+
+
+@router.patch("/{content_id}/schedule", tags=["content-scheduling"])
+async def reschedule_content(
+    content_id: uuid.UUID, payload: ContentScheduleRequest, request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] not in ("draft", "failed", "review", "scheduled") or int(content["version"]) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Konten berubah atau tidak dapat dijadwalkan ulang."})
+    try:
+        ZoneInfo(payload.creator_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(422, detail={"code": "CONTENT_TIMEZONE_INVALID", "message": "Gunakan IANA timezone yang valid."}) from exc
+    if payload.publish_at.tzinfo is None or payload.publish_at.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_TIME_INVALID", "message": "Waktu baru harus memiliki timezone dan berada di masa depan."})
+    schedules = await _server_db("GET", "content_schedules", params={
+        "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "status": "eq.scheduled", "limit": "1",
+    })
+    if not schedules:
+        raise HTTPException(404, detail={"code": "CONTENT_SCHEDULE_NOT_FOUND", "message": "Jadwal aktif tidak ditemukan."})
+    updated_content = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "version": f"eq.{payload.expected_version}",
+        "status": f"eq.{content['status']}", "select": CONTENT_FIELDS,
+    }, body={"version": payload.expected_version + 1}, prefer="return=representation")
+    if not updated_content:
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Versi konten berubah."})
+    schedule = await _server_db("PATCH", "content_schedules", params={
+        "id": f"eq.{schedules[0]['id']}", "status": "eq.scheduled", "select": "*",
+    }, body={"publish_at": payload.publish_at.astimezone(timezone.utc).isoformat(),
+        "creator_timezone": payload.creator_timezone, "content_version": payload.expected_version + 1,
+        "updated_by": user["id"]}, prefer="return=representation")
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.reschedule",
+        outcome="allowed", resource_type="content_item", resource_id=str(content_id),
+        metadata={"schedule_id": schedules[0]["id"], "publish_at": payload.publish_at.astimezone(timezone.utc).isoformat()})
+    return {"item": schedule[0], "content": updated_content[0]}
+
+
+@router.delete("/{content_id}/schedule", tags=["content-scheduling"])
+async def cancel_content_schedule(
+    content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    schedules = await _server_db("GET", "content_schedules", params={
+        "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "status": "eq.scheduled", "limit": "1",
+    })
+    if not schedules:
+        raise HTTPException(404, detail={"code": "CONTENT_SCHEDULE_NOT_FOUND", "message": "Jadwal aktif tidak ditemukan."})
+    updated = await _server_db("PATCH", "content_schedules", params={
+        "id": f"eq.{schedules[0]['id']}", "status": "eq.scheduled", "select": "*",
+    }, body={"status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": user["id"]}, prefer="return=representation")
+    if content["status"] == "scheduled":
+        await _server_db("PATCH", "content_items", params={
+            "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "status": "eq.scheduled",
+        }, body={"status": "draft", "version": int(content["version"]) + 1})
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.cancel",
+        outcome="allowed", resource_type="content_item", resource_id=str(content_id),
+        metadata={"schedule_id": schedules[0]["id"]})
+    return {"item": updated[0], "message": "Jadwal publikasi dibatalkan."}
+
+
+@router.get("/admin/retention/preview", tags=["content-retention"])
+async def retention_preview(
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    deleted = await _server_db("GET", "content_items", params={
+        "select": "id,owner_id,deleted_at,status", "status": "eq.deleted",
+        "deleted_at": f"lte.{(datetime.now(timezone.utc) - __import__('datetime').timedelta(days=30)).isoformat()}",
+        "purge_started_at": "is.null", "limit": "100",
+    })
+    abandoned = await _server_db("GET", "content_media", params={
+        "select": "id,content_id,owner_id,status,created_at", "status": "in.(uploading,failed)",
+        "created_at": f"lte.{(datetime.now(timezone.utc) - __import__('datetime').timedelta(days=7)).isoformat()}",
+        "limit": "100",
+    })
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.retention.preview",
+        outcome="allowed", resource_type="content_retention", resource_id="dry-run",
+        metadata={"deleted_content_candidates": len(deleted or []), "abandoned_upload_candidates": len(abandoned or []), "dry_run": True})
+    return {"dry_run": True, "content_candidates": deleted or [], "abandoned_upload_candidates": abandoned or [],
+        "note": "Preview tidak menghapus data; legal hold diperiksa ulang oleh executor sebelum penghapusan."}
+
+
+@router.post("/admin/retention/holds", status_code=201, tags=["content-retention"])
+async def create_content_retention_hold(
+    payload: dict[str, Any], request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    content_id = uuid.UUID(str(payload.get("content_id", "")))
+    hold_type = str(payload.get("hold_type", ""))
+    reason = str(payload.get("reason", "")).strip()
+    if hold_type not in ("legal", "safety", "regulatory") or not 8 <= len(reason) <= 1000:
+        raise HTTPException(422, detail={"code": "RETENTION_HOLD_INVALID", "message": "Jenis dan alasan legal hold tidak valid."})
+    content = await _server_db("GET", "content_items", params={"select": "id,owner_id,purge_started_at", "id": f"eq.{content_id}", "limit": "1"})
+    if not content or content[0].get("purge_started_at"):
+        raise HTTPException(409, detail={"code": "RETENTION_PURGE_LOCKED", "message": "Konten tidak tersedia atau penghapusan sudah dimulai."})
+    rows = await _server_db("POST", "content_retention_holds", body={
+        "content_id": str(content_id), "owner_id": content[0]["owner_id"], "hold_type": hold_type,
+        "reason": reason, "created_by": operator["id"],
+    }, prefer="return=representation")
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.retention.hold.create",
+        outcome="allowed", resource_type="content_item", resource_id=str(content_id),
+        metadata={"hold_id": rows[0]["id"], "hold_type": hold_type, "reason": reason})
+    return {"item": rows[0]}
+
+
+@router.post("/admin/retention/holds/{hold_id}/release", tags=["content-retention"])
+async def release_content_retention_hold(
+    hold_id: uuid.UUID, payload: dict[str, Any], request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    reason = str(payload.get("reason", "")).strip()
+    if len(reason) < 8:
+        raise HTTPException(422, detail={"code": "RETENTION_HOLD_RELEASE_REASON_REQUIRED", "message": "Alasan pelepasan hold minimal 8 karakter."})
+    rows = await _server_db("PATCH", "content_retention_holds", params={
+        "id": f"eq.{hold_id}", "released_at": "is.null", "select": "*",
+    }, body={"released_by": operator["id"], "released_at": datetime.now(timezone.utc).isoformat()},
+        prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "RETENTION_HOLD_NOT_ACTIVE", "message": "Hold tidak aktif atau sudah dilepas."})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.retention.hold.release",
+        outcome="allowed", resource_type="content_retention_hold", resource_id=str(hold_id),
+        metadata={"reason": reason})
+    return {"item": rows[0]}
