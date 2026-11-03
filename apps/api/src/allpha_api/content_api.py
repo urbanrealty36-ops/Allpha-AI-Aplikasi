@@ -739,8 +739,8 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     derivatives = []
     base = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY", "")
-    async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=5), follow_redirects=False,
-        headers={"apikey": key, "Authorization": f"Bearer {key}"}) as client:
+    # Provider CDN fetches use a credential-free client; Supabase secrets are used only by _storage.
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=5), follow_redirects=False) as client:
         for index, item in enumerate(eager):
             if not isinstance(item, dict):
                 raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVE_INVALID", "message": "Metadata derivative tidak valid."})
