@@ -381,8 +381,10 @@ async def _media_preview_projection(item: dict[str, Any]) -> dict[str, Any]:
         derivative_previews.append({**derivative, "preview_url": await _signed_media_preview_url(path)})
     preferred = next((entry["preview_url"] for entry in derivative_previews
         if entry.get("kind") in ("display", "rendition_1")), original_url)
+    moderation_preview = next((entry["preview_url"] for entry in derivative_previews
+        if entry.get("kind") in ("moderation_poster", "thumbnail")), None)
     return {**item, "preview_url": preferred, "original_preview_url": original_url,
-        "derivative_previews": derivative_previews}
+        "moderation_preview_url": moderation_preview, "derivative_previews": derivative_previews}
 
 
 @router.get("/{content_id}/preview")
