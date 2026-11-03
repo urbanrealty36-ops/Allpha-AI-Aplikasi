@@ -72,7 +72,7 @@ class RetentionWorker:
    except Exception:log.exception("retention failure could not be persisted job=%s",jid)
  async def batch(self):
   await self.rpc("enqueue_expired_content_retention_jobs",{"p_limit":100})
-  jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":10,"p_lease_seconds":240,"p_job_type":"retention_purge"}) or []
+  jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"retention_purge"}) or []
   for job in jobs:await self.process(job)
   return len(jobs)
  async def run(self):
