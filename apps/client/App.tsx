@@ -24,6 +24,13 @@ Notifications.setNotificationHandler({
   }),
 });
 
+function createClientUuid() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, token => {
+    const random = Math.floor(Math.random() * 16);
+    return (token === "x" ? random : (random & 0x3) | 0x8).toString(16);
+  });
+}
+
 type Routes = {
   Welcome: undefined;
   Auth: { mode?: "signin" | "signup" } | undefined;
@@ -340,6 +347,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [contentBody, setContentBody] = useState("");
   const [contentVisibility, setContentVisibility] = useState<"public" | "followers" | "private">("public");
   const [contentFile, setContentFile] = useState<NativeContentFile | null>(null);
+  const [contentUploadId, setContentUploadId] = useState("");
+  const [contentDraftId, setContentDraftId] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState(false);
   const [feedItems, setFeedItems] = useState<NativeFeedItem[]>([]);
   const [selectedFeedItem, setSelectedFeedItem] = useState<NativeFeedItem | null>(null);
@@ -842,24 +851,43 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       const max = asset.mimeType.startsWith("video/") || asset.mimeType.startsWith("audio/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
       if (asset.size && asset.size > max) throw new Error("Ukuran file melampaui batas format media.");
       setContentFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, size: asset.size });
+      setContentUploadId(createClientUuid());
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemilihan media gagal."); }
   }
   async function createNativeContentDraft() {
-    if (!contentBody.trim() && !contentFile) { setError("Isi teks atau pilih media terlebih dahulu."); return; }
+    if (!contentBody.trim() && !contentFile && !contentDraftId) { setError("Isi teks atau pilih media terlebih dahulu."); return; }
     setContentBusy(true); setError(""); setMessage("");
     try {
-      const contentType = contentFile ? (contentFile.mimeType?.startsWith("video/") ? "video" : contentFile.mimeType?.startsWith("audio/") ? "audio" : "image") : "text";
-      const created = await apiRequest("/v1/content", { method: "POST", body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility, content_type: contentType }) }) as { item: NativeContentItem };
-      setContentItems(current => [created.item, ...current.filter(item => item.id !== created.item.id)]);
+      let contentId = contentDraftId;
+      if (!contentId) {
+        const contentType = contentFile ? (contentFile.mimeType?.startsWith("video/") ? "video" : contentFile.mimeType?.startsWith("audio/") ? "audio" : "image") : "text";
+        const created = await apiRequest("/v1/content", { method: "POST", body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility, content_type: contentType }) }) as { item: NativeContentItem };
+        contentId = created.item.id;
+        setContentDraftId(contentId);
+        setContentItems(current => [created.item, ...current.filter(item => item.id !== created.item.id)]);
+      } else if (contentBody.trim()) {
+        await apiRequest("/v1/content/" + encodeURIComponent(contentId), {
+          method: "PATCH",
+          body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility }),
+        });
+      }
       if (contentFile) {
+        const uploadKey = contentUploadId || createClientUuid();
+        setContentUploadId(uploadKey);
         const form = new FormData();
         form.append("file", { uri: contentFile.uri, name: contentFile.name, type: contentFile.mimeType } as unknown as Blob);
-        const response = await fetch(apiBase + "/v1/content/" + encodeURIComponent(created.item.id) + "/media", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" }, body: form });
+        const response = await fetch(apiBase + "/v1/content/" + encodeURIComponent(contentId) + "/media", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Idempotency-Key": uploadKey },
+          body: form,
+        });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result?.error?.message || result?.detail?.message || "Unggah media gagal. Draft tetap tersimpan.");
+        if (!response.ok) throw new Error(result?.error?.message || result?.detail?.message || "Unggah media gagal. Draft tetap tersimpan dan dapat dicoba lagi.");
       }
-      setContentBody(""); setContentFile(null); setMessage("Draft konten tersimpan melalui FastAPI.");
-      const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []);
+      const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] };
+      setContentItems(result.items ?? []);
+      setContentBody(""); setContentFile(null); setContentUploadId(""); setContentDraftId(null);
+      setMessage("Draft konten tersimpan melalui FastAPI.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Draft gagal disimpan.");
       try { const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); } catch {}
