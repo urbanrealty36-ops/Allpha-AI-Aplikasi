@@ -26,8 +26,8 @@ class MediaWorker:
         self.base = os.environ["SUPABASE_URL"].rstrip("/")
         self.key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
         self.worker_id = f"content-image-{uuid.uuid4()}"
-        self.batch_size = max(1, min(int(os.getenv("CONTENT_IMAGE_BATCH_SIZE", "3")), 10))
-        self.lease_seconds = max(30, min(int(os.getenv("CONTENT_IMAGE_LEASE_SECONDS", "180")), 300))
+        self.batch_size = max(1, min(int(os.getenv("CONTENT_IMAGE_BATCH_SIZE", "1")), 10))
+        self.lease_seconds = max(30, min(int(os.getenv("CONTENT_IMAGE_LEASE_SECONDS", "300")), 300))
         self.poll_seconds = max(1.0, float(os.getenv("CONTENT_IMAGE_POLL_SECONDS", "3")))
         self.clamav_host = os.environ["CLAMAV_HOST"]
         self.clamav_port = int(os.getenv("CLAMAV_PORT", "3310"))
