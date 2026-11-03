@@ -839,8 +839,8 @@ async def schedule_content(
     media = await _server_db("GET", "content_media", params={
         "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "100",
     })
-    if any(row.get("status") not in ("ready", "processing", "uploaded") for row in media or []):
-        raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Media gagal atau tidak valid; perbaiki sebelum menjadwalkan."})
+    if any(row.get("status") != "ready" for row in media or []):
+        raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Seluruh media harus selesai diproses sebelum konten dijadwalkan untuk moderasi."})
     result = await _server_db("POST", "rpc/create_content_schedule", body={
         "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
         "p_expected_version": payload.expected_version, "p_publish_at": publish_at.isoformat(),
@@ -864,7 +864,7 @@ async def schedule_content(
     updated = [result["content"]]
     await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.schedule.create",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
-        metadata={"schedule_id": rows[0]["id"], "publish_at": publish_at.isoformat(), "timezone": payload.creator_timezone})
+        metadata={"schedule_id": rows[0]["id"], "publish_at": publish_at.isoformat(), "timezone": payload.creator_timezone, "auto_submitted_for_moderation": True})
     return {"item": rows[0], "content": updated[0]}
 
 
