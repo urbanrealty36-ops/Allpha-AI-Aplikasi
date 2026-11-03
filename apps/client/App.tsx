@@ -866,9 +866,11 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         setContentDraftId(contentId);
         setContentItems(current => [created.item, ...current.filter(item => item.id !== created.item.id)]);
       } else if (contentBody.trim()) {
+        const currentDraft = contentItems.find(item => item.id === contentId);
+        if (!currentDraft) throw new Error("Versi draft tidak tersedia. Muat ulang daftar konten sebelum menyimpan.");
         await apiRequest("/v1/content/" + encodeURIComponent(contentId), {
           method: "PATCH",
-          body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility }),
+          body: JSON.stringify({ body: contentBody.trim(), visibility: contentVisibility, expected_version: currentDraft.version }),
         });
       }
       if (contentFile) {
