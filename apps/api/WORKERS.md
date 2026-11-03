@@ -87,3 +87,11 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - All listed changes are source-only until migrations are reviewed/applied, workers are deployed/configured, Cloudinary account/webhook is configured, ClamAV is reachable, and authorized real integration tests are completed.
 - No migration, worker activation, provider provisioning, destructive purge, or production deployment is performed by this source implementation.
 - Video/audio moderation still depends on the independent human content review queue after media readiness; provider completion never publishes content.
+
+
+### Cloudinary provider asset cleanup
+
+- Entrypoint: allpha-content-provider-cleanup; Dockerfile: apps/api/Dockerfile.provider-cleanup-worker.
+- When authenticated Cloudinary derivatives are copied into the private canonical Supabase bucket and the media row is atomically marked ready, a database trigger creates a durable provider_cleanup job.
+- The cleanup worker uses the server-only Cloudinary API secret to destroy the authenticated provider original and eager derivatives. Retries are idempotent (provider result ok/not found).
+- This removes the temporary provider-side copy; the canonical originals/derivatives remain in Supabase until the approved Allpha retention lifecycle removes them.
