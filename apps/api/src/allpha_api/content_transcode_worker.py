@@ -55,7 +55,8 @@ class TranscodeWorker:
    async with httpx.AsyncClient(timeout=httpx.Timeout(180,connect=10)) as provider_client:
     upload=await provider_client.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/{resource}/upload",data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
    upload.raise_for_status();asset=upload.json()
-   if asset.get("public_id")!=public_id or not asset.get("asset_id"):raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
+   if asset.get("public_id")!=public_id or not asset.get("asset_id") or not asset.get("batch_id"):
+    raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
    handoff=await self.rpc("handoff_content_provider_job",{
     "p_job_id":jid,"p_lease_token":token,"p_media_id":mid,
     "p_provider_asset_id":asset["asset_id"],"p_provider_public_id":public_id,
