@@ -521,7 +521,7 @@ async def content_review_queue(
         content_ids = [str(item["id"]) for item in items]
         media_rows = await _server_db("GET", "content_media", params={
             "select": MEDIA_FIELDS, "content_id": f"in.({','.join(content_ids)})",
-            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, limit * 10)),
+            "status": "eq.ready", "order": "created_at.asc", "limit": str(min(500, limit * 10)),
         })
         for media in media_rows or []:
             media_by_content.setdefault(str(media["content_id"]), []).append(await _media_preview_projection(media))
