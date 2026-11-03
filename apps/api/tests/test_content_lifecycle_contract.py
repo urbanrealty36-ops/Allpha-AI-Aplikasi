@@ -27,3 +27,12 @@ def test_soft_deleted_content_is_hidden_from_owner_list_and_preview():
     assert '"status": "neq.deleted"' in API_SOURCE
     assert 'if content["status"] == "deleted"' in API_SOURCE
     assert "CONTENT_NOT_FOUND" in API_SOURCE
+
+
+def test_media_upload_idempotency_key_replays_only_the_same_owner_content_and_bytes():
+    assert 'request.headers.get("Idempotency-Key")' in API_SOURCE
+    assert 'uuid.UUID(raw_idempotency_key)' in API_SOURCE
+    assert 'MEDIA_IDEMPOTENCY_KEY_REUSED' in API_SOURCE
+    assert 'str(prior.get("content_id")) != str(content_id)' in API_SOURCE
+    assert 'prior.get("sha256") != digest' in API_SOURCE
+    assert '"idempotent_replay": True' in API_SOURCE
