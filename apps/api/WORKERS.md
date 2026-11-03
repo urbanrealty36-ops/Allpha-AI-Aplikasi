@@ -47,3 +47,43 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - Missing scanner, invalid images, hash mismatch, or derivative persistence failure must fail closed. No image is marked ready without a clean scan and durable derivative paths.
 - This source implementation is NOT runtime activation evidence. Do not activate until the new migrations are reviewed/applied through the approved non-production path, the worker image is built and scanned, secrets/egress/resource limits are configured, and real integration checks are authorized.
 - Video/audio transcoding, callback signature verification, retention execution, scheduled publication execution, and provider selection remain separate WP-04 deliverables; their presence in the lifecycle job schema does not mean those workers are implemented.
+
+
+## WP-04 lifecycle worker contracts (source implemented; activation pending)
+
+### Cloudinary video/audio transcode dispatcher
+
+- Provider decision: Cloudinary, accepted in ADR-WP04-002. Cloudinary uses resource_type=video for audio assets as well as video.
+- Entrypoint: allpha-content-transcode-worker; Dockerfile: apps/api/Dockerfile.transcode-worker.
+- Required secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or supported alias), CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, ALLPHA_CLOUDINARY_CALLBACK_URL, CLAMAV_HOST. CLAMAV_PORT defaults to 3310.
+- Worker downloads the private Supabase original, verifies SHA-256, requires a clean ClamAV INSTREAM result, then uploads server-to-server to Cloudinary with signed upload parameters and asynchronous eager transformations.
+- Supabase credentials are not sent to Cloudinary or its CDN. Provider callback signature is verified by FastAPI against the exact raw body + X-Cld-Timestamp + API secret (SHA-1 or SHA-256 constant-time compare) and a two-hour freshness bound.
+- Callback validates the expected Cloudinary host/path and asset identity, copies every derivative to the private canonical Supabase bucket, then calls the atomic completion RPC. Only this RPC can promote video/audio media to ready.
+- Cloudinary account setup remains a manual activation gate: create/configure the product environment, select the webhook verification API key, configure the callback URL and legacy_hmac signature scheme, review plan/region/quotas/cost/retention, and store secrets in server-side environments. No credentials or account configuration are claimed here.
+
+### Scheduled publication
+
+- Entrypoint: allpha-content-scheduler; Dockerfile: apps/api/Dockerfile.content-scheduler.
+- API commands use atomic Postgres RPCs for create/reschedule/cancel, retain UTC execution time and creator IANA timezone, bind schedule to content version, and use deterministic/request Idempotency-Key.
+- Worker claims due schedules with leases and invokes publish_scheduled_content. The database transaction rechecks schedule lease, owner, content version/status, moderation approval, rights attestation and every media status before atomically publishing and inserting content.published lifecycle event.
+- Retry/backoff and terminal failed state are persisted in content_schedules. Recovery reclaims expired processing leases.
+
+### Retention executor
+
+- Entrypoint: allpha-content-retention-worker; Dockerfile: apps/api/Dockerfile.retention-worker.
+- Daily/periodic worker enqueues soft-deleted content after 30 days and abandoned uploading/failed media after 7 days. Operator dry-run preview is read-only.
+- Before physical deletion, begin_content_retention_purge locks and checks expiry and active legal/safety holds. A purge lock prevents a new hold being created after physical deletion begins.
+- The worker deletes originals and all recorded derivatives from the private Storage bucket, removes canonical rows idempotently, and writes one retention receipt per job. Immutable backups follow their separately managed expiry policy; this worker does not claim immediate deletion from backups.
+- Legal hold conflicts are deferred for a day and checked again. Storage deletes accept not-found as idempotent success.
+
+### Super Admin governance and Native parity
+
+- Super Admin: /content-moderation, /content-appeals, /content-lifecycle. Operator routes require platform:content.moderate and audit reads/actions.
+- Lifecycle console includes dry-run preview, hold create/release, deletion receipts and event timeline.
+- Native Client Creator Studio includes appeal submission/history and deleted-content recovery entry points.
+
+### Activation / acceptance gate
+
+- All listed changes are source-only until migrations are reviewed/applied, workers are deployed/configured, Cloudinary account/webhook is configured, ClamAV is reachable, and authorized real integration tests are completed.
+- No migration, worker activation, provider provisioning, destructive purge, or production deployment is performed by this source implementation.
+- Video/audio moderation still depends on the independent human content review queue after media readiness; provider completion never publishes content.
