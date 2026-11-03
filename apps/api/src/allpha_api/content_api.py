@@ -554,8 +554,8 @@ async def review_content(
     schedule_rows = await _server_db("GET", "content_schedules", params={
         "select": "id,status", "content_id": f"eq.{content_id}",
         "owner_id": f"eq.{item['owner_id']}", "status": "in.(scheduled,processing)", "limit": "1",
-    }) if allowed else []
-    scheduled = bool(schedule_rows)
+    })
+    scheduled = bool(schedule_rows) and allowed
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
         outcome="attempted", resource_type="content_item", resource_id=str(content_id),
         metadata={"decision": payload.decision, "expected_version": payload.expected_version, "reason": payload.reason})
@@ -576,6 +576,9 @@ async def review_content(
     if scheduled:
         await _server_db("PATCH", "content_schedules", params={"id": f"eq.{schedule_rows[0]['id']}", "status": "in.(scheduled,processing)"},
             body={"content_version": int(rows[0]["version"]), "updated_at": datetime.now(timezone.utc).isoformat()})
+    elif not allowed and schedule_rows:
+        await _server_db("PATCH", "content_schedules", params={"id": f"eq.{schedule_rows[0]['id']}", "status": "in.(scheduled,processing)"},
+            body={"status": "cancelled", "cancelled_at": now, "last_error_code": "MODERATION_REJECTED", "updated_at": now})
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
         metadata={"decision": payload.decision, "version": payload.expected_version + 1, "reason": payload.reason})
