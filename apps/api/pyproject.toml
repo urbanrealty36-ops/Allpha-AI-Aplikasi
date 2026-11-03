@@ -32,6 +32,7 @@ allpha-social-graph-outbox-worker = "allpha_api.social_graph_outbox_worker:main"
 allpha-content-media-worker = "allpha_api.content_media_worker:main"
 allpha-content-transcode-worker = "allpha_api.content_transcode_worker:main"
 allpha-content-scheduler = "allpha_api.content_scheduler_worker:main"
+allpha-content-retention-worker = "allpha_api.content_retention_worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
