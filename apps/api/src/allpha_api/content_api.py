@@ -341,7 +341,10 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         except HTTPException:
             pass
         raise
-    return {"item": rows[0], "content": updated[0]}
+    latest_media = await _server_db("GET", "content_media", params={
+        "select": MEDIA_FIELDS, "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}", "limit": "1",
+    })
+    return {"item": latest_media[0] if latest_media else rows[0], "content": updated[0]}
 
 
 async def _signed_media_preview_url(storage_path: str, *, expires_in: int = 300) -> str:
