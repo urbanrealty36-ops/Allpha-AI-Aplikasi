@@ -183,6 +183,11 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
     spec = ALLOWED_MEDIA.get(media_type)
     if not spec:
         raise HTTPException(415, detail={"code": "MEDIA_TYPE_UNSUPPORTED", "message": "Format media yang didukung: JPG, PNG, WebP, MP4, WebM, MP3, M4A, AAC, OGG, WAV, dan audio WebM."})
+    raw_idempotency_key = request.headers.get("Idempotency-Key")
+    try:
+        media_id = str(uuid.UUID(raw_idempotency_key)) if raw_idempotency_key else str(uuid.uuid4())
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(400, detail={"code": "MEDIA_IDEMPOTENCY_KEY_INVALID", "message": "Idempotency-Key harus berupa UUID yang valid."}) from exc
     data = await file.read(spec[1] + 1)
     if not data:
         raise HTTPException(422, detail={"code": "MEDIA_EMPTY", "message": "File media kosong."})
@@ -205,15 +210,24 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
     if not signatures[media_type](data):
         raise HTTPException(422, detail={"code": "MEDIA_SIGNATURE_INVALID", "message": "Isi file tidak sesuai dengan format media yang dipilih."})
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", (file.filename or "media").split("/")[-1].split("\\")[-1])[:100].strip(".-") or "media"
-    media_id = str(uuid.uuid4())
+    import hashlib
+    digest = hashlib.sha256(data).hexdigest()
+    existing = await _server_db("GET", "content_media", params={
+        "select": MEDIA_FIELDS, "id": f"eq.{media_id}", "content_id": f"eq.{content_id}",
+        "owner_id": f"eq.{user['id']}", "limit": "1",
+    })
+    if existing:
+        prior = existing[0]
+        if prior.get("sha256") != digest or prior.get("media_type") != media_type or int(prior.get("size_bytes") or 0) != len(data):
+            raise HTTPException(409, detail={"code": "MEDIA_IDEMPOTENCY_KEY_REUSED", "message": "Idempotency-Key sudah digunakan untuk file media yang berbeda."})
+        return {"item": prior, "content": content, "idempotent_replay": True}
     storage_path = f"{user['id']}/{content_id}/{media_id}-{safe_name}"
     await _storage("POST", f"content-media/{storage_path}", data=data, media_type=media_type)
-    import hashlib
     try:
         rows = await _server_db("POST", "content_media", body={
             "id": media_id, "content_id": str(content_id), "owner_id": user["id"], "bucket_id": "content-media",
             "storage_path": storage_path, "filename": safe_name, "media_type": media_type,
-            "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "status": "uploaded",
+            "size_bytes": len(data), "sha256": digest, "status": "uploaded",
         }, prefer="return=representation")
     except HTTPException:
         # Best-effort cleanup prevents untracked private objects on metadata failure.
