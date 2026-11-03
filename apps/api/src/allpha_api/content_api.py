@@ -979,3 +979,67 @@ async def release_content_retention_hold(
         outcome="allowed", resource_type="content_retention_hold", resource_id=str(hold_id),
         metadata={"reason": reason})
     return {"item": rows[0]}
+
+
+@router.get("/admin/lifecycle/events", tags=["content-lifecycle-admin"])
+async def list_content_lifecycle_events(
+    request: Request, limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 200:
+        raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas audit 1–200."})
+    rows = await _server_db("GET", "content_lifecycle_events", params={
+        "select": "id,event_key,event_type,content_id,media_id,owner_id,payload,created_at",
+        "order": "created_at.desc", "limit": str(limit),
+    })
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.lifecycle.events.read",
+        outcome="allowed", resource_type="content_lifecycle_events", resource_id="latest",
+        metadata={"count": len(rows or [])})
+    return {"items": rows or []}
+
+
+@router.get("/admin/retention/holds", tags=["content-retention"])
+async def list_content_retention_holds(
+    request: Request, active_only: bool = True, limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 200:
+        raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas hold 1–200."})
+    params = {"select": "*", "order": "created_at.desc", "limit": str(limit)}
+    if active_only:
+        params["released_at"] = "is.null"
+    rows = await _server_db("GET", "content_retention_holds", params=params)
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.retention.holds.read",
+        outcome="allowed", resource_type="content_retention_holds", resource_id="latest",
+        metadata={"count": len(rows or []), "active_only": active_only})
+    return {"items": rows or []}
+
+
+@router.get("/admin/retention/receipts", tags=["content-retention"])
+async def list_content_retention_receipts(
+    request: Request, limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 200:
+        raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas receipt 1–200."})
+    rows = await _server_db("GET", "content_retention_receipts", params={
+        "select": "*", "order": "completed_at.desc", "limit": str(limit),
+    })
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.retention.receipts.read",
+        outcome="allowed", resource_type="content_retention_receipts", resource_id="latest",
+        metadata={"count": len(rows or [])})
+    return {"items": rows or []}
+
+
+@router.post("/admin/retention/enqueue", tags=["content-retention"])
+async def enqueue_content_retention(
+    request: Request, payload: dict[str, Any],
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if payload.get("confirm") is not True:
+        raise HTTPException(422, detail={"code": "RETENTION_CONFIRMATION_REQUIRED", "message": "Konfirmasi eksplisit diperlukan untuk membuat job penghapusan."})
+    count = await _server_db("POST", "rpc/enqueue_expired_content_retention_jobs", body={"p_limit": 100})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.retention.enqueue",
+        outcome="allowed", resource_type="content_retention_jobs", resource_id="eligible",
+        metadata={"enqueued": count, "batch_limit": 100})
+    return {"enqueued": count, "message": "Job retention masuk antrean. Worker tetap memeriksa legal hold sebelum menghapus."}
