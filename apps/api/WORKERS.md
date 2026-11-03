@@ -95,3 +95,12 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - When authenticated Cloudinary derivatives are copied into the private canonical Supabase bucket and the media row is atomically marked ready, a database trigger creates a durable provider_cleanup job.
 - The cleanup worker uses the server-only Cloudinary API secret to destroy the authenticated provider original and eager derivatives. Retries are idempotent (provider result ok/not found).
 - This removes the temporary provider-side copy; the canonical originals/derivatives remain in Supabase until the approved Allpha retention lifecycle removes them.
+
+
+### Durable Cloudinary callback processor
+
+- Entrypoint: allpha-content-provider-callback; Dockerfile: apps/api/Dockerfile.provider-callback-worker.
+- The FastAPI webhook does only raw-body signature verification, media/asset/batch correlation and an atomic database enqueue. It returns quickly so the provider's notification timeout/retry window is not consumed by large file transfers.
+- The callback payload and digest are stored in content_provider_callbacks; a unique provider_callback lifecycle job is inserted in the same Postgres RPC.
+- The isolated callback worker claims the job, downloads only signed authenticated Cloudinary URLs from the configured CDN host, enforces size/MIME limits, scans each derivative through ClamAV, copies derivatives into private Supabase Storage, and calls the atomic provider completion RPC.
+- A provider_callback job can be operator-retried without clearing the Cloudinary asset/batch identity; if exhausted, media remains non-ready/failed.
