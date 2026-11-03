@@ -31,15 +31,16 @@ export default function ContentLifecyclePage(){
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const call=useCallback(async<T,>(path:string,init:RequestInit={})=>read<T>(await apiFetch(path,session!,init)),[session]);
  const refresh=useCallback(async(active:Session)=>{
-  const [e,h,r,p,j,q]=await Promise.all([
+  const [e,h,r,p,j,jf,q]=await Promise.all([
    read<{items:Row[]}>(await apiFetch("/v1/content/admin/lifecycle/events?limit=100",active)),
    read<{items:Row[]}>(await apiFetch("/v1/content/admin/retention/holds?active_only=false&limit=100",active)),
    read<{items:Row[]}>(await apiFetch("/v1/content/admin/retention/receipts?limit=100",active)),
    read<{content_candidates:Row[];abandoned_upload_candidates:Row[]}>(await apiFetch("/v1/content/admin/retention/preview",active)),
    read<{items:Row[]}>(await apiFetch("/v1/content/admin/lifecycle/jobs?status=dead&limit=100",active)),
+   read<{items:Row[]}>(await apiFetch("/v1/content/admin/lifecycle/jobs?status=failed&limit=100",active)),
    read<{items:Row[]}>(await apiFetch("/v1/content/admin/schedules?status=failed&limit=100",active))
   ]);
-  setEvents(e.items||[]);setHolds(h.items||[]);setReceipts(r.items||[]);setPreview(p);setJobs(j.items||[]);setSchedules(q.items||[]);
+  setEvents(e.items||[]);setHolds(h.items||[]);setReceipts(r.items||[]);setPreview(p);setJobs([...(j.items||[]),...(jf.items||[])]);setSchedules(q.items||[]);
  },[]);
  async function login(e:FormEvent){e.preventDefault();setBusy(true);setError("");try{const active=await authRequest({email:email.trim(),password},"password");const a=await read<{operator:Operator}>(await apiFetch("/v1/admin/operator/access",active));if(!a.operator.scopes.includes("platform:content.moderate"))throw new Error("Scope platform:content.moderate diperlukan.");setSession(active);setOperator(a.operator);setPassword("");await refresh(active);}catch(x){setError(x instanceof Error?x.message:"Login gagal.");setSession(null);setOperator(null);}finally{setBusy(false);}}
  async function createHold(){if(!session||contentId.trim().length<30||reason.trim().length<8){setError("ID konten dan alasan hold minimal 8 karakter wajib diisi.");return;}setBusy(true);setError("");setNotice("");try{await call("/v1/content/admin/retention/holds",{method:"POST",body:JSON.stringify({content_id:contentId.trim(),hold_type:holdType,reason:reason.trim()})});setNotice("Legal/safety hold berhasil dicatat.");setContentId("");setReason("");await refresh(session);}catch(x){setError(x instanceof Error?x.message:"Pembuatan hold gagal.");}finally{setBusy(false);}}
