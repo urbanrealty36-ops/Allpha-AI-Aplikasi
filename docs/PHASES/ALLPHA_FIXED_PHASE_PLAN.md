@@ -2337,3 +2337,10 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - **Remaining WP-04 blockers / no silent architecture decisions:** no configured media processor/transcoder or durable media-processing worker was found in the inspected source, so uploaded media remains `uploaded` and is never falsely promoted to `ready`; no retention/deletion SLA or approved destructive cleanup procedure exists, so orphan cleanup/physical deletion remains fail-closed; no scheduled-publication scheduler/worker contract or `scheduled_at` schema exists, so scheduling is not fabricated; no canonical content tag/mention/appeal schema and notification event contract was found, so those require source/schema/API design under their owning domains before activation. These are implementation gaps, not acceptance passes.
 - **Four-area coverage for this follow-up:** API/DB=CHANGE (API reservation logic; no migration); Web=INTEGRATE (existing client key reuse contract, no change in this slice); Native=INTEGRATE (existing draft/key retry contract, no change in this slice); Super Admin=NOT AFFECTED for upload reservation. Moderation/review/appeal remains a separate required slice.
 - WP-04 remains `in_progress`; integration, acceptance and production verification remain NOT VERIFIED / deferred under the Product Owner's implementation-window restriction.
+
+
+**WP-04 follow-up — browser idempotency header contract (2026-11-03):**
+- Source inspection found the Web Creator Studio sends the custom `Idempotency-Key` header, but FastAPI CORS did not allow that header. Added it to the existing explicit API CORS allow-list in `apps/api/src/allpha_api/main.py`, preserving the current origin allow-list and other headers.
+- Added a source-contract assertion to `apps/api/tests/test_content_lifecycle_contract.py`; it is committed but NOT EXECUTED.
+- Commits: CORS `b8dff2e1f80ff83cc1c845a61dba7c715d15c24b`; assertion `f5a240cdd8e72d0e2e03a75d34ac572ff4822fb7`.
+- This corrects a source-level browser contract mismatch. It does not prove that a browser preflight or upload has succeeded.
