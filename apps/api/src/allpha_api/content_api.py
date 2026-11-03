@@ -742,6 +742,9 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     job = jobs[0]
     if not media.get("provider_asset_id") or (job.get("payload") or {}).get("provider_asset_id") != media["provider_asset_id"]:
         raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Asset callback tidak cocok dengan job aktif."})
+    expected_batch = (job.get("payload") or {}).get("provider_batch_id")
+    if expected_batch and payload.get("batch_id") != expected_batch:
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_BATCH_MISMATCH", "message": "Batch callback sudah usang atau tidak cocok."})
     expected_derivatives = 3 if media_rows[0]["media_type"].startswith("video/") else 2
     if len(eager) < expected_derivatives:
         raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVES_INCOMPLETE", "message": "Provider belum menghasilkan seluruh derivative yang diwajibkan."})
