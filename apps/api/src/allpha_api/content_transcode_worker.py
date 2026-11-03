@@ -1,6 +1,6 @@
 """Cloudinary video/audio transcode dispatcher. Provider callback owns readiness promotion."""
 from __future__ import annotations
-import asyncio, hashlib, logging, os, signal, time, uuid
+import asyncio, hashlib, logging, os, signal, time, uuid, socket, struct
 from urllib.parse import quote
 import httpx
 
@@ -14,6 +14,7 @@ class TranscodeWorker:
   self.api_key=os.environ["CLOUDINARY_API_KEY"]
   self.secret=os.environ["CLOUDINARY_API_SECRET"]
   self.callback=os.environ["ALLPHA_CLOUDINARY_CALLBACK_URL"]
+  self.clamav_host=os.environ["CLAMAV_HOST"]; self.clamav_port=int(os.getenv("CLAMAV_PORT","3310"))
   self.worker_id=f"content-transcode-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(timeout=httpx.Timeout(180,connect=10),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}"})
   self.stopping=False
@@ -23,6 +24,13 @@ class TranscodeWorker:
   h={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"}
   if prefer:h["Prefer"]=prefer
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
+ def scan(self,data):
+  with socket.create_connection((self.clamav_host,self.clamav_port),timeout=10) as sock:
+   sock.settimeout(60);sock.sendall(b"zINSTREAM\\0")
+   for offset in range(0,len(data),64*1024):
+    chunk=data[offset:offset+64*1024];sock.sendall(struct.pack("!I",len(chunk))+chunk)
+   sock.sendall(struct.pack("!I",0));result=sock.recv(4096).decode("utf-8","replace")
+  if "OK" not in result or "FOUND" in result or "ERROR" in result:raise ValueError("MEDIA_SCAN_NOT_CLEAN")
  async def run_job(self,job):
   jid=str(job["id"]);token=str(job["lease_token"]);mid=str(job["media_id"]);p=job.get("payload") or {}
   try:
@@ -30,6 +38,7 @@ class TranscodeWorker:
    url=f"{self.base}/storage/v1/object/{quote(bucket,safe='')}/{quote(path,safe='/')}"
    src=await self.client.get(url);src.raise_for_status();data=src.content
    if hashlib.sha256(data).hexdigest()!=p["sha256"]:raise ValueError("MEDIA_SOURCE_HASH_MISMATCH")
+   await asyncio.to_thread(self.scan,data)
    media_type=str(p["media_type"])
    resource="video" # Cloudinary uses video resource_type for audio assets too.
    public_id=f"allpha/{mid}"
@@ -46,8 +55,11 @@ class TranscodeWorker:
    upload.raise_for_status();asset=upload.json()
    if asset.get("public_id")!=public_id or not asset.get("asset_id"):raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
    await self.db("PATCH","content_media",params={"id":f"eq.{mid}","status":"eq.processing"},body={
-    "provider_asset_id":asset["asset_id"],"provider_public_id":public_id,
-    "provider_batch_id":(asset.get("eager") or [{}])[0].get("batch_id")
+    "provider_asset_id":asset["asset_id"],"provider_public_id":public_id
+   })
+   await self.db("PATCH","content_lifecycle_jobs",params={"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},body={
+    "status":"awaiting_provider","lease_token":None,"lease_expires_at":None,
+    "payload":{**p,"provider":"cloudinary","provider_asset_id":asset["asset_id"],"provider_public_id":public_id}
    })
    # Job remains processing until authenticated eager callback copies derivatives to Supabase.
   except Exception as exc:
