@@ -70,3 +70,12 @@ def test_content_version_history_is_owner_scoped_and_snapshotted_by_database():
     assert "content_item_versions_owner_select" in VERSION_MIGRATION
     assert "content_items_capture_version" in VERSION_MIGRATION
     assert "on conflict (content_id, version) do nothing" in VERSION_MIGRATION
+
+
+def test_cloudinary_workers_use_nul_terminated_clamav_instream_protocol():
+    transcode = (ROOT / "src" / "allpha_api" / "content_transcode_worker.py").read_text(encoding="utf-8")
+    callback = (ROOT / "src" / "allpha_api" / "content_provider_callback_worker.py").read_text(encoding="utf-8")
+    media = (ROOT / "src" / "allpha_api" / "content_media_worker.py").read_text(encoding="utf-8")
+    for source in (transcode, callback, media):
+        assert 'sock.sendall(b"zINSTREAM\\0")' in source
+        assert 'sock.sendall(b"zINSTREAM\\\\0")' not in source
