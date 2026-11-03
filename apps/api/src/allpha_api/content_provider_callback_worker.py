@@ -22,7 +22,7 @@ class CallbackWorker:
   r=await self.client.request(method,f"{self.base}/rest/v1/{path}",params=params,json=body,headers=h);r.raise_for_status();return r.json() if r.content else None
  def scan(self,data):
   with socket.create_connection((self.clamav_host,self.clamav_port),timeout=10) as sock:
-   sock.settimeout(60);sock.sendall(b"zINSTREAM\\0")
+   sock.settimeout(60);sock.sendall(b"zINSTREAM\0")
    for offset in range(0,len(data),64*1024):
     chunk=data[offset:offset+64*1024];sock.sendall(struct.pack("!I",len(chunk))+chunk)
    sock.sendall(struct.pack("!I",0));result=sock.recv(4096).decode("utf-8","replace")
