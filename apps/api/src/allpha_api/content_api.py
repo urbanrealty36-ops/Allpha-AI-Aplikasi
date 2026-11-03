@@ -130,7 +130,7 @@ async def list_my_content(request: Request, user: dict[str, Any] = Depends(curre
     if limit < 1 or limit > 100:
         raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas daftar harus 1–100."})
     rows = await _server_db("GET", "content_items", params={
-        "select": CONTENT_FIELDS, "owner_id": f"eq.{user['id']}", "order": "updated_at.desc", "limit": str(limit),
+        "select": CONTENT_FIELDS, "owner_id": f"eq.{user['id']}", "status": "neq.deleted", "order": "updated_at.desc", "limit": str(limit),
     })
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "owner_id": f"eq.{user['id']}", "order": "created_at.asc", "limit": str(limit * 5),
@@ -310,6 +310,36 @@ async def retry_content(content_id: uuid.UUID, request: Request, user: dict[str,
         "status": "draft", "moderation_status": "not_submitted",
     }, prefer="return=representation")
     return {"item": rows[0] if rows else content, "message": "Draft dipulihkan; periksa media lalu kirim ulang."}
+
+
+@router.post("/{content_id}/archive")
+async def archive_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Remove content from public surfaces while retaining its private owner record."""
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] not in ("draft", "failed", "published"):
+        raise HTTPException(409, detail={"code": "CONTENT_NOT_ARCHIVABLE", "message": "Konten yang sedang ditinjau atau sudah diarsipkan tidak dapat diarsipkan ulang."})
+    rows = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "status": f"eq.{content['status']}", "select": CONTENT_FIELDS,
+    }, body={"status": "archived", "version": int(content["version"]) + 1}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CONTENT_ARCHIVE_CONFLICT", "message": "Status konten berubah; muat ulang sebelum mengarsipkan."})
+    return {"item": rows[0], "message": "Konten diarsipkan dan tidak lagi ditampilkan pada Feed publik. Media privat tetap tersimpan."}
+
+
+@router.delete("/{content_id}")
+async def delete_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Soft-delete a draft/failed/archived item; private media retention is unchanged."""
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] not in ("draft", "failed", "archived"):
+        raise HTTPException(409, detail={"code": "CONTENT_NOT_DELETABLE", "message": "Arsipkan konten terbit terlebih dahulu; konten yang sedang ditinjau tidak dapat dihapus."})
+    rows = await _server_db("PATCH", "content_items", params={
+        "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "status": f"eq.{content['status']}", "select": CONTENT_FIELDS,
+    }, body={"status": "deleted", "moderation_status": "removed", "version": int(content["version"]) + 1}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CONTENT_DELETE_CONFLICT", "message": "Status konten berubah; muat ulang sebelum menghapus."})
+    return {"item": rows[0], "message": "Konten dihapus dari akun dan Feed. Salinan media privat tidak dihapus otomatis."}
 
 
 @router.get("/feed/public")
