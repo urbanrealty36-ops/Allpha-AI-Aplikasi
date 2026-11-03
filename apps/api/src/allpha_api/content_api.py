@@ -179,6 +179,18 @@ async def update_content(content_id: uuid.UUID, payload: ContentUpdate, request:
         raise HTTPException(409, detail={"code": "CONTENT_UPDATE_CONFLICT", "message": "Konten berubah atau sudah tidak dapat diedit."})
     return {"item": rows[0]}
 
+@router.get("/{content_id}/versions")
+async def list_content_versions(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Resolve ownership first; version snapshots are private creator data.
+    await _owner_content(content_id, str(user["id"]))
+    rows = await _server_db("GET", "content_item_versions", params={
+        "select": "id,content_id,owner_id,version,snapshot,created_at",
+        "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "order": "version.desc", "limit": "50",
+    })
+    return {"items": rows or [], "limit": 50}
+
+
 @router.post("/{content_id}/media", status_code=201)
 async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile = File(...), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
