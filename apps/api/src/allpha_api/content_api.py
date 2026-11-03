@@ -793,7 +793,7 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
             mime = response.headers.get("content-type", "").split(";")[0].lower()
             if not (mime.startswith("video/") or mime.startswith("audio/") or mime == "image/jpeg"):
                 raise HTTPException(422, detail={"code": "MEDIA_DERIVATIVE_MIME_INVALID", "message": "Format derivative provider tidak valid."})
-            suffix = "mp4" if mime == "video/mp4" else "mp3" if mime == "audio/mpeg" else "jpg" if mime == "image/jpeg" else "bin"
+            suffix = "mp4" if mime == "video/mp4" else "mp3" if mime == "audio/mpeg" else "m4a" if mime == "audio/mp4" else "jpg" if mime == "image/jpeg" else "bin"
             kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
             path = f"{media['storage_path']}.derived/{kind}.{suffix}"
             await _storage("POST", f"{media['bucket_id']}/{path}", data=binary, media_type=mime, upsert=True)
