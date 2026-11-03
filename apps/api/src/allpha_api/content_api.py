@@ -110,11 +110,15 @@ async def _owner_content(content_id: uuid.UUID, user_id: str) -> dict[str, Any]:
     return rows[0]
 
 
-async def _storage(method: str, path: str, *, data: bytes | None = None, media_type: str | None = None) -> httpx.Response:
+async def _storage(method: str, path: str, *, data: bytes | None = None, media_type: str | None = None, upsert: bool = False) -> httpx.Response:
     base, key = _config()
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
     if media_type:
         headers["Content-Type"] = media_type
+    if upsert:
+        # Only used after the server has bound the idempotency key to the exact
+        # owner/content/type/size/hash tuple in content_media.
+        headers["x-upsert"] = "true"
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=5)) as client:
             response = await client.request(method, f"{base}/storage/v1/object/{quote(path, safe='/')}", headers=headers, content=data)
@@ -212,30 +216,73 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", (file.filename or "media").split("/")[-1].split("\\")[-1])[:100].strip(".-") or "media"
     import hashlib
     digest = hashlib.sha256(data).hexdigest()
+    storage_path = f"{user['id']}/{content_id}/{media_id}-{safe_name}"
     existing = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
         "owner_id": f"eq.{user['id']}", "limit": "1",
     })
-    if existing:
-        prior = existing[0]
+    prior = existing[0] if existing else None
+    if prior:
         if str(prior.get("content_id")) != str(content_id) or prior.get("sha256") != digest or prior.get("media_type") != media_type or int(prior.get("size_bytes") or 0) != len(data):
             raise HTTPException(409, detail={"code": "MEDIA_IDEMPOTENCY_KEY_REUSED", "message": "Idempotency-Key sudah digunakan untuk file media yang berbeda."})
-        return {"item": prior, "content": content, "idempotent_replay": True}
-    storage_path = f"{user['id']}/{content_id}/{media_id}-{safe_name}"
-    await _storage("POST", f"content-media/{storage_path}", data=data, media_type=media_type)
-    try:
-        rows = await _server_db("POST", "content_media", body={
-            "id": media_id, "content_id": str(content_id), "owner_id": user["id"], "bucket_id": "content-media",
-            "storage_path": storage_path, "filename": safe_name, "media_type": media_type,
-            "size_bytes": len(data), "sha256": digest, "status": "uploaded",
-        }, prefer="return=representation")
-    except HTTPException:
-        # Best-effort cleanup prevents untracked private objects on metadata failure.
+        storage_path = str(prior["storage_path"])
+        if prior.get("status") in ("uploaded", "processing", "ready"):
+            return {"item": prior, "content": content, "idempotent_replay": True}
+        # An interrupted upload can safely resume because the same key is
+        # already bound to the same immutable file fingerprint.
+    else:
         try:
-            await _storage("DELETE", f"content-media/{storage_path}")
+            reserved = await _server_db("POST", "content_media", body={
+                "id": media_id, "content_id": str(content_id), "owner_id": user["id"], "bucket_id": "content-media",
+                "storage_path": storage_path, "filename": safe_name, "media_type": media_type,
+                "size_bytes": len(data), "sha256": digest, "status": "uploading",
+            }, prefer="return=representation")
+            prior = reserved[0]
+        except HTTPException as exc:
+            # A concurrent request may have reserved this same idempotency key.
+            # Re-read and verify the full fingerprint before touching Storage.
+            if exc.status_code != 409:
+                raise
+            raced = await _server_db("GET", "content_media", params={
+                "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
+                "owner_id": f"eq.{user['id']}", "limit": "1",
+            })
+            if not raced:
+                raise
+            prior = raced[0]
+            if str(prior.get("content_id")) != str(content_id) or prior.get("sha256") != digest or prior.get("media_type") != media_type or int(prior.get("size_bytes") or 0) != len(data):
+                raise HTTPException(409, detail={"code": "MEDIA_IDEMPOTENCY_KEY_REUSED", "message": "Idempotency-Key sudah digunakan untuk file media yang berbeda."})
+            storage_path = str(prior["storage_path"])
+            if prior.get("status") in ("uploaded", "processing", "ready"):
+                return {"item": prior, "content": content, "idempotent_replay": True}
+
+    try:
+        # Upsert is safe here: the idempotency row proves this exact key is
+        # bound to the same content owner and SHA-256 fingerprint.
+        await _storage("POST", f"content-media/{storage_path}", data=data, media_type=media_type, upsert=True)
+    except HTTPException:
+        try:
+            await _server_db("PATCH", "content_media", params={
+                "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
+                "status": "in.(uploading,failed)",
+            }, body={"status": "failed"})
         except HTTPException:
             pass
         raise
+
+    rows = await _server_db("PATCH", "content_media", params={
+        "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
+        "status": "in.(uploading,failed)", "select": MEDIA_FIELDS,
+    }, body={"status": "uploaded"}, prefer="return=representation")
+    if not rows:
+        latest = await _server_db("GET", "content_media", params={
+            "select": MEDIA_FIELDS, "id": f"eq.{media_id}",
+            "owner_id": f"eq.{user['id']}", "limit": "1",
+        })
+        if not latest or latest[0].get("status") not in ("uploaded", "processing", "ready"):
+            raise HTTPException(409, detail={"code": "MEDIA_UPLOAD_STATE_CONFLICT", "message": "Status unggahan berubah; muat ulang sebelum mencoba lagi."})
+        return {"item": latest[0], "content": content, "idempotent_replay": True}
+
     try:
         updated = await _server_db("PATCH", "content_items", params={
             "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
@@ -247,13 +294,13 @@ async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile
         if not updated:
             raise HTTPException(409, detail={"code": "CONTENT_UPLOAD_CONFLICT", "message": "Draft berubah saat media diunggah; silakan muat ulang dan coba lagi."})
     except HTTPException:
-        # Keep the object store and metadata consistent if the parent draft changed or failed to update.
+        # Preserve a failed metadata row for safe same-key retry; do not leave
+        # an untracked Storage object or silently delete owner media.
         try:
-            await _server_db("DELETE", "content_media", params={"id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}"})
-        except HTTPException:
-            pass
-        try:
-            await _storage("DELETE", f"content-media/{storage_path}")
+            await _server_db("PATCH", "content_media", params={
+                "id": f"eq.{media_id}", "owner_id": f"eq.{user['id']}",
+                "status": "eq.uploaded",
+            }, body={"status": "failed"})
         except HTTPException:
             pass
         raise
