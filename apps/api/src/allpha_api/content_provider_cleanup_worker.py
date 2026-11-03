@@ -31,10 +31,10 @@ class CleanupWorker:
     payload=job.get("payload") or {}
     if payload.get("provider")!="cloudinary" or payload.get("resource_type")!="video":raise ValueError("PROVIDER_CLEANUP_PAYLOAD_INVALID")
     await self.delete_asset(str(payload["provider_public_id"]))
-    response=await self.client.patch(f"{self.base}/rest/v1/content_lifecycle_jobs",
-     params={"id":f"eq.{job['id']}","status":"eq.processing","lease_token":f"eq.{job['lease_token']}"},
-     json={"status":"succeeded","lease_token":None,"lease_expires_at":None,"completed_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()})
-    response.raise_for_status()
+    completion=await self.rpc("complete_content_provider_cleanup_job",{
+     "p_job_id":job["id"],"p_lease_token":job["lease_token"],
+    })
+    if completion!="succeeded":raise ValueError("PROVIDER_CLEANUP_LEASE_LOST")
    except Exception as exc:
     log.exception("provider cleanup failed job=%s",job["id"])
     try:await self.rpc("fail_content_lifecycle_job",{"p_job_id":job["id"],"p_lease_token":job["lease_token"],"p_error_code":type(exc).__name__[:80]})
