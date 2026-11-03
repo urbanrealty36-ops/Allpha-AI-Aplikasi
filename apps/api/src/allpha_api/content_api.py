@@ -995,7 +995,10 @@ async def create_content_retention_hold(
     payload: dict[str, Any], request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
 ) -> dict[str, Any]:
-    content_id = uuid.UUID(str(payload.get("content_id", "")))
+    try:
+        content_id = uuid.UUID(str(payload.get("content_id", "")))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(422, detail={"code": "RETENTION_CONTENT_ID_INVALID", "message": "Content ID harus berupa UUID yang valid."}) from exc
     hold_type = str(payload.get("hold_type", ""))
     reason = str(payload.get("reason", "")).strip()
     if hold_type not in ("legal", "safety", "regulatory") or not 8 <= len(reason) <= 1000:
