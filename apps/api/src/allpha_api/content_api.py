@@ -913,6 +913,8 @@ async def reschedule_content(
     content = await _owner_content(content_id, str(user["id"]))
     if content["status"] not in ("draft", "failed", "review", "scheduled") or int(content["version"]) != payload.expected_version:
         raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_CONFLICT", "message": "Konten berubah atau tidak dapat dijadwalkan ulang."})
+    if not payload.rights_confirmed or not payload.disclosure_confirmed:
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_ATTESTATION_REQUIRED", "message": "Konfirmasi hak penggunaan dan disclosure wajib diberikan."})
     try:
         ZoneInfo(payload.creator_timezone)
     except ZoneInfoNotFoundError as exc:
