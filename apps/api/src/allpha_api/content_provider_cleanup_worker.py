@@ -25,7 +25,7 @@ class CleanupWorker:
   response.raise_for_status();result=response.json().get("result")
   if result not in ("ok","not found"):raise ValueError("CLOUDINARY_DESTROY_UNCONFIRMED")
  async def batch(self):
-  jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":5,"p_lease_seconds":120,"p_job_type":"provider_cleanup"}) or []
+  jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"provider_cleanup"}) or []
   for job in jobs:
    try:
     payload=job.get("payload") or {}
