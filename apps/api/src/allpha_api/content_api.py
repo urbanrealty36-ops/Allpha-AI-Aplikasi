@@ -276,6 +276,8 @@ async def _signed_media_preview_url(storage_path: str, *, expires_in: int = 300)
 @router.get("/{content_id}/preview")
 async def preview_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] == "deleted":
+        raise HTTPException(404, detail={"code": "CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan."})
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "order": "created_at.asc",
     })
