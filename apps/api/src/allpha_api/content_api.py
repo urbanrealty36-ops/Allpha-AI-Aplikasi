@@ -35,7 +35,7 @@ ALLOWED_MEDIA = {
     "audio/webm": (".weba", AUDIO_LIMIT),
 }
 CONTENT_FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at,deleted_at,purge_started_at"
-MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
+MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at"
 
 
 class ContentCreate(BaseModel):
@@ -371,6 +371,20 @@ async def _signed_media_preview_url(storage_path: str, *, expires_in: int = 300)
     return f"{base}/storage/v1/{signed.lstrip('/')}"
 
 
+async def _media_preview_projection(item: dict[str, Any]) -> dict[str, Any]:
+    original_url = await _signed_media_preview_url(item["storage_path"])
+    derivative_previews = []
+    for derivative in item.get("derivatives") or []:
+        path = derivative.get("storage_path")
+        if not isinstance(path, str) or not path:
+            continue
+        derivative_previews.append({**derivative, "preview_url": await _signed_media_preview_url(path)})
+    preferred = next((entry["preview_url"] for entry in derivative_previews
+        if entry.get("kind") in ("display", "rendition_1")), original_url)
+    return {**item, "preview_url": preferred, "original_preview_url": original_url,
+        "derivative_previews": derivative_previews}
+
+
 @router.get("/{content_id}/preview")
 async def preview_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
@@ -381,7 +395,7 @@ async def preview_content(content_id: uuid.UUID, request: Request, user: dict[st
     })
     previews = []
     for item in media or []:
-        previews.append({**item, "preview_url": await _signed_media_preview_url(item["storage_path"])})
+        previews.append(await _media_preview_projection(item))
     return {"item": content, "media": previews, "preview_expires_in": 300}
 
 
@@ -477,9 +491,7 @@ async def public_content_feed(request: Request, limit: int = 20) -> dict[str, An
     for row in media or []:
         # The parent list above is already restricted to published, approved,
         # public items; only those IDs are eligible for signed media URLs.
-        media_by_content.setdefault(str(row["content_id"]), []).append({
-            **row, "preview_url": await _signed_media_preview_url(row["storage_path"]),
-        })
+        media_by_content.setdefault(str(row["content_id"]), []).append(await _media_preview_projection(row))
     return {
         "items": [{**item, "media": media_by_content.get(str(item["id"]), [])} for item in items],
         "media_preview_expires_in": 300,
@@ -507,9 +519,7 @@ async def content_review_queue(
             "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, limit * 10)),
         })
         for media in media_rows or []:
-            media_by_content.setdefault(str(media["content_id"]), []).append({
-                **media, "preview_url": await _signed_media_preview_url(media["storage_path"]),
-            })
+            media_by_content.setdefault(str(media["content_id"]), []).append(await _media_preview_projection(media))
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.review_queue.read",
         outcome="allowed", resource_type="content_queue", resource_id="pending",
         metadata={"count": len(items), "media_count": sum(len(v) for v in media_by_content.values())})
