@@ -46,8 +46,9 @@ class ContentCreate(BaseModel):
 
 class ContentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    body: str = Field(min_length=1, max_length=TEXT_LIMIT)
+    body: str = Field(default="", max_length=TEXT_LIMIT)
     visibility: str = Field(default="public", pattern="^(public|followers|private)$")
+    expected_version: int = Field(ge=1)
 
 
 class ContentReview(BaseModel):
@@ -164,19 +165,19 @@ async def update_content(content_id: uuid.UUID, payload: ContentUpdate, request:
     existing = await _owner_content(content_id, str(user["id"]))
     if existing["status"] not in ("draft", "failed"):
         raise HTTPException(409, detail={"code": "CONTENT_NOT_EDITABLE", "message": "Konten hanya dapat diedit saat draft atau gagal."})
+    if int(existing.get("version") or 0) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CONTENT_VERSION_CHANGED", "message": "Draft telah berubah. Muat ulang sebelum menyimpan perubahan."})
     rows = await _server_db("PATCH", "content_items", params={
         "id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
-        # Compare-and-set the lifecycle state to prevent a concurrent submit/review
-        # from being overwritten by a stale draft edit.
-        "status": "in.(draft,failed)", "select": CONTENT_FIELDS,
+        # Compare-and-set both lifecycle state and version to prevent lost edits.
+        "status": "in.(draft,failed)", "version": f"eq.{payload.expected_version}", "select": CONTENT_FIELDS,
     }, body={
-        "body": payload.body.strip(), "visibility": payload.visibility, "version": existing["version"] + 1,
+        "body": payload.body.strip(), "visibility": payload.visibility, "version": payload.expected_version + 1,
         "status": "draft", "moderation_status": "not_submitted", "error_code": None,
     }, prefer="return=representation")
     if not rows:
-        raise HTTPException(409, detail={"code": "CONTENT_UPDATE_CONFLICT", "message": "Konten tidak berubah atau sudah tidak dapat diedit."})
+        raise HTTPException(409, detail={"code": "CONTENT_UPDATE_CONFLICT", "message": "Konten berubah atau sudah tidak dapat diedit."})
     return {"item": rows[0]}
-
 
 @router.post("/{content_id}/media", status_code=201)
 async def upload_media(content_id: uuid.UUID, request: Request, file: UploadFile = File(...), user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
