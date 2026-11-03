@@ -710,6 +710,16 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     if not isinstance(public_id, str) or not public_id.startswith("allpha/") or not isinstance(eager, list) or not eager:
         raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_ASSET_INVALID", "message": "Identitas asset atau derivative tidak lengkap."})
     media_id = public_id.split("/", 1)[1]
+    callback_id = str(payload.get("request_id") or payload.get("batch_id") or hashlib.sha256(raw).hexdigest())
+    digest = hashlib.sha256(raw).hexdigest()
+    prior_callback = await _server_db("GET", "content_provider_callbacks", params={
+        "select": "provider,provider_event_id,payload_sha256,outcome",
+        "provider": "eq.cloudinary", "provider_event_id": f"eq.{callback_id}", "limit": "1",
+    })
+    if prior_callback:
+        if prior_callback[0].get("payload_sha256") == digest and prior_callback[0].get("outcome") == "processed":
+            return {"status": "duplicate", "event_id": callback_id}
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_REPLAY_MISMATCH", "message": "Event callback sudah pernah diterima dengan payload berbeda."})
     try:
         media_uuid = uuid.UUID(media_id)
     except ValueError as exc:
@@ -721,6 +731,8 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     if not media_rows:
         raise HTTPException(404, detail={"code": "MEDIA_CALLBACK_MEDIA_NOT_FOUND", "message": "Media tidak ditemukan atau callback sudah diproses."})
     media = media_rows[0]
+    if payload.get("asset_id") and payload.get("asset_id") != media.get("provider_asset_id"):
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Provider asset ID tidak cocok."})
     jobs = await _server_db("GET", "content_lifecycle_jobs", params={
         "select": "id,media_id,status,payload", "media_id": f"eq.{media_uuid}",
         "job_type": "eq.media_transcode", "status": "eq.awaiting_provider", "limit": "1",
@@ -767,8 +779,6 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
             derivatives.append({"kind": kind, "storage_path": path, "mime_type": mime,
                 "size_bytes": len(binary), "sha256": hashlib.sha256(binary).hexdigest(),
                 "width": item.get("width"), "height": item.get("height"), "duration": item.get("duration")})
-    callback_id = str(payload.get("request_id") or payload.get("batch_id") or hashlib.sha256(raw).hexdigest())
-    digest = hashlib.sha256(raw).hexdigest()
     result = await _server_db("POST", "rpc/complete_content_provider_job", body={
         "p_job_id": job["id"], "p_media_id": str(media_uuid), "p_provider": "cloudinary",
         "p_provider_asset_id": media["provider_asset_id"], "p_provider_public_id": public_id,
