@@ -53,7 +53,7 @@ class MediaWorker:
                 sock.sendall(struct.pack("!I", len(chunk)) + chunk)
             sock.sendall(struct.pack("!I", 0))
             result = sock.recv(4096).decode("utf-8", "replace")
-        if "OK" not in result or "FOUND" in result or "ERROR" in result:
+        if not result.strip().endswith("OK") or "FOUND" in result or "ERROR" in result:
             raise ValueError("MEDIA_SCAN_NOT_CLEAN")
 
     def derivatives(self, data: bytes) -> list[tuple[str, bytes, int, int]]:
