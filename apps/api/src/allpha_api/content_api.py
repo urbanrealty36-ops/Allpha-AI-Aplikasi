@@ -376,9 +376,17 @@ async def preview_content(content_id: uuid.UUID, request: Request, user: dict[st
 @router.post("/{content_id}/publish")
 async def publish_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
-    media = await _server_db("GET", "content_media", params={"select": "id", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "1"})
+    media = await _server_db("GET", "content_media", params={
+        "select": "id,status", "content_id": f"eq.{content_id}",
+        "owner_id": f"eq.{user['id']}", "limit": "100",
+    })
     if not content["body"].strip() and not media:
         raise HTTPException(422, detail={"code": "CONTENT_EMPTY", "message": "Tambahkan teks atau media sebelum mengirim konten."})
+    if any(item.get("status") != "ready" for item in (media or [])):
+        raise HTTPException(409, detail={
+            "code": "CONTENT_MEDIA_NOT_READY",
+            "message": "Media masih diproses atau belum lolos pemeriksaan keamanan. Konten belum dapat dikirim untuk moderasi.",
+        })
     if content["status"] not in ("draft", "failed"):
         raise HTTPException(409, detail={"code": "CONTENT_ALREADY_SUBMITTED", "message": "Konten sudah dikirim atau tidak dapat dipublikasikan ulang."})
     rows = await _server_db("PATCH", "content_items", params={"id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "status": "in.(draft,failed)", "select": CONTENT_FIELDS}, body={
@@ -444,7 +452,7 @@ async def public_content_feed(request: Request, limit: int = 20) -> dict[str, An
     content_ids = [str(item["id"]) for item in items]
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "content_id": f"in.({','.join(content_ids)})",
-        "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(250, limit * 5)),
+        "status": "eq.ready", "order": "created_at.asc", "limit": str(min(250, limit * 5)),
     })
     media_by_content: dict[str, list[dict[str, Any]]] = {}
     for row in media or []:
