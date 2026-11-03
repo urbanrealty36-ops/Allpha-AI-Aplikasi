@@ -69,7 +69,7 @@ class TranscodeWorker:
    try:await self.rpc("fail_content_lifecycle_job",{"p_job_id":jid,"p_lease_token":token,"p_error_code":(str(exc) if isinstance(exc,ValueError) else type(exc).__name__)[:80]})
    except Exception:log.exception("could not persist transcode failure job=%s",jid)
  async def batch(self):
-  jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":2,"p_lease_seconds":240,"p_job_type":"media_transcode"}) or []
+  jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"media_transcode"}) or []
   for job in jobs:await self.run_job(job)
   return len(jobs)
  async def run(self):
