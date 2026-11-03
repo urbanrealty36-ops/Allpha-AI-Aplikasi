@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import re
 import uuid
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
 from urllib.parse import quote
 
@@ -56,6 +58,15 @@ class ContentReview(BaseModel):
     decision: str = Field(pattern="^(approve|reject)$")
     expected_version: int = Field(ge=1)
     reason: str = Field(min_length=8, max_length=500)
+
+
+class ContentScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    publish_at: datetime
+    creator_timezone: str = Field(min_length=1, max_length=80)
+    expected_version: int = Field(ge=1)
+    rights_confirmed: bool
+    disclosure_confirmed: bool = True
 
 
 class ContentAppealCreate(BaseModel):
@@ -517,14 +528,19 @@ async def review_content(
     if int(item.get("version") or 0) != payload.expected_version:
         raise HTTPException(409, detail={"code": "CONTENT_VERSION_CHANGED", "message": "Versi konten berubah; muat ulang antrean sebelum meninjau."})
     allowed = payload.decision == "approve"
+    schedule_rows = await _server_db("GET", "content_schedules", params={
+        "select": "id,status", "content_id": f"eq.{content_id}",
+        "owner_id": f"eq.{item['owner_id']}", "status": "in.(scheduled,processing)", "limit": "1",
+    }) if allowed else []
+    scheduled = bool(schedule_rows)
     await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
         outcome="attempted", resource_type="content_item", resource_id=str(content_id),
         metadata={"decision": payload.decision, "expected_version": payload.expected_version, "reason": payload.reason})
-    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     changes = {
-        "status": "published" if allowed else "failed",
+        "status": "scheduled" if scheduled else "published" if allowed else "failed",
         "moderation_status": "approved" if allowed else "rejected",
-        "published_at": now if allowed else None,
+        "published_at": None if scheduled or not allowed else now,
         "error_code": None if allowed else "MODERATION_REJECTED",
         "version": payload.expected_version + 1,
     }
