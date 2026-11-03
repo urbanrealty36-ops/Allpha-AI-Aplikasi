@@ -623,9 +623,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     catch (cause) { setMessageError(cause instanceof Error ? cause.message : "Pesan gagal dikirim."); }
     finally { setMessageBusy(false); }
   }
-  async function loadMyContent() {
+  async function loadMyContent(includeDeleted = false) {
     setContentBusy(true); setError(""); setMessage("");
-    try { const result = await apiRequest("/v1/content/mine") as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); }
+    try { const result = await apiRequest("/v1/content/mine" + (includeDeleted ? "?include_deleted=true" : "")) as { items?: NativeContentItem[] }; setContentItems(result.items ?? []); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Konten tidak dapat dimuat."); }
     finally { setContentBusy(false); }
   }
@@ -928,6 +928,15 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       { text: "Batal", style: "cancel" },
       { text: "Arsipkan", style: "destructive", onPress: () => void archiveNativeContent(item) },
     ]);
+  }
+  async function restoreNativeContent(item: NativeContentItem) {
+    setContentBusy(true); setError(""); setMessage("");
+    try {
+      const result = await apiRequest("/v1/content/" + encodeURIComponent(item.id) + "/restore", { method: "POST" }) as { message?: string };
+      setMessage(result.message || "Konten dipulihkan.");
+      await loadMyContent(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemulihan konten gagal."); }
+    finally { setContentBusy(false); }
   }
   async function deleteNativeContent(item: NativeContentItem) {
     setContentBusy(true); setError(""); setMessage("");
@@ -1814,8 +1823,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Button title={contentFile ? "Media: " + contentFile.name : "Pilih gambar/video/audio"} secondary onPress={() => void chooseContentMedia()}/>
         {contentFile && <Text style={s.muted}>{contentFile.mimeType} · {contentFile.size ? (contentFile.size / 1048576).toFixed(2) + " MB" : "ukuran tidak diketahui"}</Text>}
         <Button title={contentBusy ? "Memproses…" : "Simpan draft"} disabled={contentBusy || (!contentBody.trim() && !contentFile)} onPress={() => void createNativeContentDraft()}/>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.kicker}>KONTEN SAYA ({contentItems.length})</Text><Button title="Muat ulang" secondary disabled={contentBusy} onPress={() => void loadMyContent()}/></View>
-        {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{["draft","failed"].includes(item.status) && <Button title="Edit draft" secondary disabled={contentBusy} onPress={() => { setContentDraftId(item.id); setContentBody(item.body || ""); setContentVisibility(item.visibility as "public" | "followers" | "private"); setContentFile(null); setContentUploadId(""); }}/>}{item.status === "failed" && <Button title="Pulihkan draft" secondary disabled={contentBusy} onPress={() => void retryNativeContent(item)}/>}{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}{["draft","failed","published"].includes(item.status) && <Button title="Arsipkan" secondary disabled={contentBusy} onPress={() => confirmArchiveNativeContent(item)}/>}{["draft","failed","archived"].includes(item.status) && <Button title="Hapus" secondary disabled={contentBusy} onPress={() => confirmDeleteNativeContent(item)}/>}</View></View>)}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.kicker}>KONTEN SAYA ({contentItems.length})</Text><View style={{flexDirection:"row",gap:8}}><Button title="Muat ulang" secondary disabled={contentBusy} onPress={() => void loadMyContent()}/><Button title="Tampilkan dihapus" secondary disabled={contentBusy} onPress={() => void loadMyContent(true)}/></View></View>
+        {contentItems.length === 0 ? <Text style={s.muted}>Belum ada konten.</Text> : contentItems.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.body || item.media?.map(media => media.filename).join(", ") || "Konten media"}</Text><Text style={s.muted}>{item.content_type} · v{item.version} · {item.status}/{item.moderation_status}</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Pratinjau" secondary disabled={contentBusy} onPress={() => void previewNativeContent(item)}/>{["draft","failed"].includes(item.status) && <Button title="Edit draft" secondary disabled={contentBusy} onPress={() => { setContentDraftId(item.id); setContentBody(item.body || ""); setContentVisibility(item.visibility as "public" | "followers" | "private"); setContentFile(null); setContentUploadId(""); }}/>}{item.status === "failed" && <Button title="Pulihkan draft" secondary disabled={contentBusy} onPress={() => void retryNativeContent(item)}/>}{["draft","failed"].includes(item.status) && <Button title="Kirim review" disabled={contentBusy} onPress={() => void submitNativeContent(item)}/>}{["draft","failed","published"].includes(item.status) && <Button title="Arsipkan" secondary disabled={contentBusy} onPress={() => confirmArchiveNativeContent(item)}/>}{["draft","failed","archived"].includes(item.status) && <Button title="Hapus" secondary disabled={contentBusy} onPress={() => confirmDeleteNativeContent(item)}/>{item.status === "deleted" && <Button title="Pulihkan (30 hari)" secondary disabled={contentBusy} onPress={() => void restoreNativeContent(item)}/>}}</View></View>)}
         <ContentAppealsPanel accessToken={session.access_token} contentItems={contentItems}/>
       </> : socialLoading ? <View accessibilityRole="progressbar" style={{ paddingVertical: 18, alignItems: "center", gap: 8 }}><ActivityIndicator color="#A5B4FC"/><Text style={s.muted}>Memuat Social Graph…</Text></View> : socialGraph ? <>
         <Text style={s.kicker}>SOCIAL GRAPH</Text><Text style={s.title}>Relasi dan minat</Text>
