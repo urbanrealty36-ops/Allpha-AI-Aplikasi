@@ -47,7 +47,7 @@ class TranscodeWorker:
     eager="c_limit,w_1280,vc_h264,f_mp4|c_limit,w_640,vc_h264,f_mp4|so_0,w_640,h_360,c_fill,f_jpg"
    else:
     eager="ac_aac,br_128k,f_mp3|ac_mp3,br_192k,f_mp3"
-   params={"timestamp":str(timestamp),"public_id":public_id,"eager":eager,"eager_async":"true","eager_notification_url":self.callback,"overwrite":"false"}
+   params={"timestamp":str(timestamp),"public_id":public_id,"eager":eager,"eager_async":"true","eager_notification_url":self.callback,"overwrite":"true"}
    serialized="&".join(f"{k}={params[k]}" for k in sorted(params))
    signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
    form={**params,"api_key":self.api_key,"signature":signature,"file":("original.bin",data,media_type)}
@@ -61,7 +61,7 @@ class TranscodeWorker:
    })
    await self.db("PATCH","content_lifecycle_jobs",params={"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},body={
     "status":"awaiting_provider","lease_token":None,"lease_expires_at":None,
-    "payload":{**p,"provider":"cloudinary","provider_asset_id":asset["asset_id"],"provider_public_id":public_id}
+    "payload":{**p,"provider":"cloudinary","provider_asset_id":asset["asset_id"],"provider_public_id":public_id,"provider_batch_id":asset.get("batch_id")}
    })
    # Job remains processing until authenticated eager callback copies derivatives to Supabase.
   except Exception as exc:
