@@ -65,6 +65,7 @@ class RetentionWorker:
    await self.db("PATCH","content_lifecycle_jobs",{"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},{
     "status":"succeeded","lease_token":None,"lease_expires_at":None,"completed_at":datetime.now(timezone.utc).isoformat()
    })
+   await self.rpc("release_content_retention_purge_lock",{"p_job_id":jid})
   except Exception as exc:
    log.exception("retention job failed job=%s",jid)
    try:await self.rpc("fail_content_lifecycle_job",{"p_job_id":jid,"p_lease_token":token,"p_error_code":type(exc).__name__[:80]})
