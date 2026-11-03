@@ -61,7 +61,7 @@ class RetentionWorker:
     "job_id":jid,"content_id":content_id,"owner_id":owner_id,"dry_run":False,
     "deleted_objects":deleted,"deleted_rows":deleted_rows,
     "backup_expiry_policy":"immutable_backup_expiry",
-   },prefer="return=minimal")
+   },prefer="resolution=ignore-duplicates,return=minimal")
    await self.db("PATCH","content_lifecycle_jobs",{"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},{
     "status":"succeeded","lease_token":None,"lease_expires_at":None,"completed_at":datetime.now(timezone.utc).isoformat()
    })
