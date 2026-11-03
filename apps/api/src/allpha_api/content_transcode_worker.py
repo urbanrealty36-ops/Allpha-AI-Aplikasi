@@ -56,13 +56,13 @@ class TranscodeWorker:
     upload=await provider_client.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/{resource}/upload",data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
    upload.raise_for_status();asset=upload.json()
    if asset.get("public_id")!=public_id or not asset.get("asset_id"):raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
-   await self.db("PATCH","content_media",params={"id":f"eq.{mid}","status":"eq.processing"},body={
-    "provider_asset_id":asset["asset_id"],"provider_public_id":public_id,"provider_batch_id":asset.get("batch_id")
+   handoff=await self.rpc("handoff_content_provider_job",{
+    "p_job_id":jid,"p_lease_token":token,"p_media_id":mid,
+    "p_provider_asset_id":asset["asset_id"],"p_provider_public_id":public_id,
+    "p_provider_batch_id":asset.get("batch_id"),
    })
-   await self.db("PATCH","content_lifecycle_jobs",params={"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},body={
-    "status":"awaiting_provider","lease_token":None,"lease_expires_at":None,
-    "payload":{**p,"provider":"cloudinary","provider_asset_id":asset["asset_id"],"provider_public_id":public_id,"provider_batch_id":asset.get("batch_id")}
-   })
+   if not isinstance(handoff,dict) or handoff.get("outcome")!="handed_off":
+    raise ValueError("MEDIA_PROVIDER_HANDOFF_LEASE_LOST")
    # Job remains processing until authenticated eager callback copies derivatives to Supabase.
   except Exception as exc:
    log.exception("transcode dispatch failed job=%s media=%s",jid,mid)
