@@ -58,6 +58,18 @@ class ContentReview(BaseModel):
     reason: str = Field(min_length=8, max_length=500)
 
 
+class ContentAppealCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=2000)
+    expected_version: int = Field(ge=1)
+
+
+class ContentAppealReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: str = Field(pattern="^(approve|reject)$")
+    reason: str = Field(min_length=8, max_length=500)
+
+
 def _config() -> tuple[str, str]:
     base = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SECRET_KEY", "")
@@ -518,3 +530,121 @@ async def review_content(
         outcome="allowed", resource_type="content_item", resource_id=str(content_id),
         metadata={"decision": payload.decision, "version": payload.expected_version + 1, "reason": payload.reason})
     return {"item": rows[0]}
+
+
+@router.post("/{content_id}/appeals", status_code=201, tags=["content-appeals"])
+async def create_content_appeal(
+    content_id: uuid.UUID,
+    payload: ContentAppealCreate,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    content = await _owner_content(content_id, str(user["id"]))
+    if content["status"] != "failed" or content["moderation_status"] != "rejected":
+        raise HTTPException(409, detail={"code": "CONTENT_NOT_APPEALABLE", "message": "Banding hanya tersedia untuk konten yang ditolak oleh moderasi."})
+    if int(content["version"]) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CONTENT_VERSION_CHANGED", "message": "Versi konten berubah; muat ulang sebelum mengajukan banding."})
+    try:
+        rows = await _server_db("POST", "content_appeals", body={
+            "content_id": str(content_id), "owner_id": user["id"],
+            "submitted_version": payload.expected_version, "reason": payload.reason.strip(),
+            "status": "pending",
+        }, prefer="return=representation")
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise HTTPException(409, detail={"code": "CONTENT_APPEAL_ALREADY_PENDING", "message": "Banding untuk konten ini masih menunggu keputusan."}) from exc
+        raise
+    await write_operator_audit(request, actor_user_id=str(user["id"]), action="content.appeal.submit",
+        outcome="allowed", resource_type="content_item", resource_id=str(content_id),
+        metadata={"appeal_id": rows[0]["id"], "submitted_version": payload.expected_version})
+    return {"item": rows[0], "message": "Banding diterima dan menunggu pemeriksaan manusia."}
+
+
+@router.get("/{content_id}/appeals", tags=["content-appeals"])
+async def list_my_content_appeals(
+    content_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    await _owner_content(content_id, str(user["id"]))
+    rows = await _server_db("GET", "content_appeals", params={
+        "select": "id,content_id,owner_id,submitted_version,reason,status,decision_reason,decided_at,created_at,updated_at",
+        "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "order": "created_at.desc", "limit": "20",
+    })
+    return {"items": rows or []}
+
+
+@router.get("/admin/appeal-queue", tags=["content-appeals"])
+async def content_appeal_queue(
+    request: Request,
+    limit: int = 50,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(422, detail={"code": "CONTENT_LIMIT_INVALID", "message": "Batas antrean harus 1–100."})
+    appeals = await _server_db("GET", "content_appeals", params={
+        "select": "id,content_id,owner_id,submitted_version,reason,status,created_at",
+        "status": "eq.pending", "order": "created_at.asc", "limit": str(limit),
+    })
+    items = appeals or []
+    content_by_id: dict[str, dict[str, Any]] = {}
+    if items:
+        ids = [str(item["content_id"]) for item in items]
+        contents = await _server_db("GET", "content_items", params={
+            "select": CONTENT_FIELDS, "id": f"in.({','.join(ids)})", "status": "eq.failed",
+            "moderation_status": "eq.rejected", "limit": str(limit),
+        })
+        content_by_id = {str(row["id"]): row for row in (contents or [])}
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.appeal_queue.read",
+        outcome="allowed", resource_type="content_appeal_queue", resource_id="pending",
+        metadata={"count": len(items)})
+    return {"items": [{**item, "content": content_by_id.get(str(item["content_id"]))} for item in items]}
+
+
+@router.post("/admin/appeals/{appeal_id}/review", tags=["content-appeals"])
+async def review_content_appeal(
+    appeal_id: uuid.UUID,
+    payload: ContentAppealReview,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    appeals = await _server_db("GET", "content_appeals", params={
+        "select": "id,content_id,owner_id,submitted_version,reason,status",
+        "id": f"eq.{appeal_id}", "status": "eq.pending", "limit": "1",
+    })
+    if not appeals:
+        raise HTTPException(404, detail={"code": "CONTENT_APPEAL_NOT_FOUND", "message": "Banding tidak ditemukan atau sudah diputuskan."})
+    appeal = appeals[0]
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.appeal.review",
+        outcome="attempted", resource_type="content_appeal", resource_id=str(appeal_id),
+        metadata={"decision": payload.decision, "reason": payload.reason})
+    updated_appeal = await _server_db("PATCH", "content_appeals", params={
+        "id": f"eq.{appeal_id}", "status": "eq.pending", "select": "id,content_id,owner_id,submitted_version,reason,status,decision_reason,decided_by,decided_at",
+    }, body={
+        "status": "approved" if payload.decision == "approve" else "rejected",
+        "decision_reason": payload.reason.strip(), "decided_by": operator["id"],
+        "decided_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+    }, prefer="return=representation")
+    if not updated_appeal:
+        raise HTTPException(409, detail={"code": "CONTENT_APPEAL_CONFLICT", "message": "Banding berubah saat keputusan disimpan."})
+    content_update = None
+    if payload.decision == "approve":
+        content_rows = await _server_db("PATCH", "content_items", params={
+            "id": f"eq.{appeal['content_id']}", "owner_id": f"eq.{appeal['owner_id']}",
+            "status": "eq.failed", "moderation_status": "eq.rejected",
+            "version": f"eq.{appeal['submitted_version']}", "select": CONTENT_FIELDS,
+        }, body={
+            "status": "review", "moderation_status": "pending",
+            "error_code": None, "version": int(appeal["submitted_version"]) + 1,
+        }, prefer="return=representation")
+        if not content_rows:
+            raise HTTPException(409, detail={"code": "CONTENT_APPEAL_CONTENT_CHANGED", "message": "Konten berubah setelah banding diajukan; keputusan banding tercatat tetapi konten tidak otomatis dipublikasikan."})
+        content_update = content_rows[0]
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.appeal.review",
+        outcome="allowed", resource_type="content_appeal", resource_id=str(appeal_id),
+        metadata={"decision": payload.decision, "content_id": appeal["content_id"]})
+    return {
+        "item": updated_appeal[0], "content": content_update,
+        "message": "Banding diterima; konten dikembalikan ke antrean moderasi independen." if payload.decision == "approve" else "Banding ditolak.",
+    }
