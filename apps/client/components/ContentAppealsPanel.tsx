@@ -46,25 +46,26 @@ export function ContentAppealsPanel({ accessToken, contentItems }: { accessToken
     finally { setBusy(false); }
   }
 
-  const eligible = contentItems.filter(item => item.status === "failed" && item.moderation_status === "rejected");
+  const eligible = target?.status === "failed" && target.moderation_status === "rejected";
+  const pending = items.some(item => item.status === "pending");
   return <View style={styles.panel}>
     <Text style={styles.kicker}>WP-04 · CONTENT APPEALS</Text>
     <Text style={styles.heading}>Banding moderasi</Text>
     <Text style={styles.copy}>Banding hanya tersedia untuk konten yang ditolak. Persetujuan banding mengembalikan konten ke antrean review, bukan langsung mempublikasikannya.</Text>
-    {eligible.length === 0 ? <Text style={styles.copy}>Tidak ada konten yang saat ini memenuhi syarat banding.</Text> : eligible.map(item =>
+    {contentItems.length === 0 ? <Text style={styles.copy}>Belum ada konten untuk ditampilkan.</Text> : contentItems.map(item =>
       <Pressable key={item.id} onPress={() => void load(item)} style={[styles.row, target?.id === item.id && styles.selected]}>
         <Text style={styles.copy} numberOfLines={2}>Konten {item.id.slice(0, 8)} · versi {item.version}</Text>
-        <Text style={styles.meta}>Ditolak · ketuk untuk melihat riwayat / mengajukan banding</Text>
+        <Text style={styles.meta}>{item.status}/{item.moderation_status} · ketuk untuk melihat riwayat banding</Text>
       </Pressable>
     )}
     {target && <View style={styles.form}>
-      <Text style={styles.label}>Alasan banding</Text>
+      {eligible && !pending && <><Text style={styles.label}>Alasan banding</Text>
       <TextInput value={reason} onChangeText={setReason} multiline maxLength={2000}
         accessibilityLabel="Alasan banding moderasi" placeholder="Jelaskan alasan banding (8–2000 karakter)"
         placeholderTextColor="#8993AD" style={styles.input}/>
       <Pressable disabled={busy || reason.trim().length < 8} onPress={() => void submit()} style={[styles.button,(busy || reason.trim().length<8)&&styles.disabled]}>
         <Text style={styles.buttonText}>{busy ? "Memproses…" : "Kirim banding"}</Text>
-      </Pressable>
+      </Pressable></>}{pending && <Text style={styles.meta}>Banding sedang menunggu keputusan. Pengajuan baru belum tersedia.</Text>}
       <Pressable disabled={busy} onPress={() => void load(target)} style={styles.secondary}><Text style={styles.copy}>Muat ulang riwayat</Text></Pressable>
       {busy && <ActivityIndicator color="#A5B4FC"/>}
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
