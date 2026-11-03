@@ -51,11 +51,13 @@ class TranscodeWorker:
    serialized="&".join(f"{k}={params[k]}" for k in sorted(params))
    signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
    form={**params,"api_key":self.api_key,"signature":signature,"file":("original.bin",data,media_type)}
-   upload=await self.client.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/{resource}/upload",data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
+   # Never send Supabase service-role headers to the third-party media provider.
+   async with httpx.AsyncClient(timeout=httpx.Timeout(180,connect=10)) as provider_client:
+    upload=await provider_client.post(f"https://api.cloudinary.com/v1_1/{self.cloud}/{resource}/upload",data={k:v for k,v in form.items() if k!="file"},files={"file":form["file"]})
    upload.raise_for_status();asset=upload.json()
    if asset.get("public_id")!=public_id or not asset.get("asset_id"):raise ValueError("CLOUDINARY_UPLOAD_RESPONSE_INVALID")
    await self.db("PATCH","content_media",params={"id":f"eq.{mid}","status":"eq.processing"},body={
-    "provider_asset_id":asset["asset_id"],"provider_public_id":public_id
+    "provider_asset_id":asset["asset_id"],"provider_public_id":public_id,"provider_batch_id":asset.get("batch_id")
    })
    await self.db("PATCH","content_lifecycle_jobs",params={"id":f"eq.{jid}","status":"eq.processing","lease_token":f"eq.{token}"},body={
     "status":"awaiting_provider","lease_token":None,"lease_expires_at":None,
