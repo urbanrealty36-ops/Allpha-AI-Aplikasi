@@ -690,12 +690,11 @@ async def review_content_appeal(
 
 @router.post("/internal/providers/cloudinary/eager-callback", include_in_schema=False)
 async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
-    """Accept only fresh, signed Cloudinary callbacks; canonicalize derivatives into private Storage."""
+    """Verify and durably enqueue provider callback; never download large media in the webhook request."""
     import hashlib
     import hmac
     import json
     import time
-    from urllib.parse import urlparse
 
     secret = os.getenv("CLOUDINARY_WEBHOOK_API_SECRET") or os.getenv("CLOUDINARY_API_SECRET", "")
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
@@ -725,32 +724,22 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
         raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_TYPE_UNSUPPORTED", "message": "Jenis callback tidak didukung."})
     public_id = payload.get("public_id")
     eager = payload.get("eager")
-    if not isinstance(public_id, str) or not public_id.startswith("allpha/") or not isinstance(eager, list) or not eager:
-        raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_ASSET_INVALID", "message": "Identitas asset atau derivative tidak lengkap."})
-    media_id = public_id.split("/", 1)[1]
-    callback_id = str(payload.get("request_id") or payload.get("batch_id") or hashlib.sha256(raw).hexdigest())
-    digest = hashlib.sha256(raw).hexdigest()
-    prior_callback = await _server_db("GET", "content_provider_callbacks", params={
-        "select": "provider,provider_event_id,payload_sha256,outcome",
-        "provider": "eq.cloudinary", "provider_event_id": f"eq.{callback_id}", "limit": "1",
-    })
-    if prior_callback:
-        if prior_callback[0].get("payload_sha256") == digest and prior_callback[0].get("outcome") == "processed":
-            return {"status": "duplicate", "event_id": callback_id}
-        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_REPLAY_MISMATCH", "message": "Event callback sudah pernah diterima dengan payload berbeda."})
+    batch_id = payload.get("batch_id")
+    if not isinstance(public_id, str) or not public_id.startswith("allpha/") or not isinstance(eager, list) or not eager or not isinstance(batch_id, str):
+        raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_ASSET_INVALID", "message": "Identitas asset, batch atau derivative tidak lengkap."})
     try:
-        media_uuid = uuid.UUID(media_id)
-    except ValueError as exc:
+        media_uuid = uuid.UUID(public_id.split("/", 1)[1])
+    except (ValueError, IndexError) as exc:
         raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_ASSET_INVALID", "message": "Identitas media tidak valid."}) from exc
     media_rows = await _server_db("GET", "content_media", params={
-        "select": "id,content_id,owner_id,bucket_id,storage_path,media_type,status,provider_asset_id,provider_public_id",
+        "select": "id,media_type,status,provider_asset_id,provider_public_id,provider_batch_id",
         "id": f"eq.{media_uuid}", "status": "eq.processing", "provider_public_id": f"eq.{public_id}", "limit": "1",
     })
     if not media_rows:
         raise HTTPException(404, detail={"code": "MEDIA_CALLBACK_MEDIA_NOT_FOUND", "message": "Media tidak ditemukan atau callback sudah diproses."})
     media = media_rows[0]
-    if payload.get("asset_id") and payload.get("asset_id") != media.get("provider_asset_id"):
-        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Provider asset ID tidak cocok."})
+    if payload.get("asset_id") != media.get("provider_asset_id") or batch_id != media.get("provider_batch_id"):
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Asset atau batch callback tidak cocok dengan job aktif."})
     jobs = await _server_db("GET", "content_lifecycle_jobs", params={
         "select": "id,media_id,status,payload", "media_id": f"eq.{media_uuid}",
         "job_type": "eq.media_transcode", "status": "eq.awaiting_provider", "limit": "1",
@@ -758,57 +747,31 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     if not jobs:
         raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_JOB_NOT_FOUND", "message": "Job transcoding tidak sedang menunggu callback."})
     job = jobs[0]
-    if not media.get("provider_asset_id") or (job.get("payload") or {}).get("provider_asset_id") != media["provider_asset_id"]:
-        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Asset callback tidak cocok dengan job aktif."})
-    expected_batch = (job.get("payload") or {}).get("provider_batch_id")
-    if expected_batch and payload.get("batch_id") != expected_batch:
+    if (job.get("payload") or {}).get("provider_asset_id") != media["provider_asset_id"] or (job.get("payload") or {}).get("provider_batch_id") != batch_id:
         raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_BATCH_MISMATCH", "message": "Batch callback sudah usang atau tidak cocok."})
-    expected_derivatives = 3 if media_rows[0]["media_type"].startswith("video/") else 2
-    if len(eager) < expected_derivatives:
+    expected = 3 if media["media_type"].startswith("video/") else 2
+    if len(eager) < expected or any(not isinstance(item, dict) for item in eager):
         raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVES_INCOMPLETE", "message": "Provider belum menghasilkan seluruh derivative yang diwajibkan."})
-    if any(item.get("status") == "failed" for item in eager if isinstance(item, dict)):
+    digest = hashlib.sha256(raw).hexdigest()
+    event_id = str(payload.get("request_id") or batch_id)
+    if any(item.get("status") == "failed" for item in eager):
         await _server_db("PATCH", "content_lifecycle_jobs", params={"id": f"eq.{job['id']}", "status": "eq.awaiting_provider"},
-            body={"status": "failed", "last_error_code": "CLOUDINARY_EAGER_FAILED", "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()})
+            body={"status": "failed", "last_error_code": "CLOUDINARY_EAGER_FAILED"})
         await _server_db("PATCH", "content_media", params={"id": f"eq.{media_uuid}", "status": "eq.processing"},
             body={"status": "failed", "scan_status": "unavailable"})
-        raise HTTPException(422, detail={"code": "MEDIA_TRANSCODE_FAILED", "message": "Provider gagal membuat derivative media."})
-    derivatives = []
-    base = os.getenv("SUPABASE_URL", "").rstrip("/")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY", "")
-    # Provider CDN fetches use a credential-free client; Supabase secrets are used only by _storage.
-    async with httpx.AsyncClient(timeout=httpx.Timeout(90, connect=5), follow_redirects=False) as client:
-        for index, item in enumerate(eager):
-            if not isinstance(item, dict):
-                raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVE_INVALID", "message": "Metadata derivative tidak valid."})
-            url = item.get("secure_url")
-            if not isinstance(url, str):
-                raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVE_MISSING", "message": "URL derivative tidak tersedia."})
-            parsed = urlparse(url)
-            if parsed.scheme != "https" or parsed.hostname != "res.cloudinary.com" or not parsed.path.startswith(f"/{cloud_name}/video/authenticated/"):
-                raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_URL_REJECTED", "message": "Sumber derivative tidak diizinkan."})
-            response = await client.get(url)
-            if response.status_code != 200 or len(response.content) > 100 * 1024 * 1024:
-                raise HTTPException(503, detail={"code": "MEDIA_DERIVATIVE_FETCH_FAILED", "message": "Derivative provider belum dapat disalin."})
-            binary = response.content
-            mime = response.headers.get("content-type", "").split(";")[0].lower()
-            if not (mime.startswith("video/") or mime.startswith("audio/") or mime == "image/jpeg"):
-                raise HTTPException(422, detail={"code": "MEDIA_DERIVATIVE_MIME_INVALID", "message": "Format derivative provider tidak valid."})
-            suffix = "mp4" if mime == "video/mp4" else "mp3" if mime == "audio/mpeg" else "m4a" if mime == "audio/mp4" else "jpg" if mime == "image/jpeg" else "bin"
-            kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
-            path = f"{media['storage_path']}.derived/{kind}.{suffix}"
-            await _storage("POST", f"{media['bucket_id']}/{path}", data=binary, media_type=mime, upsert=True)
-            derivatives.append({"kind": kind, "storage_path": path, "mime_type": mime,
-                "size_bytes": len(binary), "sha256": hashlib.sha256(binary).hexdigest(),
-                "width": item.get("width"), "height": item.get("height"), "duration": item.get("duration")})
-    result = await _server_db("POST", "rpc/complete_content_provider_job", body={
-        "p_job_id": job["id"], "p_media_id": str(media_uuid), "p_provider": "cloudinary",
-        "p_provider_asset_id": media["provider_asset_id"], "p_provider_public_id": public_id,
-        "p_provider_event_id": callback_id, "p_payload_sha256": digest,
-        "p_derivatives": derivatives, "p_scan_status": "clean",
+        return {"status": "failed", "event_id": event_id}
+    result = await _server_db("POST", "rpc/enqueue_content_provider_callback", body={
+        "p_provider_event_id": event_id, "p_media_id": str(media_uuid),
+        "p_transcode_job_id": job["id"], "p_payload_sha256": digest, "p_payload": payload,
     })
-    if not isinstance(result, dict) or result.get("outcome") != "completed":
-        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_COMPLETION_CONFLICT", "message": "Callback diterima tetapi penyelesaian job tidak dapat dikonfirmasi."})
-    return {"status": "accepted", "media_id": str(media_uuid), "derivative_count": len(derivatives)}
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome in ("queued", "already_processed"):
+        return {"status": "queued" if outcome == "queued" else "duplicate", "event_id": event_id}
+    if outcome == "callback_replay_mismatch":
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_REPLAY_MISMATCH", "message": "Event callback sudah pernah diterima dengan payload berbeda."})
+    if outcome in ("media_not_processing", "transcode_job_not_waiting", "provider_identity_mismatch"):
+        raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_STATE_CONFLICT", "message": "Status media atau job provider sudah berubah."})
+    raise HTTPException(503, detail={"code": "MEDIA_CALLBACK_ENQUEUE_FAILED", "message": "Callback terverifikasi tetapi belum dapat dimasukkan ke antrean."})
 
 
 @router.post("/{content_id}/restore", tags=["content-retention"])
