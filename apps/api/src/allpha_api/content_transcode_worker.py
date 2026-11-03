@@ -46,7 +46,7 @@ class TranscodeWorker:
    if media_type.startswith("video/"):
     eager="c_limit,w_1280,vc_h264,f_mp4|c_limit,w_640,vc_h264,f_mp4|so_0,w_640,h_360,c_fill,f_jpg"
    else:
-    eager="ac_aac,br_128k,f_mp3|ac_mp3,br_192k,f_mp3"
+    eager="ac_mp3,br_128k,f_mp3|ac_aac,br_128k,f_m4a"
    params={"timestamp":str(timestamp),"public_id":public_id,"eager":eager,"eager_async":"true","eager_notification_url":self.callback,"type":"authenticated","overwrite":"true"}
    serialized="&".join(f"{k}={params[k]}" for k in sorted(params))
    signature=hashlib.sha1((serialized+self.secret).encode()).hexdigest()
