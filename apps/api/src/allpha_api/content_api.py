@@ -730,6 +730,9 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     job = jobs[0]
     if not media.get("provider_asset_id") or (job.get("payload") or {}).get("provider_asset_id") != media["provider_asset_id"]:
         raise HTTPException(409, detail={"code": "MEDIA_CALLBACK_ASSET_MISMATCH", "message": "Asset callback tidak cocok dengan job aktif."})
+    expected_derivatives = 3 if media_rows[0]["media_type"].startswith("video/") else 2
+    if len(eager) < expected_derivatives:
+        raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVES_INCOMPLETE", "message": "Provider belum menghasilkan seluruh derivative yang diwajibkan."})
     if any(item.get("status") == "failed" for item in eager if isinstance(item, dict)):
         await _server_db("PATCH", "content_lifecycle_jobs", params={"id": f"eq.{job['id']}", "status": "eq.awaiting_provider"},
             body={"status": "failed", "last_error_code": "CLOUDINARY_EAGER_FAILED", "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()})
@@ -755,10 +758,10 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
                 raise HTTPException(503, detail={"code": "MEDIA_DERIVATIVE_FETCH_FAILED", "message": "Derivative provider belum dapat disalin."})
             binary = response.content
             mime = response.headers.get("content-type", "").split(";")[0].lower()
-            if not (mime.startswith("video/") or mime.startswith("audio/")):
+            if not (mime.startswith("video/") or mime.startswith("audio/") or mime == "image/jpeg"):
                 raise HTTPException(422, detail={"code": "MEDIA_DERIVATIVE_MIME_INVALID", "message": "Format derivative provider tidak valid."})
-            suffix = "mp4" if mime == "video/mp4" else "mp3" if mime == "audio/mpeg" else "bin"
-            kind = f"rendition_{index + 1}"
+            suffix = "mp4" if mime == "video/mp4" else "mp3" if mime == "audio/mpeg" else "jpg" if mime == "image/jpeg" else "bin"
+            kind = "moderation_poster" if mime == "image/jpeg" else f"rendition_{index + 1}"
             path = f"{media['storage_path']}.derived/{kind}.{suffix}"
             await _storage("POST", f"{media['bucket_id']}/{path}", data=binary, media_type=mime, upsert=True)
             derivatives.append({"kind": kind, "storage_path": path, "mime_type": mime,
