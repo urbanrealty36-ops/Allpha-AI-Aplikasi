@@ -784,7 +784,7 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
             if not isinstance(url, str):
                 raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_DERIVATIVE_MISSING", "message": "URL derivative tidak tersedia."})
             parsed = urlparse(url)
-            if parsed.scheme != "https" or parsed.hostname != "res.cloudinary.com" or not parsed.path.startswith(f"/{cloud_name}/video/upload/"):
+            if parsed.scheme != "https" or parsed.hostname != "res.cloudinary.com" or not parsed.path.startswith(f"/{cloud_name}/video/authenticated/"):
                 raise HTTPException(422, detail={"code": "MEDIA_CALLBACK_URL_REJECTED", "message": "Sumber derivative tidak diizinkan."})
             response = await client.get(url)
             if response.status_code != 200 or len(response.content) > 100 * 1024 * 1024:
