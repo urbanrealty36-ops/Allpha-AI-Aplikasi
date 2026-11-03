@@ -21,6 +21,7 @@ export default function ContentStudioPage() {
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState("public");
   const [file, setFile] = useState<File | null>(null);
+  const [uploadId, setUploadId] = useState("");
   const [selected, setSelected] = useState("");
   const [preview, setPreview] = useState<{ item: Item; media: Media[] } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,16 +72,18 @@ export default function ContentStudioPage() {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
       const created = await request("/v1/content", { method: "POST", body: JSON.stringify({
-        body: body.trim(), visibility, content_type: file ? (file.type.startsWith("video/") ? "video" : "image") : "text"
+        body: body.trim(), visibility, content_type: file ? (file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "image") : "text"
       }) });
       const id = created.item.id as string;
       setSelected(id);
       await refresh();
       if (file) {
         const data = new FormData(); data.append("file", file);
-        await request(`/v1/content/${id}/media`, { method: "POST", body: data });
+        const key = uploadId || crypto.randomUUID();
+        setUploadId(key);
+        await request(`/v1/content/${id}/media`, { method: "POST", headers: { "Idempotency-Key": key }, body: data });
       }
-      setBody(""); setFile(null);
+      setBody(""); setFile(null); setUploadId("");
       setNotice(file ? "Draft tersimpan dan media berhasil diunggah." : "Draft konten berhasil disimpan.");
       await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Draft gagal disimpan."); }
@@ -92,8 +95,10 @@ export default function ContentStudioPage() {
     setBusy(true); setError(""); setNotice("");
     try {
       const data = new FormData(); data.append("file", file);
-      await request(`/v1/content/${selected}/media`, { method: "POST", body: data });
-      setFile(null); setNotice("Media berhasil diunggah ke draft.");
+      const key = uploadId || crypto.randomUUID();
+      setUploadId(key);
+      await request(`/v1/content/${selected}/media`, { method: "POST", headers: { "Idempotency-Key": key }, body: data });
+      setFile(null); setUploadId(""); setNotice("Media berhasil diunggah ke draft.");
       await refresh(); await showPreview(selected);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unggah gagal. Draft tetap tersimpan dan dapat dicoba lagi."); }
     finally { setBusy(false); }
@@ -163,7 +168,7 @@ export default function ContentStudioPage() {
           <form className="mt-4 space-y-4" onSubmit={createDraft}>
             <label className="block text-sm font-medium">Teks konten <span className="font-normal text-slate-500">(opsional jika ada media)</span><textarea value={body} onChange={event => setBody(event.target.value)} maxLength={10000} rows={5} placeholder="Apa yang ingin kamu bagikan?" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm outline-none focus:border-blue-500 dark:border-slate-600" /></label>
             <label className="block text-sm font-medium">Visibilitas<select value={visibility} onChange={event => setVisibility(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600"><option value="public">Publik (setelah moderasi)</option><option value="followers">Pengikut</option><option value="private">Pribadi</option></select></label>
-            <label className="block text-sm font-medium">Gambar, video, atau audio <span className="font-normal text-slate-500">JPG, PNG, WebP hingga 10 MB; MP4/WebM dan audio MP3/M4A/AAC/OGG/WAV/WebM hingga 50 MB</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm" onChange={event => setFile(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 dark:file:bg-slate-800" /></label>
+            <label className="block text-sm font-medium">Gambar, video, atau audio <span className="font-normal text-slate-500">JPG, PNG, WebP hingga 10 MB; MP4/WebM dan audio MP3/M4A/AAC/OGG/WAV/WebM hingga 50 MB</span><input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/webm" onChange={event => { const nextFile = event.target.files?.[0] ?? null; setFile(nextFile); setUploadId(nextFile ? crypto.randomUUID() : ""); }} className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 dark:file:bg-slate-800" /></label>
             {file ? <p className="text-xs text-slate-500">Dipilih: {file.name} · {(file.size / (1024 * 1024)).toFixed(2)} MB</p> : null}
             {selected && file ? <button type="button" onClick={() => void uploadToSelectedDraft()} disabled={busy} className="mr-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold dark:border-slate-600">Unggah ke draft terpilih</button> : null}
             <button disabled={busy || !session || (!body.trim() && !file)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Memproses…" : "Simpan draft baru"}</button>
