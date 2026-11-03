@@ -1089,3 +1089,89 @@ async def enqueue_content_retention(
         outcome="allowed", resource_type="content_retention_jobs", resource_id="eligible",
         metadata={"enqueued": count, "batch_limit": 100})
     return {"enqueued": count, "message": "Job retention masuk antrean. Worker tetap memeriksa legal hold sebelum menghapus."}
+
+
+@router.get("/admin/lifecycle/jobs", tags=["content-lifecycle-admin"])
+async def list_content_lifecycle_jobs(
+    request: Request, status: str = "dead", limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if status not in ("pending", "processing", "awaiting_provider", "failed", "dead", "succeeded", "cancelled") or limit < 1 or limit > 200:
+        raise HTTPException(422, detail={"code": "CONTENT_JOB_FILTER_INVALID", "message": "Filter status atau batas job tidak valid."})
+    rows = await _server_db("GET", "content_lifecycle_jobs", params={
+        "select": "id,job_type,content_id,media_id,owner_id,idempotency_key,status,attempts,max_attempts,run_at,last_error_code,created_at,updated_at,completed_at",
+        "status": f"eq.{status}", "order": "updated_at.desc", "limit": str(limit),
+    })
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.lifecycle.jobs.read",
+        outcome="allowed", resource_type="content_lifecycle_jobs", resource_id=status,
+        metadata={"count": len(rows or [])})
+    return {"items": rows or []}
+
+
+@router.post("/admin/lifecycle/jobs/{job_id}/retry", tags=["content-lifecycle-admin"])
+async def retry_content_lifecycle_job(
+    job_id: uuid.UUID, payload: dict[str, Any], request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    reason = str(payload.get("reason", "")).strip()
+    if len(reason) < 8:
+        raise HTTPException(422, detail={"code": "CONTENT_JOB_RETRY_REASON_REQUIRED", "message": "Alasan retry minimal 8 karakter."})
+    result = await _server_db("POST", "rpc/retry_content_lifecycle_job", body={
+        "p_job_id": str(job_id), "p_operator_id": str(operator["id"]), "p_reason": reason,
+    })
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome == "job_not_retryable":
+        raise HTTPException(409, detail={"code": "CONTENT_JOB_NOT_RETRYABLE", "message": "Job tidak berada pada status failed/dead."})
+    if outcome == "media_not_retryable":
+        raise HTTPException(409, detail={"code": "CONTENT_MEDIA_NOT_RETRYABLE", "message": "Media tidak dapat diproses ulang dalam status saat ini."})
+    if outcome == "reason_required":
+        raise HTTPException(422, detail={"code": "CONTENT_JOB_RETRY_REASON_REQUIRED", "message": "Alasan retry minimal 8 karakter."})
+    if outcome != "requeued":
+        raise HTTPException(409, detail={"code": "CONTENT_JOB_RECOVERY_BLOCKED", "message": "Job tidak dapat dipulihkan; periksa dependensi dan kebijakan lifecycle."})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.lifecycle.job.retry",
+        outcome="allowed", resource_type="content_lifecycle_job", resource_id=str(job_id),
+        metadata={"reason": reason, "job_type": result["job"]["job_type"]})
+    return {"item": result["job"], "message": "Job masuk kembali ke antrean."}
+
+
+@router.get("/admin/schedules", tags=["content-lifecycle-admin"])
+async def list_content_schedules(
+    request: Request, status: str = "failed", limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if status not in ("scheduled", "processing", "published", "cancelled", "failed") or limit < 1 or limit > 200:
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_FILTER_INVALID", "message": "Filter jadwal tidak valid."})
+    rows = await _server_db("GET", "content_schedules", params={
+        "select": "id,content_id,owner_id,content_version,publish_at,creator_timezone,status,attempts,last_error_code,created_at,updated_at",
+        "status": f"eq.{status}", "order": "updated_at.desc", "limit": str(limit),
+    })
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.schedules.read",
+        outcome="allowed", resource_type="content_schedules", resource_id=status,
+        metadata={"count": len(rows or [])})
+    return {"items": rows or []}
+
+
+@router.post("/admin/schedules/{schedule_id}/retry", tags=["content-lifecycle-admin"])
+async def retry_content_schedule(
+    schedule_id: uuid.UUID, payload: dict[str, Any], request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    reason = str(payload.get("reason", "")).strip()
+    if len(reason) < 8:
+        raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_RETRY_REASON_REQUIRED", "message": "Alasan retry minimal 8 karakter."})
+    result = await _server_db("POST", "rpc/retry_content_schedule", body={
+        "p_schedule_id": str(schedule_id), "p_operator_id": str(operator["id"]), "p_reason": reason,
+    })
+    outcome = result.get("outcome") if isinstance(result, dict) else None
+    if outcome == "schedule_not_retryable":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_NOT_RETRYABLE", "message": "Jadwal tidak berstatus failed."})
+    if outcome == "content_policy_blocked":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_POLICY_BLOCKED", "message": "Konten tidak lagi memenuhi kebijakan publikasi."})
+    if outcome == "media_not_ready":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_MEDIA_NOT_READY", "message": "Media belum siap."})
+    if outcome != "requeued":
+        raise HTTPException(409, detail={"code": "CONTENT_SCHEDULE_RECOVERY_BLOCKED", "message": "Jadwal tidak dapat dipulihkan."})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.schedule.retry",
+        outcome="allowed", resource_type="content_schedule", resource_id=str(schedule_id),
+        metadata={"reason": reason})
+    return {"item": result["schedule"], "message": "Jadwal dimasukkan kembali ke antrean."}
