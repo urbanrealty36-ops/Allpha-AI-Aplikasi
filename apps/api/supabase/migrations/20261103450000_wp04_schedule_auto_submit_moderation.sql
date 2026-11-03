@@ -8,7 +8,7 @@ begin
  if p_publish_at<=now() or not p_rights_confirmed or not p_disclosure_confirmed then return jsonb_build_object('outcome','invalid_schedule'); end if;
  if not exists(select 1 from pg_catalog.pg_timezone_names where name=p_creator_timezone) then return jsonb_build_object('outcome','invalid_timezone'); end if;
  select * into v_content from public.content_items where id=p_content_id and owner_id=p_owner_id for update;
- if not found or v_content.status not in ('draft','failed') or v_content.version<>p_expected_version then
+ if not found or v_content.status not in ('draft','failed','review') or v_content.version<>p_expected_version then
   return jsonb_build_object('outcome','content_conflict');
  end if;
  select * into v_schedule from public.content_schedules where idempotency_key=p_idempotency_key;
