@@ -694,7 +694,7 @@ async def cloudinary_eager_callback(request: Request) -> dict[str, Any]:
     import time
     from urllib.parse import urlparse
 
-    secret = os.getenv("CLOUDINARY_API_SECRET", "")
+    secret = os.getenv("CLOUDINARY_WEBHOOK_API_SECRET") or os.getenv("CLOUDINARY_API_SECRET", "")
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     signature = request.headers.get("X-Cld-Signature", "")
     timestamp = request.headers.get("X-Cld-Timestamp", "")
