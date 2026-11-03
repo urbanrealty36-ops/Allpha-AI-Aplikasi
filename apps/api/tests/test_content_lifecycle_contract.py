@@ -36,3 +36,14 @@ def test_media_upload_idempotency_key_replays_only_the_same_owner_content_and_by
     assert 'str(prior.get("content_id")) != str(content_id)' in API_SOURCE
     assert 'prior.get("sha256") != digest' in API_SOURCE
     assert '"idempotent_replay": True' in API_SOURCE
+
+
+
+def test_media_upload_reserves_idempotency_before_storage_and_can_resume():
+    assert '"status": "uploading"' in API_SOURCE
+    assert 'upsert: bool = False' in API_SOURCE
+    assert 'headers["x-upsert"] = "true"' in API_SOURCE
+    assert 'media_type=media_type, upsert=True' in API_SOURCE
+    assert '"status": "in.(uploading,failed)"' in API_SOURCE
+    assert '"status": "uploaded"' in API_SOURCE
+    assert "MEDIA_UPLOAD_STATE_CONFLICT" in API_SOURCE
