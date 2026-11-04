@@ -229,7 +229,7 @@ def test_content_update_uses_lifecycle_compare_and_set(monkeypatch):
     monkeypatch.setattr(content_api, "_server_db", fake_db)
     app.dependency_overrides[current_user] = auth_as("owner-a")
     try:
-        response = client.patch(f"/v1/content/{CONTENT_ID}", json={"body": "Edited", "visibility": "public"})
+        response = client.patch(f"/v1/content/{CONTENT_ID}", json={"body": "Edited", "visibility": "public", "expected_version": 3})
     finally:
         app.dependency_overrides.clear()
 
