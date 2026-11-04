@@ -156,7 +156,7 @@ def test_theme_manifest_hash_is_canonical_and_content_sensitive():
 def test_theme_migration_declares_server_only_access_and_immutable_versions():
     from pathlib import Path
 
-    migration = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / "20261021100000_eng_p22_theme_builder_registry.sql"
+    migration = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / "20261021113639_eng_p22_theme_builder_registry.sql"
     source = migration.read_text(encoding="utf-8")
     assert "create table if not exists public.spatial_themes" in source
     assert "create table if not exists public.spatial_theme_versions" in source

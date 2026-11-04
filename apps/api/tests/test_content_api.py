@@ -344,7 +344,7 @@ def test_operator_review_queue_includes_short_lived_private_media_previews(monke
 
 
 def test_audio_upload_contract_matches_database_and_private_storage_allowlist():
-    path = Path(__file__).parents[1] / "supabase/migrations/20261102090000_eng_p13_content_media_audio_support.sql"
+    path = Path(__file__).parents[1] / "supabase/migrations/20261102021016_eng_p13_content_media_audio_support.sql"
     sql = path.read_text(encoding="utf-8").lower()
     for mime in ("audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/wav", "audio/webm"):
         assert mime in sql

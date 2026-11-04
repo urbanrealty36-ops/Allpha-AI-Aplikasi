@@ -201,7 +201,7 @@ def test_story_media_upload_preserves_story_content_type(monkeypatch):
 
 def test_migration_has_server_expiry_trigger_and_index():
     from pathlib import Path
-    migration = (Path(__file__).parents[1] / "supabase/migrations/20261019100000_eng_p16_stories_expiry.sql").read_text()
+    migration = (Path(__file__).parents[1] / "supabase/migrations/20261019052413_eng_p16_stories_expiry.sql").read_text()
     assert "content_items_story_expiry" in migration
     assert "expires_at" in migration
     assert "content_stories_active_expiry_idx" in migration

@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CANONICAL = ROOT / "supabase" / "migrations" / "20261017125436_eng_p12_model_cost_admin.sql"
+CANONICAL = ROOT / "supabase" / "migrations" / "20261017125436_20261016200000_eng_p12_model_cost_admin.sql"
 MISPLACED = ROOT / "migrations" / "20261017125436_eng_p12_model_cost_admin.sql"
 
 

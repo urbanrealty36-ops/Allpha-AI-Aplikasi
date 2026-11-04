@@ -78,7 +78,7 @@ def test_agent_task_node_is_explicitly_bound_to_a_schedule():
 
 def test_schedule_migration_has_atomic_claims_and_idempotent_occurrences():
     migration = (Path(__file__).resolve().parents[1] / "supabase" / "migrations" /
-                 "20261026100000_eng_p11_agent_task_schedules.sql").read_text(encoding="utf-8")
+                 "../source-only-migrations/20261026100000_eng_p11_agent_task_schedules.sql").read_text(encoding="utf-8")
     assert "for update skip locked" in migration.lower()
     assert "unique (schedule_id, scheduled_for)" in migration
     assert "claim_due_agent_task_schedules" in migration

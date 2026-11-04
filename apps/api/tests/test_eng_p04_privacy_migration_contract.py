@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 MIGRATIONS = Path(__file__).parents[1] / "supabase" / "migrations"
-USER_SETTINGS_GRANTS = MIGRATIONS / "20261027180000_eng_p03_user_settings_least_privilege_grants.sql"
+USER_SETTINGS_GRANTS = Path(__file__).parents[1] / "supabase" / "source-only-migrations" / "20261027180000_eng_p03_user_settings_least_privilege_grants.sql"
 PROFILE_VISIBILITY = MIGRATIONS / "20261013053502_eng_p03_single_source_profile_visibility.sql"
 SOCIAL_GRAPH = MIGRATIONS / "20261013234034_eng_p04_social_graph.sql"
 SOCIAL_GRAPH_ANON_REVOKE = MIGRATIONS / "20261014130000_eng_p04_revoke_anon_social_graph_privileges.sql"
