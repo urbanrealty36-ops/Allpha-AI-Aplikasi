@@ -69,7 +69,7 @@ export function ContentAppealsPanel({ accessToken, contentItems }: { accessToken
       <Pressable disabled={busy} onPress={() => void load(target)} style={styles.secondary}><Text style={styles.copy}>Muat ulang riwayat</Text></Pressable>
       {busy && <ActivityIndicator color="#A5B4FC"/>}
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      {!!notice && <Text accessibilityRole="status" style={styles.notice}>{notice}</Text>}
+      {!!notice && <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text>}
       {items.length===0 ? <Text style={styles.meta}>Belum ada riwayat banding.</Text> : items.map(item=><View key={item.id} style={styles.row}>
         <Text style={styles.copy}>Status: {item.status} · versi {item.submitted_version}</Text>
         <Text style={styles.meta}>{item.reason}</Text>
