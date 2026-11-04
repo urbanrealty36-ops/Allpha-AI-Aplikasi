@@ -84,9 +84,16 @@ async def run_wp04_vercel_batches() -> dict[str, Any]:
         "reason": "approved_scanner_adapter_not_configured",
         "media_ready_promotion": "fail_closed",
     }
-    retention_enabled = os.getenv("CONTENT_RETENTION_PURGE_ENABLED", "false").strip().lower() in {
-        "1", "true", "yes"
-    }
+    retention_enabled = all(
+        os.getenv(name, "false").strip().lower() in {"1", "true", "yes"}
+        for name in (
+            "CONTENT_RETENTION_PURGE_ENABLED",
+            "CONTENT_RETENTION_BACKUP_VERIFIED",
+            "CONTENT_RETENTION_RESTORE_DRILL_VERIFIED",
+            "CONTENT_RETENTION_LEGAL_HOLD_VERIFIED",
+            "CONTENT_RETENTION_APPROVAL_VERIFIED",
+        )
+    )
     retention_schedule = await _schedule_retention_candidates()
     retention = {
         **retention_schedule,

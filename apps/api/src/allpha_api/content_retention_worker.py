@@ -13,7 +13,16 @@ class RetentionWorker:
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.worker_id=f"content-retention-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(timeout=httpx.Timeout(60,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
-  self.enabled=os.getenv("CONTENT_RETENTION_PURGE_ENABLED","false").strip().lower() in ("1","true","yes")
+  self.enabled = all(
+   os.getenv(name, "false").strip().lower() in ("1", "true", "yes")
+   for name in (
+    "CONTENT_RETENTION_PURGE_ENABLED",
+    "CONTENT_RETENTION_BACKUP_VERIFIED",
+    "CONTENT_RETENTION_RESTORE_DRILL_VERIFIED",
+    "CONTENT_RETENTION_LEGAL_HOLD_VERIFIED",
+    "CONTENT_RETENTION_APPROVAL_VERIFIED",
+   )
+  )
   self.stopping=False
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
