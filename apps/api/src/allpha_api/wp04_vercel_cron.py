@@ -87,10 +87,12 @@ async def run_wp04_vercel_batches() -> dict[str, Any]:
     retention_enabled = os.getenv("CONTENT_RETENTION_PURGE_ENABLED", "false").strip().lower() in {
         "1", "true", "yes"
     }
+    retention_schedule = await _schedule_retention_candidates()
     retention = {
-        "status": "enabled" if retention_enabled else "locked",
+        **retention_schedule,
         "purge_enabled": retention_enabled,
-        "reason": None if retention_enabled else "backup_pitr_restore_and_legal_hold_gates_pending",
+        "purge_status": "enabled" if retention_enabled else "locked",
+        "purge_lock_reason": None if retention_enabled else "backup_pitr_restore_and_legal_hold_gates_pending",
     }
     return {
         "scheduled_publication": scheduled,
