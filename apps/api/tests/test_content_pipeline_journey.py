@@ -120,6 +120,12 @@ def test_content_media_moderation_publish_journey_isolated(monkeypatch):
         assert uploaded.status_code == 201, uploaded.text
         media_id = uploaded.json()["item"]["id"]
         assert uploaded.json()["content"]["version"] == 2
+        # Test-only worker completion receipt; never a production readiness bypass.
+        media_rows[media_id].update({
+            "status": "ready", "scan_status": "clean", "processed_at": "2026-10-18T00:02:00Z",
+            "processing_version": 1,
+            "derivatives": [{"kind": "display", "storage_path": "test/derived/display.webp"}],
+        })
         assert any(method == "POST" for method, _ in storage_operations)
 
         preview = client.get(f"/v1/content/{content_id}/preview")
