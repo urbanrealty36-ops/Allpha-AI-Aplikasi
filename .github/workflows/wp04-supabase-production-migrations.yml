@@ -1,0 +1,59 @@
+name: WP-04 Supabase Production Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_apply:
+        description: "Apply reviewed WP-04 migrations to canonical production Supabase"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wp04-supabase-production-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require production migration credentials
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "::error::Missing GitHub Actions secret SUPABASE_ACCESS_TOKEN"; exit 1; }
+          test -n "$SUPABASE_DB_PASSWORD" || { echo "::error::Missing GitHub Actions secret SUPABASE_DB_PASSWORD"; exit 1; }
+          test "$SUPABASE_PROJECT_ID" = "dvdziauyvuhcnqhrrvww"
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link the canonical project
+        working-directory: apps/api
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Show migration plan without applying
+        working-directory: apps/api
+        run: |
+          supabase migration list --linked
+          supabase db push --linked --dry-run
+
+      - name: Apply pending versioned migrations
+        if: ${{ inputs.confirm_apply == true }}
+        working-directory: apps/api
+        run: supabase db push --linked
+
+      - name: Verify remote migration history
+        if: ${{ inputs.confirm_apply == true }}
+        working-directory: apps/api
+        run: supabase migration list --linked
