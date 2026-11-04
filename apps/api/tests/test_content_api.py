@@ -100,7 +100,7 @@ def test_migration_keeps_media_private_and_public_feed_approved_only():
     assert "unique (id, owner_id)" in sql
 
 
-def test_upload_parent_update_failure_cleans_storage_and_metadata(monkeypatch):
+def test_upload_parent_update_failure_preserves_retryable_storage_and_failed_metadata(monkeypatch):
     storage_calls = []
     db_calls = []
 
@@ -132,8 +132,9 @@ def test_upload_parent_update_failure_cleans_storage_and_metadata(monkeypatch):
 
     assert response.status_code == 409
     assert ("POST", "content-media/" + next(call[1].split("content-media/", 1)[1] for call in storage_calls if call[0] == "POST")) in storage_calls
-    assert storage_calls[-1][0] == "DELETE"
-    assert any(method == "DELETE" and table == "content_media" for method, table, _ in db_calls)
+    assert len(storage_calls) == 1 and storage_calls[0][0] == "POST"
+    assert any(method == "PATCH" and table == "content_media" and kwargs.get("body") == {"status": "failed"} for method, table, kwargs in db_calls)
+    assert not any(method == "DELETE" for method, _, _ in db_calls)
 
 
 def test_storage_uses_bearer_auth_even_with_secret_key_fallback(monkeypatch):
