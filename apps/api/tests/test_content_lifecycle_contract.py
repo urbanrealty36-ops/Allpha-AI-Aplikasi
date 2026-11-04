@@ -14,7 +14,7 @@ def test_content_archive_is_owner_scoped_and_removes_public_eligibility():
     assert '"status": "archived"' in API_SOURCE
     assert '"owner_id": f"eq.{user[\'id\']}"' in API_SOURCE
     assert "CONTENT_ARCHIVE_CONFLICT" in API_SOURCE
-    assert "status='published' and moderation_status='approved' and visibility='public'" in API_SOURCE
+    assert "status='published' and moderation_status='approved' and visibility='public'" in BASELINE_MIGRATION
 
 
 def test_content_delete_is_soft_delete_and_not_allowed_while_reviewing_or_published():
@@ -27,7 +27,7 @@ def test_content_delete_is_soft_delete_and_not_allowed_while_reviewing_or_publis
 
 
 def test_soft_deleted_content_is_hidden_from_owner_list_and_preview():
-    assert '"status": "neq.deleted"' in API_SOURCE
+    assert 'content_params["status"] = "neq.deleted"' in API_SOURCE
     assert 'if content["status"] == "deleted"' in API_SOURCE
     assert "CONTENT_NOT_FOUND" in API_SOURCE
 
