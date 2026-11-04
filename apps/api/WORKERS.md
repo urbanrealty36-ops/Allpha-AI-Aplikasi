@@ -46,7 +46,7 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - It verifies the source SHA-256, requires ClamAV clean response, decodes with Pillow pixel limits, strips metadata through re-encoding, writes display/thumbnail WebP derivatives, and calls the atomic completion RPC. Only that RPC marks image media ready.
 - Missing scanner, invalid images, hash mismatch, or derivative persistence failure must fail closed. No image is marked ready without a clean scan and durable derivative paths.
 - This source implementation is NOT runtime activation evidence. Do not activate until the new migrations are reviewed/applied through the approved non-production path, the worker image is built and scanned, secrets/egress/resource limits are configured, and real integration checks are authorized.
-- Video/audio transcoding, callback signature verification, retention execution, scheduled publication execution, and provider selection remain separate WP-04 deliverables; their presence in the lifecycle job schema does not mean those workers are implemented.
+- Video/audio transcoding, callback signature verification, retention execution, scheduled publication execution, and provider selection are implemented in source; runtime activation and integration remain pending.
 
 
 ## WP-04 lifecycle worker contracts (source implemented; activation pending)
@@ -71,7 +71,7 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 ### Retention executor
 
 - Entrypoint: allpha-content-retention-worker; Dockerfile: apps/api/Dockerfile.retention-worker.
-- Daily/periodic worker enqueues soft-deleted content after 30 days and abandoned uploading/failed media after 7 days. Operator dry-run preview is read-only.
+- Daily/periodic worker can enqueue soft-deleted content after 30 days and abandoned uploading/failed media after 7 days. Operator dry-run preview is read-only. **Destructive execution is disabled by default** and requires `CONTENT_RETENTION_PURGE_ENABLED=true` in the isolated worker runtime after backup/PITR, legal-hold, restore, and retention approval gates are verified.
 - Before physical deletion, begin_content_retention_purge locks and checks expiry and active legal/safety holds. A purge lock prevents a new hold being created after physical deletion begins.
 - The worker deletes originals and all recorded derivatives from the private Storage bucket, removes canonical rows idempotently, and writes one retention receipt per job. Immutable backups follow their separately managed expiry policy; this worker does not claim immediate deletion from backups.
 - Legal hold conflicts are deferred for a day and checked again. Storage deletes accept not-found as idempotent success.
@@ -84,7 +84,7 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 
 ### Activation / acceptance gate
 
-- All listed changes are source-only until migrations are reviewed/applied, workers are deployed/configured, Cloudinary account/webhook is configured, ClamAV is reachable, and authorized real integration tests are completed.
+- All listed changes are source-only until migrations are applied through the repository's version-preserving migration path, workers are deployed/configured, Cloudinary account/webhook is configured, ClamAV is reachable, and authorized real integration tests are completed. Retention purge must remain disabled until backup/PITR and restore evidence is accepted.
 - No migration, worker activation, provider provisioning, destructive purge, or production deployment is performed by this source implementation.
 - Video/audio moderation still depends on the independent human content review queue after media readiness; provider completion never publishes content.
 
