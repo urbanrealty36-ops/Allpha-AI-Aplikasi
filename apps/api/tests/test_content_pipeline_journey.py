@@ -83,7 +83,7 @@ def test_content_media_moderation_publish_journey_isolated(monkeypatch):
             return deleted
         raise AssertionError(f"Unexpected database operation: {method} {table}")
 
-    async def fake_storage(method, path, *, data=None, media_type=None):
+    async def fake_storage(method, path, *, data=None, media_type=None, upsert=False):
         storage_operations.append((method, path))
         class Response:
             status_code = 200
