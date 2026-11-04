@@ -356,7 +356,7 @@ def test_audio_upload_contract_matches_database_and_private_storage_allowlist():
 def test_ai_cinema_catalog_and_creator_contracts_are_registered_and_fail_closed():
     api_path = Path(__file__).parents[1] / "src/allpha_api/cinema_api.py"
     main_path = Path(__file__).parents[1] / "src/allpha_api/main.py"
-    migration_path = Path(__file__).parents[1] / "supabase/migrations/20261102100000_eng_p13_ai_cinema_creator_catalog.sql"
+    migration_path = Path(__file__).parents[1] / "supabase/migrations/20261102021534_eng_p13_ai_cinema_creator_catalog.sql"
     api = api_path.read_text(encoding="utf-8")
     main = main_path.read_text(encoding="utf-8")
     sql = migration_path.read_text(encoding="utf-8").lower()

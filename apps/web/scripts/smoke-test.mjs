@@ -621,7 +621,7 @@ for (const contract of [
 // Modal production safety: source styling remains, but unsupported business actions must fail closed.
 const creatorStudioModal = readFileSync(new URL("../components/reference-ui/CreatorStudioModal.tsx", import.meta.url), "utf8");
 assert.ok(creatorStudioModal.includes("Generasi belum tersedia: belum ada kebijakan kredit/tarif yang disetujui."));
-assert.ok(creatorStudioModal.includes("Chat Agent dari Creator Studio belum terhubung"));
+assert.ok(creatorStudioModal.includes("Chat Agent belum tersedia dari Creator Studio sampai kontrak runtime, otorisasi, dan budget kanonis siap."));
 assert.doesNotMatch(creatorStudioModal, /setTimeout\(\(\) => \{[\s\S]{0,500}onDeductCredits\(/, "Creator Studio must not simulate generation or deduct local credits");
 assert.doesNotMatch(creatorStudioModal, /images\.unsplash\.com|royalti 85%|Indexing 12 chunks selesai/i);
 
