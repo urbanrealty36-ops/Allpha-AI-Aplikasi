@@ -113,3 +113,14 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - The workflow requires repository Actions secrets `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD`. Set them directly in GitHub repository Settings → Secrets and variables → Actions. Never paste either value into chat, source files, or logs.
 - Do not use `supabase db reset --linked`. The workflow does not reset the remote database. Inspect the dry-run and migration list before setting `confirm_apply=true`.
 - This workflow has been committed but has NOT yet been run. No WP-04 migration has been applied to production through this path.
+
+
+## WP-04 lifecycle — Vercel-native bounded execution (2026-11-04)
+
+- Existing Vercel project api-allpha (root apps/api) is the sole runtime for FastAPI and Cron. No Railway or persistent worker service is used.
+- apps/api/vercel.json registers one daily Cron at 17 3 * * * to GET /internal/cron/platform-lifecycle. The endpoint requires server-only CRON_SECRET, uses constant-time bearer comparison and fails closed when absent.
+- The orchestrator runs at most one leased batch each for scheduled publication and Cloudinary provider cleanup. It enqueues up to 100 due retention candidates through the existing Postgres RPC; this enqueue is non-destructive.
+- Vercel Hobby permits one Cron run per day. This is a recovery/scheduling sweep, not near-real-time publication. A scheduled post may be delayed until the next daily run (up to roughly 24 hours). Higher-frequency SLA requires a Vercel plan with more frequent Cron or an approved Vercel-native event trigger.
+- Image processing, transcode dispatch and callback derivative ingestion remain deferred while the approved malware scanner adapter is unavailable. Cloudinary callback verifies signature and durably enqueues only; it does not download derivatives or mark media ready. Unscanned media remains private and non-publishable.
+- Retention purge requires all five server-only gates: CONTENT_RETENTION_PURGE_ENABLED, CONTENT_RETENTION_BACKUP_VERIFIED, CONTENT_RETENTION_RESTORE_DRILL_VERIFIED, CONTENT_RETENTION_LEGAL_HOLD_VERIFIED, CONTENT_RETENTION_APPROVAL_VERIFIED. Every gate defaults false and is enforced by both Cron status and the retention worker.
+- Vercel Cron does not guarantee retries. Durable Postgres leases, idempotency, bounded retry/backoff and dead-letter state remain authoritative. Runtime activation still requires deployment, env configuration, Cron registration and invocation logs.
