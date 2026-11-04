@@ -104,3 +104,12 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - The callback payload and digest are stored in content_provider_callbacks; a unique provider_callback lifecycle job is inserted in the same Postgres RPC.
 - The isolated callback worker claims the job, downloads only signed authenticated Cloudinary URLs from the configured CDN host, enforces size/MIME limits, scans each derivative through ClamAV, copies derivatives into private Supabase Storage, and calls the atomic provider completion RPC.
 - A provider_callback job can be operator-retried without clearing the Cloudinary asset/batch identity; if exhausted, media remains non-ready/failed.
+
+
+### Version-preserving production migration path
+
+- Canonical CLI project configuration is `apps/api/supabase/config.toml`; migrations remain in `apps/api/supabase/migrations` with their repository timestamps.
+- The manual GitHub Actions workflow is `.github/workflows/wp04-supabase-production-migrations.yml`. It links only project `dvdziauyvuhcnqhrrvww`, prints `supabase migration list --linked` and `supabase db push --linked --dry-run`, and applies only when the workflow-dispatch boolean `confirm_apply` is explicitly true.
+- The workflow requires repository Actions secrets `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD`. Set them directly in GitHub repository Settings → Secrets and variables → Actions. Never paste either value into chat, source files, or logs.
+- Do not use `supabase db reset --linked`. The workflow does not reset the remote database. Inspect the dry-run and migration list before setting `confirm_apply=true`.
+- This workflow has been committed but has NOT yet been run. No WP-04 migration has been applied to production through this path.
