@@ -45,6 +45,7 @@ from allpha_api.spatial_ingest_api import router as spatial_ingest_router
 from allpha_api.spatial_navigation_api import router as spatial_navigation_router
 from allpha_api.spatial_governance_api import router as spatial_governance_router
 from allpha_api.content_api import router as content_router
+from allpha_api.wp04_vercel_cron import run_wp04_vercel_batches
 from allpha_api.cinema_api import router as cinema_router
 from allpha_api.feed_api import router as feed_router
 from allpha_api.stories_api import router as stories_router
@@ -505,16 +506,23 @@ async def _drain_social_graph_outbox(*, batch_size: int = 1) -> int:
             await worker.client.aclose()
 
 
-@app.get("/internal/cron/social-graph-outbox", tags=["internal"], include_in_schema=False)
-async def run_social_graph_outbox_cron(request: Request) -> dict[str, Any]:
+@app.get("/internal/cron/platform-lifecycle", tags=["internal"], include_in_schema=False)
+async def run_platform_lifecycle_cron(request: Request) -> dict[str, Any]:
+    """Single daily Hobby-plan cron; each consumer executes a bounded leased batch."""
     secret = os.getenv("CRON_SECRET", "")
     authorization = request.headers.get("authorization", "")
     if not secret:
         raise HTTPException(status_code=503, detail={"code": "CRON_NOT_CONFIGURED", "message": "Cron secret belum dikonfigurasi."})
     if not hmac.compare_digest(authorization, f"Bearer {secret}"):
         raise HTTPException(status_code=401, detail={"code": "CRON_UNAUTHORIZED", "message": "Akses cron tidak diizinkan."})
-    processed = await _drain_social_graph_outbox(batch_size=5)
-    return {"ok": True, "claimed": processed, "consumer": "social-graph-outbox", "mode": "vercel-cron-backstop"}
+    graph_processed = await _drain_social_graph_outbox(batch_size=5)
+    wp04 = await run_wp04_vercel_batches()
+    return {
+        "ok": True,
+        "mode": "vercel-cron-bounded-batch",
+        "social_graph_outbox": {"claimed": graph_processed},
+        "wp04": wp04,
+    }
 
 
 @app.get("/v1/me/social-graph", tags=["social"])
