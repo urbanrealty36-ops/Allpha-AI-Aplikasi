@@ -21,7 +21,11 @@ def test_wp04_vercel_orchestrator_never_starts_daemon_workers():
     assert "batch" in called
     assert "run" not in called
     assert "approved_scanner_adapter_not_configured" in source
-    assert 'os.getenv("CONTENT_RETENTION_PURGE_ENABLED", "false")' in source
+    assert "enqueue_expired_content_retention_jobs" in source
+    for gate in ("CONTENT_RETENTION_PURGE_ENABLED", "CONTENT_RETENTION_BACKUP_VERIFIED",
+                 "CONTENT_RETENTION_RESTORE_DRILL_VERIFIED", "CONTENT_RETENTION_LEGAL_HOLD_VERIFIED",
+                 "CONTENT_RETENTION_APPROVAL_VERIFIED"):
+        assert gate in source
 
 
 def test_wp04_platform_cron_is_authenticated_and_runs_bounded_wp04_batches():

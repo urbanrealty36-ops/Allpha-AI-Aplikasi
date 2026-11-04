@@ -84,7 +84,8 @@ def test_cloudinary_workers_use_nul_terminated_clamav_instream_protocol():
 
 def test_retention_worker_fails_closed_until_destructive_purge_is_explicitly_enabled():
     retention = (ROOT / "src" / "allpha_api" / "content_retention_worker.py").read_text(encoding="utf-8")
-    assert 'os.getenv("CONTENT_RETENTION_PURGE_ENABLED","false")' in retention
+    for gate in ("CONTENT_RETENTION_PURGE_ENABLED", "CONTENT_RETENTION_BACKUP_VERIFIED", "CONTENT_RETENTION_RESTORE_DRILL_VERIFIED", "CONTENT_RETENTION_LEGAL_HOLD_VERIFIED", "CONTENT_RETENTION_APPROVAL_VERIFIED"):
+        assert gate in retention
     ast.parse(retention)
     assert 'if not self.enabled:' in retention
     assert 'return 0' in retention
