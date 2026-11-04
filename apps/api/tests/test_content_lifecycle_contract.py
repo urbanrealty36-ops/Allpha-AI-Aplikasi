@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 
@@ -83,7 +84,8 @@ def test_cloudinary_workers_use_nul_terminated_clamav_instream_protocol():
 
 def test_retention_worker_fails_closed_until_destructive_purge_is_explicitly_enabled():
     retention = (ROOT / "src" / "allpha_api" / "content_retention_worker.py").read_text(encoding="utf-8")
-    assert 'os.getenv("CONTENT_RETENTION_PURGE_ENABLED", "false")' in retention
+    assert 'os.getenv("CONTENT_RETENTION_PURGE_ENABLED","false")' in retention
+    ast.parse(retention)
     assert 'if not self.enabled:' in retention
     assert 'return 0' in retention
     assert 'enqueue_expired_content_retention_jobs' in retention
