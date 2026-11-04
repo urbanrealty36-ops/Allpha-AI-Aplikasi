@@ -10,6 +10,8 @@ import logging
 import os
 from typing import Any
 
+import httpx
+
 from allpha_api.content_scheduler_worker import ContentScheduler
 from allpha_api.content_provider_cleanup_worker import CleanupWorker
 
@@ -33,6 +35,27 @@ async def _run_one_batch(name: str, worker_type: type[Any], required: tuple[str,
     finally:
         if worker is not None:
             await worker.client.aclose()
+
+
+async def _schedule_retention_candidates() -> dict[str, Any]:
+    """Enqueue due retention candidates without claiming or deleting any object."""
+    base = os.getenv("SUPABASE_URL", "").rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+    if not base or not key:
+        return {"status": "deferred", "reason": "supabase_server_credentials_missing"}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3)) as client:
+            response = await client.post(
+                f"{base}/rest/v1/rpc/enqueue_expired_content_retention_jobs",
+                headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"p_limit": 100},
+            )
+            response.raise_for_status()
+            result = response.json() if response.content else 0
+        return {"status": "scheduled", "enqueued": int(result or 0), "purge_enabled": False}
+    except Exception as exc:
+        log.exception("WP-04 retention candidate scheduling failed")
+        return {"status": "error", "error_code": type(exc).__name__}
 
 
 async def run_wp04_vercel_batches() -> dict[str, Any]:
