@@ -1,4 +1,4 @@
-"""Auditable, idempotent retention executor. Destructive jobs are never run in dry-run mode."""
+"""Auditable retention executor. Destructive execution is disabled until explicitly approved."""
 from __future__ import annotations
 import asyncio, logging, os, signal, uuid\nfrom datetime import datetime, timezone
 from typing import Any
@@ -12,6 +12,7 @@ class RetentionWorker:
   self.key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_SECRET_KEY"]
   self.worker_id=f"content-retention-{uuid.uuid4()}"
   self.client=httpx.AsyncClient(timeout=httpx.Timeout(60,connect=5),headers={"apikey":self.key,"Authorization":f"Bearer {self.key}","Content-Type":"application/json"})
+  self.enabled=os.getenv("CONTENT_RETENTION_PURGE_ENABLED","false").strip().lower() in ("1","true","yes")
   self.stopping=False
  async def rpc(self,name,payload):
   r=await self.client.post(f"{self.base}/rest/v1/rpc/{name}",json=payload);r.raise_for_status();return r.json() if r.content else None
@@ -69,6 +70,8 @@ class RetentionWorker:
    try:await self.rpc("fail_content_lifecycle_job",{"p_job_id":jid,"p_lease_token":token,"p_error_code":type(exc).__name__[:80]})
    except Exception:log.exception("retention failure could not be persisted job=%s",jid)
  async def batch(self):
+  if not self.enabled:
+   return 0
   await self.rpc("enqueue_expired_content_retention_jobs",{"p_limit":100})
   jobs=await self.rpc("claim_content_lifecycle_jobs",{"p_worker_id":self.worker_id,"p_limit":1,"p_lease_seconds":300,"p_job_type":"retention_purge"}) or []
   for job in jobs:await self.process(job)
