@@ -51,7 +51,7 @@ jobs:
       - name: Apply pending versioned migrations
         if: ${{ inputs.confirm_apply == true }}
         working-directory: apps/api
-        run: supabase db push --linked
+        run: supabase db push --linked --yes
 
       - name: Verify remote migration history
         if: ${{ inputs.confirm_apply == true }}
