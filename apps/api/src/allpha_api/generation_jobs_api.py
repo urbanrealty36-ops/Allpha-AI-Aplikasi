@@ -184,6 +184,7 @@ async def create_generation_job(
         "owner_user_id": str(user["id"]),
         "agent_id": str(payload.agent_id),
         "skill_id": str(payload.skill_id),
+        "source_version": int(skill["version"]),
         "capability_id": payload.capability_id,
         "sensitivity": "private",
         "task_id": task_id,
@@ -217,7 +218,7 @@ async def create_generation_job(
     if not isinstance(created, dict) or not created.get("job_id"):
         raise HTTPException(503, detail={"code": "GENERATION_JOB_NOT_CONFIRMED", "message": "Generation job dan AI Credit reservation belum terkonfirmasi."})
     return {"job_id": created["job_id"], "task_id": created.get("task_id"), "status": created.get("status"),
-        "idempotent_replay": bool(created.get("idempotent_replay")), "reserved_credits": credits_to_reserve if not created.get("idempotent_replay") else None}
+        "idempotent_replay": bool(created.get("idempotent_replay")), "reserved_credits": created.get("reserved_credits")}
 
 
 @router.get("/jobs")
@@ -238,4 +239,7 @@ async def get_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(c
     })
     if not rows:
         raise HTTPException(404, detail={"code": "GENERATION_JOB_NOT_FOUND", "message": "Generation job tidak ditemukan."})
-    return {"job": rows[0]}
+    job = rows[0]
+    if job.get("status") != "succeeded":
+        job.pop("output_text", None)
+    return {"job": job}
