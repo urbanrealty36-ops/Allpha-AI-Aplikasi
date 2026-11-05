@@ -22,6 +22,7 @@ type DraftEpisode = {
   duration_seconds?: number | null;
 };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string; generation_reason?: string | null; billing_reason?: string | null; entitlement_reason?: string | null };
+type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
 
 async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const supabase = getBrowserSupabase();
@@ -50,6 +51,8 @@ export default function AiCinemaCreatorWorkspace() {
   const [titles, setTitles] = useState<DraftTitle[]>([]);
   const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
+  const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
+  const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("c_drama");
@@ -68,6 +71,15 @@ export default function AiCinemaCreatorWorkspace() {
       setCapabilityStatus(result);
     } catch {
       setCapabilityStatus(null);
+    }
+  }, []);
+
+  const loadReadyMedia = useCallback(async () => {
+    try {
+      const result = await authorizedRequest<{ items: ReadyMedia[] }>("/v1/cinema/creator/media-ready");
+      setReadyMedia(Array.isArray(result.items) ? result.items : []);
+    } catch {
+      setReadyMedia([]);
     }
   }, []);
 
@@ -98,6 +110,7 @@ export default function AiCinemaCreatorWorkspace() {
   }, []);
 
   useEffect(() => { void loadTitles(); }, [loadTitles]);
+  useEffect(() => { void loadReadyMedia(); }, [loadReadyMedia]);
   useEffect(() => { void loadCapabilityStatus(); }, [loadCapabilityStatus]);
   useEffect(() => { void loadEpisodes(selectedTitleId); }, [loadEpisodes, selectedTitleId]);
 
@@ -125,7 +138,7 @@ export default function AiCinemaCreatorWorkspace() {
     try {
       const result = await authorizedRequest<{ item: DraftEpisode }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/episodes`, {
         method: "POST",
-        body: JSON.stringify({ episode_number: Number(episodeNumber), title: episodeTitle.trim(), synopsis: episodeSynopsis.trim() }),
+        body: JSON.stringify({ episode_number: Number(episodeNumber), title: episodeTitle.trim(), synopsis: episodeSynopsis.trim(), media_id: selectedMediaId || null }),
       });
       setEpisodes(current => [...current.filter(item => item.id !== result.item.id), result.item].sort((a,b) => a.episode_number-b.episode_number));
       setEpisodeNumber(String(Number(episodeNumber) + 1));
@@ -167,6 +180,7 @@ export default function AiCinemaCreatorWorkspace() {
             <label className="block text-xs text-slate-300">Nomor episode<input required type="number" min="1" max="10000" value={episodeNumber} onChange={event => setEpisodeNumber(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
             <label className="block text-xs text-slate-300">Judul episode<input required maxLength={160} value={episodeTitle} onChange={event => setEpisodeTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
             <label className="block text-xs text-slate-300">Sinopsis<textarea maxLength={3000} rows={2} value={episodeSynopsis} onChange={event => setEpisodeSynopsis(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
+            <label className="block text-xs text-slate-300">Media episode · hanya media siap dan scan clean<select value={selectedMediaId} onChange={event => setSelectedMediaId(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"><option value="">Simpan tanpa media (draft)</option>{readyMedia.map(media => <option key={media.id} value={media.id}>{media.filename} · {media.media_type} · {(media.size_bytes / 1024 / 1024).toFixed(1)} MiB</option>)}</select><span className="mt-1 block text-slate-400">Media dari Creator Studio hanya tersedia setelah processing selesai dan scan berstatus clean.</span></label>
             <button disabled={saving || !selectedTitleId || !episodeTitle.trim()} className="w-full rounded-xl bg-violet-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan draft episode"}</button>
           </form>
         </div>
@@ -175,7 +189,7 @@ export default function AiCinemaCreatorWorkspace() {
         <h3 className="mb-3 font-bold">Daftar episode</h3>
         {episodes.length === 0 ? <p className="text-sm text-slate-400">Belum ada episode untuk film yang dipilih.</p> : <ol className="space-y-2">{episodes.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/80 p-3 text-sm"><span><strong>Episode {item.episode_number} — {item.title}</strong><span className="ml-2 text-xs text-slate-400">{item.status}</span></span><span className="text-xs text-slate-400">{item.duration_seconds ? `${item.duration_seconds} dtk` : "Durasi belum ditetapkan"}</span></li>)}</ol>}
       </div>
-      <p className="mt-4 text-xs leading-relaxed text-amber-200/80">Generate AI, tarif/kredit, upload media episode, publikasi, moderasi, dan entitlement belum diaktifkan di panel ini karena kontrak domain dan bukti runtime terkait belum lengkap.</p>
+      <p className="mt-4 text-xs leading-relaxed text-amber-200/80">Generate AI, tarif/kredit, publikasi, moderasi, dan entitlement belum diaktifkan di panel ini karena kontrak job, policy billing, dan bukti runtime terkait belum lengkap.</p>
     </section>
   );
 }
