@@ -465,7 +465,8 @@ begin
     raise exception 'BILLING_SUBSCRIPTION_ORDER_NOT_FOUND' using errcode='P0002';
   end if;
   if p_amount_paid > 0 then
-    if coalesce((v_order.product_snapshot->>'monthly_credits_grant')::bigint,0) > 0 then
+    if v_sub.status='active' and v_sub.current_period_end > now()
+      and coalesce((v_order.product_snapshot->>'monthly_credits_grant')::bigint,0) > 0 then
       perform public.credit_ledger_grant(jsonb_build_object(
         'owner_user_id',v_sub.owner_user_id,
         'idempotency_key','stripe-subscription-allowance:'||p_invoice_id,
