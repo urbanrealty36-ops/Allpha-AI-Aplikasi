@@ -2637,3 +2637,13 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 **Code follow-up after this checkpoint:** additional source hardening was committed through main HEAD `29354946ed87520ce3e45e5a4486381d3d72dcdc`, including Stripe policy effective-date checks, recurring invoice period refresh, monthly Premium credit grant gating, and the final billing RPC privilege-signature correction. These remain source-only changes; no tests or runtime actions were run.
 
 **Final source hardening after the prior note:** main reached `c84f81f46001ceb2fbc958ac82c118bfe02ed3a2`. Stripe subscription activation now requires a live Stripe subscription with a verified non-expired billing period; invoice renewals refresh the period from Stripe before entitlement updates; monthly Premium credit grants are issued only for an active paid period. This remains source-only and unverified at runtime.
+
+
+**Product Owner authorization — WP-05 parallel continuation (2026-11-05):**
+- Product Owner explicitly approved continuing WP-05 Feed/Notification source implementation against existing canonical contracts while WP-04 remains in progress and ClamAV provisioning stays deferred.
+- Updated `docs/ADR/ADR-WP04-003-clamav-deferral.md` §Decision.7: WP-05 is no longer sequencing-locked, but this is not WP-04 closure or acceptance and does not waive WP-03 visibility/relationship dependencies.
+- WP-05 must continue to use the canonical FastAPI Feed/Notification APIs and existing Supabase notification tables/worker. No duplicate notification engine, direct client database writes, synthetic activity, push dispatch, or new media readiness bypass is authorized.
+- Any content/media journey depending on WP-04 must remain fail-closed unless the existing lifecycle confirms ready + scan-clean + approved/published eligibility. ClamAV absence continues to block readiness/publication.
+- Current WP-05 source work is allowed; runtime integration, authenticated two-user visibility, Web SSE, Native polling/session-switch, Expo push receipt/device delivery and upstream WP-03/WP-04 acceptance remain `DEFERRED / NOT VERIFIED` unless actual evidence is collected.
+- This authorization does not authorize staging, broad test suites, migrations, production data mutation, provider calls, or deployment in this work window.
+- WP-05 status remains `in_progress`; ENG-P37 remains `not_started`. Do not advance phase status based on this authorization alone.
