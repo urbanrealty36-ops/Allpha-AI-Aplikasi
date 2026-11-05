@@ -569,6 +569,8 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                 subscription_snapshot = await _stripe_request("GET", f"subscriptions/{subscription_id}", key=stripe_key)
                 if subscription_snapshot.get("status") != "active":
                     raise ValueError("stripe_subscription_not_active_after_checkout")
+                if not subscription_snapshot.get("current_period_start") or not subscription_snapshot.get("current_period_end"):
+                    raise ValueError("stripe_subscription_period_missing")
                 if obj.get("customer") and subscription_snapshot.get("customer") != obj.get("customer"):
                     raise ValueError("stripe_subscription_customer_mismatch")
             await _rpc("billing_finalize_stripe_checkout", {
