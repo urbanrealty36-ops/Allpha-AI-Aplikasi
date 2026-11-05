@@ -233,15 +233,14 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
 
 @router.post("/approvals/{approval_id}/revoke")
 async def revoke_approval(approval_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    owner_id = str(user["id"])
-    rows = await _server_db("PATCH", "agent_social_action_approvals", params={
-        "id": f"eq.{approval_id}", "owner_user_id": f"eq.{owner_id}",
-        "status": "eq.approved", "select": "*",
-    }, body={"status": "revoked", "decided_at": "now()", "decided_by": owner_id},
-       prefer="return=representation")
-    if not rows:
-        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_REVOCABLE", "message": "Approval tidak tersedia untuk dicabut."})
-    await _write_social_audit(owner_id=owner_id, agent_id=rows[0]["agent_id"], actor_id=owner_id,
-        approval_id=str(approval_id), event_type="approval_revoked", outcome="allowed",
-        metadata={"content_id": rows[0]["content_id"]})
-    return {"approval": rows[0], "publishable": False}
+    """Revoke approval, audit and notify atomically in the canonical transaction."""
+    result = await _server_db("POST", "rpc/revoke_agent_social_approval", body={
+        "p_approval_id": str(approval_id),
+        "p_owner_user_id": str(user["id"]),
+        "p_reason": "owner_revoked",
+    })
+    if not isinstance(result, dict) or result.get("outcome") not in ("revoked", "replayed"):
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_REVOKE_UNCONFIRMED",
+                                         "message": "Pencabutan belum dapat dikonfirmasi; muat ulang sebelum mencoba lagi."})
+    return {"outcome": result["outcome"], "approval": result.get("approval"),
+            "execution": result.get("execution"), "publishable": False}
