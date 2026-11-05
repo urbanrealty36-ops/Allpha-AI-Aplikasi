@@ -86,7 +86,8 @@ export default function BillingGovernancePage() {
       const payload = {
         ...draft,
         amount_minor: Number(draft.amount_minor),
-        credits_grant: Number(draft.credits_grant || 0),\n        monthly_credits_grant: Number(draft.monthly_credits_grant || 0),
+        credits_grant: Number(draft.credits_grant || 0),
+        monthly_credits_grant: Number(draft.monthly_credits_grant || 0),
         billing_interval: draft.billing_interval || null,
         credit_policy_version: draft.credit_policy_version || null,
         credit_policy_approval_reference: draft.credit_policy_approval_reference || null,
@@ -130,7 +131,8 @@ export default function BillingGovernancePage() {
           <label className={label}>Product key<input className={field} value={draft.product_key} onChange={e=>setDraft({...draft,product_key:e.target.value})} required pattern="[a-z0-9][a-z0-9._-]{1,79}"/></label>
           <label className={label}>Nama produk<input className={field} value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} required maxLength={160}/></label>
           <label className={label}>Tujuan<select className={field} value={draft.purpose} onChange={e=>setDraft({...draft,purpose:e.target.value as Draft["purpose"],stripe_mode:e.target.value==="premium_subscription"?"subscription":"payment"})}><option value="ai_credit_topup">AI Credits Top-up</option><option value="premium_subscription">Premium Subscription</option></select></label>
-          <label className={label}>Product / Finance approval reference<input className={field} value={draft.product_approval_reference} onChange={e=>setDraft({...draft,product_approval_reference:e.target.value})} required minLength={3}/></label>\n          <label className={label}>Stripe Price ID<input className={field} value={draft.stripe_price_id} onChange={e=>setDraft({...draft,stripe_price_id:e.target.value})} required pattern="price_[A-Za-z0-9]+"/></label>
+          <label className={label}>Product / Finance approval reference<input className={field} value={draft.product_approval_reference} onChange={e=>setDraft({...draft,product_approval_reference:e.target.value})} required minLength={3}/></label>
+          <label className={label}>Stripe Price ID<input className={field} value={draft.stripe_price_id} onChange={e=>setDraft({...draft,stripe_price_id:e.target.value})} required pattern="price_[A-Za-z0-9]+"/></label>
           <label className={label}>Amount minor<input className={field} type="number" min="1" step="1" value={draft.amount_minor} onChange={e=>setDraft({...draft,amount_minor:e.target.value})} required/></label>
           <label className={label}>Currency (lowercase)<input className={field} value={draft.currency} onChange={e=>setDraft({...draft,currency:e.target.value.toLowerCase()})} required minLength={3} maxLength={3} pattern="[a-z]{3}"/></label>
           {draft.purpose === "ai_credit_topup" ? <>
@@ -138,7 +140,10 @@ export default function BillingGovernancePage() {
             <label className={label}>Credit policy version<input className={field} value={draft.credit_policy_version} onChange={e=>setDraft({...draft,credit_policy_version:e.target.value})} required/></label>
             <label className={label}>Policy approval reference<input className={field} value={draft.credit_policy_approval_reference} onChange={e=>setDraft({...draft,credit_policy_approval_reference:e.target.value})} required/></label>
           </> : <>
-            <label className={label}>AI Credits allowance per paid invoice<input className={field} type="number" min="1" step="1" value={draft.monthly_credits_grant} onChange={e=>setDraft({...draft,monthly_credits_grant:e.target.value})} required/></label>\n            <label className={label}>Credit policy version<input className={field} value={draft.credit_policy_version} onChange={e=>setDraft({...draft,credit_policy_version:e.target.value})} required/></label>\n            <label className={label}>Credit policy approval reference<input className={field} value={draft.credit_policy_approval_reference} onChange={e=>setDraft({...draft,credit_policy_approval_reference:e.target.value})} required/></label>\n            <label className={label}>Plan key<input className={field} value={draft.plan_key} onChange={e=>setDraft({...draft,plan_key:e.target.value})} required/></label>
+            <label className={label}>AI Credits allowance per paid invoice<input className={field} type="number" min="1" step="1" value={draft.monthly_credits_grant} onChange={e=>setDraft({...draft,monthly_credits_grant:e.target.value})} required/></label>
+            <label className={label}>Credit policy version<input className={field} value={draft.credit_policy_version} onChange={e=>setDraft({...draft,credit_policy_version:e.target.value})} required/></label>
+            <label className={label}>Credit policy approval reference<input className={field} value={draft.credit_policy_approval_reference} onChange={e=>setDraft({...draft,credit_policy_approval_reference:e.target.value})} required/></label>
+            <label className={label}>Plan key<input className={field} value={draft.plan_key} onChange={e=>setDraft({...draft,plan_key:e.target.value})} required/></label>
             <label className={label}>Entitlement version<input className={field} value={draft.entitlement_version} onChange={e=>setDraft({...draft,entitlement_version:e.target.value})} required/></label>
             <label className={label}>Billing interval<select className={field} value={draft.billing_interval} onChange={e=>setDraft({...draft,billing_interval:e.target.value as Draft["billing_interval"]})} required><option value="">Pilih interval</option><option value="month">Bulanan</option><option value="year">Tahunan</option><option value="week">Mingguan</option><option value="day">Harian</option></select></label>
           </>}
