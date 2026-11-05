@@ -10,12 +10,14 @@ create table if not exists public.billing_products (
   name text not null check (char_length(name) between 1 and 160),
   description text check (description is null or char_length(description) <= 1000),
   purpose text not null check (purpose in ('ai_credit_topup','premium_subscription')),
+  product_approval_reference text not null check (char_length(product_approval_reference) between 3 and 160),
   stripe_price_id text not null unique check (stripe_price_id ~ '^price_[A-Za-z0-9]+$'),
   stripe_mode text not null check (stripe_mode in ('payment','subscription')),
   amount_minor bigint not null check (amount_minor > 0),
   currency text not null check (currency ~ '^[a-z]{3}$'),
   billing_interval text check (billing_interval is null or billing_interval in ('day','week','month','year')),
   credits_grant bigint not null default 0 check (credits_grant >= 0),
+  monthly_credits_grant bigint not null default 0 check (monthly_credits_grant >= 0),
   credit_policy_version text references public.credit_policy_versions(policy_version) on delete restrict,
   credit_policy_approval_reference text,
   plan_key text,
@@ -26,11 +28,13 @@ create table if not exists public.billing_products (
   updated_at timestamptz not null default now(),
   check (
     (purpose = 'ai_credit_topup' and stripe_mode = 'payment' and credits_grant > 0
-      and credit_policy_version is not null and credit_policy_approval_reference is not null
-      and plan_key is null)
+      and monthly_credits_grant = 0 and credit_policy_version is not null
+      and credit_policy_approval_reference is not null and plan_key is null)
     or
     (purpose = 'premium_subscription' and stripe_mode = 'subscription'
-      and credits_grant = 0 and plan_key is not null and entitlement_version is not null)
+      and credits_grant = 0 and monthly_credits_grant > 0
+      and credit_policy_version is not null and credit_policy_approval_reference is not null
+      and plan_key is not null and entitlement_version is not null)
   )
 );
 
@@ -181,8 +185,10 @@ begin
     v_product.stripe_price_id,v_product.stripe_mode,v_product.amount_minor,v_product.currency,
     jsonb_build_object(
       'product_key',v_product.product_key,'purpose',v_product.purpose,
+      'product_approval_reference',v_product.product_approval_reference,
       'amount_minor',v_product.amount_minor,'currency',v_product.currency,
-      'credits_grant',v_product.credits_grant,'credit_policy_version',v_product.credit_policy_version,
+      'credits_grant',v_product.credits_grant,'monthly_credits_grant',v_product.monthly_credits_grant,
+      'credit_policy_version',v_product.credit_policy_version,
       'credit_policy_approval_reference',v_product.credit_policy_approval_reference,
       'plan_key',v_product.plan_key,'entitlement_version',v_product.entitlement_version
     ),p_idempotency_key
@@ -459,6 +465,19 @@ begin
     raise exception 'BILLING_SUBSCRIPTION_ORDER_NOT_FOUND' using errcode='P0002';
   end if;
   if p_amount_paid > 0 then
+    if coalesce((v_order.product_snapshot->>'monthly_credits_grant')::bigint,0) > 0 then
+      perform public.credit_ledger_grant(jsonb_build_object(
+        'owner_user_id',v_sub.owner_user_id,
+        'idempotency_key','stripe-subscription-allowance:'||p_invoice_id,
+        'entry_type','grant',
+        'credits',(v_order.product_snapshot->>'monthly_credits_grant')::bigint,
+        'policy_version',v_order.product_snapshot->>'credit_policy_version',
+        'policy_approval_reference',v_order.product_snapshot->>'credit_policy_approval_reference',
+        'source_event_id',p_invoice_id,
+        'capability_id','stripe_premium_monthly_allowance',
+        'metadata',jsonb_build_object('billing_order_id',v_order.id,'stripe_subscription_id',p_subscription_id,'stripe_invoice_id',p_invoice_id,'stripe_event_id',p_event_id)
+      ));
+    end if;
     insert into public.billing_receipts(
       order_id,owner_user_id,provider_receipt_id,receipt_number,stripe_payment_intent_id,
       stripe_invoice_id,amount_minor,currency,hosted_invoice_url,paid_at
