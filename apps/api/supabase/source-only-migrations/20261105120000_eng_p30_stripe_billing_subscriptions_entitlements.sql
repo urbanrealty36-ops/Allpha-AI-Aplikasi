@@ -402,7 +402,100 @@ begin
 end;
 $$;
 
-revoke all on function public.billing_create_order(uuid,text,text),
+
+create or replace function public.billing_record_subscription_invoice(
+  p_event_id text,p_subscription_id text,p_invoice_id text,p_payment_intent_id text,
+  p_amount_paid bigint,p_currency text,p_paid_at timestamptz,p_hosted_invoice_url text default null
+) returns jsonb language plpgsql security definer set search_path = ''
+as $
+declare v_sub public.billing_subscriptions; v_order public.billing_orders;
+begin
+  if coalesce(p_event_id,'') = '' or coalesce(p_subscription_id,'') = ''
+    or coalesce(p_invoice_id,'') !~ '^in_[A-Za-z0-9]+(uuid,text,text),
+  public.billing_attach_checkout_session(uuid,uuid,text,text,text),
+  public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
+  public.billing_mark_stripe_event(text,text,text),
+  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text),
+  public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
+  public.billing_mark_checkout_failed(text,uuid,text)
+  from public,anon,authenticated;
+grant execute on function public.billing_create_order(uuid,text,text),
+  public.billing_attach_checkout_session(uuid,uuid,text,text,text),
+  public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
+  public.billing_mark_stripe_event(text,text,text),
+  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text),
+  public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
+  public.billing_mark_checkout_failed(text,uuid,text)
+  to service_role;
+
+comment on table public.billing_products is 'Operator-managed Stripe Price ID and approved Allpha commercial policy registry; no prices or products are seeded.';
+comment on table public.billing_orders is 'Canonical Allpha billing order snapshot. Client redirects never fulfill an order.';
+comment on table public.billing_receipts is 'Server-verified Stripe settlement receipts; no payment card data is stored.';
+comment on table public.billing_subscriptions is 'Stripe subscription lifecycle mirrored from signed webhooks.';
+comment on table public.playback_entitlements is 'Server-derived subscription entitlement; never client supplied.';
+comment on table public.stripe_webhook_events is 'Signed Stripe event idempotency and recovery inbox with sanitized payload snapshots.';
+
+commit;
+
+    or p_amount_paid is null or p_amount_paid < 0
+    or coalesce(p_currency,'') !~ '^[a-z]{3}(uuid,text,text),
+  public.billing_attach_checkout_session(uuid,uuid,text,text,text),
+  public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
+  public.billing_mark_stripe_event(text,text,text),
+  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text),
+  public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
+  public.billing_mark_checkout_failed(text,uuid,text)
+  from public,anon,authenticated;
+grant execute on function public.billing_create_order(uuid,text,text),
+  public.billing_attach_checkout_session(uuid,uuid,text,text,text),
+  public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
+  public.billing_mark_stripe_event(text,text,text),
+  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text),
+  public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
+  public.billing_mark_checkout_failed(text,uuid,text)
+  to service_role;
+
+comment on table public.billing_products is 'Operator-managed Stripe Price ID and approved Allpha commercial policy registry; no prices or products are seeded.';
+comment on table public.billing_orders is 'Canonical Allpha billing order snapshot. Client redirects never fulfill an order.';
+comment on table public.billing_receipts is 'Server-verified Stripe settlement receipts; no payment card data is stored.';
+comment on table public.billing_subscriptions is 'Stripe subscription lifecycle mirrored from signed webhooks.';
+comment on table public.playback_entitlements is 'Server-derived subscription entitlement; never client supplied.';
+comment on table public.stripe_webhook_events is 'Signed Stripe event idempotency and recovery inbox with sanitized payload snapshots.';
+
+commit;
+ or p_paid_at is null then
+    raise exception 'STRIPE_INVOICE_RECEIPT_INVALID' using errcode='22023';
+  end if;
+  select * into v_sub from public.billing_subscriptions
+    where stripe_subscription_id=p_subscription_id for update;
+  if not found then
+    update public.stripe_webhook_events set status='ignored',processed_at=now(),
+      last_error_code='invoice_subscription_not_registered' where event_id=p_event_id;
+    return jsonb_build_object('recorded',false,'reason','subscription_not_registered');
+  end if;
+  select * into v_order from public.billing_orders
+    where stripe_subscription_id=p_subscription_id and owner_user_id=v_sub.owner_user_id
+    order by paid_at asc limit 1;
+  if not found then
+    raise exception 'BILLING_SUBSCRIPTION_ORDER_NOT_FOUND' using errcode='P0002';
+  end if;
+  if p_amount_paid > 0 then
+    insert into public.billing_receipts(
+      order_id,owner_user_id,provider_receipt_id,receipt_number,stripe_payment_intent_id,
+      stripe_invoice_id,amount_minor,currency,hosted_invoice_url,paid_at
+    ) values (
+      v_order.id,v_sub.owner_user_id,p_invoice_id,
+      'ALP-INV-'||upper(right(replace(p_invoice_id,'_',''),12)),
+      p_payment_intent_id,p_invoice_id,p_amount_paid,p_currency,p_hosted_invoice_url,p_paid_at
+    ) on conflict(provider_receipt_id) do nothing;
+  end if;
+  update public.stripe_webhook_events set status='processed',processed_at=now(),last_error_code=null
+    where event_id=p_event_id;
+  return jsonb_build_object('recorded',p_amount_paid > 0,'invoice_id',p_invoice_id);
+end;
+$;
+
+revoke all on function public.billing_record_subscription_invoice(text,text,text,text,bigint,text,timestamptz,text) from public,anon,authenticated;\ngrant execute on function public.billing_record_subscription_invoice(text,text,text,text,bigint,text,timestamptz,text) to service_role;\n\nrevoke all on function public.billing_create_order(uuid,text,text),
   public.billing_attach_checkout_session(uuid,uuid,text,text,text),
   public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
   public.billing_mark_stripe_event(text,text,text),
