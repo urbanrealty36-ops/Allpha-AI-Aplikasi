@@ -8,6 +8,7 @@ type DraftTitle = {
   synopsis: string;
   status: string;
   updated_at: string;
+  version: number;
 };
 type DraftEpisode = {
   id: string;
@@ -74,6 +75,8 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [episodeNumber, setEpisodeNumber] = useState("1");
   const [episodeTitle, setEpisodeTitle] = useState("");
   const [episodeSynopsis, setEpisodeSynopsis] = useState("");
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [aiDisclosureConfirmed, setAiDisclosureConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -140,6 +143,24 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     } finally { setSaving(false); }
   }
 
+  async function submitForReview() {
+    const selected = titles.find(item => item.id === selectedTitleId);
+    if (!selected || !rightsConfirmed || !aiDisclosureConfirmed) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const result = await request<{ item: DraftTitle }>(getAccessToken,
+        "/v1/cinema/creator/titles/" + encodeURIComponent(selectedTitleId) + "/submit-review", {
+          method: "POST",
+          body: JSON.stringify({ expected_version: selected.version, rights_confirmed: true, ai_disclosure_confirmed: true }),
+        });
+      setTitles(current => current.map(item => item.id === result.item.id ? result.item : item));
+      setRightsConfirmed(false); setAiDisclosureConfirmed(false);
+      setNotice("Film diajukan ke antrean rights review dan moderasi. Pengajuan bukan persetujuan atau publikasi.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pengajuan review gagal.");
+    } finally { setSaving(false); }
+  }
+
   const field = { color: "#F8FAFC", backgroundColor: "#111827", borderColor: "#475569", borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 8 } as const;
   return (
     <View style={{ gap: 14, marginTop: 16, padding: 16, borderRadius: 20, backgroundColor: "#0F172A", borderWidth: 1, borderColor: "#334155" }}>
@@ -182,6 +203,17 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
               <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>{item.title}</Text>
               <Text style={{ color: "#CBD5E1", fontSize: 12 }}>{item.genre} · {item.status}</Text>
             </Pressable>)}
+      </View>
+      <View style={{ gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#1E293B" }}>
+        <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>Ajukan ke review</Text>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: rightsConfirmed }} onPress={() => setRightsConfirmed(value => !value)} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+          <Text style={{ color: "#67E8F9" }}>{rightsConfirmed ? "☑" : "□"}</Text><Text style={{ color: "#CBD5E1", flex: 1, fontSize: 12 }}>Saya menyatakan memiliki hak/izin atas materi yang digunakan.</Text>
+        </Pressable>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: aiDisclosureConfirmed }} onPress={() => setAiDisclosureConfirmed(value => !value)} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+          <Text style={{ color: "#67E8F9" }}>{aiDisclosureConfirmed ? "☑" : "□"}</Text><Text style={{ color: "#CBD5E1", flex: 1, fontSize: 12 }}>Saya mengonfirmasi pengungkapan penggunaan AI pada metadata film.</Text>
+        </Pressable>
+        <Action title={saving ? "Mengajukan…" : "Ajukan rights review & moderasi"} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} onPress={() => void submitForReview()}/>
+        <Text style={{ color: "#94A3B8", fontSize: 11 }}>API menolak pengajuan jika semua episode belum memiliki media ready dan scan clean. Operator tetap memutuskan rights dan moderasi.</Text>
       </View>
       <View style={{ gap: 8 }}>
         <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>Episode {selectedTitleId ? "· film terpilih" : "· pilih film terlebih dahulu"}</Text>
