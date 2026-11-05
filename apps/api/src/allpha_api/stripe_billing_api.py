@@ -432,7 +432,7 @@ async def get_my_subscription(user: dict[str, Any] = Depends(current_user)) -> d
 
 @router.post("/stripe/webhook", include_in_schema=True)
 async def stripe_webhook(request: Request, stripe_signature: str | None = Header(default=None, alias="Stripe-Signature")) -> dict[str, Any]:
-    _, secret = _billing_config(webhook=True)
+    stripe_key, secret = _billing_config(webhook=True)
     raw = await request.body()
     if not stripe_signature or not secret:
         raise HTTPException(400, detail={"code": "STRIPE_SIGNATURE_REQUIRED", "message": "Stripe-Signature wajib dikirim."})
@@ -465,6 +465,14 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
             order_id = metadata.get("order_id")
             if not order_id:
                 raise ValueError("checkout_order_metadata_missing")
+            subscription_id = obj.get("subscription") if isinstance(obj.get("subscription"), str) else None
+            subscription_snapshot: dict[str, Any] = {}
+            if subscription_id:
+                subscription_snapshot = await _stripe_request("GET", f"subscriptions/{subscription_id}", key=stripe_key)
+                if subscription_snapshot.get("status") != "active":
+                    raise ValueError("stripe_subscription_not_active_after_checkout")
+                if obj.get("customer") and subscription_snapshot.get("customer") != obj.get("customer"):
+                    raise ValueError("stripe_subscription_customer_mismatch")
             await _rpc("billing_finalize_stripe_checkout", {
                 "p_event_id": event_id, "p_order_id": str(order_id),
                 "p_session_id": str(obj.get("id") or ""),
@@ -473,8 +481,10 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                 "p_amount_total": int(obj.get("amount_total") or 0),
                 "p_currency": str(obj.get("currency") or "").lower(),
                 "p_payment_intent_id": obj.get("payment_intent") if isinstance(obj.get("payment_intent"), str) else None,
-                "p_subscription_id": obj.get("subscription") if isinstance(obj.get("subscription"), str) else None,
+                "p_subscription_id": subscription_id,
                 "p_customer_id": obj.get("customer") if isinstance(obj.get("customer"), str) else None,
+                "p_current_period_start": datetime.fromtimestamp(int(subscription_snapshot["current_period_start"]), tz=timezone.utc).isoformat() if subscription_snapshot.get("current_period_start") else None,
+                "p_current_period_end": datetime.fromtimestamp(int(subscription_snapshot["current_period_end"]), tz=timezone.utc).isoformat() if subscription_snapshot.get("current_period_end") else None,
             })
         elif event_type in {"customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"}:
             sub_id = _event_subscription_id(obj)
