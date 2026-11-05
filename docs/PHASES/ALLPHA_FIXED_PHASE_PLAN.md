@@ -2772,3 +2772,15 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - **Not complete:** approved comment/reply/repost/story actions do not yet have an execution endpoint that invokes canonical Social Interaction/Stories lifecycle APIs; current API only creates approval-backed drafts and records decisions. The current notification write uses the existing `notifications` table with `delivery_state=queued`, which is consumed by ENG-P20, but it is not yet emitted through a dedicated transactional notification event/outbox RPC. Audit writes are not transactionally coupled to mutations. Native and Super Admin screens have not been run or verified.
 - **Status:** WP-06 remains `in_progress / source_partial`; not acceptance_passed. No test/build/lint/typecheck/CI/browser/device/account QA, migration apply, database mutation, staging or deployment performed.
 
+
+
+**WP-06 transactional lifecycle implementation update (2026-11-05):**
+- Added and applied atomic Supabase RPCs: `save_agent_social_policy`, `request_agent_social_draft`, `decide_agent_social_approval`, and `revoke_agent_social_approval`.
+- Approval decisions now execute comment/comment-reply or Story DM, persist audit, and enqueue notification rows in the same PostgreSQL transaction. Rejected or failed steps roll back the approval mutation and all related side effects.
+- Story reply is a canonical ENG-P18 DM: a conversation with the Story owner (Human) and authoring Agent (Agent), with `messages.story_id` referencing the source Story. It is not a public comment.
+- Comment reply is scoped by both `target_content_id` and `target_comment_id`; the parent comment is checked against the same content before insertion.
+- Notifications use the existing `notifications` inbox/queue with deterministic event keys and `queued` state. ENG-P20 remains the only push dispatcher.
+- FastAPI draft, decision, revoke and policy endpoints now consume RPC results. Web and Native approval controls display the returned execution outcome and do not infer success from a local state change.
+- Supabase production migration apply and read-only schema/RPC privilege checks passed. The service role alone can execute these RPCs; authenticated clients cannot invoke them directly.
+- **Status:** `in_progress / implementation_applied / integration_not_verified`. Positive SQL/API tests, rollback/idempotency/concurrency checks, builds/typechecks, CI, browser/device journeys and ENG-P20 dispatch remain NOT RUN. Do not mark WP-06 acceptance passed yet.
+- **Next WP-06 gate:** run focused migration/RPC tests with isolated fixtures (approve/reject/revoke, root comment, same-content reply, Story DM, duplicate replay, policy disable, rollback on notification/audit failure), then FastAPI contract tests and Web/Native UI verification. WP-07 remains `not_started`.
