@@ -29,6 +29,9 @@ class GenerationJobCreate(BaseModel):
     prompt: str = Field(min_length=1, max_length=32768)
     max_output_tokens: int | None = Field(default=None, ge=1, le=16384)
     quoted_credits: int | None = Field(default=None, ge=1)
+    quoted_policy_version: str | None = Field(default=None, min_length=1, max_length=80)
+    quoted_tariff_version: str | None = Field(default=None, min_length=1, max_length=80)
+    quoted_model_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 def _db_config() -> tuple[str, str]:
@@ -270,6 +273,8 @@ async def create_generation_job(
     credits_to_reserve = estimated_usage_units * credits_per_usage_unit
     if payload.quoted_credits is not None and payload.quoted_credits != credits_to_reserve:
         raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Estimasi AI Credits berubah. Minta quote baru sebelum melanjutkan."})
+    if ((payload.quoted_policy_version is not None and payload.quoted_policy_version != str(policy_row["policy_version"])) or (payload.quoted_tariff_version is not None and payload.quoted_tariff_version != tariff_version) or (payload.quoted_model_id is not None and payload.quoted_model_id != str(route["model_id"]))):
+        raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Model atau kebijakan tarif berubah. Minta quote baru sebelum melanjutkan."})
     max_credits = int(entitlement.get("max_credits_per_request") or 0)
     if max_credits <= 0 or credits_to_reserve > max_credits:
         raise HTTPException(422, detail={"code": "REQUEST_EXCEEDS_ENTITLEMENT_LIMIT", "message": "Estimasi penggunaan melebihi batas AI Credit per permintaan Premium."})
