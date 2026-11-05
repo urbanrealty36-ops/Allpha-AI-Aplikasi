@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -84,8 +85,8 @@ async def put_policy(agent_id: uuid.UUID, payload: PolicyWrite,
         }, body={
             "allowed_actions": payload.allowed_actions, "approval_mode": payload.approval_mode,
             "disclosure_text": payload.disclosure_text, "is_enabled": payload.is_enabled,
-            "version": int(current["version"]) + 1, "updated_at": "now()",
-            "revoked_at": None if payload.is_enabled else "now()",
+            "version": int(current["version"]) + 1, "updated_at": datetime.now(timezone.utc).isoformat(),
+            "revoked_at": None if payload.is_enabled else datetime.now(timezone.utc).isoformat(),
         }, prefer="return=representation")
     else:
         if payload.expected_version is not None:
@@ -97,6 +98,12 @@ async def put_policy(agent_id: uuid.UUID, payload: PolicyWrite,
         }, prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "AGENT_SOCIAL_POLICY_CONFLICT", "message": "Kebijakan tidak tersimpan; muat ulang."})
+    if not payload.is_enabled:
+        await _server_db("PATCH", "agent_social_action_approvals", params={
+            "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+            "status": "in.(pending,approved)",
+        }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
+                 "decision_reason": "owner_policy_disabled"})
     return {"policy": rows[0]}
 
 
@@ -139,7 +146,7 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
     row = content[0]
     approvals = await _server_db("POST", "agent_social_action_approvals", body={
         "owner_user_id": owner_id, "agent_id": agent_id, "content_id": row["id"],
-        "action_type": payload.action_type, "content_version": row["version"],
+        "runtime_task_id": str(payload.runtime_task_id), "action_type": payload.action_type, "content_version": row["version"],
         "status": "pending", "disclosure_snapshot": policy["disclosure_text"],
         "idempotency_key": payload.idempotency_key,
     }, prefer="return=representation")
@@ -173,6 +180,13 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
     if approval["status"] != "pending":
         raise HTTPException(409, detail={"code": "AGENT_SOCIAL_APPROVAL_ALREADY_DECIDED", "message": "Permintaan ini sudah diputuskan."})
     agent = await _active_owned_agent(owner_id, approval["agent_id"])
+    policies = await _server_db("GET", "agent_social_presence_policies", params={
+        "select": "is_enabled,revoked_at,allowed_actions",
+        "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{approval['agent_id']}", "limit": "1",
+    })
+    policy = policies[0] if policies else None
+    if not policy or not policy.get("is_enabled") or policy.get("revoked_at") or approval["action_type"] not in (policy.get("allowed_actions") or []):
+        raise HTTPException(403, detail={"code": "AGENT_SOCIAL_POLICY_REVOKED", "message": "Kebijakan pemilik tidak lagi mengizinkan tindakan ini."})
     content = await _server_db("GET", "content_items", params={
         "select": "id,owner_id,ai_agent_id,status,version", "id": f"eq.{approval['content_id']}",
         "owner_id": f"eq.{owner_id}", "limit": "1",
