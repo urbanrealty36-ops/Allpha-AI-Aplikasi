@@ -340,14 +340,16 @@ begin
     stripe_payment_intent_id=p_payment_intent_id,stripe_subscription_id=p_subscription_id,
     stripe_customer_id=coalesce(p_customer_id,stripe_customer_id),updated_at=now()
     where id=p_order_id;
-  insert into public.billing_receipts(
-    order_id,owner_user_id,provider_receipt_id,receipt_number,stripe_payment_intent_id,
-    amount_minor,currency,paid_at
-  ) values (
-    p_order_id,v_order.owner_user_id,coalesce(p_payment_intent_id,p_session_id),
-    'ALP-'||upper(right(replace(p_order_id::text,'-',''),12)),
-    p_payment_intent_id,v_order.amount_minor,v_order.currency,now()
-  ) on conflict(provider_receipt_id) do nothing;
+  if v_order.purpose='ai_credit_topup' then
+    insert into public.billing_receipts(
+      order_id,owner_user_id,provider_receipt_id,receipt_number,stripe_payment_intent_id,
+      amount_minor,currency,paid_at
+    ) values (
+      p_order_id,v_order.owner_user_id,coalesce(p_payment_intent_id,p_session_id),
+      'ALP-'||upper(right(replace(p_order_id::text,'-',''),12)),
+      p_payment_intent_id,v_order.amount_minor,v_order.currency,now()
+    ) on conflict(provider_receipt_id) do nothing;
+  end if;
   update public.stripe_webhook_events set status='processed',processed_at=now(),last_error_code=null
     where event_id=p_event_id;
   return jsonb_build_object('fulfilled',true,'idempotent_replay',false,'order_id',p_order_id,
