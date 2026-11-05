@@ -294,6 +294,24 @@ async def review_cinema_moderation(
     return {"item": rows[0]}
 
 
+@router.get("/admin/lifecycle-queue")
+async def cinema_lifecycle_queue(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=100),
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    rows = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS, "order": "updated_at.desc", "limit": str(limit),
+    })
+    items = rows or []
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.lifecycle_queue.read",
+        outcome="allowed", resource_type="cinema_lifecycle_queue", resource_id="recent",
+        metadata={"count": len(items)},
+    )
+    return {"items": items}
+
+
 @router.post("/admin/titles/{title_id}/lifecycle")
 async def manage_cinema_lifecycle(
     title_id: uuid.UUID,
