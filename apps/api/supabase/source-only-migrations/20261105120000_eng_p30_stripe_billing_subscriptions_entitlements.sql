@@ -266,7 +266,8 @@ $$;
 create or replace function public.billing_finalize_stripe_checkout(
   p_event_id text,p_order_id uuid,p_session_id text,p_owner_user_id uuid,
   p_payment_status text,p_amount_total bigint,p_currency text,
-  p_payment_intent_id text default null,p_subscription_id text default null,p_customer_id text default null
+  p_payment_intent_id text default null,p_subscription_id text default null,p_customer_id text default null,
+  p_current_period_start timestamptz default null,p_current_period_end timestamptz default null
 ) returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare
@@ -315,18 +316,21 @@ begin
     end if;
     insert into public.billing_subscriptions(
       owner_user_id,product_id,stripe_subscription_id,stripe_customer_id,plan_key,
-      entitlement_version,status
+      entitlement_version,status,current_period_start,current_period_end
     ) values (
       v_order.owner_user_id,v_order.product_id,p_subscription_id,p_customer_id,
-      v_order.product_snapshot->>'plan_key',v_order.product_snapshot->>'entitlement_version','active'
+      v_order.product_snapshot->>'plan_key',v_order.product_snapshot->>'entitlement_version','active',
+      p_current_period_start,p_current_period_end
     ) on conflict(stripe_subscription_id) do update set
       stripe_customer_id=coalesce(excluded.stripe_customer_id,billing_subscriptions.stripe_customer_id),
+      current_period_start=coalesce(excluded.current_period_start,billing_subscriptions.current_period_start),
+      current_period_end=coalesce(excluded.current_period_end,billing_subscriptions.current_period_end),
       status='active',updated_at=now()
     returning * into v_sub;
     insert into public.playback_entitlements(
-      owner_user_id,entitlement_key,entitlement_version,source_subscription_id,status,valid_from
+      owner_user_id,entitlement_key,entitlement_version,source_subscription_id,status,valid_from,valid_until
     ) values (
-      v_order.owner_user_id,v_sub.plan_key,v_sub.entitlement_version,v_sub.id,'active',now()
+      v_order.owner_user_id,v_sub.plan_key,v_sub.entitlement_version,v_sub.id,'active',now(),p_current_period_end
     ) on conflict(owner_user_id,entitlement_key,source_subscription_id) do update set
       status='active',valid_from=now(),valid_until=null,updated_at=now();
   else
@@ -369,9 +373,7 @@ begin
     cancel_at_period_end=p_cancel_at_period_end,updated_at=now()
     where stripe_subscription_id=p_subscription_id returning * into v_sub;
   if not found then
-    update public.stripe_webhook_events set status='ignored',processed_at=now(),
-      last_error_code='subscription_not_registered' where event_id=p_event_id;
-    return jsonb_build_object('updated',false,'reason','subscription_not_registered');
+    raise exception 'BILLING_SUBSCRIPTION_NOT_REGISTERED' using errcode='P0002';
   end if;
   v_entitlement_status := case when p_status='active' then 'active'
     when p_status='canceled' and p_cancel_at_period_end and p_current_period_end > now() then 'active'
@@ -406,7 +408,7 @@ revoke all on function public.billing_create_order(uuid,text,text),
   public.billing_attach_checkout_session(uuid,uuid,text,text,text),
   public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
   public.billing_mark_stripe_event(text,text,text),
-  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text),
+  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text,timestamptz,timestamptz),
   public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
   public.billing_mark_checkout_failed(text,uuid,text)
   from public,anon,authenticated;
