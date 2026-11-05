@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 
 type NotificationItem = {
   id: string; category: string; event_key: string; title: string; body: string;
@@ -11,7 +11,7 @@ type InboxResponse = { items: NotificationItem[]; unread_count: number };
 type NotificationPreferences = { social_activity: boolean; community: boolean; workspace: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\/$/, "");
 
-export function NotificationsInbox({ session, supabase, pushStatus, onPushPreferenceChange }: { session: Session; supabase: SupabaseClient | null; pushStatus?: string; onPushPreferenceChange?: () => void }) {
+export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange }: { session: Session; pushStatus?: string; onPushPreferenceChange?: () => void }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,29 +40,26 @@ export function NotificationsInbox({ session, supabase, pushStatus, onPushPrefer
 
   useEffect(() => { void load(); }, [load]);
 
+  const updateCursor = useRef(new Date().toISOString());
   useEffect(() => {
-    if (!supabase) return;
     let active = true;
-    const topic = "user:" + session.user.id + ":notifications";
-    void supabase.realtime.setAuth(session.access_token);
-    const channel = supabase.channel(topic, { config: { private: true } })
-      .on("broadcast", { event: "INSERT" }, message => {
+    const poll = async () => {
+      try {
+        const result = await api<{ items: NotificationItem[]; unread_count: number }>("/v1/notifications/updates?after=" + encodeURIComponent(updateCursor.current));
         if (!active) return;
-        const payload = message.payload as Record<string, unknown> | undefined;
-        const row = (payload?.record ?? payload?.new ?? payload) as Partial<NotificationItem> | undefined;
-        if (!row || typeof row.id !== "string" || row.user_id !== session.user.id || row.delivery_state === "suppressed") return;
-        const next: NotificationItem = {
-          id: row.id, category: row.category || "social_activity", event_key: row.event_key || "",
-          title: row.title || "Notifikasi baru", body: row.body || "",
-          delivery_state: row.delivery_state || "delivered", read_at: row.read_at || null,
-          created_at: row.created_at || new Date().toISOString(),
-        };
-        setItems(current => current.some(item => item.id === next.id) ? current : [next, ...current].slice(0, 100));
-        if (!next.read_at) setUnreadCount(value => value + 1);
-      })
-      .subscribe();
-    return () => { active = false; void supabase.removeChannel(channel); };
-  }, [session.access_token, session.user.id, supabase]);
+        if (result.items?.length) {
+          setItems(current => {
+            const ids = new Set(current.map(item => item.id));
+            return [...result.items.filter(item => !ids.has(item.id)).reverse(), ...current].slice(0, 100);
+          });
+          updateCursor.current = result.items[result.items.length - 1].created_at;
+        }
+        setUnreadCount(result.unread_count || 0);
+      } catch { /* retry on the next interval */ }
+    };
+    const timer = setInterval(() => { void poll(); }, 5000);
+    return () => { active = false; clearInterval(timer); };
+  }, [api]);
 
   const loadPreferences = useCallback(async () => {
     try {
