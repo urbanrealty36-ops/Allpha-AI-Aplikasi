@@ -12,6 +12,17 @@ from allpha_api.operator_security import require_operator_scope, write_operator_
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at"
+
+def _public_media_ready(row: dict[str, Any]) -> bool:
+    derivatives = row.get("derivatives")
+    return (
+        row.get("status") == "ready"
+        and row.get("scan_status") == "clean"
+        and bool(row.get("processed_at"))
+        and isinstance(derivatives, list)
+        and bool(derivatives)
+    )
+
 CANDIDATES = 1000
 
 class ReactionWrite(BaseModel):
@@ -427,6 +438,8 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
             "select": MEDIA_FIELDS, "content_id": f"in.({','.join(selected)})",
             "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(250, limit * 5))})
         for row in media or []:
+            if not _public_media_ready(row):
+                continue
             item = {k: v for k, v in row.items() if k != "storage_path"}
             item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
             media_by_id.setdefault(str(row["content_id"]), []).append(item)
@@ -504,6 +517,8 @@ async def get_my_profile_feed(
         "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(500, limit * 5)),
     })
     for row in media or []:
+        if not _public_media_ready(row):
+            continue
         item = {key: value for key, value in row.items() if key != "storage_path"}
         item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
         media_by_id.setdefault(str(row["content_id"]), []).append(item)
@@ -756,6 +771,8 @@ async def search_content(
             "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(200, limit * 5)),
         })
         for row in media or []:
+            if not _public_media_ready(row):
+                continue
             safe = {key: value for key, value in row.items() if key != "storage_path"}
             safe["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
             media_by_id.setdefault(str(row["content_id"]), []).append(safe)
@@ -1055,6 +1072,8 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
         "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": "50"})
     media_items = []
     for row in media or []:
+        if not _public_media_ready(row):
+            continue
         media_item = {key: value for key, value in row.items() if key != "storage_path"}
         media_item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
         media_items.append(media_item)
@@ -1168,6 +1187,8 @@ async def list_content_reports(user: dict[str, Any] = Depends(require_operator_s
         })
         media_by_id: dict[str, list[dict[str, Any]]] = {}
         for media_row in media_rows or []:
+            if not _public_media_ready(media_row):
+                continue
             media_item = {key: value for key, value in media_row.items() if key != "storage_path"}
             media_item["preview_url"] = await _signed_media_preview_url(str(media_row["storage_path"]))
             media_by_id.setdefault(str(media_row["content_id"]), []).append(media_item)
