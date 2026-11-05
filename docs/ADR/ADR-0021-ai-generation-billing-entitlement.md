@@ -1,53 +1,95 @@
-# ADR-0021 — AI Generation Jobs, Credit Policy, Billing and Playback Entitlement
+# ADR-0021 — AI Generation Jobs, Credit Policy, Billing and Entitlement
 
-- **Status:** Proposed — implementation contract blocked by missing Product Owner policy decisions
+- **Status:** PARTIALLY ACCEPTED — technical architecture accepted; provider and numerical financial policy remain open
 - **Date:** 2026-11-05
-- **Owners:** Product Owner + Allpha Platform Engineering
-- **Scope:** ENG-P09 / AI Gateway and Model Router / AI Cinema / Creator Studio / billing and playback entitlement
+- **Decision owners:** Product Owner, Finance/Economy, Platform Engineering
+- **Scope:** ENG-P09/P10/P11/P28/P29/P30, AI Cinema, Creator Studio, subscription, credits, billing and playback
 - **This ADR does not create a new Phase.** Work remains within the existing fixed phase plan.
 
-## Context
+## Context and live evidence
 
-The repository already contains canonical foundations:
-- `CanonicalTextGenerationRouter` and provider adapters in `apps/api/src/allpha_api/model_router.py` and `text_generation_adapters.py`.
-- Durable, idempotent AI Credit ledger contracts and a Supabase RPC store in `credit_ledger_contract.py`, `credit_ledger_service.py`, and `supabase_credit_ledger_store.py`.
-- A server-derived balance endpoint at `GET /v1/credits/balance`.
-- AI Cinema owner-scoped film and episode draft contracts, plus media readiness and operator review routes.
+The canonical API already contains:
+- Provider-neutral `CanonicalTextGenerationRouter` and an OpenAI-compatible adapter. Provider, model, model version, cost policy and metering are deployment-configured; there is deliberately no default route.
+- `ai_model_cost_configs` registry and separate runtime-policy verifier.
+- Policy-neutral usage metering and the durable AI Credit ledger schema/RPCs, including atomic reserve/settle/release/reconciliation.
+- Owner-scoped balance API.
+- AI Cinema creator drafts, episode/media readiness, rights and moderation lifecycle.
 
-The canonical Supabase project currently has:
-- One active `ai_model_cost_configs` row, but `policy_approved = false`.
-- Zero rows in `credit_policy_versions`, `credit_ledger_accounts`, `credit_ledger_entries`, `credit_reservations`, and `agent_model_usage_metering`.
-- No dedicated generation-job, payment/subscription, or playback-entitlement tables in the current public schema.
+Read-only inspection of canonical Supabase project `dvdziauyvuhcnqhrrvww` on 2026-11-05 found:
+- One active model-cost row: `nvidia-nim / qwen/qwen2.5-coder-32b-instruct`, pricing `test-only-nim-v1`, `policy_approved=false`. This is test-only and must not be promoted as a production route.
+- Zero approved `credit_policy_versions`, credit accounts, ledger entries, reservations, balance projections, reconciliation events and usage metering rows.
+- Existing media lifecycle, notification, and credit tables are present in the live schema; payment order/receipt, subscription, playback entitlement and AI generation-job tables are absent.
+- No live payment provider selection, plan price/quota, or production model route was established.
 
-Therefore the router has no approved cost policy, the credit ledger has no approved tariff/scheme to reserve or settle against, and there is no authoritative payment receipt or playback entitlement record to consult. The presence of code and tables alone does not authorize model execution, charging, payment acceptance, or premium playback.
+The Master PRD and ADR-0006 expressly prohibit inferring provider price, credit conversion, subscription pricing, or creator reward formula from code or test fixtures.
 
-## Decision required
+## Decisions accepted now
 
-The following product and operational values must be approved before production generation/billing/entitlement implementation can be completed:
+### 1. AI Gateway / Model Router
 
-1. **Generation job contract:** job types, lifecycle states, retry/idempotency semantics, provider callback/reconciliation behavior, cancellation and timeout handling, output ownership, retention, and whether AI Cinema generation is a direct user capability or Agent Runtime task.
-2. **Model and cost policy:** approved provider/model routes, sensitivity classes, token/output limits, provider-cost pricing version, budget ceilings, and fallback policy.
-3. **Credit scheme:** credit unit definition, capability tariffs, estimate/reservation rules, success/partial/failure settlement, unknown-outcome reconciliation, expiry/refund/reversal behavior, and the approved policy version/approval reference.
-4. **Billing and payments:** payment provider, supported payment methods/currencies, payment intent/receipt verification contract, webhook authentication/idempotency, refund/chargeback handling, tax/invoice requirements, and reconciliation owner.
-5. **Subscription and entitlement:** plan catalogue, free/premium limits, AI generation allowance, top-up semantics, entitlement start/expiry/suspension/revocation, premium playback rules, free-preview rules, and the authoritative entitlement lookup used by API playback.
-6. **Creator economics:** whether AI Cinema has creator revenue share, payout, or reward obligations, and the settlement/ledger model if applicable.
+- Keep the single canonical FastAPI AI Gateway and `CanonicalTextGenerationRouter`; no feature-specific provider calls or second router.
+- The integration contract is the existing OpenAI-compatible adapter protocol. Provider, model, model version, API base URL and server-only secret are supplied through deployment configuration and verified against the active cost registry before execution.
+- No provider/model fallback is selected. No default provider is inferred. The live NVIDIA NIM/Qwen row is explicitly test-only and remains unapproved.
+- Every billable request must have bounded prompt/output/time/cost, a durable idempotency key, provider/model/version snapshot, durable usage evidence, and a recoverable job state. Unknown provider outcomes are never replayed automatically.
 
-## Options
+### 2. Cost and AI Credit policy
 
-- **A. Implement a provider-specific billing and entitlement stack now.** Rejected until the Product Owner selects the provider and approves payment, plan, tariff, refund and entitlement policy. Choosing these values in code would invent business policy.
-- **B. Reuse the existing AI Credit ledger as the sole billing authority.** Necessary for AI usage charging, but insufficient for cash payment verification, subscriptions, premium playback or payment refunds without additional approved payment/entitlement contracts.
-- **C. Keep execution fail-closed while completing non-billing creator and governance integration.** Selected as the safe interim behavior.
+- Adopt **ADR-0006 Option C**: versioned capability tariffs are separate from actual provider/infrastructure cost attribution. AI Credits are not currency and are not converted to cash implicitly.
+- The credit ledger already provides atomic reserve, settle, release, reversal and reconciliation. Generation must reserve before provider execution, settle only from durable verified usage, release unused reservation on definitive success/failure according to policy, and leave unknown provider outcomes pending reconciliation.
+- Use integer usage units only. No implicit fractional rounding or cross-unit conversion.
+- No tariff can be active until an operator-approved, effective `credit_policy_versions` record defines capability tariff, credit scheme, cost unit/pricing version, cost ceiling, entitlement limits, and failure/partial/refund/expiry rules.
+- No numeric tariff, credit scale, currency conversion, or free-tier credit grant is approved by this ADR.
 
-## Interim decision
+### 3. Plans and product entitlement
 
-- Keep the existing AI Gateway/Model Router and Credit Ledger as the only canonical execution and credit boundaries; do not add a second provider router, ledger, or backend.
-- Do not execute generation, reserve/settle credits, accept payment, or grant premium playback while the approved policy/provider/entitlement contracts are absent.
-- Do not fabricate a default tariff, price, plan, provider, balance, payment status, generation result, or entitlement.
-- Keep AI Cinema draft creation, owner-scoped clean-media attachment, rights evidence review, moderation, and lifecycle operations available through the canonical FastAPI boundary.
-- Keep generation jobs, billing, and playback entitlement visibly unavailable until their schema, policies, migrations, and source-to-client integration are implemented.
+- Adopt the existing product direction: **Free** users can use the social/product surfaces but do not receive AI generation; **Premium** access includes an approved AI-credit allowance; users may top up additional AI Credits. AI Credits remain non-cash and usage is charged only through the canonical ledger.
+- Plan names and entitlement shape are established; exact monthly credit allowance, request/concurrency quotas, top-up packs, prices, billing interval, expiry and refund rules remain Finance/Product decisions and must be stored as versioned configuration, not hard-coded.
+- Entitlement is calculated server-side from plan, verified subscription/payment state, effective policy, usage and suspension/revocation state. Clients never supply plan, balance, payment status or entitlement as authority.
+- AI Cinema catalog exposes only published, rights-cleared and moderated titles. Episodes explicitly marked free preview may be viewed without premium entitlement. Full premium playback requires a current server-side playback entitlement. Territory, maturity and concurrent-stream policy remain open until approved.
 
-## Consequences and next action
+### 4. Generation job architecture
 
-The Product Owner must approve the decisions listed above (or provide an existing approved policy document/ADR that answers them). Engineering can then implement a versioned generation-job migration, worker/reconciliation flow, policy loader, reservation/settlement API, payment adapter/webhook, billing records, and entitlement API in the existing ENG phase owners. Any migration must include least-privilege grants/RLS, idempotency and recovery design, and an upgrade path. Do not apply a production migration or claim generation/billing readiness based only on source code.
+- Use a durable PostgreSQL-backed generation job/outbox with leases, `FOR UPDATE SKIP LOCKED`, bounded attempts, checkpoints, cancellation, idempotency, terminal state and dead-letter/reconciliation paths. PostgreSQL remains the source of truth; no new queue database or workflow engine.
+- Job payloads are private and owner-scoped. Store only necessary prompt/context and output; never put secrets or raw prompt/output into logs. Retention/deletion follows the content/privacy data-class policy.
+- Worker invokes only the canonical Model Router. It does not call a provider directly.
+- Reservation and job creation must be transactionally coupled or compensated with a durable release/reconciliation record. Provider timeouts are `unknown`, not failed or succeeded by assumption.
 
-Until then, `GET /v1/cinema/creator/status` reports generation jobs, billing and playback entitlement as unavailable, and creator UI must keep those actions disabled.
+### 5. Billing and payment boundary
+
+- Implement a provider-neutral payment adapter interface and canonical order/receipt/webhook/reconciliation contracts. Provider-specific code is isolated behind the adapter.
+- Payment settlement is server-verified, signature/authentication checked, idempotent and reconciled. Client redirect never grants credits or subscription.
+- **No payment vendor is selected by this ADR.** No production payment adapter, checkout session or webhook may be enabled until the Product Owner selects the provider and Finance approves currency, payment methods, tax/invoice, refunds, chargebacks, settlement and reconciliation terms.
+- Subscription activation, credit top-up and playback entitlement are granted only after a verified provider receipt and an idempotent ledger/order transaction.
+
+### 6. Creator economy
+
+- No creator revenue share, payout, withdrawal or cash conversion is enabled in this scope until a separate approved economic policy defines attribution, qualified usage, creator/platform split, fraud/hold period, settlement, reversal, payout provider, tax and legal controls.
+
+## Existing accepted media decisions reused by this ADR
+
+- Reuse the accepted WP-04 hybrid media architecture: private Supabase Storage is canonical for originals/derivatives; Cloudinary is the configured managed video/audio transcode adapter; ClamAV scanning and verified callbacks are required before readiness.
+- Reuse the accepted 30-day soft-delete recovery period and 7-day abandoned-upload review eligibility.
+- Physical retention purge remains fail-closed until backup configuration, restore evidence, legal-hold verification and explicit operational approvals are verified. Provider-managed immutable backup expiry is not represented as immediate erasure.
+- No second storage provider or media lifecycle engine is introduced.
+
+## Explicitly unresolved decisions
+
+| Decision | Owner | Needed before |
+|---|---|---|
+| Production AI provider, model and route credentials | Product Owner + Platform | Provider execution |
+| Approved model cost rates, unit and cost ceiling | Finance + Platform | Provider execution |
+| Credit scheme scale, capability tariffs, quota, expiry and failure/partial rules | Finance/Economy + Product | Credit reservation/settlement |
+| Payment provider | Product Owner | Checkout/webhook implementation |
+| Currency, payment methods, tax/invoice, refunds and chargebacks | Finance | Payment activation |
+| Premium price, interval, monthly credits, top-up packs | Product + Finance | Subscription/top-up activation |
+| Playback territory, maturity and concurrent stream rules | Product + Legal | Premium playback |
+| Creator revenue share/payout | Product + Finance + Legal | Creator cash settlement |
+| Supabase backup/PITR retention, RPO/RTO and restore evidence | Project Owner + Platform | Destructive retention purge |
+
+## Consequences and implementation gates
+
+- Technical architecture and existing media/credit contracts are accepted; no new provider, price, tariff or entitlement value is fabricated.
+- Source implementation may add durable job/order/entitlement contracts and operator-managed versioned policy configuration, but execution remains fail-closed until the corresponding approvals and secrets exist.
+- Existing live schema is inspected. Any new schema is source-only until the required non-production target/recovery conditions in AGENTS.md and the fixed phase plan are satisfied. Do not apply a production migration as a substitute for skipped staging.
+- The user's current instruction waives real/staging functional tests for this work. Report those as `DEFERRED / NOT VERIFIED`; do not change phase acceptance status or claim integration/production verification.
+- ENG-P37 remains a later gate only after source implementation is ready and validation is explicitly authorized. It must not be used to defer missing feature source work.
