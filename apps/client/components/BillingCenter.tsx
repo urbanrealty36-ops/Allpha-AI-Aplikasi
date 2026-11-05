@@ -8,7 +8,7 @@ type Subscription = { plan_key: string; status: string; current_period_end?: str
 
 function money(amountMinor: number, currency: string) {
   const format = new Intl.NumberFormat("id-ID", { style: "currency", currency: currency.toUpperCase() });
-  return format.format(amountMinor / (10 ** format.resolvedOptions().maximumFractionDigits));
+  return format.format(amountMinor / (10 ** (format.resolvedOptions().maximumFractionDigits ?? 2)));
 }
 function key() { return "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14); }
 
@@ -92,7 +92,7 @@ export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promis
       <Text style={{ color: enabled ? "#86EFAC" : "#FBBF24", fontSize: 12 }}>{enabled ? "Checkout Stripe aktif untuk produk yang dipublikasikan." : "Checkout belum diaktifkan; menunggu konfigurasi dan persetujuan billing."}</Text>
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: "#FCA5A5", fontSize: 13 }}>{error}</Text> : null}
-    {notice ? <Text accessibilityRole="status" style={{ color: "#86EFAC", fontSize: 13 }}>{notice}</Text> : null}
+    {notice ? <Text accessibilityLiveRegion="polite" style={{ color: "#86EFAC", fontSize: 13 }}>{notice}</Text> : null}
     <Text style={{ color: "#F7F8FF", fontSize: 18, fontWeight: "700" }}>Paket & top-up</Text>
     {loading ? <ActivityIndicator color="#A5B4FC"/> : products.length ? products.map(product => <View key={product.product_key} style={{ backgroundColor: "#141B31", borderWidth: 1, borderColor: "#29314B", borderRadius: 18, padding: 15, gap: 8 }}>
       <Text style={{ color: "#A5B4FC", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>{product.purpose === "premium_subscription" ? "SUBSCRIPTION" : "AI CREDITS TOP-UP"}</Text>
