@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -238,11 +239,11 @@ def _safe_push_data(notification: dict[str, Any]) -> dict[str, Any]:
         data["type"] = "community_invite_accepted"
         data["communityId"] = str(payload["community_id"])
     elif payload.get("type") in {
-        "feed_comment", "feed_comment_reply", "feed_comment_mention",
+        "feed_like", "feed_comment", "feed_comment_reply", "feed_comment_mention",
         "feed_repost", "feed_quote",
     } and payload.get("content_id"):
         try:
-            content_id = str(__import__("uuid").UUID(str(payload["content_id"])))
+            content_id = str(UUID(str(payload["content_id"])))
         except (ValueError, TypeError, AttributeError):
             return data
         data["type"] = "feed_content"
