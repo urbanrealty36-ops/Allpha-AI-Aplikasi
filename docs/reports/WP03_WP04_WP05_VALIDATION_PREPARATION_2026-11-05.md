@@ -77,3 +77,14 @@ WP-03 Super Admin social-graph mutation is NOT AFFECTED: the event outbox and in
 - **WP-06 — Human + AI Agent Co-authored Social Presence:** NOT STARTED. It remains gated on WP-05 `acceptance_passed`.
 
 **Next execution order:** (1) provision/authorize an isolated PostgreSQL test target and run fresh-install plus upgrade migration checks; (2) validate WP-03 outbox retry/idempotency and snapshot invalidation; (3) validate WP-04 lifecycle workers and scheduled publishing with real configured scanner/provider dependencies; (4) execute Web/Native/API/Super Admin/Expo contract tests; (5) request explicit approval to reopen account/device QA; (6) proceed to WP-06 only after WP-05 acceptance evidence is complete.
+
+
+## 8. CI/deployment status observed after latest main commit
+
+Latest inspected commit: `daabfa5ea1f9736ab8a5d9e4e1de3b24f8c3c43f`. GitHub combined status currently reports:
+
+- Railway checks for Allpha Super Admin and Allpha Web: `success`.
+- Railway checks for Allpha Notification Delivery, Allpha Stories Cleanup and Allpha API service: `pending` at inspection time.
+- Vercel checks for `admin-allpha`, `allpha-universe` and `api-allpha`: `failure`, with target URLs indicating a Vercel build-rate-limit/upgrade gate.
+
+These are CI/deployment status contexts, not proof that WP-03/WP-04/WP-05 journeys or migrations are accepted. No manual deploy, retry, promotion or provider activation was requested or performed. Re-check pending Railway statuses and resolve the Vercel rate-limit gate before using deployment evidence.
