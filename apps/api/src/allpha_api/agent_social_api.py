@@ -104,6 +104,12 @@ async def put_policy(agent_id: uuid.UUID, payload: PolicyWrite,
             "status": "in.(pending,approved)",
         }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
                  "decision_reason": "owner_policy_disabled"})
+    if not payload.is_enabled:
+        await _server_db("PATCH", "agent_social_action_approvals", params={
+            "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+            "status": "in.(pending,approved)",
+        }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
+                 "decision_reason": "owner_policy_disabled"})
     return {"policy": rows[0]}
 
 
