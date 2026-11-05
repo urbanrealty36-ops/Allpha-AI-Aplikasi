@@ -61,6 +61,15 @@ def _billing_config(*, webhook: bool = False) -> tuple[str, str | None]:
 
 
 
+
+def _checkout_ready() -> bool:
+    try:
+        _billing_config()
+        return True
+    except HTTPException:
+        return False
+
+
 def _stripe_admin_key() -> str:
     key = os.getenv("STRIPE_SECRET_KEY", "").strip()
     mode = os.getenv("ALLPHA_STRIPE_MODE", "test").strip().lower()
@@ -329,7 +338,7 @@ async def billing_catalog(user: dict[str, Any] = Depends(current_user)) -> dict[
         "select": "product_key,name,description,purpose,amount_minor,currency,billing_interval,credits_grant,plan_key",
         "status": "eq.active", "order": "sort_order.asc,product_key.asc", "limit": "100",
     })
-    return {"items": rows or [], "provider": "stripe", "checkout_enabled": os.getenv("ALLPHA_STRIPE_ENABLED", "false").lower() == "true"}
+    return {"items": rows or [], "provider": "stripe", "checkout_enabled": _checkout_ready()}
 
 
 @router.post("/checkout", status_code=201)
