@@ -5,7 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 type Props = { session: Session; apiBase: string };
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version: number };
-type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
+type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };\ntype DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
 const styles = {
   page: { flexGrow: 1, backgroundColor: "#0B1020", padding: 18, gap: 14 } as const,
@@ -65,7 +65,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   }
   async function decide(id: string, decision: "approve" | "reject") {
     setBusy(true); setError(""); setNotice("");
-    try { await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik melalui Native" : "Ditolak pemilik melalui Native" }) }); setNotice("Keputusan tersimpan. Konten tetap melalui moderasi Allpha."); await load(); }
+    try { const result = await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik melalui Native" : "Ditolak pemilik melalui Native" }) }) as DecisionResult; const execution = result.execution; const detail = execution?.kind === "story_dm" ? "DM Story berhasil dibuat dan tertaut ke Story." : execution?.kind === "comment" ? "Balasan komentar berhasil dicatat." : result.approval?.status === "approved" ? "Draft disetujui; moderasi konten tetap berlaku." : "Permintaan ditolak."; setNotice((result.outcome === "replayed" ? "Hasil transaksi sebelumnya dipulihkan. " : "") + detail); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan gagal."); }
     finally { setBusy(false); }
   }
