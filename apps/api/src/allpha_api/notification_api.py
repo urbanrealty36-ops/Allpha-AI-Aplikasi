@@ -7,6 +7,8 @@ persistence and is handled by a separate configured worker.
 from __future__ import annotations
 
 import os
+import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any, Literal
 import uuid
@@ -14,7 +16,8 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from allpha_api.auth import current_user
 
 router = APIRouter(prefix="/v1/notifications", tags=["notifications"])
@@ -127,6 +130,49 @@ async def notification_updates(
         "limit": "1000",
     })
     return {"items": items, "unread_count": len(unread_rows), "server_time": now.isoformat()}
+
+
+@router.get("/stream")
+async def notification_stream(
+    request: Request,
+    after: datetime | None = None,
+    user: dict[str, Any] = Depends(current_user),
+) -> StreamingResponse:
+    """Authenticated server-sent notification stream; no client DB subscription."""
+    user_id = str(user["id"])
+
+    async def events():
+        cursor = after.astimezone(timezone.utc) if after else datetime.now(timezone.utc)
+        yield "event: ready\\ndata: {}\\n\\n"
+        while not await request.is_disconnected():
+            rows = await _request("GET", "notifications", params={
+                "select": "id,user_id,category,event_key,title,body,payload,delivery_state,read_at,delivered_at,created_at,expires_at",
+                "user_id": f"eq.{user_id}",
+                "created_at": f"gt.{cursor.isoformat()}",
+                "delivery_state": "neq.suppressed",
+                "or": f"(expires_at.is.null,expires_at.gt.{datetime.now(timezone.utc).isoformat()})",
+                "order": "created_at.asc,id.asc",
+                "limit": "100",
+            })
+            for row in rows:
+                if row.get("user_id") != user_id:
+                    continue
+                created = row.get("created_at")
+                if created:
+                    cursor = datetime.fromisoformat(str(created).replace("Z", "+00:00")).astimezone(timezone.utc)
+                yield "event: notification\\ndata: " + json.dumps(row, separators=(",", ":"), default=str) + "\\n\\n"
+            yield ": keep-alive\\n\\n"
+            await asyncio.sleep(3)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 class NotificationPreferencesUpdate(BaseModel):
