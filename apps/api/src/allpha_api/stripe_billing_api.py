@@ -218,12 +218,14 @@ class BillingProductDraft(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
     purpose: str
+    product_approval_reference: str = Field(min_length=3, max_length=160)
     stripe_price_id: str = Field(pattern=r"^price_[A-Za-z0-9]+$")
     stripe_mode: str
     amount_minor: int = Field(gt=0, le=100_000_000_000)
     currency: str = Field(min_length=3, max_length=3, pattern=r"^[a-z]{3}$")
     billing_interval: str | None = None
     credits_grant: int = Field(default=0, ge=0, le=10_000_000_000)
+    monthly_credits_grant: int = Field(default=0, ge=0, le=10_000_000_000)
     credit_policy_version: str | None = Field(default=None, max_length=80)
     credit_policy_approval_reference: str | None = Field(default=None, max_length=160)
     plan_key: str | None = Field(default=None, max_length=80)
@@ -233,10 +235,10 @@ class BillingProductDraft(BaseModel):
 
 def _validate_product_shape(payload: BillingProductDraft) -> None:
     if payload.purpose == "ai_credit_topup":
-        if payload.stripe_mode != "payment" or payload.credits_grant <= 0 or not payload.credit_policy_version or not payload.credit_policy_approval_reference or payload.plan_key:
+        if payload.stripe_mode != "payment" or payload.credits_grant <= 0 or payload.monthly_credits_grant != 0 or not payload.credit_policy_version or not payload.credit_policy_approval_reference or payload.plan_key:
             raise HTTPException(422, detail={"code": "BILLING_TOPUP_POLICY_INVALID", "message": "Paket top-up memerlukan grant AI Credits dan referensi kebijakan yang disetujui."})
     elif payload.purpose == "premium_subscription":
-        if payload.stripe_mode != "subscription" or payload.credits_grant != 0 or not payload.plan_key or not payload.entitlement_version:
+        if payload.stripe_mode != "subscription" or payload.credits_grant != 0 or payload.monthly_credits_grant <= 0 or not payload.credit_policy_version or not payload.credit_policy_approval_reference or not payload.plan_key or not payload.entitlement_version or not payload.billing_interval:
             raise HTTPException(422, detail={"code": "BILLING_SUBSCRIPTION_POLICY_INVALID", "message": "Paket Premium memerlukan plan dan versi entitlement; grant kredit bulanan belum diaktifkan."})
     else:
         raise HTTPException(422, detail={"code": "BILLING_PURPOSE_INVALID", "message": "Tujuan produk billing tidak dikenal."})
@@ -247,7 +249,7 @@ def _validate_product_shape(payload: BillingProductDraft) -> None:
 @router.get("/admin/products")
 async def admin_billing_products(operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
     rows = await _db("GET", "billing_products", params={
-        "select": "id,product_key,name,description,purpose,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status,sort_order,created_at,updated_at",
+        "select": "id,product_key,name,description,purpose,product_approval_reference,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,monthly_credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status,sort_order,created_at,updated_at",
         "order": "sort_order.asc,product_key.asc", "limit": "200",
     })
     return {"items": rows or []}
@@ -275,7 +277,7 @@ async def activate_billing_product(product_key: str, request: Request,
                                    operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
     key = _stripe_admin_key()
     rows = await _db("GET", "billing_products", params={
-        "select": "id,product_key,purpose,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status",
+        "select": "id,product_key,purpose,product_approval_reference,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,monthly_credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status",
         "product_key": f"eq.{product_key}", "limit": "1",
     })
     if not rows:
@@ -292,18 +294,24 @@ async def activate_billing_product(product_key: str, request: Request,
             raise HTTPException(409, detail={"code": "STRIPE_RECURRING_PRICE_MISMATCH", "message": "Stripe Price recurring interval tidak cocok dengan paket Premium."})
     elif recurring:
         raise HTTPException(409, detail={"code": "STRIPE_ONE_TIME_PRICE_MISMATCH", "message": "Top-up AI Credits hanya boleh memakai Stripe Price sekali bayar."})
-    if product["purpose"] == "ai_credit_topup":
-        policies = await _db("GET", "credit_policy_versions", params={
-            "select": "policy_version,approval_reference,status,configuration",
-            "policy_version": f"eq.{product['credit_policy_version']}", "limit": "1",
-        })
-        if not policies:
-            raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_MISSING", "message": "Kebijakan grant AI Credits tidak ditemukan."})
-        policy = policies[0]
-        config = policy.get("configuration") if isinstance(policy.get("configuration"), dict) else {}
-        allowed_types = config.get("allowed_grant_types") if isinstance(config.get("allowed_grant_types"), list) else []
-        if policy.get("status") != "approved" or policy.get("approval_reference") != product.get("credit_policy_approval_reference") or config.get("allow_grants") is not True or "grant" not in allowed_types or int(config.get("max_grant_credits") or 0) < int(product["credits_grant"]):
-            raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_NOT_APPROVED", "message": "Kebijakan kredit tidak mengizinkan grant paket ini."})
+    policies = await _db("GET", "credit_policy_versions", params={
+        "select": "policy_version,approval_reference,status,configuration",
+        "policy_version": f"eq.{product['credit_policy_version']}", "limit": "1",
+    })
+    if not policies:
+        raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_MISSING", "message": "Kebijakan AI Credit tidak ditemukan."})
+    policy = policies[0]
+    config = policy.get("configuration") if isinstance(policy.get("configuration"), dict) else {}
+    allowed_types = config.get("allowed_grant_types") if isinstance(config.get("allowed_grant_types"), list) else []
+    required_grant = int(product["credits_grant"] if product["purpose"] == "ai_credit_topup" else product["monthly_credits_grant"])
+    if (policy.get("status") != "approved" or policy.get("approval_reference") != product.get("credit_policy_approval_reference")
+        or config.get("allow_grants") is not True or "grant" not in allowed_types
+        or int(config.get("max_grant_credits") or 0) < required_grant):
+        raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_NOT_APPROVED", "message": "Kebijakan kredit tidak mengizinkan grant paket atau allowance ini."})
+    if product["purpose"] == "premium_subscription":
+        entitlements = config.get("entitlements") if isinstance(config.get("entitlements"), dict) else {}
+        if not isinstance(entitlements.get(product.get("entitlement_version")), dict):
+            raise HTTPException(409, detail={"code": "PREMIUM_ENTITLEMENT_POLICY_MISSING", "message": "Versi entitlement Premium belum tercantum dalam kebijakan kredit yang disetujui."})
     await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.activate",
         outcome="attempted", resource_type="billing_product", resource_id=product_key,
         metadata={"stripe_price_id": product["stripe_price_id"], "amount_minor": product["amount_minor"], "currency": product["currency"]})
@@ -335,7 +343,7 @@ async def retire_billing_product(product_key: str, request: Request,
 @router.get("/catalog")
 async def billing_catalog(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _db("GET", "billing_products", params={
-        "select": "product_key,name,description,purpose,amount_minor,currency,billing_interval,credits_grant,plan_key",
+        "select": "product_key,name,description,purpose,amount_minor,currency,billing_interval,credits_grant,monthly_credits_grant,plan_key",
         "status": "eq.active", "order": "sort_order.asc,product_key.asc", "limit": "100",
     })
     return {"items": rows or [], "provider": "stripe", "checkout_enabled": _checkout_ready()}
@@ -349,7 +357,7 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
     if not idempotency_key or not 8 <= len(idempotency_key) <= 160:
         raise HTTPException(400, detail={"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key 8–160 karakter wajib dikirim."})
     products = await _db("GET", "billing_products", params={
-        "select": "id,product_key,name,description,purpose,stripe_price_id,stripe_mode,amount_minor,currency,credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status",
+        "select": "id,product_key,name,description,purpose,product_approval_reference,stripe_price_id,stripe_mode,amount_minor,currency,credits_grant,monthly_credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status",
         "product_key": f"eq.{payload.product_key}", "status": "eq.active", "limit": "1",
     })
     if not products:
@@ -359,11 +367,13 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
         raise HTTPException(503, detail={"code": "BILLING_PRODUCT_NOT_CONFIGURED", "message": "Produk belum memiliki konfigurasi Stripe yang valid."})
     if int(product.get("amount_minor") or 0) <= 0 or not product.get("currency"):
         raise HTTPException(503, detail={"code": "BILLING_PRICE_NOT_APPROVED", "message": "Harga produk belum disetujui dan dikonfigurasi."})
-    if product.get("purpose") == "ai_credit_topup" and (
-        int(product.get("credits_grant") or 0) <= 0 or not product.get("credit_policy_version")
+    if product.get("purpose") == "ai_credit_topup" and int(product.get("credits_grant") or 0) <= 0:
+        raise HTTPException(503, detail={"code": "CREDIT_GRANT_POLICY_UNAVAILABLE", "message": "Paket AI Credits belum memiliki kebijakan grant yang disetujui."})
+    if product.get("purpose") == "premium_subscription" and (
+        int(product.get("monthly_credits_grant") or 0) <= 0 or not product.get("credit_policy_version")
         or not product.get("credit_policy_approval_reference")
     ):
-        raise HTTPException(503, detail={"code": "CREDIT_GRANT_POLICY_UNAVAILABLE", "message": "Paket AI Credits belum memiliki kebijakan grant yang disetujui."})
+        raise HTTPException(503, detail={"code": "PREMIUM_ALLOWANCE_POLICY_UNAVAILABLE", "message": "Allowance bulanan Premium belum memiliki kebijakan kredit yang disetujui."})
     if product.get("purpose") == "premium_subscription" and (not product.get("plan_key") or not product.get("entitlement_version")):
         raise HTTPException(503, detail={"code": "SUBSCRIPTION_POLICY_UNAVAILABLE", "message": "Paket Premium belum memiliki kebijakan entitlement."})
 
