@@ -416,7 +416,7 @@ grant execute on function public.billing_create_order(uuid,text,text),
   public.billing_attach_checkout_session(uuid,uuid,text,text,text),
   public.billing_receive_stripe_event(text,text,timestamptz,jsonb),
   public.billing_mark_stripe_event(text,text,text),
-  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text),
+  public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text,timestamptz,timestamptz),
   public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
   public.billing_mark_checkout_failed(text,uuid,text)
   to service_role;
