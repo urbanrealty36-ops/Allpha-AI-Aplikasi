@@ -87,10 +87,22 @@ export default function AskAiPage() {
   const submitQuery = useCallback(async (prompt: string) => {
     if (!session || !agent || !skill || !capability) throw new Error("Agent, Skill, atau capability belum siap.");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
+    const requestBody = { agent_id: agent.id, skill_id: skill.id, capability_id: capability, prompt, max_output_tokens: 1200 };
+    const quoteResponse = await fetch(apiBase + "/v1/generation/quote", {
+      method: "POST", headers, body: JSON.stringify(requestBody), cache: "no-store",
+    });
+    if (!quoteResponse.ok) throw new Error(await readError(quoteResponse));
+    const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string };
+    if (!quote.quote_id || !quote.expires_at || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
+      throw new Error("Quote AI Credits tidak valid; generation dibatalkan.");
+    }
+    const confirmed = window.confirm(`Estimasi penggunaan: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Quote berlaku 5 menit. Lanjutkan?`);
+    if (!confirmed) throw new Error("Generation dibatalkan sebelum reservasi kredit.");
+    if (Date.parse(quote.expires_at) <= Date.now()) throw new Error("Quote telah kedaluwarsa. Minta estimasi baru.");
     const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
       method: "POST",
       headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({ agent_id: agent.id, skill_id: skill.id, capability_id: capability, prompt, max_output_tokens: 1200 }),
+      body: JSON.stringify({ ...requestBody, quoted_credits: quote.estimated_credits }),
       cache: "no-store",
     });
     if (!createResponse.ok) throw new Error(await readError(createResponse));
