@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,8 +11,6 @@ from allpha_api.auth import current_user
 from allpha_api.content_api import _server_db
 
 router = APIRouter(prefix="/v1/agent-social", tags=["agent-social-presence"])
-_ALLOWED = {"draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"}
-
 
 class PolicyWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -40,19 +37,6 @@ class ApprovalDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision: Literal["approve", "reject"]
     reason: str | None = Field(default=None, max_length=500)
-
-
-async def _write_social_audit(*, owner_id: str, agent_id: str, actor_id: str,
-                            event_type: str, outcome: str, approval_id: str | None = None,
-                            metadata: dict[str, Any] | None = None) -> None:
-    rows = await _server_db("POST", "agent_social_audit_events", body={
-        "owner_user_id": owner_id, "agent_id": agent_id, "actor_user_id": actor_id,
-        "approval_id": approval_id, "event_type": event_type, "outcome": outcome,
-        "metadata": metadata or {},
-    }, prefer="return=representation")
-    if not rows:
-        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_AUDIT_UNAVAILABLE",
-                                         "message": "Audit sosial belum tersimpan; operasi tidak dapat dinyatakan selesai."})
 
 
 async def _active_owned_agent(owner_id: str, agent_id: str) -> dict[str, Any]:
