@@ -355,7 +355,7 @@ async def _signed_media_preview_url(storage_path: str, *, expires_in: int = 300)
         async with httpx.AsyncClient(timeout=httpx.Timeout(8, connect=3)) as client:
             response = await client.post(
                 f"{base}/storage/v1/object/sign/{object_path}",
-                headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                headers={"apikey": key, **({"Authorization": f"Bearer {os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()}"} if os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() else {}), "Content-Type": "application/json"},
                 json={"expiresIn": expires_in},
             )
     except httpx.HTTPError as exc:
