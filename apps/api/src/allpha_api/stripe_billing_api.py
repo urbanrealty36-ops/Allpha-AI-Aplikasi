@@ -400,7 +400,7 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
     if product.get("purpose") == "premium_subscription" and (not product.get("plan_key") or not product.get("entitlement_version")):
         raise HTTPException(503, detail={"code": "SUBSCRIPTION_POLICY_UNAVAILABLE", "message": "Paket Premium belum memiliki kebijakan entitlement."})
     policy_rows = await _db("GET", "credit_policy_versions", params={
-        "select": "policy_version,approval_reference,status,configuration",
+        "select": "policy_version,approval_reference,status,configuration,effective_at,expires_at",
         "policy_version": f"eq.{product.get('credit_policy_version')}", "limit": "1",
     })
     if not policy_rows:
@@ -409,7 +409,7 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
     config = policy.get("configuration") if isinstance(policy.get("configuration"), dict) else {}
     allowed_grants = config.get("allowed_grant_types") if isinstance(config.get("allowed_grant_types"), list) else []
     grant_amount = int(product.get("credits_grant") or 0) if product.get("purpose") == "ai_credit_topup" else int(product.get("monthly_credits_grant") or 0)
-    if (policy.get("status") != "approved" or policy.get("approval_reference") != product.get("credit_policy_approval_reference")
+    if (policy.get("status") != "approved" or not _policy_is_current(policy) or policy.get("approval_reference") != product.get("credit_policy_approval_reference")
         or config.get("allow_grants") is not True or "grant" not in allowed_grants
         or int(config.get("max_grant_credits") or 0) < grant_amount):
         raise HTTPException(503, detail={"code": "BILLING_CREDIT_POLICY_NOT_APPROVED", "message": "Kebijakan grant AI Credit produk tidak lagi aktif atau tidak mencakup jumlah ini."})
