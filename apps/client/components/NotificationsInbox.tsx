@@ -42,35 +42,63 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
 
   const updateCursor = useRef(new Date(Date.now() - 1000).toISOString());
   const updateCursorId = useRef<string | null>(null);
-  const pollInFlight = useRef(false);
   useEffect(() => {
     let active = true;
+    let inFlight = false;
+    let retryDelayMs = 5000;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
     updateCursor.current = new Date(Date.now() - 1000).toISOString();
     updateCursorId.current = null;
-    pollInFlight.current = false;
+
+    const schedule = (delay: number) => {
+      if (!active) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void poll(); }, delay);
+    };
+
     const poll = async () => {
-      if (pollInFlight.current) return;
-      pollInFlight.current = true;
+      if (!active || inFlight) return;
+      inFlight = true;
+      controller = new AbortController();
       try {
         const params = new URLSearchParams({ after: updateCursor.current });
         if (updateCursorId.current) params.set("after_id", updateCursorId.current);
-        const result = await api<{ items: NotificationItem[]; unread_count: number }>("/v1/notifications/updates?" + params.toString());
+        const result = await api<{ items: NotificationItem[]; unread_count: number }>(
+          "/v1/notifications/updates?" + params.toString(),
+          { signal: controller.signal },
+        );
         if (!active) return;
         if (result.items?.length) {
           setItems(current => {
             const ids = new Set(current.map(item => item.id));
-            return [...result.items.filter(item => !ids.has(item.id)).reverse(), ...current].slice(0, 100);
+            const incoming = result.items.filter(item => !ids.has(item.id));
+            return [...incoming.reverse(), ...current].slice(0, 100);
           });
           const last = result.items[result.items.length - 1];
           updateCursor.current = last.created_at;
           updateCursorId.current = last.id;
         }
         setUnreadCount(result.unread_count || 0);
-      } catch { /* retry on the next interval */ }
-      finally { pollInFlight.current = false; }
+        retryDelayMs = 5000;
+        schedule(5000);
+      } catch {
+        // Keep the last confirmed composite cursor; retry with bounded backoff.
+        if (active) {
+          retryDelayMs = Math.min(retryDelayMs * 2, 30000);
+          schedule(retryDelayMs);
+        }
+      } finally {
+        inFlight = false;
+      }
     };
-    const timer = setInterval(() => { void poll(); }, 5000);
-    return () => { active = false; clearInterval(timer); };
+
+    void poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+      controller?.abort();
+    };
   }, [api]);
 
   const loadPreferences = useCallback(async () => {
