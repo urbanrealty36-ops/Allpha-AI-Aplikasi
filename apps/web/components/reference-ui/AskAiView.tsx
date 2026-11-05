@@ -24,7 +24,7 @@ interface AskAiViewProps {
   agentName: string;
   humanOwner: string;
   specialty: string;
-  onSubmitQuery?: (query: string) => Promise<void>;
+  onSubmitQuery?: (query: string) => Promise<{ text: string; jobId: string; reservedCredits?: number }>;
   onExecuteCreditReward?: (query: string) => void;
   currentUser: HumanProfile;
   availabilityMessage?: string;
@@ -39,7 +39,7 @@ export default function AskAiView({
   currentUser,
   availabilityMessage = 'Percakapan AI belum tersedia dari layanan Allpha.',
 }: AskAiViewProps) {
-  const [messages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [requestError, setRequestError] = useState('');
@@ -61,7 +61,10 @@ export default function AskAiView({
     setIsLoading(true);
     setRequestError('');
     try {
-      await onSubmitQuery(text);
+      const userMessage = { sender: currentUser.name, text, isAi: false, timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) };
+      setMessages(previous => [...previous, userMessage]);
+      const result = await onSubmitQuery(text);
+      setMessages(previous => [...previous, { sender: agentName, text: result.text, isAi: true, timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }]);
       setInputValue('');
     } catch (cause) {
       setRequestError(cause instanceof Error ? cause.message : 'Pertanyaan belum dapat dikirim ke Agent Runtime.');
