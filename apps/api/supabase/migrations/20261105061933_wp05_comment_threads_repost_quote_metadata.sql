@@ -71,8 +71,9 @@ comment on column public.content_shares.quote_body is
 
 commit;
 
--- Rollback guidance (manual, forward-safe):
--- Drop trigger notifications_private_broadcast_insert, function
--- public.broadcast_user_notification(), and policy
--- allpha_user_notification_broadcast_read; then drop the added indexes,
--- constraints, and columns. Re-add the original content_shares target check.
+-- Rollback guidance (manual, only after product data has been reconciled):
+-- 1. Preserve/export rows whose share_target is repost/quote and quote_body values.
+-- 2. Re-add the original share_target check for copy_link/native_share/external.
+-- 3. Drop the repost index, quote_body check/column, comment thread index,
+--    same-content FK, self-parent check, composite unique index, and parent_comment_id.
+-- This migration creates no trigger, function, or policy on managed Realtime tables.
