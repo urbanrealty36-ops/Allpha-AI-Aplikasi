@@ -169,17 +169,22 @@ begin
     or p_lease_seconds < 60 or p_lease_seconds > 600 then
     raise exception 'GENERATION_JOB_CLAIM_BOUNDS_INVALID' using errcode='22023';
   end if;
-  -- An expired running lease is an unknown provider outcome. Never requeue it:
-  -- a crash may have happened after the provider accepted the request.
+  -- An expired running lease is an unknown provider outcome. Never requeue it.
+  -- Preserve already-settled/released ledger state if a crash occurred between
+  -- ledger finalization and writing the terminal job state.
   for v_expired in
-    select id,reservation_id from public.generation_jobs
-    where status='running' and lease_expires_at < now()
-    for update skip locked
+    select j.id,j.reservation_id,r.state as reservation_state
+    from public.generation_jobs j
+    join public.credit_reservations r on r.id=j.reservation_id
+    where j.status='running' and j.lease_expires_at < now()
+    for update of j skip locked
   loop
-    perform public.credit_ledger_mark_pending(jsonb_build_object(
-      'reservation_id',v_expired.reservation_id,
-      'reason_code','generation_worker_lease_expired_outcome_unknown'
-    ));
+    if v_expired.reservation_state in ('reserved','pending_reconciliation') then
+      perform public.credit_ledger_mark_pending(jsonb_build_object(
+        'reservation_id',v_expired.reservation_id,
+        'reason_code','generation_worker_lease_expired_outcome_unknown'
+      ));
+    end if;
     update public.generation_jobs set status='pending_reconciliation',
       lease_token=null,lease_expires_at=null,error_code='worker_lease_expired_outcome_unknown',
       updated_at=now() where id=v_expired.id;
