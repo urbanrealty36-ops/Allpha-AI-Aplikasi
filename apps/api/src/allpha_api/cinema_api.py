@@ -117,6 +117,17 @@ async def create_episode(title_id: uuid.UUID,payload: EpisodeCreate,user: dict[s
     return {"item":rows[0]}
 
 
+@router.get("/creator/media-ready")
+async def creator_ready_media(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Expose only this creator's fully processed and clean media for Cinema drafts."""
+    rows = await _db("GET", "content_media", params={
+        "select": "id,content_id,filename,media_type,size_bytes,status,scan_status,processed_at,created_at",
+        "owner_id": f"eq.{user['id']}", "status": "eq.ready",
+        "scan_status": "eq.clean", "order": "created_at.desc", "limit": "100",
+    })
+    return {"items": rows or []}
+
+
 @router.get("/creator/status")
 async def creator_capability_status(user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
     # The endpoint reports configuration only; it never exposes balances or estimates.
