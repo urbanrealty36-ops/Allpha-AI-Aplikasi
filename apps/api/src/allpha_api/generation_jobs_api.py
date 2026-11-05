@@ -28,6 +28,7 @@ class GenerationJobCreate(BaseModel):
     capability_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z][a-z0-9_.:-]{2,127}$")
     prompt: str = Field(min_length=1, max_length=32768)
     max_output_tokens: int | None = Field(default=None, ge=1, le=16384)
+    quoted_credits: int | None = Field(default=None, ge=1)
 
 
 def _db_config() -> tuple[str, str]:
@@ -94,6 +95,84 @@ async def _approved_credit_policy(entitlement_version: str) -> tuple[dict[str, A
         if isinstance(entitlement, dict):
             return row, config, entitlement
     raise HTTPException(503, detail={"code": "AI_CREDIT_POLICY_UNAVAILABLE", "message": "Belum ada AI Credit policy approved yang berlaku untuk entitlement akun ini."})
+
+
+@router.post("/quote")
+async def quote_generation_job(
+    payload: GenerationJobCreate,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Return a short-lived estimate; job creation independently revalidates every input and tariff."""
+    token = getattr(request.state, "supabase_access_token", None)
+    if not token:
+        raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "Sesi login diperlukan."})
+    router_instance = getattr(request.app.state, "text_generation_router", None)
+    if router_instance is None:
+        raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
+    try:
+        await router_instance.preflight("private")
+        route = router_instance.route_snapshot_for("private")
+        router_max_tokens = router_instance.max_output_tokens_for("private")
+    except Exception as exc:
+        raise HTTPException(503, detail={"code": "MODEL_ROUTE_NOT_READY", "message": "Model, cost policy, atau metering belum disetujui."}) from exc
+    max_output_tokens = payload.max_output_tokens or router_max_tokens
+    if max_output_tokens > router_max_tokens:
+        raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model aktif."})
+    prompt_bytes = len(payload.prompt.encode("utf-8"))
+    if prompt_bytes > int(route["max_prompt_bytes"]):
+        raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt melebihi batas byte yang disetujui."})
+    skill_rows = await user_db_request("GET", "agent_skills", token, params={
+        "select": "id,agent_id,version,status", "id": f"eq.{payload.skill_id}",
+        "agent_id": f"eq.{payload.agent_id}", "status": "eq.published", "limit": "1",
+    })
+    if not skill_rows:
+        raise HTTPException(404, detail={"code": "PUBLISHED_SKILL_NOT_FOUND", "message": "Skill tidak ditemukan atau belum dipublikasikan."})
+    capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
+        "select": "capability_key,status", "agent_id": f"eq.{payload.agent_id}",
+        "capability_key": f"eq.{payload.capability_id}", "status": "eq.approved", "limit": "1",
+    })
+    if not capability_rows:
+        raise HTTPException(403, detail={"code": "AGENT_CAPABILITY_NOT_APPROVED", "message": "Capability belum disetujui untuk Agent ini."})
+    subscriptions = await _admin_request("GET", "billing_subscriptions", params={
+        "select": "id,owner_user_id,plan_key,entitlement_version,status,current_period_end",
+        "owner_user_id": f"eq.{user['id']}", "status": "eq.active",
+        "current_period_end": "gt." + datetime.now(timezone.utc).isoformat(),
+        "order": "updated_at.desc", "limit": "1",
+    })
+    if not subscriptions:
+        raise HTTPException(403, detail={"code": "PREMIUM_ENTITLEMENT_REQUIRED", "message": "AI generation memerlukan Premium entitlement aktif."})
+    entitlement_version = str(subscriptions[0].get("entitlement_version") or "")
+    if not entitlement_version:
+        raise HTTPException(503, detail={"code": "ENTITLEMENT_VERSION_MISSING", "message": "Versi entitlement belum dikonfigurasi."})
+    policy_row, policy_config, entitlement = await _approved_credit_policy(entitlement_version)
+    capability = (policy_config.get("capabilities") or {}).get(payload.capability_id)
+    if not isinstance(capability, dict):
+        raise HTTPException(503, detail={"code": "CAPABILITY_TARIFF_UNAVAILABLE", "message": "Tarif capability belum disetujui."})
+    usage_unit = str(capability.get("usage_unit") or "")
+    cost_unit = str(capability.get("cost_unit") or "")
+    pricing_version = str(capability.get("cost_pricing_version") or "")
+    tariff_version = str(capability.get("tariff_version") or "")
+    credits_per_usage_unit = int(capability.get("credits_per_usage_unit") or 0)
+    max_cost = int(capability.get("max_cost_microunits") if capability.get("max_cost_microunits") is not None else -1)
+    if (usage_unit != "tokens_total" or not tariff_version or credits_per_usage_unit <= 0
+        or cost_unit != route.get("cost_unit") or pricing_version != route.get("pricing_version")
+        or max_cost != int(route.get("max_cost_microunits") or -1)):
+        raise HTTPException(503, detail={"code": "MODEL_CREDIT_POLICY_MISMATCH", "message": "Tarif kredit tidak cocok dengan route Model Router."})
+    estimated_usage = prompt_bytes + max_output_tokens
+    estimated_credits = estimated_usage * credits_per_usage_unit
+    max_credits = int(entitlement.get("max_credits_per_request") or 0)
+    if max_credits <= 0 or estimated_credits > max_credits:
+        raise HTTPException(422, detail={"code": "REQUEST_EXCEEDS_ENTITLEMENT_LIMIT", "message": "Estimasi penggunaan melebihi batas kredit per permintaan."})
+    expires_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(minutes=5)
+    return {
+        "quote_id": str(uuid.uuid4()), "expires_at": expires_at.isoformat(),
+        "estimated_credits": estimated_credits, "estimated_usage_units": estimated_usage,
+        "usage_unit": usage_unit, "provider_id": route["provider_id"],
+        "model_id": route["model_id"], "model_version": route["model_version"],
+        "policy_version": policy_row["policy_version"], "tariff_version": tariff_version,
+        "entitlement_version": entitlement_version,
+    }
 
 
 @router.post("/jobs", status_code=202)
@@ -189,6 +268,8 @@ async def create_generation_job(
 
     estimated_usage_units = prompt_bytes + max_output_tokens
     credits_to_reserve = estimated_usage_units * credits_per_usage_unit
+    if payload.quoted_credits is not None and payload.quoted_credits != credits_to_reserve:
+        raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Estimasi AI Credits berubah. Minta quote baru sebelum melanjutkan."})
     max_credits = int(entitlement.get("max_credits_per_request") or 0)
     if max_credits <= 0 or credits_to_reserve > max_credits:
         raise HTTPException(422, detail={"code": "REQUEST_EXCEEDS_ENTITLEMENT_LIMIT", "message": "Estimasi penggunaan melebihi batas AI Credit per permintaan Premium."})
