@@ -17,7 +17,7 @@ type FeedItem = {
   engagement?: { likes: number; comments: number; saves: number; shares?: number };
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
-type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
+type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string; parent_comment_id?: string | null };
 type FeedStory = { id: string; owner_id: string; created_at: string; discovery_group?: "following" | "suggested_public"; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: FeedMedia[] };
 type MeResponse = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null } | null };
 type ApiAgent = { id: string; display_name: string; handle: string; avatar_url?: string | null; description?: string | null; persona?: Record<string, unknown> | null; status: string; ownership?: { owner_user_id?: string; status?: string } | null };
@@ -312,14 +312,14 @@ export default function FeedPage() {
     }
   }
 
-  async function submitComment(item: FeedItem) {
+  async function submitComment(item: FeedItem, parentCommentId?: string) {
     if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const body = (commentDrafts[item.id] ?? "").trim();
     if (!body) return;
     const epoch = sessionEpoch.current;
     setBusyKey(item.id); setError(""); setNotice("");
     try {
-      const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { method: "POST", body: JSON.stringify({ body }) }) as { comment: FeedComment };
+      const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { method: "POST", body: JSON.stringify({ body, ...(parentCommentId ? { parent_comment_id: parentCommentId } : {}) }) }) as { comment: FeedComment };
       if (epoch !== sessionEpoch.current) return;
       setComments(current => ({ ...current, [item.id]: [...(current[item.id] ?? []), data.comment] }));
       setCommentDrafts(current => ({ ...current, [item.id]: "" }));
@@ -355,6 +355,23 @@ export default function FeedPage() {
       await loadFeed(true);
     } catch (cause) {
       if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Preferensi Feed gagal disimpan.");
+    } finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
+  }
+
+  async function createRepost(item: FeedItem, shareTarget: "repost" | "quote", quoteBody?: string) {
+    if (requireLogin(shareTarget === "repost" ? "Masuk untuk me-repost konten." : "Masuk untuk mengutip konten.")) return;
+    const epoch = sessionEpoch.current;
+    setBusyKey(item.id); setError(""); setNotice("");
+    try {
+      await request("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
+        method: "POST",
+        body: JSON.stringify({ share_target: shareTarget, ...(shareTarget === "quote" ? { quote_body: quoteBody } : {}) }),
+      });
+      if (epoch !== sessionEpoch.current) return;
+      setNotice(shareTarget === "repost" ? "Postingan berhasil di-repost." : "Kutipan berhasil diterbitkan.");
+      await loadFeed(true);
+    } catch (cause) {
+      if (epoch === sessionEpoch.current) setError(cause instanceof Error ? cause.message : "Repost/kutipan gagal disimpan.");
     } finally { if (epoch === sessionEpoch.current) setBusyKey(""); }
   }
 
@@ -408,6 +425,7 @@ export default function FeedPage() {
         id: comment.id, authorName: "Pengguna",
         authorHandle: "", authorAvatar: "", isAi: false,
         content: comment.body, timestamp: new Date(comment.created_at).toLocaleString("id-ID"), likes: 0,
+        parentCommentId: comment.parent_comment_id ?? null,
       })),
     };
   });
@@ -482,13 +500,13 @@ export default function FeedPage() {
     }
   }
 
-  async function addCommentFromReference(postId: string, body: string) {
+  async function addCommentFromReference(postId: string, body: string, parentCommentId?: string) {
     if (requireLogin("Masuk untuk mengirim komentar.")) return;
     const item = items.find(row => row.id === postId);
     if (!item || !body.trim()) return;
     setBusyKey(postId); setError(""); setNotice("");
     try {
-      const data = await request("/v1/feed/" + encodeURIComponent(postId) + "/comments", { method: "POST", body: JSON.stringify({ body: body.trim() }) }) as { comment: FeedComment };
+      const data = await request("/v1/feed/" + encodeURIComponent(postId) + "/comments", { method: "POST", body: JSON.stringify({ body: body.trim(), ...(parentCommentId ? { parent_comment_id: parentCommentId } : {}) }) }) as { comment: FeedComment };
       setComments(current => ({ ...current, [postId]: [...(current[postId] ?? []), data.comment] }));
       setItems(current => current.map(row => row.id === postId ? { ...row, engagement: { likes: row.engagement?.likes ?? 0, saves: row.engagement?.saves ?? 0, comments: (row.engagement?.comments ?? 0) + 1 } } : row));
       setNotice("Komentar ditambahkan.");
@@ -528,6 +546,8 @@ export default function FeedPage() {
           onLoadComments={postId => { const item = items.find(row => row.id === postId); if (item) void openComments(item); }}
           onSharePost={postId => { const item = items.find(row => row.id === postId); if (item) void share(item); }}
           onSavePost={postId => { const item = items.find(row => row.id === postId); if (item) void toggleSave(item); }}
+          onRepostPost={postId => { const item = items.find(row => row.id === postId); if (item) void createRepost(item, "repost"); }}
+          onQuotePost={(postId, quoteBody) => { const item = items.find(row => row.id === postId); if (item) void createRepost(item, "quote", quoteBody); }}
           onReportPost={(postId, reason) => { const item = items.find(row => row.id === postId); if (item) void report(item, reason); }}
           onFeedbackPost={(postId, feedbackType) => { const item = items.find(row => row.id === postId); if (item) void submitFeedFeedback(item, feedbackType); }}
           storiesData={[{ id: "create-story", name: "Tambah", isAdd: true }, ...stories.map((story, index) => ({ id: story.id, name: story.creator?.display_name || story.creator?.username || (story.discovery_group === "suggested_public" ? "Disarankan" : "Momen"), img: story.media?.find(media => media.media_type.startsWith("image/") && media.preview_url)?.preview_url ?? undefined, isLive: false, ringColor: ["from-rose-500 via-purple-600 to-amber-500", "from-blue-500 to-sky-400", "from-cyan-400 to-teal-500", "from-purple-500 to-indigo-600"][index % 4] }))]}
@@ -535,7 +555,7 @@ export default function FeedPage() {
           onOpenAskAi={(agentName) => { if (requireLogin("Masuk untuk menggunakan Tanya AI Agent.")) return; window.location.assign(agentName && agentName !== "—" ? "/ask-ai?agent=" + encodeURIComponent(agentName) : "/ask-ai"); }}
           onOpenGenerate={() => { if (requireLogin("Masuk untuk menggunakan Generate AI.")) return; window.location.assign("/create"); }}
           onOpenWorld3D={() => { if (requireLogin("Masuk untuk memasuki Universe 3D.")) return; window.location.assign("/spatial/navigation"); }}
-          onAddComment={(postId, body) => { void addCommentFromReference(postId, body); }}
+          onAddComment={(postId, body, parentCommentId) => { void addCommentFromReference(postId, body, parentCommentId); }}
           onSelectPost={post => { void recordFeedSignal(post.id, "view", Math.max(0, items.findIndex(item => item.id === post.id))); window.location.assign("/feed?content=" + encodeURIComponent(post.id)); }}
           onOpenReels={() => { window.location.assign("/reels"); }}
           onOpenStory={storyId => { window.location.assign("/stories?story=" + encodeURIComponent(storyId)); }}
