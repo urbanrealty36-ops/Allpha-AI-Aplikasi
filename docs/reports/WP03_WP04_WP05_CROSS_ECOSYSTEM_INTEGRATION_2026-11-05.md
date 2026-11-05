@@ -24,6 +24,7 @@ Source-level integration has been extended across canonical Feed, social graph o
 ### Readiness consistency repair
 
 - API publish and schedule submission now require every attached media row to be `status=ready`, `scan_status=clean`, have `processed_at`, and contain a non-empty derivative array.
+- Feed public/profile/search projections and Super Admin approval independently enforce the same completed derivative readiness predicate before signing previews or approving publication. Commits: `fe7fc0252a3d7a36b9e87db8f34eddd91021e56d`, `c2652451b7f5f6d362e5cf118848faab43230f73`.
 - New migration `20261105120000_wp04_schedule_media_readiness_guard.sql` replaces the canonical `create_content_schedule` and `publish_scheduled_content` functions so the database boundary enforces the same readiness predicate atomically, in addition to moderation approval, rights/disclosure attestations, version and schedule lease checks.
 - Migration commits: `cfa6ff7e818a63696351dcaebded4d3f6e099a42`, follow-up defensive JSON-array handling `c513ecf8ec07fd0a38b7d497d28e5061d4b539b7`.
 - **Important:** migration is committed to GitHub but was not applied to the live Supabase project.
