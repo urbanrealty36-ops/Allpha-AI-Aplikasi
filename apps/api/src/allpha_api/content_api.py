@@ -408,12 +408,12 @@ async def preview_content(content_id: uuid.UUID, request: Request, user: dict[st
 async def publish_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
     media = await _server_db("GET", "content_media", params={
-        "select": "id,status", "content_id": f"eq.{content_id}",
+        "select": "id,status,scan_status", "content_id": f"eq.{content_id}",
         "owner_id": f"eq.{user['id']}", "limit": "100",
     })
     if not content["body"].strip() and not media:
         raise HTTPException(422, detail={"code": "CONTENT_EMPTY", "message": "Tambahkan teks atau media sebelum mengirim konten."})
-    if any(item.get("status") != "ready" for item in (media or [])):
+    if any(item.get("status") != "ready" or item.get("scan_status") != "clean" for item in (media or [])):
         raise HTTPException(409, detail={
             "code": "CONTENT_MEDIA_NOT_READY",
             "message": "Media masih diproses atau belum lolos pemeriksaan keamanan. Konten belum dapat dikirim untuk moderasi.",
@@ -490,7 +490,7 @@ async def public_content_feed(request: Request, limit: int = 20) -> dict[str, An
     content_ids = [str(item["id"]) for item in items]
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "content_id": f"in.({','.join(content_ids)})",
-        "status": "eq.ready", "order": "created_at.asc", "limit": str(min(250, limit * 5)),
+        "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(250, limit * 5)),
     })
     media_by_content: dict[str, list[dict[str, Any]]] = {}
     for row in media or []:
@@ -521,7 +521,7 @@ async def content_review_queue(
         content_ids = [str(item["id"]) for item in items]
         media_rows = await _server_db("GET", "content_media", params={
             "select": MEDIA_FIELDS, "content_id": f"in.({','.join(content_ids)})",
-            "status": "eq.ready", "order": "created_at.asc", "limit": str(min(500, limit * 10)),
+            "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(500, limit * 10)),
         })
         for media in media_rows or []:
             media_by_content.setdefault(str(media["content_id"]), []).append(await _media_preview_projection(media))
@@ -552,7 +552,7 @@ async def review_content(
         raise HTTPException(409, detail={"code": "CONTENT_VERSION_CHANGED", "message": "Versi konten berubah; muat ulang antrean sebelum meninjau."})
     allowed = payload.decision == "approve"
     schedule_rows = await _server_db("GET", "content_schedules", params={
-        "select": "id,status", "content_id": f"eq.{content_id}",
+        "select": "id,status,scan_status", "content_id": f"eq.{content_id}",
         "owner_id": f"eq.{item['owner_id']}", "status": "in.(scheduled,processing)", "limit": "1",
     })
     scheduled = bool(schedule_rows) and allowed
@@ -837,9 +837,9 @@ async def schedule_content(
     if publish_at <= datetime.now(timezone.utc):
         raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_MUST_BE_FUTURE", "message": "Waktu publikasi harus berada di masa depan."})
     media = await _server_db("GET", "content_media", params={
-        "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "100",
+        "select": "id,status,scan_status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "100",
     })
-    if any(row.get("status") != "ready" for row in media or []):
+    if any(row.get("status") != "ready" or row.get("scan_status") != "clean" for row in media or []):
         raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Seluruh media harus selesai diproses sebelum konten dijadwalkan untuk moderasi."})
     result = await _server_db("POST", "rpc/create_content_schedule", body={
         "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
@@ -885,7 +885,7 @@ async def reschedule_content(
     if payload.publish_at.tzinfo is None or payload.publish_at.astimezone(timezone.utc) <= datetime.now(timezone.utc):
         raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_TIME_INVALID", "message": "Waktu baru harus memiliki timezone dan berada di masa depan."})
     schedules = await _server_db("GET", "content_schedules", params={
-        "select": "id,status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
+        "select": "id,status,scan_status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}",
         "status": "eq.scheduled", "limit": "1",
     })
     if not schedules:
