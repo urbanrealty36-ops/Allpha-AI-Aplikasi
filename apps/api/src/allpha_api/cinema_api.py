@@ -101,7 +101,7 @@ async def title_playback(title_id: uuid.UUID, user: dict[str, Any] | None = Depe
         raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_AVAILABLE", "message": "Judul belum tersedia untuk ditonton."})
     title = titles[0]
     episodes = await _db("GET", "cinema_episodes", params={
-        "select": EPISODE_FIELDS, "title_id": f"eq.{title_id}", "status": "eq.ready",
+        "select": EPISODE_FIELDS, "title_id": f"eq.{title_id}", "owner_id": f"eq.{title['owner_id']}", "status": "eq.ready",
         "order": "episode_number.asc", "limit": "500",
     })
     episode_rows = episodes or []
@@ -109,7 +109,7 @@ async def title_playback(title_id: uuid.UUID, user: dict[str, Any] | None = Depe
     media_rows = await _db("GET", "content_media", params={
         "select": "id,owner_id,storage_path,status,scan_status",
         "id": f"in.({','.join(media_ids)})" if media_ids else "eq.00000000-0000-0000-0000-000000000000",
-        "status": "eq.ready", "scan_status": "eq.clean", "limit": str(min(500, len(media_ids) or 1)),
+        "owner_id": f"eq.{title['owner_id']}", "status": "eq.ready", "scan_status": "eq.clean", "limit": str(min(500, len(media_ids) or 1)),
     })
     clean_media = {str(row["id"]): row for row in (media_rows or [])}
     premium_entitled = False
