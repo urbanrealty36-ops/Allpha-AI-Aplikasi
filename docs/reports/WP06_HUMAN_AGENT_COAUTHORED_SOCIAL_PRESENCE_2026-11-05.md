@@ -147,3 +147,6 @@ The live schema inspection confirmed the three added columns, Story index, four 
 - No deployment was triggered.
 
 **Status remains `in_progress / implementation_applied / integration_not_verified`.** Do not mark WP-06 `acceptance_passed` until focused SQL/API tests prove commit/rollback/idempotency and the Web + Native journeys consume the returned result. WP-07 remains `not_started`.
+
+
+**Correction note (2026-11-05):** Story reply conversation kind is `agent`, matching the existing ENG-P18 Human↔Agent conversation contract. The canonical Story reference remains on `messages.story_id`; the Story DM is surfaced through the recipient Human's normal conversation membership.
