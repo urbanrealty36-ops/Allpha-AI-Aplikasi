@@ -29,6 +29,7 @@ OperatorScope = Literal[
     "platform:capabilities.review.high_risk",
     "platform:operators.manage",
     "platform:content.moderate",
+    "platform:billing.manage",
 ]
 
 
