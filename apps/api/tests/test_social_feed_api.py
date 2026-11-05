@@ -89,12 +89,6 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
                     {"target_user_id": hidden_owner, "edge_type": "mute", "status": "active"},
                 ]
             return []
-        if table == "feed_feedback":
-            return []
-        if method == "POST" and table == "feed_snapshots":
-            return [{"id": "00000000-0000-0000-0000-000000000778"}]
-        if method == "POST" and table == "feed_snapshot_items":
-            return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"unexpected table {table}")
