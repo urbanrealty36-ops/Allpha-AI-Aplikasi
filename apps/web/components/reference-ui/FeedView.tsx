@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   Heart, 
   MessageCircle, 
+  MessageSquareQuote,
   Repeat2, 
   Share2, 
   Bookmark,
@@ -30,7 +31,7 @@ interface FeedViewProps {
   onOpenAskAi: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenGenerate: (contextPost: PostItem) => void;
   onOpenWorld3D: () => void;
-  onAddComment: (postId: string, text: string) => void;
+  onAddComment: (postId: string, text: string, parentCommentId?: string) => void;
   onSelectPost?: (post: PostItem) => void;
   onOpenReels?: () => void;
   onOpenLiveStage?: () => void;
@@ -44,6 +45,7 @@ interface FeedViewProps {
   onSharePost?: (postId: string) => void;
   onSavePost?: (postId: string) => void;
   onRepostPost?: (postId: string) => void;
+  onQuotePost?: (postId: string, quoteBody: string) => void;
   onLoadComments?: (postId: string) => void;
   onReportPost?: (postId: string, reason: FeedReportReason) => void;
   onFeedbackPost?: (postId: string, feedbackType: "not_interested" | "hide_creator") => void;
@@ -75,6 +77,7 @@ export default function FeedView({
   onSharePost,
   onSavePost,
   onRepostPost,
+  onQuotePost,
   onLoadComments,
   onReportPost,
   onFeedbackPost,
@@ -91,6 +94,9 @@ export default function FeedView({
   const [initialCommentsHandled, setInitialCommentsHandled] = useState(false);
   const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
   const [reportReasons, setReportReasons] = useState<Record<string, FeedReportReason>>({});
+  const [replyingTo, setReplyingTo] = useState<Record<string, string>>({});
+  const [quotePostId, setQuotePostId] = useState<string | null>(null);
+  const [quoteDraft, setQuoteDraft] = useState("");
 
   // Keep the source-defined story strip and its "Tambah" entry. Production story identities come only from the authenticated API.
   const referenceStories = [
@@ -122,7 +128,8 @@ export default function FeedView({
   const handleSendComment = (postId: string) => {
     const text = commentInput[postId]?.trim();
     if (!text) return;
-    onAddComment(postId, text);
+    onAddComment(postId, text, replyingTo[postId]);
+    setReplyingTo(current => ({ ...current, [postId]: "" }));
     setCommentInput((prev) => ({ ...prev, [postId]: '' }));
   };
 
@@ -506,6 +513,16 @@ export default function FeedView({
                     <Repeat2 className="w-4.5 h-4.5 text-slate-700 hover:text-emerald-600" />
                     {!productionMode && <span>{post.reposts}</span>}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => { setQuotePostId(post.id); setQuoteDraft(""); }}
+                    disabled={!onQuotePost}
+                    title="Kutip dengan komentar Anda"
+                    className="flex items-center gap-1.5 text-slate-700 hover:text-indigo-600 transition cursor-pointer disabled:opacity-40"
+                  >
+                    <MessageSquareQuote className="w-4 h-4" />
+                    <span className="text-xs">Kutip</span>
+                  </button>
 
                   {/* Share Button */}
                   <button
@@ -568,21 +585,22 @@ export default function FeedView({
               {isCommentsOpen && (
                 <div className="pt-3 border-t-2 border-slate-100 space-y-3 animate-in fade-in duration-200">
                   <div className="space-y-2">
-                    {post.comments.map((c) => (
-                      <div key={c.id} className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-2.5 text-xs">
-                        {c.authorAvatar ? <img src={c.authorAvatar} alt={c.authorName} className="w-7 h-7 rounded-full object-cover" /> : <div aria-label={c.authorName} className="w-7 h-7 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center"><Sparkles className="w-3.5 h-3.5" /></div>}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-900">{c.authorName}</span>
-                            <span className="text-[10px] text-slate-500">{c.timestamp}</span>
-                            {c.isAi && (
-                              <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[8px] font-bold">
-                                AI
-                              </span>
-                            )}
+                    {post.comments.filter(comment => !comment.parentCommentId).map((comment) => (
+                      <div key={comment.id} className="space-y-2">
+                        <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-2.5 text-xs">
+                          {comment.authorAvatar ? <img src={comment.authorAvatar} alt={comment.authorName} className="w-7 h-7 rounded-full object-cover" /> : <div aria-label={comment.authorName} className="w-7 h-7 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center"><Sparkles className="w-3.5 h-3.5" /></div>}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5"><span className="font-bold text-slate-900">{comment.authorName}</span><span className="text-[10px] text-slate-500">{comment.timestamp}</span>{comment.isAi && <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[8px] font-bold">AI</span>}</div>
+                            <p className="text-slate-700 mt-0.5">{comment.content}</p>
+                            {productionMode && <button type="button" onClick={() => setReplyingTo(current => ({ ...current, [post.id]: comment.id }))} className="mt-1 text-[11px] font-bold text-indigo-600 hover:underline">Balas</button>}
                           </div>
-                          <p className="text-slate-700 mt-0.5">{c.content}</p>
                         </div>
+                        {post.comments.filter(reply => reply.parentCommentId === comment.id).map(reply => (
+                          <div key={reply.id} className="ml-8 p-2.5 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-start gap-2.5 text-xs">
+                            <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center"><MessageCircle className="w-3.5 h-3.5" /></div>
+                            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="font-bold text-slate-900">{reply.authorName}</span><span className="text-[10px] text-slate-500">{reply.timestamp}</span></div><p className="mt-0.5 text-slate-700">{reply.content}</p></div>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -591,7 +609,7 @@ export default function FeedView({
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      placeholder="Tulis komentar publik..."
+                      placeholder={replyingTo[post.id] ? "Balas komentar..." : "Tulis komentar publik..."}
                       value={commentInput[post.id] || ''}
                       onChange={(e) => setCommentInput({ ...commentInput, [post.id]: e.target.value })}
                       onKeyDown={(e) => e.key === 'Enter' && handleSendComment(post.id)}
@@ -612,6 +630,16 @@ export default function FeedView({
         })}
       </div>
 
+      {quotePostId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="quote-dialog-title">
+          <div className="w-full max-w-lg space-y-3 rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[5px_5px_0px_#0f172a]">
+            <div className="flex items-center justify-between"><h2 id="quote-dialog-title" className="text-lg font-black text-slate-900">Kutip postingan</h2><button type="button" onClick={() => setQuotePostId(null)} className="rounded-full px-3 py-1 text-sm font-bold hover:bg-slate-100">Tutup</button></div>
+            <p className="text-xs text-slate-500">Postingan asli tetap terhubung dan atribusi kreator dipertahankan.</p>
+            <textarea value={quoteDraft} onChange={event => setQuoteDraft(event.target.value)} maxLength={2000} rows={4} placeholder="Tambahkan pemikiran Anda..." className="w-full rounded-2xl border-2 border-slate-900 p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
+            <div className="flex justify-end gap-2"><button type="button" onClick={() => setQuotePostId(null)} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold">Batal</button><button type="button" disabled={!quoteDraft.trim() || !onQuotePost} onClick={() => { if (quotePostId && quoteDraft.trim()) onQuotePost?.(quotePostId, quoteDraft.trim()); setQuotePostId(null); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">Terbitkan kutipan</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
