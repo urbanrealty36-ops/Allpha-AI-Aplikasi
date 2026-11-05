@@ -14,6 +14,10 @@ import httpx
 
 from allpha_api.content_scheduler_worker import ContentScheduler
 from allpha_api.content_provider_cleanup_worker import CleanupWorker
+from allpha_api.content_media_worker import MediaWorker
+from allpha_api.content_transcode_worker import TranscodeWorker
+from allpha_api.content_provider_callback_worker import CallbackWorker
+from allpha_api.content_retention_worker import RetentionWorker
 
 log = logging.getLogger("allpha.wp04_vercel_cron")
 
@@ -74,15 +78,23 @@ async def run_wp04_vercel_batches() -> dict[str, Any]:
         CleanupWorker,
         supabase_required + ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"),
     )
-
-    # WP-04-003 explicitly defers ClamAV provisioning. No Vercel function
-    # assumes raw TCP scanner reachability and no scan result is fabricated.
-    # These queues stay durable, private and non-publishable until a compatible
-    # scanner adapter is approved and configured.
+    image_processing = await _run_one_batch(
+        "image-processing-clamav", MediaWorker, supabase_required + ("CLAMAV_HOST",)
+    )
+    transcode = await _run_one_batch(
+        "cloudinary-transcode", TranscodeWorker,
+        supabase_required + ("CLAMAV_HOST", "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY",
+                            "CLOUDINARY_API_SECRET", "ALLPHA_CLOUDINARY_CALLBACK_URL"),
+    )
+    provider_callbacks = await _run_one_batch(
+        "cloudinary-provider-callback", CallbackWorker,
+        supabase_required + ("CLAMAV_HOST", "CLOUDINARY_CLOUD_NAME"),
+    )
     scanner = {
-        "status": "deferred",
-        "reason": "approved_scanner_adapter_not_configured",
-        "media_ready_promotion": "fail_closed",
+        "image_processing": image_processing,
+        "transcode": transcode,
+        "provider_callbacks": provider_callbacks,
+        "media_ready_promotion": "worker_and_database_guarded",
     }
     retention_enabled = all(
         os.getenv(name, "false").strip().lower() in {"1", "true", "yes"}
@@ -95,8 +107,13 @@ async def run_wp04_vercel_batches() -> dict[str, Any]:
         )
     )
     retention_schedule = await _schedule_retention_candidates()
+    retention_worker = (
+        await _run_one_batch("retention-purge", RetentionWorker, supabase_required)
+        if retention_enabled else {"status": "locked", "reason": "backup_pitr_restore_and_legal_hold_gates_pending"}
+    )
     retention = {
         **retention_schedule,
+        "worker": retention_worker,
         "purge_enabled": retention_enabled,
         "purge_status": "enabled" if retention_enabled else "locked",
         "purge_lock_reason": None if retention_enabled else "backup_pitr_restore_and_legal_hold_gates_pending",
