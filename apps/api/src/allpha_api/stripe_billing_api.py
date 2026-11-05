@@ -59,6 +59,17 @@ def _billing_config(*, webhook: bool = False) -> tuple[str, str | None]:
     return key, signing if webhook else None
 
 
+
+def _stripe_admin_key() -> str:
+    key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    mode = os.getenv("ALLPHA_STRIPE_MODE", "test").strip().lower()
+    if mode not in {"test", "live"} or not key:
+        raise HTTPException(503, detail={"code": "STRIPE_ADMIN_NOT_CONFIGURED", "message": "Kunci Stripe untuk verifikasi produk belum dikonfigurasi."})
+    if (mode == "live" and not key.startswith("sk_live_")) or (mode == "test" and not key.startswith("sk_test_")):
+        raise HTTPException(503, detail={"code": "STRIPE_MODE_MISMATCH", "message": "Kunci Stripe tidak sesuai mode konfigurasi."})
+    return key
+
+
 def _db_config() -> tuple[str, str]:
     base = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SECRET_KEY", "")
@@ -70,7 +81,9 @@ def _db_config() -> tuple[str, str]:
 async def _db(method: str, path: str, *, params: dict[str, str] | None = None,
               body: Any = None, prefer: str | None = None) -> Any:
     base, key = _db_config()
-    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
+    headers = {"apikey": key, "Content-Type": "application/json", "Accept": "application/json"}
+    if os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip():
+        headers["Authorization"] = f"Bearer {os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()}"
     if prefer:
         headers["Prefer"] = prefer
     try:
@@ -250,7 +263,7 @@ async def create_billing_product(payload: BillingProductDraft, request: Request,
 @router.post("/admin/products/{product_key}/activate")
 async def activate_billing_product(product_key: str, request: Request,
                                    operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
-    key, _ = _billing_config()
+    key = _stripe_admin_key()
     rows = await _db("GET", "billing_products", params={
         "select": "id,product_key,purpose,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status",
         "product_key": f"eq.{product_key}", "limit": "1",
