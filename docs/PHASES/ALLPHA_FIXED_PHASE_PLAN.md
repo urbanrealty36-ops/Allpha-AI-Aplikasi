@@ -2635,3 +2635,5 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 
 
 **Code follow-up after this checkpoint:** additional source hardening was committed through main HEAD `29354946ed87520ce3e45e5a4486381d3d72dcdc`, including Stripe policy effective-date checks, recurring invoice period refresh, monthly Premium credit grant gating, and the final billing RPC privilege-signature correction. These remain source-only changes; no tests or runtime actions were run.
+
+**Final source hardening after the prior note:** main reached `c84f81f46001ceb2fbc958ac82c118bfe02ed3a2`. Stripe subscription activation now requires a live Stripe subscription with a verified non-expired billing period; invoice renewals refresh the period from Stripe before entitlement updates; monthly Premium credit grants are issued only for an active paid period. This remains source-only and unverified at runtime.
