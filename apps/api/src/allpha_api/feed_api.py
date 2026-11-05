@@ -21,6 +21,7 @@ class ReactionWrite(BaseModel):
 class CommentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(min_length=1, max_length=2000)
+    parent_comment_id: uuid.UUID | None = None
 
 class ReportCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -29,7 +30,8 @@ class ReportCreate(BaseModel):
 
 class ShareCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    share_target: Literal["copy_link", "native_share", "external"] = "copy_link"
+    share_target: Literal["copy_link", "native_share", "external", "repost", "quote"] = "copy_link"
+    quote_body: str | None = Field(default=None, min_length=1, max_length=2000)
 
 class ImpressionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -913,6 +915,7 @@ async def list_comments(
         if not profile or profile.get("visibility") != "public" or profile.get("account_status", "active") != "active":
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         select_fields = "id,content_id,body,status,created_at,updated_at"
+    select_fields += ",parent_comment_id"
     rows = await _server_db("GET", "content_comments", params={"select": select_fields,
         "content_id": f"eq.{content_id}", "status": "eq.visible", "order": "created_at.asc", "limit": str(limit)})
     items = rows or []
@@ -930,18 +933,37 @@ async def list_comments(
 async def create_comment(content_id: uuid.UUID, payload: CommentCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _visible_content(content_id, str(user["id"])); body = payload.body.strip()
     if not body: raise HTTPException(422, detail={"code": "COMMENT_EMPTY", "message": "Komentar tidak boleh kosong."})
-    rows = await _server_db("POST", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at"},
-        body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "body": body, "status": "visible"}, prefer="return=representation")
+    parent = None
+    if payload.parent_comment_id:
+        parent_rows = await _server_db("GET", "content_comments", params={
+            "select": "id,content_id,actor_user_id,parent_comment_id,status",
+            "id": f"eq.{payload.parent_comment_id}", "content_id": f"eq.{content_id}",
+            "status": "eq.visible", "limit": "1",
+        })
+        if not parent_rows:
+            raise HTTPException(404, detail={"code": "COMMENT_PARENT_NOT_FOUND", "message": "Komentar induk tidak ditemukan pada konten ini."})
+        parent = parent_rows[0]
+        # Keep a single-level thread: replies to replies attach to the root.
+        if parent.get("parent_comment_id"):
+            payload.parent_comment_id = uuid.UUID(str(parent["parent_comment_id"]))
+            parent = {"id": str(payload.parent_comment_id), "actor_user_id": parent.get("actor_user_id")}
+    rows = await _server_db("POST", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,parent_comment_id,created_at,updated_at"},
+        body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "body": body,
+              "parent_comment_id": str(payload.parent_comment_id) if payload.parent_comment_id else None,
+              "status": "visible"}, prefer="return=representation")
     if not rows: raise HTTPException(409, detail={"code": "COMMENT_NOT_RECORDED", "message": "Komentar tidak dapat disimpan."})
     comment = rows[0]
     comment_id = str(comment["id"])
-    if str(content["owner_id"]) != str(user["id"]):
+    recipient_id = str(parent.get("actor_user_id")) if parent else str(content["owner_id"])
+    if recipient_id != str(user["id"]):
         await _enqueue_social_notification(
-            str(content["owner_id"]),
+            recipient_id,
             f"feed_comment:{comment_id}",
-            "Komentar baru di konten Anda",
-            "Ada komentar baru pada konten Anda.",
-            {"type": "feed_comment", "content_id": str(content_id), "comment_id": comment_id},
+            "Balasan baru pada komentar Anda" if parent else "Komentar baru di konten Anda",
+            "Ada balasan baru pada percakapan Anda." if parent else "Ada komentar baru pada konten Anda.",
+            {"type": "feed_comment_reply" if parent else "feed_comment",
+             "content_id": str(content_id), "comment_id": comment_id,
+             "parent_comment_id": str(payload.parent_comment_id) if payload.parent_comment_id else None},
         )
     mentions = await _server_db("GET", "content_mentions", params={
         "select": "mentioned_user_id", "comment_id": f"eq.{comment_id}", "limit": "100",
@@ -968,12 +990,26 @@ async def delete_comment(comment_id: uuid.UUID, user: dict[str, Any] = Depends(c
 @router.post("/v1/feed/{content_id}/share", status_code=201)
 async def share_content(content_id: uuid.UUID, payload: ShareCreate,
                         user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    await _visible_content(content_id, str(user["id"]))
-    rows = await _server_db("POST", "content_shares", params={"select": "id,content_id,actor_user_id,share_target,created_at"},
-        body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "share_target": payload.share_target},
+    content = await _visible_content(content_id, str(user["id"]))
+    if payload.share_target == "quote" and not (payload.quote_body and payload.quote_body.strip()):
+        raise HTTPException(422, detail={"code": "QUOTE_BODY_REQUIRED", "message": "Teks kutipan wajib diisi."})
+    if payload.share_target != "quote" and payload.quote_body is not None:
+        raise HTTPException(422, detail={"code": "QUOTE_BODY_NOT_ALLOWED", "message": "Teks kutipan hanya berlaku untuk aksi quote."})
+    rows = await _server_db("POST", "content_shares", params={"select": "id,content_id,actor_user_id,share_target,quote_body,created_at"},
+        body={"content_id": str(content_id), "actor_user_id": str(user["id"]),
+              "share_target": payload.share_target,
+              "quote_body": payload.quote_body.strip() if payload.share_target == "quote" and payload.quote_body else None},
         prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "SHARE_NOT_RECORDED", "message": "Aktivitas berbagi tidak dapat dicatat."})
+    if payload.share_target in {"repost", "quote"} and str(content["owner_id"]) != str(user["id"]):
+        await _enqueue_social_notification(
+            str(content["owner_id"]),
+            f"feed_{payload.share_target}:{rows[0]['id']}",
+            "Konten Anda di-repost" if payload.share_target == "repost" else "Konten Anda dikutip",
+            "Seseorang membagikan ulang konten Anda." if payload.share_target == "repost" else "Seseorang mengutip konten Anda.",
+            {"type": f"feed_{payload.share_target}", "content_id": str(content_id), "share_id": str(rows[0]["id"])},
+        )
     return {"share": rows[0], "share_url": "https://allpha.web.id/feed?content=" + str(content_id)}
 
 @router.get("/v1/feed/item/{content_id}")
