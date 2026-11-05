@@ -2739,3 +2739,16 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Detailed evidence and scope: [WP-03/WP-04/WP-05 Source-Level Completion Checkpoint](../reports/WP03_WP04_WP05_SOURCE_LEVEL_COMPLETION_2026-11-05.md).
 - **Status remains honest:** WP-03 `in_progress` (source reconciled; runtime not verified); WP-04 `in_progress` (source hardened; providers/workers and migration not executed); WP-05 `in_progress` (source contracts reconciled; account/device QA not authorized). None is marked `integration_verified` or `acceptance_passed`.
 - **Next:** continue source-only cross-ecosystem contract reconciliation. Request Product Owner approval before opening account/device QA. WP-06 — Human + AI Agent Co-authored Social Presence — remains locked until WP-05 `acceptance_passed`.
+
+
+---
+
+**Product Owner directive — open WP-06 and skip Account QA (2026-11-05):**
+- Product Owner explicitly directs immediate source implementation of **WP-06 — Human + AI Agent Co-authored Social Presence** and explicitly waives Account QA. This waiver permits WP-06 source work to begin without waiting for the account/device QA campaign. It does **not** promote WP-05 to `acceptance_passed`; WP-05 remains `in_progress` / runtime acceptance `NOT VERIFIED`.
+- No staging, tests/build/lint/typecheck/CI, account/browser/device QA, migration execution/application, Supabase mutation, external provider calls or deployment.
+- WP-06 source implementation added owner-scoped Agent social policy and durable action approvals, with approval bound to a succeeded Agent Runtime task, active owner/Agent relationship, action allowlist, versioned draft and explicit Human approval. Approval does not publish content; the existing moderation and publishing lifecycle remains mandatory.
+- Feed API exposes a minimal Human + Agent authorship/disclosure projection and strips internal provenance from Feed responses. Web and Native Feed surfaces now render the co-authorship disclosure. ENG-P20 remains the sole push delivery owner.
+- Source implementation report: [WP06 Human + AI Agent Co-authored Social Presence](../reports/WP06_HUMAN_AGENT_COAUTHORED_SOCIAL_PRESENCE_2026-11-05.md).
+- **WP-06 status:** `in_progress` — source implementation underway. Not `implemented`, `integration_verified`, or `acceptance_passed`.
+- **Known gaps before source implementation can be considered complete:** exact Agent Runtime output-to-content body binding; Web/Native policy editor and approval inbox; complete reply/repost/story/live action scope; dedicated operator audit integration; contract and privacy review. No test or runtime evidence is claimed.
+- **Next:** continue WP-06 source-only implementation on Web, Native, FastAPI, Agent Runtime and notification/audit contracts. Account QA remains skipped by Product Owner direction. WP-05 acceptance status remains unchanged; do not falsify acceptance evidence.
