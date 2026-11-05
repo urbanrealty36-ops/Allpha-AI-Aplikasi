@@ -100,6 +100,35 @@ async def list_notifications(
     return {"items": items, "unread_count": len(unread_rows), "limit": limit}
 
 
+@router.get("/updates")
+async def notification_updates(
+    after: datetime = Query(...),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Authenticated incremental inbox feed for Web and Native clients.
+
+    The API uses its server-owned database access and returns only the caller's
+    notifications; clients never subscribe to or query the notifications table.
+    """
+    now = datetime.now(timezone.utc)
+    items = await _request("GET", "notifications", params={
+        "select": "id,user_id,category,event_key,title,body,payload,delivery_state,read_at,delivered_at,created_at,expires_at",
+        "user_id": f"eq.{user['id']}",
+        "created_at": f"gt.{after.astimezone(timezone.utc).isoformat()}",
+        "delivery_state": "neq.suppressed",
+        "or": f"(expires_at.is.null,expires_at.gt.{now.isoformat()})",
+        "order": "created_at.asc,id.asc",
+        "limit": "100",
+    })
+    unread_rows = await _request("GET", "notifications", params={
+        "select": "id", "user_id": f"eq.{user['id']}", "read_at": "is.null",
+        "delivery_state": "neq.suppressed",
+        "or": f"(expires_at.is.null,expires_at.gt.{now.isoformat()})",
+        "limit": "1000",
+    })
+    return {"items": items, "unread_count": len(unread_rows), "server_time": now.isoformat()}
+
+
 class NotificationPreferencesUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     social_activity: bool | None = None
