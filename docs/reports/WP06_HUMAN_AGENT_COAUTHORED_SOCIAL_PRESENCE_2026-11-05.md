@@ -156,3 +156,15 @@ The live schema inspection confirmed the three added columns, Story index, four 
 - Approval execution now rejects a disabled approval mode, private/inaccessible comment targets, non-followed followers-only targets, and either-direction blocks. Story visibility/expiry and block checks remain enforced inside the RPC.
 - Confirmed source scan: FastAPI WP-06 no longer performs direct POST/PATCH writes to approval, audit, or notifications tables; it calls the four transactional RPCs.
 - Latest checked GitHub commit `bbda3e4f8fc0de8ff1d5fe592e30d4e3b516d0aa`: Railway Web and Super Admin checks were success; Railway API, Notification Delivery and Stories Cleanup were pending at inspection time; Vercel Web/Admin/API checks failed with the reported `build-rate-limit` reason. This is CI status evidence, not a successful full build or acceptance run.
+
+
+## WP-06 Integration Verification & Acceptance Gate — 2026-11-06
+
+- **Story DM correction:** active `decide_agent_social_approval` now creates `conversations.kind='agent'` per ENG-P18 Human↔Agent semantics; Story owner is Human participant, authoring Agent is Agent participant, and `messages.story_id` references the source Story. Verified against live `pg_get_functiondef`.
+- **ENG-P20 correction:** live `enqueue_notification_push_deliveries` selects `notifications.delivery_state='delivered'`, not `queued'`. Added `agent_social_notification_state(user_id)` and updated social RPCs to set inbox notification state to `delivered` or `suppressed` according to the recipient's `social_activity` preference. Owner and recipient states are resolved independently. Push preference/device/retry/send remain with ENG-P20. Live function inspection confirms both helper calls.
+- Migration `wp06_story_dm_eng_p20_acceptance_fix` applied successfully. Helper default resolves to `delivered`; service_role can execute all four social RPCs and helper; authenticated cannot.
+- **No E2E fixture in production:** live approval count = 0 and notification count = 0. No synthetic production users/content/approvals or push messages were created.
+- Positive commit, forced rollback, concurrency/replay, actual recipient inbox, actual push provider delivery, FastAPI pytest, Web/Native typecheck/build, browser/device QA remain **NOT RUN**. No deploy.
+- Latest checked commit `d72303f17dc24f188ba48c0f00ef40fa719cf398`: Railway Web/Admin success; API/Notification/Stories pending; Vercel Web/Admin/API failure due `build-rate-limit`.
+
+**Status: `in_progress / integration_contract_corrected / acceptance_not_verified`.** WP-07 remains `not_started`. Acceptance requires disposable DB integration fixtures and end-to-end authenticated Human↔Agent Story DM + ENG-P20 inbox/push verification, plus atomic rollback/replay tests.
