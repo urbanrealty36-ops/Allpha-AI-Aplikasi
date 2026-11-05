@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 import httpx
@@ -15,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
+from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(prefix="/v1/cinema", tags=["cinema"])
 TITLE_FIELDS = "id,owner_id,title,original_title,synopsis,genre,language_code,maturity_rating,ai_disclosure,credits,status,moderation_status,rights_status,cover_media_id,trailer_media_id,version,created_at,updated_at,published_at"
@@ -108,7 +110,7 @@ async def create_episode(title_id: uuid.UUID,payload: EpisodeCreate,user: dict[s
     title = await _db("GET","cinema_titles",params={"select":"id","id":f"eq.{title_id}","owner_id":f"eq.{user['id']}","status":"in.(draft,rejected)","limit":"1"})
     if not title: raise HTTPException(404,detail={"code":"CINEMA_TITLE_NOT_EDITABLE","message":"Film tidak ditemukan atau tidak dapat diedit."})
     if payload.media_id:
-        media = await _db("GET","content_media",params={"select":"id","id":f"eq.{payload.media_id}","owner_id":f"eq.{user['id']}","status":"eq.uploaded","limit":"1"})
+        media = await _db("GET","content_media",params={"select":"id","id":f"eq.{payload.media_id}","owner_id":f"eq.{user['id']}","status":"eq.ready","scan_status":"eq.clean","limit":"1"})
         if not media: raise HTTPException(404,detail={"code":"CINEMA_MEDIA_NOT_OWNED","message":"Media tidak ditemukan atau bukan milik Anda."})
     rows = await _db("POST","cinema_episodes",payload={**payload.model_dump(),"title_id":str(title_id),"owner_id":user["id"],"status":"draft"},prefer="return=representation")
     if not rows: raise HTTPException(503,detail={"code":"CINEMA_EPISODE_CREATE_UNCONFIRMED","message":"Episode belum dapat dikonfirmasi."})
@@ -120,3 +122,223 @@ async def creator_capability_status(user: dict[str,Any] = Depends(current_user))
     # The endpoint reports configuration only; it never exposes balances or estimates.
     policies = await _db("GET","credit_policy_versions",params={"select":"policy_version,status","status":"eq.approved","limit":"1"})
     return {"catalog":"available","project_drafts":"available","media":"existing_content_media_pipeline","generation":"unavailable" if not policies else "policy_present_runtime_unverified","generation_reason":None if policies else "APPROVED_CREDIT_POLICY_MISSING"}
+
+class CinemaModerationCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["approve", "reject"]
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=8, max_length=500)
+
+
+class CinemaRightsReviewCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["clear", "reject"]
+    expected_version: int = Field(ge=1)
+    evidence_reference: str = Field(min_length=8, max_length=500)
+    reason: str = Field(min_length=8, max_length=500)
+
+
+class CinemaLifecycleCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["archive", "block", "restore_to_draft"]
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=8, max_length=500)
+
+
+@router.get("/admin/moderation-queue")
+async def cinema_moderation_queue(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=100),
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    rows = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS,
+        "status": "eq.pending_review",
+        "moderation_status": "eq.pending",
+        "order": "updated_at.asc",
+        "limit": str(limit),
+    })
+    items = rows or []
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.moderation_queue.read",
+        outcome="allowed", resource_type="cinema_queue", resource_id="pending",
+        metadata={"count": len(items)},
+    )
+    return {"items": items}
+
+
+@router.get("/admin/rights-queue")
+async def cinema_rights_queue(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=100),
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    rows = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS,
+        "rights_status": "in.(unverified,pending)",
+        "status": "not.in.(archived,blocked)",
+        "order": "updated_at.asc",
+        "limit": str(limit),
+    })
+    items = rows or []
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.rights_queue.read",
+        outcome="allowed", resource_type="cinema_rights_queue", resource_id="unverified",
+        metadata={"count": len(items)},
+    )
+    return {"items": items}
+
+
+@router.post("/admin/titles/{title_id}/rights-review")
+async def review_cinema_rights(
+    title_id: uuid.UUID,
+    payload: CinemaRightsReviewCommand,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    current = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS, "id": f"eq.{title_id}",
+        "rights_status": "in.(unverified,pending)", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(404, detail={"code": "CINEMA_RIGHTS_REVIEW_NOT_FOUND", "message": "Judul tidak ditemukan atau haknya sudah ditinjau."})
+    item = current[0]
+    if int(item.get("version") or 0) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CINEMA_VERSION_CHANGED", "message": "Versi judul berubah; muat ulang antrean."})
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.rights.review",
+        outcome="attempted", resource_type="cinema_title", resource_id=str(title_id),
+        metadata={"decision": payload.decision, "expected_version": payload.expected_version,
+                  "evidence_reference": payload.evidence_reference, "reason": payload.reason},
+    )
+    rows = await _db("PATCH", "cinema_titles", params={
+        "id": f"eq.{title_id}", "version": f"eq.{payload.expected_version}",
+        "rights_status": "in.(unverified,pending)", "select": TITLE_FIELDS,
+    }, payload={
+        "rights_status": "cleared" if payload.decision == "clear" else "rejected",
+        "version": payload.expected_version + 1,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CINEMA_RIGHTS_REVIEW_CONFLICT", "message": "Status hak berubah saat peninjauan; keputusan tidak diterapkan."})
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.rights.review",
+        outcome="allowed", resource_type="cinema_title", resource_id=str(title_id),
+        metadata={"decision": payload.decision, "version": payload.expected_version + 1,
+                  "evidence_reference": payload.evidence_reference, "reason": payload.reason},
+    )
+    return {"item": rows[0]}
+
+
+@router.post("/admin/titles/{title_id}/moderation")
+async def review_cinema_moderation(
+    title_id: uuid.UUID,
+    payload: CinemaModerationCommand,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    current = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS, "id": f"eq.{title_id}",
+        "status": "eq.pending_review", "moderation_status": "eq.pending", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(404, detail={"code": "CINEMA_MODERATION_NOT_FOUND", "message": "Judul tidak ditemukan di antrean moderasi."})
+    item = current[0]
+    if int(item.get("version") or 0) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CINEMA_VERSION_CHANGED", "message": "Versi judul berubah; muat ulang antrean."})
+    if payload.decision == "approve":
+        if item.get("rights_status") != "cleared":
+            raise HTTPException(409, detail={"code": "CINEMA_RIGHTS_NOT_CLEARED", "message": "Moderasi tidak dapat menerbitkan judul sebelum hak cipta berstatus cleared."})
+        episodes = await _db("GET", "cinema_episodes", params={
+            "select": "id,media_id,status", "title_id": f"eq.{title_id}",
+            "owner_id": f"eq.{item['owner_id']}", "order": "episode_number.asc",
+        })
+        ready_media = []
+        for episode in episodes or []:
+            if not episode.get("media_id"):
+                continue
+            media = await _db("GET", "content_media", params={
+                "select": "id", "id": f"eq.{episode['media_id']}",
+                "owner_id": f"eq.{item['owner_id']}", "status": "eq.ready",
+                "scan_status": "eq.clean", "limit": "1",
+            })
+            if media:
+                ready_media.append(str(episode["id"]))
+        if not ready_media:
+            raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Minimal satu episode harus memiliki media siap dan scan berstatus clean sebelum publikasi."})
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.moderation.review",
+        outcome="attempted", resource_type="cinema_title", resource_id=str(title_id),
+        metadata={"decision": payload.decision, "expected_version": payload.expected_version, "reason": payload.reason},
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    allowed = payload.decision == "approve"
+    rows = await _db("PATCH", "cinema_titles", params={
+        "id": f"eq.{title_id}", "version": f"eq.{payload.expected_version}",
+        "status": "eq.pending_review", "moderation_status": "eq.pending",
+        "select": TITLE_FIELDS,
+    }, payload={
+        "status": "published" if allowed else "rejected",
+        "moderation_status": "approved" if allowed else "rejected",
+        "published_at": now if allowed else None,
+        "version": payload.expected_version + 1,
+        "updated_at": now,
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CINEMA_MODERATION_CONFLICT", "message": "Judul berubah saat moderasi; keputusan tidak diterapkan."})
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.moderation.review",
+        outcome="allowed", resource_type="cinema_title", resource_id=str(title_id),
+        metadata={"decision": payload.decision, "version": payload.expected_version + 1, "reason": payload.reason},
+    )
+    return {"item": rows[0]}
+
+
+@router.post("/admin/titles/{title_id}/lifecycle")
+async def manage_cinema_lifecycle(
+    title_id: uuid.UUID,
+    payload: CinemaLifecycleCommand,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    current = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS, "id": f"eq.{title_id}", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_FOUND", "message": "Judul AI Cinema tidak ditemukan."})
+    item = current[0]
+    if int(item.get("version") or 0) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CINEMA_VERSION_CHANGED", "message": "Versi judul berubah; muat ulang sebelum lifecycle action."})
+    transitions = {
+        "archive": {"from": {"draft", "rejected", "published"}, "to": "archived"},
+        "block": {"from": {"draft", "processing", "pending_review", "published", "rejected"}, "to": "blocked"},
+        "restore_to_draft": {"from": {"archived", "blocked"}, "to": "draft"},
+    }
+    transition = transitions[payload.action]
+    if item.get("status") not in transition["from"]:
+        raise HTTPException(409, detail={"code": "CINEMA_LIFECYCLE_TRANSITION_INVALID", "message": "Transisi lifecycle tidak diizinkan dari status saat ini."})
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.lifecycle.manage",
+        outcome="attempted", resource_type="cinema_title", resource_id=str(title_id),
+        metadata={"action": payload.action, "from": item.get("status"), "reason": payload.reason},
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    rows = await _db("PATCH", "cinema_titles", params={
+        "id": f"eq.{title_id}", "version": f"eq.{payload.expected_version}",
+        "status": f"eq.{item['status']}", "select": TITLE_FIELDS,
+    }, payload={
+        "status": transition["to"],
+        "moderation_status": "needs_changes" if payload.action == "restore_to_draft" else item.get("moderation_status"),
+        "published_at": None if payload.action != "restore_to_draft" else None,
+        "version": payload.expected_version + 1,
+        "updated_at": now,
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CINEMA_LIFECYCLE_CONFLICT", "message": "Judul berubah saat lifecycle action; perubahan tidak diterapkan."})
+    await write_operator_audit(
+        request, actor_user_id=str(operator["id"]), action="cinema.lifecycle.manage",
+        outcome="allowed", resource_type="cinema_title", resource_id=str(title_id),
+        metadata={"action": payload.action, "to": transition["to"], "version": payload.expected_version + 1, "reason": payload.reason},
+    )
+    return {"item": rows[0]}
+
