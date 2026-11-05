@@ -15,12 +15,12 @@ from typing import Any
 
 import httpx
 
-from allpha_api.credit_ledger_contract import ReservationState
 from allpha_api.credit_ledger_service import (
     ApprovedLifecyclePolicy,
     CreditLedgerLifecycleService,
     OperationOutcome,
     ReservationReceipt,
+    ReservationState,
 )
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.supabase_credit_ledger_store import SupabaseCreditLedgerStore
