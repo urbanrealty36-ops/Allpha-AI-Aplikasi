@@ -103,6 +103,39 @@ export default function NotificationsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Private per-user Broadcast channel. The API remains the notification read/write
+  // boundary; this channel only signals newly inserted inbox records.
+  useEffect(() => {
+    if (!supabase || !session) return;
+    let active = true;
+    const topic = "user:" + session.user.id + ":notifications";
+    void supabase.realtime.setAuth(session.access_token);
+    const channel = supabase.channel(topic, { config: { private: true } })
+      .on("broadcast", { event: "INSERT" }, message => {
+        if (!active) return;
+        const payload = message.payload as Record<string, unknown> | undefined;
+        const record = (payload?.record ?? payload?.new ?? payload) as Partial<NotificationItem> | undefined;
+        if (!record || typeof record.id !== "string" || record.user_id !== session.user.id) return;
+        if (record.delivery_state === "suppressed") return;
+        const next: NotificationItem = {
+          id: record.id, category: record.category || "social_activity",
+          event_key: record.event_key || "", title: record.title || "Notifikasi baru",
+          body: record.body || "", payload: (record.payload as Record<string, unknown>) || {},
+          delivery_state: record.delivery_state || "delivered",
+          read_at: record.read_at || null, delivered_at: record.delivered_at || null,
+          created_at: record.created_at || new Date().toISOString(), expires_at: record.expires_at || null,
+        };
+        if (next.expires_at && Date.parse(next.expires_at) <= Date.now()) return;
+        setItems(current => current.some(item => item.id === next.id) ? current : [next, ...current].slice(0, 100));
+        if (!next.read_at) setUnreadCount(count => count + 1);
+      })
+      .subscribe();
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [session, supabase]);
+
   const loadPreferences = useCallback(async () => {
     if (!session) { setPreferences(null); return; }
     const epoch = sessionEpoch.current;
