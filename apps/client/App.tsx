@@ -515,6 +515,13 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         void loadCommunityWorkspace();
         return;
       }
+      if (data.type === "feed_content" && typeof data.contentId === "string") {
+        setTab("feed");
+        setSelectedFeedContentId(data.contentId);
+        setSelectedFeedItem(null);
+        setSelectedFeedError("");
+        return;
+      }
       if (data.type !== "message" || typeof data.conversationId !== "string") return;
       setTab("messages");
       void (async () => {
