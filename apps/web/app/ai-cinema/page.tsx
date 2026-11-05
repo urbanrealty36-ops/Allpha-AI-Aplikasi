@@ -42,12 +42,11 @@ export default function AiCinemaPage() {
             rating: 0,
             durationPerEp: "",
             releaseYear: item.published_at ? new Date(item.published_at).getFullYear().toString() : "",
-            producerHuman: { name: producer?.name ?? "Creator Allpha", handle: "", avatar: "" },
-            aiCoDirector: { name: "AI collaborator", handle: "", avatar: "", specialty: "" },
+            producerHuman: { name: producer?.name ?? "Kreator", handle: "", avatar: "" },
+            aiCoDirector: { name: "Kolaborator AI", handle: "", avatar: "", specialty: "" },
             synopsis: item.synopsis,
             aiTechStack: "",
             creatorMonthlyEarningsCredits: 0,
-            verificationStatus: "VERIFIED",
           };
         });
         if (active) { setItems(mapped); setState("ready"); }
