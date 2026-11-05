@@ -108,7 +108,7 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     item = rows[0]
     followed, hidden = await _edges(viewer_id)
     owner_id = str(item.get("owner_id"))
-    if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed):
+    if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed and owner_id != viewer_id):
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     owner_profile = (await _profiles_for({owner_id})).get(owner_id)
     if (
@@ -945,8 +945,18 @@ async def create_comment(content_id: uuid.UUID, payload: CommentCreate, user: di
         parent = parent_rows[0]
         # Keep a single-level thread: replies to replies attach to the root.
         if parent.get("parent_comment_id"):
-            payload.parent_comment_id = uuid.UUID(str(parent["parent_comment_id"]))
-            parent = {"id": str(payload.parent_comment_id), "actor_user_id": parent.get("actor_user_id")}
+            # Normalize replies-to-replies to the root comment and notify the
+            # root author, not the author of the intermediate reply.
+            root_id = uuid.UUID(str(parent["parent_comment_id"]))
+            root_rows = await _server_db("GET", "content_comments", params={
+                "select": "id,actor_user_id,parent_comment_id,status",
+                "id": f"eq.{root_id}", "content_id": f"eq.{content_id}",
+                "status": "eq.visible", "limit": "1",
+            })
+            if not root_rows or root_rows[0].get("parent_comment_id"):
+                raise HTTPException(409, detail={"code": "COMMENT_THREAD_INVALID", "message": "Struktur percakapan komentar tidak valid."})
+            payload.parent_comment_id = root_id
+            parent = root_rows[0]
     rows = await _server_db("POST", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,parent_comment_id,created_at,updated_at"},
         body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "body": body,
               "parent_comment_id": str(payload.parent_comment_id) if payload.parent_comment_id else None,
