@@ -60,6 +60,13 @@ class TitleCreate(BaseModel):
     credits: list[dict[str,Any]] = Field(default_factory=list,max_length=30)
 
 
+class TitleSubmitCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    rights_confirmed: bool
+    ai_disclosure_confirmed: bool
+
+
 class EpisodeCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     episode_number: int = Field(gt=0,le=10000)
@@ -95,6 +102,54 @@ async def create_title(payload: TitleCreate, user: dict[str,Any] = Depends(curre
     if not rows:
         raise HTTPException(503,detail={"code":"CINEMA_CREATE_UNCONFIRMED","message":"Draft film belum dapat dikonfirmasi."})
     return {"item":rows[0]}
+
+
+@router.post("/creator/titles/{title_id}/submit-review")
+async def submit_title_for_review(
+    title_id: uuid.UUID,
+    payload: TitleSubmitCommand,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    if not payload.rights_confirmed or not payload.ai_disclosure_confirmed:
+        raise HTTPException(422, detail={"code": "CINEMA_CREATOR_CONFIRMATIONS_REQUIRED", "message": "Konfirmasi hak atas materi dan pengungkapan penggunaan AI wajib diberikan."})
+    current = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS, "id": f"eq.{title_id}", "owner_id": f"eq.{user['id']}",
+        "status": "in.(draft,rejected)", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_EDITABLE", "message": "Draft film tidak ditemukan atau tidak dapat diajukan."})
+    item = current[0]
+    if int(item.get("version") or 0) != payload.expected_version:
+        raise HTTPException(409, detail={"code": "CINEMA_VERSION_CHANGED", "message": "Versi draft berubah; muat ulang sebelum mengajukan review."})
+    episodes = await _db("GET", "cinema_episodes", params={
+        "select": "id,media_id,status", "title_id": f"eq.{title_id}",
+        "owner_id": f"eq.{user['id']}", "order": "episode_number.asc",
+    })
+    episode_rows = episodes or []
+    if not episode_rows or any(not episode.get("media_id") or episode.get("status") != "ready" for episode in episode_rows):
+        raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Tambahkan minimal satu episode dan pastikan semua episode memiliki media ready serta scan clean."})
+    media_ids = [str(episode["media_id"]) for episode in episode_rows]
+    media_rows = await _db("GET", "content_media", params={
+        "select": "id", "id": f"in.({','.join(media_ids)})",
+        "owner_id": f"eq.{user['id']}", "status": "eq.ready",
+        "scan_status": "eq.clean", "limit": str(min(100, len(media_ids))),
+    })
+    clean_ids = {str(media["id"]) for media in (media_rows or [])}
+    if any(media_id not in clean_ids for media_id in media_ids):
+        raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Seluruh media episode harus ready dan scan clean."})
+    now = datetime.now(timezone.utc).isoformat()
+    rows = await _db("PATCH", "cinema_titles", params={
+        "id": f"eq.{title_id}", "owner_id": f"eq.{user['id']}",
+        "status": "in.(draft,rejected)", "version": f"eq.{payload.expected_version}",
+        "select": TITLE_FIELDS,
+    }, payload={
+        "status": "pending_review", "moderation_status": "pending",
+        "rights_status": "pending", "published_at": None,
+        "version": payload.expected_version + 1, "updated_at": now,
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CINEMA_SUBMISSION_CONFLICT", "message": "Draft berubah saat pengajuan; tidak ada keputusan review yang diterapkan."})
+    return {"item": rows[0]}
 
 
 @router.get("/creator/titles/{title_id}/episodes")
