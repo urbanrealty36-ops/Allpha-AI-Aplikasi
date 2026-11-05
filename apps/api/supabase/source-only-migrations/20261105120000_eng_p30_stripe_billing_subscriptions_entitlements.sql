@@ -332,7 +332,7 @@ begin
     ) values (
       v_order.owner_user_id,v_sub.plan_key,v_sub.entitlement_version,v_sub.id,'active',now(),p_current_period_end
     ) on conflict(owner_user_id,entitlement_key,source_subscription_id) do update set
-      status='active',valid_from=now(),valid_until=null,updated_at=now();
+      status='active',valid_from=now(),valid_until=excluded.valid_until,updated_at=now();
   else
     raise exception 'BILLING_PURPOSE_UNSUPPORTED' using errcode='22023';
   end if;
@@ -358,7 +358,7 @@ $$;
 create or replace function public.billing_apply_subscription_state(
   p_event_id text,p_subscription_id text,p_customer_id text,p_status text,
   p_current_period_start timestamptz default null,p_current_period_end timestamptz default null,
-  p_cancel_at_period_end boolean default false
+  p_cancel_at_period_end boolean default null
 ) returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare v_sub public.billing_subscriptions; v_entitlement_status text;
@@ -370,17 +370,17 @@ begin
     stripe_customer_id=coalesce(p_customer_id,stripe_customer_id),
     current_period_start=coalesce(p_current_period_start,current_period_start),
     current_period_end=coalesce(p_current_period_end,current_period_end),
-    cancel_at_period_end=p_cancel_at_period_end,updated_at=now()
+    cancel_at_period_end=coalesce(p_cancel_at_period_end,cancel_at_period_end),updated_at=now()
     where stripe_subscription_id=p_subscription_id returning * into v_sub;
   if not found then
     raise exception 'BILLING_SUBSCRIPTION_NOT_REGISTERED' using errcode='P0002';
   end if;
   v_entitlement_status := case when p_status='active' then 'active'
-    when p_status='canceled' and p_cancel_at_period_end and p_current_period_end > now() then 'active'
+    when p_status='canceled' and coalesce(p_cancel_at_period_end,v_sub.cancel_at_period_end) and coalesce(p_current_period_end,v_sub.current_period_end) > now() then 'active'
     when p_status in ('past_due','unpaid','incomplete','incomplete_expired','paused','trialing') then 'suspended'
     else 'revoked' end;
   update public.playback_entitlements set status=v_entitlement_status,
-    valid_until=case when v_entitlement_status='active' then p_current_period_end else coalesce(p_current_period_end,now()) end,
+    valid_until=case when v_entitlement_status='active' then coalesce(p_current_period_end,v_sub.current_period_end) else coalesce(p_current_period_end,now()) end,
     updated_at=now()
     where source_subscription_id=v_sub.id;
   update public.stripe_webhook_events set status='processed',processed_at=now(),last_error_code=null
