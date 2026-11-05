@@ -76,3 +76,12 @@ WP-06 is `in_progress` (source implementation underway), not `implemented`, `int
 3. Extend approved action types to replies/reposts/stories only with resource-scoped authorization and content moderation parity.
 4. Add durable audit and notification event contracts for approval/revocation, while retaining ENG-P20 as the sole push dispatcher.
 5. Update WP-06 traceability and report each surface as `CHANGE`, `INTEGRATE`, or `NOT AFFECTED`.
+
+## Follow-on source checkpoint — 2026-11-05
+
+- agent_social_api.py: draft body is now derived from completed Agent Runtime output rather than accepted from the client. A bounded text extraction accepts content, text, body, or generated_text; private provenance stores a SHA-256 digest.
+- The policy/API action allowlist now names post, comment, reply, repost suggestion and story draft actions. The existing approval migration was corrected to declare runtime_task_id before its uniqueness constraint and includes an optional target content reference.
+- Added agent_social_audit_events source schema and an operator-only audit read endpoint guarded by platform:security.audit.read.
+- Added Web route /agent-social for owner policy editing and approval/revocation. It uses the existing Allpha Web reference-ui visual language; exact parity against the separate ADR-0003 reference repository remains unverified because that repository could not be enumerated with the active connector search.
+- This is still a partial source slice. Native UI/navigation, Super Admin audit page, event-backed audit writes, action-specific comment/reply/repost/story lifecycle integration, canonical notification outbox integration, and schema/output contract reconciliation remain outstanding.
+- No tests, builds, CI, QA, migration application, database mutation, staging or deployment were run. WP-06 remains in_progress; no acceptance status is claimed.
