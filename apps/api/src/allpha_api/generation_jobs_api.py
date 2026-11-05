@@ -51,7 +51,7 @@ async def _admin_request(method: str, path: str, *, params: dict[str, str] | Non
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "GENERATION_DATABASE_UNAVAILABLE", "message": "Database generation sementara tidak tersedia."}) from exc
     if response.status_code >= 400:
-        raise HTTPException(503 if response.status_code >= 500 else 409,
+        raise HTTPException(503 if response.status_code >= 500 or response.status_code == 404 else 409,
             detail={"code": "GENERATION_DATABASE_OPERATION_FAILED", "message": "Operasi generation tidak dapat dikonfirmasi."})
     if not response.content:
         return []
