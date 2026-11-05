@@ -6,7 +6,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { id?: string; allowed_actions: string[]; approval_mode: string; disclosure_text: string; is_enabled: boolean; version: number };
-type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string };
+type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string };\ntype DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
 
@@ -73,7 +73,7 @@ export default function AgentSocialPage() {
 
   async function decide(id: string, decision: "approve" | "reject") {
     setBusy(true); setError(""); setNotice("");
-    try { await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik" : "Ditolak pemilik" }) }); setNotice("Keputusan tersimpan; moderasi konten tetap berlaku."); await load(); }
+    try { const result = await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik" : "Ditolak pemilik" }) }) as DecisionResult; const execution = result.execution; const detail = execution?.kind === "story_dm" ? "DM Story dibuat dan tertaut ke Story (percakapan " + execution.conversation_id + ")." : execution?.kind === "comment" ? "Balasan komentar tercatat (komentar " + execution.comment_id + ")." : result.approval?.status === "approved" ? "Draft disetujui; tahap moderasi/publikasi tetap mengikuti lifecycle konten." : "Permintaan ditolak."; setNotice((result.outcome === "replayed" ? "Hasil transaksi sebelumnya dipulihkan. " : "") + detail); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan gagal."); }
     finally { setBusy(false); }
   }
