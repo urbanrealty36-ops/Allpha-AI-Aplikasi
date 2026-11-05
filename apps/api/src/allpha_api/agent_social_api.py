@@ -41,6 +41,19 @@ class ApprovalDecision(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+async def _write_social_audit(*, owner_id: str, agent_id: str, actor_id: str,
+                            event_type: str, outcome: str, approval_id: str | None = None,
+                            metadata: dict[str, Any] | None = None) -> None:
+    rows = await _server_db("POST", "agent_social_audit_events", body={
+        "owner_user_id": owner_id, "agent_id": agent_id, "actor_user_id": actor_id,
+        "approval_id": approval_id, "event_type": event_type, "outcome": outcome,
+        "metadata": metadata or {},
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_AUDIT_UNAVAILABLE",
+                                         "message": "Audit sosial belum tersimpan; operasi tidak dapat dinyatakan selesai."})
+
+
 async def _active_owned_agent(owner_id: str, agent_id: str) -> dict[str, Any]:
     agents = await _server_db("GET", "ai_agents", params={
         "select": "id,handle,display_name,status,disclosure", "id": f"eq.{agent_id}",
@@ -104,6 +117,10 @@ async def put_policy(agent_id: uuid.UUID, payload: PolicyWrite,
             "status": "in.(pending,approved)",
         }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
                  "decision_reason": "owner_policy_disabled"})
+    await _write_social_audit(owner_id=owner_id, agent_id=str(agent_id), actor_id=owner_id,
+        event_type="policy_disabled" if not payload.is_enabled else ("policy_updated" if existing else "policy_created"),
+        outcome="allowed", metadata={"version": rows[0].get("version"), "approval_mode": payload.approval_mode,
+                                    "allowed_actions": payload.allowed_actions, "is_enabled": payload.is_enabled})
     return {"policy": rows[0]}
 
 
@@ -156,6 +173,10 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
     }, prefer="return=representation")
     if not approvals:
         raise HTTPException(503, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_SAVED", "message": "Draft tersimpan tetapi approval belum tercatat; jangan publikasikan."})
+    await _write_social_audit(owner_id=owner_id, agent_id=agent_id, actor_id=owner_id,
+        event_type="draft_requested", outcome="allowed", approval_id=approvals[0]["id"],
+        metadata={"action_type": payload.action_type, "runtime_task_id": str(payload.runtime_task_id),
+                  "target_content_id": str(payload.target_content_id) if payload.target_content_id else None})
     return {"item": row, "approval": approvals[0], "requires_human_approval": True,
             "agent": {"id": agent["id"], "handle": agent.get("handle"), "display_name": agent.get("display_name")},
             "disclosure": policy["disclosure_text"]}
@@ -205,6 +226,9 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
              "decision_reason": (payload.reason or "")[:500]}, prefer="return=representation")
     if not updated:
         raise HTTPException(409, detail={"code": "AGENT_SOCIAL_APPROVAL_CONFLICT", "message": "Approval telah berubah; muat ulang."})
+    await _write_social_audit(owner_id=owner_id, agent_id=approval["agent_id"], actor_id=owner_id,
+        approval_id=str(approval_id), event_type="approval_approved" if decision == "approved" else "approval_rejected",
+        outcome="allowed", metadata={"decision_reason": (payload.reason or "")[:500], "content_id": approval["content_id"]})
     await _server_db("POST", "notifications", params={"on_conflict": "user_id,event_key", "select": "id"},
         body={"user_id": owner_id, "category": "social_activity",
               "event_key": f"agent-social-approval:{approval_id}:{decision}",
@@ -228,4 +252,7 @@ async def revoke_approval(approval_id: uuid.UUID, user: dict[str, Any] = Depends
        prefer="return=representation")
     if not rows:
         raise HTTPException(409, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_REVOCABLE", "message": "Approval tidak tersedia untuk dicabut."})
+    await _write_social_audit(owner_id=owner_id, agent_id=rows[0]["agent_id"], actor_id=owner_id,
+        approval_id=str(approval_id), event_type="approval_revoked", outcome="allowed",
+        metadata={"content_id": rows[0]["content_id"]})
     return {"approval": rows[0], "publishable": False}
