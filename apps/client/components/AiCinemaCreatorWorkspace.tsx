@@ -20,6 +20,7 @@ type DraftEpisode = {
 };
 type Props = { getAccessToken: () => Promise<string | null> };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string };
+type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__
   ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")
@@ -64,6 +65,8 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [titles, setTitles] = useState<DraftTitle[]>([]);
   const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
+  const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
+  const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("c_drama");
@@ -80,6 +83,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     setLoading(true); setError("");
     try {
       const result = await request<{ items: DraftTitle[] }>(getAccessToken, "/v1/cinema/creator/titles?limit=100");
+      try { const media = await request<{ items: ReadyMedia[] }>(getAccessToken, "/v1/cinema/creator/media-ready"); setReadyMedia(Array.isArray(media.items) ? media.items : []); } catch { setReadyMedia([]); }
       try { setCapabilityStatus(await request<CreatorStatus>(getAccessToken, "/v1/cinema/creator/status")); } catch { setCapabilityStatus(null); }
       const rows = Array.isArray(result.items) ? result.items : [];
       setTitles(rows);
@@ -126,7 +130,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       const result = await request<{ item: DraftEpisode }>(getAccessToken,
         "/v1/cinema/creator/titles/" + encodeURIComponent(selectedTitleId) + "/episodes", {
           method: "POST",
-          body: JSON.stringify({ episode_number: Number(episodeNumber), title: episodeTitle.trim(), synopsis: episodeSynopsis.trim() }),
+          body: JSON.stringify({ episode_number: Number(episodeNumber), title: episodeTitle.trim(), synopsis: episodeSynopsis.trim(), media_id: selectedMediaId || null }),
         });
       setEpisodes(current => [...current.filter(item => item.id !== result.item.id), result.item].sort((a, b) => a.episode_number - b.episode_number));
       setEpisodeNumber(String(Number(episodeNumber) + 1)); setEpisodeTitle(""); setEpisodeSynopsis("");
@@ -172,13 +176,22 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
         <TextInput accessibilityLabel="Nomor episode" value={episodeNumber} onChangeText={setEpisodeNumber} keyboardType="number-pad" style={field} placeholder="Nomor episode" placeholderTextColor="#94A3B8"/>
         <TextInput accessibilityLabel="Judul episode" value={episodeTitle} onChangeText={setEpisodeTitle} maxLength={160} style={field} placeholder="Judul episode" placeholderTextColor="#94A3B8"/>
         <TextInput accessibilityLabel="Sinopsis episode" value={episodeSynopsis} onChangeText={setEpisodeSynopsis} multiline maxLength={3000} style={[field, { minHeight: 72, textAlignVertical: "top" }]} placeholder="Sinopsis episode" placeholderTextColor="#94A3B8"/>
+        <Text style={{ color: "#CBD5E1", fontSize: 12, fontWeight: "700" }}>Pilih media siap · scan clean</Text>
+        <Pressable accessibilityRole="button" onPress={() => setSelectedMediaId("")} style={{ padding: 10, borderRadius: 10, backgroundColor: selectedMediaId ? "#1E293B" : "#164E63", borderWidth: 1, borderColor: selectedMediaId ? "#334155" : "#67E8F9" }}>
+          <Text style={{ color: "#F8FAFC" }}>Simpan sebagai draft tanpa media</Text>
+        </Pressable>
+        {readyMedia.map(media => <Pressable key={media.id} accessibilityRole="button" accessibilityState={{ selected: selectedMediaId === media.id }} onPress={() => setSelectedMediaId(media.id)} style={{ padding: 10, borderRadius: 10, backgroundColor: selectedMediaId === media.id ? "#164E63" : "#1E293B", borderWidth: 1, borderColor: selectedMediaId === media.id ? "#67E8F9" : "#334155" }}>
+          <Text style={{ color: "#F8FAFC", fontWeight: "700" }}>{selectedMediaId === media.id ? "✓ " : ""}{media.filename}</Text>
+          <Text style={{ color: "#94A3B8", fontSize: 11 }}>{media.media_type} · {(media.size_bytes / 1024 / 1024).toFixed(1)} MiB</Text>
+        </Pressable>)}
+        {readyMedia.length === 0 && <Text style={{ color: "#94A3B8", fontSize: 12 }}>Belum ada media yang lulus processing dan scan.</Text>}
         <Action title={saving ? "Menyimpan…" : "Simpan draft episode"} disabled={saving || !selectedTitleId || !episodeTitle.trim() || !Number.isInteger(Number(episodeNumber)) || Number(episodeNumber) < 1} onPress={() => void createEpisode()}/>
         {episodes.map(item => <View key={item.id} style={{ padding: 12, borderRadius: 12, backgroundColor: "#1E293B" }}>
           <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>Episode {item.episode_number} · {item.title}</Text>
           <Text style={{ color: "#CBD5E1", fontSize: 12 }}>{item.status}{item.media_id ? " · media terhubung" : " · belum ada media"}</Text>
         </View>)}
       </View>
-      <Text style={{ color: "#94A3B8", fontSize: 12 }}>Generate, pembayaran, entitlement, upload media film, moderasi dan publikasi tetap terkunci sampai kontrak backend serta policy yang disetujui tersedia.</Text>
+      <Text style={{ color: "#94A3B8", fontSize: 12 }}>Generate, pembayaran, entitlement, moderasi dan publikasi tetap terkunci sampai kontrak backend serta policy yang disetujui tersedia. Media episode hanya dapat dipilih dari hasil processing dan scan clean.</Text>
     </View>
   );
 }
