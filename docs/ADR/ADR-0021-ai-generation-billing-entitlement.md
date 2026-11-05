@@ -1,6 +1,6 @@
 # ADR-0021 — AI Generation Jobs, Credit Policy, Billing and Entitlement
 
-- **Status:** PARTIALLY ACCEPTED — technical architecture and Stripe payment provider accepted; AI provider/model and numerical financial policy remain open
+- **Status:** PARTIALLY ACCEPTED — Stripe selected and source implementation present; AI provider/model and numerical financial policy remain open
 - **Date:** 2026-11-05
 - **Decision owners:** Product Owner, Finance/Economy, Platform Engineering
 - **Scope:** ENG-P09/P10/P11/P28/P29/P30, AI Cinema, Creator Studio, subscription, credits, billing and playback
@@ -73,6 +73,22 @@ The Master PRD and ADR-0006 expressly prohibit inferring provider price, credit 
 - Reuse the accepted 30-day soft-delete recovery period and 7-day abandoned-upload review eligibility.
 - Physical retention purge remains fail-closed until backup configuration, restore evidence, legal-hold verification and explicit operational approvals are verified. Provider-managed immutable backup expiry is not represented as immediate erasure.
 - No second storage provider or media lifecycle engine is introduced.
+
+
+## Source implementation checkpoint — 2026-11-05
+
+- Stripe adapter/API source is implemented in `apps/api/src/allpha_api/stripe_billing_api.py`, mounted in the canonical FastAPI app. It provides catalog, idempotent checkout order creation, owner-scoped order history/receipt lookup, subscription status, Stripe Billing Portal, signed webhook processing, recurring invoice receipts, and operator-scoped product draft/activation/retirement.
+- Stripe product activation compares the active Stripe Price ID, amount, currency and recurrence with the server-managed product snapshot. AI Credit top-up activation additionally checks the approved credit policy grant permission, approval reference and maximum grant. No product, price, credit pack, or subscription quota is seeded.
+- Stripe settlement uses the signed webhook event inbox and database RPCs. Payment order, receipt, credit grant, subscription and playback entitlement updates are transactionally finalized by the database contract. Client redirect never grants credits or entitlement. Checkout remains disabled by default until server-only secrets, account capabilities and Finance approvals are present.
+- Web Billing & AI Credits Center, Native Billing Center, Super Admin Billing Product Governance and a new `platform:billing.manage` operator scope are connected to the same FastAPI contracts. Stripe Customer Portal handles subscription management; no direct client-to-Stripe secret integration exists.
+- Durable generation-job source is implemented in `generation_jobs_api.py` and `generation_job_worker.py`, with source-only PostgreSQL migration. Job creation invokes the existing credit reservation RPC inside the same database transaction as job insertion. Worker uses the canonical Model Router, stores private metered output before settlement, and moves unknown outcomes/expired leases to reconciliation without automatic provider replay.
+- The model-cost registry verifier now requires `policy_approved=true`; the previously inspected test-only NVIDIA NIM/Qwen row is therefore not eligible for production execution. Generation API requires an active Premium subscription, approved Agent Skill/capability, approved model route, and approved effective AI Credit policy.
+- AI Cinema now exposes a server-side playback entitlement endpoint and Web/Native playback surfaces. Only published, rights-cleared titles and ready/scan-clean media are considered; free-preview episodes may be served without Premium, while other episodes require a live server-side playback entitlement. Territory, maturity and concurrent-stream rules remain unconfigured and are explicitly surfaced as open gates.
+- New source-only migrations:
+  - `apps/api/supabase/source-only-migrations/20261105120000_eng_p30_stripe_billing_subscriptions_entitlements.sql`
+  - `apps/api/supabase/source-only-migrations/20261105130000_eng_p09_durable_generation_jobs.sql`
+  They have **not** been applied to production or staging. No database rows were changed.
+- No Stripe account/secret/Price/webhook was configured, no provider call or checkout was executed, no credit reservation/settlement occurred, and no generation job was enqueued or processed. No build, test suite, browser/device journey, CI, deployment, or production migration was run. All runtime states remain `DEFERRED / NOT VERIFIED`.
 
 ## Explicitly unresolved decisions
 
