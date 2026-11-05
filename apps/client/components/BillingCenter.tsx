@@ -70,6 +70,15 @@ export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promis
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Checkout gagal dibuat."); }
     finally { setBusy(null); }
   }
+  async function manageSubscription() {
+    setError(""); setNotice("");
+    try {
+      const result = await request("/v1/billing/portal", { method: "POST", body: "{}" });
+      if (!result.url) throw new Error("Stripe Customer Portal tidak tersedia.");
+      await Linking.openURL(result.url);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Portal subscription gagal dibuka."); }
+  }
+
 
   return <View style={{ gap: 14 }}>
     <Text style={{ color: "#A5B4FC", fontSize: 11, fontWeight: "800", letterSpacing: 2 }}>ACCOUNT · ECONOMY</Text>
@@ -78,7 +87,7 @@ export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promis
     <View style={{ backgroundColor: "#141B31", borderWidth: 1, borderColor: "#29314B", borderRadius: 18, padding: 15, gap: 8 }}>
       <Text style={{ color: "#A5ADC3", fontSize: 12 }}>AI Credits tersedia</Text>
       <Text style={{ color: "#F7F8FF", fontSize: 26, fontWeight: "800" }}>{balance === null ? "—" : balance.toLocaleString("id-ID")}</Text>
-      <Text style={{ color: "#A5ADC3", fontSize: 12 }}>Subscription: {subscription ? subscription.plan_key + " · " + subscription.status : "Free"}</Text>
+      <Text style={{ color: "#A5ADC3", fontSize: 12 }}>Subscription: {subscription ? subscription.plan_key + " · " + subscription.status : "Free"}</Text>\n      {subscription ? <ActionButton title="Kelola subscription di Stripe" disabled={busy !== null} onPress={() => void manageSubscription()}/> : null}
       <Text style={{ color: enabled ? "#86EFAC" : "#FBBF24", fontSize: 12 }}>{enabled ? "Checkout Stripe aktif untuk produk yang dipublikasikan." : "Checkout belum diaktifkan; menunggu konfigurasi dan persetujuan billing."}</Text>
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: "#FCA5A5", fontSize: 13 }}>{error}</Text> : null}
