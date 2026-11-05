@@ -12,7 +12,11 @@ function money(amountMinor: number, currency: string) {
 }
 function key() { return "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14); }
 
-function ActionButton({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {\n  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={{ borderRadius: 12, padding: 13, backgroundColor: "#A5B4FC", opacity: disabled ? 0.45 : 1, alignItems: "center" }}><Text style={{ color: "#11162B", fontWeight: "800" }}>{title}</Text></Pressable>;\n}\n\nexport function BillingCenter({ getAccessToken }: { getAccessToken: () => Promise<string> }) {
+function ActionButton({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={{ borderRadius: 12, padding: 13, backgroundColor: "#A5B4FC", opacity: disabled ? 0.45 : 1, alignItems: "center" }}><Text style={{ color: "#11162B", fontWeight: "800" }}>{title}</Text></Pressable>;
+}
+
+export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promise<string> }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscription, setSubscription] = useState<Subscription>(null);
