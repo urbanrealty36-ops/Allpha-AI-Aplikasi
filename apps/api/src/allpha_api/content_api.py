@@ -408,12 +408,12 @@ async def preview_content(content_id: uuid.UUID, request: Request, user: dict[st
 async def publish_content(content_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     content = await _owner_content(content_id, str(user["id"]))
     media = await _server_db("GET", "content_media", params={
-        "select": "id,status,scan_status", "content_id": f"eq.{content_id}",
+        "select": "id,status,scan_status,processed_at,derivatives", "content_id": f"eq.{content_id}",
         "owner_id": f"eq.{user['id']}", "limit": "100",
     })
     if not content["body"].strip() and not media:
         raise HTTPException(422, detail={"code": "CONTENT_EMPTY", "message": "Tambahkan teks atau media sebelum mengirim konten."})
-    if any(item.get("status") != "ready" or item.get("scan_status") != "clean" for item in (media or [])):
+    if any(item.get("status") != "ready" or item.get("scan_status") != "clean" or not item.get("processed_at") or not item.get("derivatives") for item in (media or [])):
         raise HTTPException(409, detail={
             "code": "CONTENT_MEDIA_NOT_READY",
             "message": "Media masih diproses atau belum lolos pemeriksaan keamanan. Konten belum dapat dikirim untuk moderasi.",
@@ -857,9 +857,9 @@ async def schedule_content(
     if publish_at <= datetime.now(timezone.utc):
         raise HTTPException(422, detail={"code": "CONTENT_SCHEDULE_MUST_BE_FUTURE", "message": "Waktu publikasi harus berada di masa depan."})
     media = await _server_db("GET", "content_media", params={
-        "select": "id,status,scan_status", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "100",
+        "select": "id,status,scan_status,processed_at,derivatives", "content_id": f"eq.{content_id}", "owner_id": f"eq.{user['id']}", "limit": "100",
     })
-    if any(row.get("status") != "ready" or row.get("scan_status") != "clean" for row in media or []):
+    if any(row.get("status") != "ready" or row.get("scan_status") != "clean" or not row.get("processed_at") or not row.get("derivatives") for row in media or []):
         raise HTTPException(409, detail={"code": "CONTENT_MEDIA_INVALID", "message": "Seluruh media harus selesai diproses sebelum konten dijadwalkan untuk moderasi."})
     result = await _server_db("POST", "rpc/create_content_schedule", body={
         "p_content_id": str(content_id), "p_owner_id": str(user["id"]),
