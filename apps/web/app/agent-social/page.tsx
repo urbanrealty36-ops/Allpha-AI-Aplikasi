@@ -30,7 +30,7 @@ export default function AgentSocialPage() {
     if (!session) throw new Error("Silakan masuk terlebih dahulu.");
     const response = await fetch(apiBase + path, { ...init, cache: "no-store", headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json", ...(init.headers || {}) } });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.detail?.message || "Permintaan gagal.");
+    if (!response.ok) throw new Error(data?.detail?.message || data?.error?.message || "Permintaan gagal.");
     return data;
   }, [session]);
 
@@ -80,7 +80,7 @@ export default function AgentSocialPage() {
 
   async function revoke(id: string) {
     setBusy(true);
-    try { await api("/v1/agent-social/approvals/" + id + "/revoke", { method: "POST" }); setNotice("Persetujuan dicabut."); await load(); }
+    try { const result = await api("/v1/agent-social/approvals/" + id + "/revoke", { method: "POST" }); setNotice(result.outcome === "replayed" ? "Pencabutan sebelumnya sudah tercatat." : "Persetujuan dicabut dan audit/notifikasi tersimpan."); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Pencabutan gagal."); }
     finally { setBusy(false); }
   }
