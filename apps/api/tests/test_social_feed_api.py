@@ -17,17 +17,27 @@ def _fixture_user(request: Request):
     return {"id": "eng-p14-viewer", "email": "eng-p14@example.invalid"}
 
 
-def test_feed_cursor_round_trip_and_rejects_tampering():
-    as_of = datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)
-    cursor = feed_api._cursor_encode(40, as_of)
-    offset, decoded = feed_api._cursor_decode(cursor)
+def test_feed_cursor_round_trip_and_rejects_tampering(monkeypatch):
+    monkeypatch.setenv("ALLPHA_FEED_CURSOR_SECRET", "source-contract-test-secret")
+    snapshot_id = "00000000-0000-0000-0000-000000000040"
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    cursor = feed_api._cursor_encode(snapshot_id, 40, "eng-p14-viewer", "for_you", "all", expires_at)
+    decoded_snapshot, offset = feed_api._cursor_decode(cursor, "eng-p14-viewer", "for_you", "all")
+    assert decoded_snapshot == snapshot_id
     assert offset == 40
-    assert decoded == as_of
-    client = TestClient(app)
+
+    wrong_viewer = feed_api._cursor_decode
+    try:
+        wrong_viewer(cursor, "another-viewer", "for_you", "all")
+    except Exception as error:
+        assert getattr(error, "status_code", None) == 422
+    else:
+        raise AssertionError("viewer-bound cursor must reject a different principal")
+
     app.dependency_overrides[current_user] = _fixture_user
     app.dependency_overrides[optional_current_user] = _fixture_user
     try:
-        response = client.get("/v1/feed?cursor=not-a-valid-cursor")
+        response = TestClient(app).get("/v1/feed?cursor=not-a-valid-cursor")
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "FEED_CURSOR_INVALID"
     finally:
@@ -58,6 +68,12 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
         params = params or {}
         if table == "feed_preferences":
             return []
+        if table == "feed_feedback":
+            return []
+        if method == "POST" and table == "feed_snapshots":
+            return [{"id": "00000000-0000-0000-0000-000000000777"}]
+        if method == "POST" and table == "feed_snapshot_items":
+            return []
         if table == "user_interests":
             return [{"interest_key": "ai", "preference": "interested"}, {"interest_key": "crypto", "preference": "not_interested"}]
         if table == "content_items":
@@ -72,6 +88,12 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
                     {"target_user_id": followed_owner, "edge_type": "follow", "status": "active"},
                     {"target_user_id": hidden_owner, "edge_type": "mute", "status": "active"},
                 ]
+            return []
+        if table == "feed_feedback":
+            return []
+        if method == "POST" and table == "feed_snapshots":
+            return [{"id": "00000000-0000-0000-0000-000000000778"}]
+        if method == "POST" and table == "feed_snapshot_items":
             return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
@@ -273,6 +295,10 @@ def test_feed_allows_anonymous_public_read_with_empty_state(monkeypatch):
                 {"id": "private-author", "username": "private_author", "display_name": "Private Author",
                  "avatar_url": "/private.png", "bio": "private profile", "visibility": "private", "account_status": "active"},
             ]
+        if method == "POST" and table == "feed_snapshots":
+            return [{"id": "00000000-0000-0000-0000-000000000779"}]
+        if method == "POST" and table == "feed_snapshot_items":
+            return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"guest feed must not query {table}")
