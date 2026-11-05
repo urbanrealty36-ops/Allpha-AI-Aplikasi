@@ -107,6 +107,9 @@ def _checkout_urls() -> tuple[str, str]:
 async def _stripe_request(method: str, path: str, *, key: str, data: dict[str, str] | None = None,
                           idempotency_key: str | None = None) -> dict[str, Any]:
     headers = {"Accept": "application/json"}
+    api_version = os.getenv("ALLPHA_STRIPE_API_VERSION", "").strip()
+    if api_version:
+        headers["Stripe-Version"] = api_version
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
     try:
@@ -158,9 +161,13 @@ def _safe_event_object(value: Any) -> dict[str, Any]:
         "id", "object", "mode", "status", "payment_status", "amount_total", "amount_paid",
         "amount_due", "currency", "payment_intent", "subscription", "customer", "invoice",
         "metadata", "current_period_start", "current_period_end", "cancel_at_period_end",
-        "cancel_at", "ended_at", "latest_invoice", "collection_method", "livemode",
+        "cancel_at", "ended_at", "latest_invoice", "collection_method", "livemode", "hosted_invoice_url",
     }
     result = {key: value.get(key) for key in allowed if key in value}
+    if "subscription" not in result:
+        subscription_id = _event_subscription_id(value)
+        if subscription_id:
+            result["subscription"] = subscription_id
     metadata = result.get("metadata")
     if isinstance(metadata, dict):
         result["metadata"] = {str(k): str(v)[:200] for k, v in metadata.items() if k in {"order_id", "owner_user_id", "product_key", "plan_key"}}
@@ -487,6 +494,16 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                     "p_current_period_end": datetime.fromtimestamp(int(obj["current_period_end"]), tz=timezone.utc).isoformat() if obj.get("current_period_end") else None,
                     "p_cancel_at_period_end": bool(obj.get("cancel_at_period_end", False)),
                 })
+                if event_type == "invoice.paid":
+                    await _rpc("billing_record_subscription_invoice", {
+                        "p_event_id": event_id, "p_subscription_id": sub_id,
+                        "p_invoice_id": str(obj.get("id") or ""),
+                        "p_payment_intent_id": obj.get("payment_intent") if isinstance(obj.get("payment_intent"), str) else None,
+                        "p_amount_paid": int(obj.get("amount_paid") or 0),
+                        "p_currency": str(obj.get("currency") or "").lower(),
+                        "p_paid_at": datetime.fromtimestamp(int(event.get("created") or time.time()), tz=timezone.utc).isoformat(),
+                        "p_hosted_invoice_url": obj.get("hosted_invoice_url"),
+                    })
             else:
                 await _rpc("billing_mark_stripe_event", {"p_event_id": event_id, "p_status": "ignored", "p_error_code": None})
         elif event_type == "checkout.session.async_payment_failed":
