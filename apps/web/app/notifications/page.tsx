@@ -103,27 +103,54 @@ export default function NotificationsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const updateCursor = useRef(new Date().toISOString());
   useEffect(() => {
     if (!session) return;
     let active = true;
-    const poll = async () => {
+    let controller: AbortController | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const connect = async () => {
+      controller = new AbortController();
       try {
-        const result = await api<{ items: NotificationItem[]; unread_count: number }>("/v1/notifications/updates?after=" + encodeURIComponent(updateCursor.current));
-        if (!active) return;
-        if (result.items?.length) {
-          setItems(current => {
-            const ids = new Set(current.map(item => item.id));
-            return [...result.items.filter(item => !ids.has(item.id)).reverse(), ...current].slice(0, 100);
-          });
-          updateCursor.current = result.items[result.items.length - 1].created_at;
+        const response = await fetch(apiBase + "/v1/notifications/stream", {
+          headers: { Authorization: "Bearer " + session.access_token, Accept: "text/event-stream" },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) throw new Error("Stream notifikasi tidak tersedia.");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (active) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += decoder.decode(chunk.value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() || "";
+          for (const eventBlock of events) {
+            const dataLine = eventBlock.split("\n").find(line => line.startsWith("data:"));
+            if (!dataLine) continue;
+            try {
+              const row = JSON.parse(dataLine.slice(5).trim()) as NotificationItem & { user_id?: string };
+              if (!row.id || (row.user_id && row.user_id !== session.user.id) || row.delivery_state === "suppressed") continue;
+              if (row.expires_at && Date.parse(row.expires_at) <= Date.now()) continue;
+              setItems(current => current.some(item => item.id === row.id) ? current : [row, ...current].slice(0, 100));
+              if (!row.read_at) setUnreadCount(value => value + 1);
+            } catch { /* ignore malformed stream frame */ }
+          }
         }
-        setUnreadCount(result.unread_count || 0);
-      } catch {}
+      } catch {
+        // Reconnect automatically; the REST inbox remains available during outages.
+      } finally {
+        if (active) reconnectTimer = setTimeout(() => { void connect(); }, 3000);
+      }
     };
-    const timer = setInterval(() => { void poll(); }, 5000);
-    return () => { active = false; clearInterval(timer); };
-  }, [api, session]);
+    void connect();
+    return () => {
+      active = false;
+      controller?.abort();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [session]);
 
   const loadPreferences = useCallback(async () => {
     if (!session) { setPreferences(null); return; }
