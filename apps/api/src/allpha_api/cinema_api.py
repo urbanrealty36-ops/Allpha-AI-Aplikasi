@@ -15,7 +15,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
+from allpha_api.content_api import _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(prefix="/v1/cinema", tags=["cinema"])
@@ -86,6 +87,69 @@ async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str |
         params["genre"] = f"eq.{genre}"
     rows = await _db("GET","cinema_titles",params=params)
     return {"items":rows or [],"next_cursor":None}
+
+
+
+@router.get("/titles/{title_id}/playback")
+async def title_playback(title_id: uuid.UUID, user: dict[str, Any] | None = Depends(optional_current_user)) -> dict[str, Any]:
+    """Return only ready/clean episode URLs allowed by free-preview or live Premium entitlement."""
+    titles = await _db("GET", "cinema_titles", params={
+        "select": TITLE_FIELDS, "id": f"eq.{title_id}", "status": "eq.published",
+        "moderation_status": "eq.approved", "rights_status": "eq.cleared", "limit": "1",
+    })
+    if not titles:
+        raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_AVAILABLE", "message": "Judul belum tersedia untuk ditonton."})
+    title = titles[0]
+    episodes = await _db("GET", "cinema_episodes", params={
+        "select": EPISODE_FIELDS, "title_id": f"eq.{title_id}", "status": "eq.ready",
+        "order": "episode_number.asc", "limit": "500",
+    })
+    episode_rows = episodes or []
+    media_ids = [str(row["media_id"]) for row in episode_rows if row.get("media_id")]
+    media_rows = await _db("GET", "content_media", params={
+        "select": "id,owner_id,storage_path,status,scan_status",
+        "id": f"in.({','.join(media_ids)})" if media_ids else "eq.00000000-0000-0000-0000-000000000000",
+        "status": "eq.ready", "scan_status": "eq.clean", "limit": str(min(500, len(media_ids) or 1)),
+    })
+    clean_media = {str(row["id"]): row for row in (media_rows or [])}
+    premium_entitled = False
+    if user:
+        entitlements = await _db("GET", "playback_entitlements", params={
+            "select": "entitlement_key,status,valid_from,valid_until",
+            "owner_user_id": f"eq.{user['id']}", "status": "eq.active", "limit": "100",
+        })
+        now = datetime.now(timezone.utc)
+        for entitlement in entitlements or []:
+            start = datetime.fromisoformat(str(entitlement["valid_from"]).replace("Z", "+00:00")) if entitlement.get("valid_from") else now
+            end = datetime.fromisoformat(str(entitlement["valid_until"]).replace("Z", "+00:00")) if entitlement.get("valid_until") else None
+            if (start.tzinfo is None):
+                start = start.replace(tzinfo=timezone.utc)
+            if (end is None or (end.tzinfo is None and end.replace(tzinfo=timezone.utc) > now) or (end is not None and end.tzinfo is not None and end > now)) and start <= now:
+                premium_entitled = True
+                break
+    result = []
+    for episode in episode_rows:
+        media = clean_media.get(str(episode.get("media_id") or ""))
+        free_preview = episode.get("is_free_preview") is True
+        allowed = bool(media) and (free_preview or premium_entitled)
+        playback_url = None
+        if allowed and media and media.get("storage_path"):
+            playback_url = await _signed_media_preview_url(str(media["storage_path"]), expires_in=300)
+        result.append({
+            "id": episode["id"], "episode_number": episode["episode_number"],
+            "title": episode["title"], "synopsis": episode.get("synopsis"),
+            "duration_seconds": episode.get("duration_seconds"),
+            "is_free_preview": free_preview, "locked": not allowed,
+            "media_id": episode["media_id"] if allowed else None,
+            "playback_url": playback_url,
+        })
+    return {
+        "title": {"id": title["id"], "title": title["title"], "maturity_rating": title["maturity_rating"]},
+        "episodes": result,
+        "premium_entitled": premium_entitled,
+        "entitlement_source": "server_verified" if premium_entitled else "free_preview_only",
+        "playback_policy_gates": {"territory": "not_configured", "maturity": "not_configured", "concurrent_streams": "not_configured"},
+    }
 
 
 @router.get("/creator/titles")
