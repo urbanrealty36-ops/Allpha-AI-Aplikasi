@@ -71,7 +71,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   }
   async function revoke(id: string) {
     setBusy(true); setError("");
-    try { await api("/v1/agent-social/approvals/" + id + "/revoke", { method: "POST" }); setNotice("Persetujuan dicabut."); await load(); }
+    try { const result = await api("/v1/agent-social/approvals/" + id + "/revoke", { method: "POST" }); setNotice(result.outcome === "replayed" ? "Pencabutan sebelumnya sudah tercatat." : "Persetujuan dicabut; audit dan notifikasi tercatat."); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Pencabutan gagal."); }
     finally { setBusy(false); }
   }
