@@ -103,6 +103,7 @@ export default function NotificationsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const streamCursor = useRef(new Date().toISOString());
   useEffect(() => {
     if (!session) return;
     let active = true;
@@ -111,7 +112,7 @@ export default function NotificationsPage() {
     const connect = async () => {
       controller = new AbortController();
       try {
-        const response = await fetch(apiBase + "/v1/notifications/stream", {
+        const response = await fetch(apiBase + "/v1/notifications/stream?after=" + encodeURIComponent(streamCursor.current), {
           headers: { Authorization: "Bearer " + session.access_token, Accept: "text/event-stream" },
           cache: "no-store",
           signal: controller.signal,
@@ -133,6 +134,7 @@ export default function NotificationsPage() {
               const row = JSON.parse(dataLine.slice(5).trim()) as NotificationItem & { user_id?: string };
               if (!row.id || (row.user_id && row.user_id !== session.user.id) || row.delivery_state === "suppressed") continue;
               if (row.expires_at && Date.parse(row.expires_at) <= Date.now()) continue;
+              if (row.created_at) streamCursor.current = row.created_at;
               setItems(current => current.some(item => item.id === row.id) ? current : [row, ...current].slice(0, 100));
               if (!row.read_at) setUnreadCount(value => value + 1);
             } catch { /* ignore malformed stream frame */ }
