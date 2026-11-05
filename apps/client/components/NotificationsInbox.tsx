@@ -40,22 +40,31 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
 
   useEffect(() => { void load(); }, [load]);
 
-  const updateCursor = useRef(new Date().toISOString());
+  const updateCursor = useRef(new Date(Date.now() - 1000).toISOString());
+  const updateCursorId = useRef<string | null>(null);
+  const pollInFlight = useRef(false);
   useEffect(() => {
     let active = true;
     const poll = async () => {
+      if (pollInFlight.current) return;
+      pollInFlight.current = true;
       try {
-        const result = await api<{ items: NotificationItem[]; unread_count: number }>("/v1/notifications/updates?after=" + encodeURIComponent(updateCursor.current));
+        const params = new URLSearchParams({ after: updateCursor.current });
+        if (updateCursorId.current) params.set("after_id", updateCursorId.current);
+        const result = await api<{ items: NotificationItem[]; unread_count: number }>("/v1/notifications/updates?" + params.toString());
         if (!active) return;
         if (result.items?.length) {
           setItems(current => {
             const ids = new Set(current.map(item => item.id));
             return [...result.items.filter(item => !ids.has(item.id)).reverse(), ...current].slice(0, 100);
           });
-          updateCursor.current = result.items[result.items.length - 1].created_at;
+          const last = result.items[result.items.length - 1];
+          updateCursor.current = last.created_at;
+          updateCursorId.current = last.id;
         }
         setUnreadCount(result.unread_count || 0);
       } catch { /* retry on the next interval */ }
+      finally { pollInFlight.current = false; }
     };
     const timer = setInterval(() => { void poll(); }, 5000);
     return () => { active = false; clearInterval(timer); };
