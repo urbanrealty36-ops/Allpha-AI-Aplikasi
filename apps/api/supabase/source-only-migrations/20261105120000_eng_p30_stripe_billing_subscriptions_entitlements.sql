@@ -390,14 +390,15 @@ end;
 $$;
 
 create or replace function public.billing_mark_checkout_failed(
-  p_event_id text,p_order_id uuid,p_session_id text
+  p_event_id text,p_order_id uuid,p_session_id text,p_status text default 'failed'
 ) returns jsonb language plpgsql security definer set search_path = ''
 as $$
 declare v_order public.billing_orders;
 begin
+  if p_status not in ('failed','expired') then raise exception 'BILLING_FAILURE_STATUS_INVALID' using errcode='22023'; end if;
   select * into v_order from public.billing_orders where id=p_order_id for update;
   if found and v_order.stripe_checkout_session_id=p_session_id and v_order.status='checkout_pending' then
-    update public.billing_orders set status='failed',updated_at=now() where id=p_order_id;
+    update public.billing_orders set status=p_status,updated_at=now() where id=p_order_id;
   end if;
   update public.stripe_webhook_events set status='processed',processed_at=now() where event_id=p_event_id;
   return jsonb_build_object('processed',true);
@@ -410,7 +411,7 @@ revoke all on function public.billing_create_order(uuid,text,text),
   public.billing_mark_stripe_event(text,text,text),
   public.billing_finalize_stripe_checkout(text,uuid,text,uuid,text,bigint,text,text,text,text,timestamptz,timestamptz),
   public.billing_apply_subscription_state(text,text,text,text,timestamptz,timestamptz,boolean),
-  public.billing_mark_checkout_failed(text,uuid,text)
+  public.billing_mark_checkout_failed(text,uuid,text,text)
   from public,anon,authenticated;
 grant execute on function public.billing_create_order(uuid,text,text),
   public.billing_attach_checkout_session(uuid,uuid,text,text,text),
