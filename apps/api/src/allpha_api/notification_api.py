@@ -106,6 +106,7 @@ async def list_notifications(
 @router.get("/updates")
 async def notification_updates(
     after: datetime = Query(...),
+    after_id: uuid.UUID | None = None,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Authenticated incremental inbox feed for Web and Native clients.
@@ -114,12 +115,13 @@ async def notification_updates(
     notifications; clients never subscribe to or query the notifications table.
     """
     now = datetime.now(timezone.utc)
+    after_value = after.astimezone(timezone.utc).isoformat()
+    cursor_filter = f"or(created_at.gt.{after_value},and(created_at.eq.{after_value},id.gt.{after_id}))" if after_id else f"created_at.gt.{after_value}"
     items = await _request("GET", "notifications", params={
         "select": "id,user_id,category,event_key,title,body,payload,delivery_state,read_at,delivered_at,created_at,expires_at",
         "user_id": f"eq.{user['id']}",
-        "created_at": f"gt.{after.astimezone(timezone.utc).isoformat()}",
+        "and": f"(or(expires_at.is.null,expires_at.gt.{now.isoformat()}),{cursor_filter})",
         "delivery_state": "neq.suppressed",
-        "or": f"(expires_at.is.null,expires_at.gt.{now.isoformat()})",
         "order": "created_at.asc,id.asc",
         "limit": "100",
     })
@@ -136,6 +138,7 @@ async def notification_updates(
 async def notification_stream(
     request: Request,
     after: datetime | None = None,
+    after_id: uuid.UUID | None = None,
     user: dict[str, Any] = Depends(current_user),
 ) -> StreamingResponse:
     """Authenticated server-sent notification stream; no client DB subscription."""
@@ -143,14 +146,17 @@ async def notification_stream(
 
     async def events():
         cursor = after.astimezone(timezone.utc) if after else datetime.now(timezone.utc)
+        cursor_id = after_id
         yield "event: ready\ndata: {}\n\n"
         while not await request.is_disconnected():
+            now = datetime.now(timezone.utc).isoformat()
+            cursor_value = cursor.isoformat()
+            cursor_filter = f"or(created_at.gt.{cursor_value},and(created_at.eq.{cursor_value},id.gt.{cursor_id}))" if cursor_id else f"created_at.gt.{cursor_value}"
             rows = await _request("GET", "notifications", params={
                 "select": "id,user_id,category,event_key,title,body,payload,delivery_state,read_at,delivered_at,created_at,expires_at",
                 "user_id": f"eq.{user_id}",
-                "created_at": f"gt.{cursor.isoformat()}",
+                "and": f"(or(expires_at.is.null,expires_at.gt.{now}),{cursor_filter})",
                 "delivery_state": "neq.suppressed",
-                "or": f"(expires_at.is.null,expires_at.gt.{datetime.now(timezone.utc).isoformat()})",
                 "order": "created_at.asc,id.asc",
                 "limit": "100",
             })
@@ -160,6 +166,7 @@ async def notification_stream(
                 created = row.get("created_at")
                 if created:
                     cursor = datetime.fromisoformat(str(created).replace("Z", "+00:00")).astimezone(timezone.utc)
+                    cursor_id = uuid.UUID(str(row["id"]))
                 yield "event: notification\ndata: " + json.dumps(row, separators=(",", ":"), default=str) + "\n\n"
             yield ": keep-alive\n\n"
             await asyncio.sleep(3)
