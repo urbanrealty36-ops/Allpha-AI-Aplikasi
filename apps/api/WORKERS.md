@@ -124,3 +124,33 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - Image processing, transcode dispatch and callback derivative ingestion remain deferred while the approved malware scanner adapter is unavailable. Cloudinary callback verifies signature and durably enqueues only; it does not download derivatives or mark media ready. Unscanned media remains private and non-publishable.
 - Retention purge requires all five server-only gates: CONTENT_RETENTION_PURGE_ENABLED, CONTENT_RETENTION_BACKUP_VERIFIED, CONTENT_RETENTION_RESTORE_DRILL_VERIFIED, CONTENT_RETENTION_LEGAL_HOLD_VERIFIED, CONTENT_RETENTION_APPROVAL_VERIFIED. Every gate defaults false and is enforced by both Cron status and the retention worker.
 - Vercel Cron does not guarantee retries. Durable Postgres leases, idempotency, bounded retry/backoff and dead-letter state remain authoritative. Runtime activation still requires deployment, env configuration, Cron registration and invocation logs.
+
+
+## ENG-P09 durable generation worker (source implemented, not activated)
+
+- Entrypoint: `allpha-generation-worker`; module: `allpha_api.generation_job_worker`.
+- The canonical FastAPI endpoint `POST /v1/generation/jobs` requires a verified Premium subscription, a published owner-controlled Agent Skill, an approved Agent capability, an approved active model route, and a currently effective approved AI Credit policy.
+- `generation_create_job` calls the existing `credit_ledger_reserve` RPC and inserts the job in the same PostgreSQL transaction. The job snapshots the provider/model/version, pricing version, usage unit, tariff, entitlement, policy approval, cost ceiling, credit reservation, and source Skill version.
+- Worker claims use `FOR UPDATE SKIP LOCKED`, a bounded lease and a single attempt. The worker calls only `CanonicalTextGenerationRouter`; it never calls a model provider directly.
+- Provider output and durable usage evidence are persisted privately before ledger settlement. The owner API exposes output only after successful settlement and terminal job completion.
+- Any provider/metering/settlement uncertainty or expired worker lease moves the job/reservation to `pending_reconciliation`. Unknown outcomes are **never automatically replayed**. No prompt/output is written to worker logs.
+- Required server-only environment: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, approved model-route/runtime-policy configuration, approved model-cost registry row (`policy_approved=true`), and approved `credit_policy_versions` policy. `ALLPHA_GENERATION_WORKER_ENABLED=false` by default; configure poll and batch values only after approval.
+- The live model-cost registry previously inspected contains only a test-only NVIDIA NIM/Qwen row with `policy_approved=false`; no approved credit policy rows or active Premium subscription products were evidenced. Therefore the worker and generation endpoint remain fail-closed and must not be enabled using that test row.
+- Migration source: `apps/api/supabase/source-only-migrations/20261105130000_eng_p09_durable_generation_jobs.sql`. It has not been applied. No provider call, reservation, settlement, database mutation, or worker execution was performed.
+
+## ENG-P30 Stripe billing and subscription (source implemented, not activated)
+
+- Provider: Stripe, selected by Product Owner. FastAPI routes are mounted from `allpha_api.stripe_billing_api`; Web and Native Billing Centers use the same API. Super Admin product governance requires `platform:billing.manage`.
+- Checkout uses only operator-managed active `billing_products` records and their Stripe Price IDs. Client-supplied amount, currency, credit amount, plan, or entitlement are never accepted as authority. Operator activation verifies the Stripe Price amount/currency/recurrence against the product snapshot and checks approved credit-grant policy before publication.
+- Webhook: `POST /v1/billing/stripe/webhook`. Configure signed Stripe events for Checkout completion/async result/expiry, subscription updated/deleted, and invoice paid/payment failed. The handler validates the Stripe signature and timestamp, stores a sanitized idempotent event, verifies Checkout state, then finalizes order/receipt and AI Credit grant or subscription/entitlement in PostgreSQL.
+- Subscription renewal receipts are recorded from `invoice.paid`. Web/Native users manage active subscriptions through Stripe Billing Portal. Client redirect URLs never fulfill orders or activate entitlements.
+- Required server-only environment: `ALLPHA_STRIPE_ENABLED`, `ALLPHA_STRIPE_MODE`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the allow-listed billing return URLs. Checkout remains disabled by default. Never place Stripe secrets in client apps.
+- Super Admin draft/activate/retire product controls require the separately granted `platform:billing.manage` operator scope. No operator grant is created automatically.
+- Migration source: `apps/api/supabase/source-only-migrations/20261105120000_eng_p30_stripe_billing_subscriptions_entitlements.sql`. It has not been applied; no Stripe account, secret, Price, webhook, live/test checkout, payment, refund or subscription transaction was configured or executed. No prices, credit packs or Premium quotas are seeded.
+
+## Current activation boundary
+
+- Both new migrations are source-only and un-applied. No staging, browser/device tests, builds, CI, production migration, deployment, provider call, or payment transaction was run in this implementation pass.
+- WP-04 remains source implemented / runtime not verified. Cloudinary account credentials/callback, ClamAV scanner, media worker image/runtime, backup/PITR plan and restore evidence remain required. Retention purge stays disabled.
+- WP-05 source/acceptance was not changed in this pass. There is a document conflict: `ADR-WP04-003-clamav-deferral.md` §Decision.7 says WP-05 remains locked until WP-04 implementation closure, while the current Fixed Phase Plan's Product Owner directive authorizes continued WP-05 work against available contracts. Per `AGENTS.md` §12.6, stop WP-05 implementation until the Product Owner resolves this exact conflict in the governing documents.
+- All runtime integration and acceptance states remain `DEFERRED / NOT VERIFIED`. Do not mark ENG-P09, ENG-P30, WP-04, WP-05 or ENG-P37 as accepted or production verified.
