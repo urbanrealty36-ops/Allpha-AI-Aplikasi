@@ -201,6 +201,7 @@ class SupabaseActiveModelCostVerifier:
             "input_micro_cost_per_token": input_cost_microunits_per_token,
             "output_micro_cost_per_token": output_cost_microunits_per_token,
             "max_cost_microunits": max_cost_microunits,
+            "policy_approved": True,
         }
         self._transport = transport
 
@@ -238,7 +239,10 @@ class SupabaseActiveModelCostVerifier:
             raise RuntimeError("active tariff state is invalid")
         for field, expected in self._expected.items():
             actual = row.get(field)
-            if isinstance(expected, int):
+            if isinstance(expected, bool):
+                if actual is not expected:
+                    raise RuntimeError("active tariff is not explicitly approved in the canonical registry")
+            elif isinstance(expected, int):
                 if isinstance(actual, bool) or not isinstance(actual, int) or actual != expected:
                     raise RuntimeError("active tariff does not match the approved deployment configuration")
             elif actual != expected:
