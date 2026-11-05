@@ -7,8 +7,8 @@ def test_wp04_schedule_functions_enforce_identical_media_readiness_and_policy():
     migration = ROOT / "supabase/migrations/20261105120000_wp04_schedule_media_readiness_guard.sql"
     sql = migration.read_text(encoding="utf-8").lower()
     # Each function rejects media that fails any one of the same readiness predicates.
-    assert sql.count("m.status<>'ready'") == 2
-    assert sql.count("m.scan_status<>'clean'") == 2
+    assert sql.count("m.status is distinct from 'ready'") == 2
+    assert sql.count("m.scan_status is distinct from 'clean'") == 2
     assert sql.count("m.processed_at is null") == 2
     assert sql.count("jsonb_array_length") == 2
     assert sql.count("jsonb_typeof(m.derivatives) is distinct from 'array'") == 2
