@@ -32,6 +32,7 @@ class CoauthoredDraft(BaseModel):
     content_type: Literal["text", "image", "video", "story"] = "text"
     action_type: Literal["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"] = "draft_post"
     target_content_id: uuid.UUID | None = None
+    target_comment_id: uuid.UUID | None = None
     idempotency_key: str = Field(min_length=12, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
@@ -155,6 +156,12 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
     })
     if prior:
         return {"approval": prior[0], "replayed": True}
+    if payload.action_type in ("draft_comment", "draft_reply") and not payload.target_content_id:
+        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_COMMENT_TARGET_REQUIRED", "message": "Tentukan konten yang menjadi target komentar."})
+    if payload.action_type == "draft_reply" and not payload.target_comment_id:
+        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_PARENT_COMMENT_REQUIRED", "message": "Balasan harus merujuk komentar induk."})
+    if payload.action_type == "draft_story" and (not payload.target_content_id or payload.content_type != "story"):
+        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_STORY_TARGET_REQUIRED", "message": "Balasan Story harus berupa draft Story yang tertaut ke Story target."})
     content = await _server_db("POST", "content_items", body={
         "owner_id": owner_id, "ai_agent_id": agent_id, "content_type": payload.content_type,
         "body": generated_body.strip(), "visibility": payload.visibility, "status": "draft",
@@ -168,6 +175,8 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
     approvals = await _server_db("POST", "agent_social_action_approvals", body={
         "owner_user_id": owner_id, "agent_id": agent_id, "content_id": row["id"],
         "runtime_task_id": str(payload.runtime_task_id), "action_type": payload.action_type, "content_version": row["version"],
+        "target_content_id": str(payload.target_content_id) if payload.target_content_id else None,
+        "target_comment_id": str(payload.target_comment_id) if payload.target_comment_id else None,
         "status": "pending", "disclosure_snapshot": policy["disclosure_text"],
         "idempotency_key": payload.idempotency_key,
     }, prefer="return=representation")
@@ -194,53 +203,33 @@ async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[s
 @router.post("/approvals/{approval_id}/decision")
 async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
                           user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    owner_id = str(user["id"])
-    rows = await _server_db("GET", "agent_social_action_approvals", params={
-        "select": "id,agent_id,content_id,content_version,status",
-        "id": f"eq.{approval_id}", "owner_user_id": f"eq.{owner_id}", "limit": "1",
-    })
-    if not rows:
-        raise HTTPException(404, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_FOUND", "message": "Permintaan persetujuan tidak ditemukan."})
-    approval = rows[0]
-    if approval["status"] != "pending":
-        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_APPROVAL_ALREADY_DECIDED", "message": "Permintaan ini sudah diputuskan."})
-    agent = await _active_owned_agent(owner_id, approval["agent_id"])
-    policies = await _server_db("GET", "agent_social_presence_policies", params={
-        "select": "is_enabled,revoked_at,allowed_actions",
-        "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{approval['agent_id']}", "limit": "1",
-    })
-    policy = policies[0] if policies else None
-    if not policy or not policy.get("is_enabled") or policy.get("revoked_at") or approval["action_type"] not in (policy.get("allowed_actions") or []):
-        raise HTTPException(403, detail={"code": "AGENT_SOCIAL_POLICY_REVOKED", "message": "Kebijakan pemilik tidak lagi mengizinkan tindakan ini."})
-    content = await _server_db("GET", "content_items", params={
-        "select": "id,owner_id,ai_agent_id,status,version", "id": f"eq.{approval['content_id']}",
-        "owner_id": f"eq.{owner_id}", "limit": "1",
-    })
-    if not content or content[0].get("status") != "draft" or int(content[0].get("version") or 0) != int(approval["content_version"]):
-        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_DRAFT_CHANGED", "message": "Draft berubah atau tidak lagi tersedia; buat ulang permintaan."})
-    decision = "approved" if payload.decision == "approve" else "rejected"
-    updated = await _server_db("PATCH", "agent_social_action_approvals", params={
-        "id": f"eq.{approval_id}", "owner_user_id": f"eq.{owner_id}",
-        "status": "eq.pending", "select": "*",
-    }, body={"status": decision, "decided_at": "now()", "decided_by": owner_id,
-             "decision_reason": (payload.reason or "")[:500]}, prefer="return=representation")
-    if not updated:
-        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_APPROVAL_CONFLICT", "message": "Approval telah berubah; muat ulang."})
-    await _write_social_audit(owner_id=owner_id, agent_id=approval["agent_id"], actor_id=owner_id,
-        approval_id=str(approval_id), event_type="approval_approved" if decision == "approved" else "approval_rejected",
-        outcome="allowed", metadata={"decision_reason": (payload.reason or "")[:500], "content_id": approval["content_id"]})
-    await _server_db("POST", "notifications", params={"on_conflict": "user_id,event_key", "select": "id"},
-        body={"user_id": owner_id, "category": "social_activity",
-              "event_key": f"agent-social-approval:{approval_id}:{decision}",
-              "title": "Persetujuan kolaborasi Agent diperbarui",
-              "body": f"{agent.get('display_name') or 'AI Agent'}: draft kolaborasi {decision}.",
-              "payload": {"type": "agent_social_approval", "approval_id": str(approval_id),
-                          "content_id": approval["content_id"], "status": decision},
-              "delivery_state": "queued"},
-        prefer="resolution=ignore-duplicates,return=representation")
-    return {"approval": updated[0], "publishable": decision == "approved",
-            "next_action": "submit_draft_for_moderation" if decision == "approved" else "revise_or_discard"}
+    """The transactional database function is the sole source of truth.
 
+    Approval state, comment/Story DM side effects, audit and ENG-P20 inbox
+    notifications are committed or rolled back together by this RPC.
+    """
+    result = await _server_db("POST", "rpc/decide_agent_social_approval", body={
+        "p_approval_id": str(approval_id),
+        "p_owner_user_id": str(user["id"]),
+        "p_decision": payload.decision,
+        "p_reason": (payload.reason or "")[:500],
+    })
+    if not isinstance(result, dict) or result.get("outcome") not in ("approved", "rejected", "replayed"):
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_DECISION_UNCONFIRMED",
+                                         "message": "Hasil keputusan belum dapat dikonfirmasi; muat ulang sebelum mencoba lagi."})
+    approval = result.get("approval") or {}
+    execution = result.get("execution") or {}
+    return {
+        "outcome": result["outcome"],
+        "approval": approval,
+        "execution": execution,
+        "publishable": result["outcome"] in ("approved", "replayed") and approval.get("status") == "approved",
+        "next_action": execution.get("next_action") or (
+            "open_story_dm" if execution.get("kind") == "story_dm" else
+            "open_comment_thread" if execution.get("kind") == "comment" else
+            "submit_draft_for_moderation" if approval.get("status") == "approved" else "revise_or_discard"
+        ),
+    }
 
 @router.post("/approvals/{approval_id}/revoke")
 async def revoke_approval(approval_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
