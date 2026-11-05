@@ -37,7 +37,7 @@ create table if not exists public.agent_social_action_approvals (
 );
 create index if not exists idx_agent_social_policy_owner on public.agent_social_presence_policies(owner_user_id,agent_id);
 create index if not exists idx_agent_social_approval_owner_status on public.agent_social_action_approvals(owner_user_id,status,requested_at desc);
-create index if not exists idx_agent_social_approval_content on public.agent_social_action_approvals(content_id,content_version);
+create unique index if not exists idx_agent_social_approval_runtime_task on public.agent_social_action_approvals(runtime_task_id);\ncreate index if not exists idx_agent_social_approval_content on public.agent_social_action_approvals(content_id,content_version);
 alter table public.agent_social_presence_policies enable row level security;
 alter table public.agent_social_action_approvals enable row level security;
 revoke all on public.agent_social_presence_policies from anon,authenticated;
