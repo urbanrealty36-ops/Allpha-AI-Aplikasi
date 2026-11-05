@@ -76,13 +76,14 @@ declare
   v_owner uuid := (p_command->>'owner_user_id')::uuid;
   v_agent uuid := (p_command->>'agent_id')::uuid;
   v_skill uuid := (p_command->>'skill_id')::uuid;
-  v_reservation uuid := (p_command->>'reservation_id')::uuid;
   v_task text := p_command->>'task_id';
   v_key text := p_command->>'idempotency_key';
   v_existing public.generation_jobs;
   v_job public.generation_jobs;
+  v_reservation jsonb;
+  v_reservation_id uuid;
 begin
-  if v_owner is null or v_agent is null or v_skill is null or v_reservation is null
+  if v_owner is null or v_agent is null or v_skill is null
     or coalesce(v_task,'')='' or coalesce(v_key,'')=''
     or coalesce(p_command->>'prompt','')=''
     or coalesce(p_command->>'prompt_sha256','') !~ '^[0-9a-f]{64}$' then
@@ -97,7 +98,7 @@ begin
       raise exception 'GENERATION_JOB_IDEMPOTENCY_CONFLICT' using errcode='23505';
     end if;
     return jsonb_build_object('job_id',v_existing.id,'task_id',v_existing.task_id,
-      'status',v_existing.status,'idempotent_replay',true);
+      'reservation_id',v_existing.reservation_id,'status',v_existing.status,'idempotent_replay',true);
   end if;
   if not exists (
     select 1 from public.agent_ownerships o
@@ -108,11 +109,27 @@ begin
     select 1 from public.agent_skills s
     where s.id=v_skill and s.agent_id=v_agent and s.status='published'
   ) then raise exception 'GENERATION_SKILL_NOT_PUBLISHED' using errcode='42501'; end if;
-  if not exists (
-    select 1 from public.credit_reservations r
-    where r.id=v_reservation and r.owner_user_id=v_owner
-      and r.task_id=v_task and r.state='reserved'
-  ) then raise exception 'GENERATION_CREDIT_RESERVATION_NOT_FOUND' using errcode='42501'; end if;
+
+  -- Reservation and queue insertion share one PostgreSQL transaction. An
+  -- idempotent retry cannot create an orphan reservation.
+  v_reservation := public.credit_ledger_reserve(jsonb_build_object(
+    'owner_user_id',v_owner,
+    'idempotency_key','generation-reserve:'||v_task,
+    'task_id',v_task,
+    'capability_id',p_command->>'capability_id',
+    'credits_to_reserve',(p_command->>'credits_to_reserve')::bigint,
+    'estimated_usage_units',(p_command->>'estimated_usage_units')::bigint,
+    'usage_unit',p_command->>'usage_unit',
+    'estimated_cost_microunits',(p_command->>'estimated_cost_microunits')::bigint,
+    'cost_unit',p_command->>'cost_unit',
+    'credit_scheme_version',p_command->>'credit_scheme_version',
+    'tariff_version',p_command->>'tariff_version',
+    'entitlement_version',p_command->>'entitlement_version',
+    'policy_version',p_command->>'policy_version',
+    'policy_approval_reference',p_command->>'policy_approval_reference'
+  ));
+  v_reservation_id := (v_reservation->>'reservation_id')::uuid;
+
   insert into public.generation_jobs(
     owner_user_id,agent_id,skill_id,capability_id,sensitivity,task_id,trace_id,idempotency_key,
     prompt,prompt_sha256,max_output_tokens,timeout_ms,estimated_usage_units,usage_unit,
@@ -132,12 +149,12 @@ begin
     p_command->>'entitlement_version',p_command->>'policy_version',
     p_command->>'policy_approval_reference',(p_command->>'allow_success_settlement')::boolean,
     (p_command->>'allow_definitive_failure_release')::boolean,
-    (p_command->>'allow_partial_settlement')::boolean,v_reservation,
+    (p_command->>'allow_partial_settlement')::boolean,v_reservation_id,
     p_command->>'provider_id',p_command->>'model_id',p_command->>'model_version',
     p_command->>'pricing_version',(p_command->>'max_cost_microunits')::bigint
   ) returning * into v_job;
   return jsonb_build_object('job_id',v_job.id,'task_id',v_job.task_id,
-    'status',v_job.status,'idempotent_replay',false);
+    'reservation_id',v_job.reservation_id,'status',v_job.status,'idempotent_replay',false);
 end;
 $$;
 
@@ -146,6 +163,7 @@ create or replace function public.claim_generation_jobs(
 ) returns setof public.generation_jobs
 language plpgsql security definer set search_path = ''
 as $$
+declare v_expired record;
 begin
   if p_worker_id is null or p_limit < 1 or p_limit > 20
     or p_lease_seconds < 60 or p_lease_seconds > 600 then
@@ -153,15 +171,19 @@ begin
   end if;
   -- An expired running lease is an unknown provider outcome. Never requeue it:
   -- a crash may have happened after the provider accepted the request.
-  with expired as (
+  for v_expired in
     select id,reservation_id from public.generation_jobs
     where status='running' and lease_expires_at < now()
     for update skip locked
-  )
-  update public.generation_jobs j set status='pending_reconciliation',
-    lease_token=null,lease_expires_at=null,error_code='worker_lease_expired_outcome_unknown',
-    updated_at=now()
-  from expired e where j.id=e.id;
+  loop
+    perform public.credit_ledger_mark_pending(jsonb_build_object(
+      'reservation_id',v_expired.reservation_id,
+      'reason_code','generation_worker_lease_expired_outcome_unknown'
+    ));
+    update public.generation_jobs set status='pending_reconciliation',
+      lease_token=null,lease_expires_at=null,error_code='worker_lease_expired_outcome_unknown',
+      updated_at=now() where id=v_expired.id;
+  end loop;
   return query
     with due as (
       select id from public.generation_jobs
