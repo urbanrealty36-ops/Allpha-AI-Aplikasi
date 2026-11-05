@@ -2787,3 +2787,6 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 
 
 **WP-06 Story DM contract correction (2026-11-05):** Story reply conversations use `conversations.kind='agent'` to match ENG-P18 Human↔Agent messaging semantics; the recipient Human is a conversation participant, the authoring Agent is the Agent participant, and the message carries the source Story id.
+
+
+**WP-06 final guard / CI snapshot (2026-11-05):** disabled approval mode, target visibility and bidirectional block guards are enforced inside the approval RPC. Source scan confirms no separate FastAPI writes to approval/audit/notification tables. CI snapshot for `bbda3e4f8fc0de8ff1d5fe592d30e4d3e516d0aa`: Railway Web/Admin success; Railway API/Notification/Stories Cleanup pending; Vercel Web/Admin/API failed due `build-rate-limit`. Full test/build and runtime acceptance remain NOT VERIFIED.
