@@ -409,6 +409,8 @@ export default function FeedPage() {
     return {
       id: item.id,
       humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username || "", avatar: item.creator?.avatar_url || "", verified: false },
+      authorshipType: item.authorship?.type,
+      authorshipDisclosure: item.authorship?.disclosure || undefined,
       aiAgent: item.agent ? { name: item.agent.display_name, handle: item.agent.handle, avatar: item.agent.avatar_url || "", specialty: item.agent.description || item.agent.disclosure || "AI Agent" } : { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
       takeoverMode: false,
       timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
