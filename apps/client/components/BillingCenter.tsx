@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Text, View } from "react-native";
-import { Button } from "./BillingCenterButton";
+import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
 
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
 type Product = { product_key: string; name: string; description?: string | null; purpose: string; amount_minor: number; currency: string; billing_interval?: string | null; credits_grant: number };
@@ -13,7 +12,7 @@ function money(amountMinor: number, currency: string) {
 }
 function key() { return "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14); }
 
-export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promise<string> }) {
+function ActionButton({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {\n  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={{ borderRadius: 12, padding: 13, backgroundColor: "#A5B4FC", opacity: disabled ? 0.45 : 1, alignItems: "center" }}><Text style={{ color: "#11162B", fontWeight: "800" }}>{title}</Text></Pressable>;\n}\n\nexport function BillingCenter({ getAccessToken }: { getAccessToken: () => Promise<string> }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscription, setSubscription] = useState<Subscription>(null);
@@ -87,7 +86,7 @@ export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promis
       <Text style={{ color: "#A5ADC3", fontSize: 13 }}>{product.description || ""}</Text>
       <Text style={{ color: "#F7F8FF", fontSize: 22, fontWeight: "800" }}>{money(product.amount_minor, product.currency)}</Text>
       <Text style={{ color: "#A5ADC3", fontSize: 12 }}>{product.purpose === "ai_credit_topup" ? product.credits_grant.toLocaleString("id-ID") + " AI Credits" : "Tagihan per " + (product.billing_interval || "periode paket")}</Text>
-      <Button title={busy === product.product_key ? "Menyiapkan checkout…" : enabled ? "Lanjutkan ke Stripe" : "Checkout belum tersedia"} disabled={!enabled || busy !== null} onPress={() => void checkout(product)}/>
+      <ActionButton title={busy === product.product_key ? "Menyiapkan checkout…" : enabled ? "Lanjutkan ke Stripe" : "Checkout belum tersedia"} disabled={!enabled || busy !== null} onPress={() => void checkout(product)}/>
     </View>) : <Text style={{ color: "#A5ADC3", fontSize: 13 }}>Belum ada paket aktif. Harga dan jumlah kredit tidak dibuat otomatis.</Text>}
     <Text style={{ color: "#F7F8FF", fontSize: 18, fontWeight: "700" }}>Riwayat pesanan</Text>
     {orders.length ? orders.map(order => <View key={order.id} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#29314B", gap: 4 }}>
