@@ -9,6 +9,7 @@ create table if not exists public.generation_jobs (
   owner_user_id uuid not null references auth.users(id) on delete restrict,
   agent_id uuid not null references public.ai_agents(id) on delete restrict,
   skill_id uuid not null references public.agent_skills(id) on delete restrict,
+  source_version integer not null check (source_version > 0),
   capability_id text not null check (char_length(capability_id) between 3 and 128),
   sensitivity text not null check (sensitivity in ('private','internal','public')),
   task_id text not null unique check (char_length(task_id) between 8 and 160),
@@ -94,11 +95,18 @@ begin
   if found then
     if v_existing.prompt_sha256 <> p_command->>'prompt_sha256'
       or v_existing.capability_id <> p_command->>'capability_id'
-      or v_existing.agent_id <> v_agent or v_existing.skill_id <> v_skill then
+      or v_existing.agent_id <> v_agent or v_existing.skill_id <> v_skill
+      or v_existing.source_version <> (p_command->>'source_version')::integer
+      or v_existing.policy_version <> p_command->>'policy_version'
+      or v_existing.tariff_version <> p_command->>'tariff_version'
+      or v_existing.entitlement_version <> p_command->>'entitlement_version'
+      or v_existing.model_id <> p_command->>'model_id'
+      or v_existing.model_version <> p_command->>'model_version' then
       raise exception 'GENERATION_JOB_IDEMPOTENCY_CONFLICT' using errcode='23505';
     end if;
     return jsonb_build_object('job_id',v_existing.id,'task_id',v_existing.task_id,
-      'reservation_id',v_existing.reservation_id,'status',v_existing.status,'idempotent_replay',true);
+      'reservation_id',v_existing.reservation_id,'reserved_credits',v_existing.credits_to_reserve,
+      'status',v_existing.status,'idempotent_replay',true);
   end if;
   if not exists (
     select 1 from public.agent_ownerships o
@@ -131,7 +139,7 @@ begin
   v_reservation_id := (v_reservation->>'reservation_id')::uuid;
 
   insert into public.generation_jobs(
-    owner_user_id,agent_id,skill_id,capability_id,sensitivity,task_id,trace_id,idempotency_key,
+    owner_user_id,agent_id,skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
     prompt,prompt_sha256,max_output_tokens,timeout_ms,estimated_usage_units,usage_unit,
     estimated_cost_microunits,cost_unit,credits_to_reserve,credits_per_usage_unit,
     credit_scheme_version,tariff_version,entitlement_version,policy_version,
@@ -139,7 +147,7 @@ begin
     allow_partial_settlement,reservation_id,provider_id,model_id,model_version,pricing_version,
     max_cost_microunits
   ) values (
-    v_owner,v_agent,v_skill,p_command->>'capability_id',p_command->>'sensitivity',v_task,
+    v_owner,v_agent,v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',p_command->>'sensitivity',v_task,
     p_command->>'trace_id',v_key,p_command->>'prompt',p_command->>'prompt_sha256',
     (p_command->>'max_output_tokens')::integer,(p_command->>'timeout_ms')::integer,
     (p_command->>'estimated_usage_units')::bigint,p_command->>'usage_unit',
@@ -154,7 +162,8 @@ begin
     p_command->>'pricing_version',(p_command->>'max_cost_microunits')::bigint
   ) returning * into v_job;
   return jsonb_build_object('job_id',v_job.id,'task_id',v_job.task_id,
-    'reservation_id',v_job.reservation_id,'status',v_job.status,'idempotent_replay',false);
+    'reservation_id',v_job.reservation_id,'reserved_credits',v_job.credits_to_reserve,
+    'status',v_job.status,'idempotent_replay',false);
 end;
 $$;
 
