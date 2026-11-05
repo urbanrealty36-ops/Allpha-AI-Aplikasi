@@ -441,6 +441,28 @@ async def get_billing_order(order_id: uuid.UUID, user: dict[str, Any] = Depends(
     return {"order": rows[0], "receipts": receipts or []}
 
 
+
+@router.post("/portal")
+async def create_customer_portal(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    key, _ = _billing_config()
+    subscriptions = await _db("GET", "billing_subscriptions", params={
+        "select": "stripe_customer_id,status",
+        "owner_user_id": f"eq.{user['id']}",
+        "status": "in.(active,past_due,unpaid)",
+        "order": "updated_at.desc", "limit": "1",
+    })
+    if not subscriptions or not subscriptions[0].get("stripe_customer_id"):
+        raise HTTPException(404, detail={"code": "STRIPE_CUSTOMER_NOT_FOUND", "message": "Akun ini belum memiliki customer subscription Stripe."})
+    _, return_url = _checkout_urls()
+    portal = await _stripe_request("POST", "billing_portal/sessions", key=key, data={
+        "customer": str(subscriptions[0]["stripe_customer_id"]),
+        "return_url": return_url,
+    }, idempotency_key=None)
+    if not portal.get("url"):
+        raise HTTPException(502, detail={"code": "STRIPE_PORTAL_SESSION_INVALID", "message": "Stripe tidak mengembalikan portal URL."})
+    return {"url": portal["url"], "provider": "stripe"}
+
+
 @router.get("/subscription")
 async def get_my_subscription(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _db("GET", "billing_subscriptions", params={
