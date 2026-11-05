@@ -654,6 +654,7 @@ export default function OperationsPage() {
       <Link className="nav" href="/costs">▤ &nbsp; Model cost CRUD</Link>
       <Link className="nav" href="/content-moderation">◈ &nbsp; Moderasi konten</Link>
       <Link className="nav" href="/cinema-governance">◈ &nbsp; AI Cinema · Rights & Lifecycle</Link>
+      <Link className="nav" href="/billing-governance">◇ &nbsp; Billing & Stripe Governance</Link>
       <Link className="nav" href="/community-moderation">◈ &nbsp; Moderasi komunitas</Link>
       <a className="nav" href="#operator-access">◎ &nbsp; Operator access</a>
       {canManage && <a className="nav" href="#operator-grants">◇ &nbsp; Operator grants</a>}
