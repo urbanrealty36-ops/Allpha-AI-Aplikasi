@@ -121,7 +121,7 @@ async def create_episode(title_id: uuid.UUID,payload: EpisodeCreate,user: dict[s
 async def creator_capability_status(user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
     # The endpoint reports configuration only; it never exposes balances or estimates.
     policies = await _db("GET","credit_policy_versions",params={"select":"policy_version,status","status":"eq.approved","limit":"1"})
-    return {"catalog":"available","project_drafts":"available","media":"existing_content_media_pipeline","generation":"unavailable" if not policies else "policy_present_runtime_unverified","generation_reason":None if policies else "APPROVED_CREDIT_POLICY_MISSING"}
+    return {"catalog":"available","project_drafts":"available","media":"existing_content_media_pipeline","generation":"unavailable" if not policies else "policy_present_runtime_unverified","generation_jobs":"not_implemented","billing":"not_configured","playback_entitlement":"not_configured","generation_reason":None if policies else "APPROVED_CREDIT_POLICY_MISSING","billing_reason":"PAYMENT_PROVIDER_AND_BILLING_POLICY_NOT_APPROVED","entitlement_reason":"PLAYBACK_ENTITLEMENT_CONTRACT_NOT_IMPLEMENTED"}
 
 class CinemaModerationCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
