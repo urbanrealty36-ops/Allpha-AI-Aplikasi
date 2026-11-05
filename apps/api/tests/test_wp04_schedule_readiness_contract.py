@@ -6,11 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_wp04_schedule_functions_enforce_identical_media_readiness_and_policy():
     migration = ROOT / "supabase/migrations/20261105120000_wp04_schedule_media_readiness_guard.sql"
     sql = migration.read_text(encoding="utf-8").lower()
-    assert sql.count("scan_status='clean'") >= 2
-    assert sql.count("status='ready'") >= 2
-    assert sql.count("processed_at is not null") >= 2
-    assert sql.count("jsonb_array_length") >= 2
-    assert sql.count("moderation_status='approved'") >= 2
+    # Each function rejects media that fails any one of the same readiness predicates.
+    assert sql.count("m.status<>'ready'") == 2
+    assert sql.count("m.scan_status<>'clean'") == 2
+    assert sql.count("m.processed_at is null") == 2
+    assert sql.count("jsonb_array_length") == 2
+    assert sql.count("jsonb_typeof(m.derivatives) is distinct from 'array'") == 2
+    assert "v_content.moderation_status<>'approved'" in sql
     assert "p_rights_confirmed" in sql and "p_disclosure_confirmed" in sql
     assert "p_expected_version" in sql
     assert "lease_token" in sql and "lease_expires_at" in sql
