@@ -92,7 +92,7 @@ export default function AskAiPage() {
       method: "POST", headers, body: JSON.stringify(requestBody), cache: "no-store",
     });
     if (!quoteResponse.ok) throw new Error(await readError(quoteResponse));
-    const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string };
+    const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string };
     if (!quote.quote_id || !quote.expires_at || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
       throw new Error("Quote AI Credits tidak valid; generation dibatalkan.");
     }
@@ -102,7 +102,7 @@ export default function AskAiPage() {
     const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
       method: "POST",
       headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({ ...requestBody, quoted_credits: quote.estimated_credits }),
+      body: JSON.stringify({ ...requestBody, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id }),
       cache: "no-store",
     });
     if (!createResponse.ok) throw new Error(await readError(createResponse));
