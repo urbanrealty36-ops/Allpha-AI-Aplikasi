@@ -251,8 +251,8 @@ async def cinema_rights_queue(
 ) -> dict[str, Any]:
     rows = await _db("GET", "cinema_titles", params={
         "select": TITLE_FIELDS,
-        "rights_status": "in.(unverified,pending)",
-        "status": "not.in.(archived,blocked)",
+        "rights_status": "eq.pending",
+        "status": "eq.pending_review",
         "order": "updated_at.asc",
         "limit": str(limit),
     })
@@ -274,7 +274,7 @@ async def review_cinema_rights(
 ) -> dict[str, Any]:
     current = await _db("GET", "cinema_titles", params={
         "select": TITLE_FIELDS, "id": f"eq.{title_id}",
-        "rights_status": "in.(unverified,pending)", "limit": "1",
+        "rights_status": "eq.pending", "status": "eq.pending_review", "limit": "1",
     })
     if not current:
         raise HTTPException(404, detail={"code": "CINEMA_RIGHTS_REVIEW_NOT_FOUND", "message": "Judul tidak ditemukan atau haknya sudah ditinjau."})
@@ -289,7 +289,7 @@ async def review_cinema_rights(
     )
     rows = await _db("PATCH", "cinema_titles", params={
         "id": f"eq.{title_id}", "version": f"eq.{payload.expected_version}",
-        "rights_status": "in.(unverified,pending)", "select": TITLE_FIELDS,
+        "rights_status": "eq.pending", "status": "eq.pending_review", "select": TITLE_FIELDS,
     }, payload={
         "rights_status": "cleared" if payload.decision == "clear" else "rejected",
         "version": payload.expected_version + 1,
