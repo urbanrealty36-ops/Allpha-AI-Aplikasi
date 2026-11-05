@@ -12,6 +12,7 @@ type DraftTitle = {
   synopsis: string;
   status: string;
   updated_at?: string;
+  version: number;
 };
 type DraftEpisode = {
   id: string;
@@ -60,6 +61,8 @@ export default function AiCinemaCreatorWorkspace() {
   const [episodeTitle, setEpisodeTitle] = useState("");
   const [episodeSynopsis, setEpisodeSynopsis] = useState("");
   const [episodeNumber, setEpisodeNumber] = useState("1");
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [aiDisclosureConfirmed, setAiDisclosureConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -149,6 +152,23 @@ export default function AiCinemaCreatorWorkspace() {
     } finally { setSaving(false); }
   }
 
+  async function submitForReview() {
+    const selected = titles.find(item => item.id === selectedTitleId);
+    if (!selected || !rightsConfirmed || !aiDisclosureConfirmed) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const result = await authorizedRequest<{ item: DraftTitle }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/submit-review`, {
+        method: "POST",
+        body: JSON.stringify({ expected_version: selected.version, rights_confirmed: true, ai_disclosure_confirmed: true }),
+      });
+      setTitles(current => current.map(item => item.id === result.item.id ? result.item : item));
+      setRightsConfirmed(false); setAiDisclosureConfirmed(false);
+      setNotice("Film diajukan ke antrean rights review dan moderasi. Pengajuan bukan persetujuan atau publikasi.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pengajuan review gagal.");
+    } finally { setSaving(false); }
+  }
+
   return (
     <section className="mx-auto my-8 w-full max-w-6xl rounded-3xl border border-white/15 bg-slate-950/90 p-5 text-white shadow-2xl sm:p-7">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -174,6 +194,13 @@ export default function AiCinemaCreatorWorkspace() {
           <div className="rounded-2xl border border-white/10 bg-white/[.04] p-4">
             <h3 className="mb-3 font-bold">Film milik saya</h3>
             {titles.length === 0 ? <p className="text-sm text-slate-400">{loading ? "Memuat draft…" : "Belum ada draft film pada akun ini."}</p> : <select aria-label="Pilih draft film" value={selectedTitleId} onChange={event => setSelectedTitleId(event.target.value)} className="w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white">{titles.map(item => <option key={item.id} value={item.id}>{item.title} · {item.status}</option>)}</select>}
+          </div>
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+            <h3 className="font-bold">Ajukan ke review</h3>
+            <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={rightsConfirmed} onChange={event => setRightsConfirmed(event.target.checked)} />Saya menyatakan memiliki hak/izin atas materi yang digunakan.</label>
+            <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={aiDisclosureConfirmed} onChange={event => setAiDisclosureConfirmed(event.target.checked)} />Saya mengonfirmasi pengungkapan penggunaan AI pada metadata film.</label>
+            <button type="button" onClick={() => void submitForReview()} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} className="w-full rounded-xl border border-cyan-300/40 px-4 py-3 text-sm font-bold text-cyan-200 disabled:opacity-40">{saving ? "Mengajukan…" : "Ajukan rights review & moderasi"}</button>
+            <p className="text-xs text-slate-400">API akan menolak pengajuan jika episode belum memiliki media ready dan scan clean. Keputusan hak cipta dan moderasi tetap dilakukan operator.</p>
           </div>
           <form onSubmit={createEpisode} className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
             <h3 className="font-bold">Tambah draft episode</h3>
