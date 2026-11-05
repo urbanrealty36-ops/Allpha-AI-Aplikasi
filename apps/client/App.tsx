@@ -1682,7 +1682,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Text style={s.muted}>Status akun: {profile.account_status === "deactivation_requested" ? "Permintaan penonaktifan tercatat" : "Aktif"}</Text>
         <Button title={profile.account_status === "deactivation_requested" ? "Penonaktifan diminta" : "Minta penonaktifan akun"} secondary disabled={busy || profile.account_status === "deactivation_requested"} onPress={() => void requestDeactivation()}/>
       </> : <Text style={s.muted}>Profil belum tersedia.</Text> :
-      tab === "notifications" ? <NotificationsInbox session={session} supabase={supabase} pushStatus={pushRegistrationStatus} onPushPreferenceChange={() => setPushRegistrationRetry(value => value + 1)}/> :
+      tab === "notifications" ? <NotificationsInbox session={session} pushStatus={pushRegistrationStatus} onPushPreferenceChange={() => setPushRegistrationRetry(value => value + 1)}/> :
       tab === "settings" ? settings ? <>
         <Text style={s.kicker}>PREFERENSI</Text><Text style={s.body}>Tema aplikasi</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Sistem" secondary={settings.theme !== "system"} onPress={() => setSettings({ ...settings, theme: "system" })}/><Button title="Terang" secondary={settings.theme !== "light"} onPress={() => setSettings({ ...settings, theme: "light" })}/><Button title="Gelap" secondary={settings.theme !== "dark"} onPress={() => setSettings({ ...settings, theme: "dark" })}/></View>
