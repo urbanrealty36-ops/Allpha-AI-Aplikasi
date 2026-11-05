@@ -162,7 +162,7 @@ async def list_conversations(request: Request, user: dict[str,Any] = Depends(cur
     ids=[row["conversation_id"] for row in memberships]
     convs=await _db("GET","conversations",params={"select":"id,title,kind,created_by,created_at,updated_at,last_message_at","id":"in.("+",".join(ids)+")","order":"last_message_at.desc.nullslast","limit":str(limit)})
     people=await _db("GET","conversation_participants",params={"select":"conversation_id,user_id,agent_id,participant_type","conversation_id":"in.("+",".join(ids)+")","limit":str(limit*10)})
-    latest=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,created_at,delivery_status","conversation_id":"in.("+",".join(ids)+")","order":"created_at.desc","limit":str(limit*10)})
+    latest=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,created_at,delivery_status","conversation_id":"in.("+",".join(ids)+")","order":"created_at.desc","limit":str(limit*10)})
     by_id={c["id"]:c for c in convs}
     for row in people:
         if row.get("user_id")==uid: continue
@@ -216,7 +216,7 @@ async def create_conversation(payload: ConversationCreate, request: Request, use
 @router.get("/conversations/{conversation_id}/messages")
 async def list_messages(conversation_id: uuid.UUID, request: Request, user: dict[str,Any] = Depends(current_user), limit: int = Query(50,ge=1,le=100), before: datetime | None = None):
     uid=str(user["id"]); await _membership(conversation_id,uid); await _assert_not_blocked(conversation_id,uid)
-    params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","order":"created_at.desc","limit":str(limit)}
+    params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","order":"created_at.desc","limit":str(limit)}
     if before: params["created_at"]=f"lt.{before.astimezone(timezone.utc).isoformat()}"
     rows=await _db("GET","messages",params=params)
     incoming=[row for row in rows if row.get("sender_user_id") != uid and row.get("delivery_status")=="sent"]
@@ -234,7 +234,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
     uid=str(user["id"]); await _membership(conversation_id,uid); await _assert_not_blocked(conversation_id,uid)
     body=payload.body.strip()
     if not body: raise HTTPException(422,detail={"code":"MESSAGE_EMPTY","message":"Pesan tidak boleh kosong."})
-    existing=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
+    existing=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
     replayed = bool(existing)
     created = existing
     if not existing:
@@ -243,7 +243,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
             created=await _db("POST","messages",body=row,prefer="return=representation")
         except HTTPException as exc:
             if exc.status_code==409:
-                replay=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
+                replay=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
                 if replay:
                     created = replay
                     replayed = True
@@ -264,7 +264,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
         replay_agent_id = str(participants[0]["agent_id"]) if participants else ""
         reply_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "allpha-agent-reply:" + str(created[0]["id"])))
         recovered_reply = await _db("GET","messages",params={
-            "select":"id,conversation_id,sender_type,sender_agent_id,body,client_message_id,created_at,delivery_status",
+            "select":"id,conversation_id,sender_type,sender_agent_id,body,story_id,client_message_id,created_at,delivery_status",
             "conversation_id":f"eq.{conversation_id}","sender_agent_id":f"eq.{replay_agent_id}",
             "client_message_id":f"eq.{reply_id}","limit":"1"})
         if recovered_reply:
@@ -371,7 +371,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                 if exc.status_code != 409:
                     raise
                 reply_created = await _db("GET","messages",params={
-                    "select":"id,conversation_id,sender_type,sender_agent_id,body,client_message_id,created_at,delivery_status",
+                    "select":"id,conversation_id,sender_type,sender_agent_id,body,story_id,client_message_id,created_at,delivery_status",
                     "conversation_id":f"eq.{conversation_id}","sender_agent_id":f"eq.{agent_id}",
                     "client_message_id":f"eq.{reply_id}","limit":"1"})
             if reply_created:
