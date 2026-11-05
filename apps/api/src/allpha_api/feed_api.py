@@ -11,7 +11,7 @@ from allpha_api.operator_security import require_operator_scope, write_operator_
 
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
-MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,created_at"
+MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at"
 CANDIDATES = 1000
 
 class ReactionWrite(BaseModel):
@@ -425,7 +425,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     if selected:
         media = await _server_db("GET", "content_media", params={
             "select": MEDIA_FIELDS, "content_id": f"in.({','.join(selected)})",
-            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(250, limit * 5))})
+            "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(250, limit * 5))})
         for row in media or []:
             item = {k: v for k, v in row.items() if k != "storage_path"}
             item["preview_url"] = await _signed_media_preview_url(str(row["storage_path"]))
@@ -501,7 +501,7 @@ async def get_my_profile_feed(
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "content_id": in_ids, "owner_id": f"eq.{owner}",
-        "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, limit * 5)),
+        "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(500, limit * 5)),
     })
     for row in media or []:
         item = {key: value for key, value in row.items() if key != "storage_path"}
@@ -753,7 +753,7 @@ async def search_content(
     if ids:
         media = await _server_db("GET", "content_media", params={
             "select": MEDIA_FIELDS, "content_id": f"in.({','.join(ids)})",
-            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(200, limit * 5)),
+            "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(200, limit * 5)),
         })
         for row in media or []:
             safe = {key: value for key, value in row.items() if key != "storage_path"}
@@ -1052,7 +1052,7 @@ async def get_shared_feed_item(content_id: uuid.UUID, user: dict[str, Any] | Non
     saves = await _server_db("GET", "content_saves", params={"select": "actor_user_id", "content_id": f"eq.{cid}", "limit": "5000"})
     shares = await _server_db("GET", "content_shares", params={"select": "id", "content_id": f"eq.{cid}", "limit": "5000"})
     media = await _server_db("GET", "content_media", params={"select": MEDIA_FIELDS, "content_id": f"eq.{cid}",
-        "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": "50"})
+        "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": "50"})
     media_items = []
     for row in media or []:
         media_item = {key: value for key, value in row.items() if key != "storage_path"}
@@ -1164,7 +1164,7 @@ async def list_content_reports(user: dict[str, Any] = Depends(require_operator_s
         by_id = {str(r["id"]): r for r in (content or [])}
         media_rows = await _server_db("GET", "content_media", params={
             "select": MEDIA_FIELDS, "content_id": f"in.({','.join(ids)})",
-            "status": "in.(uploaded,ready)", "order": "created_at.asc", "limit": str(min(500, len(ids) * 5)),
+            "status": "eq.ready", "scan_status": "eq.clean", "order": "created_at.asc", "limit": str(min(500, len(ids) * 5)),
         })
         media_by_id: dict[str, list[dict[str, Any]]] = {}
         for media_row in media_rows or []:
