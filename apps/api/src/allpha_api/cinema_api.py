@@ -112,7 +112,7 @@ async def create_episode(title_id: uuid.UUID,payload: EpisodeCreate,user: dict[s
     if payload.media_id:
         media = await _db("GET","content_media",params={"select":"id","id":f"eq.{payload.media_id}","owner_id":f"eq.{user['id']}","status":"eq.ready","scan_status":"eq.clean","limit":"1"})
         if not media: raise HTTPException(404,detail={"code":"CINEMA_MEDIA_NOT_OWNED","message":"Media tidak ditemukan atau bukan milik Anda."})
-    rows = await _db("POST","cinema_episodes",payload={**payload.model_dump(),"title_id":str(title_id),"owner_id":user["id"],"status":"draft"},prefer="return=representation")
+    rows = await _db("POST","cinema_episodes",payload={**payload.model_dump(),"title_id":str(title_id),"owner_id":user["id"],"status":"ready" if payload.media_id else "draft"},prefer="return=representation")
     if not rows: raise HTTPException(503,detail={"code":"CINEMA_EPISODE_CREATE_UNCONFIRMED","message":"Episode belum dapat dikonfirmasi."})
     return {"item":rows[0]}
 
@@ -253,19 +253,22 @@ async def review_cinema_moderation(
             "select": "id,media_id,status", "title_id": f"eq.{title_id}",
             "owner_id": f"eq.{item['owner_id']}", "order": "episode_number.asc",
         })
-        ready_media = []
-        for episode in episodes or []:
-            if not episode.get("media_id"):
-                continue
-            media = await _db("GET", "content_media", params={
-                "select": "id", "id": f"eq.{episode['media_id']}",
-                "owner_id": f"eq.{item['owner_id']}", "status": "eq.ready",
-                "scan_status": "eq.clean", "limit": "1",
-            })
-            if media:
-                ready_media.append(str(episode["id"]))
-        if not ready_media:
-            raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Minimal satu episode harus memiliki media siap dan scan berstatus clean sebelum publikasi."})
+        episode_rows = episodes or []
+        if not episode_rows or any(not episode.get("media_id") or episode.get("status") != "ready" for episode in episode_rows):
+            raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Semua episode harus memiliki media yang siap sebelum publikasi."})
+        media_ids = [str(episode["media_id"]) for episode in episode_rows]
+        if item.get("cover_media_id"):
+            media_ids.append(str(item["cover_media_id"]))
+        if item.get("trailer_media_id"):
+            media_ids.append(str(item["trailer_media_id"]))
+        media_rows = await _db("GET", "content_media", params={
+            "select": "id", "id": f"in.({','.join(media_ids)})",
+            "owner_id": f"eq.{item['owner_id']}", "status": "eq.ready",
+            "scan_status": "eq.clean", "limit": str(min(100, len(media_ids))),
+        })
+        clean_ids = {str(media["id"]) for media in (media_rows or [])}
+        if any(media_id not in clean_ids for media_id in media_ids):
+            raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Semua media episode, cover, dan trailer harus ready serta scan berstatus clean sebelum publikasi."})
     await write_operator_audit(
         request, actor_user_id=str(operator["id"]), action="cinema.moderation.review",
         outcome="attempted", resource_type="cinema_title", resource_id=str(title_id),
