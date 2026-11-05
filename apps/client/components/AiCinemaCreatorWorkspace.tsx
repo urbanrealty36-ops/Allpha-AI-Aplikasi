@@ -154,7 +154,19 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       <View style={{ gap: 8 }}>
         <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>Buat draft film</Text>
         <TextInput accessibilityLabel="Judul film" value={title} onChangeText={setTitle} maxLength={160} placeholder="Judul film" placeholderTextColor="#94A3B8" style={field}/>
-        <TextInput accessibilityLabel="Genre film" value={genre} onChangeText={setGenre} autoCapitalize="none" placeholder="c_drama / k_drama / scifi / romance / thriller / animation_3d / documentary / other" placeholderTextColor="#94A3B8" style={field}/>
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: "#CBD5E1", fontSize: 12, fontWeight: "700" }}>Genre film</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
+            {[
+              ["c_drama", "C-Drama"], ["k_drama", "K-Drama"], ["scifi", "Sci-Fi"],
+              ["romance", "Romance"], ["thriller", "Thriller"], ["animation_3d", "Animasi 3D"],
+              ["documentary", "Dokumenter"], ["other", "Lainnya"],
+            ].map(([value, label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: genre === value }}
+              onPress={() => setGenre(value)} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 20, backgroundColor: genre === value ? "#164E63" : "#1E293B", borderWidth: 1, borderColor: genre === value ? "#67E8F9" : "#334155" }}>
+              <Text style={{ color: "#F8FAFC", fontSize: 12, fontWeight: "700" }}>{label}</Text>
+            </Pressable>)}
+          </View>
+        </View>
         <TextInput accessibilityLabel="Sinopsis film" value={synopsis} onChangeText={setSynopsis} multiline maxLength={5000} placeholder="Sinopsis" placeholderTextColor="#94A3B8" style={[field, { minHeight: 84, textAlignVertical: "top" }]}/>
         <Action title={saving ? "Menyimpan…" : "Simpan draft film"} disabled={saving || !title.trim()} onPress={() => void createTitle()}/>
       </View>
