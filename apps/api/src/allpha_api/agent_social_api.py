@@ -12,12 +12,12 @@ from allpha_api.auth import current_user
 from allpha_api.content_api import _server_db
 
 router = APIRouter(prefix="/v1/agent-social", tags=["agent-social-presence"])
-_ALLOWED = {"draft_post", "draft_story"}
+_ALLOWED = {"draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"}
 
 
 class PolicyWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    allowed_actions: list[Literal["draft_post", "draft_story"]] = Field(default_factory=lambda: ["draft_post"], max_length=2)
+    allowed_actions: list[Literal["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"]] = Field(default_factory=lambda: ["draft_post"], max_length=5)
     approval_mode: Literal["every_post", "high_risk_only", "disabled"] = "every_post"
     disclosure_text: str = Field(default="Dibuat bersama AI Agent", min_length=8, max_length=180)
     is_enabled: bool = True
@@ -28,10 +28,10 @@ class CoauthoredDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_id: uuid.UUID
     runtime_task_id: uuid.UUID
-    body: str = Field(min_length=1, max_length=10_000)
     visibility: Literal["public", "followers", "private"] = "public"
     content_type: Literal["text", "image", "video", "story"] = "text"
-    action_type: Literal["draft_post", "draft_story"] = "draft_post"
+    action_type: Literal["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"] = "draft_post"
+    target_content_id: uuid.UUID | None = None
     idempotency_key: str = Field(min_length=12, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
@@ -104,12 +104,6 @@ async def put_policy(agent_id: uuid.UUID, payload: PolicyWrite,
             "status": "in.(pending,approved)",
         }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
                  "decision_reason": "owner_policy_disabled"})
-    if not payload.is_enabled:
-        await _server_db("PATCH", "agent_social_action_approvals", params={
-            "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
-            "status": "in.(pending,approved)",
-        }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
-                 "decision_reason": "owner_policy_disabled"})
     return {"policy": rows[0]}
 
 
@@ -134,6 +128,10 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
             or payload.action_type not in (policy.get("allowed_actions") or [])
             or policy.get("approval_mode") == "disabled"):
         raise HTTPException(403, detail={"code": "AGENT_SOCIAL_ACTION_NOT_AUTHORIZED", "message": "Kebijakan pemilik tidak mengizinkan tindakan sosial Agent ini."})
+    output = runtime_tasks[0]["output_payload"]
+    generated_body = next((output.get(key) for key in ("content", "text", "body", "generated_text") if isinstance(output.get(key), str) and output.get(key).strip()), None)
+    if not generated_body or len(generated_body.strip()) > 10_000:
+        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_RUNTIME_OUTPUT_NOT_PUBLISHABLE", "message": "Output task tidak memiliki teks konten yang valid; jalankan ulang Agent Runtime."})
     prior = await _server_db("GET", "agent_social_action_approvals", params={
         "select": "id,content_id,status", "owner_user_id": f"eq.{owner_id}",
         "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
@@ -142,9 +140,9 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
         return {"approval": prior[0], "replayed": True}
     content = await _server_db("POST", "content_items", body={
         "owner_id": owner_id, "ai_agent_id": agent_id, "content_type": payload.content_type,
-        "body": payload.body.strip(), "visibility": payload.visibility, "status": "draft",
+        "body": generated_body.strip(), "visibility": payload.visibility, "status": "draft",
         "moderation_status": "not_submitted", "version": 1,
-        "provenance": {"coauthored": True, "human_owner_id": owner_id, "agent_id": agent_id, "runtime_task_id": str(payload.runtime_task_id),
+        "provenance": {"coauthored": True, "human_owner_id": owner_id, "agent_id": agent_id, "runtime_task_id": str(payload.runtime_task_id), "runtime_output_sha256": __import__("hashlib").sha256(generated_body.strip().encode("utf-8")).hexdigest(),
                        "disclosure": policy["disclosure_text"], "agent_policy_version": policy["version"]},
     }, prefer="return=representation")
     if not content:
@@ -214,7 +212,7 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
               "body": f"{agent.get('display_name') or 'AI Agent'}: draft kolaborasi {decision}.",
               "payload": {"type": "agent_social_approval", "approval_id": str(approval_id),
                           "content_id": approval["content_id"], "status": decision},
-              "delivery_state": "delivered"},
+              "delivery_state": "queued"},
         prefer="resolution=ignore-duplicates,return=representation")
     return {"approval": updated[0], "publishable": decision == "approved",
             "next_action": "submit_draft_for_moderation" if decision == "approved" else "revise_or_discard"}
