@@ -85,44 +85,19 @@ async def put_policy(agent_id: uuid.UUID, payload: PolicyWrite,
                      user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     owner_id = str(user["id"])
     await _active_owned_agent(owner_id, str(agent_id))
-    existing = await _server_db("GET", "agent_social_presence_policies", params={
-        "select": "id,version", "owner_user_id": f"eq.{owner_id}",
-        "agent_id": f"eq.{agent_id}", "limit": "1",
+    result = await _server_db("POST", "rpc/save_agent_social_policy", body={
+        "p_owner_user_id": owner_id,
+        "p_agent_id": str(agent_id),
+        "p_allowed_actions": payload.allowed_actions,
+        "p_approval_mode": payload.approval_mode,
+        "p_disclosure_text": payload.disclosure_text,
+        "p_is_enabled": payload.is_enabled,
+        "p_expected_version": payload.expected_version,
     })
-    if existing:
-        current = existing[0]
-        if payload.expected_version != int(current["version"]):
-            raise HTTPException(409, detail={"code": "AGENT_SOCIAL_POLICY_CONFLICT", "message": "Kebijakan Agent berubah. Muat ulang sebelum menyimpan."})
-        rows = await _server_db("PATCH", "agent_social_presence_policies", params={
-            "id": f"eq.{current['id']}", "owner_user_id": f"eq.{owner_id}",
-            "version": f"eq.{current['version']}", "select": "*",
-        }, body={
-            "allowed_actions": payload.allowed_actions, "approval_mode": payload.approval_mode,
-            "disclosure_text": payload.disclosure_text, "is_enabled": payload.is_enabled,
-            "version": int(current["version"]) + 1, "updated_at": datetime.now(timezone.utc).isoformat(),
-            "revoked_at": None if payload.is_enabled else datetime.now(timezone.utc).isoformat(),
-        }, prefer="return=representation")
-    else:
-        if payload.expected_version is not None:
-            raise HTTPException(409, detail={"code": "AGENT_SOCIAL_POLICY_CONFLICT", "message": "Kebijakan belum tersedia."})
-        rows = await _server_db("POST", "agent_social_presence_policies", body={
-            "owner_user_id": owner_id, "agent_id": str(agent_id),
-            "allowed_actions": payload.allowed_actions, "approval_mode": payload.approval_mode,
-            "disclosure_text": payload.disclosure_text, "is_enabled": payload.is_enabled,
-        }, prefer="return=representation")
-    if not rows:
-        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_POLICY_CONFLICT", "message": "Kebijakan tidak tersimpan; muat ulang."})
-    if not payload.is_enabled:
-        await _server_db("PATCH", "agent_social_action_approvals", params={
-            "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
-            "status": "in.(pending,approved)",
-        }, body={"status": "revoked", "decided_at": datetime.now(timezone.utc).isoformat(),
-                 "decision_reason": "owner_policy_disabled"})
-    await _write_social_audit(owner_id=owner_id, agent_id=str(agent_id), actor_id=owner_id,
-        event_type="policy_disabled" if not payload.is_enabled else ("policy_updated" if existing else "policy_created"),
-        outcome="allowed", metadata={"version": rows[0].get("version"), "approval_mode": payload.approval_mode,
-                                    "allowed_actions": payload.allowed_actions, "is_enabled": payload.is_enabled})
-    return {"policy": rows[0]}
+    if not isinstance(result, dict) or result.get("outcome") != "saved" or not result.get("policy"):
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_POLICY_UNCONFIRMED",
+                                         "message": "Kebijakan dan audit belum dapat dikonfirmasi."})
+    return {"policy": result["policy"], "revoked_approvals": result.get("revoked_approvals", 0)}
 
 
 @router.post("/drafts", status_code=201)
