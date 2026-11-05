@@ -43,9 +43,11 @@ async def _admin_request(method: str, path: str, *, params: dict[str, str] | Non
     url, key = _db_config()
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            headers = {"apikey": key, "Content-Type": "application/json", "Accept": "application/json"}
+            if os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip():
+                headers["Authorization"] = f"Bearer {os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()}"
             response = await client.request(method, f"{url}/rest/v1/{path}",
-                params=params, json=body,
-                headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"})
+                params=params, json=body, headers=headers)
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "GENERATION_DATABASE_UNAVAILABLE", "message": "Database generation sementara tidak tersedia."}) from exc
     if response.status_code >= 400:
