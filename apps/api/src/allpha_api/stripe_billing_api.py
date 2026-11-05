@@ -32,6 +32,7 @@ _ALLOWED_WEBHOOK_EVENTS = {
     "checkout.session.completed",
     "checkout.session.async_payment_succeeded",
     "checkout.session.async_payment_failed",
+    "checkout.session.expired",
     "customer.subscription.updated",
     "customer.subscription.deleted",
     "invoice.paid",
@@ -365,7 +366,9 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
         raise HTTPException(503, detail={"code": "BILLING_ORDER_NOT_CONFIRMED", "message": "Pesanan belum dapat disimpan secara permanen."})
     order_id = str(created["order_id"])
     if created.get("stripe_checkout_session_id") and created.get("checkout_url"):
-        return {"order_id": order_id, "checkout_url": created["checkout_url"], "status": created.get("status", "checkout_pending")}
+        if created.get("status") == "checkout_pending":
+            return {"order_id": order_id, "checkout_url": created["checkout_url"], "status": "checkout_pending"}
+        return {"order_id": order_id, "status": created.get("status"), "checkout_url": None}
 
     success_url, cancel_url = _checkout_urls()
     mode = str(product["stripe_mode"])
@@ -529,11 +532,12 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                     })
             else:
                 await _rpc("billing_mark_stripe_event", {"p_event_id": event_id, "p_status": "ignored", "p_error_code": None})
-        elif event_type == "checkout.session.async_payment_failed":
+        elif event_type in {"checkout.session.async_payment_failed", "checkout.session.expired"}:
             metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
             await _rpc("billing_mark_checkout_failed", {
                 "p_event_id": event_id, "p_order_id": str(metadata.get("order_id") or ""),
                 "p_session_id": str(obj.get("id") or ""),
+                "p_status": "expired" if event_type == "checkout.session.expired" else "failed",
             })
         else:
             await _rpc("billing_mark_stripe_event", {"p_event_id": event_id, "p_status": "ignored", "p_error_code": None})
