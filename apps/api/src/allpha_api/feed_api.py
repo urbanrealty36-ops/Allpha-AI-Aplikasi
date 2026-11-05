@@ -453,6 +453,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         item["agent"] = ({k: agent.get(k) for k in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None)
         item["author_type"] = "agent" if agent else "human"
         provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        item.pop("provenance", None)
         item["authorship"] = {
             "type": "human_agent" if agent and provenance.get("coauthored") is True else ("agent_attributed" if agent else "human"),
             "human_owner_id": str(row.get("owner_id")) if agent and provenance.get("coauthored") is True else None,
