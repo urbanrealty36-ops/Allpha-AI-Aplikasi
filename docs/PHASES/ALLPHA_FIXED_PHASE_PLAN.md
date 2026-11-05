@@ -2647,3 +2647,14 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Current WP-05 source work is allowed; runtime integration, authenticated two-user visibility, Web SSE, Native polling/session-switch, Expo push receipt/device delivery and upstream WP-03/WP-04 acceptance remain `DEFERRED / NOT VERIFIED` unless actual evidence is collected.
 - This authorization does not authorize staging, broad test suites, migrations, production data mutation, provider calls, or deployment in this work window.
 - WP-05 status remains `in_progress`; ENG-P37 remains `not_started`. Do not advance phase status based on this authorization alone.
+
+
+**WP-05 source implementation checkpoint (2026-11-05 — Feed visibility, reply notification routing and client deep links):**
+- Product Owner authorization to continue WP-05 alongside WP-04 is recorded in ADR-WP04-003 §Decision.7. WP-04 remains in progress; ClamAV deferral remains fail-closed for media readiness/publication.
+- Feed API correction: creators may access their own followers-only content in the owner visibility check, while block/mute and other visibility constraints remain enforced. Nested replies-to-replies are normalized to the root comment; the root is revalidated in the same content thread and notifications target the root author. Commit: `395e514bc6f16d45fbbade5bf76beb7bdf0e439d`.
+- Push worker allowlists social Feed events (like/comment/reply/mention/repost/quote) and forwards only a validated content UUID as `feed_content`. Commits: `f5c80221fc62108fdfca8ebf4ddfadfd2cebc36e`, `4a02732a3c8cbc8ce3ce8e1bb8d7d35fdfb16b38`.
+- Native push taps open Feed and fetch the target via the existing authorized `GET /v1/feed/item/{content_id}` contract. Commit: `ebb1834d42eae99fb24ae3e4a105631f1589eeae`.
+- Web notification cards expose a Feed deep link only for valid content UUIDs; existing `/feed?content=` performs canonical content fetch. Commit: `f6132efba0b46b9b32f7c52a48466fe8e4806632`.
+- Detailed report: `docs/reports/WP05_FEED_NOTIFICATION_SOURCE_CHECKPOINT_2026-11-05.md` (commit `ec8fa06ef59044f9cc3a5e6fb8a71335ae323188`).
+- Validation: source inspection only. No tests/build/lint/typecheck/CI, authenticated mutation, browser/device journey, Expo push dispatch/receipt, DB mutation, migration, staging, or deployment was executed. Runtime remains `DEFERRED / NOT VERIFIED`.
+- WP-05 remains `in_progress`; WP-03/WP-04 dependencies remain open; ENG-P37 remains `not_started`. No integration/acceptance/production status transition is made.
