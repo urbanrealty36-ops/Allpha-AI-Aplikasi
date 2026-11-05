@@ -19,6 +19,7 @@ type DraftEpisode = {
   media_id?: string | null;
 };
 type Props = { getAccessToken: () => Promise<string | null> };
+type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string };
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__
   ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")
@@ -61,6 +62,7 @@ function Action({ title, onPress, disabled = false, secondary = false }: {
 
 export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [titles, setTitles] = useState<DraftTitle[]>([]);
+  const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -78,6 +80,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     setLoading(true); setError("");
     try {
       const result = await request<{ items: DraftTitle[] }>(getAccessToken, "/v1/cinema/creator/titles?limit=100");
+      try { setCapabilityStatus(await request<CreatorStatus>(getAccessToken, "/v1/cinema/creator/status")); } catch { setCapabilityStatus(null); }
       const rows = Array.isArray(result.items) ? result.items : [];
       setTitles(rows);
       setSelectedTitleId(current => rows.some(row => row.id === current) ? current : rows[0]?.id || "");
@@ -142,6 +145,7 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
         <Text style={{ color: "#CBD5E1", marginTop: 5 }}>Menggunakan kontrak FastAPI yang sama dengan Web. Draft hanya dapat diakses pemiliknya.</Text>
       </View>
       {!!error && <Text accessibilityRole="alert" style={{ color: "#FDA4AF" }}>{error}</Text>}
+      {capabilityStatus && <View style={{ padding: 12, borderRadius: 12, backgroundColor: "#422006", gap: 4 }}><Text style={{ color: "#FDE68A", fontWeight: "800" }}>Status AI Cinema</Text><Text style={{ color: "#FEF3C7", fontSize: 12 }}>Generation: {capabilityStatus.generation} · Jobs: {capabilityStatus.generation_jobs} · Billing: {capabilityStatus.billing} · Entitlement: {capabilityStatus.playback_entitlement}</Text><Text style={{ color: "#FDE68A", fontSize: 12 }}>Generate dan playback premium tetap terkunci sampai policy, job, billing, serta entitlement tersedia.</Text></View>}
       {!!notice && <Text accessibilityRole="alert" style={{ color: "#86EFAC" }}>{notice}</Text>}
       <View style={{ gap: 8 }}>
         <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>Buat draft film</Text>
