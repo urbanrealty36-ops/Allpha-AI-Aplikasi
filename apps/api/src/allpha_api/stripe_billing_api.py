@@ -62,6 +62,29 @@ def _billing_config(*, webhook: bool = False) -> tuple[str, str | None]:
 
 
 
+
+def _policy_is_current(policy: dict[str, Any]) -> bool:
+    now = datetime.now(timezone.utc)
+    effective = policy.get("effective_at")
+    expires = policy.get("expires_at")
+    try:
+        if isinstance(effective, str) and effective:
+            effective_at = datetime.fromisoformat(effective.replace("Z", "+00:00"))
+            if effective_at.tzinfo is None:
+                effective_at = effective_at.replace(tzinfo=timezone.utc)
+            if effective_at > now:
+                return False
+        if isinstance(expires, str) and expires:
+            expires_at = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= now:
+                return False
+    except ValueError:
+        return False
+    return True
+
+
 def _checkout_ready() -> bool:
     try:
         _billing_config()
@@ -295,7 +318,7 @@ async def activate_billing_product(product_key: str, request: Request,
     elif recurring:
         raise HTTPException(409, detail={"code": "STRIPE_ONE_TIME_PRICE_MISMATCH", "message": "Top-up AI Credits hanya boleh memakai Stripe Price sekali bayar."})
     policies = await _db("GET", "credit_policy_versions", params={
-        "select": "policy_version,approval_reference,status,configuration",
+        "select": "policy_version,approval_reference,status,configuration,effective_at,expires_at",
         "policy_version": f"eq.{product['credit_policy_version']}", "limit": "1",
     })
     if not policies:
@@ -304,7 +327,7 @@ async def activate_billing_product(product_key: str, request: Request,
     config = policy.get("configuration") if isinstance(policy.get("configuration"), dict) else {}
     allowed_types = config.get("allowed_grant_types") if isinstance(config.get("allowed_grant_types"), list) else []
     required_grant = int(product["credits_grant"] if product["purpose"] == "ai_credit_topup" else product["monthly_credits_grant"])
-    if (policy.get("status") != "approved" or policy.get("approval_reference") != product.get("credit_policy_approval_reference")
+    if (policy.get("status") != "approved" or not _policy_is_current(policy) or policy.get("approval_reference") != product.get("credit_policy_approval_reference")
         or config.get("allow_grants") is not True or "grant" not in allowed_types
         or int(config.get("max_grant_credits") or 0) < required_grant):
         raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_NOT_APPROVED", "message": "Kebijakan kredit tidak mengizinkan grant paket atau allowance ini."})
