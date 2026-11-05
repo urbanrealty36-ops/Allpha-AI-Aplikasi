@@ -125,7 +125,17 @@ async def creator_ready_media(user: dict[str, Any] = Depends(current_user)) -> d
         "owner_id": f"eq.{user['id']}", "status": "eq.ready",
         "scan_status": "eq.clean", "order": "created_at.desc", "limit": "100",
     })
-    return {"items": rows or []}
+    media_rows = rows or []
+    content_ids = sorted({str(row["content_id"]) for row in media_rows if row.get("content_id")})
+    if not content_ids:
+        return {"items": []}
+    content_rows = await _db("GET", "content_items", params={
+        "select": "id", "id": f"in.({','.join(content_ids)})",
+        "owner_id": f"eq.{user['id']}", "status": "not.in.(deleted,archived)",
+        "limit": str(min(100, len(content_ids))),
+    })
+    eligible_content_ids = {str(row["id"]) for row in (content_rows or [])}
+    return {"items": [row for row in media_rows if str(row.get("content_id")) in eligible_content_ids]}
 
 
 @router.get("/creator/status")
