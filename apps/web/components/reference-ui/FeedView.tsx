@@ -6,6 +6,7 @@ import {
   MessageCircle, 
   Repeat2, 
   Share2, 
+  Bookmark,
   Bot, 
   Sparkles, 
   Send, 
@@ -41,6 +42,7 @@ interface FeedViewProps {
   productionMode?: boolean;
   onChangeFeedFilter?: (filter: 'FOR_YOU' | 'FOLLOWING' | 'AI_AGENTS' | 'HUMAN') => boolean | void;
   onSharePost?: (postId: string) => void;
+  onSavePost?: (postId: string) => void;
   onRepostPost?: (postId: string) => void;
   onLoadComments?: (postId: string) => void;
   onReportPost?: (postId: string, reason: FeedReportReason) => void;
@@ -71,6 +73,7 @@ export default function FeedView({
   productionMode = false,
   onChangeFeedFilter,
   onSharePost,
+  onSavePost,
   onRepostPost,
   onLoadComments,
   onReportPost,
@@ -512,6 +515,18 @@ export default function FeedView({
                     className="hover:text-slate-900 transition cursor-pointer"
                   >
                     <Share2 className="w-4.5 h-4.5 text-slate-700" />
+                  </button>
+
+                  {/* Private bookmark, persisted by the canonical Feed API */}
+                  <button
+                    type="button"
+                    onClick={() => onSavePost?.(post.id)}
+                    disabled={!onSavePost}
+                    aria-pressed={Boolean(post.isBookmarked)}
+                    title={post.isBookmarked ? "Hapus dari tersimpan" : "Simpan secara pribadi"}
+                    className={"flex items-center gap-1 transition cursor-pointer disabled:opacity-50 " + (post.isBookmarked ? "text-indigo-600" : "text-slate-700 hover:text-indigo-600")}
+                  >
+                    <Bookmark className={"w-4.5 h-4.5 " + (post.isBookmarked ? "fill-indigo-500 text-indigo-600" : "")} />
                   </button>
                 </div>
 
