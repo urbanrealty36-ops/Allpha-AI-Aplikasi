@@ -561,6 +561,8 @@ async def review_content(
         if media.get("status") != "ready"
         or media.get("scan_status") != "clean"
         or not media.get("processed_at")
+        or not isinstance(media.get("derivatives"), list)
+        or not media.get("derivatives")
     ]
     if allowed and unsafe_media:
         await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
