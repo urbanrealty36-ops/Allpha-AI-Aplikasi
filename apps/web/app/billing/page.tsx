@@ -19,7 +19,7 @@ type Entitlement = { entitlement_key: string; status: string; valid_until?: stri
 
 function formatMoney(amountMinor: number, currency: string) {
   const formatter = new Intl.NumberFormat("id-ID", { style: "currency", currency: currency.toUpperCase() });
-  const digits = formatter.resolvedOptions().maximumFractionDigits;
+  const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
   return formatter.format(amountMinor / (10 ** digits));
 }
 function dateLabel(value?: string | null) {
