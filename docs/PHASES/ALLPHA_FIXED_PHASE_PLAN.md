@@ -2784,3 +2784,6 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Supabase production migration apply and read-only schema/RPC privilege checks passed. The service role alone can execute these RPCs; authenticated clients cannot invoke them directly.
 - **Status:** `in_progress / implementation_applied / integration_not_verified`. Positive SQL/API tests, rollback/idempotency/concurrency checks, builds/typechecks, CI, browser/device journeys and ENG-P20 dispatch remain NOT RUN. Do not mark WP-06 acceptance passed yet.
 - **Next WP-06 gate:** run focused migration/RPC tests with isolated fixtures (approve/reject/revoke, root comment, same-content reply, Story DM, duplicate replay, policy disable, rollback on notification/audit failure), then FastAPI contract tests and Web/Native UI verification. WP-07 remains `not_started`.
+
+
+**WP-06 Story DM contract correction (2026-11-05):** Story reply conversations use `conversations.kind='agent'` to match ENG-P18 Human↔Agent messaging semantics; the recipient Human is a conversation participant, the authoring Agent is the Agent participant, and the message carries the source Story id.
