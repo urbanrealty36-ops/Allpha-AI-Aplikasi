@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
 
 type DraftTitle = {
   id: string;
@@ -21,7 +21,7 @@ type DraftEpisode = {
 type Props = { getAccessToken: () => Promise<string | null> };
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__
-  ? "http://localhost:8000"
+  ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")
   : "https://api.allpha.web.id")).replace(/\/$/, "");
 
 async function request<T>(getAccessToken: Props["getAccessToken"], path: string, init: RequestInit = {}): Promise<T> {
