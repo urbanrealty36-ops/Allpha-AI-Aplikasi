@@ -150,46 +150,29 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
     generated_body = next((output.get(key) for key in ("content", "text", "body", "generated_text") if isinstance(output.get(key), str) and output.get(key).strip()), None)
     if not generated_body or len(generated_body.strip()) > 10_000:
         raise HTTPException(409, detail={"code": "AGENT_SOCIAL_RUNTIME_OUTPUT_NOT_PUBLISHABLE", "message": "Output task tidak memiliki teks konten yang valid; jalankan ulang Agent Runtime."})
-    prior = await _server_db("GET", "agent_social_action_approvals", params={
-        "select": "id,content_id,status", "owner_user_id": f"eq.{owner_id}",
-        "idempotency_key": f"eq.{payload.idempotency_key}", "limit": "1",
+    result = await _server_db("POST", "rpc/request_agent_social_draft", body={
+        "p_owner_user_id": owner_id,
+        "p_agent_id": agent_id,
+        "p_runtime_task_id": str(payload.runtime_task_id),
+        "p_action_type": payload.action_type,
+        "p_content_type": payload.content_type,
+        "p_visibility": payload.visibility,
+        "p_body": generated_body.strip(),
+        "p_target_content_id": str(payload.target_content_id) if payload.target_content_id else None,
+        "p_target_comment_id": str(payload.target_comment_id) if payload.target_comment_id else None,
+        "p_idempotency_key": payload.idempotency_key,
     })
-    if prior:
-        return {"approval": prior[0], "replayed": True}
-    if payload.action_type in ("draft_comment", "draft_reply") and not payload.target_content_id:
-        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_COMMENT_TARGET_REQUIRED", "message": "Tentukan konten yang menjadi target komentar."})
-    if payload.action_type == "draft_reply" and not payload.target_comment_id:
-        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_PARENT_COMMENT_REQUIRED", "message": "Balasan harus merujuk komentar induk."})
-    if payload.action_type == "draft_story" and (not payload.target_content_id or payload.content_type != "story"):
-        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_STORY_TARGET_REQUIRED", "message": "Balasan Story harus berupa draft Story yang tertaut ke Story target."})
-    content = await _server_db("POST", "content_items", body={
-        "owner_id": owner_id, "ai_agent_id": agent_id, "content_type": payload.content_type,
-        "body": generated_body.strip(), "visibility": payload.visibility, "status": "draft",
-        "moderation_status": "not_submitted", "version": 1,
-        "provenance": {"coauthored": True, "human_owner_id": owner_id, "agent_id": agent_id, "runtime_task_id": str(payload.runtime_task_id), "runtime_output_sha256": __import__("hashlib").sha256(generated_body.strip().encode("utf-8")).hexdigest(),
-                       "disclosure": policy["disclosure_text"], "agent_policy_version": policy["version"]},
-    }, prefer="return=representation")
-    if not content:
-        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_DRAFT_NOT_SAVED", "message": "Draft kolaborasi tidak dapat disimpan."})
-    row = content[0]
-    approvals = await _server_db("POST", "agent_social_action_approvals", body={
-        "owner_user_id": owner_id, "agent_id": agent_id, "content_id": row["id"],
-        "runtime_task_id": str(payload.runtime_task_id), "action_type": payload.action_type, "content_version": row["version"],
-        "target_content_id": str(payload.target_content_id) if payload.target_content_id else None,
-        "target_comment_id": str(payload.target_comment_id) if payload.target_comment_id else None,
-        "status": "pending", "disclosure_snapshot": policy["disclosure_text"],
-        "idempotency_key": payload.idempotency_key,
-    }, prefer="return=representation")
-    if not approvals:
-        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_SAVED", "message": "Draft tersimpan tetapi approval belum tercatat; jangan publikasikan."})
-    await _write_social_audit(owner_id=owner_id, agent_id=agent_id, actor_id=owner_id,
-        event_type="draft_requested", outcome="allowed", approval_id=approvals[0]["id"],
-        metadata={"action_type": payload.action_type, "runtime_task_id": str(payload.runtime_task_id),
-                  "target_content_id": str(payload.target_content_id) if payload.target_content_id else None})
-    return {"item": row, "approval": approvals[0], "requires_human_approval": True,
-            "agent": {"id": agent["id"], "handle": agent.get("handle"), "display_name": agent.get("display_name")},
-            "disclosure": policy["disclosure_text"]}
-
+    if not isinstance(result, dict) or result.get("outcome") not in ("created", "replayed"):
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_DRAFT_UNCONFIRMED",
+                                         "message": "Draft dan approval belum dapat dikonfirmasi."})
+    return {
+        "item": result.get("item"),
+        "approval": result.get("approval"),
+        "requires_human_approval": True,
+        "replayed": result.get("outcome") == "replayed",
+        "agent": {"id": agent["id"], "handle": agent.get("handle"), "display_name": agent.get("display_name")},
+        "disclosure": result.get("disclosure") or (policy or {}).get("disclosure_text"),
+    }
 
 @router.get("/approvals")
 async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
