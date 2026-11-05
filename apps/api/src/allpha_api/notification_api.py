@@ -143,7 +143,7 @@ async def notification_stream(
 
     async def events():
         cursor = after.astimezone(timezone.utc) if after else datetime.now(timezone.utc)
-        yield "event: ready\\ndata: {}\\n\\n"
+        yield "event: ready\ndata: {}\n\n"
         while not await request.is_disconnected():
             rows = await _request("GET", "notifications", params={
                 "select": "id,user_id,category,event_key,title,body,payload,delivery_state,read_at,delivered_at,created_at,expires_at",
@@ -160,8 +160,8 @@ async def notification_stream(
                 created = row.get("created_at")
                 if created:
                     cursor = datetime.fromisoformat(str(created).replace("Z", "+00:00")).astimezone(timezone.utc)
-                yield "event: notification\\ndata: " + json.dumps(row, separators=(",", ":"), default=str) + "\\n\\n"
-            yield ": keep-alive\\n\\n"
+                yield "event: notification\ndata: " + json.dumps(row, separators=(",", ":"), default=str) + "\n\n"
+            yield ": keep-alive\n\n"
             await asyncio.sleep(3)
 
     return StreamingResponse(
