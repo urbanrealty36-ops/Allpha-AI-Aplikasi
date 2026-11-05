@@ -317,8 +317,9 @@ begin
       'metadata',jsonb_build_object('billing_order_id',v_order.id,'stripe_event_id',p_event_id)
     ));
   elsif v_order.purpose='premium_subscription' then
-    if coalesce(p_subscription_id,'') = '' then
-      raise exception 'BILLING_SUBSCRIPTION_ID_MISSING' using errcode='23514';
+    if coalesce(p_subscription_id,'') = '' or p_current_period_start is null
+      or p_current_period_end is null or p_current_period_end <= now() then
+      raise exception 'BILLING_SUBSCRIPTION_PERIOD_INVALID' using errcode='23514';
     end if;
     insert into public.billing_subscriptions(
       owner_user_id,product_id,stripe_subscription_id,stripe_customer_id,plan_key,
