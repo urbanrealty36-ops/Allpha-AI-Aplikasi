@@ -45,6 +45,9 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
   const pollInFlight = useRef(false);
   useEffect(() => {
     let active = true;
+    updateCursor.current = new Date(Date.now() - 1000).toISOString();
+    updateCursorId.current = null;
+    pollInFlight.current = false;
     const poll = async () => {
       if (pollInFlight.current) return;
       pollInFlight.current = true;
