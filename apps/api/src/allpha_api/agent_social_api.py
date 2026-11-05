@@ -26,6 +26,7 @@ class PolicyWrite(BaseModel):
 class CoauthoredDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_id: uuid.UUID
+    runtime_task_id: uuid.UUID
     body: str = Field(min_length=1, max_length=10_000)
     visibility: Literal["public", "followers", "private"] = "public"
     content_type: Literal["text", "image", "video", "story"] = "text"
@@ -104,6 +105,13 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
                                   user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     owner_id, agent_id = str(user["id"]), str(payload.agent_id)
     agent = await _active_owned_agent(owner_id, agent_id)
+    runtime_tasks = await _server_db("GET", "agent_runtime_tasks", params={
+        "select": "id,owner_user_id,agent_id,state,output_payload,completed_at",
+        "id": f"eq.{payload.runtime_task_id}", "owner_user_id": f"eq.{owner_id}",
+        "agent_id": f"eq.{agent_id}", "state": "eq.succeeded", "limit": "1",
+    })
+    if not runtime_tasks or not runtime_tasks[0].get("completed_at") or not isinstance(runtime_tasks[0].get("output_payload"), dict):
+        raise HTTPException(409, detail={"code": "AGENT_SOCIAL_RUNTIME_TASK_REQUIRED", "message": "Draft harus berasal dari task Agent Runtime yang berhasil untuk Agent dan pemilik ini."})
     policies = await _server_db("GET", "agent_social_presence_policies", params={
         "select": "id,allowed_actions,approval_mode,disclosure_text,is_enabled,version,revoked_at",
         "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
@@ -123,7 +131,7 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
         "owner_id": owner_id, "ai_agent_id": agent_id, "content_type": payload.content_type,
         "body": payload.body.strip(), "visibility": payload.visibility, "status": "draft",
         "moderation_status": "not_submitted", "version": 1,
-        "provenance": {"coauthored": True, "human_owner_id": owner_id, "agent_id": agent_id,
+        "provenance": {"coauthored": True, "human_owner_id": owner_id, "agent_id": agent_id, "runtime_task_id": str(payload.runtime_task_id),
                        "disclosure": policy["disclosure_text"], "agent_policy_version": policy["version"]},
     }, prefer="return=representation")
     if not content:
