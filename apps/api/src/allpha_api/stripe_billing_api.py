@@ -593,8 +593,6 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                 status = str(subscription_snapshot.get("status") or obj.get("status") or ("active" if event_type == "invoice.paid" else "past_due" if event_type == "invoice.payment_failed" else "canceled"))
                 if event_type == "customer.subscription.deleted":
                     status = "canceled"
-                if event_type == "invoice.paid":
-                    status = "active"
                 if event_type == "invoice.payment_failed":
                     status = "past_due"
                 period_start = subscription_snapshot.get("current_period_start") or obj.get("current_period_start")
