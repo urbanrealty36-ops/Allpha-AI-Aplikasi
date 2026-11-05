@@ -94,3 +94,56 @@ WP-06 is `in_progress` (source implementation underway), not `implemented`, `int
 - The exact ADR-0003 reference repository was identified and inspected: `urbanrealty36-ops/Allpha-Front-End-UI-New` (`app/page.tsx`, `components/FeedView.tsx`, `components/TakeoverModal.tsx`, `components/CreatePostModal.tsx`, `components/AgentPassportModal.tsx`, `components/Navbar.tsx`, `components/BottomNav.tsx`). The current Web route follows its card, border, shadow and pill-button styling, but it does not yet import/reuse a shared reference component package; modal parity and full source reconciliation remain outstanding.
 - Action lifecycle is not complete: approval decisions do not yet execute comments/replies through the canonical comments API, repost through canonical share API, or stories through the Stories + content moderation lifecycle. A dedicated transactional notification outbox/event RPC is also outstanding; the current queued notification row is routed to ENG-P20 but is not transactionally coupled with approval state.
 - WP-06 remains `in_progress / source_partial`; no tests/build/lint/typecheck/CI/QA, migration application, Supabase mutation, staging or deployment was performed. No runtime acceptance claim is made.
+
+
+## Transactional lifecycle closure — 2026-11-05
+
+**Implementation checkpoint:** transactional source and production schema applied; integration acceptance remains unverified.
+
+### Canonical transactional RPCs
+
+| RPC | Responsibility | Transactional effects |
+|---|---|---|
+| `save_agent_social_policy` | Owner policy create/update/disable | Policy version change, revocation of pending/approved actions when disabled, per-approval audit, per-approval `notifications` rows, policy audit |
+| `request_agent_social_draft` | Co-authored draft request | Revalidates active Agent ownership, succeeded Runtime task and exact task-output text, policy/action allowlist; creates content + approval + audit + queued notification |
+| `decide_agent_social_approval` | Approve/reject | Locks approval; rechecks owner/Agent/policy/draft version/target; executes comment/reply or Story DM; updates approval + audit + queued notification(s) in one transaction |
+| `revoke_agent_social_approval` | Revoke approved action | Locks and revokes approval + audit + queued notification in one transaction |
+
+All RPCs are `SECURITY DEFINER` with a fixed search path and EXECUTE granted only to `service_role`; `authenticated` has no direct execute privilege. FastAPI derives owner identity from the authenticated session and passes it to the RPC. The API treats the RPC result as the decision source of truth; it no longer performs separate approval/audit/notification writes for these paths.
+
+### Resource and Story DM contract
+
+- Added `agent_social_action_approvals.target_comment_id` and `execution_result`.
+- Added nullable `messages.story_id` referencing canonical `content_items(id)`, plus `messages_story_id_idx`.
+- `draft_reply` requires both `target_content_id` and `target_comment_id`; the RPC confirms the parent comment belongs to the same target content and is visible, then inserts into `content_comments` with `parent_comment_id`.
+- `draft_comment` inserts a root comment through the same canonical comment table.
+- `draft_story` approval creates a new canonical `conversations` record, adds the Story owner as Human and the authoring Agent as Agent participant, and inserts an Agent-authored message with `messages.story_id = target Story id`. It does not insert a public comment. The Story must be published, moderation-approved, unexpired, visible to the Agent owner, and not blocked.
+- The ENG-P18 message read/list projections now include `story_id`, so the receiving inbox can resolve the linked Story.
+- Approval and recipient notifications are inserted into the existing `notifications` table with deterministic event keys and `delivery_state='queued'`. Push delivery is not sent by these RPCs; ENG-P20 remains the sole dispatcher.
+
+### Client behavior
+
+- Web `/agent-social` and Native `AgentSocialControls` consume the FastAPI decision response and show the actual execution result (comment id or Story DM conversation) rather than assuming an approval status change means the action executed.
+- Both clients show replay-aware confirmation and use the API's revocation result.
+- No direct client writes to approval, audit, comments, messages or notifications were introduced.
+
+### Production migration evidence
+
+Applied successfully to Supabase project `dvdziauyvuhcnqhrrvww`:
+- `wp06_transactional_social_approval`
+- `wp06_transactional_approval_revoke`
+- `wp06_transactional_draft_request`
+- `wp06_runtime_digest_search_path`
+- `wp06_transactional_policy`
+
+The live schema inspection confirmed the three added columns, Story index, four RPC signatures, EXECUTE privilege for `service_role`, and no EXECUTE privilege for `authenticated`. The pgcrypto digest function is installed in the `extensions` schema; the draft RPC search path was explicitly corrected to include that schema.
+
+### Validation boundary / remaining acceptance gate
+
+- Production DDL application and read-only schema/privilege inspection: **PASS**.
+- Positive end-to-end approval, comment reply, Story DM, notification dispatch, replay/concurrency and rollback tests: **NOT RUN**.
+- FastAPI tests, Web/Native typecheck/build, browser/device QA, CI and live account journey: **NOT RUN**.
+- ENG-P20 worker dispatch: **NOT invoked**; queued inbox rows are written transactionally, while push delivery remains downstream.
+- No deployment was triggered.
+
+**Status remains `in_progress / implementation_applied / integration_not_verified`.** Do not mark WP-06 `acceptance_passed` until focused SQL/API tests prove commit/rollback/idempotency and the Web + Native journeys consume the returned result. WP-07 remains `not_started`.
