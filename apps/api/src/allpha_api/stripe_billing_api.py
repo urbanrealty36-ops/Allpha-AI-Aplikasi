@@ -239,7 +239,7 @@ def _validate_product_shape(payload: BillingProductDraft) -> None:
             raise HTTPException(422, detail={"code": "BILLING_TOPUP_POLICY_INVALID", "message": "Paket top-up memerlukan grant AI Credits dan referensi kebijakan yang disetujui."})
     elif payload.purpose == "premium_subscription":
         if payload.stripe_mode != "subscription" or payload.credits_grant != 0 or payload.monthly_credits_grant <= 0 or not payload.credit_policy_version or not payload.credit_policy_approval_reference or not payload.plan_key or not payload.entitlement_version or not payload.billing_interval:
-            raise HTTPException(422, detail={"code": "BILLING_SUBSCRIPTION_POLICY_INVALID", "message": "Paket Premium memerlukan plan dan versi entitlement; grant kredit bulanan belum diaktifkan."})
+            raise HTTPException(422, detail={"code": "BILLING_SUBSCRIPTION_POLICY_INVALID", "message": "Paket Premium memerlukan plan, entitlement, allowance bulanan, dan referensi persetujuan."})
     else:
         raise HTTPException(422, detail={"code": "BILLING_PURPOSE_INVALID", "message": "Tujuan produk billing tidak dikenal."})
     if payload.billing_interval not in {None, "day", "week", "month", "year"}:
@@ -376,6 +376,24 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
         raise HTTPException(503, detail={"code": "PREMIUM_ALLOWANCE_POLICY_UNAVAILABLE", "message": "Allowance bulanan Premium belum memiliki kebijakan kredit yang disetujui."})
     if product.get("purpose") == "premium_subscription" and (not product.get("plan_key") or not product.get("entitlement_version")):
         raise HTTPException(503, detail={"code": "SUBSCRIPTION_POLICY_UNAVAILABLE", "message": "Paket Premium belum memiliki kebijakan entitlement."})
+    policy_rows = await _db("GET", "credit_policy_versions", params={
+        "select": "policy_version,approval_reference,status,configuration",
+        "policy_version": f"eq.{product.get('credit_policy_version')}", "limit": "1",
+    })
+    if not policy_rows:
+        raise HTTPException(503, detail={"code": "BILLING_CREDIT_POLICY_UNAVAILABLE", "message": "Kebijakan AI Credit produk tidak tersedia."})
+    policy = policy_rows[0]
+    config = policy.get("configuration") if isinstance(policy.get("configuration"), dict) else {}
+    allowed_grants = config.get("allowed_grant_types") if isinstance(config.get("allowed_grant_types"), list) else []
+    grant_amount = int(product.get("credits_grant") or 0) if product.get("purpose") == "ai_credit_topup" else int(product.get("monthly_credits_grant") or 0)
+    if (policy.get("status") != "approved" or policy.get("approval_reference") != product.get("credit_policy_approval_reference")
+        or config.get("allow_grants") is not True or "grant" not in allowed_grants
+        or int(config.get("max_grant_credits") or 0) < grant_amount):
+        raise HTTPException(503, detail={"code": "BILLING_CREDIT_POLICY_NOT_APPROVED", "message": "Kebijakan grant AI Credit produk tidak lagi aktif atau tidak mencakup jumlah ini."})
+    if product.get("purpose") == "premium_subscription":
+        entitlement_rules = config.get("entitlements") if isinstance(config.get("entitlements"), dict) else {}
+        if not isinstance(entitlement_rules.get(product.get("entitlement_version")), dict):
+            raise HTTPException(503, detail={"code": "SUBSCRIPTION_ENTITLEMENT_POLICY_UNAVAILABLE", "message": "Versi entitlement Premium tidak tersedia dalam policy aktif."})
 
     created = await _rpc("billing_create_order", {
         "p_owner_user_id": str(user["id"]), "p_product_key": payload.product_key,
