@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
 
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || "https://api.allpha.web.id").replace(/\/$/, "");
-type Product = { product_key: string; name: string; description?: string | null; purpose: string; amount_minor: number; currency: string; billing_interval?: string | null; credits_grant: number };
+type Product = { product_key: string; name: string; description?: string | null; purpose: string; amount_minor: number; currency: string; billing_interval?: string | null; credits_grant: number; monthly_credits_grant: number };
 type Order = { id: string; product_name: string; amount_minor: number; currency: string; status: string; created_at: string };
 type Subscription = { plan_key: string; status: string; current_period_end?: string | null } | null;
 
@@ -99,7 +99,7 @@ export function BillingCenter({ getAccessToken }: { getAccessToken: () => Promis
       <Text style={{ color: "#F7F8FF", fontSize: 17, fontWeight: "700" }}>{product.name}</Text>
       <Text style={{ color: "#A5ADC3", fontSize: 13 }}>{product.description || ""}</Text>
       <Text style={{ color: "#F7F8FF", fontSize: 22, fontWeight: "800" }}>{money(product.amount_minor, product.currency)}</Text>
-      <Text style={{ color: "#A5ADC3", fontSize: 12 }}>{product.purpose === "ai_credit_topup" ? product.credits_grant.toLocaleString("id-ID") + " AI Credits" : "Tagihan per " + (product.billing_interval || "periode paket")}</Text>
+      <Text style={{ color: "#A5ADC3", fontSize: 12 }}>{product.purpose === "ai_credit_topup" ? product.credits_grant.toLocaleString("id-ID") + " AI Credits" : product.monthly_credits_grant.toLocaleString("id-ID") + " AI Credits per paid invoice · " + (product.billing_interval || "periode paket")}</Text>
       <ActionButton title={busy === product.product_key ? "Menyiapkan checkout…" : enabled ? "Lanjutkan ke Stripe" : "Checkout belum tersedia"} disabled={!enabled || busy !== null} onPress={() => void checkout(product)}/>
     </View>) : <Text style={{ color: "#A5ADC3", fontSize: 13 }}>Belum ada paket aktif. Harga dan jumlah kredit tidak dibuat otomatis.</Text>}
     <Text style={{ color: "#F7F8FF", fontSize: 18, fontWeight: "700" }}>Riwayat pesanan</Text>
