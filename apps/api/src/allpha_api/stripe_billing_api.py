@@ -383,6 +383,17 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
     return {"order_id": order_id, "checkout_url": session["url"], "status": "checkout_pending", "provider": "stripe"}
 
 
+
+@router.get("/orders")
+async def list_billing_orders(limit: int = 10, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    bounded = min(max(1, limit), 50)
+    rows = await _db("GET", "billing_orders", params={
+        "select": "id,product_key,product_name,purpose,amount_minor,currency,status,created_at,paid_at",
+        "owner_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": str(bounded),
+    })
+    return {"items": rows or [], "limit": bounded}
+
+
 @router.get("/orders/{order_id}")
 async def get_billing_order(order_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _db("GET", "billing_orders", params={
