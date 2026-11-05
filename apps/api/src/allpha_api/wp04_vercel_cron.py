@@ -31,7 +31,10 @@ async def _run_one_batch(name: str, worker_type: type[Any], required: tuple[str,
         worker = worker_type()
         # These worker methods claim a single durable job using DB leases and
         # execute one bounded unit of work. Never call worker.run() here.
-        claimed = await worker.batch()
+        batch = getattr(worker, "batch", None) or getattr(worker, "process_batch", None)
+        if batch is None:
+            raise TypeError(f"{name}_batch_method_missing")
+        claimed = await batch()
         return {"status": "processed" if claimed else "idle", "claimed": int(claimed)}
     except Exception as exc:
         log.exception("WP-04 Vercel batch failed worker=%s", name)
