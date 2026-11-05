@@ -564,20 +564,29 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
         elif event_type in {"customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"}:
             sub_id = _event_subscription_id(obj)
             if sub_id:
-                status = str(obj.get("status") or ("active" if event_type == "invoice.paid" else "past_due" if event_type == "invoice.payment_failed" else "canceled"))
+                subscription_snapshot: dict[str, Any] = {}
+                if event_type in {"invoice.paid", "invoice.payment_failed"}:
+                    subscription_snapshot = await _stripe_request("GET", f"subscriptions/{sub_id}", key=stripe_key)
+                status = str(subscription_snapshot.get("status") or obj.get("status") or ("active" if event_type == "invoice.paid" else "past_due" if event_type == "invoice.payment_failed" else "canceled"))
                 if event_type == "customer.subscription.deleted":
                     status = "canceled"
                 if event_type == "invoice.paid":
                     status = "active"
                 if event_type == "invoice.payment_failed":
                     status = "past_due"
+                period_start = subscription_snapshot.get("current_period_start") or obj.get("current_period_start")
+                period_end = subscription_snapshot.get("current_period_end") or obj.get("current_period_end")
+                customer_id = subscription_snapshot.get("customer") or obj.get("customer")
+                cancel_at_period_end = subscription_snapshot.get("cancel_at_period_end")
+                if not isinstance(cancel_at_period_end, bool):
+                    cancel_at_period_end = obj.get("cancel_at_period_end") if isinstance(obj.get("cancel_at_period_end"), bool) else None
                 await _rpc("billing_apply_subscription_state", {
                     "p_event_id": event_id, "p_subscription_id": sub_id,
-                    "p_customer_id": obj.get("customer") if isinstance(obj.get("customer"), str) else None,
+                    "p_customer_id": customer_id if isinstance(customer_id, str) else None,
                     "p_status": status,
-                    "p_current_period_start": datetime.fromtimestamp(int(obj["current_period_start"]), tz=timezone.utc).isoformat() if obj.get("current_period_start") else None,
-                    "p_current_period_end": datetime.fromtimestamp(int(obj["current_period_end"]), tz=timezone.utc).isoformat() if obj.get("current_period_end") else None,
-                    "p_cancel_at_period_end": obj.get("cancel_at_period_end") if isinstance(obj.get("cancel_at_period_end"), bool) else None,
+                    "p_current_period_start": datetime.fromtimestamp(int(period_start), tz=timezone.utc).isoformat() if period_start else None,
+                    "p_current_period_end": datetime.fromtimestamp(int(period_end), tz=timezone.utc).isoformat() if period_end else None,
+                    "p_cancel_at_period_end": cancel_at_period_end,
                 })
                 if event_type == "invoice.paid":
                     await _rpc("billing_record_subscription_invoice", {
