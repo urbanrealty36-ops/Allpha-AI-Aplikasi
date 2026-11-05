@@ -1,6 +1,6 @@
 # ADR-0021 — AI Generation Jobs, Credit Policy, Billing and Entitlement
 
-- **Status:** PARTIALLY ACCEPTED — technical architecture accepted; provider and numerical financial policy remain open
+- **Status:** PARTIALLY ACCEPTED — technical architecture and Stripe payment provider accepted; AI provider/model and numerical financial policy remain open
 - **Date:** 2026-11-05
 - **Decision owners:** Product Owner, Finance/Economy, Platform Engineering
 - **Scope:** ENG-P09/P10/P11/P28/P29/P30, AI Cinema, Creator Studio, subscription, credits, billing and playback
@@ -58,7 +58,9 @@ The Master PRD and ADR-0006 expressly prohibit inferring provider price, credit 
 
 - Implement a provider-neutral payment adapter interface and canonical order/receipt/webhook/reconciliation contracts. Provider-specific code is isolated behind the adapter.
 - Payment settlement is server-verified, signature/authentication checked, idempotent and reconciled. Client redirect never grants credits or subscription.
-- **No payment vendor is selected by this ADR.** No production payment adapter, checkout session or webhook may be enabled until the Product Owner selects the provider and Finance approves currency, payment methods, tax/invoice, refunds, chargebacks, settlement and reconciliation terms.
+- **Stripe is the selected payment provider for Allpha.** Implement Stripe behind the canonical FastAPI payment adapter; clients must never call Stripe directly or hold secret keys. Use server-created Checkout Sessions (or the approved Stripe billing flow), signed webhook verification, idempotent event processing, durable payment/order receipts and reconciliation. Redirect/success URLs are informational only and never grant credits, subscriptions or playback.
+- Stripe integration source may be implemented now, but checkout/webhook activation remains fail-closed until server-side Stripe secrets and webhook signing secret are configured, Stripe account/capabilities are verified, and Finance/Product approve currency, payment methods, tax/invoice, refunds, chargebacks, settlement, and reconciliation terms. Do not invent prices or enable live-mode charging.
+- Stripe Connect, creator payouts and transfers are explicitly out of scope until the separate creator-economy policy and legal/finance approval exist.
 - Subscription activation, credit top-up and playback entitlement are granted only after a verified provider receipt and an idempotent ledger/order transaction.
 
 ### 6. Creator economy
@@ -79,7 +81,8 @@ The Master PRD and ADR-0006 expressly prohibit inferring provider price, credit 
 | Production AI provider, model and route credentials | Product Owner + Platform | Provider execution |
 | Approved model cost rates, unit and cost ceiling | Finance + Platform | Provider execution |
 | Credit scheme scale, capability tariffs, quota, expiry and failure/partial rules | Finance/Economy + Product | Credit reservation/settlement |
-| Payment provider | Product Owner | Checkout/webhook implementation |
+| Stripe account/capabilities, secret and webhook signing secret | Platform + Finance | Checkout/webhook activation |
+| Currency, payment methods, tax/invoice, refunds, chargebacks, settlement and reconciliation terms | Finance | Payment activation |
 | Currency, payment methods, tax/invoice, refunds and chargebacks | Finance | Payment activation |
 | Premium price, interval, monthly credits, top-up packs | Product + Finance | Subscription/top-up activation |
 | Playback territory, maturity and concurrent stream rules | Product + Legal | Premium playback |
@@ -88,7 +91,7 @@ The Master PRD and ADR-0006 expressly prohibit inferring provider price, credit 
 
 ## Consequences and implementation gates
 
-- Technical architecture and existing media/credit contracts are accepted; no new provider, price, tariff or entitlement value is fabricated.
+- Technical architecture, Stripe as the payment provider, and existing media/credit contracts are accepted; no AI model provider, price, tariff or entitlement value is fabricated.
 - Source implementation may add durable job/order/entitlement contracts and operator-managed versioned policy configuration, but execution remains fail-closed until the corresponding approvals and secrets exist.
 - Existing live schema is inspected. Any new schema is source-only until the required non-production target/recovery conditions in AGENTS.md and the fixed phase plan are satisfied. Do not apply a production migration as a substitute for skipped staging.
 - The user's current instruction waives real/staging functional tests for this work. Report those as `DEFERRED / NOT VERIFIED`; do not change phase acceptance status or claim integration/production verification.
