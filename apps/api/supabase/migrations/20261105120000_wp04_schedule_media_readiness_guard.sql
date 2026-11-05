@@ -24,7 +24,7 @@ begin
  end if;
  if exists(
    select 1 from public.content_media m where m.content_id=p_content_id and m.owner_id=p_owner_id
-   and (m.status<>'ready' or m.scan_status<>'clean' or m.processed_at is null
+   and (m.status is distinct from 'ready' or m.scan_status is distinct from 'clean' or m.processed_at is null
      or jsonb_typeof(m.derivatives) is distinct from 'array'
      or jsonb_array_length(case when jsonb_typeof(m.derivatives)='array' then m.derivatives else '[]'::jsonb end)<1)
  ) then return jsonb_build_object('outcome','media_not_ready'); end if;
@@ -60,7 +60,7 @@ begin
  then return jsonb_build_object('outcome','policy_recheck_failed'); end if;
  if exists(
    select 1 from public.content_media m where m.content_id=v_content.id and m.owner_id=v_content.owner_id
-   and (m.status<>'ready' or m.scan_status<>'clean' or m.processed_at is null
+   and (m.status is distinct from 'ready' or m.scan_status is distinct from 'clean' or m.processed_at is null
      or jsonb_typeof(m.derivatives) is distinct from 'array'
      or jsonb_array_length(case when jsonb_typeof(m.derivatives)='array' then m.derivatives else '[]'::jsonb end)<1)
  ) then return jsonb_build_object('outcome','media_not_ready'); end if;
