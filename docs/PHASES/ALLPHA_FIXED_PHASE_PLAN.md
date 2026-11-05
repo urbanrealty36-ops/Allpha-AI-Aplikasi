@@ -1,3 +1,14 @@
+**WP-06 source continuation checkpoint (2026-11-05 — partial; owner UI started):**
+- Agent social draft text is now derived from a completed Agent Runtime task output (content, text, body, or generated_text), with a bounded text length and SHA-256 digest in private provenance. Client-provided draft body was removed from the request contract. This is a source-level guard; exact output schema parity with every Agent Runtime tool is not verified.
+- Social action request schema and policy allowlist now include draft post, draft comment, draft reply, repost suggestion, and story draft. The approval migration now includes the missing runtime_task_id FK, target-content reference and an action check covering those action keys. The durable social audit table is added with owner/agent/approval/actor, event type, outcome and metadata.
+- Super Admin API adds an operator-scope protected read route for social audit events (platform:security.audit.read).
+- Web adds /agent-social for active Agent selection, owner policy controls, pending approval decisions and revocation. It follows existing Allpha reference-ui visual language (bordered cards, rounded pill actions and slate/cyan/indigo treatment); however, the separate reference repository named by ADR-0003 could not be enumerated through the current GitHub search binding during this turn, so exact component-source parity is NOT VERIFIED.
+- Still outstanding: Native policy/inbox screen and navigation; actual server-side handling for comment/reply/repost/story resources and their moderation/authorization parity (current action labels are not yet complete lifecycle integrations); audit writes from policy/draft/approval mutations; Super Admin review page; notification outbox/event integration instead of direct notification row writes; schema reconciliation for all assumed FK/column names and Agent Runtime output formats.
+- Status: WP-06 remains in_progress / partial_source. No tests/build/lint/typecheck/CI/browser/device/account QA, migration application, Supabase mutation, staging, provider call or deployment. No integration verification or acceptance claim.
+- Next source work: finish action-specific resource lifecycle + audit writes and notification event contract, then Native owner controls/inbox, then Super Admin audit review surface, and reconcile Web UI against the exact reference component repository before marking source implementation complete.
+
+---
+
 **Readiness predicate parity addendum (2026-11-05):** Feed public/profile/search projections now independently require `ready + scan_status=clean + processed_at + non-empty derivatives` before signing media previews (`fe7fc0252a3d7a36b9e87db8f34eddd91021e56d`). Super Admin moderation approval now uses the same derivative-array requirement in addition to scan and processing completion (`c2652451b7f5f6d362e5cf118848faab43230f73`). These are source-level guards; no runtime validation or migration application is implied.
 
 ---
