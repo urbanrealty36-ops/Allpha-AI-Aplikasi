@@ -551,6 +551,26 @@ async def review_content(
     if int(item.get("version") or 0) != payload.expected_version:
         raise HTTPException(409, detail={"code": "CONTENT_VERSION_CHANGED", "message": "Versi konten berubah; muat ulang antrean sebelum meninjau."})
     allowed = payload.decision == "approve"
+    media_rows = await _server_db("GET", "content_media", params={
+        "select": "id,status,scan_status,processed_at,media_type,derivatives",
+        "content_id": f"eq.{content_id}", "owner_id": f"eq.{item['owner_id']}",
+        "order": "created_at.asc", "limit": "100",
+    })
+    unsafe_media = [
+        media for media in (media_rows or [])
+        if media.get("status") != "ready"
+        or media.get("scan_status") != "clean"
+        or not media.get("processed_at")
+    ]
+    if allowed and unsafe_media:
+        await write_operator_audit(request, actor_user_id=str(operator["id"]), action="content.moderate",
+            outcome="denied", resource_type="content_item", resource_id=str(content_id),
+            metadata={"decision": "approve", "reason_code": "CONTENT_MEDIA_NOT_READY",
+                      "media_count": len(unsafe_media)})
+        raise HTTPException(409, detail={
+            "code": "CONTENT_MEDIA_NOT_READY",
+            "message": "Publikasi ditahan: seluruh media harus berstatus ready, scan clean, dan memiliki waktu pemrosesan selesai.",
+        })
     schedule_rows = await _server_db("GET", "content_schedules", params={
         "select": "id,status,scan_status", "content_id": f"eq.{content_id}",
         "owner_id": f"eq.{item['owner_id']}", "status": "in.(scheduled,processing)", "limit": "1",
