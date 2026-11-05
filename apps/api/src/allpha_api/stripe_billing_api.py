@@ -125,7 +125,7 @@ async def _db(method: str, path: str, *, params: dict[str, str] | None = None,
     except httpx.HTTPError as exc:
         raise HTTPException(503, detail={"code": "BILLING_DATABASE_UNAVAILABLE", "message": "Database billing sementara tidak tersedia."}) from exc
     if response.status_code >= 400:
-        raise HTTPException(503 if response.status_code >= 500 else 409,
+        raise HTTPException(503 if response.status_code >= 500 or response.status_code == 404 else 409,
                             detail={"code": "BILLING_DATABASE_OPERATION_FAILED", "message": "Operasi billing tidak dapat dikonfirmasi."})
     if not response.content:
         return []
