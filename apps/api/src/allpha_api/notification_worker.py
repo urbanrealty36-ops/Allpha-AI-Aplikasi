@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -417,6 +418,30 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
     return counts
 
 
+async def _run_worker(*, limit: int, mode: str, poll_seconds: float) -> None:
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            # Windows/local runners may not expose asyncio signal handlers.
+            pass
+
+    while not stop.is_set():
+        try:
+            summary = await process_batch(limit=limit)
+            log.info("Notification worker batch completed: %s", summary)
+        except NotificationWorkerStorageError as exc:
+            log.exception("Notification worker storage batch failed: %s", type(exc).__name__)
+        if mode == "once":
+            return
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=poll_seconds)
+        except asyncio.TimeoutError:
+            continue
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     try:
@@ -428,10 +453,13 @@ def main() -> None:
             return
         _db_config()
         limit = _bounded_int("ALLPHA_NOTIFICATION_BATCH_LIMIT", 8, 1, 8)
+        mode = os.getenv("ALLPHA_NOTIFICATION_WORKER_MODE", "daemon").strip().lower()
+        if mode not in {"daemon", "once"}:
+            raise NotificationWorkerConfigurationError("ALLPHA_NOTIFICATION_WORKER_MODE must be daemon or once")
+        poll_seconds = _bounded_int("ALLPHA_NOTIFICATION_POLL_SECONDS", 15, 5, 300)
     except NotificationWorkerConfigurationError as exc:
         raise SystemExit(str(exc)) from exc
-    summary = asyncio.run(process_batch(limit=limit))
-    log.info("Notification worker invocation completed: %s", summary)
+    asyncio.run(_run_worker(limit=limit, mode=mode, poll_seconds=float(poll_seconds)))
 
 
 if __name__ == "__main__":
