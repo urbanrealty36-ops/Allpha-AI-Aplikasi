@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AiCinemaView, { AiMovieItem } from "../../components/reference-ui/AiCinemaView";
+import AiCinemaCreatorWorkspace from "../../components/ai-cinema/AiCinemaCreatorWorkspace";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -55,5 +56,5 @@ export default function AiCinemaPage() {
     return () => { active = false; controller.abort(); };
   }, []);
 
-  return <AiCinemaView userCredits={null} catalogItems={items} catalogState={state} productionMode />;
+  return <><AiCinemaView userCredits={null} catalogItems={items} catalogState={state} productionMode /><AiCinemaCreatorWorkspace /></>;
 }
