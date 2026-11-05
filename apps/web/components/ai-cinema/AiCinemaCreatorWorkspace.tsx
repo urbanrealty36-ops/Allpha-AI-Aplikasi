@@ -21,6 +21,7 @@ type DraftEpisode = {
   status: string;
   duration_seconds?: number | null;
 };
+type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string; generation_reason?: string | null; billing_reason?: string | null; entitlement_reason?: string | null };
 
 async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const supabase = getBrowserSupabase();
@@ -47,6 +48,7 @@ async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promi
 
 export default function AiCinemaCreatorWorkspace() {
   const [titles, setTitles] = useState<DraftTitle[]>([]);
+  const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -59,6 +61,15 @@ export default function AiCinemaCreatorWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const loadCapabilityStatus = useCallback(async () => {
+    try {
+      const result = await authorizedRequest<CreatorStatus>("/v1/cinema/creator/status");
+      setCapabilityStatus(result);
+    } catch {
+      setCapabilityStatus(null);
+    }
+  }, []);
 
   const loadTitles = useCallback(async () => {
     setLoading(true);
@@ -87,6 +98,7 @@ export default function AiCinemaCreatorWorkspace() {
   }, []);
 
   useEffect(() => { void loadTitles(); }, [loadTitles]);
+  useEffect(() => { void loadCapabilityStatus(); }, [loadCapabilityStatus]);
   useEffect(() => { void loadEpisodes(selectedTitleId); }, [loadEpisodes, selectedTitleId]);
 
   async function createTitle(event: FormEvent<HTMLFormElement>) {
@@ -130,6 +142,11 @@ export default function AiCinemaCreatorWorkspace() {
         <div><p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-300">Creator Workspace</p><h2 className="mt-1 text-2xl font-black">Draft Film & Episode</h2><p className="mt-1 text-sm text-slate-300">Draft disimpan melalui FastAPI dan hanya dapat diakses pemiliknya.</p></div>
         <button type="button" onClick={() => void loadTitles()} disabled={loading} className="rounded-xl border border-white/20 px-4 py-2 text-sm font-bold hover:bg-white/10 disabled:opacity-50">{loading ? "Memuat…" : "Muat ulang"}</button>
       </div>
+      {capabilityStatus && <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-950/20 p-3 text-xs text-amber-100">
+        <p className="font-bold">Status layanan terhubung</p>
+        <p className="mt-1">Generation: {capabilityStatus.generation} · Generation jobs: {capabilityStatus.generation_jobs} · Billing: {capabilityStatus.billing} · Playback entitlement: {capabilityStatus.playback_entitlement}</p>
+        <p className="mt-1 text-amber-200/80">Generate, pembayaran, dan playback premium belum dapat digunakan sampai kontrak job, policy kredit, billing, dan entitlement tersedia.</p>
+      </div>}
       {error && <p role="alert" className="mb-4 rounded-xl border border-rose-400/40 bg-rose-950/50 p-3 text-sm text-rose-200">{error}</p>}
       {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-400/40 bg-emerald-950/40 p-3 text-sm text-emerald-200">{notice}</p>}
       <div className="grid gap-6 lg:grid-cols-2">
