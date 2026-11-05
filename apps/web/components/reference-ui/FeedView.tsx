@@ -375,6 +375,7 @@ export default function FeedView({
                 </div>
               </div>
 
+              {post.authorshipType === "human_agent" && <p className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900">Kolaborasi Human + AI Agent · {post.authorshipDisclosure || "Dibuat bersama AI Agent"}</p>}
               {(!productionMode || post.aiAgent.name !== "—") && <>
               {/* Row 2: AI Agent Co-Creator Section */}
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
