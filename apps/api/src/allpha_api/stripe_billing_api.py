@@ -261,7 +261,7 @@ async def create_billing_product(payload: BillingProductDraft, request: Request,
     _validate_product_shape(payload)
     await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.create",
         outcome="attempted", resource_type="billing_product", resource_id=payload.product_key,
-        metadata={"purpose": payload.purpose, "stripe_price_id": payload.stripe_price_id, "status": "draft"})
+        metadata={"purpose": payload.purpose, "stripe_price_id": payload.stripe_price_id, "product_approval_reference": payload.product_approval_reference, "credit_policy_approval_reference": payload.credit_policy_approval_reference, "status": "draft"})
     rows = await _db("POST", "billing_products", params={"select": "id,product_key,status"},
         body={**payload.model_dump(), "status": "draft"}, prefer="return=representation")
     if not rows:
@@ -314,7 +314,7 @@ async def activate_billing_product(product_key: str, request: Request,
             raise HTTPException(409, detail={"code": "PREMIUM_ENTITLEMENT_POLICY_MISSING", "message": "Versi entitlement Premium belum tercantum dalam kebijakan kredit yang disetujui."})
     await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.activate",
         outcome="attempted", resource_type="billing_product", resource_id=product_key,
-        metadata={"stripe_price_id": product["stripe_price_id"], "amount_minor": product["amount_minor"], "currency": product["currency"]})
+        metadata={"stripe_price_id": product["stripe_price_id"], "amount_minor": product["amount_minor"], "currency": product["currency"], "product_approval_reference": product["product_approval_reference"], "credit_policy_approval_reference": product["credit_policy_approval_reference"]})
     updated = await _db("PATCH", "billing_products", params={
         "id": f"eq.{product['id']}", "status": "eq.draft", "select": "id,product_key,status",
     }, body={"status": "active", "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
