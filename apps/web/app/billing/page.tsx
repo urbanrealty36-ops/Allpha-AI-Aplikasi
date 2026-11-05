@@ -104,6 +104,19 @@ export default function BillingPage() {
       setBusyKey(null);
     }
   }
+  async function manageSubscription() {
+    if (!token) return;
+    setBusyKey("portal"); setError("");
+    try {
+      const result = await api<{ url: string }>("/v1/billing/portal", token, { method: "POST", body: "{}" });
+      if (!result.url) throw new Error("Stripe Customer Portal tidak tersedia.");
+      window.location.assign(result.url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Portal subscription gagal dibuka.");
+      setBusyKey(null);
+    }
+  }
+
 
   return <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-8 text-slate-900 dark:text-slate-100 sm:px-6">
     <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
@@ -115,7 +128,7 @@ export default function BillingPage() {
       {notice && <div role="status" className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">{notice}</div>}
       <section className="mb-6 grid gap-4 sm:grid-cols-3">
         <article className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="text-sm text-slate-500">AI Credits tersedia</p><p className="mt-2 text-2xl font-semibold tabular-nums">{balance ? balance.available_credits.toLocaleString("id-ID") : "—"}</p><p className="mt-1 text-xs text-slate-500">Reservasi aktif: {balance ? balance.reserved_credits.toLocaleString("id-ID") : "—"}</p></article>
-        <article className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="text-sm text-slate-500">Subscription</p><p className="mt-2 text-xl font-semibold">{subscription?.plan_key || "Free"}</p><p className="mt-1 text-xs text-slate-500">{subscription ? subscription.status + " · sampai " + dateLabel(subscription.current_period_end) : "Belum ada subscription aktif"}</p></article>
+        <article className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="text-sm text-slate-500">Subscription</p><p className="mt-2 text-xl font-semibold">{subscription?.plan_key || "Free"}</p><p className="mt-1 text-xs text-slate-500">{subscription ? subscription.status + " · sampai " + dateLabel(subscription.current_period_end) : "Belum ada subscription aktif"}</p>{subscription && <button onClick={manageSubscription} disabled={busyKey !== null} className="mt-3 rounded-lg border border-slate-300 px-3 py-2 text-xs disabled:opacity-50">{busyKey === "portal" ? "Membuka portal…" : "Kelola subscription"}</button>}</article>
         <article className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700"><p className="text-sm text-slate-500">Checkout provider</p><p className="mt-2 text-xl font-semibold">Stripe</p><p className="mt-1 text-xs text-slate-500">{checkoutEnabled ? "Checkout tersedia sesuai katalog aktif" : "Checkout dinonaktifkan sampai konfigurasi dan persetujuan billing lengkap"}</p></article>
       </section>
       <section className="mb-8">
