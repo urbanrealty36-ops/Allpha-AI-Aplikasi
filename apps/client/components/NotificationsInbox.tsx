@@ -129,6 +129,8 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
       <Text style={{ color: "#94A3B8", fontSize: 12 }}>Atur kategori inbox dan izin push perangkat.</Text>
       {([
         ["social_activity", "Aktivitas sosial"],
+        ["community", "Komunitas"],
+        ["workspace", "Workspace"],
         ["product_updates", "Pembaruan produk"],
         ["security_alerts", "Peringatan keamanan"],
         ["push_enabled", "Push ke perangkat"],
