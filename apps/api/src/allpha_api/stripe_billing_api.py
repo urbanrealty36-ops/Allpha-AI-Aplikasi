@@ -21,6 +21,8 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from allpha_api.operator_security import require_operator_scope, write_operator_audit
+
 from allpha_api.auth import current_user
 
 router = APIRouter(prefix="/v1/billing", tags=["billing"])
@@ -177,6 +179,127 @@ def _event_subscription_id(obj: dict[str, Any]) -> str | None:
         if isinstance(details, dict) and isinstance(details.get("subscription"), str):
             return details["subscription"]
     return None
+
+
+
+class BillingProductDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    product_key: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{1,79}$")
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=1000)
+    purpose: str
+    stripe_price_id: str = Field(pattern=r"^price_[A-Za-z0-9]+$")
+    stripe_mode: str
+    amount_minor: int = Field(gt=0, le=100_000_000_000)
+    currency: str = Field(min_length=3, max_length=3, pattern=r"^[a-z]{3}$")
+    billing_interval: str | None = None
+    credits_grant: int = Field(default=0, ge=0, le=10_000_000_000)
+    credit_policy_version: str | None = Field(default=None, max_length=80)
+    credit_policy_approval_reference: str | None = Field(default=None, max_length=160)
+    plan_key: str | None = Field(default=None, max_length=80)
+    entitlement_version: str | None = Field(default=None, max_length=80)
+    sort_order: int = Field(default=100, ge=0, le=100_000)
+
+
+def _validate_product_shape(payload: BillingProductDraft) -> None:
+    if payload.purpose == "ai_credit_topup":
+        if payload.stripe_mode != "payment" or payload.credits_grant <= 0 or not payload.credit_policy_version or not payload.credit_policy_approval_reference or payload.plan_key:
+            raise HTTPException(422, detail={"code": "BILLING_TOPUP_POLICY_INVALID", "message": "Paket top-up memerlukan grant AI Credits dan referensi kebijakan yang disetujui."})
+    elif payload.purpose == "premium_subscription":
+        if payload.stripe_mode != "subscription" or payload.credits_grant != 0 or not payload.plan_key or not payload.entitlement_version:
+            raise HTTPException(422, detail={"code": "BILLING_SUBSCRIPTION_POLICY_INVALID", "message": "Paket Premium memerlukan plan dan versi entitlement; grant kredit bulanan belum diaktifkan."})
+    else:
+        raise HTTPException(422, detail={"code": "BILLING_PURPOSE_INVALID", "message": "Tujuan produk billing tidak dikenal."})
+    if payload.billing_interval not in {None, "day", "week", "month", "year"}:
+        raise HTTPException(422, detail={"code": "BILLING_INTERVAL_INVALID", "message": "Interval billing tidak valid."})
+
+
+@router.get("/admin/products")
+async def admin_billing_products(operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
+    rows = await _db("GET", "billing_products", params={
+        "select": "id,product_key,name,description,purpose,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status,sort_order,created_at,updated_at",
+        "order": "sort_order.asc,product_key.asc", "limit": "200",
+    })
+    return {"items": rows or []}
+
+
+@router.post("/admin/products", status_code=201)
+async def create_billing_product(payload: BillingProductDraft, request: Request,
+                                 operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
+    _validate_product_shape(payload)
+    await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.create",
+        outcome="attempted", resource_type="billing_product", resource_id=payload.product_key,
+        metadata={"purpose": payload.purpose, "stripe_price_id": payload.stripe_price_id, "status": "draft"})
+    rows = await _db("POST", "billing_products", params={"select": "id,product_key,status"},
+        body={**payload.model_dump(), "status": "draft"}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(503, detail={"code": "BILLING_PRODUCT_CREATE_FAILED", "message": "Draft produk billing tidak dapat disimpan."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.create",
+        outcome="allowed", resource_type="billing_product", resource_id=payload.product_key,
+        metadata={"product_id": rows[0]["id"], "status": "draft"})
+    return {"product": rows[0]}
+
+
+@router.post("/admin/products/{product_key}/activate")
+async def activate_billing_product(product_key: str, request: Request,
+                                   operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
+    key, _ = _billing_config()
+    rows = await _db("GET", "billing_products", params={
+        "select": "id,product_key,purpose,stripe_price_id,stripe_mode,amount_minor,currency,billing_interval,credits_grant,credit_policy_version,credit_policy_approval_reference,plan_key,entitlement_version,status",
+        "product_key": f"eq.{product_key}", "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(404, detail={"code": "BILLING_PRODUCT_NOT_FOUND", "message": "Draft produk billing tidak ditemukan."})
+    product = rows[0]
+    if product["status"] != "draft":
+        raise HTTPException(409, detail={"code": "BILLING_PRODUCT_NOT_DRAFT", "message": "Hanya produk draft yang dapat diaktifkan."})
+    price = await _stripe_request("GET", f"prices/{product['stripe_price_id']}", key=key)
+    recurring = price.get("recurring") if isinstance(price.get("recurring"), dict) else None
+    if price.get("active") is not True or int(price.get("unit_amount") or 0) != int(product["amount_minor"]) or str(price.get("currency") or "").lower() != product["currency"]:
+        raise HTTPException(409, detail={"code": "STRIPE_PRICE_MISMATCH", "message": "Stripe Price harus aktif dan jumlah serta mata uangnya harus sama dengan snapshot produk."})
+    if product["stripe_mode"] == "subscription":
+        if not recurring or recurring.get("interval") != product.get("billing_interval"):
+            raise HTTPException(409, detail={"code": "STRIPE_RECURRING_PRICE_MISMATCH", "message": "Stripe Price recurring interval tidak cocok dengan paket Premium."})
+    elif recurring:
+        raise HTTPException(409, detail={"code": "STRIPE_ONE_TIME_PRICE_MISMATCH", "message": "Top-up AI Credits hanya boleh memakai Stripe Price sekali bayar."})
+    if product["purpose"] == "ai_credit_topup":
+        policies = await _db("GET", "credit_policy_versions", params={
+            "select": "policy_version,approval_reference,status,configuration",
+            "policy_version": f"eq.{product['credit_policy_version']}", "limit": "1",
+        })
+        if not policies:
+            raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_MISSING", "message": "Kebijakan grant AI Credits tidak ditemukan."})
+        policy = policies[0]
+        config = policy.get("configuration") if isinstance(policy.get("configuration"), dict) else {}
+        allowed_types = config.get("allowed_grant_types") if isinstance(config.get("allowed_grant_types"), list) else []
+        if policy.get("status") != "approved" or policy.get("approval_reference") != product.get("credit_policy_approval_reference") or config.get("allow_grants") is not True or "grant" not in allowed_types or int(config.get("max_grant_credits") or 0) < int(product["credits_grant"]):
+            raise HTTPException(409, detail={"code": "CREDIT_GRANT_POLICY_NOT_APPROVED", "message": "Kebijakan kredit tidak mengizinkan grant paket ini."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.activate",
+        outcome="attempted", resource_type="billing_product", resource_id=product_key,
+        metadata={"stripe_price_id": product["stripe_price_id"], "amount_minor": product["amount_minor"], "currency": product["currency"]})
+    updated = await _db("PATCH", "billing_products", params={
+        "id": f"eq.{product['id']}", "status": "eq.draft", "select": "id,product_key,status",
+    }, body={"status": "active", "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
+    if not updated:
+        raise HTTPException(409, detail={"code": "BILLING_PRODUCT_ACTIVATION_CONFLICT", "message": "Produk berubah saat aktivasi; coba muat ulang."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.activate",
+        outcome="allowed", resource_type="billing_product", resource_id=product_key,
+        metadata={"product_id": product["id"], "stripe_price_verified": True})
+    return {"product": updated[0], "stripe_price_verified": True}
+
+
+@router.post("/admin/products/{product_key}/retire")
+async def retire_billing_product(product_key: str, request: Request,
+                                 operator: dict[str, Any] = Depends(require_operator_scope("platform:billing.manage"))) -> dict[str, Any]:
+    rows = await _db("PATCH", "billing_products", params={
+        "product_key": f"eq.{product_key}", "status": "in.(active,draft)", "select": "id,product_key,status",
+    }, body={"status": "retired", "updated_at": datetime.now(timezone.utc).isoformat()}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(404, detail={"code": "BILLING_PRODUCT_NOT_FOUND", "message": "Produk billing aktif tidak ditemukan."})
+    await write_operator_audit(request, actor_user_id=operator["id"], action="billing.product.retire",
+        outcome="allowed", resource_type="billing_product", resource_id=product_key,
+        metadata={"product_id": rows[0]["id"]})
+    return {"product": rows[0]}
 
 
 @router.get("/catalog")
