@@ -10,7 +10,7 @@ from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 router = APIRouter(tags=["social-feed"])
-FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,created_at,updated_at,published_at"
+FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,provenance,created_at,updated_at,published_at"
 MEDIA_FIELDS = "id,content_id,owner_id,bucket_id,storage_path,filename,media_type,size_bytes,sha256,status,scan_status,processed_at,derivatives,created_at"
 
 def _public_media_ready(row: dict[str, Any]) -> bool:
@@ -452,6 +452,13 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         agent = agent_by_id.get(str(row.get("ai_agent_id") or ""))
         item["agent"] = ({k: agent.get(k) for k in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None)
         item["author_type"] = "agent" if agent else "human"
+        provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        item["authorship"] = {
+            "type": "human_agent" if agent and provenance.get("coauthored") is True else ("agent_attributed" if agent else "human"),
+            "human_owner_id": str(row.get("owner_id")) if agent and provenance.get("coauthored") is True else None,
+            "agent": item["agent"],
+            "disclosure": (provenance.get("disclosure") if provenance.get("coauthored") is True else (agent.get("disclosure") if agent else None)),
+        }
         item["ranking_version"] = "feed-rank-v1"
         items.append(item)
     next_offset = offset + page_advance
