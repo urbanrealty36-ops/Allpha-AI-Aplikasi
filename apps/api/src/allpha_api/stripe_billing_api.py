@@ -515,7 +515,7 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                     "p_status": status,
                     "p_current_period_start": datetime.fromtimestamp(int(obj["current_period_start"]), tz=timezone.utc).isoformat() if obj.get("current_period_start") else None,
                     "p_current_period_end": datetime.fromtimestamp(int(obj["current_period_end"]), tz=timezone.utc).isoformat() if obj.get("current_period_end") else None,
-                    "p_cancel_at_period_end": bool(obj.get("cancel_at_period_end", False)),
+                    "p_cancel_at_period_end": obj.get("cancel_at_period_end") if isinstance(obj.get("cancel_at_period_end"), bool) else None,
                 })
                 if event_type == "invoice.paid":
                     await _rpc("billing_record_subscription_invoice", {
