@@ -88,7 +88,7 @@ export default function GeneratePage() {
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
-      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string };
+      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string };
       if (!quote.quote_id || Date.parse(quote.expires_at) <= Date.now() || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
         throw new Error("Quote generation tidak valid atau sudah kedaluwarsa.");
       }
@@ -97,7 +97,7 @@ export default function GeneratePage() {
       }
       const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
         method: "POST", headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ ...body, quoted_credits: quote.estimated_credits }), cache: "no-store",
+        body: JSON.stringify({ ...body, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id }), cache: "no-store",
       });
       if (!createResponse.ok) throw new Error(await errorMessage(createResponse));
       const created = await createResponse.json() as { job_id: string };
