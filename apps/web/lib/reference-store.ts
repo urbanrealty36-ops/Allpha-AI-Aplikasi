@@ -84,6 +84,8 @@ export interface AIAgentProfile {
 }
 
 export interface PostItem {
+  authorshipType?: 'human_agent' | 'agent_attributed' | 'human';
+  authorshipDisclosure?: string;
   id: string;
   humanOwner: {
     name: string;
