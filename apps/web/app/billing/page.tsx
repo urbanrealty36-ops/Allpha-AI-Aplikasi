@@ -8,7 +8,7 @@ const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV =
 
 type Product = {
   product_key: string; name: string; description?: string | null; purpose: "ai_credit_topup" | "premium_subscription";
-  amount_minor: number; currency: string; billing_interval?: string | null; credits_grant: number; plan_key?: string | null;
+  amount_minor: number; currency: string; billing_interval?: string | null; credits_grant: number; monthly_credits_grant: number; plan_key?: string | null;
 };
 type Order = {
   id: string; product_key: string; product_name: string; purpose: string; amount_minor: number;
@@ -138,7 +138,7 @@ export default function BillingPage() {
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">{product.purpose === "premium_subscription" ? "Subscription" : "AI Credits Top-up"}</p>
             <h3 className="mt-2 text-lg font-semibold">{product.name}</h3><p className="mt-1 min-h-10 text-sm text-slate-500">{product.description || (product.purpose === "premium_subscription" ? "Akses premium sesuai entitlement server." : "Tambahan AI Credits sesuai kebijakan aktif.")}</p>
             <p className="mt-4 text-2xl font-semibold">{formatMoney(product.amount_minor, product.currency)}</p>
-            {product.purpose === "ai_credit_topup" ? <p className="mt-1 text-sm text-slate-500">{product.credits_grant.toLocaleString("id-ID")} AI Credits</p> : <p className="mt-1 text-sm text-slate-500">Tagihan per {product.billing_interval || "periode yang ditetapkan"}</p>}
+            {product.purpose === "ai_credit_topup" ? <p className="mt-1 text-sm text-slate-500">{product.credits_grant.toLocaleString("id-ID")} AI Credits</p> : <p className="mt-1 text-sm text-slate-500">{product.monthly_credits_grant.toLocaleString("id-ID")} AI Credits per paid invoice · tagihan {product.billing_interval || "sesuai periode"}</p>}
             <button onClick={() => checkout(product)} disabled={!checkoutEnabled || busyKey !== null || loading} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busyKey === product.product_key ? "Menyiapkan Stripe Checkout…" : checkoutEnabled ? "Lanjutkan ke Stripe" : "Checkout belum tersedia"}</button>
           </article>)}
         </div>}
