@@ -61,7 +61,8 @@ begin
  if exists(
    select 1 from public.content_media m where m.content_id=v_content.id and m.owner_id=v_content.owner_id
    and (m.status<>'ready' or m.scan_status<>'clean' or m.processed_at is null
-     or jsonb_typeof(m.derivatives)<>'array' or jsonb_array_length(m.derivatives)<1)
+     or jsonb_typeof(m.derivatives) is distinct from 'array'
+     or jsonb_array_length(case when jsonb_typeof(m.derivatives)='array' then m.derivatives else '[]'::jsonb end)<1)
  ) then return jsonb_build_object('outcome','media_not_ready'); end if;
  update public.content_items set status='published',published_at=now(),deleted_at=null,version=version+1
  where id=v_content.id returning * into v_content;
