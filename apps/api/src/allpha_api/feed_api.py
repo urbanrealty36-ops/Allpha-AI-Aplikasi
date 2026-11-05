@@ -166,6 +166,39 @@ async def _profiles_for(user_ids: set[str]) -> dict[str, dict[str, Any]]:
     return {str(row.get("id")): row for row in (rows or [])}
 
 
+async def _enqueue_social_notification(
+    recipient_user_id: str,
+    event_key: str,
+    title: str,
+    body: str,
+    payload: dict[str, Any],
+) -> None:
+    """Persist an idempotent in-app notification; push delivery is owned by ENG-P20 worker."""
+    if not recipient_user_id or len(event_key) > 160:
+        return
+    settings = await _server_db("GET", "user_settings", params={
+        "select": "notification_preferences",
+        "user_id": f"eq.{recipient_user_id}",
+        "limit": "1",
+    })
+    preferences = settings[0].get("notification_preferences") if settings else {}
+    allowed = not isinstance(preferences, dict) or preferences.get("social_activity") is not False
+    await _server_db(
+        "POST", "notifications",
+        params={"on_conflict": "user_id,event_key", "select": "id"},
+        body={
+            "user_id": recipient_user_id,
+            "category": "social_activity",
+            "event_key": event_key,
+            "title": title[:160],
+            "body": body[:2000],
+            "payload": payload,
+            "delivery_state": "delivered" if allowed else "suppressed",
+        },
+        prefer="resolution=ignore-duplicates,return=representation",
+    )
+
+
 def _published(row: dict[str, Any]) -> datetime:
     try:
         value = datetime.fromisoformat(str(row.get("published_at") or row.get("created_at")).replace("Z", "+00:00"))
@@ -827,6 +860,13 @@ async def set_reaction(content_id: uuid.UUID, payload: ReactionWrite, user: dict
     rows = await _server_db("POST", "content_reactions", params={"on_conflict": "content_id,actor_user_id", "select": "content_id,actor_user_id,reaction,created_at"},
         body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "reaction": payload.reaction}, prefer="resolution=merge-duplicates,return=representation")
     if not rows: raise HTTPException(409, detail={"code": "REACTION_NOT_RECORDED", "message": "Reaksi tidak dapat disimpan."})
+    await _enqueue_social_notification(
+        str(content["owner_id"]),
+        f"feed_like:{content_id}:{user['id']}:{rows[0].get('created_at', '')}",
+        "Konten Anda disukai",
+        "Seseorang menyukai konten Anda.",
+        {"type": "feed_like", "content_id": str(content_id)},
+    )
     return {"reaction": rows[0]}
 
 @router.delete("/v1/feed/{content_id}/reaction")
@@ -893,8 +933,31 @@ async def create_comment(content_id: uuid.UUID, payload: CommentCreate, user: di
     rows = await _server_db("POST", "content_comments", params={"select": "id,content_id,actor_user_id,body,status,created_at,updated_at"},
         body={"content_id": str(content_id), "actor_user_id": str(user["id"]), "body": body, "status": "visible"}, prefer="return=representation")
     if not rows: raise HTTPException(409, detail={"code": "COMMENT_NOT_RECORDED", "message": "Komentar tidak dapat disimpan."})
-    mentions = await _server_db("GET", "content_mentions", params={"select": "mentioned_user_id", "comment_id": f"eq.{rows[0]['id']}", "limit": "100"})
-    return {"comment": rows[0], "mentions": mentions or []}
+    comment = rows[0]
+    comment_id = str(comment["id"])
+    if str(content["owner_id"]) != str(user["id"]):
+        await _enqueue_social_notification(
+            str(content["owner_id"]),
+            f"feed_comment:{comment_id}",
+            "Komentar baru di konten Anda",
+            "Ada komentar baru pada konten Anda.",
+            {"type": "feed_comment", "content_id": str(content_id), "comment_id": comment_id},
+        )
+    mentions = await _server_db("GET", "content_mentions", params={
+        "select": "mentioned_user_id", "comment_id": f"eq.{comment_id}", "limit": "100",
+    })
+    mention_ids = sorted({str(item["mentioned_user_id"]) for item in (mentions or [])})
+    for mentioned_user_id in mention_ids:
+        if mentioned_user_id == str(user["id"]) or mentioned_user_id == str(content["owner_id"]):
+            continue
+        await _enqueue_social_notification(
+            mentioned_user_id,
+            f"feed_comment_mention:{comment_id}:{mentioned_user_id}",
+            "Anda disebut dalam komentar",
+            "Seseorang menyebut Anda dalam komentar.",
+            {"type": "feed_comment_mention", "content_id": str(content_id), "comment_id": comment_id},
+        )
+    return {"comment": comment, "mentions": mentions or []}
 
 @router.delete("/v1/feed/comments/{comment_id}")
 async def delete_comment(comment_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
