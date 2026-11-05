@@ -354,7 +354,16 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
                     "state": "suppressed", "last_error_code": "notification_or_device_unavailable",
                 })
                 continue
-            category = str(notification.get("category") or "social_activity")
+            category = str(notification.get("category") or "")
+            supported_categories = {
+                "social_activity", "community", "workspace",
+                "product_updates", "security_alerts",
+            }
+            if category not in supported_categories:
+                await _patch_delivery(delivery, {
+                    "state": "suppressed", "last_error_code": "notification_category_unsupported",
+                })
+                continue
             if preferences.get("push_enabled") is False or preferences.get(category) is False:
                 await _patch_delivery(delivery, {
                     "state": "suppressed", "last_error_code": "notification_preference_disabled",
