@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import type { Session } from "@supabase/supabase-js";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 
 type NotificationItem = {
   id: string; category: string; event_key: string; title: string; body: string;
@@ -11,7 +11,7 @@ type InboxResponse = { items: NotificationItem[]; unread_count: number };
 type NotificationPreferences = { social_activity: boolean; community: boolean; workspace: boolean; product_updates: boolean; security_alerts: boolean; push_enabled: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\/$/, "");
 
-export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange }: { session: Session; pushStatus?: string; onPushPreferenceChange?: () => void }) {
+export function NotificationsInbox({ session, supabase, pushStatus, onPushPreferenceChange }: { session: Session; supabase: SupabaseClient | null; pushStatus?: string; onPushPreferenceChange?: () => void }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -39,6 +39,30 @@ export function NotificationsInbox({ session, pushStatus, onPushPreferenceChange
   }, [api]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    const topic = "user:" + session.user.id + ":notifications";
+    void supabase.realtime.setAuth(session.access_token);
+    const channel = supabase.channel(topic, { config: { private: true } })
+      .on("broadcast", { event: "INSERT" }, message => {
+        if (!active) return;
+        const payload = message.payload as Record<string, unknown> | undefined;
+        const row = (payload?.record ?? payload?.new ?? payload) as Partial<NotificationItem> | undefined;
+        if (!row || typeof row.id !== "string" || row.user_id !== session.user.id || row.delivery_state === "suppressed") return;
+        const next: NotificationItem = {
+          id: row.id, category: row.category || "social_activity", event_key: row.event_key || "",
+          title: row.title || "Notifikasi baru", body: row.body || "",
+          delivery_state: row.delivery_state || "delivered", read_at: row.read_at || null,
+          created_at: row.created_at || new Date().toISOString(),
+        };
+        setItems(current => current.some(item => item.id === next.id) ? current : [next, ...current].slice(0, 100));
+        if (!next.read_at) setUnreadCount(value => value + 1);
+      })
+      .subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [session.access_token, session.user.id, supabase]);
 
   const loadPreferences = useCallback(async () => {
     try {
