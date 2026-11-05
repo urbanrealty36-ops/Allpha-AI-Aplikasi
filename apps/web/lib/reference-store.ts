@@ -119,6 +119,7 @@ export interface PostItem {
     content: string;
     timestamp: string;
     likes: number;
+    parentCommentId?: string | null;
   }>;
 }
 
