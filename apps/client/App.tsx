@@ -48,7 +48,7 @@ type Routes = {
 };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
-type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string };
+type NativeFeedComment = { id: string; actor_user_id: string; body: string; created_at: string; parent_comment_id?: string | null };
 type NativeStory = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; published_at?: string | null; expires_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[] };
 
 
@@ -417,6 +417,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [feedCommentDrafts, setFeedCommentDrafts] = useState<Record<string, string>>({});
   const [feedComments, setFeedComments] = useState<Record<string, NativeFeedComment[]>>({});
   const [feedCommentsOpen, setFeedCommentsOpen] = useState<Record<string, boolean>>({});
+  const [feedReplyTargets, setFeedReplyTargets] = useState<Record<string, string>>({});
+  const [feedQuoteTarget, setFeedQuoteTarget] = useState<NativeFeedItem | null>(null);
+  const [feedQuoteDraft, setFeedQuoteDraft] = useState("");
   const [agentHandle, setAgentHandle] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
@@ -799,6 +802,19 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Interaksi feed gagal."); }
     finally { setFeedBusy(false); }
   }
+  async function createNativeRepost(item: NativeFeedItem, shareTarget: "repost" | "quote", quoteBody?: string) {
+    setFeedBusy(true); setError(""); setMessage("");
+    try {
+      await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/share", {
+        method: "POST",
+        body: JSON.stringify({ share_target: shareTarget, ...(shareTarget === "quote" ? { quote_body: quoteBody } : {}) }),
+      });
+      setFeedQuoteTarget(null); setFeedQuoteDraft("");
+      setMessage(shareTarget === "repost" ? "Postingan berhasil di-repost." : "Kutipan berhasil diterbitkan.");
+      await loadNativeFeed(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Repost/kutipan gagal disimpan."); }
+    finally { setFeedBusy(false); }
+  }
   async function shareNativeContent(item: NativeFeedItem) {
     setFeedBusy(true); setError(""); setMessage("");
     try {
@@ -820,12 +836,13 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       { text: "Batal", style: "cancel" },
     ]);
   }
-  async function submitNativeFeedComment(item: NativeFeedItem) {
+  async function submitNativeFeedComment(item: NativeFeedItem, parentCommentId?: string) {
     const body = (feedCommentDrafts[item.id] || "").trim(); if (!body) return;
     setFeedBusy(true); setError(""); setMessage("");
     try {
-      await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { method: "POST", body: JSON.stringify({ body }) });
-      setFeedCommentDrafts(current => ({ ...current, [item.id]: "" })); setMessage("Komentar dikirim.");
+      await apiRequest("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { method: "POST", body: JSON.stringify({ body, ...(parentCommentId ? { parent_comment_id: parentCommentId } : {}) }) });
+      setFeedCommentDrafts(current => ({ ...current, [item.id]: "" }));
+      setFeedReplyTargets(current => ({ ...current, [item.id]: "" })); setMessage(parentCommentId ? "Balasan dikirim." : "Komentar dikirim.");
       await loadNativeFeed(true);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Komentar gagal dikirim."); }
     finally { setFeedBusy(false); }
@@ -1780,17 +1797,22 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
             <Button title={(item.viewer_reaction ? "♥ Disukai" : "♡ Suka") + " · " + (item.engagement?.likes ?? 0)} secondary={!!item.viewer_reaction} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "like")}/>
             <Button title={(item.saved ? "Tersimpan" : "Simpan") + " · " + (item.engagement?.saves ?? 0)} secondary={!!item.saved} disabled={feedBusy} onPress={() => void nativeFeedAction(item, "save")}/>
             <Button title={"Bagikan · " + (item.engagement?.shares ?? 0)} secondary disabled={feedBusy} onPress={() => void shareNativeContent(item)}/>
+            <Button title="Repost" secondary disabled={feedBusy} onPress={() => void createNativeRepost(item, "repost")}/>
+            <Button title="Kutip" secondary disabled={feedBusy} onPress={() => { setFeedQuoteTarget(item); setFeedQuoteDraft(""); }}/>
             <Button title="Tidak tertarik" secondary disabled={feedBusy} onPress={() => void submitNativeFeedFeedback(item, "not_interested")}/>
             <Button title="Sembunyikan kreator" secondary disabled={feedBusy} onPress={() => void submitNativeFeedFeedback(item, "hide_creator")}/>
             <Button title="Laporkan" secondary disabled={feedBusy} onPress={() => chooseNativeReportReason(item)}/>
             <Button title={feedCommentsOpen[item.id] ? "Tutup komentar" : "Lihat komentar"} secondary disabled={feedBusy} onPress={() => void toggleNativeComments(item)}/>
           </View>
-          {feedCommentsOpen[item.id] && (feedComments[item.id] ?? []).map(comment => <View key={comment.id} style={s.socialRow}>
+          {feedCommentsOpen[item.id] && (feedComments[item.id] ?? []).filter(comment => !comment.parent_comment_id).map(comment => <View key={comment.id} style={s.socialRow}>
             <Text style={s.muted}>{comment.actor_user_id.slice(0, 8)} · {new Date(comment.created_at).toLocaleString()}</Text>
             <Text style={s.body}>{comment.body}</Text>
+            <Button title="Balas" secondary disabled={feedBusy} onPress={() => setFeedReplyTargets(current => ({ ...current, [item.id]: comment.id }))}/>
+            {(feedComments[item.id] ?? []).filter(reply => reply.parent_comment_id === comment.id).map(reply => <View key={reply.id} style={[s.socialRow, { marginLeft: 16, borderColor: "#6366F1" }]}><Text style={s.muted}>{reply.actor_user_id.slice(0, 8)} · {new Date(reply.created_at).toLocaleString()}</Text><Text style={s.body}>{reply.body}</Text></View>)}
           </View>)}
-          <TextInput accessibilityLabel="Tulis komentar feed" value={feedCommentDrafts[item.id] || ""} onChangeText={value => setFeedCommentDrafts(current => ({ ...current, [item.id]: value }))} maxLength={2000} style={field} placeholder="Tulis komentar…" placeholderTextColor="#8B94AC"/>
-          <Button title="Kirim komentar" disabled={feedBusy || !(feedCommentDrafts[item.id] || "").trim()} onPress={() => void submitNativeFeedComment(item)}/>
+          <TextInput accessibilityLabel="Tulis komentar feed" value={feedCommentDrafts[item.id] || ""} onChangeText={value => setFeedCommentDrafts(current => ({ ...current, [item.id]: value }))} maxLength={2000} style={field} placeholder={feedReplyTargets[item.id] ? "Tulis balasan…" : "Tulis komentar…"} placeholderTextColor="#8B94AC"/>
+          <Button title={feedReplyTargets[item.id] ? "Kirim balasan" : "Kirim komentar"} disabled={feedBusy || !(feedCommentDrafts[item.id] || "").trim()} onPress={() => void submitNativeFeedComment(item, feedReplyTargets[item.id])}/>
+          {feedQuoteTarget?.id === item.id && <View style={s.socialRow}><Text style={s.body}>Kutip postingan ini dengan atribusi ke kreator asli.</Text><TextInput accessibilityLabel="Teks kutipan" multiline value={feedQuoteDraft} onChangeText={setFeedQuoteDraft} maxLength={2000} style={field} placeholder="Tambahkan pemikiran Anda…" placeholderTextColor="#8B94AC"/><View style={{ flexDirection: "row", gap: 8 }}><Button title="Batal" secondary onPress={() => { setFeedQuoteTarget(null); setFeedQuoteDraft(""); }}/><Button title="Terbitkan kutipan" disabled={feedBusy || !feedQuoteDraft.trim()} onPress={() => void createNativeRepost(item, "quote", feedQuoteDraft.trim())}/></View></View>}
           <Text style={s.muted}>{item.engagement?.comments ?? 0} komentar · sinyal ranking: terbaru, follow, engagement</Text>
         </View>)}
         {feedCursor && <Button title="Muat feed berikutnya" secondary disabled={feedBusy} onPress={() => void loadNativeFeed(false)}/>}
