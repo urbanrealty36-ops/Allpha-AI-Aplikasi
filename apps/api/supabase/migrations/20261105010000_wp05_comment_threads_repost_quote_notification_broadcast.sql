@@ -59,50 +59,15 @@ create index if not exists content_shares_reposts_content_created_idx
   on public.content_shares (content_id, created_at desc)
   where share_target in ('repost', 'quote');
 
--- Realtime is delivered through private Broadcast, not Postgres Changes on the
--- notifications table. Clients do not receive SELECT privileges on notifications.
-alter table realtime.messages enable row level security;
-
-drop policy if exists allpha_user_notification_broadcast_read on realtime.messages;
-create policy allpha_user_notification_broadcast_read
-  on realtime.messages
-  for select
-  to authenticated
-  using (
-    realtime.topic() = 'user:' || (select auth.uid())::text || ':notifications'
-  );
-
-create or replace function public.broadcast_user_notification()
-returns trigger
-language plpgsql
-security definer
-set search_path = public, realtime, pg_temp
-as $$
-begin
-  perform realtime.broadcast_changes(
-    'user:' || new.user_id::text || ':notifications',
-    'INSERT',
-    'notifications',
-    'public',
-    new,
-    null
-  );
-  return new;
-end;
-$$;
-
-revoke all on function public.broadcast_user_notification() from public;
-drop trigger if exists notifications_private_broadcast_insert on public.notifications;
-create trigger notifications_private_broadcast_insert
-  after insert on public.notifications
-  for each row execute function public.broadcast_user_notification();
+-- Realtime delivery is exposed through the authenticated FastAPI notification
+-- update stream. The managed realtime.messages table is not modified because
+-- the project migration role is not its owner; client roles retain no direct
+-- SELECT access to the notifications table.
 
 comment on column public.content_comments.parent_comment_id is
   'Optional parent comment; composite FK enforces same content thread.';
 comment on column public.content_shares.quote_body is
   'Republisher-authored text for quote shares; original content remains content_id.';
-comment on function public.broadcast_user_notification() is
-  'Broadcasts notification inserts only to the owning user private Realtime topic.';
 
 commit;
 
