@@ -51,6 +51,9 @@ export default function NotificationsPage() {
         inboxSequence.current += 1;
         preferencesSequence.current += 1;
         setItems([]);
+        seenNotificationIds.current.clear();
+        streamCursor.current = new Date(Date.now() - 1000).toISOString();
+        streamCursorId.current = null;
         setUnreadCount(0);
         setPreferences(null);
         setBusyId(null);
@@ -93,6 +96,7 @@ export default function NotificationsPage() {
       const result = await api<InboxResponse>("/v1/notifications" + query);
       if (epoch !== sessionEpoch.current || sequence !== inboxSequence.current) return;
       setItems(result.items || []);
+      seenNotificationIds.current = new Set((result.items || []).map(item => item.id));
       setUnreadCount(result.unread_count || 0);
     } catch (cause) {
       if (epoch === sessionEpoch.current && sequence === inboxSequence.current) {
@@ -105,6 +109,7 @@ export default function NotificationsPage() {
 
   const streamCursor = useRef(new Date(Date.now() - 1000).toISOString());
   const streamCursorId = useRef<string | null>(null);
+  const seenNotificationIds = useRef(new Set<string>());
   useEffect(() => {
     if (!session) return;
     let active = true;
@@ -141,11 +146,10 @@ export default function NotificationsPage() {
                 streamCursor.current = row.created_at;
                 streamCursorId.current = row.id;
               }
-              setItems(current => {
-                if (current.some(item => item.id === row.id)) return current;
-                if (!row.read_at) setUnreadCount(value => value + 1);
-                return [row, ...current].slice(0, 100);
-              });
+              if (seenNotificationIds.current.has(row.id)) continue;
+              seenNotificationIds.current.add(row.id);
+              setItems(current => [row, ...current].slice(0, 100));
+              if (!row.read_at) setUnreadCount(value => value + 1);
             } catch { /* ignore malformed stream frame */ }
           }
         }
