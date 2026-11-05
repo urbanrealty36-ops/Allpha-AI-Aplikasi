@@ -113,10 +113,13 @@ export default function NotificationsPage() {
   useEffect(() => {
     if (!session) return;
     let active = true;
+    let shouldReconnect = true;
+    let reconnectDelayMs = 3000;
     let controller: AbortController | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const connect = async () => {
       controller = new AbortController();
+      shouldReconnect = true;
       try {
         const cursorParams = new URLSearchParams({ after: streamCursor.current });
         if (streamCursorId.current) cursorParams.set("after_id", streamCursorId.current);
@@ -125,7 +128,13 @@ export default function NotificationsPage() {
           cache: "no-store",
           signal: controller.signal,
         });
+        if (response.status === 401 || response.status === 403) {
+          shouldReconnect = false;
+          setError("Sesi tidak lagi memiliki akses ke notifikasi. Silakan perbarui sesi.");
+          return;
+        }
         if (!response.ok || !response.body) throw new Error("Stream notifikasi tidak tersedia.");
+        reconnectDelayMs = 3000;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -156,7 +165,10 @@ export default function NotificationsPage() {
       } catch {
         // Reconnect automatically; the REST inbox remains available during outages.
       } finally {
-        if (active) reconnectTimer = setTimeout(() => { void connect(); }, 3000);
+        if (active && shouldReconnect) {
+          reconnectTimer = setTimeout(() => { void connect(); }, reconnectDelayMs);
+          reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000);
+        }
       }
     };
     void connect();
