@@ -25,7 +25,8 @@ begin
  if exists(
    select 1 from public.content_media m where m.content_id=p_content_id and m.owner_id=p_owner_id
    and (m.status<>'ready' or m.scan_status<>'clean' or m.processed_at is null
-     or jsonb_typeof(m.derivatives)<>'array' or jsonb_array_length(m.derivatives)<1)
+     or jsonb_typeof(m.derivatives) is distinct from 'array'
+     or jsonb_array_length(case when jsonb_typeof(m.derivatives)='array' then m.derivatives else '[]'::jsonb end)<1)
  ) then return jsonb_build_object('outcome','media_not_ready'); end if;
  v_provenance:=coalesce(v_content.provenance,'{}'::jsonb)||jsonb_build_object(
   'rights_confirmed',true,'disclosure_confirmed',true,'rights_attested_at',now());
