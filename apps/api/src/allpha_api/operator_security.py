@@ -339,6 +339,19 @@ async def get_operator_access(
     return {"operator": operator, "authorization": "verified"}
 
 
+@router.get("/operator/agent-social/audit", name="get_agent_social_audit")
+async def get_agent_social_audit(
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:security.audit.read")),
+) -> dict[str, Any]:
+    rows = await privileged_rest_request(
+        "GET", "agent_social_audit_events",
+        params={"select": "id,owner_user_id,agent_id,approval_id,actor_user_id,event_type,outcome,metadata,created_at",
+                "order": "created_at.desc", "limit": str(min(max(1, limit), 100))},
+    )
+    return {"items": rows or [], "limit": min(max(1, limit), 100)}
+
+
 @router.get("/operator/audit", name="get_operator_audit")
 async def get_operator_audit(
     limit: int = 100,
