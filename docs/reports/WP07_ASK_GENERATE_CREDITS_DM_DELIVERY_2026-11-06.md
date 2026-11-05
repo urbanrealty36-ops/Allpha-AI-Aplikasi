@@ -101,3 +101,8 @@ Important baseline gaps found:
 9. Run the authorized migration lifecycle and focused verification before acceptance.
 
 **Decision:** WP-07 remains `in_progress`. Do not mark `implemented`, `integration_verified`, `acceptance_passed` or `production_verified` from source changes/CI alone. WP-08 must not begin until WP-07’s required acceptance gate is met.
+
+
+## Correction discovered during post-edit inspection
+
+A subsequent raw-file inspection found that the source-only Generation Job SQL file has a duplicated trailing SQL segment after its first `COMMIT;` (the file is 33,260 bytes and contains two `COMMIT;` terminators). The attempted cleanup was blocked by the repository write safety check and did not succeed. Therefore the migration must be treated as **invalid and unusable** until the duplicate tail is removed and the complete SQL is parsed/reviewed. The earlier statement that the malformed SHA-256 expression was repaired remains true for the first copy, but the file as a whole is not clean. Do not apply it. No database migration was applied.
