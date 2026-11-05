@@ -117,6 +117,16 @@ begin
     select 1 from public.agent_skills s
     where s.id=v_skill and s.agent_id=v_agent and s.status='published'
   ) then raise exception 'GENERATION_SKILL_NOT_PUBLISHED' using errcode='42501'; end if;
+  if not exists (
+    select 1 from public.agent_capabilities c
+    where c.agent_id=v_agent and c.capability_key=p_command->>'capability_id' and c.status='approved'
+  ) then raise exception 'GENERATION_CAPABILITY_NOT_APPROVED' using errcode='42501'; end if;
+  if not exists (
+    select 1 from public.billing_subscriptions s
+    where s.owner_user_id=v_owner and s.status='active'
+      and s.entitlement_version=p_command->>'entitlement_version'
+      and s.current_period_end > now()
+  ) then raise exception 'GENERATION_PREMIUM_ENTITLEMENT_REQUIRED' using errcode='42501'; end if;
 
   -- Reservation and queue insertion share one PostgreSQL transaction. An
   -- idempotent retry cannot create an orphan reservation.
