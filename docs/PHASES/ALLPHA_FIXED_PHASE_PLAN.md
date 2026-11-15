@@ -3146,3 +3146,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Reference component inventory audit: 34/34 source component files have target counterparts; 8 are byte-identical and 26 are adapted. File presence/SHA inventory does not establish complete page composition, responsive, or interaction parity.
 - UI-COPY-03 remains in_progress; no browser/viewport/device visual verification, build, lint, typecheck, CI, or runtime journey was run.
 
+
+
+**WP-07 Memory architecture decision gate — 2026-11-16:**
+- Repository ADR inventory contains no ADR-0004 or ADR-0005 memory documents, although older WP-07 notes cite them as gates. This mismatch is now recorded rather than assuming those decisions exist.
+- Added proposed ADR-0022 for one canonical MemoryCoordinator, six-class mapping, explicit per-type consent, private-by-default scopes, provenance, retention/deletion, and embedding-profile constraints.
+- ADR-0022 is PROPOSED / NOT APPROVED. No memory tables, vector dimensions, consent defaults, retention defaults, or persistent memory writes are implemented or activated by this proposal.
+- WP-07 remains in_progress / schema_migrated / acceptance_not_verified. Memory implementation is blocked on the explicit architecture and privacy decision; other WP-07 source work may continue without inventing those decisions.
+
