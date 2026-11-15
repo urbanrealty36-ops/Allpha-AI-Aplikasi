@@ -154,7 +154,7 @@ export default function TakeoverModal({
             onClick={onClose}
             className="w-full py-2.5 rounded-2xl bg-sky-400 hover:bg-sky-500 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
-            Simpan Pengaturan
+Tutup
           </button>
         </div>
       </div>
