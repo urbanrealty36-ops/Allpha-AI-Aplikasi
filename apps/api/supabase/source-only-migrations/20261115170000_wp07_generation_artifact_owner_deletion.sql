@@ -138,6 +138,11 @@ begin
     raise exception 'GENERATION_ARTIFACT_DELETE_CLAIM_INVALID' using errcode='22023';
   end if;
 
+  update public.generation_artifact_deletion_jobs
+  set status='dead',error_code='artifact_delete_lease_expired_max_attempts',
+      lease_token=null,lease_expires_at=null,updated_at=now()
+  where status='processing' and lease_expires_at<=now() and attempts>=max_attempts;
+
   with candidates as (
     select id
     from public.generation_artifact_deletion_jobs
