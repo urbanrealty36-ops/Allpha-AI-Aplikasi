@@ -5,7 +5,7 @@ type Agent = { id: string; display_name: string; status: string };
 type Skill = { id: string; name: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; error_code?: string | null; owner_reward_status?: string | null };
+type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null };
 
 export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = null }: { apiBase: string; getAccessToken: () => Promise<string>; initialJobId?: string | null }) {
   const [agents,setAgents]=useState<Agent[]>([]);
@@ -19,6 +19,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
   const [prompt,setPrompt]=useState("");
   const [knowledgeQuery,setKnowledgeQuery]=useState("");
   const [busy,setBusy]=useState(false);
+  const [deletingArtifact,setDeletingArtifact]=useState(false);
   const [loading,setLoading]=useState(true);
   const [jobId,setJobId]=useState("");
   const [result,setResult]=useState("");
@@ -92,6 +93,14 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
         const status=await api("/v1/generation/jobs/"+encodeURIComponent(initialJobId),token);
         const job=status.job as Job|undefined;
         if(!job)throw new Error("Generation Job tidak ditemukan.");
+        if(job.artifact_deletion_status==="pending"){
+          setNotice("Penghapusan artefak sedang diproses. Akses file telah dinonaktifkan.");
+          return;
+        }
+        if(job.artifact_deletion_status==="deleted"){
+          setNotice("Artefak privat ini sudah dihapus oleh pemiliknya.");
+          return;
+        }
         if(job.status!=="succeeded"||!job.artifact_available){
           setNotice("Generation Job belum memiliki artefak yang dapat dibuka ("+job.status+").");
           return;
@@ -110,6 +119,29 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
     })();
     return()=>{active=false;};
   },[initialJobId,apiBase,getAccessToken]);
+
+  function requestArtifactDeletion(){
+    if(!jobId||!result||deletingArtifact)return;
+    Alert.alert(
+      "Hapus artefak privat",
+      "Akses file akan langsung dinonaktifkan. Penghapusan objek Storage berjalan secara asinkron.",
+      [
+        {text:"Batal",style:"cancel"},
+        {text:"Hapus artefak",style:"destructive",onPress:()=>{void (async()=>{
+          setDeletingArtifact(true);setError("");
+          try{
+            const token=await getAccessToken();
+            const deleted=await api("/v1/generation/jobs/"+encodeURIComponent(jobId)+"/artifact",token,{
+              method:"DELETE",headers:{"Idempotency-Key":createNativeId()},
+            }) as {status?:string};
+            setResult("");
+            setNotice(deleted.status==="succeeded"?"Artefak privat sudah dihapus.":"Permintaan penghapusan diterima. Akses dinonaktifkan; pembersihan Storage berjalan asinkron.");
+          }catch(cause){setError(cause instanceof Error?cause.message:"Penghapusan artefak belum dapat dikonfirmasi.");}
+          finally{setDeletingArtifact(false);}
+        })();}},
+      ],
+    );
+  }
 
   async function runGeneration(){
     if(!agentId||!skillId||!capabilityId||!prompt.trim()||busy)return;
@@ -175,7 +207,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
       {!!notice&&<Text style={{color:"#86EFAC",fontSize:12}}>{notice}</Text>}
       {!!error&&<Text accessibilityRole="alert" style={{color:"#FCA5A5",fontSize:12}}>{error}</Text>}
     </View>
-    {!!result&&<View style={{borderRadius:22,borderWidth:1,borderColor:"#35405C",backgroundColor:"#141B31",padding:16,gap:10}}><Text style={{color:"#A5B4FC",fontWeight:"900"}}>HASIL GENERATION · PRIVATE</Text><Text selectable style={{color:"#F8FAFC",fontSize:14,lineHeight:21}}>{result}</Text></View>}
+    {!!result&&<View style={{borderRadius:22,borderWidth:1,borderColor:"#35405C",backgroundColor:"#141B31",padding:16,gap:10}}><Text style={{color:"#A5B4FC",fontWeight:"900"}}>HASIL GENERATION · PRIVATE</Text><Text selectable style={{color:"#F8FAFC",fontSize:14,lineHeight:21}}>{result}</Text><Pressable disabled={deletingArtifact||busy} onPress={requestArtifactDeletion} style={{borderRadius:12,borderWidth:1,borderColor:"#FDA4AF",padding:12,alignItems:"center",opacity:deletingArtifact||busy?0.5:1}}><Text style={{color:"#FDA4AF",fontWeight:"900"}}>{deletingArtifact?"Menghapus…":"Hapus artefak privat"}</Text></Pressable></View>}
   </ScrollView>;
 }
 
