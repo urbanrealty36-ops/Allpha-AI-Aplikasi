@@ -162,7 +162,7 @@ begin
 
   insert into public.generation_jobs(
     owner_user_id,agent_owner_user_id,payer_user_id,consumer_grant_id,
-    agent_id,skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
+    agent_id,agent_version,runtime_policy_version,skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
     prompt,prompt_sha256,knowledge_snapshot,knowledge_context_sha256,max_output_tokens,timeout_ms,
     estimated_usage_units,usage_unit,estimated_cost_microunits,cost_unit,credits_to_reserve,
     credits_per_usage_unit,credit_scheme_version,tariff_version,entitlement_version,policy_version,
@@ -170,7 +170,7 @@ begin
     allow_partial_settlement,reservation_id,provider_id,model_id,model_version,pricing_version,max_cost_microunits
   ) values (
     v_requester,v_agent_owner,v_payer,v_grant,
-    v_agent,v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',
+    v_agent,v_agent_row.version,nullif(p_command->>'runtime_policy_version',''),v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',
     p_command->>'sensitivity',v_task,p_command->>'trace_id',v_key,p_command->>'prompt',
     p_command->>'prompt_sha256',coalesce(p_command->'knowledge_snapshot','{}'::jsonb),
     nullif(p_command->>'knowledge_context_sha256',''),(p_command->>'max_output_tokens')::integer,
@@ -314,6 +314,11 @@ begin
     or v_job.moderation_status <> 'approved' or v_job.moderation_policy_version is null
     or coalesce((p_result->>'input_tokens')::bigint,-1) < 0
     or coalesce((p_result->>'output_tokens')::bigint,-1) < 0
+    or coalesce((p_result->>'cost_microunits')::bigint,-1) < 0
+    or coalesce((p_result->>'cost_microunits')::bigint,-1) > v_job.max_cost_microunits
+    or v_job.input_tokens is distinct from (p_result->>'input_tokens')::bigint
+    or v_job.output_tokens is distinct from (p_result->>'output_tokens')::bigint
+    or v_job.actual_cost_microunits is distinct from (p_result->>'cost_microunits')::bigint
     or coalesce(p_result->>'source_event_id','')='' then
     raise exception 'GENERATION_JOB_RESULT_INVALID' using errcode='22023';
   end if;
@@ -331,6 +336,22 @@ begin
       and g.status='active' and g.granted_scopes @> array['generation_invoke']::text[]
       and (v_job.knowledge_context_sha256 is null or g.granted_scopes @> array['knowledge_public_read']::text[])
       and (g.expires_at is null or g.expires_at > now())
+      and g.agent_version=v_job.agent_version
+      and g.skill_version=v_job.source_version
+      and g.runtime_policy_version=v_job.runtime_policy_version
+      and g.capability_id=v_job.capability_id
+      and g.credit_scheme_version=v_job.credit_scheme_version
+      and g.approval_reference=v_job.policy_approval_reference
+      and g.tariff_version=v_job.tariff_version
+      and g.entitlement_version=v_job.entitlement_version
+      and g.max_usage_units >= v_job.estimated_usage_units
+      and g.max_cost_microunits >= v_job.max_cost_microunits
+      and g.cost_unit=v_job.cost_unit
+      and g.pricing_version=v_job.pricing_version
+      and g.payer_role=case when v_job.payer_user_id=v_job.owner_user_id then 'consumer' else 'agent_owner' end
+      and g.allow_success_settlement=v_job.allow_success_settlement
+      and g.allow_definitive_failure_release=v_job.allow_definitive_failure_release
+      and g.allow_partial_settlement=v_job.allow_partial_settlement
   ) then raise exception 'GENERATION_CONSUMER_GRANT_REVOKED' using errcode='42501'; end if;
 
   perform public.credit_ledger_settle(jsonb_build_object(
