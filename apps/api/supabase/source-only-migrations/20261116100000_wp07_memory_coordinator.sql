@@ -56,6 +56,15 @@ create policy agent_memory_events_owner_select on public.agent_memory_events for
 revoke all on public.agent_memory_policies,public.agent_memory_items,public.agent_memory_events from public,anon,authenticated;
 grant select on public.agent_memory_policies,public.agent_memory_items,public.agent_memory_events to authenticated;
 grant all on public.agent_memory_policies,public.agent_memory_items,public.agent_memory_events to service_role;
+create or replace function public.prevent_agent_memory_event_mutation()
+returns trigger language plpgsql set search_path=public,pg_temp as $
+begin
+ raise exception 'AGENT_MEMORY_EVENTS_APPEND_ONLY' using errcode='42501';
+end; $;
+drop trigger if exists agent_memory_events_append_only on public.agent_memory_events;
+create trigger agent_memory_events_append_only before update or delete on public.agent_memory_events
+for each row execute function public.prevent_agent_memory_event_mutation();
+
 comment on table public.agent_memory_policies is 'Owner-controlled per-Agent/per-class consent and retention policy; disabled by default.';
 comment on table public.agent_memory_items is 'Private Agent Memory; Knowledge corpus and Conversation messages remain separate.';
 comment on table public.agent_memory_events is 'Content-minimized Memory lifecycle audit events.';
