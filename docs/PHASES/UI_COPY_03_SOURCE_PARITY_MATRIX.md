@@ -326,3 +326,10 @@ The reference repository contains six modal components and the target contains a
 - The modal's footer says “Tutup” because state changes are persisted immediately through FastAPI; it does not claim to save an additional local form.
 - Commits: `07d248a6564f823d92507192d44158a9d443cba3`, `f99df0f0ffd07be07771571963c18a928d0ffe5a`, `c53c3a5387294d5f93bcce69632948e1c9c044be`, `4b794326e52227c79d31491e4a0b474805903e79`.
 - This is UI/source wiring only. WP-06 remains `in_progress / integration_contract_corrected / acceptance_not_verified`; no positive/negative E2E, build, typecheck, CI, device QA or live account journey was run. No WP-06 phase-completion claim is made.
+
+
+## Live Stage unavailable-state correction — 2026-11-15
+
+- `LiveExperienceStage.tsx` now renders a neutral “SESSION NOT CONNECTED” status and non-pulsing neutral indicator while the canonical Live session adapter is unavailable. It only displays a pulsing red live indicator after the adapter reports an available session and the component is in its live state.
+- Live media, chat, host actions, takeover, slide and commerce controls remain fail-closed. No sample viewer count, chat message, media stream or successful live state is introduced.
+- Commit: `e35b1950ddd88d368efc239ea05cf4c9a8fd39f9`.
