@@ -83,6 +83,7 @@ export default function AgentStudioPage() {
   const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high" | "critical">("low");
   const [consumerUserId, setConsumerUserId] = useState("");
   const [consumerSkillId, setConsumerSkillId] = useState("");
+  const [sharePublicKnowledge, setSharePublicKnowledge] = useState(false);
 
   const load = useCallback(async (active: Session) => {
     setLoading(true); setError("");
@@ -289,12 +290,12 @@ export default function AgentStudioPage() {
           requester_user_id: consumerUserId.trim(),
           skill_id: consumerSkillId,
           idempotency_key: crypto.randomUUID(),
-          granted_scopes: ["generation_invoke"],
+          granted_scopes: ["generation_invoke", ...(sharePublicKnowledge ? ["knowledge_public_read"] : [])],
         }),
       });
       if (!response.ok) throw new Error(await readError(response));
       const body = await response.json() as { grant?: { id?: string } };
-      setConsumerUserId("");
+      setConsumerUserId(""); setSharePublicKnowledge(false);
       setNotice("Grant generation tersimpan untuk akun yang dipilih. Scope hanya generation_invoke; akses Knowledge privat tidak ikut diberikan." + (body.grant?.id ? " Grant ID: " + body.grant.id : ""));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Grant generation tidak dapat dibuat.");
@@ -389,7 +390,7 @@ export default function AgentStudioPage() {
         <form onSubmit={createGenerationGrant} className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">Akun Consumer (UUID)<input required value={consumerUserId} onChange={event => setConsumerUserId(event.target.value)} className="rounded-lg border px-3 py-2 font-mono text-xs" placeholder="UUID pengguna yang akan diberi akses"/></label>
           <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => setConsumerSkillId(event.target.value)} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
-          <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
+          <label className="sm:col-span-2 flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" checked={sharePublicKnowledge} onChange={event => setSharePublicKnowledge(event.target.checked)} className="mt-1"/><span><strong>Izinkan Knowledge publik</strong><span className="mt-1 block text-xs text-neutral-500">Hanya sumber ber-sensitivity public, status ready, versi cocok, consent aktif, dan provenance tervalidasi. Tidak memberikan akses ke Knowledge privat/internal/confidential/restricted.</span></span></label><div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
         </form>
       </section>
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
