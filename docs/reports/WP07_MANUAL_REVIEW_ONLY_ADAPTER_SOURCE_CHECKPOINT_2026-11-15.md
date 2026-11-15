@@ -56,3 +56,18 @@ deployment were performed, per the execution instruction.
 
 WP-07 therefore remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`. The required
 sequence remains WP-07 → WP-06 → WP-11 → WP-12.
+
+## Follow-up safety guard
+
+A subsequent source correction validates the approved policy configuration in
+`run_once` before the worker claims any queued job. When the built-in adapter
+is selected and the approved policy is not exactly `manual_review_only`, the
+worker returns idle before the claim/provider path. This prevents a mismatched
+policy from producing an artifact that cannot enter the Human review queue.
+
+Correction commits:
+- Adapter policy predicate: `0baf055cb5745fed39ad618b28a60600f5e5cbce`
+- Pre-claim worker guard: `2fdf58107865eaa08504e9db1c0e5df3fbfb1bec`
+
+This was a source inspection/correction only; no tests or runtime execution
+were performed.
