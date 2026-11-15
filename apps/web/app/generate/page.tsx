@@ -34,6 +34,7 @@ export default function GeneratePage() {
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [canCancelGeneration, setCanCancelGeneration] = useState(false);
   const [artifactDeleting, setArtifactDeleting] = useState(false);
   const [result, setResult] = useState("");
   const [jobId, setJobId] = useState("");
@@ -160,7 +161,7 @@ export default function GeneratePage() {
       "Produk/jasa: " + request.productDetails,
       "Brief: " + request.brief,
     ].join("\n");
-    setBusy(true); setError(""); setNotice(""); setResult(""); setJobId(""); setDmConversationId("");
+    setBusy(true); setCanCancelGeneration(false); setError(""); setNotice(""); setResult(""); setJobId(""); setDmConversationId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
     const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: promptText, max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
@@ -182,6 +183,7 @@ export default function GeneratePage() {
       const created = await createResponse.json() as { job_id: string };
       if (!created.job_id) throw new Error("Generation Job belum dikonfirmasi.");
       setJobId(created.job_id);
+      setCanCancelGeneration(true);
       for (let attempt = 0; attempt < 60; attempt += 1) {
         await wait(2000);
         const statusResponse = await fetch(apiBase + `/v1/generation/jobs/${created.job_id}`, { headers: { Authorization: headers.Authorization, Accept: "application/json" }, cache: "no-store" });
@@ -189,6 +191,7 @@ export default function GeneratePage() {
         const payload = await statusResponse.json() as { job?: Job };
         const job = payload.job;
         if (!job) throw new Error("Status generation tidak ditemukan.");
+        setCanCancelGeneration(job.status === "queued");
         if (job.dm_conversation_id) setDmConversationId(job.dm_conversation_id);
         if (job.status === "succeeded" && job.artifact_available) {
           const artifactResponse = await fetch(apiBase + `/v1/generation/jobs/${created.job_id}/artifact`, { headers: { Authorization: headers.Authorization, Accept: "application/json" }, cache: "no-store" });
@@ -202,15 +205,41 @@ export default function GeneratePage() {
           setNotice("Hasil lolos moderasi dan tersimpan sebagai artefak privat. Creator reward: " + (job.owner_reward_status || "pending_policy") + ". DM delivery dikonfirmasi oleh backend.");
           return outputText;
         }
-        if (job.status === "failed" || job.status === "cancelled") throw new Error(job.error_code || "Generation gagal.");
-        if (job.status === "pending_reconciliation") throw new Error("Outcome provider belum pasti. Job masuk rekonsiliasi dan tidak diulang otomatis.");
+        if (job.status === "cancelled") {
+          setNotice("Generation dibatalkan sebelum worker memanggil provider. Tidak ada output yang dibuat.");
+          return null;
+        }
+        if (job.status === "pending_reconciliation") {
+          if (job.error_code === "cancel_release_policy_not_approved") {
+            setNotice("Pembatalan tercatat, tetapi policy belum mengizinkan pelepasan reservasi. Saldo menunggu rekonsiliasi.");
+            return null;
+          }
+          throw new Error("Outcome provider belum pasti. Job masuk rekonsiliasi dan tidak diulang otomatis.");
+        }
+        if (job.status === "failed") throw new Error(job.error_code || "Generation gagal.");
       }
       setNotice("Job masih berjalan. Periksa kembali melalui riwayat Generation; permintaan tidak dikirim ulang.");
       return null;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Generation tidak dapat diselesaikan.");
       throw cause;
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setCanCancelGeneration(false); }
+  }
+
+  async function cancelGeneration(): Promise<{ status?: string }> {
+    if (!session || !jobId || !canCancelGeneration) throw new Error("Job sudah mulai diproses dan tidak dapat dibatalkan dengan aman.");
+    const response = await fetch(apiBase + "/v1/generation/jobs/" + encodeURIComponent(jobId) + "/cancel", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(await errorMessage(response));
+    const payload = await response.json() as { status?: string };
+    setCanCancelGeneration(false);
+    setNotice(payload.status === "cancelled"
+      ? "Antrean dibatalkan sebelum eksekusi provider. Reservasi dilepas sesuai policy aktif."
+      : "Pembatalan tercatat, tetapi reservasi harus menunggu rekonsiliasi policy.");
+    return payload;
   }
 
   async function deleteArtifact(): Promise<{ status?: string }> {
@@ -268,6 +297,8 @@ export default function GeneratePage() {
       isOpen={generatorOpen}
       onClose={() => setGeneratorOpen(false)}
       onGenerate={generate}
+      canCancelGeneration={canCancelGeneration}
+      onCancelGeneration={cancelGeneration}
       directMessageAvailable={!!dmConversationId}
       artifactDeleteAvailable={!!jobId && !!result}
       artifactDeleting={artifactDeleting}
