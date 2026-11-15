@@ -35,9 +35,12 @@ interface GenerateModalProps {
   onGenerate: (request: GenerateRequest) => Promise<string | null>;
   directMessageAvailable: boolean;
   onOpenDirectMessage: () => void;
+  artifactDeleteAvailable: boolean;
+  artifactDeleting: boolean;
+  onDeleteArtifact: () => Promise<void>;
 }
 
-export default function GenerateModal({ isOpen, onClose, onGenerate, directMessageAvailable, onOpenDirectMessage }: GenerateModalProps) {
+export default function GenerateModal({ isOpen, onClose, onGenerate, directMessageAvailable, onOpenDirectMessage, artifactDeleteAvailable, artifactDeleting, onDeleteArtifact }: GenerateModalProps) {
   const [contentType, setContentType] = useState<GenerateContentType>('REELS_BRAND');
   const [brandName, setBrandName] = useState('');
   const [productDetails, setProductDetails] = useState('');
@@ -81,6 +84,19 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
       navigator.clipboard.writeText(result);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2500);
+    }
+  };
+
+  const handleDeleteArtifact = async () => {
+    if (!artifactDeleteAvailable || artifactDeleting || isLoading) return;
+    if (!window.confirm('Hapus artefak privat ini? Tautan hasil pada DM juga tidak akan dapat membuka file setelah penghapusan diminta.')) return;
+    setError('');
+    try {
+      await onDeleteArtifact();
+      setResult(null);
+      setNotice('Permintaan penghapusan diterima. Akses artefak telah dinonaktifkan; pembersihan Storage berjalan melalui worker.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Penghapusan artefak belum dapat dikonfirmasi.');
     }
   };
 
@@ -278,24 +294,30 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
               {result}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={onOpenDirectMessage}
                 disabled={!directMessageAvailable}
-                className="flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-w-0 flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="w-3.5 h-3.5 stroke-[2.5px]" />
                 <span>{directMessageAvailable ? 'Buka Direct Message' : 'DM belum dikonfirmasi'}</span>
               </button>
               <button
-                onClick={() => {
-                  setResult(null);
-                  handleGenerate();
-                }}
-                className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
+                onClick={() => { setResult(null); handleGenerate(); }}
+                disabled={isLoading || artifactDeleting}
+                className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer disabled:opacity-50"
               >
                 Generate Ulang
               </button>
+              {artifactDeleteAvailable && <button
+                type="button"
+                onClick={() => void handleDeleteArtifact()}
+                disabled={artifactDeleting || isLoading}
+                className="w-full py-2.5 rounded-2xl bg-rose-100 hover:bg-rose-200 text-rose-900 font-black text-xs border-2 border-rose-700 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50"
+              >
+                <span className="inline-flex items-center justify-center gap-1.5"><Trash2 className="h-3.5 w-3.5"/>{artifactDeleting ? 'Menghapus…' : 'Hapus artefak privat'}</span>
+              </button>}
             </div>
           </div>
         )}
