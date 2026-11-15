@@ -120,6 +120,7 @@ export default function LiveExperienceStage({
   const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState<'AI_CREDITS' | 'QRIS' | 'VA'>('AI_CREDITS');
   const [destinationAddress, setDestinationAddress] = useState('');
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const checkoutAvailable = typeof onCheckout === 'function';
 
   // File Manager Upload Ref on Stage
   const stageFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -141,9 +142,27 @@ export default function LiveExperienceStage({
   };
 
   // Checkout is fail-closed until a canonical order/payment adapter is connected.
-  const handleConfirmDirectCheckout = (e: React.FormEvent) => {
+  const handleConfirmDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStageToast('Checkout Live belum terhubung ke layanan pesanan dan pembayaran.');
+    if (!onCheckout || !checkoutModalProduct || isProcessingCheckout) {
+      setStageToast('Checkout Live belum terhubung ke layanan pesanan dan pembayaran.');
+      return;
+    }
+    setIsProcessingCheckout(true);
+    try {
+      await onCheckout({
+        productId: checkoutModalProduct.id,
+        quantity: checkoutQuantity,
+        paymentMethod: checkoutPaymentMethod,
+        ...(checkoutModalProduct.type === 'PHYSICAL' ? { shippingAddress: destinationAddress.trim() } : {}),
+      });
+      setCheckoutModalProduct(null);
+      setStageToast('Permintaan checkout dikirim ke layanan Commerce.');
+    } catch (cause) {
+      setStageToast(cause instanceof Error ? cause.message : 'Checkout belum dapat dikonfirmasi oleh layanan Commerce.');
+    } finally {
+      setIsProcessingCheckout(false);
+    }
   };
 
   // Audio and AI speech state must come from the real Live transport; no local simulation.
