@@ -372,3 +372,8 @@ Read-only Git blob SHA comparison was run between the source repository urbanrea
 - The UI explains the 60-second signed URL window accurately: new signed URLs are blocked after deletion is requested, but a URL already issued can remain usable until the object is deleted or the URL expires.
 - Automatic retention/expiry is not shown as configured; retention periods and deletion SLAs remain open policy decisions in the Master PRD.
 - This UI source update is not browser/device parity acceptance. No build, lint, typecheck, CI, staging or deployment was run.
+## Generation artifact deletion operator recovery — 2026-11-15
+
+- Super Admin Content Moderation now includes a separate artifact deletion recovery queue alongside content and Generation output moderation. Queued/processing/dead states are sourced from FastAPI; dead-letter retry requires a reason and is audited by the operator API.
+- Owner-facing Web and Native Generate surfaces expose the same artifact deletion request; status text distinguishes pending, completed and operator-recovery states. No direct browser or mobile Supabase Storage mutation was added.
+- This is source-level UI wiring; no browser/device review, build or runtime verification was performed. The queue remains unavailable until its source-only schema is applied through an approved migration path.
