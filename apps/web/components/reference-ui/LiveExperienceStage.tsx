@@ -422,10 +422,10 @@ export default function LiveExperienceStage({
                 </span>
                 <div>
                   <h3 className="text-xs sm:text-sm font-black text-slate-950">
-                    Etalase Produk Live • Checkout Langsung
+                    Etalase Produk Live
                   </h3>
                   <p className="text-[10px] font-semibold text-slate-800">
-                    Beli aset 3D & merchandise resmi tanpa meninggalkan siaran panggung
+                    Katalog produk yang dapat ditautkan ke sesi Live setelah layanan Commerce terhubung
                   </p>
                 </div>
               </div>
@@ -470,13 +470,15 @@ export default function LiveExperienceStage({
                   </div>
 
                   <button
+                    disabled={!checkoutAvailable}
                     onClick={() => {
+                      if (!checkoutAvailable) return;
                       setCheckoutModalProduct(prod);
                       setCheckoutQuantity(1);
                     }}
-                    className="w-full py-1.5 px-3 rounded-xl bg-[#BBF7D0] hover:bg-emerald-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-1.5 px-3 rounded-xl bg-[#BBF7D0] hover:bg-emerald-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span>Checkout Langsung</span>
+                    <span>{checkoutAvailable ? "Checkout Langsung" : "Checkout belum tersedia"}</span>
                     <ArrowRight className="w-3 h-3 stroke-[2.5px]" />
                   </button>
                 </div>
@@ -567,7 +569,7 @@ export default function LiveExperienceStage({
       {/* ========================================================= */}
       {/* DIRECT CHECKOUT MODAL IN LIVE STAGE (User Request) */}
       {/* ========================================================= */}
-      {checkoutModalProduct && (
+      {checkoutModalProduct && checkoutAvailable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-150">
           <div className="w-full max-w-md bg-white rounded-3xl border-2 border-slate-900 shadow-[6px_6px_0px_#0f172a] p-5 space-y-4 text-xs">
             {/* Header */}
@@ -680,7 +682,7 @@ export default function LiveExperienceStage({
             {/* Guarantees */}
             <div className="p-2.5 rounded-xl bg-emerald-50 border border-slate-900 flex items-center gap-2 text-[10px] text-emerald-950 font-bold">
               <ShieldCheck className="w-4 h-4 text-emerald-700 stroke-[2.5px] shrink-0" />
-              <span>Garansi 100% Aman • 85% Royalti diteruskan langsung ke penjual</span>
+              <span>Detail pembayaran dan kebijakan settlement akan ditampilkan setelah layanan Commerce terhubung.</span>
             </div>
 
             {/* Actions */}
