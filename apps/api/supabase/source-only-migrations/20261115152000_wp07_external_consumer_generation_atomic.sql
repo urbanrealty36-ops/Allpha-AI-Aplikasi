@@ -474,7 +474,7 @@ begin
   ) values (
     v_conversation_id,'agent',v_job.agent_id,
     'Hasil Generate AI sudah siap. Artefak privat dapat dibuka melalui tombol hasil di percakapan ini.',
-    v_job.id::text,'sent',v_job.id
+    v_job.id,'sent',v_job.id
   ) returning id into v_message_id;
   update public.conversations set last_message_at=now(),updated_at=now()
     where id=v_conversation_id;
