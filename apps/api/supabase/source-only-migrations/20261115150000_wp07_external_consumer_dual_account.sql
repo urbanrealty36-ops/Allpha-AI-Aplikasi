@@ -32,7 +32,16 @@ alter table public.generation_jobs
   add column if not exists skill_snapshot_sha256 text
     check (skill_snapshot_sha256 is null or skill_snapshot_sha256 ~ '^[0-9a-f]{64}$'),
   add column if not exists owner_reward_status text not null default 'pending_policy'
-    check (owner_reward_status in ('pending_policy','settled','not_eligible','reconciliation_required'));
+    check (owner_reward_status in ('pending_policy','settled','not_eligible','reconciliation_required'));,
+  add column if not exists payer_role text generated always as (
+    case
+      when payer_user_id is null or owner_user_id is null or agent_owner_user_id is null then null
+      when payer_user_id = owner_user_id then 'consumer'
+      when payer_user_id = agent_owner_user_id then 'agent_owner'
+      else 'invalid'
+    end
+  ) stored,
+  add column if not exists error_code text;
 
 update public.generation_jobs j
 set agent_owner_user_id = coalesce(j.agent_owner_user_id, j.owner_user_id),
