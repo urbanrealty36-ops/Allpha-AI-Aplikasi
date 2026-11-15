@@ -23,6 +23,7 @@ begin
 end;
 $$;
 revoke all on function public.prevent_generation_output_review_event_mutation() from public, anon, authenticated, service_role;
+grant execute on function public.prevent_generation_output_review_event_mutation() to service_role;
 create trigger generation_output_review_events_append_only
 before update or delete on public.generation_output_review_events
 for each row execute function public.prevent_generation_output_review_event_mutation();

@@ -301,3 +301,8 @@ The reference repository contains six modal components and the target contains a
 
 - The Product Owner's current execution sequence labels WP-08 as `LLM, Tools and Orchestration`, while the canonical fixed phase-plan WP-08 row labels it `Agent Skills, Knowledge and Memory lifecycle`. The former maps mainly to ENG-P09/P10/P11 and WP-09 orchestration; the latter maps to ENG-P05–P09 and P12.
 - Do not silently redefine WP-08 or implement both scopes under one label. Preserve the requested execution order, but reconcile the WP-08 scope in the single fixed phase plan before that package begins. No WP-08 work has started.
+
+### Native DM / Generate delivery check — 2026-11-15
+
+- Static source inspection of `apps/client/App.tsx` confirms the Native `Messages` route calls `/v1/messages/conversations`, loads messages through the authenticated API, and renders `generation_job_id` with a `Buka hasil Generate privat` action that opens `NativeGenerateCenter` with the linked job ID. This closes the Native DM-to-Generate navigation source gap for the current WP-07 flow; it does not prove runtime access to the source-only Generation Job schema or artifact storage.
+- Native AI Cinema currently mounts `AiCinemaPlaybackCenter` and `AiCinemaCreatorWorkspace`; Native AI Social includes Feed, Messages, Agent Social Controls and Generate entry points. Live Stage remains unavailable because the canonical Live Session API/provider contract is absent.
