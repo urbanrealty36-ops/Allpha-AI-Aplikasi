@@ -81,6 +81,8 @@ export default function AgentStudioPage() {
   const [capabilityKey, setCapabilityKey] = useState("");
   const [capabilityDescription, setCapabilityDescription] = useState("");
   const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high" | "critical">("low");
+  const [consumerUserId, setConsumerUserId] = useState("");
+  const [consumerSkillId, setConsumerSkillId] = useState("");
 
   const load = useCallback(async (active: Session) => {
     setLoading(true); setError("");
@@ -275,6 +277,30 @@ export default function AgentStudioPage() {
     finally { setSaving(false); }
   }
 
+  async function createGenerationGrant(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !consumerUserId.trim() || !consumerSkillId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/messages/agents/${encodeURIComponent(agentId)}/consumer-grants`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requester_user_id: consumerUserId.trim(),
+          skill_id: consumerSkillId,
+          idempotency_key: crypto.randomUUID(),
+          granted_scopes: ["generation_invoke"],
+        }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      const body = await response.json() as { grant?: { id?: string } };
+      setConsumerUserId("");
+      setNotice("Grant generation tersimpan untuk akun yang dipilih. Scope hanya generation_invoke; akses Knowledge privat tidak ikut diberikan." + (body.grant?.id ? " Grant ID: " + body.grant.id : ""));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Grant generation tidak dapat dibuat.");
+    } finally { setSaving(false); }
+  }
+
   if (!session && !loading) return <main className="mx-auto max-w-4xl p-6"><h1 className="text-2xl font-semibold">Agent Studio</h1><p className="mt-3 text-sm">{error || "Masuk untuk melanjutkan."}</p></main>;
 
   return <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
@@ -357,6 +383,14 @@ export default function AgentStudioPage() {
             {versionHistory?.skillId === skill.id && <div className="mt-3 space-y-2 border-t pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Riwayat versi tersimpan</p>{versionHistory.items.length === 0 ? <p className="text-sm text-neutral-500">Belum ada snapshot yang dapat ditampilkan.</p> : versionHistory.items.map(version => <div key={version.id} className="rounded-lg bg-neutral-50 p-2 text-sm"><div className="flex justify-between gap-2"><strong>v{version.version} · {version.snapshot?.name || skill.name}</strong><span className="text-xs text-neutral-500">{version.snapshot?.status || "snapshot"}</span></div><p className="mt-1 text-xs text-neutral-600">{version.snapshot?.changelog || "Tanpa changelog"} · {new Date(version.created_at).toLocaleString("id-ID")}</p></div>)}</div>}
           </article>)}
         </div>
+      </section>
+      <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
+        <div><h2 className="text-xl font-semibold">Grant Consumer untuk AI Generation</h2><p className="mt-1 text-sm text-neutral-600">Izinkan akun lain menggunakan Agent publik ini untuk generation melalui AI Credits dan policy yang disetujui. Grant terikat pada versi Agent, Skill, runtime policy, dan tarif; tidak memberikan akses ke Memory atau Knowledge privat.</p></div>
+        <form onSubmit={createGenerationGrant} className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm">Akun Consumer (UUID)<input required value={consumerUserId} onChange={event => setConsumerUserId(event.target.value)} className="rounded-lg border px-3 py-2 font-mono text-xs" placeholder="UUID pengguna yang akan diberi akses"/></label>
+          <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => setConsumerSkillId(event.target.value)} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
+          <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
+        </form>
       </section>
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
         <div><h2 className="text-xl font-semibold">Capability yang diminta</h2><p className="mt-1 text-sm text-neutral-600">Deklarasi ini bukan izin eksekusi. Runtime harus memeriksa izin, policy, dan risiko pada setiap aksi.</p></div>
