@@ -63,7 +63,14 @@ create table if not exists public.generation_jobs (
   unique(owner_user_id,idempotency_key),
   check ((lease_token is null and lease_expires_at is null) or (lease_token is not null and lease_expires_at is not null)),
   check (status <> 'succeeded' or (artifact_bucket = 'generation-artifacts' and artifact_path is not null and output_sha256 is not null and moderation_status = 'approved' and input_tokens is not null and output_tokens is not null))
+  dm_conversation_id uuid references public.conversations(id) on delete set null,
+  dm_message_id uuid references public.messages(id) on delete set null,
+  dm_delivered_at timestamptz
 );
+alter table public.messages
+  add column if not exists generation_job_id uuid references public.generation_jobs(id) on delete set null;
+create unique index if not exists messages_generation_job_delivery_unique
+  on public.messages(generation_job_id) where generation_job_id is not null;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values ('generation-artifacts','generation-artifacts',false,10485760,array['text/plain'])
 on conflict (id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
@@ -314,7 +321,10 @@ create or replace function public.generation_complete_job(
   p_job_id uuid,p_lease_token uuid,p_result jsonb
 ) returns jsonb language plpgsql security definer set search_path = ''
 as $$
-declare v_job public.generation_jobs;
+declare
+  v_job public.generation_jobs;
+  v_conversation_id uuid;
+  v_message_id uuid;
 begin
   select * into v_job from public.generation_jobs
     where id=p_job_id and status='running' and lease_token=p_lease_token
@@ -326,13 +336,36 @@ begin
     or coalesce((p_result->>'output_tokens')::bigint,-1) < 0 then
     raise exception 'GENERATION_JOB_RESULT_INVALID' using errcode='22023';
   end if;
+
+  -- Create the Human↔Agent delivery conversation and artifact receipt in the
+  -- same transaction as the terminal job transition. The DM contains no signed
+  -- URL; the owner-scoped artifact API issues a short-lived reference on demand.
+  insert into public.conversations(kind,title,created_by)
+  values ('agent','Hasil Generate AI',v_job.owner_user_id)
+  returning id into v_conversation_id;
+  insert into public.conversation_participants(conversation_id,user_id,participant_type)
+  values (v_conversation_id,v_job.owner_user_id,'human');
+  insert into public.conversation_participants(conversation_id,agent_id,participant_type)
+  values (v_conversation_id,v_job.agent_id,'agent');
+  insert into public.messages(
+    conversation_id,sender_type,sender_agent_id,body,client_message_id,delivery_status,generation_job_id
+  ) values (
+    v_conversation_id,'agent',v_job.agent_id,
+    'Hasil Generate AI sudah siap. Artefak privat dapat dibuka melalui tombol hasil di percakapan ini.',
+    v_job.id,'sent',v_job.id
+  ) returning id into v_message_id;
+
+  update public.conversations set last_message_at=now(),updated_at=now()
+    where id=v_conversation_id;
   update public.generation_jobs set status='succeeded',
     input_tokens=(p_result->>'input_tokens')::bigint,
     output_tokens=(p_result->>'output_tokens')::bigint,
     actual_cost_microunits=(p_result->>'cost_microunits')::bigint,
+    dm_conversation_id=v_conversation_id,dm_message_id=v_message_id,dm_delivered_at=now(),
     completed_at=now(),lease_token=null,lease_expires_at=null,updated_at=now()
     where id=p_job_id returning * into v_job;
-  return jsonb_build_object('job_id',v_job.id,'status',v_job.status);
+  return jsonb_build_object('job_id',v_job.id,'status',v_job.status,
+    'dm_conversation_id',v_job.dm_conversation_id,'dm_message_id',v_job.dm_message_id);
 end;
 $$;
 
