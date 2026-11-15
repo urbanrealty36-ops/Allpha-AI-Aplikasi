@@ -21,6 +21,7 @@ export default function AgentSocialPage() {
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [automation, setAutomation] = useState<Automation | null>(null);
+  const [autoReplyRuntimeEnabled, setAutoReplyRuntimeEnabled] = useState(false);
   const [blockedTopicsText, setBlockedTopicsText] = useState("");
   const [channels, setChannels] = useState<string[]>([]);
   const [replyTone, setReplyTone] = useState("friendly_concise");
@@ -70,11 +71,11 @@ export default function AgentSocialPage() {
         const a = automationData.policy as Automation | null;
         setPolicy(p); setActions(p?.allowed_actions || ["draft_post"]);
         setMode(p?.approval_mode || "every_post"); setDisclosure(p?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(p?.is_enabled ?? true);
-        setAutomation(a); setChannels(a?.auto_reply_channels || []);
+        setAutomation(a); setAutoReplyRuntimeEnabled(automationData.auto_reply_runtime_enabled === true); setChannels(a?.auto_reply_channels || []);
         setBlockedTopicsText((a?.blocked_topics || []).join(", "));
         setReplyTone(a?.reply_tone || "friendly_concise");
         setDailyBudget(String(a?.daily_credit_budget ?? 0));
-      } else { setPolicy(null); setAutomation(null); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); }
+      } else { setPolicy(null); setAutomation(null); setAutoReplyRuntimeEnabled(false); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, [session, api, agentId]);
@@ -114,6 +115,7 @@ export default function AgentSocialPage() {
         body: JSON.stringify({ takeover_active: active, reason: active ? "owner_manual_takeover" : "owner_released_takeover" }),
       });
       setAutomation(data.policy);
+      setAutoReplyRuntimeEnabled(data.auto_reply_enabled === true);
       setNotice(active ? "Takeover aktif. Approval pending dicabut." : "Takeover dilepas; Auto Reply tetap nonaktif sampai runtime diaktifkan.");
       await load();
     } catch (cause) {
@@ -158,7 +160,7 @@ export default function AgentSocialPage() {
       </div>
       <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Auto Reply belum dapat diaktifkan: runtime event consumer, quota reservation dan output moderation belum terhubung. Takeover selalu menghentikan Auto Reply dan mencabut approval pending.</p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button disabled={busy || !agentId} onClick={async () => { setBusy(true); setError(""); try { const data = await api("/v1/agent-social/automation/" + agentId,{method:"PUT",body:JSON.stringify({auto_reply_channels:channels,blocked_topics:blockedTopicsText.split(",").map(x=>x.trim()).filter(Boolean),reply_tone:replyTone,allowed_tool_scopes:[],max_replies_per_minute:1,daily_credit_budget:Math.max(0,Math.floor(Number(dailyBudget)||0)),quiet_hours:{},escalation_rules:{},expected_version:automation?.automation_version ?? 1})}); setAutomation(data.policy); setNotice("Konfigurasi Auto Reply tersimpan; eksekusi tetap nonaktif."); await load(); } catch(e) { setError(e instanceof Error?e.message:"Konfigurasi gagal disimpan."); } finally { setBusy(false); } }} className="rounded-full border-2 border-slate-900 bg-sky-300 px-5 py-3 text-sm font-black">Simpan Pengaturan Auto Reply</button>
+        <button disabled={busy || !agentId} onClick={async () => { setBusy(true); setError(""); try { const data = await api("/v1/agent-social/automation/" + agentId,{method:"PUT",body:JSON.stringify({auto_reply_channels:channels,blocked_topics:blockedTopicsText.split(",").map(x=>x.trim()).filter(Boolean),reply_tone:replyTone,allowed_tool_scopes:[],max_replies_per_minute:1,daily_credit_budget:Math.max(0,Math.floor(Number(dailyBudget)||0)),quiet_hours:{},escalation_rules:{},expected_version:automation?.automation_version ?? 1})}); setAutomation(data.policy); setAutoReplyRuntimeEnabled(data.auto_reply_runtime_enabled === true); setNotice("Konfigurasi Auto Reply tersimpan; eksekusi tetap nonaktif."); await load(); } catch(e) { setError(e instanceof Error?e.message:"Konfigurasi gagal disimpan."); } finally { setBusy(false); } }} className="rounded-full border-2 border-slate-900 bg-sky-300 px-5 py-3 text-sm font-black">Simpan Pengaturan Auto Reply</button>
         <button disabled={busy || takeoverBusy || !agentId || !automation} onClick={() => void toggleTakeover()} className={"rounded-full border-2 border-slate-900 px-5 py-3 text-sm font-black " + (automation?.takeover_active ? "bg-purple-200" : "bg-white")}>{takeoverBusy?"Memproses…":automation?.takeover_active?"Lepas Takeover":"Ambil Alih Sekarang"}</button>
       </div>
     </section>
@@ -173,6 +175,7 @@ export default function AgentSocialPage() {
       onToggleTakeover={() => { void toggleTakeover(); }}
       agentName={agents.find(item => item.id === agentId)?.display_name || "AI Agent"}
       actionsEnabled={!!automation && !busy && !takeoverBusy}
+      autoReplyRuntimeEnabled={autoReplyRuntimeEnabled}
     />
   </div></main>;
 }
