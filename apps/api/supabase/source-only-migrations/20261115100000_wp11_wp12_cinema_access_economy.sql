@@ -76,6 +76,42 @@ create index if not exists cinema_creator_credits_title_idx
   on public.cinema_creator_credits(title_id, created_at);
 
 -- Plan rows are operator-managed and remain empty until Finance/Product approval.
+create table if not exists public.cinema_collaborators (
+  id uuid primary key default gen_random_uuid(),
+  title_id uuid not null,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  collaborator_user_id uuid references auth.users(id) on delete restrict,
+  collaborator_agent_id uuid references public.ai_agents(id) on delete restrict,
+  role text not null check (char_length(btrim(role)) between 2 and 80),
+  permissions text[] not null default '{}'::text[] check (
+    permissions <@ array['edit_metadata','upload_episodes','manage_credits','submit_review']::text[]
+  ),
+  status text not null default 'invited' check (status in ('invited','active','revoked','expired')),
+  invited_by uuid not null references auth.users(id) on delete restrict,
+  accepted_by uuid references auth.users(id) on delete set null,
+  accepted_at timestamptz,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  foreign key (title_id,owner_id) references public.cinema_titles(id,owner_id) on delete cascade,
+  check ((collaborator_user_id is not null and collaborator_agent_id is null)
+      or (collaborator_user_id is null and collaborator_agent_id is not null)),
+  check (collaborator_user_id is null or collaborator_user_id <> owner_id),
+  check (expires_at is null or expires_at > created_at),
+  check (status <> 'active' or accepted_at is not null)
+);
+create unique index if not exists cinema_collaborators_title_user_active_uq
+  on public.cinema_collaborators(title_id,collaborator_user_id)
+  where collaborator_user_id is not null and status in ('invited','active');
+create unique index if not exists cinema_collaborators_title_agent_active_uq
+  on public.cinema_collaborators(title_id,collaborator_agent_id)
+  where collaborator_agent_id is not null and status in ('invited','active');
+create index if not exists cinema_collaborators_owner_status_idx
+  on public.cinema_collaborators(owner_id,status,created_at desc);
+alter table public.cinema_collaborators enable row level security;
+revoke all on public.cinema_collaborators from public,anon,authenticated,service_role;
+grant select,insert,update,delete on public.cinema_collaborators to service_role;
+
 create table if not exists public.cinema_subscription_plans (
   id uuid primary key default gen_random_uuid(),
   plan_key text not null unique check (plan_key ~ '^[a-z0-9][a-z0-9._-]{1,79}$'),

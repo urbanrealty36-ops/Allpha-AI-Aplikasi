@@ -2852,3 +2852,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added service-role-only social automation grant and run registries. Human Takeover now revokes active social-automation grants, revokes pending approvals, cancels queued/pre-execution runtime tasks, and signals running/validating runtime tasks with `cancel_requested` while preserving their lease for cooperative checkpoint cancellation. All changes occur in the same database transaction and counts are written to the audit event.
 - This cancellation applies only to explicitly registered social-automation runs; it does not revoke unrelated public Agent Consumer grants or unrelated Agent tasks. Auto Reply execution remains disabled until the event consumer and canonical publish lifecycle are implemented.
 - Migration remains source-only. No database changes, staging, tests or deployment performed.
+
+
+**WP-11 AI Cinema Creator Studio collaboration/version source checkpoint (2026-11-15):**
+- Added source-only collaborator invitations for Human users and owner-controlled AI Agents, explicit edit/upload/credit/review scopes, invitation acceptance, revocation, and expiry handling.
+- Added creator credit endpoints with ownership/active-collaborator checks and immutable film-version snapshot creation containing title metadata, episode references, contributor credits and collaborator provenance. Snapshot records contain no signed media URLs.
+- All writes remain server-side through FastAPI service credentials. The collaborator/credit/version schema is source-only and has not been applied; Web/Native Creator Studio UI wiring and Super Admin review remain outstanding.

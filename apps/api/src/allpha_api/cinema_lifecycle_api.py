@@ -21,6 +21,31 @@ from allpha_api.cinema_api import _db, _signed_media_preview_url
 router = APIRouter(prefix="/v1/cinema", tags=["cinema-lifecycle"])
 
 
+class CreatorCreditCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contributor_type: str = Field(pattern="^(human|agent)$")
+    contributor_user_id: uuid.UUID | None = None
+    contributor_agent_id: uuid.UUID | None = None
+    role: str = Field(min_length=2, max_length=80)
+    attribution_label: str = Field(min_length=1, max_length=160)
+    disclosure: str = Field(default="AI-assisted contribution", max_length=500)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class CinemaCollaboratorCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    collaborator_user_id: uuid.UUID | None = None
+    collaborator_agent_id: uuid.UUID | None = None
+    role: str = Field(min_length=2, max_length=80)
+    permissions: list[str] = Field(default_factory=list, max_length=4)
+    expires_at: str | None = None
+
+
+class CinemaCollaboratorDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: str = Field(pattern="^(accept|revoke)$")
+
+
 class PlaybackSessionStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
     idempotency_key: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
@@ -297,3 +322,179 @@ async def creator_earnings(user: dict[str, Any] = Depends(current_user)) -> dict
     except HTTPException:
         return {"items": [], "withdrawals_enabled": False, "cash_conversion_enabled": False,
                 "reason": "CINEMA_EARNINGS_SCHEMA_NOT_CONFIGURED"}
+
+async def _owned_cinema_title(title_id: uuid.UUID, owner_id: str) -> dict[str, Any]:
+    rows = await _db("GET","cinema_titles",params={
+        "select":"id,owner_id,title,original_title,synopsis,genre,language_code,maturity_rating,ai_disclosure,credits,status,moderation_status,rights_status,version,cover_media_id,trailer_media_id,created_at,updated_at,published_at",
+        "id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"limit":"1",
+    })
+    if not rows:
+        raise HTTPException(404,detail={"code":"CINEMA_TITLE_NOT_FOUND","message":"Judul Cinema tidak ditemukan atau bukan milik akun ini."})
+    return rows[0]
+
+
+@router.get("/creator/titles/{title_id}/credits")
+async def list_creator_credits(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    await _owned_cinema_title(title_id,str(user["id"]))
+    rows=await _db("GET","cinema_creator_credits",params={
+        "select":"id,title_id,contributor_type,contributor_user_id,contributor_agent_id,role,attribution_label,disclosure,provenance,created_at",
+        "title_id":"eq."+str(title_id),"owner_id":"eq."+str(user["id"]),"order":"created_at.asc","limit":"200",
+    })
+    return {"items":rows or []}
+
+
+@router.post("/creator/titles/{title_id}/credits",status_code=201)
+async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate,
+                                user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    owner_id=str(user["id"])
+    await _owned_cinema_title(title_id,owner_id)
+    if payload.contributor_type=="human":
+        if payload.contributor_user_id is None or payload.contributor_agent_id is not None:
+            raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Human harus menunjuk satu akun Human."})
+        contributor_id=str(payload.contributor_user_id)
+        if contributor_id!=owner_id:
+            grants=await _db("GET","cinema_collaborators",params={
+                "select":"id","title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,
+                "collaborator_user_id":"eq."+contributor_id,"status":"eq.active","permissions":"cs.{manage_credits}",
+                "or":"(expires_at.is.null,expires_at.gt."+datetime.now(timezone.utc).isoformat()+")","limit":"1",
+            })
+            if not grants:
+                raise HTTPException(403,detail={"code":"CINEMA_CREDIT_PERMISSION_REQUIRED","message":"Kontributor Human harus menerima undangan dengan izin pengelolaan kredit."})
+    else:
+        if payload.contributor_agent_id is None or payload.contributor_user_id is not None:
+            raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Agent harus menunjuk satu AI Agent."})
+        agent_id=str(payload.contributor_agent_id)
+        agents=await _db("GET","ai_agents",params={"select":"id,status","id":"eq."+agent_id,"status":"eq.active","limit":"1"})
+        ownerships=await _db("GET","agent_ownerships",params={
+            "select":"agent_id","agent_id":"eq."+agent_id,"owner_user_id":"eq."+owner_id,
+            "ownership_role":"eq.owner","status":"eq.active","limit":"1",
+        })
+        if not agents or not ownerships:
+            raise HTTPException(403,detail={"code":"CINEMA_AGENT_CREDIT_PERMISSION_REQUIRED","message":"AI Agent kontributor harus aktif dan dimiliki oleh pemilik film."})
+    rows=await _db("POST","cinema_creator_credits",payload={
+        "title_id":str(title_id),"owner_id":owner_id,"contributor_type":payload.contributor_type,
+        "contributor_user_id":str(payload.contributor_user_id) if payload.contributor_user_id else None,
+        "contributor_agent_id":str(payload.contributor_agent_id) if payload.contributor_agent_id else None,
+        "role":payload.role.strip(),"attribution_label":payload.attribution_label.strip(),
+        "disclosure":payload.disclosure.strip(),"provenance":payload.provenance,
+    },prefer="return=representation")
+    if not rows:
+        raise HTTPException(503,detail={"code":"CINEMA_CREDIT_NOT_CONFIRMED","message":"Kredit kreator belum tersimpan."})
+    return {"credit":rows[0]}
+
+
+@router.get("/creator/titles/{title_id}/collaborators")
+async def list_cinema_collaborators(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    owner_id=str(user["id"])
+    await _owned_cinema_title(title_id,owner_id)
+    rows=await _db("GET","cinema_collaborators",params={
+        "select":"id,title_id,collaborator_user_id,collaborator_agent_id,role,permissions,status,accepted_at,expires_at,created_at",
+        "title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"order":"created_at.desc","limit":"200",
+    })
+    return {"items":rows or []}
+
+
+@router.post("/creator/titles/{title_id}/collaborators",status_code=201)
+async def invite_cinema_collaborator(title_id: uuid.UUID,payload: CinemaCollaboratorCreate,
+                                     user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    owner_id=str(user["id"])
+    await _owned_cinema_title(title_id,owner_id)
+    if (payload.collaborator_user_id is None)==(payload.collaborator_agent_id is None):
+        raise HTTPException(422,detail={"code":"CINEMA_COLLABORATOR_TARGET_INVALID","message":"Undangan harus menunjuk satu Human atau satu AI Agent."})
+    allowed={"edit_metadata","upload_episodes","manage_credits","submit_review"}
+    if not set(payload.permissions).issubset(allowed):
+        raise HTTPException(422,detail={"code":"CINEMA_COLLABORATOR_SCOPE_INVALID","message":"Permission collaborator tidak dikenal."})
+    if payload.collaborator_user_id and str(payload.collaborator_user_id)==owner_id:
+        raise HTTPException(422,detail={"code":"CINEMA_COLLABORATOR_SELF_INVITE","message":"Pemilik tidak perlu mengundang dirinya sendiri."})
+    if payload.collaborator_agent_id:
+        agent_id=str(payload.collaborator_agent_id)
+        agents=await _db("GET","ai_agents",params={"select":"id,status","id":"eq."+agent_id,"status":"eq.active","limit":"1"})
+        ownerships=await _db("GET","agent_ownerships",params={
+            "select":"agent_id","agent_id":"eq."+agent_id,"owner_user_id":"eq."+owner_id,
+            "ownership_role":"eq.owner","status":"eq.active","limit":"1",
+        })
+        if not agents or not ownerships:
+            raise HTTPException(403,detail={"code":"CINEMA_AGENT_COLLABORATOR_NOT_OWNED","message":"AI Agent collaborator harus aktif dan dimiliki oleh akun ini."})
+    expires=_parse_time(payload.expires_at)
+    if payload.expires_at and (expires is None or expires<=datetime.now(timezone.utc)):
+        raise HTTPException(422,detail={"code":"CINEMA_COLLABORATOR_EXPIRY_INVALID","message":"Masa undangan tidak valid."})
+    is_agent=payload.collaborator_agent_id is not None
+    now=datetime.now(timezone.utc).isoformat()
+    rows=await _db("POST","cinema_collaborators",payload={
+        "title_id":str(title_id),"owner_id":owner_id,
+        "collaborator_user_id":str(payload.collaborator_user_id) if payload.collaborator_user_id else None,
+        "collaborator_agent_id":str(payload.collaborator_agent_id) if payload.collaborator_agent_id else None,
+        "role":payload.role.strip(),"permissions":payload.permissions,
+        "status":"active" if is_agent else "invited","invited_by":owner_id,
+        "accepted_by":owner_id if is_agent else None,"accepted_at":now if is_agent else None,
+        "expires_at":expires.isoformat() if expires else None,
+    },prefer="return=representation")
+    if not rows:
+        raise HTTPException(503,detail={"code":"CINEMA_COLLABORATOR_INVITE_NOT_CONFIRMED","message":"Undangan collaborator belum tersimpan."})
+    return {"collaborator":rows[0]}
+
+
+@router.post("/creator/collaborations/{collaboration_id}/decision")
+async def decide_cinema_collaboration(collaboration_id: uuid.UUID,payload: CinemaCollaboratorDecision,
+                                      user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    user_id=str(user["id"])
+    rows=await _db("GET","cinema_collaborators",params={
+        "select":"id,title_id,owner_id,collaborator_user_id,collaborator_agent_id,status,expires_at",
+        "id":"eq."+str(collaboration_id),"limit":"1",
+    })
+    if not rows:
+        raise HTTPException(404,detail={"code":"CINEMA_COLLABORATION_NOT_FOUND","message":"Undangan collaborator tidak ditemukan."})
+    row=rows[0]
+    if payload.decision=="accept":
+        if row.get("collaborator_user_id")!=user_id:
+            raise HTTPException(403,detail={"code":"CINEMA_COLLABORATION_ACCEPT_FORBIDDEN","message":"Hanya akun yang diundang yang dapat menerima undangan."})
+        expiry=_parse_time(row.get("expires_at"))
+        if row.get("status")!="invited" or (expiry and expiry<=datetime.now(timezone.utc)):
+            raise HTTPException(409,detail={"code":"CINEMA_COLLABORATION_NOT_ACTIVE","message":"Undangan sudah tidak aktif."})
+        changed=await _db("PATCH","cinema_collaborators",params={"id":"eq."+str(collaboration_id),"status":"eq.invited"},payload={
+            "status":"active","accepted_by":user_id,"accepted_at":datetime.now(timezone.utc).isoformat(),"updated_at":datetime.now(timezone.utc).isoformat(),
+        },prefer="return=representation")
+    else:
+        if row.get("owner_id")!=user_id:
+            raise HTTPException(403,detail={"code":"CINEMA_COLLABORATION_REVOKE_FORBIDDEN","message":"Hanya pemilik film yang dapat mencabut undangan."})
+        changed=await _db("PATCH","cinema_collaborators",params={"id":"eq."+str(collaboration_id),"owner_id":"eq."+user_id,"status":"in.(invited,active)"},payload={
+            "status":"revoked","updated_at":datetime.now(timezone.utc).isoformat(),
+        },prefer="return=representation")
+    if not changed:
+        raise HTTPException(409,detail={"code":"CINEMA_COLLABORATION_DECISION_CONFLICT","message":"Status undangan berubah; muat ulang sebelum mencoba lagi."})
+    return {"collaborator":changed[0]}
+
+
+@router.post("/creator/titles/{title_id}/versions",status_code=201)
+async def snapshot_cinema_version(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    owner_id=str(user["id"])
+    title=await _owned_cinema_title(title_id,owner_id)
+    episodes=await _db("GET","cinema_episodes",params={
+        "select":"id,episode_number,title,synopsis,media_id,duration_seconds,is_free_preview,status,updated_at",
+        "title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"order":"episode_number.asc","limit":"500",
+    })
+    credits=await _db("GET","cinema_creator_credits",params={
+        "select":"id,contributor_type,contributor_user_id,contributor_agent_id,role,attribution_label,disclosure,provenance",
+        "title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"order":"created_at.asc","limit":"200",
+    })
+    collaborators=await _db("GET","cinema_collaborators",params={
+        "select":"id,collaborator_user_id,collaborator_agent_id,role,permissions,status,accepted_at",
+        "title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"order":"created_at.asc","limit":"200",
+    })
+    snapshot={"title":title,"episodes":episodes or [],"credits":credits or [],
+              "collaborators":collaborators or [],"snapshot_schema":"cinema-film-v1"}
+    version=int(title.get("version") or 1)
+    existing=await _db("GET","cinema_film_versions",params={
+        "select":"id,title_id,version,created_at","title_id":"eq."+str(title_id),"version":"eq."+str(version),"limit":"1",
+    })
+    if existing:
+        return {"version":existing[0],"created":False}
+    rows=await _db("POST","cinema_film_versions",payload={
+        "title_id":str(title_id),"owner_id":owner_id,"version":version,"snapshot":snapshot,
+        "created_by":owner_id,
+    },prefer="return=representation")
+    if not rows:
+        raise HTTPException(503,detail={"code":"CINEMA_VERSION_SNAPSHOT_NOT_CONFIRMED","message":"Snapshot versi belum tersimpan."})
+    return {"version":rows[0],"created":True}
+
+
