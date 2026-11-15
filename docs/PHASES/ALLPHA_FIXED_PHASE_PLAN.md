@@ -2965,3 +2965,14 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Compared the source and target LiveExperienceStage components. The target retains the major source composition (Human/Agent stage slots, shared presentation, product catalogue, live chat/feedback and checkout modal) while removing seeded slides/products/chat/viewer/likes and local simulation. It remains a 717-line adapted component versus the 898-line reference; no claim of exact DOM/class parity is made.
 - Checkout now requires an actual onCheckout Commerce callback. The CTA is disabled and the modal cannot open when no canonical Commerce adapter is supplied. Removed the fixed 85% seller-royalty claim. Live media controls remain disabled until the Live Session API/provider contract is approved.
 - Cross-screen source audit recorded in docs/PHASES/UI_COPY_03_SOURCE_PARITY_MATRIX.md. No build, browser/device review, staging, provider activation or deployment was run. Live remains with WP-10/WP-13 and the proposed ADR; this does not change WP-07 → WP-06 → WP-11 → WP-12.
+
+**WP-07 queued Generation Job cancellation source checkpoint — 2026-11-15:**
+- Added owner-scoped `POST /v1/generation/jobs/{job_id}/cancel` and a source-only PostgreSQL RPC with durable cancellation audit.
+- Web reference `GenerateModal` and Native `NativeGenerateCenter` now expose cancellation only while the latest job state is `queued`.
+- Cancellation and worker claim serialize on the Generation Job row. Running jobs are not force-cancelled because provider acceptance/outcome may already be unknown.
+- If the snapshotted credit policy allows definitive failure release, the queued reservation is released idempotently and the job becomes `cancelled`. Otherwise it becomes `pending_reconciliation`; no unapproved refund/release is inferred.
+- Source checkpoint: `docs/reports/WP07_QUEUED_CANCELLATION_SOURCE_CHECKPOINT_2026-11-15.md`.
+- Commits: API `240158eef66cde058f7742cc97306458948e2e06`; source-only migration `957cc430f46c91cd40c888fd37367b233df0743c`; Web modal `d02141d4f26387502164d84323c19d76beca7f74`; Web route `c05e86429846c285349fb959d73385c57e399414`; Native `1aadff08a331a945f33702d1186158a87dafd205`.
+- No tests/build/lint/typecheck/CI/provider call/production database mutation/migration application/worker activation/staging/browser-device QA/deployment was performed.
+- WP-07 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`. Open blockers remain the unapplied migration chain, approved moderation adapter/policy, approved owner-reward values, persistent worker activation, multimodal input adapter, and authorized integration acceptance. The formal order remains WP-07 → WP-06 → WP-11 → WP-12; no later phase is promoted or marked complete.
+
