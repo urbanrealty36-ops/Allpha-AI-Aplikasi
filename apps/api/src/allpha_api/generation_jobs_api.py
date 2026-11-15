@@ -605,22 +605,6 @@ async def create_generation_job(
         raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "Sesi login diperlukan."})
 
     prompt_hash = hashlib.sha256(payload.prompt.encode("utf-8")).hexdigest()
-    existing = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,prompt_sha256,knowledge_context_sha256,agent_snapshot_sha256,skill_snapshot_sha256,consumer_grant_id,agent_id,skill_id,capability_id,status,credits_to_reserve",
-        "owner_user_id": f"eq.{user['id']}", "idempotency_key": f"eq.{idempotency_key}", "limit": "1",
-    })
-    if existing:
-        prior = existing[0]
-        if (prior.get("prompt_sha256") != prompt_hash or str(prior.get("agent_id")) != str(payload.agent_id)
-            or str(prior.get("skill_id")) != str(payload.skill_id) or prior.get("capability_id") != payload.capability_id
-            or prior.get("knowledge_context_sha256") != payload.quoted_knowledge_context_sha256
-            or prior.get("agent_snapshot_sha256") != payload.quoted_agent_snapshot_sha256
-            or prior.get("skill_snapshot_sha256") != payload.quoted_skill_snapshot_sha256
-            or str(prior.get("consumer_grant_id") or "") != str(payload.consumer_grant_id or "")):
-            raise HTTPException(409, detail={"code": "GENERATION_JOB_IDEMPOTENCY_CONFLICT", "message": "Idempotency-Key telah digunakan untuk permintaan generation yang berbeda."})
-        return {"job_id": prior["id"], "task_id": prior["task_id"], "status": prior["status"],
-            "idempotent_replay": True, "reserved_credits": prior.get("credits_to_reserve")}
-
     router_instance = getattr(request.app.state, "text_generation_router", None)
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum memiliki provider, model, policy, dan metering yang disetujui."})
