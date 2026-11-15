@@ -3057,3 +3057,10 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Extended the same moderation-state distinction to Native Generate Center. Web and Native now recognize `status=pending_reconciliation` plus `moderation_status=review_required` as a Human-review hold, not an unknown provider outcome. The output remains private until approval; no automatic resubmission is suggested.
 - Native commit: `777e4c9f5b7ed1beddbc5929f470109fb47641c3`. API/Web commits are recorded in the preceding WP-07 moderation-state correction checkpoint.
 - Source-only parity correction. No tests, build, lint, typecheck, CI, device QA, provider call, migration application, database mutation, staging or deployment was run. WP-07 remains `in_progress / acceptance_not_verified`; no acceptance or phase advancement is claimed.
+
+
+**WP-07 deep-link moderation and reconciliation state parity — 2026-11-16:**
+- Corrected the owner-facing initial job retrieval path in Web Generate and Native Generate Center. A deep link to a job in `pending_reconciliation` with `moderation_status=review_required` now explains the Human-review hold, keeps the output private and explicitly prevents a retry/resubmit interpretation.
+- Native deep-link retrieval now also distinguishes a genuinely uncertain provider/settlement reconciliation from a moderation hold; neither state triggers an automatic replay.
+- Commits: Web `636bc22a49d831bfe9f929f7eeaefb48ac3be22a`; Native `55e7a970ad7d857a06fef7d4cdcbe2333a713225`.
+- Source-only change. No tests, build, lint, typecheck, CI, browser/device QA, provider calls, migration application, Supabase mutation, staging or deployment were run. WP-07 remains `in_progress / acceptance_not_verified`; no phase completion or promotion is claimed.
