@@ -14,6 +14,8 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [activePlayback, setActivePlayback] = useState<ActivePlayback | null>(null);
+  const [lastPositionSeconds, setLastPositionSeconds] = useState(0);
+  const [playbackFinishPending, setPlaybackFinishPending] = useState(false);
   const heartbeatLock = useRef(false);
 
   async function openTitle(title: Title) {
@@ -47,29 +49,38 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.detail?.message || "Sesi pemutaran belum dapat dimulai.");
+      setLastPositionSeconds(0); setPlaybackFinishPending(false);
       setActivePlayback({ session_id: data.session.id, session_token: data.session_token, episode_id: episode.id, playback_url: data.playback_url, last_heartbeat_at: Date.now() });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Sesi pemutaran gagal."); }
     finally { setBusy(null); }
   }
 
-  async function sendHeartbeat(position: number, finish = false) {
-    if (!activePlayback || heartbeatLock.current) return;
+  async function sendHeartbeat(position: number, finish = false): Promise<boolean> {
+    if (!activePlayback || heartbeatLock.current) return false;
     heartbeatLock.current = true;
     try {
       const auth = getBrowserSupabase();
       const session = auth ? (await auth.auth.getSession()).data.session : null;
-      if (!session?.access_token) return;
-      await fetch(apiBase + "/v1/cinema/playback-sessions/" + activePlayback.session_id + (finish ? "/finish" : "/heartbeat"), {
+      if (!session?.access_token) throw new Error("Sesi login berakhir; masuk kembali untuk menyimpan progres pemutaran.");
+      const response = await fetch(apiBase + "/v1/cinema/playback-sessions/" + activePlayback.session_id + (finish ? "/finish" : "/heartbeat"), {
         method: "POST", cache: "no-store",
         headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", "X-Cinema-Session-Token": activePlayback.session_token },
         body: JSON.stringify({ event_id: crypto.randomUUID(), position_seconds: Math.max(0, Math.floor(position)) }),
       });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.detail?.message || "Progres pemutaran belum dikonfirmasi oleh server.");
+      setError("");
+      setActivePlayback(current => current ? { ...current, last_heartbeat_at: Date.now() } : current);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Progres pemutaran belum dapat disimpan.");
+      return false;
     } finally { heartbeatLock.current = false; }
   }
 
   function onPlaybackTime(position: number) {
+    setLastPositionSeconds(position);
     if (!activePlayback || Date.now() - activePlayback.last_heartbeat_at < 15000) return;
-    setActivePlayback(current => current ? { ...current, last_heartbeat_at: Date.now() } : current);
     void sendHeartbeat(position);
   }
 
@@ -85,7 +96,8 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {selected.episodes.map(episode => <article key={episode.id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
           <div className="flex items-center justify-between gap-2"><h4 className="font-medium">Episode {episode.episode_number}: {episode.title}</h4><span className="text-[10px] uppercase text-slate-500">{episode.is_free_preview ? "Free preview" : "Premium"}</span></div>
-          {activePlayback?.episode_id === episode.id ? <video className="mt-3 aspect-video w-full rounded-lg bg-black" controls autoPlay preload="none" src={activePlayback.playback_url} onTimeUpdate={event => onPlaybackTime(event.currentTarget.currentTime)} onEnded={event => { void sendHeartbeat(event.currentTarget.currentTime, true); setActivePlayback(null); }}>Browser tidak mendukung video.</video> : <div className="mt-3 rounded-lg border border-slate-200 p-4 text-sm text-slate-600 dark:border-slate-700"><p>URL playback hanya diterbitkan setelah pemeriksaan sesi, media dan entitlement.</p><button disabled={busy !== null} onClick={() => void startEpisode(episode)} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy === episode.id ? "Menyiapkan sesi…" : episode.is_free_preview ? "Mulai Preview" : "Periksa Premium & Putar"}</button></div>}
+          {activePlayback?.episode_id === episode.id ? <video className="mt-3 aspect-video w-full rounded-lg bg-black" controls autoPlay preload="none" src={activePlayback.playback_url} onTimeUpdate={event => onPlaybackTime(event.currentTarget.currentTime)} onEnded={async event => { const finished = await sendHeartbeat(event.currentTarget.currentTime, true); if (finished) { setActivePlayback(null); setPlaybackFinishPending(false); } else { setPlaybackFinishPending(true); } }}>Browser tidak mendukung video.</video> : <div className="mt-3 rounded-lg border border-slate-200 p-4 text-sm text-slate-600 dark:border-slate-700"><p>URL playback hanya diterbitkan setelah pemeriksaan sesi, media dan entitlement.</p><button disabled={busy !== null} onClick={() => void startEpisode(episode)} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy === episode.id ? "Menyiapkan sesi…" : episode.is_free_preview ? "Mulai Preview" : "Periksa Premium & Putar"}</button></div>}
+          {playbackFinishPending && activePlayback?.episode_id === episode.id && <button type="button" onClick={async () => { const finished = await sendHeartbeat(lastPositionSeconds, true); if (finished) { setActivePlayback(null); setPlaybackFinishPending(false); } }} disabled={heartbeatLock.current} className="mt-3 rounded-lg border border-amber-500 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950 disabled:opacity-50">Coba konfirmasi akhir sesi</button>}
           {episode.synopsis && <p className="mt-2 text-xs text-slate-500">{episode.synopsis}</p>}
         </article>)}
       </div>
