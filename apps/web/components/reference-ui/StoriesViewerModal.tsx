@@ -14,7 +14,6 @@ import {
   User,
   Bot
 } from 'lucide-react';
-import { HumanProfile, AIAgentProfile } from '@/lib/reference-store';
 
 export interface StoryItem {
   id: string;
@@ -25,14 +24,18 @@ export interface StoryItem {
   mediaUrl: string;
   caption: string;
   timestamp: string;
+  ownerId: string;
+  mediaType?: string;
 }
 
 interface StoriesViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialIndex?: number;
-  currentUser: HumanProfile;
-  currentAgent: AIAgentProfile;
+  stories: StoryItem[];
+  currentUserId?: string;
+  onCreateStory?: (prompt: string) => Promise<void>;
+  onSendReply?: (storyId: string, ownerId: string, message: string) => Promise<void>;
   onOpenAskAi?: (agentName: string, ownerName: string, specialty: string) => void;
   onOpenLiveStage?: () => void;
 }
@@ -41,8 +44,10 @@ export default function StoriesViewerModal({
   isOpen,
   onClose,
   initialIndex = 0,
-  currentUser,
-  currentAgent,
+  stories,
+  currentUserId,
+  onCreateStory,
+  onSendReply,
   onOpenAskAi,
   onOpenLiveStage,
 }: StoriesViewerModalProps) {
@@ -59,47 +64,16 @@ export default function StoriesViewerModal({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const STORIES: StoryItem[] = [
-    {
-      id: 'story-1',
-      creatorName: 'Alex & Luna AI',
-      creatorHandle: '@alex.luna',
-      creatorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-      isAiAgent: true,
-      mediaUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
-      caption: 'Sedang live streaming dari panggung utama Crystal City! Diskusi tentang masa depan media sosial dual-identity ✨',
-      timestamp: '15m lalu'
-    },
-    {
-      id: 'story-2',
-      creatorName: 'Raka Pratama',
-      creatorHandle: '@raka_builder',
-      creatorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-      isAiAgent: false,
-      mediaUrl: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=800&q=80',
-      caption: 'Baru saja memasang booth 3D merchandise baru di district Neo Tokyo! Jangan lupa mampir!',
-      timestamp: '42m lalu'
-    },
-    {
-      id: 'story-3',
-      creatorName: 'Travel AI Guide',
-      creatorHandle: '@travel.ai',
-      creatorAvatar: 'https://picsum.photos/seed/district/200/200',
-      isAiAgent: true,
-      mediaUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80',
-      caption: 'Pemandangan sunset holografis dari Skydeck Central Hub sore ini. Sangat magis!',
-      timestamp: '2j lalu'
-    }
-  ];
+
 
   // Auto-progress timer
   useEffect(() => {
-    if (!isOpen || isPaused || mode === 'CREATE') return;
+    if (!isOpen || isPaused || mode === 'CREATE' || stories.length === 0) return;
 
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
-          if (activeStoryIndex < STORIES.length - 1) {
+          if (activeStoryIndex < stories.length - 1) {
             setActiveStoryIndex((curr) => curr + 1);
             return 0;
           } else {
@@ -112,14 +86,15 @@ export default function StoriesViewerModal({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isOpen, isPaused, activeStoryIndex, mode, STORIES.length, onClose]);
+  }, [isOpen, isPaused, activeStoryIndex, mode, stories.length, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || stories.length === 0) return null;
 
-  const currentStory = STORIES[activeStoryIndex];
+  const currentStory = stories[Math.min(activeStoryIndex, stories.length - 1)];
+  const canReply = Boolean(onSendReply && currentStory?.ownerId && currentStory.ownerId !== currentUserId);
 
   const handleNext = () => {
-    if (activeStoryIndex < STORIES.length - 1) {
+    if (activeStoryIndex < stories.length - 1) {
       setActiveStoryIndex(activeStoryIndex + 1);
       setProgress(0);
     } else {
@@ -135,23 +110,32 @@ export default function StoriesViewerModal({
   };
 
   const handleSendReaction = (emoji: string) => {
-    showToast(`Reaksi ${emoji} terkirim ke ${currentStory.creatorName}!`);
+    showToast(`Reaksi ${emoji} belum tersedia untuk Story ini.`);
   };
 
-  const handleSendReply = () => {
-    if (!replyText.trim()) return;
-    showToast(`Pesan balasan "${replyText}" terkirim ke ${currentStory.creatorName}!`);
-    setReplyText('');
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !canReply || !currentStory) return;
+    try {
+      await onSendReply?.(currentStory.id, currentStory.ownerId, replyText.trim());
+      showToast("Balasan Story dikirim melalui Direct Message.");
+      setReplyText('');
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : "Balasan Story belum dapat dikirim.");
+    }
   };
 
-  const handleCreateMoment = () => {
-    if (!newStoryPrompt.trim()) {
-      showToast('Masukkan ide Moment atau Story terlebih dahulu!');
+  const handleCreateMoment = async () => {
+    if (!newStoryPrompt.trim() || !onCreateStory) {
+      showToast('Form Story kanonis belum tersedia.');
       return;
     }
-    showToast('Story Moment baru berhasil dipublikasikan ke Feed!');
-    setNewStoryPrompt('');
-    setMode('VIEW');
+    try {
+      await onCreateStory(newStoryPrompt.trim());
+      setNewStoryPrompt('');
+      setMode('VIEW');
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : 'Form Story tidak dapat dibuka.');
+    }
   };
 
   return (
@@ -160,7 +144,7 @@ export default function StoriesViewerModal({
         
         {/* Top Progress Bars */}
         <div className="absolute top-3 left-3 right-3 z-30 flex gap-1.5">
-          {STORIES.map((s, idx) => (
+          {stories.map((s, idx) => (
             <div key={s.id} className="h-1.5 flex-1 bg-white/30 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-white transition-all duration-100"
@@ -222,11 +206,13 @@ export default function StoriesViewerModal({
               }
             }}
           >
-            <img 
-              src={currentStory.mediaUrl} 
-              alt="Story Media"
-              className="w-full h-full object-cover"
-            />
+            {currentStory.mediaType?.startsWith('video/') ? (
+              <video src={currentStory.mediaUrl} aria-label="Video Story" controls autoPlay playsInline className="w-full h-full object-contain bg-black" />
+            ) : currentStory.mediaUrl ? (
+              <img src={currentStory.mediaUrl} alt={currentStory.caption || "Story Media"} className="w-full h-full object-cover" />
+            ) : (
+              <div className="p-8 text-center text-sm font-semibold text-white">{currentStory.caption || "Story tanpa media."}</div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none" />
 
             {/* Story Caption */}
@@ -270,8 +256,11 @@ export default function StoriesViewerModal({
               {['🔥', '❤️', '👏', '💡', '🚀'].map((em) => (
                 <button
                   key={em}
+                  type="button"
                   onClick={() => handleSendReaction(em)}
-                  className="w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-xs border border-white/30 text-sm flex items-center justify-center transition active:scale-125"
+                  disabled
+                  title="Reaksi Story belum tersedia pada API"
+                  className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-xs border border-white/30 text-sm flex items-center justify-center opacity-50 cursor-not-allowed"
                 >
                   {em}
                 </button>
@@ -284,13 +273,15 @@ export default function StoriesViewerModal({
                 type="text"
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
-                placeholder="Balas cerita..."
+                onKeyDown={(e) => e.key === 'Enter' && void handleSendReply()}
+                disabled={!canReply}
+                placeholder={canReply ? "Balas cerita..." : "Balasan melalui DM belum tersedia"}
                 className="flex-1 px-3.5 py-2 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white placeholder-white/60 text-xs font-medium outline-none focus:bg-white/30"
               />
               <button
-                onClick={handleSendReply}
-                className="w-9 h-9 rounded-full bg-white text-slate-950 flex items-center justify-center shadow-md hover:bg-slate-100"
+                onClick={() => void handleSendReply()}
+                disabled={!canReply || !replyText.trim()}
+                className="w-9 h-9 rounded-full bg-white text-slate-950 flex items-center justify-center shadow-md hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Send className="w-4 h-4 text-slate-900" />
               </button>
