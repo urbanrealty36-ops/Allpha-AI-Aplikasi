@@ -63,6 +63,18 @@ class TitleCreate(BaseModel):
     credits: list[dict[str,Any]] = Field(default_factory=list,max_length=30)
 
 
+class TitleUpdateCommand(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    expected_version: int = Field(ge=1)
+    title: str | None = Field(default=None,min_length=1,max_length=160)
+    original_title: str | None = Field(default=None,max_length=160)
+    synopsis: str | None = Field(default=None,max_length=5000)
+    genre: str | None = None
+    language_code: str | None = Field(default=None,max_length=12)
+    maturity_rating: str | None = None
+    ai_disclosure: str | None = Field(default=None,max_length=1000)
+
+
 class TitleSubmitCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1)
@@ -121,6 +133,48 @@ async def title_playback(title_id: uuid.UUID, user: dict[str, Any] | None = Depe
     }
 
 
+async def _title_access(title_id: uuid.UUID, user_id: str, scopes: set[str]) -> dict[str,Any]:
+    rows=await _db("GET","cinema_titles",params={
+        "select":"id,owner_id,status,version,title","id":"eq."+str(title_id),"limit":"1",
+    })
+    if not rows:
+        raise HTTPException(404,detail={"code":"CINEMA_TITLE_NOT_FOUND","message":"Judul Cinema tidak ditemukan."})
+    title=rows[0]
+    if str(title["owner_id"])==user_id:
+        return title
+    grants=await _db("GET","cinema_collaborators",params={
+        "select":"permissions,status,expires_at","title_id":"eq."+str(title_id),
+        "owner_id":"eq."+str(title["owner_id"]),"collaborator_user_id":"eq."+user_id,
+        "status":"eq.active","limit":"20",
+    })
+    now=datetime.now(timezone.utc)
+    for grant in grants or []:
+        expiry=grant.get("expires_at")
+        if expiry:
+            parsed=datetime.fromisoformat(expiry.replace("Z","+00:00"))
+            if parsed<=now:
+                continue
+        if scopes.intersection(set(grant.get("permissions") or [])):
+            return title
+    raise HTTPException(403,detail={"code":"CINEMA_COLLABORATOR_PERMISSION_REQUIRED","message":"Akses collaborator untuk tindakan ini belum diberikan."})
+
+
+async def _title_media_owner_ids(title: dict[str,Any]) -> set[str]:
+    owners={str(title["owner_id"])}
+    grants=await _db("GET","cinema_collaborators",params={
+        "select":"collaborator_user_id,permissions,expires_at","title_id":"eq."+str(title["id"]),
+        "owner_id":"eq."+str(title["owner_id"]),"status":"eq.active","limit":"100",
+    })
+    now=datetime.now(timezone.utc)
+    for grant in grants or []:
+        expiry=grant.get("expires_at")
+        if expiry and datetime.fromisoformat(expiry.replace("Z","+00:00"))<=now:
+            continue
+        if "upload_episodes" in (grant.get("permissions") or []) and grant.get("collaborator_user_id"):
+            owners.add(str(grant["collaborator_user_id"]))
+    return owners
+
+
 @router.get("/creator/titles")
 async def creator_titles(user: dict[str,Any] = Depends(current_user), limit: int = Query(default=50,ge=1,le=100)) -> dict[str,Any]:
     rows = await _db("GET","cinema_titles",params={"select":TITLE_FIELDS,"owner_id":f"eq.{user['id']}","order":"updated_at.desc","limit":str(limit)})
@@ -137,6 +191,30 @@ async def create_title(payload: TitleCreate, user: dict[str,Any] = Depends(curre
     return {"item":rows[0]}
 
 
+@router.patch("/creator/titles/{title_id}")
+async def update_creator_title(title_id: uuid.UUID,payload: TitleUpdateCommand,
+                               user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    title=await _title_access(title_id,str(user["id"]),{"edit_metadata"})
+    if title.get("status") not in {"draft","rejected"}:
+        raise HTTPException(409,detail={"code":"CINEMA_TITLE_NOT_EDITABLE","message":"Metadata hanya dapat diubah pada draft atau judul yang dikembalikan."})
+    changes=payload.model_dump(exclude_unset=True)
+    expected=changes.pop("expected_version")
+    if not changes:
+        raise HTTPException(422,detail={"code":"CINEMA_TITLE_UPDATE_EMPTY","message":"Tidak ada perubahan metadata."})
+    if "genre" in changes and changes["genre"] not in GENRES:
+        raise HTTPException(422,detail={"code":"CINEMA_GENRE_INVALID","message":"Genre tidak valid."})
+    if "maturity_rating" in changes and changes["maturity_rating"] not in {"unrated","all_ages","13_plus","17_plus","21_plus"}:
+        raise HTTPException(422,detail={"code":"CINEMA_MATURITY_INVALID","message":"Klasifikasi usia tidak valid."})
+    changes.update({"version":expected+1,"updated_at":datetime.now(timezone.utc).isoformat()})
+    rows=await _db("PATCH","cinema_titles",params={
+        "id":"eq."+str(title_id),"owner_id":"eq."+str(title["owner_id"]),
+        "status":"in.(draft,rejected)","version":"eq."+str(expected),
+    },payload=changes,prefer="return=representation")
+    if not rows:
+        raise HTTPException(409,detail={"code":"CINEMA_TITLE_VERSION_CONFLICT","message":"Versi film berubah atau hak edit sudah dicabut."})
+    return {"item":rows[0]}
+
+
 @router.post("/creator/titles/{title_id}/submit-review")
 async def submit_title_for_review(
     title_id: uuid.UUID,
@@ -145,8 +223,9 @@ async def submit_title_for_review(
 ) -> dict[str, Any]:
     if not payload.rights_confirmed or not payload.ai_disclosure_confirmed:
         raise HTTPException(422, detail={"code": "CINEMA_CREATOR_CONFIRMATIONS_REQUIRED", "message": "Konfirmasi hak atas materi dan pengungkapan penggunaan AI wajib diberikan."})
+    access = await _title_access(title_id,str(user["id"]),{"submit_review"})
     current = await _db("GET", "cinema_titles", params={
-        "select": TITLE_FIELDS, "id": f"eq.{title_id}", "owner_id": f"eq.{user['id']}",
+        "select": TITLE_FIELDS, "id": f"eq.{title_id}", "owner_id": f"eq.{access['owner_id']}",
         "status": "in.(draft,rejected)", "limit": "1",
     })
     if not current:
@@ -156,7 +235,7 @@ async def submit_title_for_review(
         raise HTTPException(409, detail={"code": "CINEMA_VERSION_CHANGED", "message": "Versi draft berubah; muat ulang sebelum mengajukan review."})
     episodes = await _db("GET", "cinema_episodes", params={
         "select": "id,media_id,status", "title_id": f"eq.{title_id}",
-        "owner_id": f"eq.{user['id']}", "order": "episode_number.asc",
+        "owner_id": f"eq.{access['owner_id']}", "order": "episode_number.asc",
     })
     episode_rows = episodes or []
     if not episode_rows or any(not episode.get("media_id") or episode.get("status") != "ready" for episode in episode_rows):
@@ -164,15 +243,16 @@ async def submit_title_for_review(
     media_ids = [str(episode["media_id"]) for episode in episode_rows]
     media_rows = await _db("GET", "content_media", params={
         "select": "id", "id": f"in.({','.join(media_ids)})",
-        "owner_id": f"eq.{user['id']}", "status": "eq.ready",
-        "scan_status": "eq.clean", "limit": str(min(100, len(media_ids))),
+        "status": "eq.ready", "scan_status": "eq.clean", "limit": str(min(100, len(media_ids))),
     })
-    clean_ids = {str(media["id"]) for media in (media_rows or [])}
-    if any(media_id not in clean_ids for media_id in media_ids):
+    clean_ids = {str(media["id"]) for media in (media_rows or [])
+                 if media.get("processed_at") and isinstance(media.get("derivatives"),list) and media.get("derivatives")}
+    allowed_media_owners=await _title_media_owner_ids(access)
+    if any(media_id not in clean_ids for media_id in media_ids) or any(str(media.get("owner_id")) not in allowed_media_owners for media in (media_rows or [])):
         raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Seluruh media episode harus ready dan scan clean."})
     now = datetime.now(timezone.utc).isoformat()
     rows = await _db("PATCH", "cinema_titles", params={
-        "id": f"eq.{title_id}", "owner_id": f"eq.{user['id']}",
+        "id": f"eq.{title_id}", "owner_id": f"eq.{access['owner_id']}",
         "status": "in.(draft,rejected)", "version": f"eq.{payload.expected_version}",
         "select": TITLE_FIELDS,
     }, payload={
@@ -187,20 +267,20 @@ async def submit_title_for_review(
 
 @router.get("/creator/titles/{title_id}/episodes")
 async def creator_episodes(title_id: uuid.UUID, user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
-    title = await _db("GET","cinema_titles",params={"select":"id","id":f"eq.{title_id}","owner_id":f"eq.{user['id']}","limit":"1"})
-    if not title: raise HTTPException(404,detail={"code":"CINEMA_TITLE_NOT_FOUND","message":"Draft film tidak ditemukan."})
-    rows = await _db("GET","cinema_episodes",params={"select":EPISODE_FIELDS,"title_id":f"eq.{title_id}","owner_id":f"eq.{user['id']}","order":"episode_number.asc"})
+    title = await _title_access(title_id,str(user["id"]),{"edit_metadata","upload_episodes"})
+    rows = await _db("GET","cinema_episodes",params={"select":EPISODE_FIELDS,"title_id":f"eq.{title_id}","owner_id":f"eq.{title['owner_id']}","order":"episode_number.asc"})
     return {"items":rows or []}
 
 
 @router.post("/creator/titles/{title_id}/episodes",status_code=201)
 async def create_episode(title_id: uuid.UUID,payload: EpisodeCreate,user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
-    title = await _db("GET","cinema_titles",params={"select":"id","id":f"eq.{title_id}","owner_id":f"eq.{user['id']}","status":"in.(draft,rejected)","limit":"1"})
-    if not title: raise HTTPException(404,detail={"code":"CINEMA_TITLE_NOT_EDITABLE","message":"Film tidak ditemukan atau tidak dapat diedit."})
+    title = await _title_access(title_id,str(user["id"]),{"upload_episodes"})
+    if title.get("status") not in {"draft","rejected"}:
+        raise HTTPException(409,detail={"code":"CINEMA_TITLE_NOT_EDITABLE","message":"Episode hanya dapat diubah pada draft atau judul yang dikembalikan."})
     if payload.media_id:
         media = await _db("GET","content_media",params={"select":"id","id":f"eq.{payload.media_id}","owner_id":f"eq.{user['id']}","status":"eq.ready","scan_status":"eq.clean","limit":"1"})
         if not media: raise HTTPException(404,detail={"code":"CINEMA_MEDIA_NOT_OWNED","message":"Media tidak ditemukan atau bukan milik Anda."})
-    rows = await _db("POST","cinema_episodes",payload={**payload.model_dump(),"title_id":str(title_id),"owner_id":user["id"],"status":"ready" if payload.media_id else "draft"},prefer="return=representation")
+    rows = await _db("POST","cinema_episodes",payload={**payload.model_dump(),"title_id":str(title_id),"owner_id":title["owner_id"],"status":"ready" if payload.media_id else "draft"},prefer="return=representation")
     if not rows: raise HTTPException(503,detail={"code":"CINEMA_EPISODE_CREATE_UNCONFIRMED","message":"Episode belum dapat dikonfirmasi."})
     return {"item":rows[0]}
 

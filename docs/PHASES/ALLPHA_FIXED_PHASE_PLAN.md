@@ -2858,3 +2858,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added source-only collaborator invitations for Human users and owner-controlled AI Agents, explicit edit/upload/credit/review scopes, invitation acceptance, revocation, and expiry handling.
 - Added creator credit endpoints with ownership/active-collaborator checks and immutable film-version snapshot creation containing title metadata, episode references, contributor credits and collaborator provenance. Snapshot records contain no signed media URLs.
 - All writes remain server-side through FastAPI service credentials. The collaborator/credit/version schema is source-only and has not been applied; Web/Native Creator Studio UI wiring and Super Admin review remain outstanding.
+
+
+**WP-11 Creator Studio API integration checkpoint (2026-11-15):**
+- Added optimistic-concurrency metadata updates and permission-scoped title/episode access for active Human collaborators. `edit_metadata`, `upload_episodes`, and `submit_review` are checked server-side; episode ownership remains anchored to the film owner while uploaded media must belong to an authorized collaborator and satisfy full readiness (ready, clean scan, processed timestamp, non-empty derivatives).
+- Added a collaborator inbox endpoint so invited/active collaborations can be surfaced in the creator workspace. Owner-only creation of film projects is preserved.
+- Creator collaboration schema is still source-only. UI wiring and live acceptance remain outstanding.

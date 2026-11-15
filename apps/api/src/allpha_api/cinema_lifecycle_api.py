@@ -434,6 +434,25 @@ async def invite_cinema_collaborator(title_id: uuid.UUID,payload: CinemaCollabor
     return {"collaborator":rows[0]}
 
 
+
+@router.get("/creator/collaborations")
+async def my_cinema_collaborations(user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    user_id=str(user["id"])
+    rows=await _db("GET","cinema_collaborators",params={
+        "select":"id,title_id,owner_id,role,permissions,status,expires_at,created_at",
+        "collaborator_user_id":"eq."+user_id,"status":"in.(invited,active)",
+        "order":"created_at.desc","limit":"100",
+    })
+    items=[]
+    for row in rows or []:
+        titles=await _db("GET","cinema_titles",params={
+            "select":"id,title,status,version","id":"eq."+str(row["title_id"]),
+            "owner_id":"eq."+str(row["owner_id"]),"limit":"1",
+        })
+        items.append({**row,"title":titles[0] if titles else None})
+    return {"items":items}
+
+
 @router.post("/creator/collaborations/{collaboration_id}/decision")
 async def decide_cinema_collaboration(collaboration_id: uuid.UUID,payload: CinemaCollaboratorDecision,
                                       user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
