@@ -138,6 +138,18 @@ begin
   select p_owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256,'content_scrubbed',true) from expired e;
   get diagnostics v_count=row_count;
   return jsonb_build_object('expired_count',v_count);
+ elsif p_action='expire_all' then
+  with expired as (
+   update public.agent_memory_items i set status='expired',content='[expired]',source_ref='{}'::jsonb,provenance='{}'::jsonb,confidence=null,updated_at=now()
+   where i.status in ('proposed','active') and i.retention_expires_at<=now()
+   returning i.id,i.owner_user_id,i.agent_id,i.policy_id,i.memory_type,i.content_sha256
+  )
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,event_type,details)
+  select e.owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',
+   jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256,'content_scrubbed',true)
+  from expired e;
+  get diagnostics v_count=row_count;
+  return jsonb_build_object('expired_count',v_count);
  elsif p_action='invalidate_policy_items' then
   if not exists(select 1 from public.agent_memory_policies p where p.id=(p_payload->>'policy_id')::uuid and p.owner_user_id=p_owner_user_id and p.agent_id is not distinct from p_agent_id)
   then raise exception 'MEMORY_POLICY_OWNER_REQUIRED' using errcode='42501'; end if;
