@@ -1,0 +1,103 @@
+"use client";
+import {useCallback,useEffect,useMemo,useState} from "react";
+import {useParams} from "next/navigation";
+import Link from "next/link";
+import type {Session} from "@supabase/supabase-js";
+import {getBrowserSupabase} from "../../../../lib/supabase";
+
+type T="working"|"episodic"|"semantic"|"procedural"|"long_term";
+type Policy={id:string;memory_type:T;enabled:boolean;retention_days:number;policy_version:number};
+type Item={id:string;memory_type:T;content:string;classification:string;purpose:string;status:string;version:number;retention_expires_at:string};
+const api=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
+const defs:{key:T;title:string;description:string;days:number}[]=[
+{key:"working",title:"Working Memory",description:"Konteks tugas/sesi sementara, maksimum 24 jam.",days:1},
+{key:"episodic",title:"Episodic Memory",description:"Ringkasan kejadian dengan aktor, waktu dan provenance.",days:30},
+{key:"semantic",title:"Semantic Memory",description:"Fakta dan konsep dengan sumber, confidence dan scope.",days:90},
+{key:"procedural",title:"Procedural Memory",description:"Pola reusable; tidak pernah memberikan tool authority.",days:90},
+{key:"long_term",title:"Long-term Memory",description:"Memori persisten dengan consent, retensi, koreksi dan penghapusan.",days:365}];
+async function err(r:Response){const b=await r.json().catch(()=>({}));return b?.error?.message??b?.detail?.message??"Permintaan gagal ("+r.status+").";}
+
+export default function AgentMemoryPage(){
+ const params=useParams<{agentId:string}>(),agentId=params.agentId,supabase=useMemo(()=>getBrowserSupabase(),[]);
+ const [session,setSession]=useState<Session|null>(null),[policies,setPolicies]=useState<Policy[]>([]),[items,setItems]=useState<Item[]>([]);
+ const [enabled,setEnabled]=useState<Record<string,boolean>>({}),[retention,setRetention]=useState<Record<string,number>>({}),[consent,setConsent]=useState(false);
+ const [loading,setLoading]=useState(true),[saving,setSaving]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const [editing,setEditing]=useState(""),[draft,setDraft]=useState("");
+ const load=useCallback(async(s:Session)=>{
+  setLoading(true);setError("");
+  try{
+   const h={Authorization:"Bearer "+s.access_token,Accept:"application/json"};
+   const [pr,ir]=await Promise.all([
+    fetch(api+"/v1/memory/policies?agent_id="+encodeURIComponent(agentId),{headers:h,cache:"no-store"}),
+    fetch(api+"/v1/memory/items?agent_id="+encodeURIComponent(agentId)+"&limit=100",{headers:h,cache:"no-store"})]);
+   if(!pr.ok)throw new Error(await err(pr));if(!ir.ok)throw new Error(await err(ir));
+   const [p,i]=await Promise.all([pr.json(),ir.json()]),list:Policy[]=Array.isArray(p.items)?p.items:[];
+   setPolicies(list);setItems(Array.isArray(i.items)?i.items:[]);
+   setEnabled(Object.fromEntries(defs.map(d=>[d.key,!!list.find(x=>x.memory_type===d.key)?.enabled])));
+   setRetention(Object.fromEntries(defs.map(d=>[d.key,list.find(x=>x.memory_type===d.key)?.retention_days??d.days])));
+  }catch(e){setError(e instanceof Error?e.message:"Memory Coordinator tidak dapat dimuat.");}finally{setLoading(false);}
+ },[agentId]);
+ useEffect(()=>{
+  if(!supabase){setLoading(false);setError("Autentikasi belum tersedia.");return;}
+  let alive=true;
+  void supabase.auth.getSession().then(({data})=>{if(!alive)return;setSession(data.session);if(data.session)void load(data.session);else{setLoading(false);setError("Masuk terlebih dahulu.");}});
+  const {data:sub}=supabase.auth.onAuthStateChange((_event,s)=>{if(!alive)return;setSession(s);if(s)void load(s);else{setItems([]);setPolicies([]);setLoading(false);setError("Sesi berakhir.");}});
+  return()=>{alive=false;sub.subscription.unsubscribe();};
+ },[supabase,load]);
+ async function savePolicy(type:T){
+  if(!session)return;const on=!!enabled[type];if(on&&!consent){setError("Berikan persetujuan eksplisit terlebih dahulu.");return;}
+  setSaving(type);setError("");setNotice("");
+  try{
+   const r=await fetch(api+"/v1/memory/policies/"+type,{method:"PUT",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
+    body:JSON.stringify({agent_id:agentId,enabled:on,consent_version:on?"allpha.memory.v1":null,
+     allowed_purposes:on?["agent_generation_context","agent_runtime_context","workflow_context"]:[],
+     allowed_sensitivities:on?["public","internal","confidential"]:[],retention_days:type==="working"?1:Number(retention[type]??30)})});
+   if(!r.ok)throw new Error(await err(r));setNotice(on?"Policy Memory diaktifkan dengan approval manual.":"Policy dinonaktifkan; retrieval akan berhenti.");await load(session);
+  }catch(e){setError(e instanceof Error?e.message:"Policy gagal disimpan.");}finally{setSaving("");}
+ }
+ async function decide(item:Item,decision:"approve"|"reject"){
+  if(!session)return;setSaving(item.id);
+  try{const r=await fetch(api+"/v1/memory/items/"+item.id+"/decision",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({decision})});
+   if(!r.ok)throw new Error(await err(r));setNotice(decision==="approve"?"Proposal disetujui.":"Proposal ditolak.");await load(session);
+  }catch(e){setError(e instanceof Error?e.message:"Keputusan proposal gagal.");}finally{setSaving("");}
+ }
+ async function correct(item:Item){
+  if(!session)return;setSaving(item.id);
+  try{const r=await fetch(api+"/v1/memory/items/"+item.id,{method:"PATCH",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({content:draft})});
+   if(!r.ok)throw new Error(await err(r));setEditing("");setNotice("Memori dikoreksi.");await load(session);
+  }catch(e){setError(e instanceof Error?e.message:"Koreksi gagal.");}finally{setSaving("");}
+ }
+ async function remove(item:Item){
+  if(!session||!window.confirm("Hapus memori ini?"))return;setSaving(item.id);
+  try{const r=await fetch(api+"/v1/memory/items/"+item.id,{method:"DELETE",headers:{Authorization:"Bearer "+session.access_token}});
+   if(!r.ok)throw new Error(await err(r));setNotice("Memori dihapus dan tidak lagi tersedia dalam retrieval.");await load(session);
+  }catch(e){setError(e instanceof Error?e.message:"Penghapusan gagal.");}finally{setSaving("");}
+ }
+ if(loading)return <main className="mx-auto max-w-5xl p-6">Memuat Memory Studio…</main>;
+ return <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
+  <header className="flex flex-wrap items-end justify-between gap-3 border-b pb-5">
+   <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">Allpha · Agent Intelligence</p><h1 className="mt-2 text-3xl font-semibold">Memory Studio</h1><p className="mt-2 max-w-2xl text-sm text-neutral-600">Consent, klasifikasi, retensi, proposal, koreksi dan penghapusan memori privat Agent.</p></div>
+   <Link href={"/agents/"+agentId+"/studio"} className="rounded-xl border px-4 py-2 text-sm font-medium">Kembali ke Agent Studio</Link>
+  </header>
+  {error&&<div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
+  {notice&&<div role="status" className="rounded-xl border p-3 text-sm">{notice}</div>}
+  <section className="rounded-2xl border p-4 sm:p-5">
+   <h2 className="text-lg font-semibold">Consent dan kebijakan penyimpanan</h2>
+   <p className="mt-1 text-sm text-neutral-600">Semua kelas persisten nonaktif secara default. Model hanya boleh mengusulkan memori; pemilik harus menyetujui setiap proposal. External Consumer tidak memperoleh memori privat pemilik.</p>
+   <label className="mt-4 flex items-start gap-3 rounded-xl border p-3 text-sm"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} className="mt-1"/><span><strong>Persetujuan eksplisit pemilik</strong><span className="block text-neutral-600">Saya mengizinkan penyimpanan sesuai jenis, tujuan, klasifikasi dan masa retensi yang saya aktifkan. Persetujuan dapat dicabut kapan saja.</span></span></label>
+   <div className="mt-4 grid gap-3">{defs.map(d=>{const p=policies.find(x=>x.memory_type===d.key);const on=!!enabled[d.key];return <article key={d.key} className="rounded-xl border p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="font-semibold">{d.title}</h3><span className="rounded-full border px-2 py-0.5 text-xs">{on?"Aktif":"Nonaktif"}</span></div><p className="mt-1 text-sm text-neutral-600">{d.description}</p><p className="mt-2 text-xs text-neutral-500">Policy v{p?.policy_version??0} · Retensi {retention[d.key]??d.days} hari · Approval manual</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={e=>setEnabled(v=>({...v,[d.key]:e.target.checked}))}/>Aktifkan</label></div>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs text-neutral-600">Retensi (hari)<input type="number" min={1} max={3650} disabled={d.key==="working"||!on} value={retention[d.key]??d.days} onChange={e=>setRetention(v=>({...v,[d.key]:Number(e.target.value)}))} className="w-24 rounded-lg border px-2 py-1 text-sm text-neutral-900 disabled:opacity-50"/></label><button disabled={saving===d.key||(on&&!consent)} onClick={()=>void savePolicy(d.key)} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving===d.key?"Menyimpan…":"Simpan kebijakan"}</button></div>
+   </article>;})}</div>
+  </section>
+  <section className="rounded-2xl border p-4 sm:p-5"><h2 className="text-lg font-semibold">Conversation Memory</h2><p className="mt-1 text-sm text-neutral-600">Riwayat percakapan menggunakan tabel conversations/messages kanonis. Konteks dibatasi berdasarkan participant dan panjang pesan; tidak diduplikasi ke tabel Memory.</p><span className="mt-3 inline-flex rounded-full border px-2 py-1 text-xs">Canonical message store · Read-only</span></section>
+  <section className="space-y-3 rounded-2xl border p-4 sm:p-5"><div><h2 className="text-lg font-semibold">Memory proposals dan item tersimpan</h2><p className="mt-1 text-sm text-neutral-600">Hanya item yang disetujui dan policy version-nya masih berlaku yang masuk retrieval. Saat ini metadata/keyword; vector/hybrid belum diaktifkan.</p></div>
+   {items.length===0?<p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">Belum ada proposal atau item Memory.</p>:items.map(item=><article key={item.id} className="rounded-xl border p-4">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><strong className="capitalize">{item.memory_type.replace("_"," ")}</strong><span className="rounded-full border px-2 py-0.5 text-xs">{item.status}</span><span className="rounded-full border px-2 py-0.5 text-xs">{item.classification}</span></div><span className="text-xs text-neutral-500">v{item.version}</span></div>
+    {editing===item.id?<div className="mt-3 space-y-2"><textarea value={draft} onChange={e=>setDraft(e.target.value)} rows={4} maxLength={8000} className="w-full rounded-xl border p-3 text-sm"/><div className="flex gap-2"><button disabled={saving===item.id} onClick={()=>void correct(item)} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs text-white">Simpan koreksi</button><button onClick={()=>setEditing("")} className="rounded-lg border px-3 py-2 text-xs">Batal</button></div></div>:<p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>}
+    <p className="mt-2 text-xs text-neutral-500">Tujuan: {item.purpose} · Kedaluwarsa: {new Date(item.retention_expires_at).toLocaleDateString("id-ID")}</p>
+    <div className="mt-3 flex flex-wrap gap-2">{item.status==="proposed"&&<><button disabled={saving===item.id} onClick={()=>void decide(item,"approve")} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs text-white">Setujui</button><button disabled={saving===item.id} onClick={()=>void decide(item,"reject")} className="rounded-lg border px-3 py-2 text-xs">Tolak</button></>}{item.status==="active"&&<><button onClick={()=>{setEditing(item.id);setDraft(item.content);}} className="rounded-lg border px-3 py-2 text-xs">Koreksi</button><button disabled={saving===item.id} onClick={()=>void remove(item)} className="rounded-lg border border-red-300 px-3 py-2 text-xs text-red-700">Hapus</button></>}</div>
+   </article>)}
+  </section>
+ </main>;
+}
