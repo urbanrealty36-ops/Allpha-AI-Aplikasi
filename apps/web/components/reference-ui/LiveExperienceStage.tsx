@@ -163,11 +163,11 @@ export default function LiveExperienceStage({
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
       <div className="flex items-center justify-between bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
         <div className="flex items-center gap-3">
-          <div className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-slate-900 animate-pulse" />
+          <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 ${liveStateAvailable && isLive ? "bg-rose-500 animate-pulse" : liveStateAvailable ? "bg-emerald-400" : "bg-slate-300"}`} aria-hidden="true" />
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-200 border-2 border-slate-900 font-black uppercase tracking-wider text-rose-950 shadow-2xs">
-                LIVE STAGE
+              <span className={`text-[10px] px-2.5 py-0.5 rounded-full border-2 border-slate-900 font-black uppercase tracking-wider shadow-2xs ${liveStateAvailable && isLive ? "bg-rose-200 text-rose-950" : "bg-slate-200 text-slate-800"}`}>
+                {liveStateAvailable ? isLive ? "LIVE" : "STAGE READY" : "SESSION NOT CONNECTED"}
               </span>
               <h1 className="text-sm font-black text-slate-950">Podcast & Live Experience Arena</h1>
             </div>
