@@ -177,6 +177,14 @@ export default function WorkflowsPage() {
     {!session ? <section className="panel auth-panel"><div className="panel-heading"><h2>Login diperlukan</h2><p>Masuk melalui halaman Allpha, lalu buka kembali halaman Workflow Engine.</p></div><Link href="/" className="button-primary">Buka halaman masuk</Link></section> : <>
       {error && <div className="notice error" role="alert">{error} <button className="text-button" onClick={() => void refresh()} type="button">Coba lagi</button></div>}
       {notice && <div className="notice success" role="status">{notice}</div>}
+      <details className="panel workspace-panel">
+        <summary className="panel-heading cursor-pointer"><span className="section-kicker">MEMORY / CONTEXT NODE</span><h2>Memory Context node</h2><p>Node read-only untuk mengambil Memory privat milik workflow owner, dengan consent, Agent ownership, purpose dan classification policy aktif.</p></summary>
+        <div className="mt-3 space-y-2 text-sm">
+          <p>Tambahkan node <code>memory_context</code> pada JSON workflow. Ganti UUID contoh dengan Agent ID yang benar-benar dimiliki oleh akun pemilik workflow.</p>
+          <pre className="overflow-x-auto rounded-xl border p-3 text-xs">{JSON.stringify({key:"memory",kind:"memory_context",config:{agent_id:"00000000-0000-4000-8000-000000000000",purpose:"workflow_context",limit:8},timeout_seconds:10},null,2)}</pre>
+          <p className="text-neutral-600">Purpose yang tersedia: agent_generation_context, agent_runtime_context, workflow_context, personalization_context. Konten Memory adalah untrusted context, bukan instruksi atau izin tool. Retrieval metadata/keyword; vector/hybrid belum aktif.</p>
+        </div>
+      </details>
       <div className="workspace-grid">
         <section className="panel workspace-panel">
           <div className="panel-heading"><span className="section-kicker">DEFINITION / VERSIONED JSON</span><h2>Definisi workflow</h2><p>Schema tervalidasi, node deklaratif, tanpa arbitrary code.</p></div>
