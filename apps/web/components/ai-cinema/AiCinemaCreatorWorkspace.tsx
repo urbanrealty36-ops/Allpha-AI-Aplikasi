@@ -283,98 +283,98 @@ export default function AiCinemaCreatorWorkspace() {
   }
 
   return (
-    <section className="mx-auto my-8 w-full max-w-6xl rounded-3xl border border-white/15 bg-slate-950/90 p-5 text-white shadow-2xl sm:p-7">
+    <section className="mx-auto my-8 w-full max-w-6xl rounded-3xl border-2 border-slate-900 bg-white p-5 text-slate-900 shadow-[3px_3px_0px_#0f172a] sm:p-7">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div><p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-300">Creator Workspace</p><h2 className="mt-1 text-2xl font-black">Draft Film & Episode</h2><p className="mt-1 text-sm text-slate-300">Draft disimpan melalui FastAPI dan hanya dapat diakses pemiliknya.</p></div>
-        <button type="button" onClick={() => { void loadTitles(); void loadCapabilityStatus(); void loadCreatorMedia(); }} disabled={loading} className="rounded-xl border border-white/20 px-4 py-2 text-sm font-bold hover:bg-white/10 disabled:opacity-50">{loading ? "Memuat…" : "Muat ulang"}</button>
+        <div><p className="text-xs font-bold uppercase tracking-[.2em] text-sky-700">Creator Workspace</p><h2 className="mt-1 text-2xl font-black">Draft Film & Episode</h2><p className="mt-1 text-sm text-slate-700">Draft disimpan melalui FastAPI dan hanya dapat diakses pemiliknya.</p></div>
+        <button type="button" onClick={() => { void loadTitles(); void loadCapabilityStatus(); void loadCreatorMedia(); }} disabled={loading} className="rounded-xl border-2 border-slate-900 bg-slate-100 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] hover:bg-slate-200 disabled:opacity-50">{loading ? "Memuat…" : "Muat ulang"}</button>
       </div>
-      {capabilityStatus && <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-950/20 p-3 text-xs text-amber-100">
+      {capabilityStatus && <div className="mb-4 rounded-xl border border-2 border-slate-900 bg-amber-50 p-3 text-xs text-amber-900">
         <p className="font-bold">Status layanan terhubung</p>
         <p className="mt-1">Generation: {capabilityStatus.generation} · Generation jobs: {capabilityStatus.generation_jobs} · Billing: {capabilityStatus.billing} · Playback entitlement: {capabilityStatus.playback_entitlement}</p>
-        <p className="mt-1 text-amber-200/80">Generate, pembayaran, dan playback premium belum dapat digunakan sampai kontrak job, policy kredit, billing, dan entitlement tersedia.</p>
+        <p className="mt-1 text-amber-800">Generate, pembayaran, dan playback premium belum dapat digunakan sampai kontrak job, policy kredit, billing, dan entitlement tersedia.</p>
       </div>}
-      {error && <p role="alert" className="mb-4 rounded-xl border border-rose-400/40 bg-rose-950/50 p-3 text-sm text-rose-200">{error}</p>}
-      {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-400/40 bg-emerald-950/40 p-3 text-sm text-emerald-200">{notice}</p>}
+      {error && <p role="alert" className="mb-4 rounded-xl border border-2 border-slate-900 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+      {notice && <p role="status" className="mb-4 rounded-xl border border-2 border-slate-900 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
       <div className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={createTitle} className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+        <form onSubmit={createTitle} className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
           <h3 className="font-bold">Buat draft film</h3>
-          <label className="block text-xs text-slate-300">Judul film<input required maxLength={160} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
-          <label className="block text-xs text-slate-300">Genre<select value={genre} onChange={event => setGenre(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"><option value="c_drama">C-Drama</option><option value="k_drama">K-Drama</option><option value="scifi">Sci-Fi</option><option value="romance">Romance</option><option value="thriller">Thriller</option><option value="animation_3d">Animasi 3D</option><option value="documentary">Dokumenter</option><option value="other">Lainnya</option></select></label>
-          <label className="block text-xs text-slate-300">Sinopsis<textarea maxLength={5000} rows={4} value={synopsis} onChange={event => setSynopsis(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
-          <button disabled={saving || !title.trim()} className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan draft film"}</button>
+          <label className="block text-xs text-slate-700">Judul film<input required maxLength={160} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900" /></label>
+          <label className="block text-xs text-slate-700">Genre<select value={genre} onChange={event => setGenre(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"><option value="c_drama">C-Drama</option><option value="k_drama">K-Drama</option><option value="scifi">Sci-Fi</option><option value="romance">Romance</option><option value="thriller">Thriller</option><option value="animation_3d">Animasi 3D</option><option value="documentary">Dokumenter</option><option value="other">Lainnya</option></select></label>
+          <label className="block text-xs text-slate-700">Sinopsis<textarea maxLength={5000} rows={4} value={synopsis} onChange={event => setSynopsis(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900" /></label>
+          <button disabled={saving || !title.trim()} className="w-full rounded-xl bg-sky-300 px-4 py-3 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan draft film"}</button>
         </form>
         <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[.04] p-4">
+          <div className="rounded-2xl border-2 border-slate-900 bg-white p-4">
             <h3 className="mb-3 font-bold">Film milik saya</h3>
-            {titles.length === 0 ? <p className="text-sm text-slate-400">{loading ? "Memuat draft…" : "Belum ada draft film pada akun ini."}</p> : <select aria-label="Pilih draft film" value={selectedTitleId} onChange={event => setSelectedTitleId(event.target.value)} className="w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white">{titles.map(item => <option key={item.id} value={item.id}>{item.title} · {item.status}</option>)}</select>}
+            {titles.length === 0 ? <p className="text-sm text-slate-600">{loading ? "Memuat draft…" : "Belum ada draft film pada akun ini."}</p> : <select aria-label="Pilih draft film" value={selectedTitleId} onChange={event => setSelectedTitleId(event.target.value)} className="w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900">{titles.map(item => <option key={item.id} value={item.id}>{item.title} · {item.status}</option>)}</select>}
           </div>
-          <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+          <div className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
             <h3 className="font-bold">Ajukan ke review</h3>
-            <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={rightsConfirmed} onChange={event => setRightsConfirmed(event.target.checked)} />Saya menyatakan memiliki hak/izin atas materi yang digunakan.</label>
-            <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" checked={aiDisclosureConfirmed} onChange={event => setAiDisclosureConfirmed(event.target.checked)} />Saya mengonfirmasi pengungkapan penggunaan AI pada metadata film.</label>
-            <button type="button" onClick={() => void submitForReview()} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} className="w-full rounded-xl border border-cyan-300/40 px-4 py-3 text-sm font-bold text-cyan-200 disabled:opacity-40">{saving ? "Mengajukan…" : "Ajukan rights review & moderasi"}</button>
-            <p className="text-xs text-slate-400">API akan menolak pengajuan jika episode belum memiliki media ready dan scan clean. Keputusan hak cipta dan moderasi tetap dilakukan operator.</p>
+            <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={rightsConfirmed} onChange={event => setRightsConfirmed(event.target.checked)} />Saya menyatakan memiliki hak/izin atas materi yang digunakan.</label>
+            <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={aiDisclosureConfirmed} onChange={event => setAiDisclosureConfirmed(event.target.checked)} />Saya mengonfirmasi pengungkapan penggunaan AI pada metadata film.</label>
+            <button type="button" onClick={() => void submitForReview()} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} className="w-full rounded-xl border-2 border-slate-900 bg-rose-100 px-4 py-3 text-sm font-black text-rose-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-40">{saving ? "Mengajukan…" : "Ajukan rights review & moderasi"}</button>
+            <p className="text-xs text-slate-600">API akan menolak pengajuan jika episode belum memiliki media ready dan scan clean. Keputusan hak cipta dan moderasi tetap dilakukan operator.</p>
           </div>
-          <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+          <section className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
             <h3 className="font-bold">Upload video film · Media Pipeline</h3>
-            <p className="text-xs text-slate-400">MP4/WebM maksimal 50 MiB. File disimpan melalui FastAPI ke Supabase Storage; worker dan pemeriksaan keamanan menentukan kapan media siap digunakan.</p>
-            <input type="file" accept="video/mp4,video/webm" onChange={event => { const next = event.target.files?.[0] ?? null; const sameFile = Boolean(next && uploadFile && next.name === uploadFile.name && next.size === uploadFile.size && next.lastModified === uploadFile.lastModified); setUploadFile(next); if (!sameFile) setUploadIdempotencyKey(""); }} className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
-            {uploadFile && <p className="text-xs text-slate-300">{uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
-            <button type="button" onClick={() => void uploadCinemaMedia()} disabled={saving || !uploadFile} className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"}</button>
-            <div className="space-y-1 border-t border-white/10 pt-3"><p className="text-xs font-bold text-slate-300">Status media saya</p>{creatorMedia.length ? creatorMedia.map(media => <p key={media.id} className="text-xs text-slate-400">{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · diproses " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</p>) : <p className="text-xs text-slate-500">Belum ada media milik akun ini.</p>}</div>
+            <p className="text-xs text-slate-600">MP4/WebM maksimal 50 MiB. File disimpan melalui FastAPI ke Supabase Storage; worker dan pemeriksaan keamanan menentukan kapan media siap digunakan.</p>
+            <input type="file" accept="video/mp4,video/webm" onChange={event => { const next = event.target.files?.[0] ?? null; const sameFile = Boolean(next && uploadFile && next.name === uploadFile.name && next.size === uploadFile.size && next.lastModified === uploadFile.lastModified); setUploadFile(next); if (!sameFile) setUploadIdempotencyKey(""); }} className="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+            {uploadFile && <p className="text-xs text-slate-700">{uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
+            <button type="button" onClick={() => void uploadCinemaMedia()} disabled={saving || !uploadFile} className="w-full rounded-xl bg-sky-300 px-4 py-3 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"}</button>
+            <div className="space-y-1 border-t border-slate-900 pt-3"><p className="text-xs font-bold text-slate-700">Status media saya</p>{creatorMedia.length ? creatorMedia.map(media => <p key={media.id} className="text-xs text-slate-600">{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · diproses " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</p>) : <p className="text-xs text-slate-600">Belum ada media milik akun ini.</p>}</div>
           </section>
-          <form onSubmit={createEpisode} className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+          <form onSubmit={createEpisode} className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
             <h3 className="font-bold">Tambah draft episode</h3>
-            <label className="block text-xs text-slate-300">Nomor episode<input required type="number" min="1" max="10000" value={episodeNumber} onChange={event => setEpisodeNumber(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
-            <label className="block text-xs text-slate-300">Judul episode<input required maxLength={160} value={episodeTitle} onChange={event => setEpisodeTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
-            <label className="block text-xs text-slate-300">Sinopsis<textarea maxLength={3000} rows={2} value={episodeSynopsis} onChange={event => setEpisodeSynopsis(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
-            <label className="block text-xs text-slate-300">Media episode · hanya media siap dan scan clean<select value={selectedMediaId} onChange={event => setSelectedMediaId(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"><option value="">Simpan tanpa media (draft)</option>{readyMedia.map(media => <option key={media.id} value={media.id}>{media.filename} · {media.media_type} · {(media.size_bytes / 1024 / 1024).toFixed(1)} MiB</option>)}</select><span className="mt-1 block text-slate-400">Media dari Creator Studio hanya tersedia setelah processing selesai dan scan berstatus clean.</span></label>
-            <button disabled={saving || !selectedTitleId || !episodeTitle.trim()} className="w-full rounded-xl bg-violet-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan draft episode"}</button>
+            <label className="block text-xs text-slate-700">Nomor episode<input required type="number" min="1" max="10000" value={episodeNumber} onChange={event => setEpisodeNumber(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900" /></label>
+            <label className="block text-xs text-slate-700">Judul episode<input required maxLength={160} value={episodeTitle} onChange={event => setEpisodeTitle(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900" /></label>
+            <label className="block text-xs text-slate-700">Sinopsis<textarea maxLength={3000} rows={2} value={episodeSynopsis} onChange={event => setEpisodeSynopsis(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900" /></label>
+            <label className="block text-xs text-slate-700">Media episode · hanya media siap dan scan clean<select value={selectedMediaId} onChange={event => setSelectedMediaId(event.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"><option value="">Simpan tanpa media (draft)</option>{readyMedia.map(media => <option key={media.id} value={media.id}>{media.filename} · {media.media_type} · {(media.size_bytes / 1024 / 1024).toFixed(1)} MiB</option>)}</select><span className="mt-1 block text-slate-600">Media dari Creator Studio hanya tersedia setelah processing selesai dan scan berstatus clean.</span></label>
+            <button disabled={saving || !selectedTitleId || !episodeTitle.trim()} className="w-full rounded-xl bg-rose-300 px-4 py-3 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{saving ? "Menyimpan…" : "Simpan draft episode"}</button>
           </form>
         </div>
       </div>
-      <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.03] p-4">
+      <div className="mt-6 rounded-2xl border-2 border-slate-900 bg-slate-50 p-4">
         <h3 className="mb-3 font-bold">Daftar episode</h3>
-        {episodes.length === 0 ? <p className="text-sm text-slate-400">Belum ada episode untuk film yang dipilih.</p> : <ol className="space-y-2">{episodes.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/80 p-3 text-sm"><span><strong>Episode {item.episode_number} — {item.title}</strong><span className="ml-2 text-xs text-slate-400">{item.status}</span></span><span className="text-xs text-slate-400">{item.duration_seconds ? `${item.duration_seconds} dtk` : "Durasi belum ditetapkan"}</span></li>)}</ol>}
+        {episodes.length === 0 ? <p className="text-sm text-slate-600">Belum ada episode untuk film yang dipilih.</p> : <ol className="space-y-2">{episodes.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-sm"><span><strong>Episode {item.episode_number} — {item.title}</strong><span className="ml-2 text-xs text-slate-600">{item.status}</span></span><span className="text-xs text-slate-600">{item.duration_seconds ? `${item.duration_seconds} dtk` : "Durasi belum ditetapkan"}</span></li>)}</ol>}
       </div>
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-white/10 bg-white/[.04] p-4">
+        <section className="rounded-2xl border-2 border-slate-900 bg-white p-4">
           <h3 className="font-bold">Kolaborator & Human-Agent credits</h3>
-          <p className="mt-1 text-xs text-slate-400">Akses diberikan per film dan per scope. Undangan Human aktif setelah penerima menyetujui.</p>
+          <p className="mt-1 text-xs text-slate-600">Akses diberikan per film dan per scope. Undangan Human aktif setelah penerima menyetujui.</p>
           <form onSubmit={inviteCollaborator} className="mt-3 space-y-2">
-            <label className="block text-xs text-slate-300">ID akun Human yang diundang (UUID)<input value={collaboratorUserId} onChange={e=>setCollaboratorUserId(e.target.value)} placeholder="UUID akun collaborator" className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
-            <label className="block text-xs text-slate-300">Peran<input value={collaboratorRole} onChange={e=>setCollaboratorRole(e.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
-            <div className="flex flex-wrap gap-3 text-xs text-slate-300">
+            <label className="block text-xs text-slate-700">ID akun Human yang diundang (UUID)<input value={collaboratorUserId} onChange={e=>setCollaboratorUserId(e.target.value)} placeholder="UUID akun collaborator" className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"/></label>
+            <label className="block text-xs text-slate-700">Peran<input value={collaboratorRole} onChange={e=>setCollaboratorRole(e.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"/></label>
+            <div className="flex flex-wrap gap-3 text-xs text-slate-700">
               {["edit_metadata","upload_episodes","manage_credits","submit_review"].map(scope=><label key={scope} className="flex items-center gap-1"><input type="checkbox" checked={collaboratorPermissions.includes(scope)} onChange={e=>setCollaboratorPermissions(v=>e.target.checked?[...v,scope]:v.filter(x=>x!==scope))}/>{scope}</label>)}
             </div>
-            <button disabled={saving||!selectedTitleId||!collaboratorUserId.trim()} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">Undang collaborator</button>
+            <button disabled={saving||!selectedTitleId||!collaboratorUserId.trim()} className="rounded-xl bg-sky-300 px-4 py-2 text-sm font-black text-slate-950 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">Undang collaborator</button>
           </form>
           <div className="mt-4 space-y-2">
-            {collaborators.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900 p-3 text-xs"><span><strong>{item.role}</strong><span className="ml-2 text-slate-400">{item.collaborator_user_id||item.collaborator_agent_id} · {item.status}</span><span className="block text-slate-400">{item.permissions.join(", ")}</span></span>{item.status!=="revoked"&&<button onClick={()=>void decideCollaboration(item.id,"revoke")} className="rounded-lg border border-rose-400/40 px-3 py-1 text-rose-200">Cabut akses</button>}</div>)}
-            {collaborators.length===0&&<p className="text-xs text-slate-400">Belum ada collaborator pada film ini.</p>}
+            {collaborators.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs"><span><strong>{item.role}</strong><span className="ml-2 text-slate-600">{item.collaborator_user_id||item.collaborator_agent_id} · {item.status}</span><span className="block text-slate-600">{item.permissions.join(", ")}</span></span>{item.status!=="revoked"&&<button onClick={()=>void decideCollaboration(item.id,"revoke")} className="rounded-lg border border-2 border-slate-900 px-3 py-1 text-rose-800">Cabut akses</button>}</div>)}
+            {collaborators.length===0&&<p className="text-xs text-slate-600">Belum ada collaborator pada film ini.</p>}
           </div>
-          <div className="mt-4 border-t border-white/10 pt-3">
+          <div className="mt-4 border-t border-slate-900 pt-3">
             <h4 className="text-sm font-bold">Undangan saya</h4>
-            {invitations.map(item=><div key={item.id} className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900 p-3 text-xs"><span>{item.title?.title||"Film"} · {item.role} · {item.status}</span>{item.status==="invited"&&<button onClick={()=>void decideCollaboration(item.id,"accept")} className="rounded-lg bg-violet-400 px-3 py-1 font-bold text-slate-950">Terima</button>}</div>)}
+            {invitations.map(item=><div key={item.id} className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs"><span>{item.title?.title||"Film"} · {item.role} · {item.status}</span>{item.status==="invited"&&<button onClick={()=>void decideCollaboration(item.id,"accept")} className="rounded-lg bg-violet-400 px-3 py-1 font-bold text-slate-950">Terima</button>}</div>)}
           </div>
         </section>
-        <section className="rounded-2xl border border-white/10 bg-white/[.04] p-4">
+        <section className="rounded-2xl border-2 border-slate-900 bg-white p-4">
           <h3 className="font-bold">Creator Credits & Version History</h3>
           <form onSubmit={addCreatorCredit} className="mt-3 space-y-2">
-            <label className="block text-xs text-slate-300">Jenis kontributor<select value={creditType} onChange={e=>setCreditType(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"><option value="human">Human (akun saya)</option><option value="agent">AI Agent</option></select></label>
-            {creditType==="agent"&&<label className="block text-xs text-slate-300">ID AI Agent (UUID)<input value={creditAgentId} onChange={e=>setCreditAgentId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" placeholder="UUID AI Agent milik pemilik film"/></label>}
-            <label className="block text-xs text-slate-300">Peran kontribusi<input value={creditRole} onChange={e=>setCreditRole(e.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
-            <label className="block text-xs text-slate-300">Label atribusi<input value={creditLabel} onChange={e=>setCreditLabel(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
+            <label className="block text-xs text-slate-700">Jenis kontributor<select value={creditType} onChange={e=>setCreditType(e.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"><option value="human">Human (akun saya)</option><option value="agent">AI Agent</option></select></label>
+            {creditType==="agent"&&<label className="block text-xs text-slate-700">ID AI Agent (UUID)<input value={creditAgentId} onChange={e=>setCreditAgentId(e.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900" placeholder="UUID AI Agent milik pemilik film"/></label>}
+            <label className="block text-xs text-slate-700">Peran kontribusi<input value={creditRole} onChange={e=>setCreditRole(e.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"/></label>
+            <label className="block text-xs text-slate-700">Label atribusi<input value={creditLabel} onChange={e=>setCreditLabel(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-sm text-slate-900"/></label>
             <button disabled={saving||!selectedTitleId||(creditType==="agent"&&!creditAgentId.trim())} className="rounded-xl bg-violet-400 px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">Simpan creator credit</button>
           </form>
-          <div className="mt-3 space-y-1">{credits.map(item=><p key={item.id} className="rounded-lg bg-slate-900 p-2 text-xs">{item.attribution_label} · {item.role} · {item.contributor_type}</p>)}{credits.length===0&&<p className="text-xs text-slate-400">Belum ada kredit kreator.</p>}</div>
-          <div className="mt-4 border-t border-white/10 pt-3">
-            <button type="button" disabled={saving||!selectedTitleId} onClick={()=>void snapshotVersion()} className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm font-bold text-cyan-200 disabled:opacity-50">Simpan snapshot versi film</button>
-            <div className="mt-2 space-y-1">{versions.map(item=><p key={item.id} className="text-xs text-slate-400">Versi {item.version} · {new Date(item.created_at).toLocaleString("id-ID")}</p>)}{versions.length===0&&<p className="text-xs text-slate-400">Belum ada snapshot versi.</p>}</div>
+          <div className="mt-3 space-y-1">{credits.map(item=><p key={item.id} className="rounded-lg bg-slate-50 p-2 text-xs">{item.attribution_label} · {item.role} · {item.contributor_type}</p>)}{credits.length===0&&<p className="text-xs text-slate-600">Belum ada kredit kreator.</p>}</div>
+          <div className="mt-4 border-t border-slate-900 pt-3">
+            <button type="button" disabled={saving||!selectedTitleId} onClick={()=>void snapshotVersion()} className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm font-bold text-sky-800 disabled:opacity-50">Simpan snapshot versi film</button>
+            <div className="mt-2 space-y-1">{versions.map(item=><p key={item.id} className="text-xs text-slate-600">Versi {item.version} · {new Date(item.created_at).toLocaleString("id-ID")}</p>)}{versions.length===0&&<p className="text-xs text-slate-600">Belum ada snapshot versi.</p>}</div>
           </div>
         </section>
       </div>
-      <p className="mt-4 text-xs leading-relaxed text-amber-200/80">Generate AI, tarif/kredit, publikasi, moderasi, dan entitlement belum diaktifkan di panel ini karena kontrak job, policy billing, dan bukti runtime terkait belum lengkap.</p>
+      <p className="mt-4 text-xs leading-relaxed text-amber-800">Generate AI, tarif/kredit, publikasi, moderasi, dan entitlement belum diaktifkan di panel ini karena kontrak job, policy billing, dan bukti runtime terkait belum lengkap.</p>
     </section>
   );
 }
