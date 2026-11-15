@@ -2864,3 +2864,7 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added optimistic-concurrency metadata updates and permission-scoped title/episode access for active Human collaborators. `edit_metadata`, `upload_episodes`, and `submit_review` are checked server-side; episode ownership remains anchored to the film owner while uploaded media must belong to an authorized collaborator and satisfy full readiness (ready, clean scan, processed timestamp, non-empty derivatives).
 - Added a collaborator inbox endpoint so invited/active collaborations can be surfaced in the creator workspace. Owner-only creation of film projects is preserved.
 - Creator collaboration schema is still source-only. UI wiring and live acceptance remain outstanding.
+
+
+**WP-11 collaborator access consistency fix (2026-11-15):**
+- Creator media submission now selects and verifies the actual media owner, processed timestamp and non-empty derivative manifest, not only the media ID. Creator credit reads/writes are available to active collaborators only when the `manage_credits` scope is present; title ownership remains the canonical owner ID.

@@ -242,7 +242,7 @@ async def submit_title_for_review(
         raise HTTPException(409, detail={"code": "CINEMA_EPISODE_MEDIA_NOT_READY", "message": "Tambahkan minimal satu episode dan pastikan semua episode memiliki media ready serta scan clean."})
     media_ids = [str(episode["media_id"]) for episode in episode_rows]
     media_rows = await _db("GET", "content_media", params={
-        "select": "id", "id": f"in.({','.join(media_ids)})",
+        "select": "id,owner_id,processed_at,derivatives", "id": f"in.({','.join(media_ids)})",
         "status": "eq.ready", "scan_status": "eq.clean", "limit": str(min(100, len(media_ids))),
     })
     clean_ids = {str(media["id"]) for media in (media_rows or [])

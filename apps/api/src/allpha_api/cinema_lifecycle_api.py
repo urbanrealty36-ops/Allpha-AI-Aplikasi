@@ -333,9 +333,33 @@ async def _owned_cinema_title(title_id: uuid.UUID, owner_id: str) -> dict[str, A
     return rows[0]
 
 
+async def _cinema_title_access(title_id: uuid.UUID, user_id: str, scopes: set[str]) -> dict[str,Any]:
+    titles=await _db("GET","cinema_titles",params={
+        "select":"id,owner_id,title,version","id":"eq."+str(title_id),"limit":"1",
+    })
+    if not titles:
+        raise HTTPException(404,detail={"code":"CINEMA_TITLE_NOT_FOUND","message":"Judul Cinema tidak ditemukan."})
+    title=titles[0]
+    if str(title["owner_id"])==user_id:
+        return title
+    grants=await _db("GET","cinema_collaborators",params={
+        "select":"permissions,expires_at","title_id":"eq."+str(title_id),
+        "owner_id":"eq."+str(title["owner_id"]),"collaborator_user_id":"eq."+user_id,
+        "status":"eq.active","limit":"20",
+    })
+    now=datetime.now(timezone.utc)
+    for grant in grants or []:
+        expiry=_parse_time(grant.get("expires_at"))
+        if expiry and expiry<=now:
+            continue
+        if scopes.intersection(set(grant.get("permissions") or [])):
+            return title
+    raise HTTPException(403,detail={"code":"CINEMA_COLLABORATOR_PERMISSION_REQUIRED","message":"Izin collaborator untuk tindakan ini belum diberikan."})
+
+
 @router.get("/creator/titles/{title_id}/credits")
 async def list_creator_credits(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
-    await _owned_cinema_title(title_id,str(user["id"]))
+    await _cinema_title_access(title_id,str(user["id"]),{"manage_credits"})
     rows=await _db("GET","cinema_creator_credits",params={
         "select":"id,title_id,contributor_type,contributor_user_id,contributor_agent_id,role,attribution_label,disclosure,provenance,created_at",
         "title_id":"eq."+str(title_id),"owner_id":"eq."+str(user["id"]),"order":"created_at.asc","limit":"200",
@@ -347,7 +371,8 @@ async def list_creator_credits(title_id: uuid.UUID,user: dict[str,Any]=Depends(c
 async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate,
                                 user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
     owner_id=str(user["id"])
-    await _owned_cinema_title(title_id,owner_id)
+    title=await _cinema_title_access(title_id,owner_id,{"manage_credits"})
+    owner_id=str(title["owner_id"])
     if payload.contributor_type=="human":
         if payload.contributor_user_id is None or payload.contributor_agent_id is not None:
             raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Human harus menunjuk satu akun Human."})
