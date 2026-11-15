@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import GenerateModal, { type GenerateRequest } from "../../components/reference-ui/GenerateModal";
 
 type Agent = { id: string; display_name: string; description?: string; status: string };
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
@@ -29,7 +30,7 @@ export default function GeneratePage() {
   const [skillId, setSkillId] = useState("");
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [capabilityId, setCapabilityId] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [generatorOpen, setGeneratorOpen] = useState(false);
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -135,11 +136,19 @@ export default function GeneratePage() {
     return () => { active = false; };
   }, [session, agentId, consumerGrantId, externalAgents]);
 
-  async function generate() {
-    if (!session || !agentId || !skillId || !capabilityId || !prompt.trim() || busy) return;
+  async function generate(request: GenerateRequest): Promise<string | null> {
+    if (!session || !agentId || !skillId || !capabilityId || busy) {
+      throw new Error("Pilih Agent, Skill, dan capability yang valid sebelum generation.");
+    }
+    const promptText = [
+      "Jenis konten: " + request.contentType,
+      "Brand: " + request.brandName,
+      "Produk/jasa: " + request.productDetails,
+      "Brief: " + request.brief,
+    ].join("\n");
     setBusy(true); setError(""); setNotice(""); setResult(""); setJobId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
-    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
+    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: promptText, max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
@@ -148,7 +157,8 @@ export default function GeneratePage() {
         throw new Error("Quote generation tidak valid atau sudah kedaluwarsa.");
       }
       if (!window.confirm(`Estimasi: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Knowledge sources: ${quote.knowledge_source_count || 0}. Pembayar: ${quote.payer_role || "akun sendiri"}. Lanjutkan dan reservasi kredit?`)) {
-        setNotice("Dibatalkan sebelum reservasi. Tidak ada kredit yang dipotong."); return;
+        setNotice("Dibatalkan sebelum reservasi. Tidak ada kredit yang dipotong.");
+        return null;
       }
       const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
         method: "POST", headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
@@ -172,16 +182,20 @@ export default function GeneratePage() {
           if (!artifact.url) throw new Error("Artefak privat belum dapat diakses.");
           const outputResponse = await fetch(artifact.url, { cache: "no-store" });
           if (!outputResponse.ok) throw new Error("Unduhan artefak generation gagal.");
-          setResult(await outputResponse.text());
-          setNotice("Hasil lolos moderasi dan disimpan sebagai artefak privat. Creator reward: "+(job.owner_reward_status||"pending_policy")+". Tautan akses bersifat sementara.");
-          return;
+          const outputText = await outputResponse.text();
+          setResult(outputText);
+          setNotice("Hasil lolos moderasi dan tersimpan sebagai artefak privat. Creator reward: " + (job.owner_reward_status || "pending_policy") + ". DM delivery dikonfirmasi oleh backend.");
+          return outputText;
         }
         if (job.status === "failed" || job.status === "cancelled") throw new Error(job.error_code || "Generation gagal.");
         if (job.status === "pending_reconciliation") throw new Error("Outcome provider belum pasti. Job masuk rekonsiliasi dan tidak diulang otomatis.");
       }
       setNotice("Job masih berjalan. Periksa kembali melalui riwayat Generation; permintaan tidak dikirim ulang.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Generation tidak dapat diselesaikan."); }
-    finally { setBusy(false); }
+      return null;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Generation tidak dapat diselesaikan.");
+      throw cause;
+    } finally { setBusy(false); }
   }
 
   const selectedExternalAgent = externalAgents.find(item => item.consumer_grant_id === consumerGrantId && item.agent.id === agentId);
@@ -200,14 +214,23 @@ export default function GeneratePage() {
           <label className="text-sm font-bold">Skill published<select value={skillId} onChange={event => setSkillId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.display_name || skill.name || `Skill v${skill.version}`}</option>)}</select></label>
         </div>
         <label className="mt-4 block text-sm font-bold">Capability approved<select value={capabilityId} onChange={event => setCapabilityId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih capability</option>{capabilities.map(item => <option key={item.capability_key} value={item.capability_key}>{item.capability_key}</option>)}</select></label>
-        <label className="mt-4 block text-sm font-bold">Brief / Prompt<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={7} maxLength={32768} placeholder="Jelaskan tujuan, audiens, format konten, gaya, konteks brand, dan batasan hasil…" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal dark:border-slate-700" /></label>
+        <div className="mt-4 rounded-2xl border-2 border-slate-900 bg-violet-50 p-4 shadow-[2px_2px_0px_#0f172a]">
+          <p className="text-sm font-black text-slate-950">AI Content & Reels Studio</p>
+          <p className="mt-1 text-xs font-medium text-slate-600">Gunakan komponen GenerateModal dari repository referensi. Brief, brand, dan format konten akan dikirim ke Generation Job melalui quote dan Model Router kanonis.</p>
+          <button type="button" onClick={() => setGeneratorOpen(true)} disabled={busy || loading || !agentId || !skillId || !capabilityId} className="mt-3 rounded-xl border-2 border-slate-900 bg-purple-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">Buka AI Content & Reels Studio</button>
+        </div>
         <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} disabled={!!consumerGrantId && !externalKnowledgeAllowed} rows={3} maxLength={4000} placeholder={consumerGrantId && !externalKnowledgeAllowed ? "Owner belum memberikan scope Knowledge publik." : "Cari sumber Knowledge yang boleh digunakan…"} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal disabled:opacity-50 dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Agent sendiri: retrieval mengikuti consent dan ACL pemilik. Agent eksternal: hanya chunk ber-sensitivity public, ready, version-matched, dan grant knowledge_public_read; data privat tidak pernah diambil.</span></label>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">Quote dan tarif selalu berasal dari policy aktif. Tidak ada harga default atau kredit buatan.</p><button onClick={() => void generate()} disabled={busy || loading || !agentId || !skillId || !capabilityId || !prompt.trim()} className="rounded-xl border-2 border-slate-900 bg-violet-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{busy ? "Memproses…" : "Minta Quote & Generate"}</button></div>
+        <p className="mt-4 text-xs text-slate-500">Quote dan tarif selalu berasal dari policy aktif. Tidak ada harga default atau kredit buatan.</p>
       </>}
     </section>
     {error && <p role="alert" className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
     {jobId && <p className="mt-3 text-xs text-slate-500">Generation Job: {jobId}</p>}
     {result && <section className="mt-5 rounded-3xl border-2 border-slate-900 bg-slate-950 p-5 text-cyan-100 shadow-[4px_4px_0px_#0f172a]"><div className="mb-3 flex items-center justify-between"><h2 className="font-black">Hasil Generation</h2><button onClick={() => void navigator.clipboard.writeText(result)} className="rounded-lg border border-cyan-200/50 px-3 py-1.5 text-xs font-bold">Salin</button></div><pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{result}</pre><p className="mt-4 border-t border-white/10 pt-3 text-xs text-cyan-200/70">Hasil tersimpan privat pada Generation Job. DM delivery dan creator reward tetap mengikuti policy WP-07 yang disetujui.</p></section>}
+    <GenerateModal
+      isOpen={generatorOpen}
+      onClose={() => setGeneratorOpen(false)}
+      onGenerate={generate}
+    />
   </main>;
 }
