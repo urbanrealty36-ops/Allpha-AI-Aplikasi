@@ -47,8 +47,11 @@ create index if not exists agent_memory_events_owner_idx on public.agent_memory_
 alter table public.agent_memory_policies enable row level security;
 alter table public.agent_memory_items enable row level security;
 alter table public.agent_memory_events enable row level security;
+drop policy if exists agent_memory_policies_owner_select on public.agent_memory_policies;
 create policy agent_memory_policies_owner_select on public.agent_memory_policies for select to authenticated using(owner_user_id=(select auth.uid()));
+drop policy if exists agent_memory_items_owner_select on public.agent_memory_items;
 create policy agent_memory_items_owner_select on public.agent_memory_items for select to authenticated using(owner_user_id=(select auth.uid()));
+drop policy if exists agent_memory_events_owner_select on public.agent_memory_events;
 create policy agent_memory_events_owner_select on public.agent_memory_events for select to authenticated using(owner_user_id=(select auth.uid()));
 revoke all on public.agent_memory_policies,public.agent_memory_items,public.agent_memory_events from public,anon,authenticated;
 grant select on public.agent_memory_policies,public.agent_memory_items,public.agent_memory_events to authenticated;
@@ -136,6 +139,8 @@ begin
   get diagnostics v_count=row_count;
   return jsonb_build_object('expired_count',v_count);
  elsif p_action='invalidate_policy_items' then
+  if not exists(select 1 from public.agent_memory_policies p where p.id=(p_payload->>'policy_id')::uuid and p.owner_user_id=p_owner_user_id and p.agent_id is not distinct from p_agent_id)
+  then raise exception 'MEMORY_POLICY_OWNER_REQUIRED' using errcode='42501'; end if;
   with invalidated as (
    update public.agent_memory_items set status='expired',content='[policy version changed]',source_ref='{}'::jsonb,provenance='{}'::jsonb,confidence=null,updated_at=now()
    where policy_id=(p_payload->>'policy_id')::uuid and status in ('proposed','active')
@@ -149,6 +154,8 @@ begin
   get diagnostics v_count=row_count;
   return jsonb_build_object('invalidated_count',v_count);
  elsif p_action='policy_event' then
+  if not exists(select 1 from public.agent_memory_policies p where p.id=(p_payload->>'policy_id')::uuid and p.owner_user_id=p_owner_user_id and p.agent_id is not distinct from p_agent_id)
+  then raise exception 'MEMORY_POLICY_OWNER_REQUIRED' using errcode='42501'; end if;
   insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,actor_user_id,event_type,details)
   values(p_owner_user_id,p_agent_id,(p_payload->>'policy_id')::uuid,p_owner_user_id,
    case when (p_payload->>'enabled')::boolean then 'policy_enabled' else 'policy_disabled' end,
