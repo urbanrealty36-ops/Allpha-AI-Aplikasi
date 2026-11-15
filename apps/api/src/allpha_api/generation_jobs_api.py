@@ -291,10 +291,10 @@ async def create_generation_job(
     except Exception as exc:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_NOT_READY", "message": "AI generation fail-closed karena route, runtime policy, atau model-cost registry belum siap."}) from exc
 
+    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
     prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt melebihi batas byte yang disetujui."})
-    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
     max_output_tokens = payload.max_output_tokens or router_max_tokens
     if max_output_tokens > router_max_tokens:
         raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model aktif."})
