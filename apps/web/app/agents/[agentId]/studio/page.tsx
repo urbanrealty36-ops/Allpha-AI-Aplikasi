@@ -312,7 +312,7 @@ export default function AgentStudioPage() {
   }
 
   async function revokeGenerationGrant(grantId: string) {
-    if (!session || !window.confirm("Cabut grant generation ini? Job yang belum selesai akan gagal menyelesaikan delivery jika grant sudah dicabut.")) return;
+    if (!session || !window.confirm("Cabut grant generation ini? Job antrean akan dibatalkan; job yang sudah berjalan akan masuk rekonsiliasi karena hasil provider mungkin sudah terjadi.")) return;
     setSaving(true); setError(""); setNotice("");
     try {
       const response = await fetch(`${apiBase}/v1/messages/agents/${encodeURIComponent(agentId)}/consumer-grants/${encodeURIComponent(grantId)}/revoke`, {
@@ -320,7 +320,10 @@ export default function AgentStudioPage() {
         body: JSON.stringify({ reason: "owner_revoked_from_agent_studio" }),
       });
       if (!response.ok) throw new Error(await readError(response));
-      setNotice("Grant dicabut. Job generation yang masih berjalan akan memeriksa ulang grant sebelum settlement dan DM delivery.");
+      const result = await response.json() as { grant?: { queued_cancelled?: number; running_pending_reconciliation?: number } };
+      const queued = result.grant?.queued_cancelled ?? 0;
+      const running = result.grant?.running_pending_reconciliation ?? 0;
+      setNotice(`Grant dicabut. ${queued} job antrean dibatalkan; ${running} job berjalan masuk pending reconciliation. Tidak ada hasil baru yang dikirim dari job yang kehilangan grant.`);
       await load(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Grant tidak dapat dicabut."); }
     finally { setSaving(false); }
