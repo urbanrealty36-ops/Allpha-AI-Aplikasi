@@ -188,3 +188,15 @@ The earlier statements in this report that the WP-07 migrations were source-only
 
 Detailed migration ledger and schema verification: `docs/reports/WP07_PRODUCTION_SCHEMA_MIGRATION_2026-11-16.md`.
 
+
+
+**WP-07 Generation worker — canonical Agent Runtime and pre-provider fencing — 2026-11-16:**
+- Generation worker no longer invokes `router.generate()` directly. It delegates pinned Skill execution to the existing canonical `AgentRuntime.execute_skill_generation()` path, while the durable Generation Job remains the persisted task/lease/settlement lifecycle.
+- Corrected owner/billing attribution: the TextGenerationRequest `owner_id` is the canonical Agent owner; `billing_account_id` remains the selected payer. External Consumer calls construct a server-resolved `AgentConsumerAuthorization` only after revalidating the active grant; owner-private memory scope remains empty for external Consumers.
+- Added pre-provider revalidation of current Agent active/version, published Skill/version, approved capability, and pinned provider/model/model-version/pricing/Model Router policy. Any stale/unavailable preflight is resolved before provider side effects through the definitive pre-provider failure path; unknown provider outcomes still remain pending reconciliation with no replay.
+- Private-owner Generation Job creation now pins the exact Model Router `runtime_policy_version`, matching the existing external Consumer pin and worker route check.
+- Commits: worker Agent Runtime integration `01932630e3de499fad95ab9cca7ca5a2570854cc`; private Model Router policy pin `4c7772dbf3851a98d8f9ed8a6e2136f69b716436`; pre-provider failure semantics `0ab131fdc6acfa63209e9ed3c0f62f5ab2dc0e75`.
+- Source was re-fetched after commit and static source inspection confirms the worker calls `AgentRuntime.execute_skill_generation`, constructs Consumer authorization only after grant revalidation, checks current Agent/Skill/capability and pinned Model Router route, and contains no direct `await router.generate(request)` call. This is source inspection only; no tests/build/lint/typecheck/CI, worker invocation, provider call, Supabase business mutation, staging or deployment was performed.
+- Remaining WP-07 gaps are not hidden: tool-dependent Skills remain fail-closed because Generation currently has no bounded multi-tool planner/usage aggregation contract; image/video input snapshots and multimodal output adapters are not implemented; the Master PRD Memory model (Working/Conversation/Episodic/Semantic/Procedural/Long-term) still lacks a canonical memory persistence/coordinator path in the current API/table inventory; approved moderation policy and owner reward policy remain absent; no billing products/subscriptions exist. Do not activate workers or claim full Ask AI acceptance.
+- WP-07 remains `IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED`. The requested order remains WP-07 → WP-06 → WP-11 → WP-12. Live Stage is still ADR-WP10-001 blocked.
+
