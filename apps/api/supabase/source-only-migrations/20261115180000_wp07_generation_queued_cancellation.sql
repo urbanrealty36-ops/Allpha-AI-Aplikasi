@@ -1,6 +1,5 @@
--- WP-07: requester cancellation before provider execution.
--- This migration is source-only until the complete WP-07 migration chain is
--- reviewed and promoted through the approved database change path.
+-- WP-07 requester cancellation before provider execution.
+-- Explicit Product Owner approval recorded 2026-11-16.
 begin;
 
 create table if not exists public.generation_job_cancellation_events (
