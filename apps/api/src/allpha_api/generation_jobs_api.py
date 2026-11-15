@@ -850,7 +850,7 @@ async def list_generation_jobs(limit: int = 20, user: dict[str, Any] = Depends(c
     return {"items": rows or [], "limit": bounded}
 
 
-async def _signed_generation_artifact(bucket: str, path: str, *, expires_in: int = 300) -> str:
+async def _signed_generation_artifact(bucket: str, path: str, *, expires_in: int = 60) -> str:
     url, key = _db_config()
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -885,7 +885,7 @@ async def get_generation_artifact(job_id: uuid.UUID, user: dict[str, Any] = Depe
     if job.get("status")!="succeeded" or job.get("moderation_status")!="approved" or job.get("artifact_bucket")!="generation-artifacts" or not job.get("artifact_path"):
         raise HTTPException(409,detail={"code":"GENERATION_ARTIFACT_NOT_READY","message":"Artefak belum selesai dimoderasi dan dipublikasikan secara privat."})
     signed=await _signed_generation_artifact(job["artifact_bucket"],job["artifact_path"])
-    return {"job_id":str(job_id),"url":signed,"expires_in_seconds":300,"visibility":"private"}
+    return {"job_id":str(job_id),"url":signed,"expires_in_seconds":60,"visibility":"private"}
 
 
 @router.delete("/jobs/{job_id}/artifact")
