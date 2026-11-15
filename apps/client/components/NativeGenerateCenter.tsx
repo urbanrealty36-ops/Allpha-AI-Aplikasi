@@ -4,16 +4,20 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View 
 type Agent = { id: string; display_name: string; status: string };
 type Skill = { id: string; name: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
+type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
 type Job = { status: string; artifact_available?: boolean; error_code?: string | null };
 
 export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: string; getAccessToken: () => Promise<string> }) {
   const [agents,setAgents]=useState<Agent[]>([]);
+  const [externalAgents,setExternalAgents]=useState<ExternalAgent[]>([]);
+  const [consumerGrantId,setConsumerGrantId]=useState("");
   const [skills,setSkills]=useState<Skill[]>([]);
   const [capabilities,setCapabilities]=useState<Capability[]>([]);
   const [agentId,setAgentId]=useState("");
   const [skillId,setSkillId]=useState("");
   const [capabilityId,setCapabilityId]=useState("");
   const [prompt,setPrompt]=useState("");
+  const [knowledgeQuery,setKnowledgeQuery]=useState("");
   const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);
   const [jobId,setJobId]=useState("");
@@ -38,8 +42,13 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
         const token=await getAccessToken();
         const data=await api("/v1/agents",token);
         const items=(data.items||[]).filter((item:Agent)=>item.status==="active");
-        if(active){setAgents(items);if(items.length)setAgentId(items[0].id);}
-        if(!items.length&&active)setNotice("Belum ada Agent aktif yang dapat digunakan.");
+        let shared:ExternalAgent[]=[];
+        try{
+          const sharedData=await api("/v1/generation/agents",token);
+          shared=(sharedData.items||[]).filter((item:ExternalAgent)=>item.agent?.status==="active"&&item.skill?.status==="published"&&!!item.consumer_grant_id);
+        }catch{/* Own-Agent generation remains available when the optional grant catalog is unavailable. */}
+        if(active){setAgents(items);setExternalAgents(shared);if(items.length)setAgentId(items[0].id);}
+        if(!items.length&&!shared.length&&active)setNotice("Belum ada Agent milik Anda atau Agent eksternal yang memberikan grant generation.");
       } catch(cause){if(active)setError(cause instanceof Error?cause.message:"Agent tidak dapat dimuat.");}
       finally{if(active)setLoading(false);}
     })();
@@ -50,6 +59,14 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
     if(!agentId)return;
     let active=true;
     setSkills([]);setCapabilities([]);setSkillId("");setCapabilityId("");
+    if(consumerGrantId){
+      const shared=externalAgents.find(item=>item.consumer_grant_id===consumerGrantId&&item.agent.id===agentId);
+      if(!shared){setError("Grant Agent eksternal tidak lagi tersedia.");return()=>{active=false;};}
+      const approved=shared.capabilities.filter(item=>item.status==="approved");
+      setSkills([shared.skill]);setCapabilities(approved);setSkillId(shared.skill.id);setCapabilityId(approved[0]?.capability_key||"");
+      if(!approved.length)setError("Agent eksternal belum memiliki capability approved.");
+      return()=>{active=false;};
+    }
     void (async()=>{
       try{
         const token=await getAccessToken();
@@ -63,14 +80,14 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
       }catch(cause){if(active)setError(cause instanceof Error?cause.message:"Skill dan capability tidak dapat dimuat.");}
     })();
     return ()=>{active=false;};
-  },[agentId,getAccessToken,apiBase]);
+  },[agentId,consumerGrantId,externalAgents,getAccessToken,apiBase]);
 
   async function runGeneration(){
     if(!agentId||!skillId||!capabilityId||!prompt.trim()||busy)return;
     setBusy(true);setError("");setNotice("");setResult("");setJobId("");
     try{
       const token=await getAccessToken();
-      const body={agent_id:agentId,skill_id:skillId,capability_id:capabilityId,prompt:prompt.trim(),max_output_tokens:1800};
+      const body={agent_id:agentId,skill_id:skillId,capability_id:capabilityId,prompt:prompt.trim(),max_output_tokens:1800,...(consumerGrantId?{consumer_grant_id:consumerGrantId}:{}),...(!consumerGrantId&&knowledgeQuery.trim()?{knowledge_query:knowledgeQuery.trim()}: {})};
       const quote=await api("/v1/generation/quote",token,{method:"POST",body:JSON.stringify(body)});
       if(!quote.quote_id||Date.parse(quote.expires_at)<=Date.now()||!Number.isSafeInteger(quote.estimated_credits)||quote.estimated_credits<=0)throw new Error("Quote tidak valid atau telah kedaluwarsa.");
       Alert.alert("Konfirmasi AI Credits","Estimasi "+quote.estimated_credits.toLocaleString("id-ID")+" AI Credits · "+quote.model_id,[
@@ -82,7 +99,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
 
   async function createAndPoll(token:string,body:Record<string,unknown>,quote:Record<string,any>){
     try{
-      const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id})});
+      const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id,...(quote.knowledge_context_sha256?{quoted_knowledge_context_sha256:quote.knowledge_context_sha256}:{})})});
       if(!created.job_id)throw new Error("Generation Job belum terkonfirmasi.");
       setJobId(created.job_id);
       for(let attempt=0;attempt<60;attempt++){
@@ -113,12 +130,15 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
       <Text style={{color:"#AAB4CC",fontSize:13}}>Pilih Agent aktif, Skill published dan capability approved. AI Credits dihitung oleh API.</Text>
       {loading?<ActivityIndicator color="#A5B4FC"/>:<>
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>AI Agent</Text>
-        {agents.map(agent=><Pressable key={agent.id} onPress={()=>setAgentId(agent.id)} style={{borderWidth:1,borderColor:agentId===agent.id?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{agent.display_name}{agentId===agent.id?"  ✓":""}</Text></Pressable>)}
+        {agents.map(agent=><Pressable key={agent.id} onPress={()=>{setAgentId(agent.id);setConsumerGrantId("");setKnowledgeQuery("");}} style={{borderWidth:1,borderColor:agentId===agent.id&&!consumerGrantId?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{agent.display_name} · Milik saya{agentId===agent.id&&!consumerGrantId?"  ✓":""}</Text></Pressable>)}
+        {externalAgents.map(item=><Pressable key={item.consumer_grant_id} onPress={()=>{setAgentId(item.agent.id);setConsumerGrantId(item.consumer_grant_id);setKnowledgeQuery("");}} style={{borderWidth:1,borderColor:consumerGrantId===item.consumer_grant_id?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{item.agent.display_name} · Grant pemilik{consumerGrantId===item.consumer_grant_id?"  ✓":""}</Text></Pressable>)}
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Skill published</Text>
         {skills.map(skill=><Pressable key={skill.id} onPress={()=>setSkillId(skill.id)} style={{borderWidth:1,borderColor:skillId===skill.id?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC"}}>{skill.name} · v{skill.version}{skillId===skill.id?"  ✓":""}</Text></Pressable>)}
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Capability approved</Text>
         {capabilities.map(cap=><Pressable key={cap.capability_key} onPress={()=>setCapabilityId(cap.capability_key)} style={{borderWidth:1,borderColor:capabilityId===cap.capability_key?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC"}}>{cap.capability_key}{capabilityId===cap.capability_key?"  ✓":""}</Text></Pressable>)}
         <TextInput accessibilityLabel="Instruksi generation" value={prompt} onChangeText={setPrompt} multiline maxLength={32768} placeholder="Jelaskan konten yang ingin dibuat…" placeholderTextColor="#8490AA" style={{minHeight:130,borderRadius:14,borderWidth:1,borderColor:"#35405C",padding:12,color:"#F8FAFC",textAlignVertical:"top"}}/>
+        <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Knowledge context (opsional)</Text>
+        <TextInput accessibilityLabel="Query Knowledge" value={knowledgeQuery} onChangeText={setKnowledgeQuery} editable={!consumerGrantId} multiline maxLength={4000} placeholder={consumerGrantId?"Knowledge Agent eksternal belum tersedia.":"Cari sumber Knowledge milik Agent yang diizinkan…"} placeholderTextColor="#8490AA" style={{minHeight:74,borderRadius:14,borderWidth:1,borderColor:"#35405C",padding:12,color:"#F8FAFC",textAlignVertical:"top",opacity:consumerGrantId?0.5:1}}/>
         <Pressable disabled={busy||!skillId||!capabilityId||!prompt.trim()} onPress={()=>void runGeneration()} style={{borderRadius:999,backgroundColor:"#A5B4FC",padding:14,alignItems:"center",opacity:busy||!skillId||!capabilityId||!prompt.trim()?0.5:1}}><Text style={{color:"#111827",fontWeight:"900"}}>{busy?"Memproses…":"Minta Quote & Generate"}</Text></Pressable>
       </>}
       {!!jobId&&<Text style={{color:"#CBD5E1",fontSize:11}}>Job: {jobId}</Text>}
