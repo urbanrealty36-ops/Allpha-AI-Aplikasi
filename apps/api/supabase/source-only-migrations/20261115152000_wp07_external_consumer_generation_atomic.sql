@@ -1,7 +1,6 @@
--- SOURCE ONLY — WP-07 external Consumer generation and atomic dual-account settlement.
--- Depends on 20261105130000_eng_p09_durable_generation_jobs.sql and
--- 20261115150000_wp07_external_consumer_dual_account.sql.
--- Intentionally not applied to canonical production or staging in this work window.
+-- WP-07 external Consumer generation and atomic dual-account settlement.
+-- Production promotion dependencies: durable Generation Jobs and external Consumer dual-account schema.
+-- Explicit Product Owner approval recorded 2026-11-16.
 begin;
 
 create or replace function public.generation_create_job(p_command jsonb)
