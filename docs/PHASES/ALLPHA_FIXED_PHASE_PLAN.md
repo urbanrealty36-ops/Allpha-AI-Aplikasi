@@ -3170,3 +3170,14 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Retrieval currently filters by exact owner, Agent, current policy version, purpose, classification and expiry; current query support is metadata or simple substring keyword matching. No vector/hybrid retrieval, automatic AI memory proposal generation, workflow memory nodes, or asynchronous derived-index deletion worker is implemented yet.
 - No tests, build, lint, typecheck, CI, real provider calls, staging or deployment were run. WP-07 remains IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED.
 
+
+
+**WP-07 Memory lifecycle and runtime integration extension — 2026-11-16:**
+- Added atomic Postgres agent_memory_transition RPC source contract so proposal creation, owner approve/reject, correction, deletion and expiry status changes are committed with their audit event in one database transaction.
+- Added owner chat integration: the messaging path includes persistent Memory only when the authenticated requester is the Agent owner, and excludes public-Agent Consumers. Existing Conversation Memory remains participant-scoped and bounded.
+- Generation and chat retrieval are capped by the current Model Router sensitivity classification; items above the route sensitivity ceiling are excluded.
+- Memory retrieval now uses the PostgreSQL generated full-text search vector/GIN index for explicit keyword queries and metadata recency for context assembly. This is keyword/metadata retrieval only, not semantic/vector or hybrid retrieval.
+- Workflow Memory nodes are intentionally deferred: the current Workflow Engine persists node output/checkpoints, and no approved ephemeral-memory reference/deletion propagation contract exists for copied private content. Do not persist private Memory text in workflow checkpoints until that contract is designed.
+- Memory lifecycle audit writes for item operations are atomic. Policy row update and its separate policy audit event remain a two-step source implementation and require reconciliation if the audit write fails.
+- Source-only migration and runtime feature flag remain inactive. No Supabase migration, test, build, lint, typecheck, CI, provider call, staging or deployment was run.
+
