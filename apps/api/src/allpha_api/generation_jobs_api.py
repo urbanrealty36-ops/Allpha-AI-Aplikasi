@@ -150,6 +150,15 @@ async def _load_generation_execution_snapshots(
             "code": "GENERATION_SKILL_INSTRUCTIONS_MISSING",
             "message": "Skill terpublikasi belum memiliki instruksi eksekusi.",
         })
+    # WP-07 currently executes through the text-generation worker only.
+    # Do not accept a Skill that declares executable tool dependencies until
+    # the canonical tool/orchestration runtime is connected in WP-08.
+    tool_dependencies = skill_snapshot.get("tool_dependencies")
+    if tool_dependencies not in (None, []):
+        raise HTTPException(409, detail={
+            "code": "GENERATION_SKILL_TOOL_RUNTIME_UNAVAILABLE",
+            "message": "Skill ini membutuhkan Tool Runtime yang belum tersedia pada jalur Generate. Pilih Skill tanpa dependensi tool atau lanjutkan setelah integrasi Tool Runtime tersedia.",
+        })
     return {
         "agent_snapshot": agent_snapshot,
         "skill_snapshot": skill_snapshot,

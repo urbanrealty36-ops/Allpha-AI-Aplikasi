@@ -2885,3 +2885,10 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added a policy-bound Qualified Watch evaluator. It requires a finished playback session, an approved/effective watch policy, a cleared fraud review, explicit watch-duration/completion/uniqueness thresholds, and entitlement when configured. Missing policy or fraud clearance remains pending; threshold/duplicate failures are rejected. Raw views are never promoted to qualified watches.
 - Added Super Admin-scoped manual fraud review with evidence reference, reason, optimistic status transition, and operator audit before/after evaluation. No default watch thresholds or automatic fraud clearance are created.
 - Creator earning settlement still requires a real approved billing receipt/reconciliation source and approved reward policy; no amount or payout is fabricated.
+
+
+**WP-07 Skill execution boundary correction (2026-11-15):**
+- The current durable Generation Job worker invokes the canonical text-generation Model Router but does not execute declared Skill tool dependencies. The shared Agent/Skill snapshot loader now rejects a published Skill with non-empty `tool_dependencies` before quote or job creation, returning `GENERATION_SKILL_TOOL_RUNTIME_UNAVAILABLE` instead of allowing a text-only path to imply tool execution.
+- This is a fail-closed boundary, not completion of the Tool Runtime. Skills without declared tool dependencies continue through the existing version-pinned Agent/Skill/Knowledge prompt path; tool execution, typed tool results and orchestration remain under the ordered WP-08 scope.
+- No tests, builds, typechecks, provider calls, migrations, staging, worker activation, Supabase writes or deployment were performed. WP-07 remains `in_progress / acceptance_not_verified`; connected Supabase still lacks the source-only Generation Job schema required for runtime.
+- **Next WP-07 source work:** finish artifact retention/deletion and moderation review/reconciliation lifecycle, reconcile DM artifact retrieval with message authorization, and close external grant/Knowledge ACL/dual-account contract gaps before WP-06.
