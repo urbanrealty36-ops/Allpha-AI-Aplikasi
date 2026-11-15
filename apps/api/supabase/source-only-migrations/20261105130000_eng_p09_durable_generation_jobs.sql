@@ -17,6 +17,8 @@ create table if not exists public.generation_jobs (
   idempotency_key text not null check (char_length(idempotency_key) between 8 and 160),
   prompt text not null check (char_length(prompt) between 1 and 32768),
   prompt_sha256 text not null check (prompt_sha256 ~ '^[0-9a-f]{64}$'),
+  knowledge_snapshot jsonb not null default '{}'::jsonb check (jsonb_typeof(knowledge_snapshot)='object'),
+  knowledge_context_sha256 text check (knowledge_context_sha256 is null or knowledge_context_sha256 ~ '^[0-9a-f]{64}$'),
   max_output_tokens integer not null check (max_output_tokens between 1 and 16384),
   timeout_ms integer not null check (timeout_ms between 100 and 120000),
   estimated_usage_units bigint not null check (estimated_usage_units > 0),
@@ -119,6 +121,7 @@ begin
     where owner_user_id=v_owner and idempotency_key=v_key for update;
   if found then
     if v_existing.prompt_sha256 <> p_command->>'prompt_sha256'
+      or coalesce(v_existing.knowledge_context_sha256,'') <> coalesce(p_command->>'knowledge_context_sha256','')
       or v_existing.capability_id <> p_command->>'capability_id'
       or v_existing.agent_id <> v_agent or v_existing.skill_id <> v_skill
       or v_existing.source_version <> (p_command->>'source_version')::integer
@@ -175,7 +178,7 @@ begin
 
   insert into public.generation_jobs(
     owner_user_id,agent_id,skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
-    prompt,prompt_sha256,max_output_tokens,timeout_ms,estimated_usage_units,usage_unit,
+    prompt,prompt_sha256,knowledge_snapshot,knowledge_context_sha256,max_output_tokens,timeout_ms,estimated_usage_units,usage_unit,
     estimated_cost_microunits,cost_unit,credits_to_reserve,credits_per_usage_unit,
     credit_scheme_version,tariff_version,entitlement_version,policy_version,
     policy_approval_reference,allow_success_settlement,allow_definitive_failure_release,
@@ -184,6 +187,7 @@ begin
   ) values (
     v_owner,v_agent,v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',p_command->>'sensitivity',v_task,
     p_command->>'trace_id',v_key,p_command->>'prompt',p_command->>'prompt_sha256',
+    coalesce(p_command->'knowledge_snapshot','{}'::jsonb),nullif(p_command->>'knowledge_context_sha256',''),
     (p_command->>'max_output_tokens')::integer,(p_command->>'timeout_ms')::integer,
     (p_command->>'estimated_usage_units')::bigint,p_command->>'usage_unit',
     (p_command->>'estimated_cost_microunits')::bigint,p_command->>'cost_unit',
