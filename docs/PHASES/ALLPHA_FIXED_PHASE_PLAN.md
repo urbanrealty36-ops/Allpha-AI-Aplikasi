@@ -3138,3 +3138,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - No Supabase schema change or live database mutation was made. No test, build, lint, typecheck, CI, worker invocation, provider call, staging or deployment was run.
 - WP-07 remains in_progress / schema_migrated / acceptance_not_verified; next work is complete durable multi-tool planning/trace and explicit consumer tool-grant contracts, then Memory Coordinator architecture and lifecycle.
 
+
+
+**UI-COPY-03 reference global CSS parity correction — 2026-11-16 (source-only):**
+- Exact source app/globals.css from Allpha-Front-End-UI-New is now the canonical apps/web/app/globals.css (Tailwind + tw-animate imports).
+- Existing Allpha identity/auth/profile-specific CSS was preserved without overriding the reference base stylesheet by moving the prior appended rules into apps/web/app/identity.css, imported separately by the existing root layout.
+- Reference component inventory audit: 34/34 source component files have target counterparts; 8 are byte-identical and 26 are adapted. File presence/SHA inventory does not establish complete page composition, responsive, or interaction parity.
+- UI-COPY-03 remains in_progress; no browser/viewport/device visual verification, build, lint, typecheck, CI, or runtime journey was run.
+
