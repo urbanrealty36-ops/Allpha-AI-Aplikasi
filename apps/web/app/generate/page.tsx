@@ -59,6 +59,40 @@ export default function GeneratePage() {
   }, [supabase]);
 
   useEffect(() => {
+    if (!session) return;
+    const linkedJobId = new URLSearchParams(window.location.search).get("job_id");
+    if (!linkedJobId || !/^[0-9a-f-]{36}$/i.test(linkedJobId)) return;
+    let active = true;
+    const loadPrivateArtifact = async () => {
+      setJobId(linkedJobId); setBusy(true); setError(""); setNotice("");
+      const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
+      try {
+        const statusResponse = await fetch(apiBase + "/v1/generation/jobs/" + encodeURIComponent(linkedJobId), { headers, cache: "no-store" });
+        if (!statusResponse.ok) throw new Error(await errorMessage(statusResponse));
+        const statusPayload = await statusResponse.json() as { job?: Job };
+        if (!statusPayload.job) throw new Error("Generation Job tidak ditemukan.");
+        if (statusPayload.job.status !== "succeeded" || !statusPayload.job.artifact_available) {
+          throw new Error(statusPayload.job.error_code || "Artefak belum tersedia atau masih menunggu rekonsiliasi.");
+        }
+        const artifactResponse = await fetch(apiBase + "/v1/generation/jobs/" + encodeURIComponent(linkedJobId) + "/artifact", { headers, cache: "no-store" });
+        if (!artifactResponse.ok) throw new Error(await errorMessage(artifactResponse));
+        const artifact = await artifactResponse.json() as { url?: string };
+        if (!artifact.url) throw new Error("Referensi artefak privat belum tersedia.");
+        const outputResponse = await fetch(artifact.url, { cache: "no-store" });
+        if (!outputResponse.ok) throw new Error("Unduhan artefak privat gagal.");
+        const output = await outputResponse.text();
+        if (!active) return;
+        setResult(output);
+        setNotice("Artefak privat dibuka dari DM. Akses menggunakan URL sementara dan tetap dibatasi pada pemilik job.");
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : "Artefak privat tidak dapat dibuka.");
+      } finally { if (active) setBusy(false); }
+    };
+    void loadPrivateArtifact();
+    return () => { active = false; };
+  }, [session]);
+
+  useEffect(() => {
     if (!session || !agentId) return;
     let active = true;
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
