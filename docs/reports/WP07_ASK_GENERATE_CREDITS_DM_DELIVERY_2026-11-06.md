@@ -210,3 +210,15 @@ Detailed migration ledger and schema verification: `docs/reports/WP07_PRODUCTION
 - This does not close the remaining WP-07 blockers documented above: approved moderation policy, owner-reward policy, active billing product/subscription, tool-dependent Skill execution, media input/multimodal generation, Memory Coordinator persistence/policy integration, and UI/browser acceptance.
 - WP-07 remains `IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED`; formal order remains WP-07 → WP-06 → WP-11 → WP-12.
 
+
+
+**ENG-P08 / WP-07 — persisted conversation memory wired into Agent chat — 2026-11-16:**
+- The canonical FastAPI POST /v1/messages/conversations/{conversation_id}/messages path now assembles bounded short-term Conversation Memory from previously persisted messages in that exact conversation before inserting the current user message.
+- Retrieval is scoped in the database query to the authenticated Human participant and the exact Agent participant, and includes only sent/delivered/read messages. Context is bounded to 12 messages and 6,000 characters, ordered chronologically, and included separately from the current message.
+- The system prompt explicitly treats prior conversation messages as untrusted context, not system instructions or authorization. External Consumer execution continues to set allowed_memory_scope=(); it never receives the Agent owner's private memory.
+- This uses the existing canonical conversations/messages tables and FastAPI membership/block checks; no new database schema, client-side Supabase access, or duplicate conversation store was introduced. Web and Native share this same API path.
+- Commit: 57f96a6308d768582017e6f747bbca41f64eee89; prompt delimiter correction: 64d3cf7318550d0147e8fe04aa955b93cc92e4b6.
+- Static source inspection only; no tests/build/lint/typecheck/CI, provider call, database business mutation, staging or deployment was performed.
+- Scope boundary: this implements bounded Conversation Memory for persisted Agent DM conversations only. It does not implement the complete six-class Memory Coordinator (Working, Conversation, Episodic, Semantic, Procedural, Long-term), persistent memory write/consent/retention/deletion, or vector/hybrid Memory retrieval. ADR-0003/0004/0005 review gates remain authoritative; do not invent physical memory schema, embedding model/dimension or consent semantics.
+- WP-07 remains IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED; formal order remains WP-07 → WP-06 → WP-11 → WP-12.
+
