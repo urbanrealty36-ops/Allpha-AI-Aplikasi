@@ -365,6 +365,8 @@ class SupabaseServiceRolePublicKeywordKnowledgeRepository:
                 "agent_knowledge_sources!inner(id,owner_id,agent_id,source_version,status,sensitivity)"
             ),
             "owner_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+            "agent_knowledge_sources.owner_id": f"eq.{owner_id}",
+            "agent_knowledge_sources.agent_id": f"eq.{agent_id}",
             "agent_knowledge_sources.status": "eq.ready",
             "agent_knowledge_sources.sensitivity": "eq.public",
             "search_vector": "fts(simple)." + query,
