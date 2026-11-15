@@ -801,6 +801,7 @@ async def create_generation_job(
         "payer_user_id": str(user["id"]),
         "consumer_grant_id": None,
         "payer_role": "agent_owner",
+        "runtime_policy_version": str(route["policy_version"]),
         "agent_version": snapshots["agent_snapshot"]["version"],
         "agent_snapshot_sha256": snapshots["agent_snapshot_sha256"],
         "skill_snapshot_sha256": snapshots["skill_snapshot_sha256"],
