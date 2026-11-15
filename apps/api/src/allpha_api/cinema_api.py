@@ -322,7 +322,7 @@ async def creator_capability_status(request: Request,user: dict[str,Any] = Depen
     for table in ("generation_jobs","generation_output_moderation_policies","billing_products",
                   "billing_subscriptions","playback_entitlements","cinema_subscription_plans",
                   "cinema_access_policy_versions","cinema_watch_policy_versions",
-                  "cinema_qualified_watches","cinema_creator_earnings","cinema_film_versions",
+                  "cinema_qualified_watches","cinema_creator_earning_policy_versions","cinema_creator_earnings","cinema_film_versions",
                   "cinema_collaborators"):
         checks[table] = await available(table)
 
@@ -331,7 +331,7 @@ async def creator_capability_status(request: Request,user: dict[str,Any] = Depen
     billing_ready = all(checks[x] for x in ("billing_products","billing_subscriptions"))
     entitlement_ready = all(checks[x] for x in ("playback_entitlements","cinema_subscription_plans","cinema_access_policy_versions"))
     qualified_watch_ready = all(checks[x] for x in ("cinema_watch_policy_versions","cinema_qualified_watches"))
-    creator_economy_ready = checks["cinema_creator_earnings"] and checks["cinema_creator_earning_policy_versions"] if "cinema_creator_earning_policy_versions" in checks else checks["cinema_creator_earnings"]
+    creator_economy_ready = checks["cinema_creator_earnings"] and checks["cinema_creator_earning_policy_versions"]
     return {
         "catalog":"available","project_drafts":"available","media":"existing_content_media_pipeline",
         "generation":"configured" if generation_ready else "blocked_until_job_schema_moderation_policy_and_model_router_are_ready",
