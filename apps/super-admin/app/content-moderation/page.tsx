@@ -9,6 +9,7 @@ type Operator = { id: string; email?: string; scopes: string[] };
 type ContentMedia = { id: string; filename: string; media_type: string; status: string; scan_status?: string; processed_at?: string | null; preview_url?: string | null; moderation_preview_url?: string | null };
 type ContentItem = { id: string; owner_id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; created_at: string; media?: ContentMedia[] };
 type GenerationReviewItem = { id: string; owner_user_id: string; agent_owner_user_id?: string; agent_id: string; skill_id: string; task_id: string; trace_id: string; status: string; moderation_status: string; error_code?: string | null; created_at: string; updated_at: string };
+type ArtifactDeletionItem = { id: string; generation_job_id: string; owner_user_id: string; status: string; attempts: number; max_attempts: number; error_code?: string | null; created_at: string; updated_at: string; last_retry_reason?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -39,7 +40,7 @@ export default function ContentModerationPage() {
   const [operator, setOperator] = useState<Operator | null>(null);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [items, setItems] = useState<ContentItem[]>([]);
-  const [generationItems, setGenerationItems] = useState<GenerationReviewItem[]>([]);
+  const [generationItems, setGenerationItems] = useState<GenerationReviewItem[]>([]);\n  const [artifactDeletionItems, setArtifactDeletionItems] = useState<ArtifactDeletionItem[]>([]);\n  const [artifactDeletionQueueError, setArtifactDeletionQueueError] = useState("");\n  const [artifactDeletionReasons, setArtifactDeletionReasons] = useState<Record<string, string>>({});
   const [generationQueueError, setGenerationQueueError] = useState("");
   const [generationPreview, setGenerationPreview] = useState<{ id: string; text: string } | null>(null);
   const [generationPreviewBusyId, setGenerationPreviewBusyId] = useState<string | null>(null);
@@ -57,6 +58,14 @@ export default function ContentModerationPage() {
     } catch (cause) {
       setGenerationItems([]);
       setGenerationQueueError(cause instanceof Error ? cause.message : "Antrean AI Generation belum tersedia.");
+    }
+    try {
+      const deletions = await read<{ items: ArtifactDeletionItem[] }>(await apiFetch("/v1/generation/admin/artifact-deletion-queue?limit=100", active));
+      setArtifactDeletionItems(Array.isArray(deletions.items) ? deletions.items : []);
+      setArtifactDeletionQueueError("");
+    } catch (cause) {
+      setArtifactDeletionItems([]);
+      setArtifactDeletionQueueError(cause instanceof Error ? cause.message : "Antrean penghapusan artefak belum tersedia.");
     }
   }, []);
 
@@ -87,6 +96,21 @@ export default function ContentModerationPage() {
       : "Konten ditolak dan dikembalikan ke pemilik sebagai gagal.");
       await loadQueue(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan moderasi gagal."); }
+    finally { setBusy(false); }
+  }
+
+  async function retryArtifactDeletion(item: ArtifactDeletionItem) {
+    const reason = (artifactDeletionReasons[item.id] || "").trim();
+    if (reason.length < 8) { setError("Alasan pemulihan minimal 8 karakter."); return; }
+    if (!session) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await read<{ status: string }>(await apiFetch(`/v1/generation/admin/artifact-deletion-jobs/${item.id}/retry`, session, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }));
+      setNotice("Job penghapusan dikembalikan ke antrean. Worker akan mencoba kembali sesuai lease.");
+      await loadQueue(session);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemulihan penghapusan gagal."); }
     finally { setBusy(false); }
   }
 
@@ -156,6 +180,25 @@ export default function ContentModerationPage() {
             <button disabled={busy} onClick={() => void reviewGeneration(item, "approve")} style={{ padding: "9px 14px", background: "#067647", color: "white", border: 0, borderRadius: 8 }}>Setujui & lanjutkan settlement</button>
             <button disabled={busy} onClick={() => void reviewGeneration(item, "reject")} style={{ padding: "9px 14px", background: "#b42318", color: "white", border: 0, borderRadius: 8 }}>Tolak output</button>
           </div>
+        </article>)}
+      </div>
+    </section> : null}
+    {session && canModerate ? <section style={{ marginTop: 28, border: "1px solid #eaecf0", borderRadius: 12, padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div><h2 style={{ margin: 0, fontSize: 20 }}>Pemulihan penghapusan artefak AI</h2><p style={{ color: "#667085", fontSize: 13 }}>Job dead-letter hanya dapat dicoba ulang oleh operator dengan alasan audit. Artefak tetap privat dan URL baru tidak diterbitkan selama penghapusan pending.</p></div>
+        <button disabled={busy} onClick={() => { if (session) void loadQueue(session); }} style={{ padding: "8px 12px" }}>Muat ulang antrean</button>
+      </div>
+      {artifactDeletionQueueError ? <p role="status" style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "#fffaeb", color: "#93370d" }}>Antrean penghapusan belum tersedia: {artifactDeletionQueueError}</p> : null}
+      {!artifactDeletionQueueError && artifactDeletionItems.length === 0 ? <div style={{ marginTop: 12, border: "1px dashed #d0d5dd", borderRadius: 10, padding: 20, color: "#667085" }}>Tidak ada job penghapusan aktif atau dead-letter.</div> : null}
+      <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        {artifactDeletionItems.map(item => <article key={item.id} style={{ border: "1px solid #eaecf0", borderRadius: 10, padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><strong>Deletion · {item.status}</strong><span style={{ color: "#667085", fontSize: 12 }}>{item.attempts}/{item.max_attempts} percobaan</span></div>
+          <p style={{ color: "#667085", fontSize: 12, overflowWrap: "anywhere" }}>Job {item.generation_job_id} · Owner {item.owner_user_id} · {item.error_code || "tanpa error"}</p>
+          {item.last_retry_reason ? <p style={{ color: "#667085", fontSize: 12 }}>Alasan retry terakhir: {item.last_retry_reason}</p> : null}
+          {item.status === "dead" ? <>
+            <label style={{ display: "block", fontSize: 13 }}>Alasan pemulihan<input value={artifactDeletionReasons[item.id] || ""} onChange={e => setArtifactDeletionReasons(prev => ({ ...prev, [item.id]: e.target.value }))} minLength={8} maxLength={500} placeholder="Jelaskan bukti/penyebab dan tindakan (min. 8 karakter)" style={{ display: "block", width: "100%", padding: 10, marginTop: 5 }} /></label>
+            <button disabled={busy || (artifactDeletionReasons[item.id] || "").trim().length < 8} onClick={() => void retryArtifactDeletion(item)} style={{ marginTop: 10, padding: "9px 14px", background: "#175cd3", color: "white", border: 0, borderRadius: 8 }}>Coba ulang penghapusan</button>
+          </> : null}
         </article>)}
       </div>
     </section> : null}
