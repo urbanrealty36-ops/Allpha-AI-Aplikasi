@@ -10,11 +10,44 @@ create table if not exists public.agent_consumer_grant_events (
   owner_user_id uuid not null references auth.users(id) on delete restrict,
   agent_id uuid not null references public.ai_agents(id) on delete restrict,
   actor_user_id uuid not null references auth.users(id) on delete restrict,
-  event_type text not null check (event_type in ('revoked')),
+  event_type text not null check (event_type in ('created','revoked')),
   reason_code text not null check (char_length(reason_code) between 1 and 120),
   details jsonb not null default '{}'::jsonb check (jsonb_typeof(details)='object'),
   created_at timestamptz not null default now()
 );
+create or replace function public.audit_agent_consumer_grant_created()
+returns trigger language plpgsql security definer set search_path = ''
+as $
+begin
+  insert into public.agent_consumer_grant_events(
+    grant_id,requester_user_id,owner_user_id,agent_id,actor_user_id,
+    event_type,reason_code,details
+  ) values (
+    new.id,new.requester_user_id,new.owner_user_id,new.agent_id,new.granted_by,
+    'created','grant_created',
+    jsonb_build_object(
+      'agent_version',new.agent_version,'skill_id',new.skill_id,
+      'skill_version',new.skill_version,'runtime_policy_version',new.runtime_policy_version,
+      'granted_scopes',new.granted_scopes,'capability_id',new.capability_id,
+      'credit_scheme_version',new.credit_scheme_version,'tariff_version',new.tariff_version,
+      'entitlement_version',new.entitlement_version,'payer_role',new.payer_role,
+      'expires_at',new.expires_at
+    )
+  );
+  return new;
+end;
+$;
+
+drop trigger if exists agent_consumer_grant_created_audit on public.agent_consumer_grants;
+create trigger agent_consumer_grant_created_audit
+after insert on public.agent_consumer_grants
+for each row execute function public.audit_agent_consumer_grant_created();
+
+revoke all on function public.audit_agent_consumer_grant_created()
+  from public,anon,authenticated;
+grant execute on function public.audit_agent_consumer_grant_created()
+  to service_role;
+
 create index if not exists agent_consumer_grant_events_owner_created_idx
   on public.agent_consumer_grant_events(owner_user_id, created_at desc);
 create index if not exists agent_consumer_grant_events_grant_created_idx
