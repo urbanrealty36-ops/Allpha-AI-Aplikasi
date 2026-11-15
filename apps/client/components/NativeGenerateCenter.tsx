@@ -124,7 +124,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
     if(!jobId||!result||deletingArtifact)return;
     Alert.alert(
       "Hapus artefak privat",
-      "Akses file akan langsung dinonaktifkan. Penghapusan objek Storage berjalan secara asinkron.",
+      "URL baru akan diblokir. URL sementara yang sudah diterbitkan dapat berlaku sampai 60 detik atau sampai objek Storage dihapus.",
       [
         {text:"Batal",style:"cancel"},
         {text:"Hapus artefak",style:"destructive",onPress:()=>{void (async()=>{
