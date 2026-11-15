@@ -333,3 +333,14 @@ The reference repository contains six modal components and the target contains a
 - `LiveExperienceStage.tsx` now renders a neutral “SESSION NOT CONNECTED” status and non-pulsing neutral indicator while the canonical Live session adapter is unavailable. It only displays a pulsing red live indicator after the adapter reports an available session and the component is in its live state.
 - Live media, chat, host actions, takeover, slide and commerce controls remain fail-closed. No sample viewer count, chat message, media stream or successful live state is introduced.
 - Commit: `e35b1950ddd88d368efc239ea05cf4c9a8fd39f9`.
+
+
+## AI Cinema playback and catalogue action corrections — 2026-11-15
+
+- Production catalogue actions no longer open the reference component's local/demo theater. They scroll to the canonical `AiCinemaPlaybackPanel`, where title metadata, episode availability, entitlement and a private playback session are requested from FastAPI.
+- The production catalogue no longer promises a free first episode before server policy checks. It uses neutral “Lihat Episode & Akses” labels; episode free-preview metadata is shown separately and the backend remains the authority for access.
+- The playback panel no longer labels every user as “Preview saja” based on the API's fail-closed `premium_entitled=false` field; it now states that session entitlement is checked by the server.
+- Playback-session create now uses the same idempotency key in the JSON body and `Idempotency-Key` header. Heartbeat/finish HTTP errors are surfaced; a failed finish remains retryable from the playback panel instead of being silently discarded.
+- The reference catalogue no longer claims a film is “Trending #1” or a fixed 70% royalty share without canonical ranking/royalty data. Unknown rating, views and creator earnings remain unavailable.
+- Commits: `d32a1cc289ca0c4af1e4ff269ed1697aa069dfb2`, `b4ef75ab15ce02b07cc3a8aac300b22804025780`, `b9cfda4927469caa8037ce86f5beefce9bd71d2f`, `b57b15a9cb3656eaf1d670ddabc74710db58e074`, `fbd730e59e45c901eef49a92b8d6892ec9171984`, `958e82fd251823838f695ad59104c46bb4bd1e98`, `837b3cda050b7155e8c5ed23ce85bbe0f0d69803`.
+- Source implementation only. No build, typecheck, lint, API execution, Supabase mutation, staging or deployment was performed. WP-11 remains in progress; media generation import, subscription/entitlement, qualified-watch accounting and creator royalties remain incomplete or gated by approved policy.
