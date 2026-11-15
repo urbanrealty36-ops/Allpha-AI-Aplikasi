@@ -727,15 +727,15 @@ async def create_generation_job(
     if (payload.quoted_agent_snapshot_sha256 != snapshots["agent_snapshot_sha256"]
         or payload.quoted_skill_snapshot_sha256 != snapshots["skill_snapshot_sha256"]):
         raise HTTPException(409, detail={"code":"GENERATION_SKILL_QUOTE_STALE","message":"Versi Agent atau Skill berubah. Minta quote generation baru."})
+    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
+    if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
+        raise HTTPException(409, detail={"code": "GENERATION_KNOWLEDGE_QUOTE_STALE", "message": "Sumber atau policy Knowledge berubah. Minta quote baru."})
     prompt_bytes = generation_prompt_size_bytes(
         prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
         skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
     )
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code":"PROMPT_EXCEEDS_APPROVED_BOUND","message":"Prompt, Agent, Skill, dan Knowledge context melebihi batas byte model."})
-    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
-    if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
-        raise HTTPException(409, detail={"code": "GENERATION_KNOWLEDGE_QUOTE_STALE", "message": "Sumber atau policy Knowledge berubah. Minta quote baru."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
         "select": "capability_key,status", "agent_id": f"eq.{payload.agent_id}",
         "capability_key": f"eq.{payload.capability_id}", "status": "eq.approved", "limit": "1",
