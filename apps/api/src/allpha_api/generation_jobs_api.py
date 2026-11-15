@@ -47,6 +47,11 @@ class GenerationManualReview(BaseModel):
     reason: str = Field(min_length=8, max_length=500)
     evidence_reference: str = Field(min_length=8, max_length=200)
 
+class GenerationArtifactDeletionRetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8, max_length=500)
+
+
 class GenerationJobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_id: uuid.UUID
@@ -929,7 +934,17 @@ async def get_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(c
     job.pop("artifact_bucket", None)
     job.pop("artifact_path", None)
     job["artifact_available"] = artifact_available
-    job["artifact_deletion_status"] = "deleted" if job.get("artifact_deleted_at") else "pending" if job.get("artifact_deletion_requested_at") else "available" if artifact_available else "unavailable"
+    deletion_status = "deleted" if job.get("artifact_deleted_at") else "pending" if job.get("artifact_deletion_requested_at") else "available" if artifact_available else "unavailable"
+    if job.get("artifact_deletion_requested_at") and not job.get("artifact_deleted_at"):
+        try:
+            deletion_rows = await _admin_request("GET", "generation_artifact_deletion_jobs", params={
+                "select":"status", "generation_job_id":f"eq.{job_id}", "limit":"1",
+            })
+            if deletion_rows:
+                deletion_status = str(deletion_rows[0].get("status") or deletion_status)
+        except HTTPException:
+            pass
+    job["artifact_deletion_status"] = deletion_status
     return {"job": job}
 
 
@@ -951,6 +966,50 @@ async def generation_output_review_queue(
         outcome="allowed", resource_type="generation_output_queue", resource_id="pending",
         metadata={"count": len(items)})
     return {"items": items, "limit": limit}
+
+
+@router.get("/admin/artifact-deletion-queue")
+async def generation_artifact_deletion_queue(
+    request: Request,
+    limit: int = 50,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(422, detail={"code":"GENERATION_ARTIFACT_DELETE_LIMIT_INVALID","message":"Batas antrean harus 1–100."})
+    rows = await _admin_request("GET", "generation_artifact_deletion_jobs", params={
+        "select":"id,generation_job_id,owner_user_id,requested_by,bucket_id,status,attempts,max_attempts,error_code,created_at,updated_at,completed_at,last_retried_by,last_retry_reason",
+        "status":"in.(queued,processing,dead)", "order":"updated_at.desc", "limit":str(limit),
+    })
+    items = rows or []
+    await write_operator_audit(request, actor_user_id=str(operator["id"]),
+        action="generation.artifact_deletion_queue.read", outcome="allowed",
+        resource_type="generation_artifact_deletion_queue", resource_id="active",
+        metadata={"count":len(items)})
+    return {"items":items,"limit":limit}
+
+
+@router.post("/admin/artifact-deletion-jobs/{deletion_job_id}/retry")
+async def retry_generation_artifact_deletion(
+    deletion_job_id: uuid.UUID,
+    payload: GenerationArtifactDeletionRetry,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    await write_operator_audit(request, actor_user_id=str(operator["id"]),
+        action="generation.artifact_deletion.retry", outcome="attempted",
+        resource_type="generation_artifact_deletion_job", resource_id=str(deletion_job_id),
+        metadata={"reason":payload.reason})
+    result = await _rpc("generation_retry_artifact_deletion", {
+        "deletion_job_id":str(deletion_job_id), "actor_user_id":str(operator["id"]),
+        "reason":payload.reason,
+    })
+    if not isinstance(result, dict) or result.get("status") != "queued":
+        raise HTTPException(409, detail={"code":"GENERATION_ARTIFACT_DELETE_RETRY_UNCONFIRMED","message":"Pemulihan antrean penghapusan belum dapat dikonfirmasi."})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]),
+        action="generation.artifact_deletion.retry", outcome="allowed",
+        resource_type="generation_artifact_deletion_job", resource_id=str(deletion_job_id),
+        metadata={"reason":payload.reason,"status":"queued"})
+    return result
 
 
 @router.get("/admin/jobs/{job_id}/artifact")
