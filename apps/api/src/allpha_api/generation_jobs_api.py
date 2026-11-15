@@ -366,6 +366,11 @@ async def _external_generation_context(
     if not agent_rows or not owners or not skills or not capabilities:
         raise HTTPException(404, detail={"code": "PUBLIC_AGENT_GENERATION_TARGET_NOT_FOUND", "message": "Agent publik, Skill, atau capability tidak tersedia."})
     agent, owner, skill = agent_rows[0], owners[0], skills[0]
+    snapshots = await _load_generation_execution_snapshots(
+        payload.agent_id, payload.skill_id, int(skill["version"])
+    )
+    if int(snapshots["agent_snapshot"]["version"]) != int(agent["version"]):
+        raise HTTPException(409, detail={"code":"GENERATION_AGENT_SNAPSHOT_STALE","message":"Versi Agent berubah. Minta quote baru."})
     owner_id = str(owner["owner_user_id"])
     if owner_id == requester_id:
         raise HTTPException(422, detail={"code": "OWNED_AGENT_GRANT_NOT_REQUIRED", "message": "Gunakan jalur Agent milik sendiri."})
@@ -413,6 +418,7 @@ async def _external_generation_context(
         "budget": budget, "route": route, "payer_user_id": payer_id,
         "runtime_policy_version": runtime_policy_version,
         "owner_reward_policy": owner_reward_policy,
+        **snapshots,
     }
 
 
