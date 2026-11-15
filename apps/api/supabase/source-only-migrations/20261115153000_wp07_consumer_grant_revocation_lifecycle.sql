@@ -67,6 +67,7 @@ declare
   v_job record;
   v_reason text := left(coalesce(nullif(btrim(p_reason),''),'owner_revoked'),120);
   v_queued_cancelled integer := 0;
+  v_queued_pending integer := 0;
   v_running_reconciled integer := 0;
   v_already_revoked boolean := false;
 begin
@@ -123,6 +124,7 @@ begin
           error_code='consumer_grant_revocation_release_requires_reconciliation',
           completed_at=now(),lease_token=null,lease_expires_at=null,updated_at=now()
         where id=v_job.id and status='queued';
+        v_queued_pending := v_queued_pending + 1;
       end;
     else
       begin
@@ -137,6 +139,7 @@ begin
         error_code='consumer_grant_revoked_failure_release_not_approved',
         completed_at=now(),updated_at=now()
       where id=v_job.id and status='queued';
+      v_queued_pending := v_queued_pending + 1;
     end if;
   end loop;
 
@@ -171,6 +174,7 @@ begin
       v_grant.id,v_grant.requester_user_id,v_grant.owner_user_id,v_grant.agent_id,
       p_owner_user_id,'revoked',v_reason,
       jsonb_build_object('queued_cancelled',v_queued_cancelled,
+        'queued_pending_reconciliation',v_queued_pending,
         'running_pending_reconciliation',v_running_reconciled)
     );
   end if;
@@ -178,6 +182,7 @@ begin
   return jsonb_build_object(
     'grant_id',v_grant.id,'status',v_grant.status,'revoked_at',v_grant.revoked_at,
     'queued_cancelled',v_queued_cancelled,
+    'queued_pending_reconciliation',v_queued_pending,
     'running_pending_reconciliation',v_running_reconciled,
     'already_revoked',v_already_revoked
   );
