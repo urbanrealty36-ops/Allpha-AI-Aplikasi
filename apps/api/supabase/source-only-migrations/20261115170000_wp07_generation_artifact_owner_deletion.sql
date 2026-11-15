@@ -1,8 +1,7 @@
--- SOURCE ONLY — WP-07 requester-controlled deletion of private Generation artifacts.
--- Depends on 20261105130000_eng_p09_durable_generation_jobs.sql.
--- This adds explicit owner deletion only. Automatic retention periods remain unconfigured
+-- WP-07 requester-controlled deletion of private Generation artifacts.
+-- Adds explicit owner deletion only. Automatic retention periods remain unconfigured
 -- because the Master PRD lists retention periods and deletion SLAs as open policy decisions.
--- Do not apply to canonical production or staging during the source-only implementation window.
+-- Explicit Product Owner approval recorded 2026-11-16.
 begin;
 
 alter table public.generation_jobs
