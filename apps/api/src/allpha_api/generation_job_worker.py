@@ -165,8 +165,8 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> bool:
         return False
     grant = rows[0]
     expected_payer_role = (
-        "consumer" if str(job.get("payer_user_id")) == str(job.get("owner_user_id"))
-        else "agent_owner" if str(job.get("payer_user_id")) == str(job.get("agent_owner_user_id"))
+        "agent_owner" if str(job.get("payer_user_id")) == str(job.get("agent_owner_user_id"))
+        else "consumer" if str(job.get("payer_user_id")) == str(job.get("owner_user_id"))
         else ""
     )
     checks = {
