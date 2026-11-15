@@ -77,6 +77,7 @@ class ConsumerGrantCreate(BaseModel):
     skill_id: uuid.UUID
     idempotency_key: str = Field(min_length=1, max_length=256)
     expires_at: datetime | None = None
+    granted_scopes: list[str] = Field(default_factory=lambda: ["public_invoke"], min_length=1, max_length=3)
 
 
 class ConsumerGrantRevoke(BaseModel):
@@ -116,10 +117,13 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
         route_snapshot = text_router.route_snapshot_for("public")
         # Do not issue a grant until the approved Consumer tariff, payer and
         # settlement policy are present and match the actual Model Router route.
+        generation_scope = "generation_invoke" in payload.granted_scopes
         budget = await ConsumerBudgetReservation.from_environment(
             expected_cost_unit=str(route_snapshot["cost_unit"]),
             expected_pricing_version=str(route_snapshot["pricing_version"]),
             expected_max_cost_microunits=int(route_snapshot["max_cost_microunits"]),
+            policy_key="consumer_agent_generation" if generation_scope else "consumer_agent_messaging",
+            expected_usage_unit="tokens_total" if generation_scope else "token",
         )
         store = AgentConsumerGrantStore.from_environment()
         grant = await store.create(
@@ -129,6 +133,7 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
             idempotency_key=payload.idempotency_key,
             expires_at=payload.expires_at.astimezone(timezone.utc).isoformat() if payload.expires_at else None,
             policy_snapshot=budget.policy_snapshot(),
+            granted_scopes=payload.granted_scopes,
         )
     except (TextGenerationRouterUnavailable, ConsumerGrantUnavailable, ValueError) as exc:
         raise HTTPException(503, detail={"code":"CONSUMER_GRANT_UNAVAILABLE","message":"Grant tidak dapat disimpan atau policy runtime belum siap."}) from exc
