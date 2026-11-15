@@ -135,7 +135,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
               method:"DELETE",headers:{"Idempotency-Key":createNativeId()},
             }) as {status?:string};
             setResult("");
-            setNotice(deleted.status==="succeeded"?"Artefak privat sudah dihapus.":"Permintaan penghapusan diterima. Akses dinonaktifkan; pembersihan Storage berjalan asinkron.");
+            setNotice(deleted.status==="succeeded"?"Artefak privat sudah dihapus.":"Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.");
           }catch(cause){setError(cause instanceof Error?cause.message:"Penghapusan artefak belum dapat dikonfirmasi.");}
           finally{setDeletingArtifact(false);}
         })();}},
