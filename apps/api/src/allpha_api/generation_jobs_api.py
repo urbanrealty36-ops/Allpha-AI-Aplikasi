@@ -849,7 +849,7 @@ async def create_generation_job(
 async def list_generation_jobs(limit: int = 20, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     bounded = min(max(1, limit), 50)
     rows = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,capability_id,status,credits_to_reserve,owner_reward_status,dm_conversation_id,created_at,started_at,completed_at,error_code",
+        "select": "id,task_id,capability_id,status,moderation_status,credits_to_reserve,owner_reward_status,dm_conversation_id,created_at,started_at,completed_at,error_code",
         "owner_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": str(bounded),
     })
     return {"items": rows or [], "limit": bounded}
