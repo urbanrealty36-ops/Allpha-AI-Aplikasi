@@ -30,6 +30,10 @@ from allpha_api.knowledge_retrieval import (
     request_scoped_retrieval_service,
     request_scoped_external_public_retrieval_service,
 )
+from allpha_api.generation_prompt import (
+    generation_prompt_size_bytes,
+    snapshot_sha256,
+)
 
 router = APIRouter(prefix="/v1/generation", tags=["ai-generation"])
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -48,6 +52,8 @@ class GenerationJobCreate(BaseModel):
     quoted_model_id: str | None = Field(default=None, min_length=1, max_length=128)
     knowledge_query: str | None = Field(default=None, min_length=1, max_length=4000)
     quoted_knowledge_context_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    quoted_agent_snapshot_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    quoted_skill_snapshot_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     consumer_grant_id: uuid.UUID | None = None
 
 
@@ -92,6 +98,64 @@ def _parse_time(value: Any) -> datetime | None:
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+async def _load_generation_execution_snapshots(
+    agent_id: uuid.UUID, skill_id: uuid.UUID, skill_version: int, *, token: str | None = None
+) -> dict[str, Any]:
+    """Load the exact immutable Skill version and current versioned Agent identity."""
+    if token:
+        agents = await user_db_request("GET", "ai_agents", token, params={
+            "select": "id,version,display_name,description,persona,disclosure,boundaries",
+            "id": f"eq.{agent_id}", "limit": "1",
+        })
+        versions = await user_db_request("GET", "agent_skill_versions", token, params={
+            "select": "skill_id,agent_id,version,snapshot",
+            "skill_id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}",
+            "version": f"eq.{skill_version}", "limit": "1",
+        })
+    else:
+        agents = await _admin_request("GET", "ai_agents", params={
+            "select": "id,version,display_name,description,persona,disclosure,boundaries",
+            "id": f"eq.{agent_id}", "limit": "1",
+        })
+        versions = await _admin_request("GET", "agent_skill_versions", params={
+            "select": "skill_id,agent_id,version,snapshot",
+            "skill_id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}",
+            "version": f"eq.{skill_version}", "limit": "1",
+        })
+    if not agents or not versions:
+        raise HTTPException(409, detail={
+            "code": "GENERATION_EXECUTION_SNAPSHOT_UNAVAILABLE",
+            "message": "Snapshot Agent atau Skill versi terpublikasi belum tersedia.",
+        })
+    agent = agents[0]
+    skill_snapshot = versions[0].get("snapshot")
+    if not isinstance(skill_snapshot, dict) or skill_snapshot.get("status") != "published" or int(skill_snapshot.get("version") or 0) != skill_version:
+        raise HTTPException(409, detail={
+            "code": "GENERATION_SKILL_SNAPSHOT_INVALID",
+            "message": "Snapshot Skill tidak cocok dengan versi terpublikasi yang dipilih.",
+        })
+    agent_snapshot = {
+        "id": str(agent["id"]),
+        "version": int(agent["version"]),
+        "display_name": str(agent.get("display_name") or ""),
+        "description": str(agent.get("description") or ""),
+        "persona": agent.get("persona") if isinstance(agent.get("persona"), dict) else {},
+        "disclosure": str(agent.get("disclosure") or ""),
+        "boundaries": agent.get("boundaries") if isinstance(agent.get("boundaries"), dict) else {},
+    }
+    if not skill_snapshot.get("instructions"):
+        raise HTTPException(409, detail={
+            "code": "GENERATION_SKILL_INSTRUCTIONS_MISSING",
+            "message": "Skill terpublikasi belum memiliki instruksi eksekusi.",
+        })
+    return {
+        "agent_snapshot": agent_snapshot,
+        "skill_snapshot": skill_snapshot,
+        "agent_snapshot_sha256": snapshot_sha256(agent_snapshot),
+        "skill_snapshot_sha256": snapshot_sha256(skill_snapshot),
+    }
 
 
 async def _approved_credit_policy(entitlement_version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
