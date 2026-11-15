@@ -11,7 +11,7 @@ type MeResponse = { user?: { id: string; email?: string }; profile?: { username?
 type Agent = { id: string; handle: string; display_name: string; description: string; status: string };
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
-type GenerationJob = { id: string; status: string; output_text?: string | null; error_code?: string | null; credits_to_reserve?: number };
+type GenerationJob = { id: string; status: string; moderation_status?: string; artifact_available?: boolean; error_code?: string | null; credits_to_reserve?: number };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function readError(response: Response): Promise<string> {
@@ -92,7 +92,7 @@ export default function AskAiPage() {
       method: "POST", headers, body: JSON.stringify(requestBody), cache: "no-store",
     });
     if (!quoteResponse.ok) throw new Error(await readError(quoteResponse));
-    const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string };
+    const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; agent_snapshot_sha256: string; skill_snapshot_sha256: string; knowledge_context_sha256?: string | null };
     if (!quote.quote_id || !quote.expires_at || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
       throw new Error("Quote AI Credits tidak valid; generation dibatalkan.");
     }
@@ -102,7 +102,7 @@ export default function AskAiPage() {
     const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
       method: "POST",
       headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({ ...requestBody, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id }),
+      body: JSON.stringify({ ...requestBody, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id, quoted_agent_snapshot_sha256: quote.agent_snapshot_sha256, quoted_skill_snapshot_sha256: quote.skill_snapshot_sha256, ...(quote.knowledge_context_sha256 ? { quoted_knowledge_context_sha256: quote.knowledge_context_sha256 } : {}) }),
       cache: "no-store",
     });
     if (!createResponse.ok) throw new Error(await readError(createResponse));
@@ -116,14 +116,27 @@ export default function AskAiPage() {
       const payload = await statusResponse.json() as { job?: GenerationJob };
       const job = payload.job;
       if (!job) throw new Error("Status Generation Job tidak ditemukan.");
-      if (job.status === "succeeded" && job.output_text) {
-        return { text: job.output_text, jobId: created.job_id, reservedCredits: created.reserved_credits };
+      if (job.status === "succeeded" && job.artifact_available) {
+        const artifactResponse = await fetch(apiBase + `/v1/generation/jobs/${created.job_id}/artifact`, {
+          headers: { Authorization: headers.Authorization, Accept: "application/json" }, cache: "no-store",
+        });
+        if (!artifactResponse.ok) throw new Error(await readError(artifactResponse));
+        const artifact = await artifactResponse.json() as { url?: string; visibility?: string };
+        if (!artifact.url || artifact.visibility !== "private") throw new Error("Referensi artefak privat tidak valid.");
+        const contentResponse = await fetch(artifact.url, { cache: "no-store" });
+        if (!contentResponse.ok) throw new Error("Artefak generation belum dapat diunduh.");
+        const text = await contentResponse.text();
+        if (!text.trim()) throw new Error("Artefak generation kosong.");
+        return { text, jobId: created.job_id, reservedCredits: created.reserved_credits };
       }
       if (job.status === "failed" || job.status === "cancelled") {
         throw new Error(job.error_code || "Generation gagal. Reservasi mengikuti kebijakan refund yang berlaku.");
       }
+      if (job.status === "pending_reconciliation" && job.moderation_status === "review_required") {
+        throw new Error("Output menunggu pemeriksaan Human sebelum dapat ditampilkan. Job ID: " + created.job_id + ". Permintaan tidak dikirim ulang.");
+      }
       if (job.status === "pending_reconciliation") {
-        throw new Error("Status provider belum dapat dipastikan. Permintaan masuk rekonsiliasi; tidak ada pengulangan otomatis.");
+        throw new Error("Status provider atau settlement belum dapat dipastikan. Permintaan masuk rekonsiliasi; tidak ada pengulangan otomatis.");
       }
     }
     throw new Error("Generation masih berjalan. Periksa riwayat Generation untuk status terbaru; permintaan tidak dikirim ulang.");
