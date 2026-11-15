@@ -76,7 +76,8 @@ class AgentConsumerGrantStore:
     async def create(self, *, requester_id: str, owner_id: str, agent_id: str,
                      agent_version: int, skill_id: str, skill_version: int,
                      runtime_policy_version: str, idempotency_key: str,
-                     expires_at: str | None, policy_snapshot: dict[str, Any]) -> dict[str, Any]:
+                     expires_at: str | None, policy_snapshot: dict[str, Any],
+                     granted_scopes: list[str] | None = None) -> dict[str, Any]:
         if requester_id == owner_id:
             raise ValueError("owner cannot create a Consumer grant for themselves")
         if not idempotency_key.strip():
@@ -86,6 +87,12 @@ class AgentConsumerGrantStore:
             params={"select":"*", "owner_user_id":f"eq.{owner_id}",
                     "idempotency_key":f"eq.{idempotency_key}", "limit":"1"},
         )
+        scopes = list(dict.fromkeys(granted_scopes or ["public_invoke"]))
+        allowed_scopes = {"public_invoke", "generation_invoke", "knowledge_public_read"}
+        if not scopes or any(scope not in allowed_scopes for scope in scopes):
+            raise ValueError("Consumer grant scopes are invalid")
+        if "knowledge_public_read" in scopes and "generation_invoke" not in scopes:
+            raise ValueError("public Knowledge scope requires generation permission")
         payload = {
             "requester_user_id": requester_id,
             "owner_user_id": owner_id,
@@ -107,7 +114,7 @@ class AgentConsumerGrantStore:
             "allow_success_settlement": bool(policy_snapshot["allow_success_settlement"]),
             "allow_definitive_failure_release": bool(policy_snapshot["allow_definitive_failure_release"]),
             "allow_partial_settlement": bool(policy_snapshot["allow_partial_settlement"]),
-            "granted_scopes": ["public_invoke"],
+            "granted_scopes": scopes,
             "status": "active",
             "idempotency_key": idempotency_key,
             "expires_at": expires_at,
@@ -119,7 +126,7 @@ class AgentConsumerGrantStore:
                     "skill_version","runtime_policy_version","expires_at","capability_id",
                     "credit_scheme_version","approval_reference","tariff_version","entitlement_version",
                     "max_usage_units","max_cost_microunits","cost_unit","pricing_version","payer_role",
-                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement")
+                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes")
             if any(row.get(key) != payload.get(key) for key in keys):
                 raise ConsumerGrantUnavailable("grant idempotency key was reused with different parameters")
             if row.get("status") == "active":
@@ -155,14 +162,15 @@ class AgentConsumerGrantStore:
 
     async def resolve(self, *, requester_id: str, owner_id: str, agent_id: str,
                       agent_version: int, skill_id: str, skill_version: int,
-                      runtime_policy_version: str, policy_snapshot: dict[str, Any]) -> dict[str, Any] | None:
+                      runtime_policy_version: str, policy_snapshot: dict[str, Any],
+                      required_scope: str = "public_invoke") -> dict[str, Any] | None:
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={"select":"*", "requester_user_id":f"eq.{requester_id}",
                     "owner_user_id":f"eq.{owner_id}", "agent_id":f"eq.{agent_id}",
                     "agent_version":f"eq.{agent_version}", "skill_id":f"eq.{skill_id}",
                     "skill_version":f"eq.{skill_version}", "runtime_policy_version":f"eq.{runtime_policy_version}",
-                    "status":"eq.active", "granted_scopes":"cs.{public_invoke}",
+                    "status":"eq.active", "granted_scopes":f"cs.{{{required_scope}}}",
                     "capability_id":f"eq.{policy_snapshot['capability_id']}",
                     "credit_scheme_version":f"eq.{policy_snapshot['credit_scheme_version']}",
                     "approval_reference":f"eq.{policy_snapshot['approval_reference']}",
@@ -249,7 +257,9 @@ class ConsumerBudgetReservation:
 
     @classmethod
     async def from_environment(cls, *, expected_cost_unit: str, expected_pricing_version: str,
-                               expected_max_cost_microunits: int) -> "ConsumerBudgetReservation":
+                               expected_max_cost_microunits: int,
+                               policy_key: str = "consumer_agent_messaging",
+                               expected_usage_unit: str = "token") -> "ConsumerBudgetReservation":
         base = os.getenv("SUPABASE_URL", "").rstrip("/")
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SECRET_KEY", "")
         if not base or not key:
@@ -271,7 +281,7 @@ class ConsumerBudgetReservation:
         selected = None
         for row in rows if isinstance(rows, list) else []:
             config = row.get("configuration") or {}
-            consumer = config.get("consumer_agent_messaging") or {}
+            consumer = config.get(policy_key) or {}
             capability_id = str(consumer.get("capability_id") or "")
             cap = (config.get("capabilities") or {}).get(capability_id) if capability_id else None
             entitlements = config.get("entitlements") or {}
@@ -289,7 +299,7 @@ class ConsumerBudgetReservation:
                     and isinstance(credits_per_unit, int) and credits_per_unit > 0
                     and isinstance(max_credits, int) and max_credits >= max_usage * credits_per_unit
                     and isinstance(max_concurrent, int) and max_concurrent > 0
-                    and cap.get("usage_unit") == "token" and cap.get("tariff_version")
+                    and cap.get("usage_unit") == expected_usage_unit and cap.get("tariff_version")
                     and cap.get("cost_unit") == expected_cost_unit
                     and cap.get("cost_pricing_version") == expected_pricing_version
                     and isinstance(cap.get("max_cost_microunits"), int)
