@@ -356,3 +356,10 @@ Read-only Git blob SHA comparison was run between the source repository urbanrea
 - The earlier 16/25 and 12-component counts in this document are historical audit checkpoints and are superseded by this current 34-file inventory. The full UI-COPY-03 review remains open: compare all adapted DOM/class/style/font/icon/media changes, active route composition and interaction behavior against the pinned source tree. Do not blindly replace adapted components with demo source behavior.
 - The source app/page.tsx active composition must remain the authority for which modals/views are actually mounted. A copied component that the source app does not mount is not a missing active route by itself.
 - This was a Git tree/blob read-only comparison only. No tests, build, lint, typecheck, CI, browser/device QA, staging or deployment was run.
+
+
+## AI Cinema royalty copy policy gate — 2026-11-15
+
+- All fixed 70% royalty and Rp/AI Credit subscription-price claims in the reference AiCinemaView are now conditional demo-only copy. The production route states that monetization, settlement and pricing remain unavailable until the relevant billing/royalty policies are approved and connected.
+- Production mode cannot open the reference's local VIP subscription confirmation or local creator-verification flow; the backend remains the authority for subscription entitlement, moderation, publication and creator settlement.
+- Commit: `0c76f379b79c02071d41afdf5ec6159856df948e`.
