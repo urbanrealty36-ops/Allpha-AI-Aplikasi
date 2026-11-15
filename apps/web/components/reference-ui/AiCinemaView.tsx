@@ -617,7 +617,7 @@ export default function AiCinemaView({
                 </span>
               </div>
               <p className="text-xs font-semibold text-slate-700 mt-0.5">
-                Wadah resmi Produser & Kreator Film AI. Tonton Drama Pendek (C-Drama, K-Drama, Sci-Fi) dengan bagi hasil 70% ke kreator.
+                {productionMode ? "Wadah resmi Produser & Kreator Film AI. Ketentuan monetisasi mengikuti kebijakan yang disetujui." : "Wadah resmi Produser & Kreator Film AI. Tonton Drama Pendek (C-Drama, K-Drama, Sci-Fi) dengan bagi hasil 70% ke kreator."}
               </p>
             </div>
           </div>
@@ -1370,7 +1370,7 @@ export default function AiCinemaView({
                 <span>Publish & Verifikasi oleh Team Allpha</span>
               </div>
               <p>
-                Setelah menekan tombol di bawah, film AI Anda akan masuk ke antrean verifikasi Team Allpha. Setelah terverifikasi, film akan otomatis tampil di katalog dan dapat ditonton oleh seluruh pengguna Allpha, serta mendatangkan <strong>70% royalti AI Credits</strong> langsung ke dompet kreator Anda.
+                {productionMode ? "Creator submission dan royalti hanya akan diaktifkan setelah workflow review, billing, dan settlement disetujui serta terhubung." : <>Setelah menekan tombol di bawah, film AI Anda akan masuk ke antrean verifikasi Team Allpha. Setelah terverifikasi, film akan otomatis tampil di katalog dan dapat ditonton oleh seluruh pengguna Allpha, serta mendatangkan <strong>70% royalti AI Credits</strong> langsung ke dompet kreator Anda.</>}
               </p>
             </div>
 
@@ -1450,7 +1450,7 @@ export default function AiCinemaView({
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5px]" />
-                  <span>Sistem Royalti 70% Terhubung ke Dompet Anda</span>
+                  <span>{productionMode ? "Settlement royalti belum diaktifkan" : "Sistem Royalti 70% Terhubung ke Dompet Anda"}</span>
                 </div>
               </div>
             </div>
@@ -1762,7 +1762,7 @@ export default function AiCinemaView({
                 Paket Berlangganan Bulanan
               </span>
               <p className="text-2xl font-mono font-black text-slate-950">
-                150 AI Credits <span className="text-xs text-slate-700 font-bold">/ Rp 99.000 / bln</span>
+                {productionMode ? "Harga belum dikonfigurasi" : <>150 AI Credits <span className="text-xs text-slate-700 font-bold">/ Rp 99.000 / bln</span></>}
               </p>
               <p className="text-[11px] text-slate-700 font-semibold">
                 Saldo Anda saat ini: <strong className="font-mono text-amber-900">{userCredits == null ? 'Belum tersedia' : `${userCredits} Credits`}</strong>
@@ -1775,7 +1775,7 @@ export default function AiCinemaView({
                 'Buka ribuan episode Drama Pendek AI (C-Drama & K-Drama) tanpa iklan',
                 'Resolusi 4K Ultra HD 60 FPS dengan audio spatial 3D',
                 'Akses premiere episode baru 24 jam lebih awal',
-                '70% biaya langganan disalurkan langsung sebagai royalti untuk Produser Film AI',
+                productionMode ? 'Royalti langganan mengikuti kebijakan yang belum diaktifkan.' : '70% biaya langganan disalurkan langsung sebagai royalti untuk Produser Film AI',
                 'Bisa diakses dari Feed, Reels, dan 3D Universe Cinema District',
               ].map((benefit, i) => (
                 <div key={i} className="flex items-start gap-2">
