@@ -2999,3 +2999,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Commit: `e14d5fefe091f4ba3439c17871aca66eba14d2c6`.
 - This is a source composition/parity correction only, not a completed media-input integration. WP-07 remains `in_progress / acceptance_not_verified`; the generation worker is still text-only and no provider/model capability was selected or activated.
 - No tests, builds, lint, typecheck, CI, provider calls, database writes, migration application, staging, browser/device QA or deployment were performed, per the current instruction. The required phase order remains WP-07 → WP-06 → WP-11 → WP-12.
+
+
+**WP-07 Ask AI client contract correction — quote snapshot and private artifact retrieval (2026-11-16):**
+- Source inspection found `/ask-ai` did not forward the immutable Agent/Skill snapshot digests returned by `/v1/generation/quote`. The backend correctly rejects job creation when those digests are absent/stale, so the page could not complete the quote → reserve → job path.
+- The Ask AI page now validates and forwards `agent_snapshot_sha256` and `skill_snapshot_sha256` (and the optional Knowledge snapshot digest) on job creation, matching the canonical Generate page contract.
+- The page also no longer expects `output_text` from the job-status endpoint. It waits for `artifact_available`, requests the owner-authorized `/artifact` endpoint, verifies the private visibility response, then fetches the short-lived signed artifact. It distinguishes `review_required` pending moderation from an unknown provider/settlement outcome.
+- Commits: `bc03839ea86658ea72dab2c5232ee1d75b93fe73`, `83089dcba771083bffc31ee5969087ec14c4fab3`.
+- Source-only correction; no runtime request or provider call was made. No tests/build/lint/typecheck/CI/database write/migration application/staging/browser/device QA/deployment was performed. WP-07 remains `in_progress / acceptance_not_verified`; no phase advancement.
