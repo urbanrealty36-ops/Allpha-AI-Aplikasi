@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import StoriesViewerModal, { type StoryItem } from "../../components/reference-ui/StoriesViewerModal";
 type StoryMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
 type Story = {
   id: string; owner_id: string; body: string; content_type: string; visibility: string;
@@ -150,10 +151,47 @@ export default function StoriesPage() {
   }
 
   const selectedStory = active.find(story => story.id === selectedStoryId) ?? null;
+  const storyItems: StoryItem[] = active.map(story => {
+    const media = story.media?.find(item => item.preview_url && (item.media_type.startsWith("image/") || item.media_type.startsWith("video/")));
+    return {
+      id: story.id,
+      creatorName: story.creator?.display_name || story.creator?.username || "Kreator",
+      creatorHandle: story.creator?.username ? "@" + story.creator.username : "",
+      creatorAvatar: story.creator?.avatar_url || "/icon.svg",
+      isAiAgent: false,
+      mediaUrl: media?.preview_url || "",
+      mediaType: media?.media_type || "",
+      caption: story.body || "",
+      timestamp: new Date(story.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
+      ownerId: story.owner_id,
+    };
+  });
   const closeStory = () => {
     setSelectedStoryId(null);
     window.history.replaceState(null, "", "/stories");
   };
+
+  async function sendStoryReply(storyId: string, ownerId: string, message: string) {
+    if (!session) throw new Error("Masuk terlebih dahulu untuk membalas Story.");
+    if (ownerId === session.user.id) throw new Error("Anda tidak dapat membalas Story milik sendiri.");
+    const conversations = await request("/v1/messages/conversations") as { items?: Array<{ id: string; kind: string; participants?: Array<{ user_id?: string }> }> };
+    let conversation = (conversations.items || []).find(item =>
+      item.kind === "human" && item.participants?.some(participant => participant.user_id === ownerId)
+    );
+    if (!conversation) {
+      const created = await request("/v1/messages/conversations", {
+        method: "POST",
+        body: JSON.stringify({ recipient_user_id: ownerId, title: "Balasan Story" }),
+      }) as { conversation?: { id: string } };
+      if (!created.conversation?.id) throw new Error("Percakapan DM untuk balasan Story belum dapat dibuat.");
+      conversation = { id: created.conversation.id, kind: "human" };
+    }
+    await request("/v1/messages/conversations/" + encodeURIComponent(conversation.id) + "/messages", {
+      method: "POST",
+      body: JSON.stringify({ body: "Balasan Story · " + storyId + "\\n" + message, client_message_id: crypto.randomUUID() }),
+    });
+    setNotice("Balasan Story dikirim melalui Direct Message.");
+  }
 
   return (
     <>
@@ -163,14 +201,7 @@ export default function StoriesPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Stories & Moments</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Momen sementara dengan audience scope dan waktu kedaluwarsa yang ditegakkan server. Story baru masuk moderasi sebelum ditampilkan.</p>
       </header>
-      {selectedStoryId && <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900" aria-label="Story viewer">
-        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">Story publik</p><h2 className="text-lg font-semibold">{selectedStory?.creator?.display_name || selectedStory?.creator?.username || "Story"}</h2></div><button type="button" onClick={closeStory} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-sm font-semibold">Tutup</button></div>
-        {loading && !selectedStory ? <p role="status" className="text-sm text-slate-500">Memuat Story…</p> : !selectedStory ? <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan.</p> : <div className="mx-auto max-w-lg">
-          {selectedStory.media?.map(media => media.preview_url ? (media.media_type.startsWith("video/") ? <video key={media.id} src={media.preview_url} controls playsInline className="mb-3 max-h-[70dvh] w-full rounded-2xl bg-black" /> : media.media_type.startsWith("image/") ? <img key={media.id} src={media.preview_url} alt={selectedStory.body || "Media Story"} className="mb-3 max-h-[70dvh] w-full rounded-2xl object-contain bg-slate-950" /> : null) : null)}
-          {selectedStory.body && <p className="whitespace-pre-wrap text-sm">{selectedStory.body}</p>}
-          {selectedStory.expires_at && <p className="mt-2 text-xs text-slate-500">Berakhir {new Date(selectedStory.expires_at).toLocaleString("id-ID")}</p>}
-        </div>}
-      </section>}
+      {selectedStoryId && !selectedStory && <p role="status" className="mb-6 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">{loading ? "Memuat Story…" : "Story tidak tersedia untuk publik, sudah kedaluwarsa, atau tidak ditemukan."}</p>}
       {!session ? <>
         <section className="mb-6 rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a] dark:bg-slate-900"><h2 className="text-sm font-black">Temukan Stories publik</h2><p className="my-2 text-xs leading-5 text-slate-600 dark:text-slate-300">Lihat momen publik dari kreator yang belum Anda ikuti. Masuk atau daftar untuk membuat Story dan menggunakan fitur akun.</p><div className="flex gap-2"><Link className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950" href={"/login?next=" + encodeURIComponent("/stories")}>Masuk</Link><Link className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black" href={"/login?next=" + encodeURIComponent("/stories")}>Daftar</Link></div></section>
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -178,7 +209,7 @@ export default function StoriesPage() {
           {loading ? <p role="status" className="text-sm text-slate-500">Memuat Stories publik…</p> : active.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Belum ada Story publik yang tersedia.</p> : <div className="grid gap-3 sm:grid-cols-2">{active.map(story => <button type="button" key={story.id} onClick={() => { setSelectedStoryId(story.id); window.history.replaceState(null, "", "/stories?story=" + encodeURIComponent(story.id)); }} className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-cyan-500 dark:bg-slate-900 dark:border-slate-700"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-semibold uppercase text-cyan-600">{story.creator?.display_name || story.creator?.username || "Kreator publik"}</span><span className="text-xs text-slate-500">Publik</span></div>{story.media?.find(media => media.preview_url && media.media_type.startsWith("image/"))?.preview_url && <img src={story.media.find(media => media.preview_url && media.media_type.startsWith("image/"))?.preview_url || ""} alt="" className="mb-3 max-h-56 w-full rounded-xl object-cover" />}{story.body && <p className="line-clamp-3 whitespace-pre-wrap text-sm">{story.body}</p>}<span className="mt-3 inline-block text-xs font-semibold text-cyan-700">Buka Story →</span></button>)}</div>}
         </section>
       </> : <>
-        <form onSubmit={createStory} className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+        <form id="story-create-form" onSubmit={createStory} className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="text-lg font-semibold">Bagikan momen</h2>
           <textarea aria-label="Isi Story" value={body} onChange={e => setBody(e.target.value)} maxLength={2000} rows={4} className="w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm dark:border-slate-600" placeholder="Apa yang sedang terjadi? (opsional jika ada media)" />
           <div className="grid gap-3 sm:grid-cols-3">
@@ -211,6 +242,19 @@ export default function StoriesPage() {
         </section>
       </>}
     </main>
+      {selectedStory && <StoriesViewerModal
+        isOpen
+        stories={storyItems}
+        initialIndex={Math.max(0, storyItems.findIndex(item => item.id === selectedStory.id))}
+        currentUserId={session?.user.id}
+        onClose={closeStory}
+        onCreateStory={session ? async prompt => {
+          setBody(prompt);
+          closeStory();
+          document.getElementById("story-create-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        } : undefined}
+        onSendReply={session ? sendStoryReply : undefined}
+      />}
     </>
   );
 }
