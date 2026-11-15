@@ -10,7 +10,7 @@ type Agent = { id: string; display_name: string; description?: string; status: s
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
+type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -91,6 +91,10 @@ export default function GeneratePage() {
         }
         if (statusPayload.job.artifact_deletion_status === "deleted") {
           setNotice("Artefak privat ini sudah dihapus oleh pemiliknya.");
+          return;
+        }
+        if (statusPayload.job.artifact_deletion_status === "dead") {
+          setNotice("Penghapusan artefak membutuhkan pemulihan operator. Artefak tetap privat; hubungi dukungan Allpha.");
           return;
         }
         if (statusPayload.job.status !== "succeeded" || !statusPayload.job.artifact_available) {
@@ -209,7 +213,7 @@ export default function GeneratePage() {
     } finally { setBusy(false); }
   }
 
-  async function deleteArtifact(): Promise<void> {
+  async function deleteArtifact(): Promise<{ status?: string }> {
     if (!session || !jobId || artifactDeleting) throw new Error("Artefak privat tidak tersedia untuk dihapus.");
     setArtifactDeleting(true); setError("");
     try {
@@ -224,7 +228,10 @@ export default function GeneratePage() {
       setDmConversationId("");
       setNotice(payload.status === "succeeded"
         ? "Artefak privat sudah dihapus."
-        : "Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.");
+        : payload.status === "dead"
+          ? "Penghapusan membutuhkan pemulihan operator. Artefak tetap privat."
+          : "Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.");
+      return payload;
     } finally { setArtifactDeleting(false); }
   }
 
