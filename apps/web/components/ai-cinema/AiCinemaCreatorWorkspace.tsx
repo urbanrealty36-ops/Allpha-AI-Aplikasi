@@ -24,6 +24,10 @@ type DraftEpisode = {
 };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string; generation_reason?: string | null; billing_reason?: string | null; entitlement_reason?: string | null };
 type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
+type CinemaCollaborator = { id: string; collaborator_user_id?: string | null; collaborator_agent_id?: string | null; role: string; permissions: string[]; status: string };
+type CinemaInvitation = { id: string; title?: { title: string; status: string } | null; role: string; permissions: string[]; status: string };
+type CinemaCredit = { id: string; contributor_type: string; role: string; attribution_label: string };
+type CinemaVersion = { id: string; version: number; created_at: string };
 
 async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const supabase = getBrowserSupabase();
@@ -67,6 +71,17 @@ export default function AiCinemaCreatorWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [collaboratorUserId, setCollaboratorUserId] = useState("");
+  const [collaboratorRole, setCollaboratorRole] = useState("Editor");
+  const [collaboratorPermissions, setCollaboratorPermissions] = useState<string[]>(["edit_metadata","upload_episodes"]);
+  const [collaborators, setCollaborators] = useState<CinemaCollaborator[]>([]);
+  const [invitations, setInvitations] = useState<CinemaInvitation[]>([]);
+  const [credits, setCredits] = useState<CinemaCredit[]>([]);
+  const [creditType, setCreditType] = useState("human");
+  const [creditAgentId, setCreditAgentId] = useState("");
+  const [creditRole, setCreditRole] = useState("Creator");
+  const [creditLabel, setCreditLabel] = useState("Kontribusi kreator");
+  const [versions, setVersions] = useState<CinemaVersion[]>([]);
 
   const loadCapabilityStatus = useCallback(async () => {
     try {
@@ -116,6 +131,74 @@ export default function AiCinemaCreatorWorkspace() {
   useEffect(() => { void loadReadyMedia(); }, [loadReadyMedia]);
   useEffect(() => { void loadCapabilityStatus(); }, [loadCapabilityStatus]);
   useEffect(() => { void loadEpisodes(selectedTitleId); }, [loadEpisodes, selectedTitleId]);
+
+  const loadCreatorGovernance = useCallback(async () => {
+    try {
+      const inbox = await authorizedRequest<{items:CinemaInvitation[]}>("/v1/cinema/creator/collaborations");
+      setInvitations(Array.isArray(inbox.items)?inbox.items:[]);
+      if (!selectedTitleId) { setCollaborators([]); setCredits([]); setVersions([]); return; }
+      const base = "/v1/cinema/creator/titles/" + encodeURIComponent(selectedTitleId);
+      const [collabData,creditData,versionData]=await Promise.all([
+        authorizedRequest<{items:CinemaCollaborator[]}>(base+"/collaborators"),
+        authorizedRequest<{items:CinemaCredit[]}>(base+"/credits"),
+        authorizedRequest<{items:CinemaVersion[]}>(base+"/versions"),
+      ]);
+      setCollaborators(collabData.items||[]); setCredits(creditData.items||[]); setVersions(versionData.items||[]);
+    } catch (cause) {
+      setError(cause instanceof Error?cause.message:"Data kolaborasi Creator Studio belum dapat dimuat.");
+    }
+  },[selectedTitleId]);
+
+  useEffect(()=>{ void loadCreatorGovernance(); },[loadCreatorGovernance]);
+
+  async function inviteCollaborator(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(!selectedTitleId||!collaboratorUserId.trim())return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await authorizedRequest("/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/collaborators",{
+        method:"POST",body:JSON.stringify({collaborator_user_id:collaboratorUserId.trim(),role:collaboratorRole,permissions:collaboratorPermissions}),
+      });
+      setCollaboratorUserId("");setNotice("Undangan collaborator dikirim dan menunggu persetujuan penerima.");await loadCreatorGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Undangan collaborator gagal dibuat.");}
+    finally{setSaving(false);}
+  }
+
+  async function decideCollaboration(id:string,decision:"accept"|"revoke") {
+    setSaving(true);setError("");setNotice("");
+    try{
+      await authorizedRequest("/v1/cinema/creator/collaborations/"+encodeURIComponent(id)+"/decision",{
+        method:"POST",body:JSON.stringify({decision}),
+      });
+      setNotice(decision==="accept"?"Undangan kolaborasi diterima.":"Akses kolaborasi dicabut.");await loadCreatorGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Perubahan kolaborasi gagal.");}
+    finally{setSaving(false);}
+  }
+
+  async function addCreatorCredit(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(!selectedTitleId)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await authorizedRequest("/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/credits",{
+        method:"POST",body:JSON.stringify({contributor_type:creditType,contributor_agent_id:creditType==="agent"?creditAgentId.trim():null,role:creditRole,attribution_label:creditLabel,disclosure:"Kontribusi AI/Human dicatat oleh Creator Studio"}),
+      });
+      setCreditAgentId("");setNotice("Kredit kontributor tersimpan.");await loadCreatorGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Kredit kontributor gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+
+  async function snapshotVersion() {
+    if(!selectedTitleId)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await authorizedRequest("/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/versions",{method:"POST",body:"{}"});
+      setNotice("Snapshot versi film tersimpan.");await loadCreatorGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Snapshot versi gagal dibuat.");}
+    finally{setSaving(false);}
+  }
+
+
 
   async function createTitle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -215,6 +298,43 @@ export default function AiCinemaCreatorWorkspace() {
       <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.03] p-4">
         <h3 className="mb-3 font-bold">Daftar episode</h3>
         {episodes.length === 0 ? <p className="text-sm text-slate-400">Belum ada episode untuk film yang dipilih.</p> : <ol className="space-y-2">{episodes.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/80 p-3 text-sm"><span><strong>Episode {item.episode_number} — {item.title}</strong><span className="ml-2 text-xs text-slate-400">{item.status}</span></span><span className="text-xs text-slate-400">{item.duration_seconds ? `${item.duration_seconds} dtk` : "Durasi belum ditetapkan"}</span></li>)}</ol>}
+      </div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-white/10 bg-white/[.04] p-4">
+          <h3 className="font-bold">Kolaborator & Human-Agent credits</h3>
+          <p className="mt-1 text-xs text-slate-400">Akses diberikan per film dan per scope. Undangan Human aktif setelah penerima menyetujui.</p>
+          <form onSubmit={inviteCollaborator} className="mt-3 space-y-2">
+            <label className="block text-xs text-slate-300">ID akun Human yang diundang (UUID)<input value={collaboratorUserId} onChange={e=>setCollaboratorUserId(e.target.value)} placeholder="UUID akun collaborator" className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
+            <label className="block text-xs text-slate-300">Peran<input value={collaboratorRole} onChange={e=>setCollaboratorRole(e.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
+            <div className="flex flex-wrap gap-3 text-xs text-slate-300">
+              {["edit_metadata","upload_episodes","manage_credits","submit_review"].map(scope=><label key={scope} className="flex items-center gap-1"><input type="checkbox" checked={collaboratorPermissions.includes(scope)} onChange={e=>setCollaboratorPermissions(v=>e.target.checked?[...v,scope]:v.filter(x=>x!==scope))}/>{scope}</label>)}
+            </div>
+            <button disabled={saving||!selectedTitleId||!collaboratorUserId.trim()} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">Undang collaborator</button>
+          </form>
+          <div className="mt-4 space-y-2">
+            {collaborators.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900 p-3 text-xs"><span><strong>{item.role}</strong><span className="ml-2 text-slate-400">{item.collaborator_user_id||item.collaborator_agent_id} · {item.status}</span><span className="block text-slate-400">{item.permissions.join(", ")}</span></span>{item.status!=="revoked"&&<button onClick={()=>void decideCollaboration(item.id,"revoke")} className="rounded-lg border border-rose-400/40 px-3 py-1 text-rose-200">Cabut akses</button>}</div>)}
+            {collaborators.length===0&&<p className="text-xs text-slate-400">Belum ada collaborator pada film ini.</p>}
+          </div>
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <h4 className="text-sm font-bold">Undangan saya</h4>
+            {invitations.map(item=><div key={item.id} className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900 p-3 text-xs"><span>{item.title?.title||"Film"} · {item.role} · {item.status}</span>{item.status==="invited"&&<button onClick={()=>void decideCollaboration(item.id,"accept")} className="rounded-lg bg-violet-400 px-3 py-1 font-bold text-slate-950">Terima</button>}</div>)}
+          </div>
+        </section>
+        <section className="rounded-2xl border border-white/10 bg-white/[.04] p-4">
+          <h3 className="font-bold">Creator Credits & Version History</h3>
+          <form onSubmit={addCreatorCredit} className="mt-3 space-y-2">
+            <label className="block text-xs text-slate-300">Jenis kontributor<select value={creditType} onChange={e=>setCreditType(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"><option value="human">Human (akun saya)</option><option value="agent">AI Agent</option></select></label>
+            {creditType==="agent"&&<label className="block text-xs text-slate-300">ID AI Agent (UUID)<input value={creditAgentId} onChange={e=>setCreditAgentId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" placeholder="UUID AI Agent milik pemilik film"/></label>}
+            <label className="block text-xs text-slate-300">Peran kontribusi<input value={creditRole} onChange={e=>setCreditRole(e.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
+            <label className="block text-xs text-slate-300">Label atribusi<input value={creditLabel} onChange={e=>setCreditLabel(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white"/></label>
+            <button disabled={saving||!selectedTitleId||(creditType==="agent"&&!creditAgentId.trim())} className="rounded-xl bg-violet-400 px-4 py-2 text-sm font-black text-slate-950 disabled:opacity-50">Simpan creator credit</button>
+          </form>
+          <div className="mt-3 space-y-1">{credits.map(item=><p key={item.id} className="rounded-lg bg-slate-900 p-2 text-xs">{item.attribution_label} · {item.role} · {item.contributor_type}</p>)}{credits.length===0&&<p className="text-xs text-slate-400">Belum ada kredit kreator.</p>}</div>
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <button type="button" disabled={saving||!selectedTitleId} onClick={()=>void snapshotVersion()} className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm font-bold text-cyan-200 disabled:opacity-50">Simpan snapshot versi film</button>
+            <div className="mt-2 space-y-1">{versions.map(item=><p key={item.id} className="text-xs text-slate-400">Versi {item.version} · {new Date(item.created_at).toLocaleString("id-ID")}</p>)}{versions.length===0&&<p className="text-xs text-slate-400">Belum ada snapshot versi.</p>}</div>
+          </div>
+        </section>
       </div>
       <p className="mt-4 text-xs leading-relaxed text-amber-200/80">Generate AI, tarif/kredit, publikasi, moderasi, dan entitlement belum diaktifkan di panel ini karena kontrak job, policy billing, dan bukti runtime terkait belum lengkap.</p>
     </section>
