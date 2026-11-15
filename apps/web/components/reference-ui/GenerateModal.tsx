@@ -33,9 +33,11 @@ interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
   onGenerate: (request: GenerateRequest) => Promise<string | null>;
+  directMessageAvailable: boolean;
+  onOpenDirectMessage: () => void;
 }
 
-export default function GenerateModal({ isOpen, onClose, onGenerate }: GenerateModalProps) {
+export default function GenerateModal({ isOpen, onClose, onGenerate, directMessageAvailable, onOpenDirectMessage }: GenerateModalProps) {
   const [contentType, setContentType] = useState<GenerateContentType>('REELS_BRAND');
   const [brandName, setBrandName] = useState('');
   const [productDetails, setProductDetails] = useState('');
@@ -277,11 +279,12 @@ export default function GenerateModal({ isOpen, onClose, onGenerate }: GenerateM
 
             <div className="flex gap-2">
               <button
-                onClick={onClose}
-                className="flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={onOpenDirectMessage}
+                disabled={!directMessageAvailable}
+                className="flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="w-3.5 h-3.5 stroke-[2.5px]" />
-                <span>Buka Direct Message</span>
+                <span>{directMessageAvailable ? 'Buka Direct Message' : 'DM belum dikonfirmasi'}</span>
               </button>
               <button
                 onClick={() => {
