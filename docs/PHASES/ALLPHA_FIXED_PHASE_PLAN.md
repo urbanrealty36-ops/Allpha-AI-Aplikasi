@@ -3007,3 +3007,12 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - The page also no longer expects `output_text` from the job-status endpoint. It waits for `artifact_available`, requests the owner-authorized `/artifact` endpoint, verifies the private visibility response, then fetches the short-lived signed artifact. It distinguishes `review_required` pending moderation from an unknown provider/settlement outcome.
 - Commits: `bc03839ea86658ea72dab2c5232ee1d75b93fe73`, `83089dcba771083bffc31ee5969087ec14c4fab3`.
 - Source-only correction; no runtime request or provider call was made. No tests/build/lint/typecheck/CI/database write/migration application/staging/browser/device QA/deployment was performed. WP-07 remains `in_progress / acceptance_not_verified`; no phase advancement.
+
+
+**WP-11 Native AI Cinema playback source integration — 2026-11-16:**
+- Replaced Native's external `Linking.openURL` playback handoff with the native `expo-video` player (`expo-video@~3.0.16`, aligned to Expo SDK 54 source package). The Native player now consumes the short-lived playback URL only after the canonical FastAPI playback-session endpoint returns a session ID, session token and media URL.
+- Added 15-second `timeUpdate` heartbeat delivery to `POST /v1/cinema/playback-sessions/{id}/heartbeat`, with the session token header, and sends a finish event on end-of-media or explicit session close. Playback progress remains server-owned; no qualified-watch or royalty status is inferred by the client.
+- The existing fail-closed policy remains unchanged: without an effective approved access policy, media readiness, entitlement and concurrent-stream approval, FastAPI does not issue a playback session. This does not activate Cinema billing or payout policies.
+- Live Stage source correction: added the missing optional typed Commerce `onCheckout` callback prop to the adapted `LiveExperienceStage` component; the route remains unavailable until the Live Session API/provider ADR is approved.
+- Source commits: Live Stage `44e3f843d097c80f843c1e655ce610ce1c623bfb`; Native Video dependency `8523d88809d43a4ad3c0057cc4866bca29336dd4`; Native playback/heartbeat `d16f550baa79790450b979330bd7fc09b4873aea`.
+- No tests, build, lint, typecheck, CI, physical-device QA, migration application, provider call, staging or deployment were run. WP-11/WP-12 remain `IN_PROGRESS / SOURCE_FOUNDATION_ONLY`; runtime and acceptance remain NOT VERIFIED.
