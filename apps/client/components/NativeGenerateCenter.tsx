@@ -19,6 +19,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
   const [prompt,setPrompt]=useState("");
   const [knowledgeQuery,setKnowledgeQuery]=useState("");
   const [busy,setBusy]=useState(false);
+  const [canCancelGeneration,setCanCancelGeneration]=useState(false);
   const [deletingArtifact,setDeletingArtifact]=useState(false);
   const [loading,setLoading]=useState(true);
   const [jobId,setJobId]=useState("");
@@ -93,6 +94,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
         const status=await api("/v1/generation/jobs/"+encodeURIComponent(initialJobId),token);
         const job=status.job as Job|undefined;
         if(!job)throw new Error("Generation Job tidak ditemukan.");
+        setCanCancelGeneration(job.status === "queued");
         if(job.artifact_deletion_status==="pending"){
           setNotice("Penghapusan artefak sedang diproses. Akses file telah dinonaktifkan.");
           return;
@@ -124,6 +126,22 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
     return()=>{active=false;};
   },[initialJobId,apiBase,getAccessToken]);
 
+  function cancelQueuedGeneration(){
+    if(!jobId||!canCancelGeneration||busy)return;
+    Alert.alert("Batalkan antrean Generation","Pembatalan hanya tersedia sebelum worker memanggil provider. Jika policy tidak mengizinkan pelepasan, reservasi akan menunggu rekonsiliasi.",[
+      {text:"Kembali",style:"cancel"},
+      {text:"Batalkan antrean",style:"destructive",onPress:()=>{void (async()=>{
+        setError("");
+        try{
+          const token=await getAccessToken();
+          const result=await api("/v1/generation/jobs/"+encodeURIComponent(jobId)+"/cancel",token,{method:"POST"}) as {status?:string};
+          setCanCancelGeneration(false);
+          setNotice(result.status==="cancelled"?"Antrean dibatalkan sebelum provider dipanggil. Reservasi dilepas sesuai policy aktif.":"Pembatalan tercatat, tetapi reservasi menunggu rekonsiliasi policy.");
+        }catch(cause){setError(cause instanceof Error?cause.message:"Pembatalan antrean belum dapat dikonfirmasi.");}
+      })();}},
+    ]);
+  }
+
   function requestArtifactDeletion(){
     if(!jobId||!result||deletingArtifact)return;
     Alert.alert(
@@ -149,7 +167,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
 
   async function runGeneration(){
     if(!agentId||!skillId||!capabilityId||!prompt.trim()||busy)return;
-    setBusy(true);setError("");setNotice("");setResult("");setJobId("");
+    setBusy(true);setCanCancelGeneration(false);setError("");setNotice("");setResult("");setJobId("");
     try{
       const token=await getAccessToken();
       const externalKnowledgeAllowed=!!externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.granted_scopes.includes("knowledge_public_read");
@@ -168,11 +186,13 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
       const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id,quoted_agent_snapshot_sha256:quote.agent_snapshot_sha256,quoted_skill_snapshot_sha256:quote.skill_snapshot_sha256,...(quote.knowledge_context_sha256?{quoted_knowledge_context_sha256:quote.knowledge_context_sha256}:{})})});
       if(!created.job_id)throw new Error("Generation Job belum terkonfirmasi.");
       setJobId(created.job_id);
+      setCanCancelGeneration(true);
       for(let attempt=0;attempt<60;attempt++){
         await new Promise(resolve=>setTimeout(resolve,2000));
         const status=await api("/v1/generation/jobs/"+created.job_id,token);
         const job=status.job as Job|undefined;
         if(!job)throw new Error("Status Generation Job tidak ditemukan.");
+        setCanCancelGeneration(job.status === "queued");
         if(job.status==="succeeded"&&job.artifact_available){
           const artifact=await api("/v1/generation/jobs/"+created.job_id+"/artifact",token);
           const response=await fetch(artifact.url,{cache:"no-store"});
@@ -181,12 +201,22 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
           setNotice("Hasil lolos moderasi dan tersimpan sebagai artefak privat. Creator reward: "+(job.owner_reward_status||"pending_policy")+".");
           return;
         }
-        if(job.status==="pending_reconciliation")throw new Error("Hasil masih dalam rekonsiliasi. Tidak ada pengulangan provider otomatis.");
-        if(job.status==="failed"||job.status==="cancelled")throw new Error(job.error_code||"Generation gagal.");
+        if(job.status==="cancelled"){
+          setNotice("Generation dibatalkan sebelum worker memanggil provider. Tidak ada output yang dibuat.");
+          return;
+        }
+        if(job.status==="pending_reconciliation"){
+          if(job.error_code==="cancel_release_policy_not_approved"){
+            setNotice("Pembatalan tercatat, tetapi policy belum mengizinkan pelepasan reservasi. Saldo menunggu rekonsiliasi.");
+            return;
+          }
+          throw new Error("Hasil masih dalam rekonsiliasi. Tidak ada pengulangan provider otomatis.");
+        }
+        if(job.status==="failed")throw new Error(job.error_code||"Generation gagal.");
       }
       setNotice("Job masih diproses. Periksa kembali riwayat Generation; permintaan tidak dikirim ulang.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Generation tidak selesai.");}
-    finally{setBusy(false);}
+    finally{setBusy(false);setCanCancelGeneration(false);}
   }
 
   return <ScrollView contentContainerStyle={{gap:14,paddingBottom:30}}>
@@ -208,6 +238,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
         <Pressable disabled={busy||!skillId||!capabilityId||!prompt.trim()} onPress={()=>void runGeneration()} style={{borderRadius:999,backgroundColor:"#A5B4FC",padding:14,alignItems:"center",opacity:busy||!skillId||!capabilityId||!prompt.trim()?0.5:1}}><Text style={{color:"#111827",fontWeight:"900"}}>{busy?"Memproses…":"Minta Quote & Generate"}</Text></Pressable>
       </>}
       {!!jobId&&<Text style={{color:"#CBD5E1",fontSize:11}}>Job: {jobId}</Text>}
+      {!!jobId&&canCancelGeneration&&<Pressable accessibilityRole="button" onPress={cancelQueuedGeneration} disabled={busy} style={{borderRadius:999,borderWidth:1,borderColor:"#FDA4AF",padding:12,alignItems:"center",opacity:busy?0.5:1}}><Text style={{color:"#FDA4AF",fontWeight:"900"}}>Batalkan antrean sebelum diproses</Text></Pressable>}
       {!!notice&&<Text style={{color:"#86EFAC",fontSize:12}}>{notice}</Text>}
       {!!error&&<Text accessibilityRole="alert" style={{color:"#FCA5A5",fontSize:12}}>{error}</Text>}
     </View>
