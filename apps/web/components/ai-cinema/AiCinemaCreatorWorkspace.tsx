@@ -24,6 +24,7 @@ type DraftEpisode = {
 };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string; generation_reason?: string | null; billing_reason?: string | null; entitlement_reason?: string | null };
 type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
+type CreatorMedia = ReadyMedia & { status: string; scan_status: string; processed_at?: string | null; created_at: string };
 type CinemaCollaborator = { id: string; collaborator_user_id?: string | null; collaborator_agent_id?: string | null; role: string; permissions: string[]; status: string };
 type CinemaInvitation = { id: string; title?: { title: string; status: string } | null; role: string; permissions: string[]; status: string };
 type CinemaCredit = { id: string; contributor_type: string; role: string; attribution_label: string };
@@ -39,8 +40,8 @@ async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promi
     cache: "no-store",
     headers: {
       Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${data.session.access_token}`,
+      ...(init.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${data.session.access_token}`, 
       ...init.headers,
     },
   });
@@ -57,6 +58,8 @@ export default function AiCinemaCreatorWorkspace() {
   const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
+  const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -92,14 +95,18 @@ export default function AiCinemaCreatorWorkspace() {
     }
   }, []);
 
-  const loadReadyMedia = useCallback(async () => {
+  const loadCreatorMedia = useCallback(async () => {
     try {
-      const result = await authorizedRequest<{ items: ReadyMedia[] }>("/v1/cinema/creator/media-ready");
-      setReadyMedia(Array.isArray(result.items) ? result.items : []);
+      const result = await authorizedRequest<{ items: CreatorMedia[] }>("/v1/cinema/creator/media");
+      const rows = Array.isArray(result.items) ? result.items : [];
+      setCreatorMedia(rows);
+      setReadyMedia(rows.filter(item => item.status === "ready" && item.scan_status === "clean" && item.processed_at).map(({ id, filename, media_type, size_bytes }) => ({ id, filename, media_type, size_bytes })));
     } catch {
-      setReadyMedia([]);
+      setCreatorMedia([]); setReadyMedia([]);
     }
   }, []);
+
+  const loadReadyMedia = useCallback(async () => { await loadCreatorMedia(); }, [loadCreatorMedia]);
 
   const loadTitles = useCallback(async () => {
     setLoading(true);
@@ -200,6 +207,21 @@ export default function AiCinemaCreatorWorkspace() {
 
 
 
+  async function uploadCinemaMedia() {
+    if (!uploadFile || !uploadFile.type.startsWith("video/")) { setError("Pilih file video MP4 atau WebM terlebih dahulu."); return; }
+    if (uploadFile.size <= 0 || uploadFile.size > 50 * 1024 * 1024) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const draft = await authorizedRequest<{ item: { id: string } }>("/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
+      const form = new FormData(); form.append("file", uploadFile);
+      const uploaded = await authorizedRequest<{ item: CreatorMedia }>("/v1/content/" + encodeURIComponent(draft.item.id) + "/media", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: form });
+      setUploadFile(null);
+      setNotice("Video diterima pipeline media Allpha (" + (uploaded.item?.status || "uploaded") + "). Tunggu pemindaian dan transcode; video dapat dipilih setelah status ready dan scan clean.");
+      await loadCreatorMedia();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal."); }
+    finally { setSaving(false); }
+  }
+
   async function createTitle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true); setError(""); setNotice("");
@@ -256,7 +278,7 @@ export default function AiCinemaCreatorWorkspace() {
     <section className="mx-auto my-8 w-full max-w-6xl rounded-3xl border border-white/15 bg-slate-950/90 p-5 text-white shadow-2xl sm:p-7">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div><p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-300">Creator Workspace</p><h2 className="mt-1 text-2xl font-black">Draft Film & Episode</h2><p className="mt-1 text-sm text-slate-300">Draft disimpan melalui FastAPI dan hanya dapat diakses pemiliknya.</p></div>
-        <button type="button" onClick={() => void loadTitles()} disabled={loading} className="rounded-xl border border-white/20 px-4 py-2 text-sm font-bold hover:bg-white/10 disabled:opacity-50">{loading ? "Memuat…" : "Muat ulang"}</button>
+        <button type="button" onClick={() => { void loadTitles(); void loadCapabilityStatus(); void loadCreatorMedia(); }} disabled={loading} className="rounded-xl border border-white/20 px-4 py-2 text-sm font-bold hover:bg-white/10 disabled:opacity-50">{loading ? "Memuat…" : "Muat ulang"}</button>
       </div>
       {capabilityStatus && <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-950/20 p-3 text-xs text-amber-100">
         <p className="font-bold">Status layanan terhubung</p>
@@ -285,6 +307,14 @@ export default function AiCinemaCreatorWorkspace() {
             <button type="button" onClick={() => void submitForReview()} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} className="w-full rounded-xl border border-cyan-300/40 px-4 py-3 text-sm font-bold text-cyan-200 disabled:opacity-40">{saving ? "Mengajukan…" : "Ajukan rights review & moderasi"}</button>
             <p className="text-xs text-slate-400">API akan menolak pengajuan jika episode belum memiliki media ready dan scan clean. Keputusan hak cipta dan moderasi tetap dilakukan operator.</p>
           </div>
+          <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+            <h3 className="font-bold">Upload video film · Media Pipeline</h3>
+            <p className="text-xs text-slate-400">MP4/WebM maksimal 50 MiB. File disimpan melalui FastAPI ke Supabase Storage; worker dan pemeriksaan keamanan menentukan kapan media siap digunakan.</p>
+            <input type="file" accept="video/mp4,video/webm" onChange={event => setUploadFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+            {uploadFile && <p className="text-xs text-slate-300">{uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
+            <button type="button" onClick={() => void uploadCinemaMedia()} disabled={saving || !uploadFile} className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"}</button>
+            <div className="space-y-1 border-t border-white/10 pt-3"><p className="text-xs font-bold text-slate-300">Status media saya</p>{creatorMedia.length ? creatorMedia.map(media => <p key={media.id} className="text-xs text-slate-400">{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · diproses " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</p>) : <p className="text-xs text-slate-500">Belum ada media milik akun ini.</p>}</div>
+          </section>
           <form onSubmit={createEpisode} className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
             <h3 className="font-bold">Tambah draft episode</h3>
             <label className="block text-xs text-slate-300">Nomor episode<input required type="number" min="1" max="10000" value={episodeNumber} onChange={event => setEpisodeNumber(event.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 p-3 text-sm text-white" /></label>
