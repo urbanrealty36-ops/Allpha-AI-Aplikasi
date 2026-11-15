@@ -253,7 +253,7 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 stroke-[2.5px]" />
-                <span>Hasil Generate Konten & Branding Selesai</span>
+                <span>Draft Teks Generation Selesai</span>
               </h4>
               <button
                 onClick={handleCopyResult}
@@ -273,6 +273,7 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
               </button>
             </div>
 
+            <p className="rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-900">Output jalur ini adalah draft teks yang dihasilkan melalui Model Router. File gambar/video final belum dibuat oleh Generation Job ini.</p>
             <div className="p-4 rounded-2xl bg-slate-950 text-cyan-200 text-xs font-mono whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
               {result}
             </div>
