@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from allpha_api.model_router import TextGenerationRequest
-from allpha_api.generation_prompt import build_generation_prompts
+from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
 from allpha_api.generation_output_moderation import load_generation_output_moderator
 
@@ -114,6 +114,10 @@ def _build_execution_prompts(job: dict[str, Any]) -> tuple[str, str]:
     if not isinstance(agent_snapshot, dict) or not isinstance(skill_snapshot, dict):
         raise ValueError("generation Agent or Skill execution snapshot is missing")
     instructions = skill_snapshot.get("instructions")
+    if snapshot_sha256(agent_snapshot) != job.get("agent_snapshot_sha256"):
+        raise ValueError("generation Agent identity snapshot integrity check failed")
+    if snapshot_sha256(skill_snapshot) != job.get("skill_snapshot_sha256"):
+        raise ValueError("generation Skill version snapshot integrity check failed")
     expected_digest = job.get("skill_instructions_sha256")
     if not isinstance(instructions, str) or not isinstance(expected_digest, str) or len(expected_digest) != 64:
         raise ValueError("generation Skill instruction snapshot is invalid")
