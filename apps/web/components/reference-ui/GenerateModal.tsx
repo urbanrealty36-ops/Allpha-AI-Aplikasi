@@ -37,7 +37,7 @@ interface GenerateModalProps {
   onOpenDirectMessage: () => void;
   artifactDeleteAvailable: boolean;
   artifactDeleting: boolean;
-  onDeleteArtifact: () => Promise<void>;
+  onDeleteArtifact: () => Promise<{ status?: string }>;
 }
 
 export default function GenerateModal({ isOpen, onClose, onGenerate, directMessageAvailable, onOpenDirectMessage, artifactDeleteAvailable, artifactDeleting, onDeleteArtifact }: GenerateModalProps) {
@@ -92,9 +92,13 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
     if (!window.confirm('Hapus artefak privat ini? URL baru akan diblokir; URL sementara yang sudah diterbitkan dapat berlaku sampai 60 detik atau sampai objek Storage dihapus.')) return;
     setError('');
     try {
-      await onDeleteArtifact();
+      const deletion = await onDeleteArtifact();
       setResult(null);
-      setNotice('Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.');
+      setNotice(deletion.status === 'dead'
+        ? 'Job penghapusan membutuhkan pemulihan operator. Artefak tetap privat; hubungi dukungan Allpha.'
+        : deletion.status === 'succeeded'
+          ? 'Artefak privat sudah dihapus.'
+          : 'Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Penghapusan artefak belum dapat dikonfirmasi.');
     }
