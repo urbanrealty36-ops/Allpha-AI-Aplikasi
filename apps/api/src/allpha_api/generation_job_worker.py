@@ -15,6 +15,11 @@ from typing import Any
 
 import httpx
 
+from allpha_api.agent_runtime import (
+    AgentConsumerAuthorization,
+    AgentRuntime,
+    AgentRuntimeBlocked,
+)
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
@@ -119,8 +124,12 @@ def _build_execution_prompts(job: dict[str, Any]) -> tuple[str, str]:
     instructions = skill_snapshot.get("instructions")
     if snapshot_sha256(agent_snapshot) != job.get("agent_snapshot_sha256"):
         raise ValueError("generation Agent identity snapshot integrity check failed")
+    if int(agent_snapshot.get("version") or 0) != int(job.get("agent_version") or 0):
+        raise ValueError("generation Agent version does not match the durable job snapshot")
     if snapshot_sha256(skill_snapshot) != job.get("skill_snapshot_sha256"):
         raise ValueError("generation Skill version snapshot integrity check failed")
+    if skill_snapshot.get("status") != "published" or int(skill_snapshot.get("version") or 0) != int(job.get("source_version") or 0):
+        raise ValueError("generation Skill is not the pinned published version")
     expected_digest = job.get("skill_instructions_sha256")
     if not isinstance(instructions, str) or not isinstance(expected_digest, str) or len(expected_digest) != 64:
         raise ValueError("generation Skill instruction snapshot is invalid")
@@ -134,7 +143,7 @@ def _build_execution_prompts(job: dict[str, Any]) -> tuple[str, str]:
     )
 
 
-async def _consumer_grant_is_current(job: dict[str, Any]) -> bool:
+async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | None:
     """Revalidate external Agent permission immediately before any provider side effect."""
     grant_id = job.get("consumer_grant_id")
     if not grant_id:
@@ -165,7 +174,7 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> bool:
     except (httpx.HTTPError, ValueError) as exc:
         raise RuntimeError("external Agent grant could not be revalidated") from exc
     if not isinstance(rows, list) or len(rows) != 1:
-        return False
+        return None
     grant = rows[0]
     expected_payer_role = (
         "agent_owner" if str(job.get("payer_user_id")) == str(job.get("agent_owner_user_id"))
@@ -190,15 +199,75 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> bool:
     }
     for field, expected in checks.items():
         if expected is None or grant.get(field) != expected:
-            return False
+            return None
     if int(grant.get("max_usage_units") or 0) < int(job.get("estimated_usage_units") or 0):
-        return False
+        return None
     if int(grant.get("max_cost_microunits") or 0) < int(job.get("max_cost_microunits") or 0):
-        return False
+        return None
     scopes = grant.get("granted_scopes") if isinstance(grant.get("granted_scopes"), list) else []
     if job.get("knowledge_context_sha256") and "knowledge_public_read" not in scopes:
-        return False
-    return True
+        return None
+    return grant
+
+
+async def _execution_contract_is_current(job: dict[str, Any]) -> bool:
+    """Revalidate the pinned Agent, published Skill and approved capability before provider side effects."""
+    url, key = _database()
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}
+    queries = (
+        ("ai_agents", {
+            "select": "id,version,status",
+            "id": f"eq.{job.get('agent_id')}", "status": "eq.active", "limit": "1",
+        }),
+        ("agent_skills", {
+            "select": "id,version,status",
+            "id": f"eq.{job.get('skill_id')}", "agent_id": f"eq.{job.get('agent_id')}",
+            "status": "eq.published", "limit": "1",
+        }),
+        ("agent_capabilities", {
+            "select": "capability_key,status",
+            "agent_id": f"eq.{job.get('agent_id')}",
+            "capability_key": f"eq.{job.get('capability_id')}",
+            "status": "eq.approved", "limit": "1",
+        }),
+    )
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            results = []
+            for table, params in queries:
+                response = await client.get(
+                    f"{url}/rest/v1/{table}", params=params, headers=headers,
+                )
+                response.raise_for_status()
+                rows = response.json()
+                if not isinstance(rows, list) or len(rows) != 1:
+                    return False
+                results.append(rows[0])
+    except (httpx.HTTPError, ValueError) as exc:
+        raise RuntimeError("pinned Agent/Skill/capability state could not be revalidated") from exc
+    agent, skill, capability = results
+    return (
+        int(agent.get("version") or 0) == int(job.get("agent_version") or 0)
+        and int(skill.get("version") or 0) == int(job.get("source_version") or 0)
+        and capability.get("capability_key") == job.get("capability_id")
+    )
+
+
+def _require_pinned_model_route(job: dict[str, Any], router: Any) -> str:
+    """Block queued jobs if their pinned provider/model/policy/tariff changed."""
+    sensitivity = str(job.get("sensitivity") or "")
+    snapshot = router.route_snapshot_for(sensitivity)
+    expected = {
+        "provider_id": job.get("provider_id"),
+        "model_id": job.get("model_id"),
+        "model_version": job.get("model_version"),
+        "pricing_version": job.get("pricing_version"),
+        "policy_version": job.get("runtime_policy_version"),
+    }
+    for field, value in expected.items():
+        if not value or str(snapshot.get(field) or "") != str(value):
+            raise ValueError(f"pinned_generation_{field}_changed")
+    return sensitivity
 
 
 async def _fail_before_provider(job: dict[str, Any], worker_id: str, reason: str) -> str:
@@ -225,7 +294,7 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             prompt=user_prompt,
             max_output_tokens=int(job["max_output_tokens"]),
             timeout_ms=int(job["timeout_ms"]),
-            owner_id=str(job.get("payer_user_id") or job["owner_user_id"]),
+            owner_id=str(job.get("agent_owner_user_id") or job["owner_user_id"]),
             agent_id=str(job["agent_id"]),
             source_id=str(job["skill_id"]),
             source_version=int(job["source_version"]),
@@ -236,16 +305,56 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
         await _mark_pending(job, worker_id, "generation_request_contract_invalid")
         return "pending_reconciliation"
 
+    try:
+        sensitivity = _require_pinned_model_route(job, router)
+        if not await _execution_contract_is_current(job):
+            return await _fail_before_provider(job, worker_id, "agent_skill_or_capability_revoked_or_changed")
+    except Exception as exc:
+        await _mark_pending(job, worker_id, "generation_preflight_unknown:" + type(exc).__name__)
+        return "pending_reconciliation"
+
+    consumer_authorization = None
     if job.get("consumer_grant_id"):
         try:
-            if not await _consumer_grant_is_current(job):
+            grant = await _consumer_grant_is_current(job)
+            if grant is None:
                 return await _fail_before_provider(job, worker_id, "consumer_grant_revoked_or_policy_changed")
+            consumer_authorization = AgentConsumerAuthorization(
+                requester_id=str(job["owner_user_id"]),
+                owner_id=str(job["agent_owner_user_id"]),
+                agent_id=str(job["agent_id"]),
+                agent_version=int(job["agent_version"]),
+                skill_id=str(job["skill_id"]),
+                skill_version=int(job["source_version"]),
+                agent_public=True,
+                agent_active=True,
+                skill_published=True,
+                grant_active=True,
+                policy_approved=True,
+                policy_version=str(job["runtime_policy_version"]),
+                granted_scopes=tuple(grant.get("granted_scopes") or ()),
+                allowed_memory_scope=(),
+                budget_reserved=True,
+                metering_ready=True,
+            )
         except Exception as exc:
             await _mark_pending(job, worker_id, "consumer_grant_revalidation_unknown:" + type(exc).__name__)
             return "pending_reconciliation"
 
     try:
-        response, evidence = await router.generate(request)
+        response, evidence = await AgentRuntime().execute_skill_generation(
+            requester_id=str(job["owner_user_id"]),
+            owner_id=str(job.get("agent_owner_user_id") or job["owner_user_id"]),
+            agent_id=str(job["agent_id"]),
+            agent_version=int(job["agent_version"]),
+            skill_id=str(job["skill_id"]),
+            skill_version=int(job["source_version"]),
+            skill_published=True,
+            policy_version=str(job["runtime_policy_version"]),
+            router=router,
+            request=request,
+            consumer_authorization=consumer_authorization,
+        )
     except Exception as exc:
         # Once a job is claimed, exceptions may happen before or after provider
         # acceptance. Keep the reservation pending; never guess or retry.
