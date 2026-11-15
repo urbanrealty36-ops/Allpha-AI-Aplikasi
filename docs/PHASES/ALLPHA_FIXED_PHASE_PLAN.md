@@ -3181,3 +3181,13 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Memory lifecycle audit writes for item operations are atomic. Policy row update and its separate policy audit event remain a two-step source implementation and require reconciliation if the audit write fails.
 - Source-only migration and runtime feature flag remain inactive. No Supabase migration, test, build, lint, typecheck, CI, provider call, staging or deployment was run.
 
+
+
+**WP-07 Memory retention and deletion hardening — 2026-11-16:**
+- Lifecycle transition RPC now atomically creates proposal/decision/correction/deletion/expiry records together with their audit event. Audit event table rejects direct UPDATE/DELETE; ownership and policy IDs are checked by the server-side transition.
+- Logical delete, policy-version invalidation and retention expiry scrub the Memory text, source_ref, provenance and confidence while retaining a content digest and content-minimized audit evidence. No derived Memory vector index exists yet; derived-index deletion is therefore not claimed complete.
+- The existing Generation Worker loop runs a global expired-item purge every 60 seconds when ALLPHA_MEMORY_COORDINATOR_ENABLED=true. This worker path is source-only and remains disabled by default.
+- Policy updates are idempotent when settings are unchanged. A changed policy version invalidates and scrubs items created under the old policy; the Memory Studio explains this behavior.
+- PostgreSQL full-text filtering uses the generated search_vector GIN index for owner-facing keyword queries. Generation and chat context assembly use bounded metadata recency, with owner, Agent ownership, current policy version, purpose, classification and Model Router sensitivity ceilings enforced.
+- No live Supabase migration, runtime activation, tests/build/lint/typecheck/CI, provider calls, staging or deployment were performed.
+
