@@ -3105,3 +3105,13 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Remaining WP-07 gaps are not hidden: tool-dependent Skills remain fail-closed because Generation currently has no bounded multi-tool planner/usage aggregation contract; image/video input snapshots and multimodal output adapters are not implemented; the Master PRD Memory model (Working/Conversation/Episodic/Semantic/Procedural/Long-term) still lacks a canonical memory persistence/coordinator path in the current API/table inventory; approved moderation policy and owner reward policy remain absent; no billing products/subscriptions exist. Do not activate workers or claim full Ask AI acceptance.
 - WP-07 remains `IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED`. The requested order remains WP-07 → WP-06 → WP-11 → WP-12. Live Stage is still ADR-WP10-001 blocked.
 
+
+
+**WP-07 pre-provider failure classification hardening — 2026-11-16:**
+- Generation worker now performs explicit Model Router preflight before invoking the canonical Agent Runtime, and routes invalid request contracts, stale/revoked Agent/Skill/capability, stale route/policy/tariff, and grant revalidation failures through the definitive pre-provider failure/release path.
+- Added `AgentRuntimeOutcomeUnknown` to distinguish a runtime deadline after the Model Router call begins from a deterministic policy/authorization block. The worker keeps ambiguous provider outcomes in `pending_reconciliation`; it never releases/replays an invocation whose provider acceptance may be unknown.
+- Commits: `d4bbb20b0723e97214a977552695f16dd8bc7a89`, `d8e725c885dee8cdc52a8f9eb21e32626af07756`, `bd2054dc99c943d9d664d386fd824f0106ef631a`.
+- Static source re-fetch confirms the explicit router preflight, distinct pre-provider failure path, distinct provider-outcome-unknown exception, and no direct Model Router invocation from the Generation worker. No tests/build/lint/typecheck/CI or worker/provider execution was run.
+- This does not close the remaining WP-07 blockers documented above: approved moderation policy, owner-reward policy, active billing product/subscription, tool-dependent Skill execution, media input/multimodal generation, Memory Coordinator persistence/policy integration, and UI/browser acceptance.
+- WP-07 remains `IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED`; formal order remains WP-07 → WP-06 → WP-11 → WP-12.
+
