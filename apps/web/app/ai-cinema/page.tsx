@@ -9,7 +9,7 @@ const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV =
 
 type CatalogTitle = {
   id: string; title: string; original_title?: string | null; genre: string; synopsis: string;
-  language_code: string; maturity_rating: string; credits: Array<{ role?: string; name?: string; agent_id?: string }>;
+  language_code: string; maturity_rating: string; credits: Array<{ role?: string; name?: string; agent_id?: string; contributor_type?: "human" | "agent"; contributor_user_id?: string | null; contributor_agent_id?: string | null; attribution_label?: string | null }>;
   cover_media_id?: string | null; trailer_media_id?: string | null; published_at?: string | null;
   episodes_count?: number; cover_preview_url?: string | null; trailer_preview_url?: string | null;
   status?: string; moderation_status?: string; rights_status?: string;
