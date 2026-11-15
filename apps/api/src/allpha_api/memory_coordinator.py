@@ -146,6 +146,7 @@ class MemoryCoordinator:
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None,max_sensitivity=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
         if purpose not in PURPOSES:return []
+        if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
         ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
         if not ownership:return []
         policies=await self.policies(owner_id,agent_id)
@@ -158,7 +159,7 @@ class MemoryCoordinator:
            "purpose":f"eq.{purpose}","status":"eq.active","retention_expires_at":f"gt.{datetime.now(timezone.utc).isoformat()}",
            "classification":f"in.({','.join(sorted(set().union(*(s for s in sensitivities.values()))))})",
            "order":"created_at.desc","limit":"30"}
-        if query:p["search_vector"]="fts.simple."+query
+        if query:p["search_vector"]="plfts.simple."+query
         rows=await self.db("GET","agent_memory_items",params=p)
         if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
         sensitivity_rank={name:index for index,name in enumerate(SENSITIVITIES)}
