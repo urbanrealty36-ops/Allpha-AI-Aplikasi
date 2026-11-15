@@ -177,14 +177,15 @@ class TextGenerationRequest:
     source_id: str | None = None
     source_version: int = 1
     billing_account_id: str | None = None
+    system_prompt: str = ""
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
             raise ValueError("text generation task, trace and idempotency identifiers are required")
         if not self.sensitivity.strip():
             raise ValueError("text generation sensitivity is required")
-        if not self.prompt.strip() or len(self.prompt.encode("utf-8")) > 32_768:
-            raise ValueError("text generation prompt must be non-empty and at most 32 KiB")
+        if not self.prompt.strip() or len((self.system_prompt + "\n\n" + self.prompt).encode("utf-8")) > 32_768:
+            raise ValueError("combined system and user generation prompt must be non-empty and at most 32 KiB")
         if not 1 <= self.max_output_tokens <= 16_384:
             raise ValueError("max_output_tokens must be between 1 and 16384")
         if not 100 <= self.timeout_ms <= 120_000:
@@ -415,8 +416,8 @@ class CanonicalTextGenerationRouter:
                 raise TextGenerationRouterUnavailable(
                     "active model-cost configuration could not be verified; provider execution is blocked"
                 ) from exc
-        if len(request.prompt.encode("utf-8")) > policy.max_prompt_bytes:
-            raise TextGenerationRouterRejected("prompt exceeds approved policy bound")
+        if len((request.system_prompt + "\n\n" + request.prompt).encode("utf-8")) > policy.max_prompt_bytes:
+            raise TextGenerationRouterRejected("combined system and user prompt exceeds approved policy bound")
         if request.max_output_tokens > policy.max_output_tokens:
             raise TextGenerationRouterRejected("requested output tokens exceed approved policy bound")
         adapter = self._adapters[route.provider_id]
@@ -439,7 +440,7 @@ class CanonicalTextGenerationRouter:
                     raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
                 if response.cost_microunits > policy.max_cost_microunits:
                     raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
-                prompt_hash = hashlib.sha256(request.prompt.encode("utf-8")).hexdigest()
+                prompt_hash = hashlib.sha256((request.system_prompt + "\n\n" + request.prompt).encode("utf-8")).hexdigest()
                 output_hash = hashlib.sha256(response.output_text.encode("utf-8")).hexdigest()
                 evidence_payload = {
                     "task_id": request.task_id, "trace_id": request.trace_id,
