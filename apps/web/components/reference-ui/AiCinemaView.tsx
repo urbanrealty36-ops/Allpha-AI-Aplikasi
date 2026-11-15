@@ -718,11 +718,17 @@ export default function AiCinemaView({
       {featuredMovie && cinemaViewMode === 'CATALOG' && (
         <div className="relative rounded-3xl overflow-hidden bg-slate-950 text-white border border-slate-800 shadow-xl group">
           <div className="relative h-64 sm:h-80 w-full overflow-hidden">
-            <img
-              src={featuredMovie.bannerImage}
-              alt={featuredMovie.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition duration-700"
-            />
+            {featuredMovie.bannerImage ? (
+              <img
+                src={featuredMovie.bannerImage}
+                alt={featuredMovie.title}
+                className="w-full h-full object-cover group-hover:scale-105 transition duration-700"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950">
+                <Film className="h-12 w-12 text-cyan-300/60" aria-hidden="true" />
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent" />
 
             {/* Badges on top */}
@@ -924,11 +930,17 @@ export default function AiCinemaView({
                 <div>
                   {/* Poster / Cover Image */}
                   <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-950 border-b-2 border-slate-900">
-                    <img
-                      src={movie.coverImage}
-                      alt={movie.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    />
+                    {movie.coverImage ? (
+                      <img
+                        src={movie.coverImage}
+                        alt={movie.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950">
+                        <Film className="h-10 w-10 text-cyan-300/60" aria-hidden="true" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
 
                     {/* Category pill on top */}
@@ -985,11 +997,15 @@ export default function AiCinemaView({
                     {/* Producer & AI Director */}
                     <div className="flex items-center justify-between text-xs pt-1.5 border-t-2 border-slate-900/10">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <img
-                          src={movie.producerHuman.avatar}
-                          alt={movie.producerHuman.name}
-                          className="w-4 h-4 rounded-full object-cover border border-slate-900"
-                        />
+                        {movie.producerHuman.avatar ? (
+                          <img
+                            src={movie.producerHuman.avatar}
+                            alt={movie.producerHuman.name}
+                            className="w-4 h-4 rounded-full object-cover border border-slate-900"
+                          />
+                        ) : (
+                          <span className="w-4 h-4 rounded-full border border-slate-400 bg-slate-200" aria-hidden="true" />
+                        )}
                         <span className="text-[11px] font-bold text-slate-800 truncate">
                           {movie.producerHuman.name}
                         </span>
