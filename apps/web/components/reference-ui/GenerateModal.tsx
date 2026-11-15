@@ -33,6 +33,8 @@ interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
   onGenerate: (request: GenerateRequest) => Promise<string | null>;
+  canCancelGeneration: boolean;
+  onCancelGeneration: () => Promise<{ status?: string }>;
   directMessageAvailable: boolean;
   onOpenDirectMessage: () => void;
   artifactDeleteAvailable: boolean;
@@ -40,12 +42,13 @@ interface GenerateModalProps {
   onDeleteArtifact: () => Promise<{ status?: string }>;
 }
 
-export default function GenerateModal({ isOpen, onClose, onGenerate, directMessageAvailable, onOpenDirectMessage, artifactDeleteAvailable, artifactDeleting, onDeleteArtifact }: GenerateModalProps) {
+export default function GenerateModal({ isOpen, onClose, onGenerate, canCancelGeneration, onCancelGeneration, directMessageAvailable, onOpenDirectMessage, artifactDeleteAvailable, artifactDeleting, onDeleteArtifact }: GenerateModalProps) {
   const [contentType, setContentType] = useState<GenerateContentType>('REELS_BRAND');
   const [brandName, setBrandName] = useState('');
   const [productDetails, setProductDetails] = useState('');
   const [customBrief, setCustomBrief] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [error, setError] = useState('');
@@ -76,6 +79,22 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
       setError(cause instanceof Error ? cause.message : 'Generation tidak dapat diselesaikan.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCancelGeneration = async () => {
+    if (!isLoading || !canCancelGeneration || isCancelling) return;
+    setIsCancelling(true);
+    setError('');
+    try {
+      const cancellation = await onCancelGeneration();
+      setNotice(cancellation.status === 'cancelled'
+        ? 'Antrean berhasil dibatalkan sebelum worker memanggil provider. Reservasi dilepas sesuai policy aktif.'
+        : 'Permintaan pembatalan tercatat, tetapi policy belum mengizinkan pelepasan reservasi. Saldo menunggu rekonsiliasi.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Pembatalan antrean tidak dapat dikonfirmasi.');
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -124,6 +143,7 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
           </div>
           <button
             onClick={onClose}
+            disabled={isLoading}
             className="w-8 h-8 rounded-xl bg-white border-2 border-slate-900 text-slate-900 flex items-center justify-center shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer"
           >
             <X className="w-4 h-4 stroke-[2.5px]" />
@@ -265,6 +285,7 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
               </>
             )}
           </button>
+          {isLoading && canCancelGeneration && <button type="button" onClick={() => void handleCancelGeneration()} disabled={isCancelling} className="w-full py-2.5 rounded-2xl bg-rose-100 hover:bg-rose-200 text-rose-900 font-black text-xs border-2 border-rose-700 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{isCancelling ? 'Membatalkan antrean…' : 'Batalkan antrean sebelum diproses'}</button>}
         </div>
 
         {/* Generated Result Output */}
