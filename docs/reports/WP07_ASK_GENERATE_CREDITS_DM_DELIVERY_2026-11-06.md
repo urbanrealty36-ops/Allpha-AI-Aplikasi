@@ -106,3 +106,37 @@ Important baseline gaps found:
 ## Correction discovered during post-edit inspection
 
 A subsequent raw-file inspection found that the source-only Generation Job SQL file has a duplicated trailing SQL segment after its first `COMMIT;` (the file is 33,260 bytes and contains two `COMMIT;` terminators). The attempted cleanup was blocked by the repository write safety check and did not succeed. Therefore the migration must be treated as **invalid and unusable** until the duplicate tail is removed and the complete SQL is parsed/reviewed. The earlier statement that the malformed SHA-256 expression was repaired remains true for the first copy, but the file as a whole is not clean. Do not apply it. No database migration was applied.
+
+
+## Source reconciliation checkpoint — 2026-11-15 (main)
+
+**Execution mode:** direct-to-main source implementation only. Product Owner has explicitly deferred tests, builds, lint, typecheck, CI, browser/device QA, staging, migration application and deployment. Those activities are not represented as passed.
+
+### Reconciled source contracts
+
+- The canonical Generation Job migration remains under `source-only-migrations`; it is not an applied production schema. The current source file has one terminal transaction and no duplicated trailing SQL segment.
+- `20261115150000_wp07_external_consumer_dual_account.sql` is the schema prerequisite for external Consumer generation. It now also defines the generated `payer_role` and durable `error_code` columns required by the worker/API lifecycle. The generated payer role prioritizes the Agent owner identity for owner-paid generation, then the requesting Consumer identity for consumer-paid generation.
+- `20261115152000_wp07_external_consumer_generation_atomic.sql` replaces the initial owner-only create/complete RPCs. It validates current Agent ownership/version, published Skill snapshot/version, approved capability, active external grant/scope/expiry, public visibility/sensitivity, payer identity and Premium entitlement; reserves against the selected payer; pins Agent/Skill/Knowledge snapshots; settles actual usage; issues only policy-approved Agent-owner AI Credit grants; and creates the Human↔Agent DM plus requester/owner inbox notifications in the same completion transaction.
+- `20261115153000_wp07_consumer_grant_revocation_lifecycle.sql` owns external grant revocation, queued-job cancellation/release where policy allows, and fencing of running work into reconciliation rather than provider replay.
+- `20261115160000_wp07_generation_manual_moderation.sql` provides append-only review evidence and a safe finalization lease for review-required output. Rejected or unapproved artifacts remain private.
+- FastAPI generation quote/create paths now contain external Agent grant resolution, payer selection, owner reward policy gating, ACL-filtered Knowledge snapshot binding, stale quote checks, and the canonical Model Router boundary. The worker revalidates the grant before provider side effects, checks pinned Agent/Skill snapshots, stores private artifacts, requires an approved output moderation adapter/policy, and delegates settlement/DM/notification to the transactional completion RPC.
+- Web Ask AI/Generate and Native Generate source adapters exist. The generation artifact endpoint issues a short-lived signed URL only for the authenticated job owner after success and moderation approval.
+
+### Corrections committed during this execution
+
+- `fa8acd460cbeabc8fa55e9f2d063711ae688e431` — repaired the malformed Auto Reply save payload in `apps/web/app/agent-social/page.tsx` that caused the known JSX compile error.
+- `351494ec1bff0e9cf0ca8e03df0c39ff879cdbe0` — added missing dual-account schema fields `payer_role` and `error_code` to the WP-07 prerequisite migration.
+- `43686c01d8a078541cbe42ea7748643e63b375d7` — aligned generated payer-role precedence with the owner-paid generation contract.
+- `09594bddd061a16c46858b4667c0a0d41e5b612f` — aligned worker grant revalidation with the same derived payer-role semantics.
+
+### Remaining blockers — WP-07 stays IN_PROGRESS
+
+1. The durable Generation Job, external Consumer, grant-revocation and manual-moderation migrations remain source-only and have not been applied to the canonical Supabase database.
+2. The moderation adapter and approved effective output-moderation policy are not configured; the worker intentionally remains idle.
+3. The provider metering → credit settlement → Agent-owner grant → DM/notification transaction has not been exercised against an isolated database with approved policy fixtures.
+4. The exact consumer grant, payer/owner dual-account, Knowledge ACL/provenance, grant revocation during queued/running work, output review/rejection, artifact authorization, idempotent DM and ledger reversal paths remain unverified.
+5. Creator-owner reward policy has no approved business values in this environment. The implementation is policy-gated; no rate, split, credit amount or payout value is invented or activated.
+6. Native Generate source is present, but Android/iOS build/device acceptance is deferred. Web and Super Admin journey acceptance is also deferred.
+7. The full UI source parity audit remains open under UI-COPY-03; this checkpoint does not close that owner.
+
+**Status:** `in_progress / source_reconciled / acceptance_not_verified`. No migration was applied, no provider call or production credit transaction was made, no test/build/CI was run, and no staging or deployment was performed. Do not start WP-06 as a completed next phase until WP-07's remaining implementation blockers and the approved acceptance waiver are explicitly reconciled in the fixed phase plan. The Product Owner's requested order remains WP-07 → WP-06 → WP-11 → WP-12.
