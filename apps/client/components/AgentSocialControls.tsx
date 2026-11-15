@@ -5,7 +5,8 @@ import type { Session } from "@supabase/supabase-js";
 type Props = { session: Session; apiBase: string };
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version: number };
-type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };\ntype Automation = { auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; daily_credit_budget: number; takeover_active: boolean };\ntype DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
+type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
+type Automation = { auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; daily_credit_budget: number; takeover_active: boolean };\ntype DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
 const styles = {
   page: { flexGrow: 1, backgroundColor: "#0B1020", padding: 18, gap: 14 } as const,
@@ -26,7 +27,8 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   const [mode, setMode] = useState<Policy["approval_mode"]>("every_post");
   const [disclosure, setDisclosure] = useState("Dibuat bersama AI Agent");
   const [enabled, setEnabled] = useState(true);
-  const [approvals, setApprovals] = useState<Approval[]>([]);\n  const [automation, setAutomation] = useState<Automation | null>(null);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [automation, setAutomation] = useState<Automation | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
