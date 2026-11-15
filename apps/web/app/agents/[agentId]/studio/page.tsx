@@ -320,10 +320,11 @@ export default function AgentStudioPage() {
         body: JSON.stringify({ reason: "owner_revoked_from_agent_studio" }),
       });
       if (!response.ok) throw new Error(await readError(response));
-      const result = await response.json() as { grant?: { queued_cancelled?: number; running_pending_reconciliation?: number } };
+      const result = await response.json() as { grant?: { queued_cancelled?: number; queued_pending_reconciliation?: number; running_pending_reconciliation?: number } };
       const queued = result.grant?.queued_cancelled ?? 0;
+      const queuedPending = result.grant?.queued_pending_reconciliation ?? 0;
       const running = result.grant?.running_pending_reconciliation ?? 0;
-      setNotice(`Grant dicabut. ${queued} job antrean dibatalkan; ${running} job berjalan masuk pending reconciliation. Tidak ada hasil baru yang dikirim dari job yang kehilangan grant.`);
+      setNotice(`Grant dicabut. ${queued} job antrean dibatalkan; ${queuedPending} job antrean ditahan untuk rekonsiliasi; ${running} job berjalan masuk pending reconciliation. Tidak ada hasil baru yang dikirim dari job yang kehilangan grant.`);
       await load(session);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Grant tidak dapat dicabut."); }
     finally { setSaving(false); }
