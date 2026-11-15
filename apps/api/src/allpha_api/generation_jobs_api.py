@@ -855,6 +855,34 @@ async def list_generation_jobs(limit: int = 20, user: dict[str, Any] = Depends(c
     return {"items": rows or [], "limit": bounded}
 
 
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Cancel only a queued job, before a worker can invoke the provider.
+
+    Running jobs are deliberately not force-cancelled: the provider may already
+    have accepted the request, so its cost/outcome must be reconciled instead.
+    """
+    try:
+        result = await _rpc("generation_cancel_queued_job", {
+            "job_id": str(job_id),
+            "owner_user_id": str(user["id"]),
+            "reason_code": "cancelled_by_requester",
+        })
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "GENERATION_JOB_NOT_CANCELLABLE",
+                    "message": "Job sudah mulai diproses atau tidak lagi berada dalam antrean. Hasil provider tidak dapat dibatalkan secara aman.",
+                },
+            ) from exc
+        raise
+    if not isinstance(result, dict) or str(result.get("job_id")) != str(job_id):
+        raise HTTPException(503, detail={"code": "GENERATION_CANCEL_UNCONFIRMED", "message": "Status pembatalan belum dapat dikonfirmasi."})
+    return result
+
+
 async def _signed_generation_artifact(bucket: str, path: str, *, expires_in: int = 60) -> str:
     url, key = _db_config()
     try:
