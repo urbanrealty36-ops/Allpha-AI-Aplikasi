@@ -22,6 +22,7 @@ type Capability = {
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
 };
 type SkillVersion = { id: string; version: number; created_at: string; snapshot: { name?: string; changelog?: string; status?: string } };
+type ConsumerGrant = { id: string; requester_user_id: string; skill_id: string; granted_scopes: string[]; status: string; expires_at?: string | null; granted_at: string; revoked_at?: string | null; revoke_reason?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function readError(response: Response) {
@@ -83,27 +84,31 @@ export default function AgentStudioPage() {
   const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high" | "critical">("low");
   const [consumerUserId, setConsumerUserId] = useState("");
   const [consumerSkillId, setConsumerSkillId] = useState("");
+  const [consumerGrants, setConsumerGrants] = useState<ConsumerGrant[]>([]);
   const [sharePublicKnowledge, setSharePublicKnowledge] = useState(false);
 
   const load = useCallback(async (active: Session) => {
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
-      const [skillResponse, capabilityResponse, toolsResponse, knowledgeResponse] = await Promise.all([
+      const [skillResponse, capabilityResponse, toolsResponse, knowledgeResponse, grantsResponse] = await Promise.all([
         fetch(`${apiBase}/v1/agents/${agentId}/skills`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/capabilities`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { headers, cache: "no-store" }),
+        fetch(`${apiBase}/v1/messages/agents/${agentId}/consumer-grants`, { headers, cache: "no-store" }),
       ]);
       if (!skillResponse.ok) throw new Error(await readError(skillResponse));
       if (!capabilityResponse.ok) throw new Error(await readError(capabilityResponse));
       if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));
       if (!knowledgeResponse.ok) throw new Error(await readError(knowledgeResponse));
-      const [skillBody, capabilityBody, toolsBody, knowledgeBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json(), knowledgeResponse.json()]);
+      if (!grantsResponse.ok) throw new Error(await readError(grantsResponse));
+      const [skillBody, capabilityBody, toolsBody, knowledgeBody, grantsBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json(), knowledgeResponse.json(), grantsResponse.json()]);
       setSkills(Array.isArray(skillBody.items) ? skillBody.items : []);
       setCapabilities(Array.isArray(capabilityBody.items) ? capabilityBody.items : []);
       setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
       setKnowledgeSources(Array.isArray(knowledgeBody.items) ? knowledgeBody.items : []);
+      setConsumerGrants(Array.isArray(grantsBody.items) ? grantsBody.items : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Agent Studio tidak dapat dimuat.");
     } finally { setLoading(false); }
@@ -296,10 +301,26 @@ export default function AgentStudioPage() {
       if (!response.ok) throw new Error(await readError(response));
       const body = await response.json() as { grant?: { id?: string } };
       setConsumerUserId(""); setSharePublicKnowledge(false);
-      setNotice("Grant generation tersimpan untuk akun yang dipilih. Scope hanya generation_invoke; akses Knowledge privat tidak ikut diberikan." + (body.grant?.id ? " Grant ID: " + body.grant.id : ""));
+      setNotice("Grant generation tersimpan untuk akun yang dipilih. Scope mengikuti pilihan akses; Knowledge privat tidak pernah dibagikan." + (body.grant?.id ? " Grant ID: " + body.grant.id : ""));
+      await load(session);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Grant generation tidak dapat dibuat.");
     } finally { setSaving(false); }
+  }
+
+  async function revokeGenerationGrant(grantId: string) {
+    if (!session || !window.confirm("Cabut grant generation ini? Job yang belum selesai akan gagal menyelesaikan delivery jika grant sudah dicabut.")) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/messages/agents/${encodeURIComponent(agentId)}/consumer-grants/${encodeURIComponent(grantId)}/revoke`, {
+        method: "POST", headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "owner_revoked_from_agent_studio" }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      setNotice("Grant dicabut. Job generation yang masih berjalan akan memeriksa ulang grant sebelum settlement dan DM delivery.");
+      await load(session);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Grant tidak dapat dicabut."); }
+    finally { setSaving(false); }
   }
 
   if (!session && !loading) return <main className="mx-auto max-w-4xl p-6"><h1 className="text-2xl font-semibold">Agent Studio</h1><p className="mt-3 text-sm">{error || "Masuk untuk melanjutkan."}</p></main>;
@@ -392,6 +413,10 @@ export default function AgentStudioPage() {
           <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => setConsumerSkillId(event.target.value)} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
           <label className="sm:col-span-2 flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" checked={sharePublicKnowledge} onChange={event => setSharePublicKnowledge(event.target.checked)} className="mt-1"/><span><strong>Izinkan Knowledge publik</strong><span className="mt-1 block text-xs text-neutral-500">Hanya sumber ber-sensitivity public, status ready, versi cocok, consent aktif, dan provenance tervalidasi. Tidak memberikan akses ke Knowledge privat/internal/confidential/restricted.</span></span></label><div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
         </form>
+      </section>
+      <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
+        <div><h2 className="text-xl font-semibold">Consumer grants aktif dan riwayat</h2><p className="mt-1 text-sm text-neutral-600">Grant terikat pada Agent, Skill, versi, capability, runtime policy, dan tarif. Revocation diperiksa kembali sebelum hasil generation diselesaikan dan dikirim melalui DM.</p></div>
+        {consumerGrants.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-500">Belum ada Consumer grant untuk Agent ini.</p> : <div className="space-y-2">{consumerGrants.map(grant => <article key={grant.id} className="rounded-xl border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="break-all text-sm font-semibold">{grant.requester_user_id}</p><p className="mt-1 text-xs text-neutral-500">Skill {grant.skill_id} · {grant.granted_scopes.join(", ")} · {grant.expires_at ? "Berlaku sampai " + new Date(grant.expires_at).toLocaleString("id-ID") : "Tanpa tanggal kedaluwarsa"}</p><p className="mt-1 text-xs text-neutral-500">Status: {grant.status} · {new Date(grant.granted_at).toLocaleString("id-ID")}</p></div>{grant.status === "active" && <button disabled={saving} onClick={() => void revokeGenerationGrant(grant.id)} className="rounded-lg border-2 border-rose-600 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Cabut Grant</button>}</div></article>)}</div>}
       </section>
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
         <div><h2 className="text-xl font-semibold">Capability yang diminta</h2><p className="mt-1 text-sm text-neutral-600">Deklarasi ini bukan izin eksekusi. Runtime harus memeriksa izin, policy, dan risiko pada setiap aksi.</p></div>
