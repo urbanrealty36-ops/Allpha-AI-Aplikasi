@@ -224,7 +224,7 @@ export default function GeneratePage() {
       setDmConversationId("");
       setNotice(payload.status === "succeeded"
         ? "Artefak privat sudah dihapus."
-        : "Permintaan penghapusan diterima. Akses artefak langsung dinonaktifkan; pembersihan Storage berjalan asinkron.");
+        : "Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.");
     } finally { setArtifactDeleting(false); }
   }
 
