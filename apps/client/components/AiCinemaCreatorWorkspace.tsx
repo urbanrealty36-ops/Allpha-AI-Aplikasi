@@ -76,6 +76,8 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
   const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
   const [uploadAsset, setUploadAsset] = useState<UploadAsset | null>(null);
+  const [uploadDraftId, setUploadDraftId] = useState("");
+  const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState("");
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -155,11 +157,17 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     if (uploadAsset.size != null && (uploadAsset.size <= 0 || uploadAsset.size > 50 * 1024 * 1024)) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
     setSaving(true); setError(""); setNotice("");
     try {
-      const draft = await request<{ item: { id: string } }>(getAccessToken, "/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
+      let contentId = uploadDraftId;
+      if (!contentId) {
+        const draft = await request<{ item: { id: string } }>(getAccessToken, "/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
+        contentId = draft.item.id; setUploadDraftId(contentId);
+      }
+      const idempotencyKey = uploadIdempotencyKey || createClientUuid();
+      setUploadIdempotencyKey(idempotencyKey);
       const form = new FormData();
       form.append("file", { uri: uploadAsset.uri, name: uploadAsset.name, type: uploadAsset.mimeType || "video/mp4" } as any);
-      const uploaded = await request<{ item: CreatorMedia }>(getAccessToken, "/v1/content/" + encodeURIComponent(draft.item.id) + "/media", { method: "POST", headers: { "Idempotency-Key": createClientUuid() }, body: form });
-      setUploadAsset(null);
+      const uploaded = await request<{ item: CreatorMedia }>(getAccessToken, "/v1/content/" + encodeURIComponent(contentId) + "/media", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: form });
+      setUploadAsset(null); setUploadDraftId(""); setUploadIdempotencyKey("");
       setNotice("Video diterima pipeline media Allpha (" + (uploaded.item?.status || "uploaded") + "). Tunggu pemindaian dan transcode; media dapat dipilih setelah ready dan scan clean.");
       await loadTitles();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal."); }
