@@ -239,6 +239,32 @@ async def _retrieve_external_generation_knowledge(
     }
 
 
+async def _require_generation_owner_reward_policy(policy_version: str, approval_reference: str) -> dict[str, Any]:
+    rows = await _admin_request("GET", "credit_policy_versions", params={
+        "select": "policy_version,approval_reference,configuration,status",
+        "policy_version": f"eq.{policy_version}", "approval_reference": f"eq.{approval_reference}",
+        "status": "eq.approved", "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(503, detail={"code": "GENERATION_OWNER_REWARD_POLICY_UNAVAILABLE", "message": "Generation eksternal belum dapat ditagihkan sebelum policy reward Agent owner disetujui."})
+    config = rows[0].get("configuration") if isinstance(rows[0].get("configuration"), dict) else {}
+    reward = config.get("generation_owner_reward") if isinstance(config.get("generation_owner_reward"), dict) else {}
+    try:
+        enabled = reward.get("enabled") is True
+        approval = str(reward.get("approval_reference") or "")
+        rate = int(reward.get("credits_per_usage_unit") or 0)
+        maximum = int(reward.get("max_credits_per_job") or 0)
+        global_max = int(config.get("max_grant_credits") or 0)
+        allowed_types = config.get("allowed_grant_types") or []
+    except (TypeError, ValueError):
+        enabled, approval, rate, maximum, global_max, allowed_types = False, "", 0, 0, 0, []
+    if (not enabled or approval != approval_reference or rate <= 0 or maximum <= 0
+        or global_max < maximum or config.get("allow_grants") is not True
+        or not isinstance(allowed_types, list) or "grant" not in allowed_types):
+        raise HTTPException(503, detail={"code": "GENERATION_OWNER_REWARD_POLICY_UNAVAILABLE", "message": "Policy reward belum lengkap atau tidak mengizinkan settlement kredit untuk Agent owner."})
+    return {"approval_reference": approval, "credits_per_usage_unit": rate, "max_credits_per_job": maximum}
+
+
 async def _external_generation_context(
     payload: GenerationJobCreate, requester_id: str, router_instance: Any
 ) -> dict[str, Any]:
@@ -290,6 +316,11 @@ async def _external_generation_context(
     if payload.knowledge_query and "knowledge_public_read" not in (grant.get("granted_scopes") or []):
         raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_KNOWLEDGE_SCOPE_DENIED", "message": "Grant tidak mengizinkan Knowledge publik Agent."})
     payer_id = budget.billing_account_id(requester_id=requester_id, owner_id=owner_id)
+    owner_reward_policy = None
+    if payer_id != owner_id:
+        owner_reward_policy = await _require_generation_owner_reward_policy(
+            budget.policy_version, budget.approval_reference
+        )
     subscriptions = await _admin_request("GET", "billing_subscriptions", params={
         "select": "id,owner_user_id,entitlement_version,status,current_period_end",
         "owner_user_id": f"eq.{payer_id}", "status": "eq.active",
@@ -302,6 +333,7 @@ async def _external_generation_context(
         "agent": agent, "owner_id": owner_id, "skill": skill, "grant": grant,
         "budget": budget, "route": route, "payer_user_id": payer_id,
         "runtime_policy_version": runtime_policy_version,
+        "owner_reward_policy": owner_reward_policy,
     }
 
 
