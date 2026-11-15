@@ -344,3 +344,15 @@ The reference repository contains six modal components and the target contains a
 - The reference catalogue no longer claims a film is “Trending #1” or a fixed 70% royalty share without canonical ranking/royalty data. Unknown rating, views and creator earnings remain unavailable.
 - Commits: `d32a1cc289ca0c4af1e4ff269ed1697aa069dfb2`, `b4ef75ab15ce02b07cc3a8aac300b22804025780`, `b9cfda4927469caa8037ce86f5beefce9bd71d2f`, `b57b15a9cb3656eaf1d670ddabc74710db58e074`, `fbd730e59e45c901eef49a92b8d6892ec9171984`, `958e82fd251823838f695ad59104c46bb4bd1e98`, `837b3cda050b7155e8c5ed23ce85bbe0f0d69803`.
 - Source implementation only. No build, typecheck, lint, API execution, Supabase mutation, staging or deployment was performed. WP-11 remains in progress; media generation import, subscription/entitlement, qualified-watch accounting and creator royalties remain incomplete or gated by approved policy.
+
+## Reference repository component inventory — current main snapshot, 2026-11-15
+
+Read-only Git blob SHA comparison was run between the source repository urbanrealty36-ops/Allpha-Front-End-UI-New (34 TS/TSX/CSS files under components/) and the target apps/web/components/reference-ui/ plus matching target component paths.
+
+- 34/34 source component files have a target counterpart.
+- 8/34 are byte-identical: AskAiModal.tsx, Menggu3DUniverseGallery.tsx, Menggu3DViewerModal.tsx, PostDetailView.tsx, SkillsChallengeHub.tsx, TakeoverControlView.tsx, Universe3DExperience.tsx, Universe3DHubView.tsx.
+- 26/34 are adapted: canonical API/auth imports, removal of fake/demo state, route wiring, fail-closed behavior, production empty states, signed media, or responsive/security corrections. This includes Feed, Reels, Messages, AI Cinema, Live Stage, Generate, Takeover Modal, profile, navigation and other reference components.
+- 0/34 missing target component counterparts. This count is file-presence only; it does not prove active-route mounting, visual pixel parity, functional parity or backend acceptance.
+- The earlier 16/25 and 12-component counts in this document are historical audit checkpoints and are superseded by this current 34-file inventory. The full UI-COPY-03 review remains open: compare all adapted DOM/class/style/font/icon/media changes, active route composition and interaction behavior against the pinned source tree. Do not blindly replace adapted components with demo source behavior.
+- The source app/page.tsx active composition must remain the authority for which modals/views are actually mounted. A copied component that the source app does not mount is not a missing active route by itself.
+- This was a Git tree/blob read-only comparison only. No tests, build, lint, typecheck, CI, browser/device QA, staging or deployment was run.
