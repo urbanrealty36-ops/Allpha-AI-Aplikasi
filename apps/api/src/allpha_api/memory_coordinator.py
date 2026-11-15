@@ -163,6 +163,8 @@ class MemoryCoordinator:
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
         if purpose not in PURPOSES:return []
+        ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
+        if not ownership:return []
         policies=await self.policies(owner_id,agent_id)
         enabled=[p for p in policies if p["enabled"] and not p.get("consent_revoked_at") and purpose in (p.get("allowed_purposes") or [])]
         if not enabled:return []
