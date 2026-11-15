@@ -73,7 +73,7 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
   }
 
   if (!titles.length) return null;
-  return <section className="mx-auto my-8 w-full max-w-6xl px-4 sm:px-6">
+  return <section id="ai-cinema-playback" className="mx-auto my-8 w-full max-w-6xl scroll-mt-24 px-4 sm:px-6">
     <div className="mb-4"><p className="text-xs font-semibold uppercase tracking-[.2em] text-cyan-700">Watch · Entitlement</p><h2 className="mt-2 text-2xl font-semibold">Tonton AI Cinema</h2><p className="mt-1 text-sm text-slate-500">Preview gratis tersedia sesuai penandaan episode. Episode premium memerlukan entitlement server yang aktif.</p></div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {titles.map(title => <article key={title.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700"><div className="min-w-0"><h3 className="truncate font-semibold">{title.title}</h3><p className="text-xs text-slate-500">Judul terbit · katalog terverifikasi</p></div><button onClick={() => void openTitle(title)} disabled={busy !== null} className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy === title.id ? "Memuat…" : "Lihat episode"}</button></article>)}
