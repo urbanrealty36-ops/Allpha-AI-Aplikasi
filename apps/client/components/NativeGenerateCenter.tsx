@@ -5,7 +5,7 @@ type Agent = { id: string; display_name: string; status: string };
 type Skill = { id: string; name: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null };
+type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null };
 
 export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = null }: { apiBase: string; getAccessToken: () => Promise<string>; initialJobId?: string | null }) {
   const [agents,setAgents]=useState<Agent[]>([]);
@@ -101,6 +101,10 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
           setNotice("Artefak privat ini sudah dihapus oleh pemiliknya.");
           return;
         }
+        if(job.artifact_deletion_status==="dead"){
+          setNotice("Penghapusan artefak membutuhkan pemulihan operator. Artefak tetap privat; hubungi dukungan Allpha.");
+          return;
+        }
         if(job.status!=="succeeded"||!job.artifact_available){
           setNotice("Generation Job belum memiliki artefak yang dapat dibuka ("+job.status+").");
           return;
@@ -135,7 +139,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
               method:"DELETE",headers:{"Idempotency-Key":createNativeId()},
             }) as {status?:string};
             setResult("");
-            setNotice(deleted.status==="succeeded"?"Artefak privat sudah dihapus.":"Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.");
+            setNotice(deleted.status==="succeeded"?"Artefak privat sudah dihapus.":deleted.status==="dead"?"Penghapusan membutuhkan pemulihan operator. Artefak tetap privat.":"Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.");
           }catch(cause){setError(cause instanceof Error?cause.message:"Penghapusan artefak belum dapat dikonfirmasi.");}
           finally{setDeletingArtifact(false);}
         })();}},
