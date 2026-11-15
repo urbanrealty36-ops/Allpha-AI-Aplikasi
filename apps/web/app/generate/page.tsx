@@ -10,7 +10,7 @@ type Agent = { id: string; display_name: string; description?: string; status: s
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
+type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -34,6 +34,7 @@ export default function GeneratePage() {
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [artifactDeleting, setArtifactDeleting] = useState(false);
   const [result, setResult] = useState("");
   const [jobId, setJobId] = useState("");
   const [dmConversationId, setDmConversationId] = useState("");
@@ -84,6 +85,14 @@ export default function GeneratePage() {
         if (!statusResponse.ok) throw new Error(await errorMessage(statusResponse));
         const statusPayload = await statusResponse.json() as { job?: Job };
         if (!statusPayload.job) throw new Error("Generation Job tidak ditemukan.");
+        if (statusPayload.job.artifact_deletion_status === "pending") {
+          setNotice("Penghapusan artefak sedang diproses. Akses file telah dinonaktifkan.");
+          return;
+        }
+        if (statusPayload.job.artifact_deletion_status === "deleted") {
+          setNotice("Artefak privat ini sudah dihapus oleh pemiliknya.");
+          return;
+        }
         if (statusPayload.job.status !== "succeeded" || !statusPayload.job.artifact_available) {
           throw new Error(statusPayload.job.error_code || "Artefak belum tersedia atau masih menunggu rekonsiliasi.");
         }
@@ -200,6 +209,25 @@ export default function GeneratePage() {
     } finally { setBusy(false); }
   }
 
+  async function deleteArtifact(): Promise<void> {
+    if (!session || !jobId || artifactDeleting) throw new Error("Artefak privat tidak tersedia untuk dihapus.");
+    setArtifactDeleting(true); setError("");
+    try {
+      const response = await fetch(apiBase + "/v1/generation/jobs/" + encodeURIComponent(jobId) + "/artifact", {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Idempotency-Key": crypto.randomUUID() },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(await errorMessage(response));
+      const payload = await response.json() as { status?: string };
+      setResult("");
+      setDmConversationId("");
+      setNotice(payload.status === "succeeded"
+        ? "Artefak privat sudah dihapus."
+        : "Permintaan penghapusan diterima. Akses artefak langsung dinonaktifkan; pembersihan Storage berjalan asinkron.");
+    } finally { setArtifactDeleting(false); }
+  }
+
   const selectedExternalAgent = externalAgents.find(item => item.consumer_grant_id === consumerGrantId && item.agent.id === agentId);
   const externalKnowledgeAllowed = !!selectedExternalAgent?.granted_scopes.includes("knowledge_public_read");
 
@@ -234,6 +262,9 @@ export default function GeneratePage() {
       onClose={() => setGeneratorOpen(false)}
       onGenerate={generate}
       directMessageAvailable={!!dmConversationId}
+      artifactDeleteAvailable={!!jobId && !!result}
+      artifactDeleting={artifactDeleting}
+      onDeleteArtifact={deleteArtifact}
       onOpenDirectMessage={() => {
         if (!dmConversationId) return;
         window.location.assign("/messages?conversation_id=" + encodeURIComponent(dmConversationId));
