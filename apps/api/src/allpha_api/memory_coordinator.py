@@ -82,6 +82,10 @@ class MemoryCoordinator:
     async def expire(self,owner_id,agent_id):
         return await self.transition("expire",owner_id,agent_id)
 
+    async def expire_all(self):
+        if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return {"expired_count":0}
+        return await self.transition("expire_all",None)
+
     async def items(self,owner_id,agent_id,*,memory_type=None,status=None,limit=50):
         p={"select":"id,policy_id,agent_id,memory_type,visibility_scope,purpose,classification,content,content_sha256,source_ref,provenance,confidence,version,policy_version,status,retention_expires_at,approved_at,created_at,updated_at",
            "owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}" if agent_id else "is.null","order":"created_at.desc","limit":str(max(1,min(limit,100)))}
