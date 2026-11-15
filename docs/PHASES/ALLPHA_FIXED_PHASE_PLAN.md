@@ -3064,3 +3064,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Native deep-link retrieval now also distinguishes a genuinely uncertain provider/settlement reconciliation from a moderation hold; neither state triggers an automatic replay.
 - Commits: Web `636bc22a49d831bfe9f929f7eeaefb48ac3be22a`; Native `55e7a970ad7d857a06fef7d4cdcbe2333a713225`.
 - Source-only change. No tests, build, lint, typecheck, CI, browser/device QA, provider calls, migration application, Supabase mutation, staging or deployment were run. WP-07 remains `in_progress / acceptance_not_verified`; no phase completion or promotion is claimed.
+
+
+**WP-07 / UI-COPY-03 source continuation — 2026-11-16:**
+- Ask AI response view now retains the Generation Job ID and canonical `dm_conversation_id`, exposing deep links to the private artifact and committed DM conversation. Commits: `ef5bc3b3df273cdd75919669c8f36af163fa9a44`, `352f095d973a1d48130394b08b58d2627e7f3cad`.
+- GenerateModal restores the reference quick-preset strip as generic brief templates (F&B, Fashion/Lifestyle, Digital/3D) without mock business identities or fake credits. Media upload remains disabled pending the complete private input-snapshot, scanning/quarantine, rights and approved model-capability contract. Commit: `be686420d065b082e16ea3575d6c13660b96b22b`.
+- Stories route now mounts the reference `StoriesViewerModal` with canonical API Story records; image/video media is supported, create hands off to the canonical form, and reply uses the authenticated DM API. Reaction remains disabled because a canonical Story-reaction endpoint is not exposed. Commits: `ccc76b00f4816dc65b6df1fa0fc1bc582754f591`, `6b018a0517a9337ede09c2be0922d72a319c9ea8`, `45134d9cf72a5bbd2415a9d747a1a2aa4ffddc65`.
+- UI reference matrix updated with route-level source inspection and explicit visual-parity limitations. Commit: `8db1407b4efbc8147d11d2286d1fbc04446a6549`.
+- No tests/build/lint/typecheck/CI/browser/device QA, provider calls, migration application, Supabase mutation, staging or deployment were performed. WP-07 and UI-COPY-03 remain `in_progress / acceptance_not_verified`; no phase is completed or promoted.
