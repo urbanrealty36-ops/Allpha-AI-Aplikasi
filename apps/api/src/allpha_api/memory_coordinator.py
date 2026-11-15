@@ -52,11 +52,15 @@ class MemoryCoordinator:
             if not sensitivities or any(x not in SENSITIVITIES for x in sensitivities): raise MemoryDenied("Memory classifications are invalid")
             if memory_type=="working" and retention_days!=1: raise MemoryDenied("Working Memory is limited to one day")
         current=next((p for p in await self.policies(owner_id,agent_id) if p["memory_type"]==memory_type),None)
+        desired_purposes=sorted(set(purposes)) if enabled else []
+        desired_sensitivities=sorted(set(sensitivities)) if enabled else []
+        if current and bool(current.get("enabled"))==enabled and current.get("consent_version")== (consent_version if enabled else None) and sorted(current.get("allowed_purposes") or [])==desired_purposes and sorted(current.get("allowed_sensitivities") or [])==desired_sensitivities and int(current.get("retention_days") or 0)==retention_days:
+            return current
         now=datetime.now(timezone.utc).isoformat()
         body={"owner_user_id":owner_id,"agent_id":agent_id,"memory_type":memory_type,"enabled":enabled,
               "consent_version":consent_version if enabled else None,"consent_granted_at":now if enabled else None,
-              "consent_revoked_at":None if enabled else now,"allowed_purposes":sorted(set(purposes)) if enabled else [],
-              "allowed_sensitivities":sorted(set(sensitivities)) if enabled else [],
+              "consent_revoked_at":None if enabled else now,"allowed_purposes":desired_purposes,
+              "allowed_sensitivities":desired_sensitivities,
               "retention_days":retention_days,"write_mode":"manual_only",
               "policy_version":int((current or {}).get("policy_version",0))+1,"updated_at":now}
         if current:
@@ -66,6 +70,7 @@ class MemoryCoordinator:
             rows=await self.db("POST","agent_memory_policies",params={"select":"*"},body=body,prefer="return=representation")
         if not isinstance(rows,list) or len(rows)!=1: raise MemoryUnavailable("Memory policy was not persisted")
         policy=rows[0]
+        await self.transition("invalidate_policy_items",owner_id,agent_id,payload={"policy_id":policy["id"],"policy_version":policy["policy_version"]})
         await self.transition("policy_event",owner_id,agent_id,payload={"policy_id":policy["id"],"enabled":enabled,
             "memory_type":memory_type,"policy_version":policy["policy_version"],"retention_days":retention_days})
         return policy
