@@ -10,7 +10,7 @@ type Agent = { id: string; display_name: string; description?: string; status: s
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; error_code?: string | null; owner_reward_status?: string | null };
+type Job = { status: string; artifact_available?: boolean; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -36,6 +36,7 @@ export default function GeneratePage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   const [jobId, setJobId] = useState("");
+  const [dmConversationId, setDmConversationId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -146,7 +147,7 @@ export default function GeneratePage() {
       "Produk/jasa: " + request.productDetails,
       "Brief: " + request.brief,
     ].join("\n");
-    setBusy(true); setError(""); setNotice(""); setResult(""); setJobId("");
+    setBusy(true); setError(""); setNotice(""); setResult(""); setJobId(""); setDmConversationId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
     const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: promptText, max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
@@ -175,6 +176,7 @@ export default function GeneratePage() {
         const payload = await statusResponse.json() as { job?: Job };
         const job = payload.job;
         if (!job) throw new Error("Status generation tidak ditemukan.");
+        if (job.dm_conversation_id) setDmConversationId(job.dm_conversation_id);
         if (job.status === "succeeded" && job.artifact_available) {
           const artifactResponse = await fetch(apiBase + `/v1/generation/jobs/${created.job_id}/artifact`, { headers: { Authorization: headers.Authorization, Accept: "application/json" }, cache: "no-store" });
           if (!artifactResponse.ok) throw new Error(await errorMessage(artifactResponse));
@@ -231,6 +233,11 @@ export default function GeneratePage() {
       isOpen={generatorOpen}
       onClose={() => setGeneratorOpen(false)}
       onGenerate={generate}
+      directMessageAvailable={!!dmConversationId}
+      onOpenDirectMessage={() => {
+        if (!dmConversationId) return;
+        window.location.assign("/messages?conversation_id=" + encodeURIComponent(dmConversationId));
+      }}
     />
   </main>;
 }
