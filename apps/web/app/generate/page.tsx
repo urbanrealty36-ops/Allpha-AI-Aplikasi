@@ -8,7 +8,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 type Agent = { id: string; display_name: string; description?: string; status: string };
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
-type Job = { status: string; output_text?: string | null; error_code?: string | null };
+type Job = { status: string; artifact_available?: boolean; error_code?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -110,7 +110,17 @@ export default function GeneratePage() {
         const payload = await statusResponse.json() as { job?: Job };
         const job = payload.job;
         if (!job) throw new Error("Status generation tidak ditemukan.");
-        if (job.status === "succeeded" && job.output_text) { setResult(job.output_text); setNotice("Hasil berhasil disimpan pada Generation Job privat."); return; }
+        if (job.status === "succeeded" && job.artifact_available) {
+          const artifactResponse = await fetch(apiBase + `/v1/generation/jobs/${created.job_id}/artifact`, { headers: { Authorization: headers.Authorization, Accept: "application/json" }, cache: "no-store" });
+          if (!artifactResponse.ok) throw new Error(await errorMessage(artifactResponse));
+          const artifact = await artifactResponse.json() as { url?: string };
+          if (!artifact.url) throw new Error("Artefak privat belum dapat diakses.");
+          const outputResponse = await fetch(artifact.url, { cache: "no-store" });
+          if (!outputResponse.ok) throw new Error("Unduhan artefak generation gagal.");
+          setResult(await outputResponse.text());
+          setNotice("Hasil lolos moderasi dan disimpan sebagai artefak privat. Tautan akses bersifat sementara.");
+          return;
+        }
         if (job.status === "failed" || job.status === "cancelled") throw new Error(job.error_code || "Generation gagal.");
         if (job.status === "pending_reconciliation") throw new Error("Outcome provider belum pasti. Job masuk rekonsiliasi dan tidak diulang otomatis.");
       }

@@ -47,9 +47,7 @@ async def _admin_request(method: str, path: str, *, params: dict[str, str] | Non
     url, key = _db_config()
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            headers = {"apikey": key, "Content-Type": "application/json", "Accept": "application/json"}
-            if os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip():
-                headers["Authorization"] = f"Bearer {os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()}"
+            headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
             response = await client.request(method, f"{url}/rest/v1/{path}",
                 params=params, json=body, headers=headers)
     except httpx.HTTPError as exc:
@@ -332,15 +330,52 @@ async def list_generation_jobs(limit: int = 20, user: dict[str, Any] = Depends(c
     return {"items": rows or [], "limit": bounded}
 
 
+async def _signed_generation_artifact(bucket: str, path: str, *, expires_in: int = 300) -> str:
+    url, key = _db_config()
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(
+                f"{url}/storage/v1/object/sign/{bucket}/{path}",
+                headers={"apikey":key,"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+                json={"expiresIn":max(60,min(expires_in,600))},
+            )
+            response.raise_for_status()
+            payload=response.json()
+            signed=payload.get("signedURL") or payload.get("signedUrl")
+            if not isinstance(signed,str) or not signed:
+                raise ValueError("signed URL missing")
+            return signed if signed.startswith("http") else url + signed
+    except (httpx.HTTPError,ValueError) as exc:
+        raise HTTPException(503,detail={"code":"GENERATION_ARTIFACT_UNAVAILABLE","message":"Artefak privat belum dapat diakses."}) from exc
+
+
+@router.get("/jobs/{job_id}/artifact")
+async def get_generation_artifact(job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows=await _admin_request("GET","generation_jobs",params={
+        "select":"id,owner_user_id,status,artifact_bucket,artifact_path,moderation_status",
+        "id":f"eq.{job_id}","owner_user_id":f"eq.{user['id']}","limit":"1",
+    })
+    if not rows:
+        raise HTTPException(404,detail={"code":"GENERATION_JOB_NOT_FOUND","message":"Generation job tidak ditemukan."})
+    job=rows[0]
+    if job.get("status")!="succeeded" or job.get("moderation_status")!="approved" or job.get("artifact_bucket")!="generation-artifacts" or not job.get("artifact_path"):
+        raise HTTPException(409,detail={"code":"GENERATION_ARTIFACT_NOT_READY","message":"Artefak belum selesai dimoderasi dan dipublikasikan secara privat."})
+    signed=await _signed_generation_artifact(job["artifact_bucket"],job["artifact_path"])
+    return {"job_id":str(job_id),"url":signed,"expires_in_seconds":300,"visibility":"private"}
+
+
 @router.get("/jobs/{job_id}")
 async def get_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,capability_id,status,credits_to_reserve,created_at,started_at,completed_at,error_code,output_text,input_tokens,output_tokens",
+        "select": "id,task_id,capability_id,status,credits_to_reserve,created_at,started_at,completed_at,error_code,artifact_bucket,artifact_path,output_sha256,moderation_status,input_tokens,output_tokens",
         "id": f"eq.{job_id}", "owner_user_id": f"eq.{user['id']}", "limit": "1",
     })
     if not rows:
         raise HTTPException(404, detail={"code": "GENERATION_JOB_NOT_FOUND", "message": "Generation job tidak ditemukan."})
     job = rows[0]
-    if job.get("status") != "succeeded":
-        job.pop("output_text", None)
+    artifact_available = bool(job.get("status") == "succeeded" and job.get("moderation_status") == "approved"
+                              and job.get("artifact_bucket") == "generation-artifacts" and job.get("artifact_path"))
+    job.pop("artifact_bucket", None)
+    job.pop("artifact_path", None)
+    job["artifact_available"] = artifact_available
     return {"job": job}

@@ -25,9 +25,59 @@ from allpha_api.credit_ledger_service import (
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.supabase_credit_ledger_store import SupabaseCreditLedgerStore
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
+from allpha_api.generation_output_moderation import load_generation_output_moderator
 
 logger = logging.getLogger("allpha.generation.worker")
 _TIMEOUT = httpx.Timeout(15.0, connect=3.0)
+
+
+async def _upload_private_artifact(job: dict[str, Any], output_text: str) -> tuple[str, str]:
+    url, key = _database()
+    path = f"{job['owner_user_id']}/{job['id']}/output.txt"
+    body = output_text.encode("utf-8")
+    if not body or len(body) > 10 * 1024 * 1024:
+        raise RuntimeError("generation artifact size is outside the approved bound")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=3.0)) as client:
+            response = await client.post(
+                f"{url}/storage/v1/object/generation-artifacts/{path}",
+                headers={"apikey": key, "Authorization": f"Bearer {key}",
+                         "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
+                         "x-upsert": "false"},
+                content=body,
+            )
+            if response.status_code >= 400:
+                raise RuntimeError("private generation artifact upload was not confirmed")
+    except httpx.HTTPError as exc:
+        raise RuntimeError("private generation artifact storage is unavailable") from exc
+    return "generation-artifacts", path
+
+
+async def _approved_moderation_policy() -> dict[str, Any] | None:
+    url, key = _database()
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.get(
+                f"{url}/rest/v1/generation_output_moderation_policies",
+                params={"select":"policy_version,approval_reference,configuration,effective_at,expires_at",
+                        "status":"eq.approved","effective_at":"lte."+now,
+                        "order":"effective_at.desc","limit":"10"},
+                headers={"apikey":key,"Authorization":f"Bearer {key}","Accept":"application/json"},
+            )
+            response.raise_for_status()
+            rows=response.json()
+    except (httpx.HTTPError,ValueError) as exc:
+        raise RuntimeError("approved generation moderation policy is unavailable") from exc
+    for row in rows if isinstance(rows,list) else []:
+        expiry=row.get("expires_at")
+        if expiry:
+            parsed=__import__("datetime").datetime.fromisoformat(expiry.replace("Z","+00:00"))
+            if parsed <= __import__("datetime").datetime.now(__import__("datetime").timezone.utc):
+                continue
+        if row.get("policy_version") and row.get("approval_reference") and isinstance(row.get("configuration"),dict):
+            return row
+    return None
 
 
 def _database() -> tuple[str, str]:
@@ -65,7 +115,8 @@ async def _mark_pending(job: dict[str, Any], worker_id: str, reason: str) -> Non
 
 
 async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
-                       lifecycle: CreditLedgerLifecycleService) -> str:
+                       lifecycle: CreditLedgerLifecycleService, moderator: Any,
+                       moderation_policy: dict[str, Any]) -> str:
     try:
         request = TextGenerationRequest(
             task_id=str(job["task_id"]),
@@ -79,7 +130,7 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             agent_id=str(job["agent_id"]),
             source_id=str(job["skill_id"]),
             source_version=int(job["source_version"]),
-            billing_account_id=str(job["owner_user_id"]),
+            billing_account_id=str(job.get("billing_account_id") or job["owner_user_id"]),
         )
     except Exception:
         await _mark_pending(job, worker_id, "generation_request_contract_invalid")
@@ -93,19 +144,43 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
         await _mark_pending(job, worker_id, "provider_outcome_unknown:" + type(exc).__name__)
         return "pending_reconciliation"
 
-    result = {
-        "output_text": response.output_text,
-        "output_sha256": hashlib.sha256(response.output_text.encode("utf-8")).hexdigest(),
-        "input_tokens": response.input_tokens,
-        "output_tokens": response.output_tokens,
-        "cost_microunits": response.cost_microunits,
-    }
     try:
-        # Persist the metered result privately before settlement. The owner API
-        # does not expose output until the job reaches succeeded.
+        bucket, artifact_path = await _upload_private_artifact(job, response.output_text)
+        result = {
+            "artifact_bucket": bucket,
+            "artifact_path": artifact_path,
+            "output_sha256": hashlib.sha256(response.output_text.encode("utf-8")).hexdigest(),
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cost_microunits": response.cost_microunits,
+        }
         await _rpc("generation_store_provider_result", {
             "p_job_id": job["id"], "p_lease_token": worker_id, "p_result": result,
         })
+        verdict = await moderator.moderate(
+            text=response.output_text,
+            policy=moderation_policy.get("configuration") or {},
+            metadata={"job_id": str(job["id"]), "agent_id": str(job["agent_id"]),
+                      "skill_id": str(job["skill_id"]), "trace_id": str(job["trace_id"])},
+        )
+        decision = str(verdict.get("decision") or "")
+        if decision not in {"approved", "rejected", "review_required"}:
+            await _mark_pending(job, worker_id, "generation_moderation_verdict_invalid")
+            return "pending_reconciliation"
+        await _rpc("generation_record_output_moderation", {
+            "p_job_id": job["id"], "p_lease_token": worker_id,
+            "p_decision": decision,
+            "p_policy_version": moderation_policy["policy_version"],
+            "p_approval_reference": moderation_policy["approval_reference"],
+        })
+        if decision != "approved":
+            await _mark_pending(job, worker_id, "generation_output_moderation_" + decision)
+            return "pending_reconciliation"
+    except Exception as exc:
+        await _mark_pending(job, worker_id, "artifact_or_moderation_unknown:" + type(exc).__name__)
+        return "pending_reconciliation"
+
+    try:
         actual_units = response.input_tokens + response.output_tokens
         credits_per_unit = int(job["credits_per_usage_unit"])
         actual_credits = actual_units * credits_per_unit
@@ -157,6 +232,11 @@ async def run_once(*, batch_size: int = 5) -> int:
         logger.warning("generation_worker_idle reason=model_route_preflight_failed")
         return 0
 
+    moderator = load_generation_output_moderator()
+    moderation_policy = await _approved_moderation_policy()
+    if moderator is None or moderation_policy is None:
+        logger.info("generation_worker_idle reason=output_moderation_not_approved_or_configured")
+        return 0
     worker_id = str(uuid.uuid4())
     jobs = await _rpc("claim_generation_jobs", {
         "p_worker_id": worker_id,
@@ -169,7 +249,7 @@ async def run_once(*, batch_size: int = 5) -> int:
     for job in jobs:
         if not isinstance(job, dict):
             continue
-        status = await _process_job(job, worker_id, router, lifecycle)
+        status = await _process_job(job, worker_id, router, lifecycle, moderator, moderation_policy)
         logger.info("generation_job_finished job_id=%s status=%s", job.get("id"), status)
     return len(jobs)
 
