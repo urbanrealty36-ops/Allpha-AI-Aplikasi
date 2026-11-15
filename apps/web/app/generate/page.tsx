@@ -27,6 +27,7 @@ export default function GeneratePage() {
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [capabilityId, setCapabilityId] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
@@ -84,20 +85,20 @@ export default function GeneratePage() {
     if (!session || !agentId || !skillId || !capabilityId || !prompt.trim() || busy) return;
     setBusy(true); setError(""); setNotice(""); setResult(""); setJobId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
-    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800 };
+    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
-      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string };
+      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; knowledge_context_sha256?: string | null; knowledge_source_count?: number };
       if (!quote.quote_id || Date.parse(quote.expires_at) <= Date.now() || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
         throw new Error("Quote generation tidak valid atau sudah kedaluwarsa.");
       }
-      if (!window.confirm(`Estimasi: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Lanjutkan dan reservasi kredit?`)) {
+      if (!window.confirm(`Estimasi: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Knowledge sources: ${quote.knowledge_source_count || 0}. Lanjutkan dan reservasi kredit?`)) {
         setNotice("Dibatalkan sebelum reservasi. Tidak ada kredit yang dipotong."); return;
       }
       const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
         method: "POST", headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ ...body, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id }), cache: "no-store",
+        body: JSON.stringify({ ...body, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id, ...(quote.knowledge_context_sha256 ? { quoted_knowledge_context_sha256: quote.knowledge_context_sha256 } : {}) }), cache: "no-store",
       });
       if (!createResponse.ok) throw new Error(await errorMessage(createResponse));
       const created = await createResponse.json() as { job_id: string };
@@ -143,12 +144,13 @@ export default function GeneratePage() {
         </div>
         <label className="mt-4 block text-sm font-bold">Capability approved<select value={capabilityId} onChange={event => setCapabilityId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih capability</option>{capabilities.map(item => <option key={item.capability_key} value={item.capability_key}>{item.capability_key}</option>)}</select></label>
         <label className="mt-4 block text-sm font-bold">Brief / Prompt<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={7} maxLength={32768} placeholder="Jelaskan tujuan, audiens, format konten, gaya, konteks brand, dan batasan hasil…" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal dark:border-slate-700" /></label>
+        <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} rows={3} maxLength={4000} placeholder="Cari sumber Knowledge milik Agent yang boleh digunakan…" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Retrieval hanya menggunakan sumber ready yang lolos consent, ACL, sensitivity policy, dan provenance. Jika policy belum tersedia, generation ditolak.</span></label>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">Quote dan tarif selalu berasal dari policy aktif. Tidak ada harga default atau kredit buatan.</p><button onClick={() => void generate()} disabled={busy || loading || !agentId || !skillId || !capabilityId || !prompt.trim()} className="rounded-xl border-2 border-slate-900 bg-violet-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{busy ? "Memproses…" : "Minta Quote & Generate"}</button></div>
       </>}
     </section>
     {error && <p role="alert" className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
     {jobId && <p className="mt-3 text-xs text-slate-500">Generation Job: {jobId}</p>}
-    {result && <section className="mt-5 rounded-3xl border-2 border-slate-900 bg-slate-950 p-5 text-cyan-100 shadow-[4px_4px_0px_#0f172a]"><div className="mb-3 flex items-center justify-between"><h2 className="font-black">Hasil Generation</h2><button onClick={() => void navigator.clipboard.writeText(result)} className="rounded-lg border border-cyan-200/50 px-3 py-1.5 text-xs font-bold">Salin</button></div><pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{result}</pre><p className="mt-4 border-t border-white/10 pt-3 text-xs text-cyan-200/70">Hasil tersimpan privat pada Generation Job. DM delivery dan creator reward menunggu integrasi WP-07 berikutnya.</p></section>}
+    {result && <section className="mt-5 rounded-3xl border-2 border-slate-900 bg-slate-950 p-5 text-cyan-100 shadow-[4px_4px_0px_#0f172a]"><div className="mb-3 flex items-center justify-between"><h2 className="font-black">Hasil Generation</h2><button onClick={() => void navigator.clipboard.writeText(result)} className="rounded-lg border border-cyan-200/50 px-3 py-1.5 text-xs font-bold">Salin</button></div><pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{result}</pre><p className="mt-4 border-t border-white/10 pt-3 text-xs text-cyan-200/70">Hasil tersimpan privat pada Generation Job. DM delivery dan creator reward tetap mengikuti policy WP-07 yang disetujui.</p></section>}
   </main>;
 }
