@@ -62,7 +62,7 @@ create table if not exists public.generation_jobs (
   updated_at timestamptz not null default now(),
   unique(owner_user_id,idempotency_key),
   check ((lease_token is null and lease_expires_at is null) or (lease_token is not null and lease_expires_at is not null)),
-  check (status <> 'succeeded' or (artifact_bucket = 'generation-artifacts' and artifact_path is not null and output_sha256 is not null and moderation_status = 'approved' and input_tokens is not null and output_tokens is not null))
+  check (status <> 'succeeded' or (artifact_bucket = 'generation-artifacts' and artifact_path is not null and output_sha256 is not null and moderation_status = 'approved' and input_tokens is not null and output_tokens is not null)),
   dm_conversation_id uuid references public.conversations(id) on delete set null,
   dm_message_id uuid references public.messages(id) on delete set null,
   dm_delivered_at timestamptz
