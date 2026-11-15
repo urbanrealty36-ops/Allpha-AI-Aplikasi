@@ -251,7 +251,7 @@ async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -
     """List only current, public Agent grants that explicitly permit generation."""
     now = datetime.now(timezone.utc).isoformat()
     grants = await _admin_request("GET", "agent_consumer_grants", params={
-        "select": "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,granted_scopes,expires_at,status",
+        "select": "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,capability_id,granted_scopes,expires_at,status",
         "requester_user_id": f"eq.{user['id']}", "status": "eq.active",
         "granted_scopes": "cs.{generation_invoke}",
         "or": f"(expires_at.is.null,expires_at.gt.{now})",
@@ -268,7 +268,8 @@ async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -
             "id": f"eq.{grant['skill_id']}", "agent_id": f"eq.{grant['agent_id']}", "status": "eq.published", "limit": "1",
         })
         caps = await _admin_request("GET", "agent_capabilities", params={
-            "select": "capability_key,status", "agent_id": f"eq.{grant['agent_id']}", "status": "eq.approved", "limit": "50",
+            "select": "capability_key,status", "agent_id": f"eq.{grant['agent_id']}",
+            "capability_key": f"eq.{grant['capability_id']}", "status": "eq.approved", "limit": "1",
         })
         if not agents or not skills:
             continue
