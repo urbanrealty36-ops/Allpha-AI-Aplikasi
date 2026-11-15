@@ -47,15 +47,41 @@ create table if not exists public.generation_jobs (
   input_tokens bigint,
   output_tokens bigint,
   actual_cost_microunits bigint,
-  output_text text,
-  output_sha256 text check (output_sha256 is null or output_sha256 ~ '^[0-9a-f]{64}  started_at timestamptz,
+  artifact_bucket text,
+  artifact_path text,
+  output_sha256 text check (output_sha256 is null or output_sha256 ~ '^[0-9a-f]{64}$'),
+  moderation_status text not null default 'pending' check (moderation_status in ('pending','approved','rejected','review_required')),
+  moderation_policy_version text,
+  moderation_approval_reference text,
+  moderated_at timestamptz,
+  started_at timestamptz,
   completed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(owner_user_id,idempotency_key),
   check ((lease_token is null and lease_expires_at is null) or (lease_token is not null and lease_expires_at is not null)),
-  check (status <> 'succeeded' or (output_text is not null and input_tokens is not null and output_tokens is not null))
+  check (status <> 'succeeded' or (artifact_bucket = 'generation-artifacts' and artifact_path is not null and output_sha256 is not null and moderation_status = 'approved' and input_tokens is not null and output_tokens is not null))
 );
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values ('generation-artifacts','generation-artifacts',false,10485760,array['text/plain'])
+on conflict (id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+
+create table if not exists public.generation_output_moderation_policies (
+  policy_version text primary key check (char_length(policy_version) between 1 and 80),
+  approval_reference text not null check (char_length(approval_reference) between 3 and 160),
+  configuration jsonb not null check (jsonb_typeof(configuration)='object'),
+  status text not null default 'draft' check (status in ('draft','approved','retired')),
+  effective_at timestamptz not null,
+  expires_at timestamptz,
+  approved_by uuid references auth.users(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  check (expires_at is null or expires_at > effective_at),
+  check (status <> 'approved' or approved_by is not null)
+);
+alter table public.generation_output_moderation_policies enable row level security;
+revoke all on public.generation_output_moderation_policies from public,anon,authenticated,service_role;
+grant select,insert,update,delete on public.generation_output_moderation_policies to service_role;
+
 create index if not exists generation_jobs_owner_created_idx
   on public.generation_jobs(owner_user_id,created_at desc);
 create index if not exists generation_jobs_claim_idx
@@ -225,30 +251,58 @@ create or replace function public.generation_store_provider_result(
   p_job_id uuid,p_lease_token uuid,p_result jsonb
 ) returns jsonb language plpgsql security definer set search_path = ''
 as $$
-declare v_job public.generation_jobs; v_output text; v_hash text;
+declare v_job public.generation_jobs; v_path text; v_hash text;
 begin
   select * into v_job from public.generation_jobs
     where id=p_job_id and status='running' and lease_token=p_lease_token
       and lease_expires_at > now() for update;
   if not found then raise exception 'GENERATION_JOB_LEASE_LOST' using errcode='40001'; end if;
-  v_output := p_result->>'output_text';
-  v_hash := encode(extensions.digest(coalesce(v_output,''),'sha256'),'hex');
-  if coalesce(v_output,'')='' or v_hash <> p_result->>'output_sha256'
+  v_path := p_result->>'artifact_path';
+  v_hash := p_result->>'output_sha256';
+  if p_result->>'artifact_bucket' <> 'generation-artifacts'
+    or v_path <> v_job.owner_user_id::text||'/'||v_job.id::text||'/output.txt'
+    or coalesce(v_hash,'') !~ '^[0-9a-f]{64}$'
     or coalesce((p_result->>'input_tokens')::bigint,-1) < 0
     or coalesce((p_result->>'output_tokens')::bigint,-1) < 0
-    or coalesce((p_result->>'cost_microunits')::bigint,-1) < 0 then
+    or coalesce((p_result->>'cost_microunits')::bigint,-1) < 0
+    or not exists(select 1 from storage.objects o where o.bucket_id='generation-artifacts' and o.name=v_path) then
     raise exception 'GENERATION_JOB_RESULT_INVALID' using errcode='22023';
   end if;
   if v_job.output_sha256 is not null and v_job.output_sha256 <> v_hash then
     raise exception 'GENERATION_JOB_RESULT_CONFLICT' using errcode='23505';
   end if;
-  update public.generation_jobs set output_text=v_output,output_sha256=v_hash,
+  update public.generation_jobs set artifact_bucket='generation-artifacts',artifact_path=v_path,output_sha256=v_hash,
     input_tokens=(p_result->>'input_tokens')::bigint,
     output_tokens=(p_result->>'output_tokens')::bigint,
     actual_cost_microunits=(p_result->>'cost_microunits')::bigint,
     updated_at=now()
     where id=p_job_id returning * into v_job;
   return jsonb_build_object('job_id',v_job.id,'result_persisted',true,'output_sha256',v_job.output_sha256);
+end;
+$$;
+
+create or replace function public.generation_record_output_moderation(
+  p_job_id uuid,p_lease_token uuid,p_decision text,p_policy_version text,p_approval_reference text
+) returns jsonb language plpgsql security definer set search_path = ''
+as $$
+declare v_job public.generation_jobs; v_policy public.generation_output_moderation_policies;
+begin
+  select * into v_job from public.generation_jobs
+    where id=p_job_id and status='running' and lease_token=p_lease_token
+      and lease_expires_at > now() and artifact_bucket='generation-artifacts' and artifact_path is not null
+    for update;
+  if not found then raise exception 'GENERATION_JOB_LEASE_LOST' using errcode='40001'; end if;
+  if p_decision not in ('approved','rejected','review_required') then
+    raise exception 'GENERATION_MODERATION_DECISION_INVALID' using errcode='22023';
+  end if;
+  select * into v_policy from public.generation_output_moderation_policies
+    where policy_version=p_policy_version and approval_reference=p_approval_reference
+      and status='approved' and effective_at <= now() and (expires_at is null or expires_at > now());
+  if not found then raise exception 'GENERATION_MODERATION_POLICY_NOT_APPROVED' using errcode='42501'; end if;
+  update public.generation_jobs set moderation_status=p_decision,
+    moderation_policy_version=p_policy_version,moderation_approval_reference=p_approval_reference,
+    moderated_at=now(),updated_at=now() where id=p_job_id returning * into v_job;
+  return jsonb_build_object('job_id',v_job.id,'moderation_status',v_job.moderation_status);
 end;
 $$;
 
@@ -262,16 +316,17 @@ begin
     where id=p_job_id and status='running' and lease_token=p_lease_token
       and lease_expires_at > now() for update;
   if not found then raise exception 'GENERATION_JOB_LEASE_LOST' using errcode='40001'; end if;
-  if coalesce(p_result->>'output_text','')='' or
-    (p_result->>'input_tokens')::bigint < 0 or (p_result->>'output_tokens')::bigint < 0 then
+  if v_job.artifact_bucket <> 'generation-artifacts' or v_job.artifact_path is null
+    or v_job.moderation_status <> 'approved' or v_job.moderation_policy_version is null
+    or coalesce((p_result->>'input_tokens')::bigint,-1) < 0
+    or coalesce((p_result->>'output_tokens')::bigint,-1) < 0 then
     raise exception 'GENERATION_JOB_RESULT_INVALID' using errcode='22023';
   end if;
   update public.generation_jobs set status='succeeded',
     input_tokens=(p_result->>'input_tokens')::bigint,
     output_tokens=(p_result->>'output_tokens')::bigint,
     actual_cost_microunits=(p_result->>'cost_microunits')::bigint,
-    output_text=p_result->>'output_text',completed_at=now(),
-    lease_token=null,lease_expires_at=null,updated_at=now()
+    completed_at=now(),lease_token=null,lease_expires_at=null,updated_at=now()
     where id=p_job_id returning * into v_job;
   return jsonb_build_object('job_id',v_job.id,'status',v_job.status);
 end;
@@ -329,6 +384,7 @@ $$;
 revoke all on function public.generation_create_job(jsonb),
   public.claim_generation_jobs(uuid,integer,integer),
   public.generation_store_provider_result(uuid,uuid,jsonb),
+  public.generation_record_output_moderation(uuid,uuid,text,text,text),
   public.generation_complete_job(uuid,uuid,jsonb),
   public.generation_mark_pending_reconciliation(uuid,uuid,text),
   public.generation_mark_failed(uuid,uuid,text)
@@ -336,6 +392,7 @@ revoke all on function public.generation_create_job(jsonb),
 grant execute on function public.generation_create_job(jsonb),
   public.claim_generation_jobs(uuid,integer,integer),
   public.generation_store_provider_result(uuid,uuid,jsonb),
+  public.generation_record_output_moderation(uuid,uuid,text,text,text),
   public.generation_complete_job(uuid,uuid,jsonb),
   public.generation_mark_pending_reconciliation(uuid,uuid,text),
   public.generation_mark_failed(uuid,uuid,text)
