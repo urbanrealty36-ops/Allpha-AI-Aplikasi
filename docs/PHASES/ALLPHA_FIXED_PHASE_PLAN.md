@@ -2991,3 +2991,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - This closes a source-level mismatch path that could otherwise have left a generated artifact outside the Human review queue. It does not create/approve policy, enable the worker or alter the migration status.
 - Correction commits: `0baf055cb5745fed39ad618b28a60600f5e5cbce`, `2fdf58107865eaa08504e9db1c0e5df3fbfb1bec`.
 - No tests/build/lint/typecheck/CI/provider calls/worker activation/database writes/migration application/staging/browser-device QA/deployment were performed. WP-07 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`; required phase order remains WP-07 → WP-06 → WP-11 → WP-12.
+
+
+**WP-07 / UI-COPY-03 — GenerateModal media-picker source composition reconciliation (2026-11-16):**
+- Re-inspected the canonical reference `Allpha-Front-End-UI-New/components/GenerateModal.tsx` (source blob `ae17e11390d24effd6cee1f7cf556f61d83f0e0c`). The reference contains two side-by-side logo/product media pickers and an AI Vision information panel; the target had replaced this composition with a plain explanatory box.
+- Restored the reference media-picker card hierarchy, two-column responsive layout, labels, iconography, borders, shadows and pastel purple/cyan styling in `apps/web/components/reference-ui/GenerateModal.tsx`. File inputs and picker actions remain explicitly disabled; the AI Vision panel now truthfully states the missing server-side input snapshot, quarantine/scanning, rights and approved Model Router image/video capability prerequisites. No fake preview, upload success or AI vision claim is shown.
+- Commit: `e14d5fefe091f4ba3439c17871aca66eba14d2c6`.
+- This is a source composition/parity correction only, not a completed media-input integration. WP-07 remains `in_progress / acceptance_not_verified`; the generation worker is still text-only and no provider/model capability was selected or activated.
+- No tests, builds, lint, typecheck, CI, provider calls, database writes, migration application, staging, browser/device QA or deployment were performed, per the current instruction. The required phase order remains WP-07 → WP-06 → WP-11 → WP-12.
