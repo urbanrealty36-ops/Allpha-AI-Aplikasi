@@ -6,7 +6,7 @@ type Props = { session: Session; apiBase: string };
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version: number };
 type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
-type Automation = { auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; daily_credit_budget: number; takeover_active: boolean };
+type Automation = { version: number; auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; allowed_tool_scopes: string[]; max_replies_per_minute: number; daily_credit_budget: number; quiet_hours: Record<string, unknown>; escalation_rules: Record<string, unknown>; takeover_active: boolean };
 type DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
 const styles = {
@@ -30,6 +30,10 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   const [enabled, setEnabled] = useState(true);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [automation, setAutomation] = useState<Automation | null>(null);
+  const [channels, setChannels] = useState<string[]>([]);
+  const [blockedTopicsText, setBlockedTopicsText] = useState("");
+  const [replyTone, setReplyTone] = useState("friendly_concise");
+  const [dailyBudget, setDailyBudget] = useState("0");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -49,11 +53,21 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       const selected = active.some((x: Agent) => x.id === agentId) ? agentId : active[0]?.id || "";
       setAgentId(selected);
       if (selected) {
-        const result = await api("/v1/agent-social/policy?agent_id=" + encodeURIComponent(selected));
-        const current = result.policy as Policy | null; setPolicy(current);
+        const [result, automationResult] = await Promise.all([
+          api("/v1/agent-social/policy?agent_id=" + encodeURIComponent(selected)),
+          api("/v1/agent-social/automation?agent_id=" + encodeURIComponent(selected)),
+        ]);
+        const current = result.policy as Policy | null;
+        const currentAutomation = automationResult.policy as Automation | null;
+        setAutomation(currentAutomation);
+        setChannels(currentAutomation?.auto_reply_channels || []);
+        setBlockedTopicsText((currentAutomation?.blocked_topics || []).join(", "));
+        setReplyTone(currentAutomation?.reply_tone || "friendly_concise");
+        setDailyBudget(String(currentAutomation?.daily_credit_budget ?? 0));
+        setPolicy(current);
         setActions(current?.allowed_actions || ["draft_post"]); setMode(current?.approval_mode || "every_post");
         setDisclosure(current?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(current?.is_enabled ?? true);
-      } else setPolicy(null);
+      } else { setPolicy(null); setAutomation(null); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, [api, agentId]);
@@ -64,6 +78,30 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       const result = await api("/v1/agent-social/policy/" + agentId, { method: "PUT", body: JSON.stringify({ allowed_actions: actions, approval_mode: mode, disclosure_text: disclosure, is_enabled: enabled, expected_version: policy?.version ?? null }) });
       setPolicy(result.policy); setNotice("Kebijakan tersimpan."); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Kebijakan gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function saveAutomation() {
+    if (!agentId || !automation || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/v1/agent-social/automation/" + agentId, {
+        method: "PUT",
+        body: JSON.stringify({
+          auto_reply_channels: channels,
+          blocked_topics: blockedTopicsText.split(",").map(item => item.trim()).filter(Boolean),
+          reply_tone: replyTone,
+          allowed_tool_scopes: automation.allowed_tool_scopes || [],
+          max_replies_per_minute: automation.max_replies_per_minute || 1,
+          daily_credit_budget: Math.max(0, Math.floor(Number(dailyBudget) || 0)),
+          quiet_hours: automation.quiet_hours || {},
+          escalation_rules: automation.escalation_rules || {},
+          expected_version: automation.version,
+        }),
+      });
+      setAutomation(result.policy as Automation);
+      setNotice("Konfigurasi Auto Reply tersimpan; eksekusi tetap nonaktif sampai runtime tersedia.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Konfigurasi gagal disimpan."); }
     finally { setBusy(false); }
   }
   async function decide(id: string, decision: "approve" | "reject") {
@@ -96,8 +134,19 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       <Text style={styles.kicker}>AUTO REPLY · TAKEOVER</Text>
       <Text style={styles.title}>Kontrol Otomatisasi</Text>
       <Text style={styles.body}>Takeover menghentikan Auto Reply dan mencabut approval yang masih pending. Auto Reply tetap nonaktif sampai runtime event consumer tersambung.</Text>
-      <Text style={styles.body}>Status: {automation?.takeover_active ? "Takeover Human aktif" : "Takeover dilepas · Auto Reply masih nonaktif"}</Text>
-      <Text onPress={async () => { if (!agentId) return; setBusy(true); setError(""); try { const active = !automation?.takeover_active; const result = await api("/v1/agent-social/takeover/" + agentId,{method:"POST",body:JSON.stringify({takeover_active:active,reason:active?"owner_manual_takeover_native":"owner_released_takeover_native"})}); setAutomation(result.policy as Automation); setNotice(active?"Takeover aktif; approval pending dicabut.":"Takeover dilepas; Auto Reply belum diaktifkan."); await load(); } catch(cause) { setError(cause instanceof Error?cause.message:"Takeover gagal."); } finally { setBusy(false); } }} style={styles.action}>{automation?.takeover_active ? "Lepas Takeover" : "Ambil Alih Sekarang"}</Text>
+      <Text style={styles.body}>Status: {automation?.takeover_active ? "Takeover Human aktif" : automation ? "Takeover dilepas · Auto Reply masih nonaktif" : "Policy automation belum tersedia"}</Text>
+      {automation ? <>
+        <Text style={styles.kicker}>CHANNEL AUTO REPLY</Text>
+        {["comments", "mentions", "dm", "live_chat"].map(channel => <Text key={channel} onPress={() => setChannels(old => old.includes(channel) ? old.filter(item => item !== channel) : [...old, channel])} style={styles.action}>{channels.includes(channel) ? "☑ " : "□ "}{channel.replace("_", " ")}</Text>)}
+        <Text style={styles.kicker}>TOPIK YANG DIBLOKIR</Text>
+        <TextInput value={blockedTopicsText} onChangeText={setBlockedTopicsText} placeholder="Pisahkan dengan koma" placeholderTextColor="#94A3B8" style={styles.field}/>
+        <Text style={styles.kicker}>GAYA KOMUNIKASI</Text>
+        {["friendly_concise", "professional", "warm", "formal"].map(value => <Text key={value} onPress={() => setReplyTone(value)} style={styles.action}>{replyTone === value ? "✓ " : ""}{value.replaceAll("_", " ")}</Text>)}
+        <Text style={styles.kicker}>BATAS BUDGET HARIAN (AI CREDITS)</Text>
+        <TextInput value={dailyBudget} onChangeText={setDailyBudget} keyboardType="number-pad" style={styles.field}/>
+        <Text onPress={() => void saveAutomation()} style={[styles.action, { backgroundColor: busy ? "#303A58" : "#A5B4FC", color: "#10152A", fontWeight: "800" }]}>{busy ? "Menyimpan…" : "Simpan Pengaturan Auto Reply"}</Text>
+      </> : <Text style={styles.body}>Policy automation belum dibuat untuk Agent ini. Kontrol dinonaktifkan sampai backend menyediakan record kanonis.</Text>}
+      <Text onPress={async () => { if (!agentId || !automation || busy) return; setBusy(true); setError(""); try { const active = !automation.takeover_active; const result = await api("/v1/agent-social/takeover/" + agentId,{method:"POST",body:JSON.stringify({takeover_active:active,reason:active?"owner_manual_takeover_native":"owner_released_takeover_native"})}); setAutomation(result.policy as Automation); setNotice(active?"Takeover aktif; approval pending dicabut.":"Takeover dilepas; Auto Reply belum diaktifkan."); await load(); } catch(cause) { setError(cause instanceof Error?cause.message:"Takeover gagal."); } finally { setBusy(false); } }} style={[styles.action, { opacity: !automation || busy ? 0.5 : 1 }]}>{automation?.takeover_active ? "Lepas Takeover" : "Ambil Alih Sekarang"}</Text>
     </View>
     <View style={styles.card}><Text style={styles.title}>Approval Inbox</Text><Text style={styles.body}>{approvals.filter(x => x.status === "pending").length} permintaan menunggu keputusan</Text>
       {approvals.length === 0 ? <Text style={styles.body}>Belum ada approval.</Text> : approvals.map(item => <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 12, gap: 8 }}>
