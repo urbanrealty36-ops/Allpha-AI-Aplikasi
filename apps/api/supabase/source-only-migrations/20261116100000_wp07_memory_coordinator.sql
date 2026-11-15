@@ -121,20 +121,33 @@ begin
   select * into v_item from public.agent_memory_items where id=p_item_id and owner_user_id=p_owner_user_id for update;
   if not found then return null; end if;
   if v_item.status<>'deleted' then
-   update public.agent_memory_items set status='deleted',deleted_at=now(),updated_at=now() where id=p_item_id returning * into v_item;
+   update public.agent_memory_items set status='deleted',content='[deleted]',source_ref='{}'::jsonb,provenance='{}'::jsonb,confidence=null,deleted_at=now(),updated_at=now() where id=p_item_id returning * into v_item;
    insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
-   values(p_owner_user_id,v_item.agent_id,v_item.policy_id,p_item_id,p_owner_user_id,'memory_deleted',jsonb_build_object('content_sha256',v_item.content_sha256,'derived_memory_index_exists',false));
+   values(p_owner_user_id,v_item.agent_id,v_item.policy_id,p_item_id,p_owner_user_id,'memory_deleted',jsonb_build_object('content_sha256',v_item.content_sha256,'derived_memory_index_exists',false,'content_scrubbed',true));
   end if;
   return jsonb_build_object('id',v_item.id,'status','deleted');
  elsif p_action='expire' then
-  with expired as (update public.agent_memory_items i set status='expired',updated_at=now()
+  with expired as (update public.agent_memory_items i set status='expired',content='[expired]',source_ref='{}'::jsonb,provenance='{}'::jsonb,confidence=null,updated_at=now()
    where i.owner_user_id=p_owner_user_id and i.agent_id is not distinct from p_agent_id
     and i.status in ('proposed','active') and i.retention_expires_at<=now()
    returning i.id,i.agent_id,i.policy_id,i.memory_type,i.content_sha256)
   insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,event_type,details)
-  select p_owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256) from expired e;
+  select p_owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256,'content_scrubbed',true) from expired e;
   get diagnostics v_count=row_count;
   return jsonb_build_object('expired_count',v_count);
+ elsif p_action='invalidate_policy_items' then
+  with invalidated as (
+   update public.agent_memory_items set status='expired',content='[policy version changed]',source_ref='{}'::jsonb,provenance='{}'::jsonb,confidence=null,updated_at=now()
+   where policy_id=(p_payload->>'policy_id')::uuid and status in ('proposed','active')
+    and policy_version<>(p_payload->>'policy_version')::integer
+   returning id,agent_id,policy_id,memory_type,content_sha256
+  )
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,event_type,details)
+  select p_owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',
+   jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256,'reason','policy_version_changed','content_scrubbed',true)
+  from invalidated e;
+  get diagnostics v_count=row_count;
+  return jsonb_build_object('invalidated_count',v_count);
  elsif p_action='policy_event' then
   insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,actor_user_id,event_type,details)
   values(p_owner_user_id,p_agent_id,(p_payload->>'policy_id')::uuid,p_owner_user_id,
