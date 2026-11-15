@@ -55,6 +55,19 @@ export default function AgentMemoryPage(){
    if(!r.ok)throw new Error(await err(r));setNotice(on?"Policy Memory diaktifkan dengan approval manual.":"Policy dinonaktifkan; retrieval akan berhenti.");await load(session);
   }catch(e){setError(e instanceof Error?e.message:"Policy gagal disimpan.");}finally{setSaving("");}
  }
+ async function revokeAll(){
+  if(!session||!window.confirm("Cabut persetujuan semua kelas Memory untuk Agent ini?"))return;
+  setSaving("all");setError("");setNotice("");
+  try{
+   for(const d of defs){
+    const r=await fetch(api+"/v1/memory/policies/"+d.key,{method:"PUT",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
+     body:JSON.stringify({agent_id:agentId,enabled:false,consent_version:null,allowed_purposes:[],allowed_sensitivities:[],retention_days:d.key==="working"?1:Number(retention[d.key]??d.days)})});
+    if(!r.ok)throw new Error(await err(r));
+   }
+   setConsent(false);setEnabled({});setNotice("Semua persetujuan Memory dicabut; item lama tidak lagi memenuhi policy version untuk retrieval.");await load(session);
+  }catch(e){setError(e instanceof Error?e.message:"Pencabutan consent tidak selesai; periksa setiap policy.");await load(session);}
+  finally{setSaving("");}
+ }
  async function decide(item:Item,decision:"approve"|"reject"){
   if(!session)return;setSaving(item.id);
   try{const r=await fetch(api+"/v1/memory/items/"+item.id+"/decision",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({decision})});
@@ -85,6 +98,7 @@ export default function AgentMemoryPage(){
    <h2 className="text-lg font-semibold">Consent dan kebijakan penyimpanan</h2>
    <p className="mt-1 text-sm text-neutral-600">Semua kelas persisten nonaktif secara default. Model hanya boleh mengusulkan memori; pemilik harus menyetujui setiap proposal. External Consumer tidak memperoleh memori privat pemilik.</p>
    <label className="mt-4 flex items-start gap-3 rounded-xl border p-3 text-sm"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} className="mt-1"/><span><strong>Persetujuan eksplisit pemilik</strong><span className="block text-neutral-600">Saya mengizinkan penyimpanan sesuai jenis, tujuan, klasifikasi dan masa retensi yang saya aktifkan. Persetujuan dapat dicabut kapan saja.</span></span></label>
+   <div className="mt-3 flex justify-end"><button disabled={saving==="all"} onClick={()=>void revokeAll()} className="rounded-xl border border-red-300 px-4 py-2 text-sm text-red-700 disabled:opacity-50">{saving==="all"?"Mencabut…":"Cabut semua persetujuan"}</button></div>
    <div className="mt-4 grid gap-3">{defs.map(d=>{const p=policies.find(x=>x.memory_type===d.key);const on=!!enabled[d.key];return <article key={d.key} className="rounded-xl border p-4">
     <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="font-semibold">{d.title}</h3><span className="rounded-full border px-2 py-0.5 text-xs">{on?"Aktif":"Nonaktif"}</span></div><p className="mt-1 text-sm text-neutral-600">{d.description}</p><p className="mt-2 text-xs text-neutral-500">Policy v{p?.policy_version??0} · Retensi {retention[d.key]??d.days} hari · Approval manual</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={on} onChange={e=>setEnabled(v=>({...v,[d.key]:e.target.checked}))}/>Aktifkan</label></div>
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs text-neutral-600">Retensi (hari)<input type="number" min={1} max={3650} disabled={d.key==="working"||!on} value={retention[d.key]??d.days} onChange={e=>setRetention(v=>({...v,[d.key]:Number(e.target.value)}))} className="w-24 rounded-lg border px-2 py-1 text-sm text-neutral-900 disabled:opacity-50"/></label><button disabled={saving===d.key||(on&&!consent)} onClick={()=>void savePolicy(d.key)} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving===d.key?"Menyimpan…":"Simpan kebijakan"}</button></div>
