@@ -107,6 +107,14 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
           setNotice("Penghapusan artefak membutuhkan pemulihan operator. Artefak tetap privat; hubungi dukungan Allpha.");
           return;
         }
+        if(job.status==="pending_reconciliation"&&job.moderation_status==="review_required"){
+          setNotice("Output generation sedang menunggu pemeriksaan Human. Artefak tetap privat sampai reviewer menyetujui; jangan kirim ulang permintaan ini.");
+          return;
+        }
+        if(job.status==="pending_reconciliation"){
+          setNotice("Status provider atau settlement belum dapat dipastikan. Job masuk rekonsiliasi; jangan kirim ulang permintaan ini.");
+          return;
+        }
         if(job.status!=="succeeded"||!job.artifact_available){
           setNotice("Generation Job belum memiliki artefak yang dapat dibuka ("+job.status+").");
           return;
