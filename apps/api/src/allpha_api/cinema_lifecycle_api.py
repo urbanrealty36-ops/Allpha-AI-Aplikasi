@@ -374,9 +374,9 @@ async def create_creator_credit(title_id: uuid.UUID,payload: CreatorCreditCreate
     title=await _cinema_title_access(title_id,owner_id,{"manage_credits"})
     owner_id=str(title["owner_id"])
     if payload.contributor_type=="human":
-        if payload.contributor_user_id is None or payload.contributor_agent_id is not None:
-            raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Human harus menunjuk satu akun Human."})
-        contributor_id=str(payload.contributor_user_id)
+        if payload.contributor_agent_id is not None:
+            raise HTTPException(422,detail={"code":"CINEMA_CREDIT_CONTRIBUTOR_INVALID","message":"Kredit Human tidak boleh menunjuk AI Agent."})
+        contributor_id=str(payload.contributor_user_id or user["id"])
         if contributor_id!=owner_id:
             grants=await _db("GET","cinema_collaborators",params={
                 "select":"id","title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,
@@ -507,6 +507,16 @@ async def decide_cinema_collaboration(collaboration_id: uuid.UUID,payload: Cinem
     if not changed:
         raise HTTPException(409,detail={"code":"CINEMA_COLLABORATION_DECISION_CONFLICT","message":"Status undangan berubah; muat ulang sebelum mencoba lagi."})
     return {"collaborator":changed[0]}
+
+
+@router.get("/creator/titles/{title_id}/versions")
+async def list_cinema_versions(title_id: uuid.UUID,user: dict[str,Any]=Depends(current_user))->dict[str,Any]:
+    await _owned_cinema_title(title_id,str(user["id"]))
+    rows=await _db("GET","cinema_film_versions",params={
+        "select":"id,title_id,version,created_at","title_id":"eq."+str(title_id),
+        "owner_id":"eq."+str(user["id"]),"order":"version.desc","limit":"100",
+    })
+    return {"items":rows or []}
 
 
 @router.post("/creator/titles/{title_id}/versions",status_code=201)
