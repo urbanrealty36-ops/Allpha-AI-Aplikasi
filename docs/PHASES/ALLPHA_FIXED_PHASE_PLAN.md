@@ -3150,7 +3150,23 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 
 **WP-07 Memory architecture decision gate — 2026-11-16:**
 - Repository ADR inventory contains no ADR-0004 or ADR-0005 memory documents, although older WP-07 notes cite them as gates. This mismatch is now recorded rather than assuming those decisions exist.
-- Added proposed ADR-0022 for one canonical MemoryCoordinator, six-class mapping, explicit per-type consent, private-by-default scopes, provenance, retention/deletion, and embedding-profile constraints.
-- ADR-0022 is PROPOSED / NOT APPROVED. No memory tables, vector dimensions, consent defaults, retention defaults, or persistent memory writes are implemented or activated by this proposal.
-- WP-07 remains in_progress / schema_migrated / acceptance_not_verified. Memory implementation is blocked on the explicit architecture and privacy decision; other WP-07 source work may continue without inventing those decisions.
+- Product Owner approved ADR-0022 for source implementation on 2026-11-16. Privacy/Security and Data Platform approval remains required before live schema activation.
+- Added source-only migration for owner/Agent-scoped policies, memory items, audit events, RLS, retention and keyword index. Added FastAPI MemoryCoordinator, owner policy/proposal/decision/correction/deletion/context/audit endpoints, and Agent Memory Studio UI.
+- Generation Worker now injects bounded private Memory context only for owner-initiated jobs when ALLPHA_MEMORY_COORDINATOR_ENABLED=true. External Consumer jobs are excluded. Retrieved content is explicitly untrusted context and never grants permissions.
+- Persistent Memory policies remain disabled by default; proposal writes and generation retrieval remain feature-flagged off. Conversation Memory continues to use canonical conversations/messages; Knowledge corpus remains separate.
+- Retrieval currently supports owner/Agent/policy-version/purpose/classification-filtered metadata and keyword substring search. Full-text query is not yet wired through the API, and vector/hybrid retrieval remains blocked by existing embedding profile/dimension/index ADR gates.
+- No live Supabase migration was applied. No test/build/lint/typecheck/CI, provider call, staging or deployment was run. Source-only implementation is not runtime acceptance.
+- WP-07 remains IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED.
+
+
+
+**WP-07 Memory Coordinator source implementation — Product Owner approval — 2026-11-16:**
+- Product Owner approved ADR-0022 for source implementation. Privacy/Security and Data Platform activation review remains pending.
+- Added source-only migration: agent_memory_policies, agent_memory_items, agent_memory_events, owner-select RLS, server-only mutation grants, content hashes, provenance, confidence, policy version, manual proposal approval, retention expiry, and keyword GIN index.
+- Added FastAPI MemoryCoordinator and owner API routes for per-class consent, policy management, proposals, approval/rejection, correction, deletion, context preview and audit events. Agent ownership is checked through the authenticated user's existing ownership row.
+- Added Agent Memory Studio UI and link from Agent Studio. Conversation Memory remains in canonical messages; Knowledge documents/chunks remain separate.
+- Generation Worker retrieves a maximum of 12 items / 6,000 characters only for owner-initiated jobs. External Consumer jobs are excluded. Retrieved text is explicitly marked untrusted and cannot confer tool permissions.
+- Activation flag ALLPHA_MEMORY_COORDINATOR_ENABLED defaults to false. Migration remains under source-only-migrations and has not been applied to Supabase. Persistent Memory writes and generation retrieval remain off until migration and privacy/data-platform gates are completed.
+- Retrieval currently filters by exact owner, Agent, current policy version, purpose, classification and expiry; current query support is metadata or simple substring keyword matching. No vector/hybrid retrieval, automatic AI memory proposal generation, workflow memory nodes, or asynchronous derived-index deletion worker is implemented yet.
+- No tests, build, lint, typecheck, CI, real provider calls, staging or deployment were run. WP-07 remains IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED.
 
