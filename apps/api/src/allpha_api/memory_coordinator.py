@@ -34,6 +34,11 @@ class MemoryCoordinator:
             raise MemoryUnavailable("Memory persistence operation failed")
         return r.json() if r.content else None
 
+    async def transition(self,action,owner_id,agent_id=None,item_id=None,payload=None):
+        return await self.db("POST","rpc/agent_memory_transition",body={
+            "p_action":action,"p_owner_user_id":owner_id,"p_agent_id":agent_id,
+            "p_item_id":item_id,"p_payload":payload or {}})
+
     async def policies(self,owner_id,agent_id):
         p={"select":"*","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}" if agent_id else "is.null","order":"memory_type.asc","limit":"20"}
         rows=await self.db("GET","agent_memory_policies",params=p)
@@ -61,22 +66,16 @@ class MemoryCoordinator:
             rows=await self.db("POST","agent_memory_policies",params={"select":"*"},body=body,prefer="return=representation")
         if not isinstance(rows,list) or len(rows)!=1: raise MemoryUnavailable("Memory policy was not persisted")
         policy=rows[0]
-        await self.event(owner_id,agent_id,policy["id"],None,"policy_enabled" if enabled else "policy_disabled",
-                         {"memory_type":memory_type,"policy_version":policy["policy_version"],"retention_days":retention_days})
+        await self.transition("policy_event",owner_id,agent_id,payload={"policy_id":policy["id"],"enabled":enabled,
+            "memory_type":memory_type,"policy_version":policy["policy_version"],"retention_days":retention_days})
         return policy
 
     async def event(self,owner_id,agent_id,policy_id,item_id,event_type,details):
-        await self.db("POST","agent_memory_events",body={"owner_user_id":owner_id,"agent_id":agent_id,
-            "policy_id":policy_id,"item_id":item_id,"actor_user_id":owner_id,"event_type":event_type,"details":details},prefer="return=minimal")
+        # Lifecycle item events are written atomically by agent_memory_transition.
+        return None
 
     async def expire(self,owner_id,agent_id):
-        now=datetime.now(timezone.utc).isoformat()
-        p={"owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}" if agent_id else "is.null",
-           "status":"in.(proposed,active)","retention_expires_at":f"lte.{now}","select":"id,policy_id,agent_id,memory_type,content_sha256"}
-        rows=await self.db("PATCH","agent_memory_items",params=p,body={"status":"expired","updated_at":now},prefer="return=representation")
-        for row in rows or []:
-            await self.event(owner_id,agent_id,row.get("policy_id"),row["id"],"memory_expired",
-                             {"memory_type":row["memory_type"],"content_sha256":row["content_sha256"]})
+        return await self.transition("expire",owner_id,agent_id)
 
     async def items(self,owner_id,agent_id,*,memory_type=None,status=None,limit=50):
         p={"select":"id,policy_id,agent_id,memory_type,visibility_scope,purpose,classification,content,content_sha256,source_ref,provenance,confidence,version,policy_version,status,retention_expires_at,approved_at,created_at,updated_at",
@@ -98,6 +97,9 @@ class MemoryCoordinator:
             raise MemoryDenied("Memory proposal contract is invalid")
         if len(str(source_ref).encode())>4096 or len(str(provenance).encode())>4096 or (confidence is not None and not 0<=confidence<=1):
             raise MemoryDenied("Memory provenance or confidence is invalid")
+        if agent_id:
+            owned=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
+            if not owned: raise MemoryDenied("Agent ownership is no longer active")
         policy=next((p for p in await self.policies(owner_id,agent_id) if p["memory_type"]==memory_type),None)
         if not policy or not policy["enabled"] or policy.get("consent_version")!=CONSENT_VERSION or policy.get("consent_revoked_at"):
             raise MemoryDenied("Memory is disabled until the owner explicitly consents")
@@ -107,58 +109,30 @@ class MemoryCoordinator:
         if ttl<1 or ttl>int(policy["retention_days"]) or (memory_type=="working" and ttl!=1):
             raise MemoryDenied("Memory retention exceeds the owner policy")
         digest=hashlib.sha256(content.encode()).hexdigest()
-        now=datetime.now(timezone.utc); expires=(now+timedelta(days=ttl)).isoformat()
-        body={"policy_id":policy["id"],"owner_user_id":owner_id,"agent_id":agent_id,"memory_type":memory_type,
-              "visibility_scope":"owner_private" if not agent_id else "agent_private","purpose":purpose,"classification":classification,
-              "content":content,"content_sha256":digest,"source_ref":source_ref,"provenance":provenance,"confidence":confidence,
-              "policy_version":policy["policy_version"],"status":"proposed","retention_expires_at":expires,"created_by":owner_id}
-        rows=await self.db("POST","agent_memory_items",params={"select":"id,policy_id,agent_id,memory_type,status,content_sha256,policy_version"},body=body,prefer="return=representation")
-        if not isinstance(rows,list) or len(rows)!=1: raise MemoryUnavailable("Memory proposal was not created")
-        row=rows[0]
-        await self.event(owner_id,agent_id,policy["id"],row["id"],"memory_proposed",{"memory_type":memory_type,"purpose":purpose,"classification":classification,"content_sha256":digest,"policy_version":policy["policy_version"]})
+        expires=(datetime.now(timezone.utc)+timedelta(days=ttl)).isoformat()
+        row=await self.transition("create_proposal",owner_id,agent_id,payload={
+            "policy_id":policy["id"],"memory_type":memory_type,"purpose":purpose,"classification":classification,
+            "content":content,"content_sha256":digest,"source_ref":source_ref,"provenance":provenance,
+            "confidence":confidence,"retention_expires_at":expires})
+        if not isinstance(row,dict) or not row.get("id"): raise MemoryUnavailable("Memory proposal was not created")
         return row
 
     async def decide(self,owner_id,item_id,decision):
         if decision not in ("approve","reject"): raise MemoryDenied("Decision must be approve or reject")
-        rows=await self.db("GET","agent_memory_items",params={"select":"id,policy_id,agent_id,memory_type,policy_version,status,retention_expires_at","id":f"eq.{item_id}","owner_user_id":f"eq.{owner_id}","limit":"1"})
-        if not rows:return None
-        item=rows[0]
-        if item["status"]!="proposed" or item["retention_expires_at"]<=datetime.now(timezone.utc).isoformat():return None
-        if decision=="approve":
-            if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true": raise MemoryUnavailable("Memory activation is disabled")
-            policies=await self.policies(owner_id,item.get("agent_id"))
-            policy=next((p for p in policies if p["id"]==item["policy_id"]),None)
-            if not policy or not policy["enabled"] or policy["policy_version"]!=item["policy_version"]: raise MemoryDenied("Policy changed; a new proposal is required")
-        now=datetime.now(timezone.utc).isoformat()
-        rows=await self.db("PATCH","agent_memory_items",params={"id":f"eq.{item_id}","owner_user_id":f"eq.{owner_id}","status":"eq.proposed","select":"id"},
-            body={"status":"active" if decision=="approve" else "rejected","approved_by":owner_id if decision=="approve" else None,
-                  "approved_at":now if decision=="approve" else None,"updated_at":now},prefer="return=representation")
-        if not rows:return None
-        await self.event(owner_id,item.get("agent_id"),item["policy_id"],item_id,"memory_approved" if decision=="approve" else "memory_rejected",{"policy_version":item["policy_version"]})
-        return rows[0]
+        if decision=="approve" and os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":
+            raise MemoryUnavailable("Memory activation is disabled")
+        result=await self.transition("decide",owner_id,item_id=item_id,payload={"decision":decision})
+        return result if isinstance(result,dict) else None
 
     async def correct(self,owner_id,item_id,content):
         if not content.strip() or len(content)>8000: raise MemoryDenied("Corrected Memory content is invalid")
-        old=await self.db("GET","agent_memory_items",params={"select":"policy_id,agent_id,version,status","id":f"eq.{item_id}","owner_user_id":f"eq.{owner_id}","limit":"1"})
-        if not old or old[0]["status"]!="active":return None
-        item=old[0]; now=datetime.now(timezone.utc).isoformat(); digest=hashlib.sha256(content.encode()).hexdigest()
-        rows=await self.db("PATCH","agent_memory_items",params={"id":f"eq.{item_id}","owner_user_id":f"eq.{owner_id}","status":"eq.active","select":"id"},
-            body={"content":content,"content_sha256":digest,"version":int(item["version"])+1,"updated_at":now},prefer="return=representation")
-        if not rows:return None
-        await self.event(owner_id,item.get("agent_id"),item["policy_id"],item_id,"memory_corrected",{"version":int(item["version"])+1,"content_sha256":digest})
-        return rows[0]
+        result=await self.transition("correct",owner_id,item_id=item_id,payload={
+            "content":content,"content_sha256":hashlib.sha256(content.encode()).hexdigest()})
+        return result if isinstance(result,dict) else None
 
     async def delete(self,owner_id,item_id):
-        old=await self.db("GET","agent_memory_items",params={"select":"policy_id,agent_id,content_sha256,status","id":f"eq.{item_id}","owner_user_id":f"eq.{owner_id}","limit":"1"})
-        if not old:return None
-        item=old[0]
-        if item["status"]!="deleted":
-            now=datetime.now(timezone.utc).isoformat()
-            rows=await self.db("PATCH","agent_memory_items",params={"id":f"eq.{item_id}","owner_user_id":f"eq.{owner_id}","select":"id"},
-                body={"status":"deleted","deleted_at":now,"updated_at":now},prefer="return=representation")
-            if not rows:return None
-            await self.event(owner_id,item.get("agent_id"),item["policy_id"],item_id,"memory_deleted",{"content_sha256":item["content_sha256"],"derived_memory_index_exists":False})
-        return {"id":item_id,"status":"deleted"}
+        result=await self.transition("delete",owner_id,item_id=item_id)
+        return result if isinstance(result,dict) else None
 
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
