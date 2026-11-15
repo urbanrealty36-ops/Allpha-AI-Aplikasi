@@ -4,7 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import MessagesView from "../../components/reference-ui/MessagesView";
 type Conversation={id:string;title?:string|null;kind:"human"|"agent";participants?:{user_id?:string;agent_id?:string;participant_type:string}[];last_message?:{body:string;created_at:string;delivery_status:string}};
-type Message={id:string;body:string;sender_type:string;sender_user_id?:string;created_at:string;delivery_status:string;client_message_id?:string};
+type Message={id:string;body:string;sender_type:string;sender_user_id?:string;created_at:string;delivery_status:string;client_message_id?:string;generation_job_id?:string|null};
 type Payload<T>={items?:T[];conversation?:Conversation;message?:Message;error?:{message?:string};detail?:{message?:string}};
 const apiBase=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
 export default function MessagesPage(){
@@ -41,7 +41,7 @@ export default function MessagesPage(){
     <div className="min-w-0"><h1 className="truncate text-sm font-black uppercase text-slate-950">{active.title || (active.kind === "agent" ? "Percakapan AI Agent" : "Percakapan Human")}</h1><p className="text-[10px] font-bold text-slate-600">Realtime: {realtimeStatus}</p></div>
    </header>
    <div className="flex-1 space-y-3 overflow-y-auto rounded-3xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]">
-    {messages.map(m => <article key={m.id} className={"max-w-[85%] rounded-2xl border-2 border-slate-900 p-3 shadow-[2px_2px_0px_#0f172a] " + (m.sender_user_id === session.user.id ? "ml-auto bg-sky-100" : "bg-white")}><p className="whitespace-pre-wrap break-words text-sm text-slate-900">{m.body}</p><p className="mt-2 text-[10px] font-semibold text-slate-500">{new Date(m.created_at).toLocaleString("id-ID")} · {m.delivery_status}</p></article>)}
+    {messages.map(m => <article key={m.id} className={"max-w-[85%] rounded-2xl border-2 border-slate-900 p-3 shadow-[2px_2px_0px_#0f172a] " + (m.sender_user_id === session.user.id ? "ml-auto bg-sky-100" : "bg-white")}><p className="whitespace-pre-wrap break-words text-sm text-slate-900">{m.body}</p>{m.generation_job_id && <a href={"/generate?job_id=" + encodeURIComponent(m.generation_job_id)} className="mt-3 inline-flex rounded-xl border-2 border-slate-900 bg-violet-200 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]">Buka hasil Generate privat</a>}<p className="mt-2 text-[10px] font-semibold text-slate-500">{new Date(m.created_at).toLocaleString("id-ID")} · {m.delivery_status}</p></article>)}
     {!messages.length && <p className="py-10 text-center text-xs font-bold text-slate-500">Belum ada pesan pada percakapan ini.</p>}
    </div>
    <form onSubmit={e => { e.preventDefault(); void send(); }} className="mt-3 flex gap-2 rounded-2xl border-2 border-slate-900 bg-white p-2 shadow-[3px_3px_0px_#0f172a]">
