@@ -903,6 +903,7 @@ async def get_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(c
 
 @router.get("/admin/review-queue")
 async def generation_output_review_queue(
+    request: Request,
     limit: int = 50,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
 ) -> dict[str, Any]:
@@ -914,7 +915,7 @@ async def generation_output_review_queue(
         "order": "created_at.asc", "limit": str(limit),
     })
     items = rows or []
-    await write_operator_audit(None, actor_user_id=str(operator["id"]), action="generation.output_review_queue.read",
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="generation.output_review_queue.read",
         outcome="allowed", resource_type="generation_output_queue", resource_id="pending",
         metadata={"count": len(items)})
     return {"items": items, "limit": limit}
@@ -923,6 +924,7 @@ async def generation_output_review_queue(
 @router.get("/admin/jobs/{job_id}/artifact")
 async def generation_output_review_artifact(
     job_id: uuid.UUID,
+    request: Request,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
 ) -> dict[str, Any]:
     rows = await _admin_request("GET", "generation_jobs", params={
@@ -936,7 +938,7 @@ async def generation_output_review_artifact(
     if job.get("artifact_bucket") != "generation-artifacts" or not job.get("artifact_path") or not job.get("output_sha256"):
         raise HTTPException(409, detail={"code": "GENERATION_REVIEW_ARTIFACT_UNAVAILABLE", "message": "Artefak privat belum memiliki bukti penyimpanan yang lengkap."})
     signed = await _signed_generation_artifact(job["artifact_bucket"], job["artifact_path"], expires_in=180)
-    await write_operator_audit(None, actor_user_id=str(operator["id"]), action="generation.output_review.preview",
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="generation.output_review.preview",
         outcome="allowed", resource_type="generation_job", resource_id=str(job_id),
         metadata={"expires_in_seconds": 180, "output_sha256": job["output_sha256"]})
     return {"job_id": str(job_id), "url": signed, "expires_in_seconds": 180, "visibility": "private"}
