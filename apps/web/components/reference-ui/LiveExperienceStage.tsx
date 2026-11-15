@@ -142,7 +142,7 @@ export default function LiveExperienceStage({
   };
 
   // Checkout is fail-closed until a canonical order/payment adapter is connected.
-  const handleConfirmDirectCheckout = async (e: React.FormEvent) => {
+  const handleConfirmDirectCheckout = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (!onCheckout || !checkoutModalProduct || isProcessingCheckout) {
       setStageToast('Checkout Live belum terhubung ke layanan pesanan dan pembayaran.');
