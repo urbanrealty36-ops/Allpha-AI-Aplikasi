@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { 
   Wand2, 
   Sparkles, 
@@ -20,48 +20,20 @@ import {
   Eye,
   Trash2
 } from 'lucide-react';
-import { PostItem } from '@/lib/store';
+export type GenerateContentType = 'REELS_BRAND' | 'FEED_POST' | 'DOCUMENT_PROPOSAL' | 'CAMPAIGN_SUITE';
+
+export interface GenerateRequest {
+  contentType: GenerateContentType;
+  brandName: string;
+  productDetails: string;
+  brief: string;
+}
 
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  contextPost: PostItem | null;
-  onRewardTriggered: (brandName: string, query: string) => void;
+  onGenerate: (request: GenerateRequest) => Promise<string | null>;
 }
-
-type ContentType = 'REELS_BRAND' | 'FEED_POST' | 'DOCUMENT_PROPOSAL' | 'CAMPAIGN_SUITE';
-
-interface BrandPreset {
-  name: string;
-  product: string;
-  logoUrl: string;
-  productUrl: string;
-  color: string;
-}
-
-const PRESET_BRANDS: BrandPreset[] = [
-  {
-    name: 'Kopi Nusantara Artisan',
-    product: 'Cold Brew Kemasan Ramah Lingkungan 250ml',
-    logoUrl: 'https://picsum.photos/seed/kopi-logo/150/150',
-    productUrl: 'https://picsum.photos/seed/kopi-product/300/300',
-    color: '#D97706',
-  },
-  {
-    name: 'GlowWear Cybertech',
-    product: 'Jaket Armor Cyberpunk dengan Neon Glow 3D',
-    logoUrl: 'https://picsum.photos/seed/glow-logo/150/150',
-    productUrl: 'https://picsum.photos/seed/glow-jacket/300/300',
-    color: '#06B6D4',
-  },
-  {
-    name: 'Spatial Studio 3D',
-    product: 'Asset Pack Modeling Virtual Worlds & District',
-    logoUrl: 'https://picsum.photos/seed/spatial-logo/150/150',
-    productUrl: 'https://picsum.photos/seed/spatial-city/300/300',
-    color: '#9333EA',
-  },
-];
 
 export default function GenerateModal({
   isOpen,
@@ -174,7 +146,7 @@ export default function GenerateModal({
       setResult(data.text);
       onRewardTriggered(brandName, query);
     } catch {
-      setResult(`✨ Konten berhasil digenerate oleh AI Agent dengan branding ${brandName}. File siap dikirimkan ke Direct Message.`);
+      setResult(`✨ Hasil generation dari AI Agent dengan branding ${brandName}. Hasil akan tersedia setelah backend mengonfirmasi artefak dan DM.`);
       onRewardTriggered(brandName, query);
     } finally {
       setIsLoading(false);
@@ -273,29 +245,13 @@ export default function GenerateModal({
             <span>Mekanisme Challenge & Transfer Kredit:</span>
           </p>
           <p className="text-[11px] font-medium text-slate-700">
-            AI Agent mempelajari Nama Brand, Logo, dan Aset Produk yang Anda unggah untuk membuat konten yang selaras. Sesi ini memotong 15 AI Credits Anda dan mentransfernya ke pemilik AI Agent.
+            Generation memakai Agent, Skill, Knowledge, tarif dan Model Router yang disetujui. AI Credits baru direservasi setelah quote backend dikonfirmasi; reward pemilik Agent hanya berlaku jika policy reward disetujui.
           </p>
         </div>
 
-        {/* Quick Brand Preset Shortcuts */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="font-black text-slate-900">Contoh Cepat Preset Brand:</span>
-            <span className="text-slate-500 font-bold">1-Klik Pasang</span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {PRESET_BRANDS.map((b) => (
-              <button
-                key={b.name}
-                type="button"
-                onClick={() => handleApplyPreset(b)}
-                className="shrink-0 px-3 py-1.5 rounded-2xl border-2 border-slate-900 bg-amber-50 hover:bg-amber-100 text-xs font-black text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-2 cursor-pointer"
-              >
-                <img src={b.logoUrl} alt={b.name} className="w-5 h-5 rounded-full object-cover border border-slate-900" />
-                <span className="truncate max-w-[130px]">{b.name}</span>
-              </button>
-            ))}
-          </div>
+        {/* Brand presets are intentionally not seeded with demo business data. */}
+        <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 p-3 text-[11px] font-semibold leading-relaxed text-slate-800 shadow-[2px_2px_0px_#0f172a]">
+          Preset brand akan muncul setelah katalog Brand/Business terhubung ke API kanonis. Masukkan identitas brand Anda sendiri; tidak ada contoh bisnis yang diperlakukan sebagai data nyata.
         </div>
 
         {/* Form Inputs */}
@@ -326,136 +282,10 @@ export default function GenerateModal({
             />
           </div>
 
-          {/* ======================================================== */}
-          {/* UPLOAD LOGO & PRODUCT ASSET (IMAGE OR VIDEO)            */}
-          {/* ======================================================== */}
-          <div className="p-4 rounded-3xl bg-purple-50 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3">
-            <h3 className="font-black text-xs text-slate-950 flex items-center gap-1.5">
-              <Upload className="w-4 h-4 text-purple-700 stroke-[2.5px]" />
-              <span>Unggah Aset Visual Logo & Produk (Image / Video)</span>
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* 1. LOGO ASSET PICKER */}
-              <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-[11px] text-slate-950">1. Logo Brand:</span>
-                  {logoMedia && (
-                    <button
-                      onClick={() => setLogoMedia(null)}
-                      className="text-slate-500 hover:text-rose-600 transition cursor-pointer"
-                      title="Hapus Logo"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {logoMedia ? (
-                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-purple-50 border-2 border-slate-900">
-                    <img
-                      src={logoMedia.url}
-                      alt="Logo Brand"
-                      className="w-10 h-10 rounded-xl object-cover border border-slate-900 shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-black text-slate-950 truncate">
-                        {logoMedia.name}
-                      </p>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-200 border border-slate-900 text-purple-950 font-black">
-                        {logoMedia.type === 'video' ? 'Video Logo' : 'Logo Terverifikasi'}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-3 text-slate-400">
-                    <ImageIcon className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                    <p className="text-[10px] font-bold">Belum ada logo dipilih</p>
-                  </div>
-                )}
-
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => logoInputRef.current?.click()}
-                  className="w-full py-2 rounded-xl border-2 border-slate-900 bg-purple-100 hover:bg-purple-200 text-purple-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
-                  <span>Pilih File Logo (JPG/PNG/MP4)</span>
-                </button>
-              </div>
-
-              {/* 2. PRODUCT ASSET PICKER */}
-              <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-[11px] text-slate-950">2. Aset Produk:</span>
-                  {productMedia && (
-                    <button
-                      onClick={() => setProductMedia(null)}
-                      className="text-slate-500 hover:text-rose-600 transition cursor-pointer"
-                      title="Hapus Aset Produk"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {productMedia ? (
-                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-cyan-50 border-2 border-slate-900">
-                    <img
-                      src={productMedia.url}
-                      alt="Produk"
-                      className="w-10 h-10 rounded-xl object-cover border border-slate-900 shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-black text-slate-950 truncate">
-                        {productMedia.name}
-                      </p>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-200 border border-slate-900 text-cyan-950 font-black">
-                        {productMedia.type === 'video' ? 'Video Produk' : 'Foto Produk Siap'}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-3 text-slate-400">
-                    <Video className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                    <p className="text-[10px] font-bold">Belum ada produk dipilih</p>
-                  </div>
-                )}
-
-                <input
-                  ref={productInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={handleProductUpload}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => productInputRef.current?.click()}
-                  className="w-full py-2 rounded-xl border-2 border-slate-900 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
-                  <span>Pilih File Produk (Foto/Video)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* AI Vision Badge */}
-            <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-purple-100 border-2 border-slate-900 text-purple-950 text-[11px] shadow-2xs font-semibold">
-              <Sparkles className="w-4 h-4 text-purple-800 shrink-0 stroke-[2.5px]" />
-              <span>
-                <strong>AI Vision Engine:</strong> AI Agent membaca logo, nama brand, dan aset produk untuk disematkan otomatis ke naskah dan draf konten.
-              </span>
-            </div>
+          <div className="rounded-3xl border-2 border-slate-900 bg-purple-50 p-4 text-xs leading-relaxed text-slate-800 shadow-[3px_3px_0px_#0f172a]">
+            <h3 className="mb-1 flex items-center gap-2 font-black text-slate-950"><Upload className="h-4 w-4"/> Upload logo & aset produk</h3>
+            <p>Upload media belum diaktifkan pada modal ini karena harus melewati upload-intent, quarantine, validasi, pemrosesan dan hak akses Media Pipeline melalui FastAPI. File lokal tidak akan dianggap tersimpan atau diproses oleh AI.</p>
+            <p className="mt-2 font-bold text-purple-950">Gunakan brief teks untuk saat ini. Integrasi upload akan diaktifkan setelah kontrak media kanonis tersedia.</p>
           </div>
 
           <div>
@@ -471,21 +301,24 @@ export default function GenerateModal({
             />
           </div>
 
-          {/* Action Button */}
+          {error && <p role="alert" className="rounded-xl border-2 border-rose-500 bg-rose-50 p-3 text-[11px] font-bold text-rose-800">{error}</p>}
+        {notice && <p role="status" className="rounded-xl border-2 border-emerald-500 bg-emerald-50 p-3 text-[11px] font-bold text-emerald-900">{notice}</p>}
+
+        {/* Action Button */}
           <button
             onClick={handleGenerate}
-            disabled={isLoading || !brandName}
+            disabled={isLoading || !brandName.trim() || !productDetails.trim() || !customBrief.trim()}
             className="w-full py-3 rounded-2xl bg-purple-300 hover:bg-purple-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             {isLoading ? (
               <>
                 <Sparkles className="w-4 h-4 animate-spin stroke-[2.5px]" />
-                <span>AI Agent Sedang Menganalisis Logo & Menulis Konten...</span>
+                <span>AI Agent sedang memproses Generation Job...</span>
               </>
             ) : (
               <>
                 <Wand2 className="w-4 h-4 stroke-[2.5px]" />
-                <span>Generate & Kirim File ke DM (-15 Cr)</span>
+                <span>Minta Quote & Generate</span>
               </>
             )}
           </button>
