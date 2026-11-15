@@ -22,7 +22,7 @@ class WorkflowValidationError(ValueError):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     key: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$")
-    kind: Literal["input", "constant", "pass_through", "concat", "merge", "agent_task", "memory_context"]
+    kind: Literal["input", "constant", "pass_through", "concat", "merge", "agent_task"]
     config: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=5, ge=1, le=30)
 
@@ -89,23 +89,6 @@ class WorkflowDefinition(BaseModel):
                     raise ValueError("agent_task config.schedule_id must be a UUID") from exc
             if node.kind == "concat" and node.config.get("separator", "") is not None and not isinstance(node.config.get("separator", ""), str):
                 raise ValueError("concat separator must be a string")
-            if node.kind == "memory_context":
-                allowed = {"agent_id", "purpose", "query", "limit"}
-                if set(node.config) - allowed or not isinstance(node.config.get("agent_id"), str):
-                    raise ValueError("memory_context nodes require agent_id and optional purpose/query/limit only")
-                try:
-                    uuid.UUID(node.config["agent_id"])
-                except ValueError as exc:
-                    raise ValueError("memory_context config.agent_id must be a UUID") from exc
-                purpose = node.config.get("purpose", "workflow_context")
-                if purpose not in {"agent_generation_context", "agent_runtime_context", "workflow_context", "personalization_context"}:
-                    raise ValueError("memory_context purpose is not supported")
-                query = node.config.get("query")
-                if query is not None and (not isinstance(query, str) or len(query) > 300):
-                    raise ValueError("memory_context query must be a string up to 300 characters")
-                limit = node.config.get("limit", 8)
-                if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 12:
-                    raise ValueError("memory_context limit must be between 1 and 12")
         return self
 
     def topological_nodes(self) -> list[WorkflowNode]:
