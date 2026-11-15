@@ -2868,3 +2868,8 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 
 **WP-11 collaborator access consistency fix (2026-11-15):**
 - Creator media submission now selects and verifies the actual media owner, processed timestamp and non-empty derivative manifest, not only the media ID. Creator credit reads/writes are available to active collaborators only when the `manage_credits` scope is present; title ownership remains the canonical owner ID.
+
+
+**WP-11/WP-12 operational status accuracy update (2026-11-15):**
+- Replaced hard-coded Cinema capability status values with read-only schema/policy/runtime availability checks. Creator Workspace now receives truthful configuration states for Generation Job/moderation, billing, playback entitlement, Qualified Watch, creator earnings, collaboration and film versioning. Missing source-only tables are reported as not applied rather than as implemented or ready.
+- Production security migration `20261115130000_wp11_cinema_client_write_lockdown` was applied to canonical Supabase project `dvdziauyvuhcnqhrrvww`. Post-apply read-only verification confirms `anon` and `authenticated` retain SELECT only on `cinema_titles` and `cinema_episodes`; direct DML grants are absent, and owner INSERT/UPDATE policies were removed. FastAPI service-role access remains.

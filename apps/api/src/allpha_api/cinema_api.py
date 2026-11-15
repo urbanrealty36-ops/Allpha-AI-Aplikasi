@@ -307,10 +307,50 @@ async def creator_ready_media(user: dict[str, Any] = Depends(current_user)) -> d
 
 
 @router.get("/creator/status")
-async def creator_capability_status(user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
-    # The endpoint reports configuration only; it never exposes balances or estimates.
-    policies = await _db("GET","credit_policy_versions",params={"select":"policy_version,status","status":"eq.approved","limit":"1"})
-    return {"catalog":"available","project_drafts":"available","media":"existing_content_media_pipeline","generation":"unavailable" if not policies else "policy_present_runtime_unverified","generation_jobs":"not_implemented","billing":"not_configured","playback_entitlement":"not_configured","generation_reason":None if policies else "APPROVED_CREDIT_POLICY_MISSING","billing_reason":"PAYMENT_PROVIDER_AND_BILLING_POLICY_NOT_APPROVED","entitlement_reason":"PLAYBACK_ENTITLEMENT_CONTRACT_NOT_IMPLEMENTED"}
+async def creator_capability_status(request: Request,user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
+    async def available(table: str) -> bool:
+        try:
+            await _db("GET",table,params={"select":"*","limit":"1"})
+            return True
+        except HTTPException:
+            return False
+
+    policies = await _db("GET","credit_policy_versions",params={
+        "select":"policy_version,status","status":"eq.approved","limit":"1",
+    })
+    checks = {}
+    for table in ("generation_jobs","generation_output_moderation_policies","billing_products",
+                  "billing_subscriptions","playback_entitlements","cinema_subscription_plans",
+                  "cinema_access_policy_versions","cinema_watch_policy_versions",
+                  "cinema_qualified_watches","cinema_creator_earnings","cinema_film_versions",
+                  "cinema_collaborators"):
+        checks[table] = await available(table)
+
+    model_router = getattr(request.app.state,"text_generation_router",None)
+    generation_ready = bool(policies and checks["generation_jobs"] and checks["generation_output_moderation_policies"] and model_router)
+    billing_ready = all(checks[x] for x in ("billing_products","billing_subscriptions"))
+    entitlement_ready = all(checks[x] for x in ("playback_entitlements","cinema_subscription_plans","cinema_access_policy_versions"))
+    qualified_watch_ready = all(checks[x] for x in ("cinema_watch_policy_versions","cinema_qualified_watches"))
+    creator_economy_ready = checks["cinema_creator_earnings"] and checks["cinema_creator_earning_policy_versions"] if "cinema_creator_earning_policy_versions" in checks else checks["cinema_creator_earnings"]
+    return {
+        "catalog":"available","project_drafts":"available","media":"existing_content_media_pipeline",
+        "generation":"configured" if generation_ready else "blocked_until_job_schema_moderation_policy_and_model_router_are_ready",
+        "generation_jobs":"available" if checks["generation_jobs"] else "source_only_not_applied",
+        "billing":"available" if billing_ready else "billing_schema_not_applied",
+        "playback_entitlement":"available" if entitlement_ready else "entitlement_or_access_policy_not_configured",
+        "qualified_watch":"available" if qualified_watch_ready else "watch_policy_schema_not_applied",
+        "creator_earnings":"available" if creator_economy_ready else "creator_earning_schema_not_applied",
+        "creator_collaboration":"available" if checks["cinema_collaborators"] else "collaboration_schema_not_applied",
+        "film_versioning":"available" if checks["cinema_film_versions"] else "film_version_schema_not_applied",
+        "generation_reason":None if generation_ready else "GENERATION_JOB_OR_MODERATION_OR_MODEL_ROUTER_NOT_READY",
+        "billing_reason":None if billing_ready else "BILLING_SCHEMA_NOT_APPLIED",
+        "entitlement_reason":None if entitlement_ready else "CINEMA_ENTITLEMENT_POLICY_NOT_CONFIGURED",
+        "qualified_watch_reason":None if qualified_watch_ready else "QUALIFIED_WATCH_POLICY_NOT_CONFIGURED",
+        "creator_economy_reason":None if creator_economy_ready else "CREATOR_EARNING_POLICY_NOT_CONFIGURED",
+    }
+
+
+
 
 class CinemaModerationCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
