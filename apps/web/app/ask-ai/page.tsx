@@ -93,8 +93,10 @@ export default function AskAiPage() {
     });
     if (!quoteResponse.ok) throw new Error(await readError(quoteResponse));
     const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; agent_snapshot_sha256: string; skill_snapshot_sha256: string; knowledge_context_sha256?: string | null };
-    if (!quote.quote_id || !quote.expires_at || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
-      throw new Error("Quote AI Credits tidak valid; generation dibatalkan.");
+    if (!quote.quote_id || !quote.expires_at || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0
+      || !/^[0-9a-f]{64}$/.test(quote.agent_snapshot_sha256 || "")
+      || !/^[0-9a-f]{64}$/.test(quote.skill_snapshot_sha256 || "")) {
+      throw new Error("Quote AI Credits atau snapshot Agent/Skill tidak valid; generation dibatalkan.");
     }
     const confirmed = window.confirm(`Estimasi penggunaan: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Quote berlaku 5 menit. Lanjutkan?`);
     if (!confirmed) throw new Error("Generation dibatalkan sebelum reservasi kredit.");
