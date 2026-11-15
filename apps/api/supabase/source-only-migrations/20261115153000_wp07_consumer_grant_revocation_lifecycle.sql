@@ -1,6 +1,6 @@
--- SOURCE ONLY — WP-07 external Consumer grant revocation and generation lifecycle.
+-- WP-07 external Consumer grant revocation and generation lifecycle.
 -- Revoke permission atomically with queued-job cancellation and running-job reconciliation.
--- Do not apply to canonical production or staging during the current source-only work window.
+-- Explicit Product Owner approval recorded 2026-11-16.
 begin;
 
 create table if not exists public.agent_consumer_grant_events (
