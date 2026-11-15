@@ -410,14 +410,15 @@ async def create_generation_job(
 
     prompt_hash = hashlib.sha256(payload.prompt.encode("utf-8")).hexdigest()
     existing = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,prompt_sha256,knowledge_context_sha256,agent_id,skill_id,capability_id,status,credits_to_reserve",
+        "select": "id,task_id,prompt_sha256,knowledge_context_sha256,consumer_grant_id,agent_id,skill_id,capability_id,status,credits_to_reserve",
         "owner_user_id": f"eq.{user['id']}", "idempotency_key": f"eq.{idempotency_key}", "limit": "1",
     })
     if existing:
         prior = existing[0]
         if (prior.get("prompt_sha256") != prompt_hash or str(prior.get("agent_id")) != str(payload.agent_id)
             or str(prior.get("skill_id")) != str(payload.skill_id) or prior.get("capability_id") != payload.capability_id
-            or prior.get("knowledge_context_sha256") != payload.quoted_knowledge_context_sha256):
+            or prior.get("knowledge_context_sha256") != payload.quoted_knowledge_context_sha256
+            or str(prior.get("consumer_grant_id") or "") != str(payload.consumer_grant_id or "")):
             raise HTTPException(409, detail={"code": "GENERATION_JOB_IDEMPOTENCY_CONFLICT", "message": "Idempotency-Key telah digunakan untuk permintaan generation yang berbeda."})
         return {"job_id": prior["id"], "task_id": prior["task_id"], "status": prior["status"],
             "idempotent_replay": True, "reserved_credits": prior.get("credits_to_reserve")}
@@ -425,6 +426,68 @@ async def create_generation_job(
     router_instance = getattr(request.app.state, "text_generation_router", None)
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum memiliki provider, model, policy, dan metering yang disetujui."})
+    if payload.consumer_grant_id is not None:
+        external = await _external_generation_context(payload, str(user["id"]), router_instance)
+        route = external["route"]
+        budget: ConsumerBudgetReservation = external["budget"]
+        max_output_tokens = payload.max_output_tokens or router_instance.max_output_tokens_for("public")
+        if max_output_tokens > router_instance.max_output_tokens_for("public"):
+            raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model publik."})
+        prompt_bytes = len(payload.prompt.encode("utf-8"))
+        estimated_usage_units = prompt_bytes + max_output_tokens
+        if estimated_usage_units > budget.max_usage_units:
+            raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
+        if budget.capability_id != payload.capability_id:
+            raise HTTPException(403, detail={"code": "CONSUMER_CAPABILITY_MISMATCH", "message": "Capability tidak cocok dengan grant generation."})
+        credits_to_reserve = estimated_usage_units * budget.credits_per_usage_unit
+        if payload.quoted_credits is not None and payload.quoted_credits != credits_to_reserve:
+            raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Estimasi AI Credits berubah. Minta quote baru."})
+        if payload.quoted_policy_version and payload.quoted_policy_version != budget.policy_version:
+            raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Policy generation berubah. Minta quote baru."})
+        if payload.quoted_tariff_version and payload.quoted_tariff_version != budget.tariff_version:
+            raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Tarif generation berubah. Minta quote baru."})
+        if payload.quoted_model_id and payload.quoted_model_id != str(route["model_id"]):
+            raise HTTPException(409, detail={"code": "GENERATION_QUOTE_STALE", "message": "Model generation berubah. Minta quote baru."})
+        if not budget.policy.allow_success_settlement:
+            raise HTTPException(503, detail={"code": "SETTLEMENT_POLICY_NOT_APPROVED", "message": "Settlement generation belum disetujui."})
+        task_id = str(uuid.uuid4())
+        trace_id = str(uuid.uuid4())
+        skill = external["skill"]
+        command = {
+            "owner_user_id": str(user["id"]),
+            "agent_owner_user_id": external["owner_id"],
+            "payer_user_id": external["payer_user_id"],
+            "consumer_grant_id": str(external["grant"]["id"]),
+            "payer_role": budget.payer_role,
+            "agent_id": str(payload.agent_id), "skill_id": str(payload.skill_id),
+            "source_version": int(skill["version"]), "capability_id": payload.capability_id,
+            "sensitivity": "public", "task_id": task_id, "trace_id": trace_id,
+            "idempotency_key": idempotency_key, "prompt": payload.prompt,
+            "prompt_sha256": prompt_hash, "knowledge_snapshot": {},
+            "knowledge_context_sha256": None, "max_output_tokens": max_output_tokens,
+            "timeout_ms": min(120000, max(100, int(route.get("max_latency_ms") or 30000))),
+            "estimated_usage_units": estimated_usage_units, "usage_unit": budget.usage_unit,
+            "estimated_cost_microunits": budget.max_cost_microunits, "cost_unit": budget.cost_unit,
+            "credits_to_reserve": credits_to_reserve, "credits_per_usage_unit": budget.credits_per_usage_unit,
+            "credit_scheme_version": budget.credit_scheme_version, "tariff_version": budget.tariff_version,
+            "entitlement_version": budget.entitlement_version, "policy_version": budget.policy_version,
+            "policy_approval_reference": budget.approval_reference,
+            "allow_success_settlement": budget.policy.allow_success_settlement,
+            "allow_definitive_failure_release": budget.policy.allow_definitive_failure_release,
+            "allow_partial_settlement": budget.policy.allow_partial_settlement,
+            "provider_id": route["provider_id"], "model_id": route["model_id"],
+            "model_version": route["model_version"], "pricing_version": budget.pricing_version,
+            "max_cost_microunits": budget.max_cost_microunits,
+        }
+        created = await _rpc("generation_create_job", command)
+        if not isinstance(created, dict) or not created.get("job_id"):
+            raise HTTPException(503, detail={"code": "GENERATION_JOB_NOT_CONFIRMED", "message": "Generation Job eksternal belum dapat dikonfirmasi."})
+        return {
+            "job_id": created["job_id"], "task_id": created.get("task_id"),
+            "status": created.get("status"), "idempotent_replay": bool(created.get("idempotent_replay")),
+            "reserved_credits": created.get("reserved_credits"),
+            "consumer_grant_id": str(external["grant"]["id"]), "payer_role": budget.payer_role,
+        }
     try:
         await router_instance.preflight("private")
         route = router_instance.route_snapshot_for("private")
@@ -504,6 +567,10 @@ async def create_generation_job(
     trace_id = str(uuid.uuid4())
     command = {
         "owner_user_id": str(user["id"]),
+        "agent_owner_user_id": str(user["id"]),
+        "payer_user_id": str(user["id"]),
+        "consumer_grant_id": None,
+        "payer_role": "agent_owner",
         "agent_id": str(payload.agent_id),
         "skill_id": str(payload.skill_id),
         "source_version": int(skill["version"]),
