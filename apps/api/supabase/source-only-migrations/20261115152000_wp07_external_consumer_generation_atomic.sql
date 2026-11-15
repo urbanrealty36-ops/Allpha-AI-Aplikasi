@@ -22,6 +22,8 @@ declare
   v_reservation_id uuid;
   v_agent_row public.ai_agents;
   v_skill_row public.agent_skills;
+  v_agent_snapshot jsonb;
+  v_skill_snapshot jsonb;
 begin
   if v_requester is null or v_agent_owner is null or v_payer is null
     or v_agent is null or v_skill is null
@@ -64,6 +66,29 @@ begin
   if not found or v_skill_row.version <> (p_command->>'source_version')::integer then
     raise exception 'GENERATION_SKILL_NOT_PUBLISHED_OR_VERSION_CHANGED' using errcode='42501';
   end if;
+
+  select sv.snapshot into v_skill_snapshot
+  from public.agent_skill_versions sv
+  where sv.skill_id=v_skill and sv.agent_id=v_agent and sv.version=v_skill_row.version
+  for share;
+  if not found or jsonb_typeof(v_skill_snapshot)<>'object'
+    or v_skill_snapshot->>'id'<>v_skill::text
+    or v_skill_snapshot->>'agent_id'<>v_agent::text
+    or v_skill_snapshot->>'status'<>'published'
+    or (v_skill_snapshot->>'version')::integer<>v_skill_row.version
+    or coalesce(btrim(v_skill_snapshot->>'instructions'),'')='' then
+    raise exception 'GENERATION_SKILL_EXECUTION_SNAPSHOT_UNAVAILABLE' using errcode='42501';
+  end if;
+
+  v_agent_snapshot := jsonb_build_object(
+    'id',v_agent_row.id,
+    'version',v_agent_row.version,
+    'display_name',v_agent_row.display_name,
+    'description',v_agent_row.description,
+    'persona',v_agent_row.persona,
+    'disclosure',v_agent_row.disclosure,
+    'boundaries',v_agent_row.boundaries
+  );
 
   if not exists (
     select 1 from public.agent_capabilities c
@@ -163,7 +188,8 @@ begin
 
   insert into public.generation_jobs(
     owner_user_id,agent_owner_user_id,payer_user_id,consumer_grant_id,
-    agent_id,agent_version,runtime_policy_version,skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
+    agent_id,agent_version,runtime_policy_version,agent_snapshot,skill_snapshot,skill_instructions_sha256,
+    skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
     prompt,prompt_sha256,knowledge_snapshot,knowledge_context_sha256,max_output_tokens,timeout_ms,
     estimated_usage_units,usage_unit,estimated_cost_microunits,cost_unit,credits_to_reserve,
     credits_per_usage_unit,credit_scheme_version,tariff_version,entitlement_version,policy_version,
@@ -171,7 +197,9 @@ begin
     allow_partial_settlement,reservation_id,provider_id,model_id,model_version,pricing_version,max_cost_microunits
   ) values (
     v_requester,v_agent_owner,v_payer,v_grant,
-    v_agent,v_agent_row.version,nullif(p_command->>'runtime_policy_version',''),v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',
+    v_agent,v_agent_row.version,nullif(p_command->>'runtime_policy_version',''),v_agent_snapshot,v_skill_snapshot,
+    encode(extensions.digest(v_skill_snapshot->>'instructions','sha256'),'hex'),
+    v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',
     p_command->>'sensitivity',v_task,p_command->>'trace_id',v_key,p_command->>'prompt',
     p_command->>'prompt_sha256',coalesce(p_command->'knowledge_snapshot','{}'::jsonb),
     nullif(p_command->>'knowledge_context_sha256',''),(p_command->>'max_output_tokens')::integer,
