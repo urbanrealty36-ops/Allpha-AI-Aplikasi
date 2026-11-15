@@ -2825,3 +2825,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Replaced the legacy catalogue playback response that returned signed media URLs directly with metadata-only episode projection. All private media URLs now require the authenticated playback-session endpoint and its access-policy, media-readiness, Premium entitlement and concurrent-stream checks.
 - Connected Web and Native playback controls to create a server-owned playback session before opening media. Web sends idempotent heartbeat events every 15 seconds and a finish event; Native creates an authenticated playback session before opening the temporary signed URL. No watch is marked qualified from a UI click or raw page impression.
 - Guest playback remains disabled until an approved policy explicitly enables it and a guest-session contract is implemented. Current source does not claim anonymous video playback is available.
+
+
+**WP-11/WP-12 production security forward-fix (2026-11-15):**
+- Read-only Supabase inspection confirmed `anon` and `authenticated` held INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER privileges on `cinema_titles` and `cinema_episodes`, with owner INSERT/UPDATE RLS policies. Web, Native and Super Admin Cinema clients call the canonical FastAPI routes and do not directly mutate these tables.
+- Added the narrow, reversible migration `20261115130000_wp11_cinema_client_write_lockdown.sql`: revoke direct client DML while preserving anonymous/authenticated SELECT and public/owner read policies; remove now-inert client owner-write policies. FastAPI server-side service-role writes remain unchanged.
+- Migration is committed to main; production apply and post-apply read-only privilege/policy verification are recorded separately. This does not apply the source-only Cinema subscription/qualified-watch/creator-economy schema and does not mark WP-11/WP-12 complete.
