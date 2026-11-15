@@ -12,13 +12,39 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user
+from allpha_api.operator_security import require_operator_scope, write_operator_audit
 from allpha_api.cinema_api import _db, _signed_media_preview_url
 
 router = APIRouter(prefix="/v1/cinema", tags=["cinema-lifecycle"])
+
+
+
+class CinemaPolicyDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    policy_version: str = Field(min_length=1,max_length=80,pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+    approval_reference: str = Field(min_length=3,max_length=160)
+    configuration: dict[str,Any]
+    effective_at: str
+    expires_at: str | None = None
+
+
+class CinemaPolicyApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=8,max_length=500)
+
+
+class CinemaPlanDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_key: str = Field(min_length=2,max_length=80,pattern=r"^[a-z0-9][a-z0-9._-]{1,79}$")
+    product_key: str = Field(min_length=1,max_length=120)
+    entitlement_key: str = Field(min_length=3,max_length=120)
+    entitlement_version: str = Field(min_length=1,max_length=80)
+    approval_reference: str = Field(min_length=3,max_length=160)
+    configuration: dict[str,Any] = Field(default_factory=dict)
 
 
 class CreatorCreditCreate(BaseModel):
@@ -550,5 +576,123 @@ async def snapshot_cinema_version(title_id: uuid.UUID,user: dict[str,Any]=Depend
     if not rows:
         raise HTTPException(503,detail={"code":"CINEMA_VERSION_SNAPSHOT_NOT_CONFIRMED","message":"Snapshot versi belum tersimpan."})
     return {"version":rows[0],"created":True}
+
+
+
+_POLICY_TABLES={"access":"cinema_access_policy_versions","watch":"cinema_watch_policy_versions","earning":"cinema_creator_earning_policy_versions"}
+
+
+def _validate_cinema_policy(kind:str,configuration:dict[str,Any])->None:
+    if kind=="access":
+        if configuration.get("territory_mode") not in {"global","allowlist","denylist"}:
+            raise HTTPException(422,detail={"code":"CINEMA_TERRITORY_POLICY_INVALID","message":"territory_mode harus global, allowlist, atau denylist."})
+        if configuration.get("maturity_mode") not in {"all_ages_only","age_verification"}:
+            raise HTTPException(422,detail={"code":"CINEMA_MATURITY_POLICY_INVALID","message":"maturity_mode belum valid."})
+        if not isinstance(configuration.get("free_preview_enabled"),bool) or not isinstance(configuration.get("premium_playback_enabled"),bool):
+            raise HTTPException(422,detail={"code":"CINEMA_ACCESS_FLAGS_REQUIRED","message":"Flag free preview dan premium playback wajib eksplisit."})
+        streams=configuration.get("max_concurrent_streams")
+        if not isinstance(streams,int) or not 1<=streams<=10:
+            raise HTTPException(422,detail={"code":"CINEMA_STREAM_LIMIT_INVALID","message":"max_concurrent_streams harus 1–10."})
+    elif kind=="watch":
+        seconds=configuration.get("minimum_watched_seconds")
+        ratio=configuration.get("minimum_completion_ratio")
+        window=configuration.get("unique_viewer_window_hours")
+        if not isinstance(seconds,int) or seconds<1 or not isinstance(ratio,(int,float)) or not 0<ratio<=1 or not isinstance(window,int) or not 1<=window<=8760:
+            raise HTTPException(422,detail={"code":"CINEMA_WATCH_POLICY_INVALID","message":"Ambang Qualified Watch, rasio completion dan unique-viewer window harus eksplisit."})
+        if configuration.get("fraud_review_required") is not True:
+            raise HTTPException(422,detail={"code":"CINEMA_FRAUD_REVIEW_REQUIRED","message":"Fraud review wajib diaktifkan untuk Qualified Watch."})
+    elif kind=="earning":
+        reward=configuration.get("creator_reward_credits_per_qualified_watch")
+        if not isinstance(reward,int) or reward<0:
+            raise HTTPException(422,detail={"code":"CINEMA_EARNING_POLICY_INVALID","message":"Nilai reward credits harus berupa integer non-negatif yang disetujui."})
+        if configuration.get("cash_payout_enabled") is not False:
+            raise HTTPException(422,detail={"code":"CINEMA_CASH_PAYOUT_DISABLED","message":"Cash payout belum dapat diaktifkan melalui policy ini."})
+    else:
+        raise HTTPException(404,detail={"code":"CINEMA_POLICY_KIND_UNKNOWN","message":"Jenis policy Cinema tidak dikenal."})
+
+
+@router.get("/admin/policies")
+async def admin_cinema_policies(request:Request,operator:dict[str,Any]=Depends(require_operator_scope("platform:billing.manage")))->dict[str,Any]:
+    result={}
+    for kind,table in _POLICY_TABLES.items():
+        rows=await _db("GET",table,params={"select":"*","order":"created_at.desc","limit":"100"})
+        result[kind]=rows or []
+    plans=await _db("GET","cinema_subscription_plans",params={"select":"*","order":"created_at.desc","limit":"100"})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.policy_registry.read",outcome="allowed",resource_type="cinema_policy_registry",metadata={"counts":{k:len(v) for k,v in result.items()},"plans":len(plans or [])})
+    return {"policies":result,"subscription_plans":plans or []}
+
+
+@router.post("/admin/policies/{kind}",status_code=201)
+async def create_cinema_policy(kind:str,payload:CinemaPolicyDraft,request:Request,
+                               operator:dict[str,Any]=Depends(require_operator_scope("platform:billing.manage")))->dict[str,Any]:
+    table=_POLICY_TABLES.get(kind)
+    if not table: raise HTTPException(404,detail={"code":"CINEMA_POLICY_KIND_UNKNOWN","message":"Jenis policy Cinema tidak dikenal."})
+    _validate_cinema_policy(kind,payload.configuration)
+    effective=_parse_time(payload.effective_at)
+    expiry=_parse_time(payload.expires_at)
+    if not effective or (expiry and expiry<=effective):
+        raise HTTPException(422,detail={"code":"CINEMA_POLICY_WINDOW_INVALID","message":"Periode efektif policy tidak valid."})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.policy.create",outcome="attempted",resource_type="cinema_policy",resource_id=payload.policy_version,metadata={"kind":kind,"approval_reference":payload.approval_reference})
+    rows=await _db("POST",table,payload={
+        "policy_version":payload.policy_version,"approval_reference":payload.approval_reference,
+        "configuration":payload.configuration,"status":"draft","effective_at":effective.isoformat(),
+        "expires_at":expiry.isoformat() if expiry else None,"created_by":str(operator["id"]),
+    },prefer="return=representation")
+    if not rows: raise HTTPException(503,detail={"code":"CINEMA_POLICY_CREATE_UNCONFIRMED","message":"Draft policy belum tersimpan."})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.policy.create",outcome="allowed",resource_type="cinema_policy",resource_id=payload.policy_version,metadata={"kind":kind})
+    return {"policy":rows[0]}
+
+
+@router.post("/admin/policies/{kind}/{policy_version}/approve")
+async def approve_cinema_policy(kind:str,policy_version:str,payload:CinemaPolicyApproval,request:Request,
+                                operator:dict[str,Any]=Depends(require_operator_scope("platform:billing.manage")))->dict[str,Any]:
+    table=_POLICY_TABLES.get(kind)
+    if not table: raise HTTPException(404,detail={"code":"CINEMA_POLICY_KIND_UNKNOWN","message":"Jenis policy Cinema tidak dikenal."})
+    rows=await _db("GET",table,params={"select":"policy_version,approval_reference,configuration,status,effective_at,expires_at,created_by","policy_version":"eq."+policy_version,"limit":"1"})
+    if not rows: raise HTTPException(404,detail={"code":"CINEMA_POLICY_NOT_FOUND","message":"Draft policy tidak ditemukan."})
+    row=rows[0]
+    if row.get("status")!="draft" or row.get("created_by")==str(operator["id"]):
+        raise HTTPException(409,detail={"code":"CINEMA_POLICY_FOUR_EYES_REQUIRED","message":"Policy harus disetujui operator berbeda dari pembuatnya dan masih berstatus draft."})
+    _validate_cinema_policy(kind,row.get("configuration") or {})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.policy.approve",outcome="attempted",resource_type="cinema_policy",resource_id=policy_version,metadata={"kind":kind,"reason":payload.reason})
+    changed=await _db("PATCH",table,params={"policy_version":"eq."+policy_version,"status":"eq.draft","created_by":"neq."+str(operator["id"])},payload={
+        "status":"approved","approved_by":str(operator["id"]),
+    },prefer="return=representation")
+    if not changed: raise HTTPException(409,detail={"code":"CINEMA_POLICY_APPROVAL_CONFLICT","message":"Policy berubah saat persetujuan."})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.policy.approve",outcome="allowed",resource_type="cinema_policy",resource_id=policy_version,metadata={"kind":kind,"reason":payload.reason})
+    return {"policy":changed[0]}
+
+
+@router.post("/admin/subscription-plans",status_code=201)
+async def create_cinema_subscription_plan(payload:CinemaPlanDraft,request:Request,
+                                          operator:dict[str,Any]=Depends(require_operator_scope("platform:billing.manage")))->dict[str,Any]:
+    products=await _db("GET","billing_products",params={"select":"product_key,status,purpose","product_key":"eq."+payload.product_key,"status":"eq.active","purpose":"eq.premium_subscription","limit":"1"})
+    if not products:
+        raise HTTPException(409,detail={"code":"CINEMA_BILLING_PRODUCT_NOT_ACTIVE","message":"Plan harus menunjuk billing product premium yang aktif dan telah disetujui."})
+    rows=await _db("POST","cinema_subscription_plans",payload={
+        "plan_key":payload.plan_key,"product_key":payload.product_key,"entitlement_key":payload.entitlement_key,
+        "entitlement_version":payload.entitlement_version,"approval_reference":payload.approval_reference,
+        "configuration":payload.configuration,"status":"draft","created_by":str(operator["id"]),
+    },prefer="return=representation")
+    if not rows: raise HTTPException(503,detail={"code":"CINEMA_PLAN_CREATE_UNCONFIRMED","message":"Draft subscription plan belum tersimpan."})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.subscription_plan.create",outcome="allowed",resource_type="cinema_subscription_plan",resource_id=payload.plan_key,metadata={"product_key":payload.product_key,"approval_reference":payload.approval_reference})
+    return {"plan":rows[0]}
+
+
+@router.post("/admin/subscription-plans/{plan_key}/activate")
+async def activate_cinema_subscription_plan(plan_key:str,payload:CinemaPolicyApproval,request:Request,
+                                            operator:dict[str,Any]=Depends(require_operator_scope("platform:billing.manage")))->dict[str,Any]:
+    plans=await _db("GET","cinema_subscription_plans",params={"select":"plan_key,product_key,approval_reference,status,created_by","plan_key":"eq."+plan_key,"limit":"1"})
+    if not plans: raise HTTPException(404,detail={"code":"CINEMA_PLAN_NOT_FOUND","message":"Plan tidak ditemukan."})
+    plan=plans[0]
+    if plan.get("status")!="draft" or plan.get("created_by")==str(operator["id"]):
+        raise HTTPException(409,detail={"code":"CINEMA_PLAN_FOUR_EYES_REQUIRED","message":"Plan harus disetujui operator berbeda dari pembuatnya."})
+    products=await _db("GET","billing_products",params={"select":"product_key,status,purpose","product_key":"eq."+str(plan["product_key"]),"status":"eq.active","purpose":"eq.premium_subscription","limit":"1"})
+    if not products or not plan.get("approval_reference"):
+        raise HTTPException(409,detail={"code":"CINEMA_PLAN_NOT_APPROVED","message":"Product billing atau approval reference belum valid."})
+    changed=await _db("PATCH","cinema_subscription_plans",params={"plan_key":"eq."+plan_key,"status":"eq.draft","created_by":"neq."+str(operator["id"])},payload={"status":"active","updated_at":datetime.now(timezone.utc).isoformat()},prefer="return=representation")
+    if not changed: raise HTTPException(409,detail={"code":"CINEMA_PLAN_ACTIVATION_CONFLICT","message":"Plan berubah saat aktivasi."})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.subscription_plan.activate",outcome="allowed",resource_type="cinema_subscription_plan",resource_id=plan_key,metadata={"reason":payload.reason,"product_key":plan["product_key"]})
+    return {"plan":changed[0]}
 
 

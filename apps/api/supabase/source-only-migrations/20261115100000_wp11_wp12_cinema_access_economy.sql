@@ -119,6 +119,7 @@ create table if not exists public.cinema_subscription_plans (
   entitlement_key text not null check (char_length(entitlement_key) between 3 and 120),
   entitlement_version text not null check (char_length(entitlement_version) between 1 and 80),
   approval_reference text,
+  created_by uuid references auth.users(id) on delete restrict,
   configuration jsonb not null default '{}'::jsonb check (jsonb_typeof(configuration) = 'object'),
   status text not null default 'draft' check (status in ('draft','active','retired')),
   created_at timestamptz not null default now(),
@@ -144,6 +145,7 @@ create index if not exists cinema_subscriptions_owner_status_idx
 
 -- A policy version must be explicitly approved before any viewer receives a playback URL.
 create table if not exists public.cinema_access_policy_versions (
+  created_by uuid references auth.users(id) on delete restrict,
   policy_version text primary key check (char_length(policy_version) between 1 and 80),
   approval_reference text not null check (char_length(approval_reference) between 3 and 160),
   configuration jsonb not null check (jsonb_typeof(configuration) = 'object'),
@@ -201,6 +203,7 @@ create index if not exists cinema_playback_events_session_created_idx
   on public.cinema_playback_events(session_id, created_at);
 
 create table if not exists public.cinema_watch_policy_versions (
+  created_by uuid references auth.users(id) on delete restrict,
   policy_version text primary key check (char_length(policy_version) between 1 and 80),
   approval_reference text not null check (char_length(approval_reference) between 3 and 160),
   configuration jsonb not null check (jsonb_typeof(configuration) = 'object'),
@@ -231,6 +234,7 @@ create index if not exists cinema_qualified_watches_status_idx
   on public.cinema_qualified_watches(status, created_at);
 
 create table if not exists public.cinema_creator_earning_policy_versions (
+  created_by uuid references auth.users(id) on delete restrict,
   policy_version text primary key check (char_length(policy_version) between 1 and 80),
   approval_reference text not null check (char_length(approval_reference) between 3 and 160),
   configuration jsonb not null check (jsonb_typeof(configuration) = 'object'),

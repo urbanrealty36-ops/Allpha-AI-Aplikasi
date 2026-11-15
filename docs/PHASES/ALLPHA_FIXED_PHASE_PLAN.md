@@ -2873,3 +2873,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 **WP-11/WP-12 operational status accuracy update (2026-11-15):**
 - Replaced hard-coded Cinema capability status values with read-only schema/policy/runtime availability checks. Creator Workspace now receives truthful configuration states for Generation Job/moderation, billing, playback entitlement, Qualified Watch, creator earnings, collaboration and film versioning. Missing source-only tables are reported as not applied rather than as implemented or ready.
 - Production security migration `20261115130000_wp11_cinema_client_write_lockdown` was applied to canonical Supabase project `dvdziauyvuhcnqhrrvww`. Post-apply read-only verification confirms `anon` and `authenticated` retain SELECT only on `cinema_titles` and `cinema_episodes`; direct DML grants are absent, and owner INSERT/UPDATE policies were removed. FastAPI service-role access remains.
+
+
+**WP-12 AI Cinema policy governance source checkpoint (2026-11-15):**
+- Added operator-only policy registry APIs for access, Qualified Watch and creator-earning policy drafts, four-eyes approval (creator cannot approve their own draft), explicit approval references, effective windows, configuration validation and privileged audit events.
+- Added subscription-plan draft creation against an active approved billing product and four-eyes activation. No products, prices, entitlement versions, watch thresholds, creator rewards or revenue splits are seeded. Cash payout remains disabled by policy validation.
+- Added `created_by` metadata to source-only policy and plan tables. Governance APIs remain unavailable until their source-only schema is promoted; no policy is activated by this source change.
