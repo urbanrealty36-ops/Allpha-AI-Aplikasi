@@ -29,7 +29,10 @@ begin
     or v_agent is null or v_skill is null
     or coalesce(v_task,'')='' or coalesce(v_key,'')=''
     or coalesce(p_command->>'prompt','')=''
-    or coalesce(p_command->>'prompt_sha256','') !~ '^[0-9a-f]{64}$' then
+    or coalesce(p_command->>'prompt_sha256','') !~ '^[0-9a-f]{64}$'
+    or coalesce(p_command->>'agent_version','') !~ '^[1-9][0-9]*$'
+    or coalesce(p_command->>'agent_snapshot_sha256','') !~ '^[0-9a-f]{64}$'
+    or coalesce(p_command->>'skill_snapshot_sha256','') !~ '^[0-9a-f]{64}$' then
     raise exception 'GENERATION_JOB_COMMAND_INVALID' using errcode='22023';
   end if;
 
@@ -43,6 +46,9 @@ begin
       or v_existing.payer_user_id <> v_payer
       or v_existing.consumer_grant_id is distinct from v_grant
       or v_existing.runtime_policy_version is distinct from nullif(p_command->>'runtime_policy_version','')
+      or v_existing.agent_version <> (p_command->>'agent_version')::integer
+      or v_existing.agent_snapshot_sha256 is distinct from p_command->>'agent_snapshot_sha256'
+      or v_existing.skill_snapshot_sha256 is distinct from p_command->>'skill_snapshot_sha256'
       or v_existing.capability_id <> p_command->>'capability_id'
       or v_existing.source_version <> (p_command->>'source_version')::integer
       or v_existing.policy_version <> p_command->>'policy_version'
@@ -60,6 +66,9 @@ begin
   select * into v_agent_row from public.ai_agents
     where id=v_agent and status='active' for share;
   if not found then raise exception 'GENERATION_AGENT_NOT_ACTIVE' using errcode='42501'; end if;
+  if v_agent_row.version <> (p_command->>'agent_version')::integer then
+    raise exception 'GENERATION_AGENT_SNAPSHOT_STALE' using errcode='40001';
+  end if;
 
   select * into v_skill_row from public.agent_skills
     where id=v_skill and agent_id=v_agent and status='published' for share;
@@ -189,7 +198,7 @@ begin
   insert into public.generation_jobs(
     owner_user_id,agent_owner_user_id,payer_user_id,consumer_grant_id,
     agent_id,agent_version,runtime_policy_version,agent_snapshot,skill_snapshot,skill_instructions_sha256,
-    skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
+    agent_snapshot_sha256,skill_snapshot_sha256,skill_id,source_version,capability_id,sensitivity,task_id,trace_id,idempotency_key,
     prompt,prompt_sha256,knowledge_snapshot,knowledge_context_sha256,max_output_tokens,timeout_ms,
     estimated_usage_units,usage_unit,estimated_cost_microunits,cost_unit,credits_to_reserve,
     credits_per_usage_unit,credit_scheme_version,tariff_version,entitlement_version,policy_version,
@@ -199,6 +208,7 @@ begin
     v_requester,v_agent_owner,v_payer,v_grant,
     v_agent,v_agent_row.version,nullif(p_command->>'runtime_policy_version',''),v_agent_snapshot,v_skill_snapshot,
     encode(extensions.digest(v_skill_snapshot->>'instructions','sha256'),'hex'),
+    p_command->>'agent_snapshot_sha256',p_command->>'skill_snapshot_sha256',
     v_skill,(p_command->>'source_version')::integer,p_command->>'capability_id',
     p_command->>'sensitivity',v_task,p_command->>'trace_id',v_key,p_command->>'prompt',
     p_command->>'prompt_sha256',coalesce(p_command->'knowledge_snapshot','{}'::jsonb),
@@ -341,6 +351,9 @@ begin
   if not found then raise exception 'GENERATION_JOB_LEASE_LOST' using errcode='40001'; end if;
   if v_job.artifact_bucket <> 'generation-artifacts' or v_job.artifact_path is null
     or v_job.moderation_status <> 'approved' or v_job.moderation_policy_version is null
+    or jsonb_typeof(v_job.agent_snapshot)<>'object' or jsonb_typeof(v_job.skill_snapshot)<>'object'
+    or v_job.skill_instructions_sha256 is null
+    or v_job.agent_snapshot_sha256 is null or v_job.skill_snapshot_sha256 is null
     or coalesce((p_result->>'input_tokens')::bigint,-1) < 0
     or coalesce((p_result->>'output_tokens')::bigint,-1) < 0
     or coalesce((p_result->>'cost_microunits')::bigint,-1) < 0
