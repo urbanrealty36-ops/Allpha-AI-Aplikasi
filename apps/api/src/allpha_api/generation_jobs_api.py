@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -309,7 +309,9 @@ async def _external_generation_context(
             skill_version=int(skill["version"]), runtime_policy_version=runtime_policy_version,
             policy_snapshot=budget.policy_snapshot(), required_scope="generation_invoke",
         )
-    except (ConsumerGrantUnavailable, ValueError, KeyError, TypeError) as exc:
+    except HTTPException:
+        raise
+    except Exception as exc:
         raise HTTPException(503, detail={"code": "EXTERNAL_AGENT_GENERATION_POLICY_UNAVAILABLE", "message": "Tarif, grant, atau policy generation Agent eksternal belum tersedia."}) from exc
     if not grant or str(grant.get("id")) != str(payload.consumer_grant_id):
         raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_GENERATION_GRANT_DENIED", "message": "Grant generation tidak aktif, tidak cocok, atau telah dicabut."})
@@ -409,7 +411,7 @@ async def quote_generation_job(
         estimated_credits = estimated_usage * budget.credits_per_usage_unit
         return {
             "quote_id": str(uuid.uuid4()),
-            "expires_at": (datetime.now(timezone.utc) + __import__("datetime").timedelta(minutes=5)).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
             "estimated_credits": estimated_credits, "estimated_usage_units": estimated_usage,
             "usage_unit": budget.usage_unit, "provider_id": route["provider_id"],
             "model_id": route["model_id"], "model_version": route["model_version"],
