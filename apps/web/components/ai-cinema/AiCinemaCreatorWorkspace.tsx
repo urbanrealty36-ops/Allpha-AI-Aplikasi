@@ -60,6 +60,8 @@ export default function AiCinemaCreatorWorkspace() {
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
   const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDraftId, setUploadDraftId] = useState("");
+  const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState("");
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -212,10 +214,16 @@ export default function AiCinemaCreatorWorkspace() {
     if (uploadFile.size <= 0 || uploadFile.size > 50 * 1024 * 1024) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
     setSaving(true); setError(""); setNotice("");
     try {
-      const draft = await authorizedRequest<{ item: { id: string } }>("/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
+      let contentId = uploadDraftId;
+      if (!contentId) {
+        const draft = await authorizedRequest<{ item: { id: string } }>("/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
+        contentId = draft.item.id; setUploadDraftId(contentId);
+      }
+      const idempotencyKey = uploadIdempotencyKey || crypto.randomUUID();
+      setUploadIdempotencyKey(idempotencyKey);
       const form = new FormData(); form.append("file", uploadFile);
-      const uploaded = await authorizedRequest<{ item: CreatorMedia }>("/v1/content/" + encodeURIComponent(draft.item.id) + "/media", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: form });
-      setUploadFile(null);
+      const uploaded = await authorizedRequest<{ item: CreatorMedia }>("/v1/content/" + encodeURIComponent(contentId) + "/media", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: form });
+      setUploadFile(null); setUploadDraftId(""); setUploadIdempotencyKey("");
       setNotice("Video diterima pipeline media Allpha (" + (uploaded.item?.status || "uploaded") + "). Tunggu pemindaian dan transcode; video dapat dipilih setelah status ready dan scan clean.");
       await loadCreatorMedia();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal."); }
@@ -310,7 +318,7 @@ export default function AiCinemaCreatorWorkspace() {
           <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
             <h3 className="font-bold">Upload video film · Media Pipeline</h3>
             <p className="text-xs text-slate-400">MP4/WebM maksimal 50 MiB. File disimpan melalui FastAPI ke Supabase Storage; worker dan pemeriksaan keamanan menentukan kapan media siap digunakan.</p>
-            <input type="file" accept="video/mp4,video/webm" onChange={event => setUploadFile(event.target.files?.[0] ?? null)} className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
+            <input type="file" accept="video/mp4,video/webm" onChange={event => { setUploadFile(event.target.files?.[0] ?? null); setUploadIdempotencyKey(""); }} className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:px-3 file:py-2 file:text-xs file:font-black file:text-slate-950" />
             {uploadFile && <p className="text-xs text-slate-300">{uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MiB</p>}
             <button type="button" onClick={() => void uploadCinemaMedia()} disabled={saving || !uploadFile} className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"}</button>
             <div className="space-y-1 border-t border-white/10 pt-3"><p className="text-xs font-bold text-slate-300">Status media saya</p>{creatorMedia.length ? creatorMedia.map(media => <p key={media.id} className="text-xs text-slate-400">{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · diproses " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</p>) : <p className="text-xs text-slate-500">Belum ada media milik akun ini.</p>}</div>
