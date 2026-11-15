@@ -372,6 +372,27 @@ async def creator_ready_media(user: dict[str, Any] = Depends(current_user)) -> d
     return {"items": [row for row in media_rows if str(row.get("content_id")) in eligible_content_ids]}
 
 
+@router.get("/creator/media")
+async def creator_media_library(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Return owner-scoped media processing states for the Cinema Creator Workspace."""
+    owner_id = str(user["id"])
+    rows = await _db("GET", "content_media", params={
+        "select": "id,content_id,filename,media_type,size_bytes,status,scan_status,processed_at,created_at",
+        "owner_id": "eq." + owner_id, "order": "created_at.desc", "limit": "100",
+    })
+    media_rows = rows or []
+    content_ids = sorted({str(row["content_id"]) for row in media_rows if row.get("content_id")})
+    if not content_ids:
+        return {"items": []}
+    content_rows = await _db("GET", "content_items", params={
+        "select": "id", "id": "in.(" + ",".join(content_ids) + ")",
+        "owner_id": "eq." + owner_id, "status": "not.in.(deleted,archived)",
+        "limit": str(min(100, len(content_ids))),
+    })
+    eligible = {str(row["id"]) for row in (content_rows or [])}
+    return {"items": [row for row in media_rows if str(row.get("content_id")) in eligible]}
+
+
 @router.get("/creator/status")
 async def creator_capability_status(request: Request,user: dict[str,Any] = Depends(current_user)) -> dict[str,Any]:
     async def available(table: str) -> bool:
