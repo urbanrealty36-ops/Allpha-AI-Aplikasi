@@ -2839,3 +2839,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Worker uploads output to private Storage, persists only artifact metadata and hashes, requires an explicit `approved` moderation verdict bound to the approved database policy, and only then settles credits and marks the job succeeded. Rejected/review/unknown moderation outcomes remain inaccessible and enter reconciliation; no raw prompt/output is logged.
 - Added an owner-scoped artifact endpoint that returns a short-lived signed URL only after successful moderation and job completion. Web Generate now retrieves the signed artifact rather than reading output text from the jobs table.
 - Migration remains source-only and has not been applied. The moderation adapter/policy is not configured or approved in this environment, so worker intentionally remains idle. Consumer Agent grant integration, Knowledge ACL, DM delivery, owner reward/dual-account settlement and Native Generate parity remain open. No staging, live user journey, provider call, tests/build/typecheck or deployment was performed.
+
+
+**WP-07 Native Generate UI source checkpoint (2026-11-15):**
+- Added a Native Generate Center in the existing React Native Profile workspace, using the same FastAPI quote/job/artifact endpoints as Web. Agent, published Skill and approved capability are loaded from canonical APIs; the user confirms the server-calculated AI Credit quote before job creation.
+- Native output is retrieved only through the owner-scoped short-lived signed artifact URL after the job is succeeded and output moderation is approved. No direct Supabase business writes or mock data were added.
+- Native screen is source-integrated into the existing navigation. Runtime and build acceptance are not verified; no device test, staging or deployment performed.
