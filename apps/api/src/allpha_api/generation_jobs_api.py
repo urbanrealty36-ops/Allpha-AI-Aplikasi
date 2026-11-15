@@ -16,6 +16,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.agent_consumer_grants import (
+    AgentConsumerGrantStore,
+    ConsumerBudgetReservation,
+    ConsumerGrantUnavailable,
+)
 from allpha_api.knowledge_retrieval import (
     KnowledgeAccessDenied,
     KnowledgeRetrievalService,
@@ -41,6 +46,7 @@ class GenerationJobCreate(BaseModel):
     quoted_model_id: str | None = Field(default=None, min_length=1, max_length=128)
     knowledge_query: str | None = Field(default=None, min_length=1, max_length=4000)
     quoted_knowledge_context_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    consumer_grant_id: uuid.UUID | None = None
 
 
 def _db_config() -> tuple[str, str]:
@@ -170,6 +176,113 @@ async def _retrieve_generation_knowledge(
         "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
         "trace_id": trace_id,
     }
+
+
+async def _external_generation_context(
+    payload: GenerationJobCreate, requester_id: str, router_instance: Any
+) -> dict[str, Any]:
+    if payload.consumer_grant_id is None:
+        raise HTTPException(422, detail={"code": "CONSUMER_GRANT_REQUIRED", "message": "Grant pemilik Agent wajib dipilih."})
+    agent_rows = await _admin_request("GET", "ai_agents", params={
+        "select": "id,version,status,visibility,display_name",
+        "id": f"eq.{payload.agent_id}", "status": "eq.active", "visibility": "eq.public", "limit": "1",
+    })
+    owners = await _admin_request("GET", "agent_ownerships", params={
+        "select": "owner_user_id,agent_id,ownership_role,status",
+        "agent_id": f"eq.{payload.agent_id}", "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+    })
+    skills = await _admin_request("GET", "agent_skills", params={
+        "select": "id,agent_id,version,status",
+        "id": f"eq.{payload.skill_id}", "agent_id": f"eq.{payload.agent_id}", "status": "eq.published", "limit": "1",
+    })
+    capabilities = await _admin_request("GET", "agent_capabilities", params={
+        "select": "capability_key,status", "agent_id": f"eq.{payload.agent_id}",
+        "capability_key": f"eq.{payload.capability_id}", "status": "eq.approved", "limit": "1",
+    })
+    if not agent_rows or not owners or not skills or not capabilities:
+        raise HTTPException(404, detail={"code": "PUBLIC_AGENT_GENERATION_TARGET_NOT_FOUND", "message": "Agent publik, Skill, atau capability tidak tersedia."})
+    agent, owner, skill = agent_rows[0], owners[0], skills[0]
+    owner_id = str(owner["owner_user_id"])
+    if owner_id == requester_id:
+        raise HTTPException(422, detail={"code": "OWNED_AGENT_GRANT_NOT_REQUIRED", "message": "Gunakan jalur Agent milik sendiri."})
+    try:
+        await router_instance.preflight("public")
+        route = router_instance.route_snapshot_for("public")
+        budget = await ConsumerBudgetReservation.from_environment(
+            expected_cost_unit=str(route["cost_unit"]),
+            expected_pricing_version=str(route["pricing_version"]),
+            expected_max_cost_microunits=int(route["max_cost_microunits"]),
+            policy_key="consumer_agent_generation",
+            expected_usage_unit="tokens_total",
+        )
+        runtime_policy_version = router_instance.policy_version_for("public")
+        grant = await AgentConsumerGrantStore.from_environment().resolve(
+            requester_id=requester_id, owner_id=owner_id, agent_id=str(payload.agent_id),
+            agent_version=int(agent["version"]), skill_id=str(payload.skill_id),
+            skill_version=int(skill["version"]), runtime_policy_version=runtime_policy_version,
+            policy_snapshot=budget.policy_snapshot(), required_scope="generation_invoke",
+        )
+    except (ConsumerGrantUnavailable, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(503, detail={"code": "EXTERNAL_AGENT_GENERATION_POLICY_UNAVAILABLE", "message": "Tarif, grant, atau policy generation Agent eksternal belum tersedia."}) from exc
+    if not grant or str(grant.get("id")) != str(payload.consumer_grant_id):
+        raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_GENERATION_GRANT_DENIED", "message": "Grant generation tidak aktif, tidak cocok, atau telah dicabut."})
+    if payload.knowledge_query:
+        if "knowledge_public_read" not in (grant.get("granted_scopes") or []):
+            raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_KNOWLEDGE_SCOPE_DENIED", "message": "Grant tidak mengizinkan Knowledge publik Agent."})
+        raise HTTPException(503, detail={"code": "EXTERNAL_AGENT_KNOWLEDGE_RETRIEVAL_UNAVAILABLE", "message": "Adapter retrieval service-role dengan filter public ACL belum tersedia; Knowledge eksternal ditolak agar tidak membuka data privat."})
+    payer_id = budget.billing_account_id(requester_id=requester_id, owner_id=owner_id)
+    subscriptions = await _admin_request("GET", "billing_subscriptions", params={
+        "select": "id,owner_user_id,entitlement_version,status,current_period_end",
+        "owner_user_id": f"eq.{payer_id}", "status": "eq.active",
+        "entitlement_version": f"eq.{budget.entitlement_version}",
+        "current_period_end": "gt." + datetime.now(timezone.utc).isoformat(), "limit": "1",
+    })
+    if not subscriptions:
+        raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_PAYER_ENTITLEMENT_REQUIRED", "message": "Akun pembayar tidak memiliki entitlement generation aktif."})
+    return {
+        "agent": agent, "owner_id": owner_id, "skill": skill, "grant": grant,
+        "budget": budget, "route": route, "payer_user_id": payer_id,
+        "runtime_policy_version": runtime_policy_version,
+    }
+
+
+@router.get("/agents")
+async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """List only current, public Agent grants that explicitly permit generation."""
+    now = datetime.now(timezone.utc).isoformat()
+    grants = await _admin_request("GET", "agent_consumer_grants", params={
+        "select": "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,granted_scopes,expires_at,status",
+        "requester_user_id": f"eq.{user['id']}", "status": "eq.active",
+        "granted_scopes": "cs.{generation_invoke}",
+        "or": f"(expires_at.is.null,expires_at.gt.{now})",
+        "order": "granted_at.desc", "limit": "100",
+    })
+    items: list[dict[str, Any]] = []
+    for grant in grants or []:
+        agents = await _admin_request("GET", "ai_agents", params={
+            "select": "id,version,status,visibility,display_name,description",
+            "id": f"eq.{grant['agent_id']}", "status": "eq.active", "visibility": "eq.public", "limit": "1",
+        })
+        skills = await _admin_request("GET", "agent_skills", params={
+            "select": "id,agent_id,version,status,name,display_name",
+            "id": f"eq.{grant['skill_id']}", "agent_id": f"eq.{grant['agent_id']}", "status": "eq.published", "limit": "1",
+        })
+        caps = await _admin_request("GET", "agent_capabilities", params={
+            "select": "capability_key,status", "agent_id": f"eq.{grant['agent_id']}", "status": "eq.approved", "limit": "50",
+        })
+        if not agents or not skills:
+            continue
+        if int(agents[0].get("version") or 0) != int(grant.get("agent_version") or -1):
+            continue
+        if int(skills[0].get("version") or 0) != int(grant.get("skill_version") or -1):
+            continue
+        items.append({
+            "agent": agents[0], "owner_user_id": grant["owner_user_id"],
+            "skill": skills[0], "capabilities": caps or [],
+            "consumer_grant_id": grant["id"],
+            "granted_scopes": grant.get("granted_scopes") or [],
+        })
+    return {"items": items}
 
 
 @router.post("/quote")
