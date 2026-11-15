@@ -81,7 +81,7 @@ begin
     where a.id=p_agent_id and a.status='active' and o.owner_user_id=p_owner_user_id
       and o.ownership_role='owner' and o.status='active'
   ) then raise exception 'AGENT_SOCIAL_OWNERSHIP_REQUIRED' using errcode='42501'; end if;
-  if coalesce(p_auto_reply_channels,'{}'::text[]) - array['comments','mentions','dm','live_chat']::text[] <> '{}'::text[]
+  if not (coalesce(p_auto_reply_channels,'{}'::text[]) <@ array['comments','mentions','dm','live_chat']::text[])
      or cardinality(coalesce(p_auto_reply_channels,'{}'::text[]))>4
      or cardinality(coalesce(p_blocked_topics,'{}'::text[]))>100
      or cardinality(coalesce(p_allowed_tool_scopes,'{}'::text[]))>20
