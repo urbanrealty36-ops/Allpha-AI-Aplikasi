@@ -13,7 +13,6 @@ from typing import Any
 from allpha_api.workflow_store import WorkflowPersistenceError
 from allpha_api.agent_runtime_api import TaskCreate, create_task, execute_task
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
-from allpha_api.memory_coordinator import MemoryCoordinator
 from starlette.requests import Request
 
 TERMINAL_RUN_STATES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
@@ -101,28 +100,6 @@ def evaluate_deterministic_node(step: dict[str, Any], run: dict[str, Any]) -> di
 
     output = {"value": value}
     checkpoint = {"node_key": step.get("node_key"), "output": output}
-    _validate_result(output)
-    _validate_result(checkpoint)
-    return {"output_payload": output, "checkpoint": checkpoint}
-
-
-async def execute_memory_context_node(step: dict[str, Any], owner_id: str) -> dict[str, Any]:
-    """Read only owner/Agent Memory under the coordinator's current consent and ACL policy."""
-    config = step.get("node_config") or {}
-    agent_id = config.get("agent_id")
-    purpose = config.get("purpose", "workflow_context")
-    query = config.get("query")
-    limit = config.get("limit", 8)
-    if not isinstance(agent_id, str) or not isinstance(purpose, str):
-        raise WorkflowNodeError("memory_context node configuration is invalid")
-    items = await MemoryCoordinator().retrieve_context(
-        owner_id, agent_id, purpose=purpose, query=query, limit=limit, max_chars=5000,
-    )
-    # Memory content is untrusted data; it is context, never executable instructions.
-    value = {"items": items, "retrieval_mode": "keyword_or_metadata", "untrusted_context": True}
-    output = {"value": value}
-    checkpoint = {"node_key": step.get("node_key"), "memory_item_count": len(items),
-                  "retrieval_mode": value["retrieval_mode"]}
     _validate_result(output)
     _validate_result(checkpoint)
     return {"output_payload": output, "checkpoint": checkpoint}
@@ -304,8 +281,6 @@ async def process_next_step(
     try:
         if step.get("node_kind") == "agent_task":
             result = await execute_agent_task_node(step, run, owner_id)
-        elif step.get("node_kind") == "memory_context":
-            result = await execute_memory_context_node(step, owner_id)
         else:
             result = evaluate_deterministic_node(step, run)
         final_state, error_code = "succeeded", None
