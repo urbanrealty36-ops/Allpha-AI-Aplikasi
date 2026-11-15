@@ -120,7 +120,7 @@ async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str |
     media_by_id: dict[str,dict[str,Any]] = {}
     if media_ids:
         media_rows = await _db("GET","content_media",params={
-            "select":"id,owner_id,storage_path,status,scan_status,processed_at,derivatives",
+            "select":"id,owner_id,storage_path,media_type,status,scan_status,processed_at,derivatives",
             "id":"in.("+",".join(media_ids)+")", "status":"eq.ready", "scan_status":"eq.clean",
             "limit":str(min(100,len(media_ids))),
         })
@@ -138,10 +138,30 @@ async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str |
             if not media or str(media.get("owner_id")) != str(item.get("owner_id")):
                 item[output_key] = None
                 continue
+            media_type = str(media.get("media_type") or "").lower()
             derivatives = media.get("derivatives") or []
-            preferred = next((d.get("storage_path") for d in derivatives
-                if isinstance(d,dict) and d.get("kind") in ("display","rendition_1","thumbnail")
-                and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
+            if output_key == "cover_preview_url":
+                if not media_type.startswith("image/"):
+                    item[output_key] = None
+                    continue
+                preferred = next((d.get("storage_path") for d in derivatives
+                    if isinstance(d,dict) and d.get("kind") in ("display","rendition_1","thumbnail")
+                    and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
+            elif media_type.startswith("video/"):
+                # The catalogue renders this field as a poster image, never as a video URL.
+                preferred = next((d.get("storage_path") for d in derivatives
+                    if isinstance(d,dict) and d.get("kind") in ("moderation_poster","thumbnail","poster")
+                    and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
+                if not preferred:
+                    item[output_key] = None
+                    continue
+            elif media_type.startswith("image/"):
+                preferred = next((d.get("storage_path") for d in derivatives
+                    if isinstance(d,dict) and d.get("kind") in ("display","rendition_1","thumbnail")
+                    and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
+            else:
+                item[output_key] = None
+                continue
             try:
                 item[output_key] = await _signed_media_preview_url(preferred or str(media["storage_path"]),expires_in=300)
             except HTTPException:
