@@ -1,6 +1,6 @@
 -- WP-07 manual moderation review and safe finalization for generated private artifacts.
--- SOURCE ONLY: requires the durable Generation Job and ENG-P09 usage-metering schema.
--- Do not apply to production or staging during the source-only implementation window.
+-- Requires the durable Generation Job and ENG-P09 usage-metering schema.
+-- Explicit Product Owner approval recorded 2026-11-16.
 begin;
 
 create table if not exists public.generation_output_review_events (
