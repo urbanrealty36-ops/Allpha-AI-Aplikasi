@@ -1158,7 +1158,7 @@ export default function ProfileView({
                     <TrendingUp className="w-4 h-4 text-sky-700" />
                     <span>Statistik & Insight Kunjungan</span>
                   </h4>
-                  <span className="text-[10px] font-bold text-sky-800">30 Hari Terakhir</span>
+                  <span className="text-[10px] font-bold text-sky-800">Periode belum tersedia</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1214,45 +1214,13 @@ export default function ProfileView({
                   </div>
                 </div>
 
-                {/* Withdraw Form */}
-                <div className="space-y-2 pt-1">
-                  <label className="text-[11px] font-black text-slate-900 block">Formulir Penarikan Saldo (Withdraw):</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={withdrawBank}
-                      onChange={(e) => setWithdrawBank(e.target.value)}
-                      className="px-2.5 py-1.5 bg-white rounded-xl border border-slate-900 font-bold"
-                    >
-                      <option value="BCA">Bank BCA</option>
-                      <option value="Mandiri">Bank Mandiri</option>
-                      <option value="BNI">Bank BNI</option>
-                      <option value="GoPay">GoPay (0812-xxxx)</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={withdrawAccount}
-                      onChange={(e) => setWithdrawAccount(e.target.value)}
-                      placeholder="Nomor Rekening"
-                      className="px-2.5 py-1.5 bg-white rounded-xl border border-slate-900 font-mono font-bold"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={withdrawAmount}
-                      onChange={(e) => setWithdrawAmount(e.target.value)}
-                      placeholder="Jumlah Penarikan (Rp)"
-                      className="flex-1 px-3 py-1.5 bg-white rounded-xl border border-slate-900 font-mono font-bold"
-                    />
-                    <button
-                      onClick={() => {
-                        showToast('Penarikan belum terhubung ke layanan keuangan. Tidak ada transaksi yang dibuat.');
-                      }}
-                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl border border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a]"
-                    >
-                      Tarik Dana
-                    </button>
-                  </div>
+                {/* Payout remains unavailable until creator-earning and payout governance APIs are approved. */}
+                <div className="rounded-xl border-2 border-dashed border-slate-900 bg-white p-3 space-y-1.5">
+                  <p className="text-[11px] font-black text-slate-900">Penarikan saldo belum tersedia</p>
+                  <p className="text-[10px] leading-relaxed font-semibold text-slate-600">Payout belum dapat diajukan karena kebijakan creator earning, saldo terverifikasi, rekening penerima, dan settlement belum tersedia melalui API kanonis. Tidak ada transaksi yang dibuat dari halaman ini.</p>
+                  <button type="button" disabled title="Payout belum tersedia dari API dan kebijakan yang disetujui." className="w-full rounded-xl border-2 border-slate-300 bg-slate-100 px-4 py-2 text-xs font-black text-slate-400 cursor-not-allowed">
+                    Tarik Dana — Belum tersedia
+                  </button>
                 </div>
               </div>
             )}
