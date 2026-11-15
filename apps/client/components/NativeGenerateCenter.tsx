@@ -5,7 +5,7 @@ type Agent = { id: string; display_name: string; status: string };
 type Skill = { id: string; name: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null };
+type Job = { status: string; moderation_status?: string | null; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null };
 
 export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = null }: { apiBase: string; getAccessToken: () => Promise<string>; initialJobId?: string | null }) {
   const [agents,setAgents]=useState<Agent[]>([]);
@@ -206,6 +206,10 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
           return;
         }
         if(job.status==="pending_reconciliation"){
+          if(job.moderation_status==="review_required"){
+            setNotice("Output sudah diterima dan sedang menunggu pemeriksaan Human. Artefak tetap privat sampai reviewer menyetujui; permintaan tidak dikirim ulang.");
+            return;
+          }
           if(job.error_code==="cancel_release_policy_not_approved"){
             setNotice("Pembatalan tercatat, tetapi policy belum mengizinkan pelepasan reservasi. Saldo menunggu rekonsiliasi.");
             return;
