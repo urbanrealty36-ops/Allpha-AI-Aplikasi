@@ -158,19 +158,17 @@ class AgentConsumerGrantStore:
         )
         if not rows:
             raise LookupError("Consumer grant not found")
-        if rows[0]["status"] == "revoked":
-            return rows[0]
-        changed = await self._request(
-            "PATCH", "agent_consumer_grants",
-            params={"id":f"eq.{grant_id}", "owner_user_id":f"eq.{owner_id}",
-                    "agent_id":f"eq.{agent_id}", "status":"eq.active"},
-            body={"status":"revoked", "revoked_by":owner_id, "revoked_at":_now(),
-                  "revoke_reason":reason.strip() or "owner_revoked", "updated_at":_now()},
-            prefer="return=representation",
+        result = await self._request(
+            "POST", "rpc/agent_consumer_grant_revoke",
+            body={
+                "p_grant_id": grant_id,
+                "p_owner_user_id": owner_id,
+                "p_reason": reason.strip() or "owner_revoked",
+            },
         )
-        if not changed:
-            raise ConsumerGrantUnavailable("Consumer grant revocation was not confirmed")
-        return changed[0]
+        if not isinstance(result, dict) or str(result.get("grant_id")) != grant_id:
+            raise ConsumerGrantUnavailable("Consumer grant revocation lifecycle was not confirmed")
+        return {**result, "agent_id": agent_id}
 
     async def resolve(self, *, requester_id: str, owner_id: str, agent_id: str,
                       agent_version: int, skill_id: str, skill_version: int,
