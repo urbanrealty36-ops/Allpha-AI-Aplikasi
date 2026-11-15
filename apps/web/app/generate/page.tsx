@@ -139,7 +139,7 @@ export default function GeneratePage() {
     if (!session || !agentId || !skillId || !capabilityId || !prompt.trim() || busy) return;
     setBusy(true); setError(""); setNotice(""); setResult(""); setJobId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
-    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...(knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
+    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...(!consumerGrantId && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
