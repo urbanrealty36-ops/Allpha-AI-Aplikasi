@@ -18,6 +18,7 @@ import httpx
 from allpha_api.agent_runtime import (
     AgentConsumerAuthorization,
     AgentRuntime,
+    AgentRuntimeBlocked,
 )
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
@@ -300,12 +301,14 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             billing_account_id=str(job.get("payer_user_id") or job["owner_user_id"]),
             system_prompt=system_prompt,
         )
-    except Exception:
-        await _mark_pending(job, worker_id, "generation_request_contract_invalid")
-        return "pending_reconciliation"
+    except Exception as exc:
+        return await _fail_before_provider(
+            job, worker_id, "generation_request_contract_invalid:" + type(exc).__name__
+        )
 
     try:
-        _require_pinned_model_route(job, router)
+        sensitivity = _require_pinned_model_route(job, router)
+        await router.preflight(sensitivity)
         if not await _execution_contract_is_current(job):
             return await _fail_before_provider(job, worker_id, "agent_skill_or_capability_revoked_or_changed")
     except Exception as exc:
@@ -340,8 +343,9 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
                 metering_ready=True,
             )
         except Exception as exc:
-            await _mark_pending(job, worker_id, "consumer_grant_revalidation_unknown:" + type(exc).__name__)
-            return "pending_reconciliation"
+            return await _fail_before_provider(
+                job, worker_id, "consumer_grant_revalidation_unavailable:" + type(exc).__name__
+            )
 
     try:
         response, evidence = await AgentRuntime().execute_skill_generation(
@@ -357,9 +361,14 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             request=request,
             consumer_authorization=consumer_authorization,
         )
+    except AgentRuntimeBlocked as exc:
+        # The runtime rejected the request before provider execution.
+        return await _fail_before_provider(
+            job, worker_id, "agent_runtime_pre_provider_block:" + type(exc).__name__
+        )
     except Exception as exc:
-        # Once a job is claimed, exceptions may happen before or after provider
-        # acceptance. Keep the reservation pending; never guess or retry.
+        # After the Model Router invocation starts, provider acceptance may be
+        # ambiguous. Keep the reservation pending; never guess or replay.
         await _mark_pending(job, worker_id, "provider_outcome_unknown:" + type(exc).__name__)
         return "pending_reconciliation"
 
