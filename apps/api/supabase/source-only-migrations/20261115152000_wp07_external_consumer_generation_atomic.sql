@@ -40,6 +40,7 @@ begin
       or v_existing.agent_owner_user_id <> v_agent_owner
       or v_existing.payer_user_id <> v_payer
       or v_existing.consumer_grant_id is distinct from v_grant
+      or v_existing.runtime_policy_version is distinct from nullif(p_command->>'runtime_policy_version','')
       or v_existing.capability_id <> p_command->>'capability_id'
       or v_existing.source_version <> (p_command->>'source_version')::integer
       or v_existing.policy_version <> p_command->>'policy_version'
