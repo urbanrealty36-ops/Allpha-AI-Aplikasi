@@ -6,6 +6,7 @@ This module never selects a provider, tariff, credit price, or entitlement value
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -170,8 +171,13 @@ async def _retrieve_generation_knowledge(
             "code": "GENERATION_KNOWLEDGE_POLICY_SNAPSHOT_MISSING",
             "message": "Snapshot policy Knowledge tidak dapat dikonfirmasi.",
         })
+    snapshot_sha256 = hashlib.sha256(json.dumps({
+        "context_sha256": digest, "sources": sources,
+        "policy_version": resolved.policy_version, "consent_version": resolved.consent_version,
+        "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
+    }, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
     return {
-        "context": context, "context_sha256": digest, "sources": sources,
+        "context": context, "context_sha256": digest, "snapshot_sha256": snapshot_sha256, "sources": sources,
         "policy_version": resolved.policy_version,
         "consent_version": resolved.consent_version,
         "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
@@ -230,8 +236,15 @@ async def _retrieve_external_generation_knowledge(
     resolved = getattr(service.policy, "last_resolved", None)
     if resolved is None:
         raise HTTPException(503, detail={"code":"EXTERNAL_AGENT_KNOWLEDGE_POLICY_SNAPSHOT_MISSING","message":"Snapshot policy Knowledge tidak tersedia."})
+    context_sha256 = hashlib.sha256(context.encode("utf-8")).hexdigest()
+    snapshot_sha256 = hashlib.sha256(json.dumps({
+        "context_sha256": context_sha256, "sources": sources,
+        "policy_version": resolved.policy_version, "consent_version": resolved.consent_version,
+        "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
+        "scope": "public",
+    }, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
     return {
-        "context": context, "context_sha256": hashlib.sha256(context.encode("utf-8")).hexdigest(),
+        "context": context, "context_sha256": context_sha256, "snapshot_sha256": snapshot_sha256,
         "sources": sources, "policy_version": resolved.policy_version,
         "consent_version": resolved.consent_version,
         "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
@@ -419,7 +432,7 @@ async def quote_generation_job(
             "entitlement_version": budget.entitlement_version,
             "consumer_grant_id": str(external["grant"]["id"]),
             "payer_role": budget.payer_role,
-            "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"),
+            "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"),
             "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
         }
     if router_instance is None:
@@ -534,7 +547,7 @@ async def create_generation_job(
         knowledge_snapshot = await _retrieve_external_generation_knowledge(
             external["owner_id"], payload.agent_id, payload.knowledge_query
         )
-        if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("context_sha256"):
+        if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
             raise HTTPException(409, detail={"code":"GENERATION_KNOWLEDGE_QUOTE_STALE","message":"Knowledge publik atau policy berubah. Minta quote baru."})
         prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
         estimated_usage_units = prompt_bytes + max_output_tokens
