@@ -101,3 +101,16 @@ The runtime receives only the scopes returned by the coordinator. A Consumer tas
 ## Rollback
 
 Disable memory writes and retrieval through the coordinator policy; preserve message and Knowledge authorities; revoke public memory projections; mark affected items inaccessible; retain audit and deletion-job state until propagation is reconciled. Do not delete canonical conversations/messages or Knowledge sources as a rollback shortcut.
+
+
+## Source implementation status — 2026-11-16
+
+Product Owner approval was recorded in the project conversation. The following source-only implementation now exists:
+- apps/api/supabase/source-only-migrations/20261116100000_wp07_memory_coordinator.sql: per-class owner policies, memory items, append-only audit events, owner-select RLS, server-only transition RPC, generated full-text search index, and retention/deletion content scrubbing.
+- apps/api/src/allpha_api/memory_coordinator.py and memory_api.py: single FastAPI persistence boundary, owner policy, proposal, manual approval/rejection, correction, logical deletion, expiry, audit and bounded context retrieval.
+- apps/web/app/agents/[agentId]/memory/page.tsx: owner-facing consent, policy, retention, proposal, correction and deletion controls linked from Agent Studio.
+- Generation Worker and Agent messaging include bounded private Memory only for owner-initiated runs; Consumer grants remain excluded. Model Router sensitivity ceilings are applied and Memory is explicitly marked as untrusted context.
+- The existing worker loop includes a global retention purge every 60 seconds when ALLPHA_MEMORY_COORDINATOR_ENABLED=true.
+- Default activation remains off. The source migration has not been applied to Supabase. Workflow Memory nodes are deferred until ephemeral context references and deletion propagation can be guaranteed. Automatic model-generated Memory proposals and semantic/vector retrieval remain unimplemented.
+- The code is not runtime-accepted; no build, tests, CI, provider execution, staging or deployment was run.
+
