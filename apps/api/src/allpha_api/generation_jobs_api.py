@@ -416,6 +416,8 @@ async def quote_generation_job(
             external["owner_id"], payload.agent_id, payload.knowledge_query
         )
         prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
+        if prompt_bytes > int(route["max_prompt_bytes"]):
+            raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt dan Knowledge melebihi batas byte model publik."})
         estimated_usage = prompt_bytes + max_output_tokens
         if estimated_usage > budget.max_usage_units:
             raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
@@ -492,7 +494,7 @@ async def quote_generation_job(
     max_credits = int(entitlement.get("max_credits_per_request") or 0)
     if max_credits <= 0 or estimated_credits > max_credits:
         raise HTTPException(422, detail={"code": "REQUEST_EXCEEDS_ENTITLEMENT_LIMIT", "message": "Estimasi penggunaan melebihi batas kredit per permintaan."})
-    expires_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(minutes=5)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
     return {
         "quote_id": str(uuid.uuid4()), "expires_at": expires_at.isoformat(),
         "estimated_credits": estimated_credits, "estimated_usage_units": estimated_usage,
@@ -500,7 +502,7 @@ async def quote_generation_job(
         "model_id": route["model_id"], "model_version": route["model_version"],
         "policy_version": policy_row["policy_version"], "tariff_version": tariff_version,
         "entitlement_version": entitlement_version,
-        "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"),
+        "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"),
         "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
         "knowledge_policy_version": knowledge_snapshot.get("policy_version"),
     }
@@ -550,6 +552,8 @@ async def create_generation_job(
         if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
             raise HTTPException(409, detail={"code":"GENERATION_KNOWLEDGE_QUOTE_STALE","message":"Knowledge publik atau policy berubah. Minta quote baru."})
         prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
+        if prompt_bytes > int(route["max_prompt_bytes"]):
+            raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt dan Knowledge melebihi batas byte model publik."})
         estimated_usage_units = prompt_bytes + max_output_tokens
         if estimated_usage_units > budget.max_usage_units:
             raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
@@ -581,7 +585,7 @@ async def create_generation_job(
             "sensitivity": "public", "task_id": task_id, "trace_id": trace_id,
             "idempotency_key": idempotency_key, "prompt": payload.prompt,
             "prompt_sha256": prompt_hash, "knowledge_snapshot": knowledge_snapshot,
-            "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"), "max_output_tokens": max_output_tokens,
+            "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"), "max_output_tokens": max_output_tokens,
             "timeout_ms": min(120000, max(100, int(route.get("max_latency_ms") or 30000))),
             "estimated_usage_units": estimated_usage_units, "usage_unit": budget.usage_unit,
             "estimated_cost_microunits": budget.max_cost_microunits, "cost_unit": budget.cost_unit,
@@ -624,7 +628,7 @@ async def create_generation_job(
         raise HTTPException(404, detail={"code": "PUBLISHED_SKILL_NOT_FOUND", "message": "Skill tidak ditemukan atau belum dipublikasikan untuk Agent ini."})
     skill = skill_rows[0]
     knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
-    if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("context_sha256"):
+    if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
         raise HTTPException(409, detail={"code": "GENERATION_KNOWLEDGE_QUOTE_STALE", "message": "Sumber atau policy Knowledge berubah. Minta quote baru."})
     prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
     if prompt_bytes > int(route["max_prompt_bytes"]):
@@ -699,7 +703,7 @@ async def create_generation_job(
         "prompt": payload.prompt,
         "prompt_sha256": prompt_hash,
         "knowledge_snapshot": knowledge_snapshot,
-        "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"),
+        "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"),
         "max_output_tokens": max_output_tokens,
         "timeout_ms": timeout_ms,
         "estimated_usage_units": estimated_usage_units,
