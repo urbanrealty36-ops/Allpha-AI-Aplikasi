@@ -296,6 +296,34 @@ async def quote_generation_job(
     if not token:
         raise HTTPException(401, detail={"code": "AUTH_REQUIRED", "message": "Sesi login diperlukan."})
     router_instance = getattr(request.app.state, "text_generation_router", None)
+    if payload.consumer_grant_id is not None:
+        if router_instance is None:
+            raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
+        external = await _external_generation_context(payload, str(user["id"]), router_instance)
+        route = external["route"]
+        budget: ConsumerBudgetReservation = external["budget"]
+        max_output_tokens = payload.max_output_tokens or router_instance.max_output_tokens_for("public")
+        if max_output_tokens > router_instance.max_output_tokens_for("public"):
+            raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model publik."})
+        prompt_bytes = len(payload.prompt.encode("utf-8"))
+        estimated_usage = prompt_bytes + max_output_tokens
+        if estimated_usage > budget.max_usage_units:
+            raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
+        if budget.capability_id != payload.capability_id:
+            raise HTTPException(403, detail={"code": "CONSUMER_CAPABILITY_MISMATCH", "message": "Capability tidak cocok dengan grant generation."})
+        estimated_credits = estimated_usage * budget.credits_per_usage_unit
+        return {
+            "quote_id": str(uuid.uuid4()),
+            "expires_at": (datetime.now(timezone.utc) + __import__("datetime").timedelta(minutes=5)).isoformat(),
+            "estimated_credits": estimated_credits, "estimated_usage_units": estimated_usage,
+            "usage_unit": budget.usage_unit, "provider_id": route["provider_id"],
+            "model_id": route["model_id"], "model_version": route["model_version"],
+            "policy_version": budget.policy_version, "tariff_version": budget.tariff_version,
+            "entitlement_version": budget.entitlement_version,
+            "consumer_grant_id": str(external["grant"]["id"]),
+            "payer_role": budget.payer_role,
+            "knowledge_context_sha256": None, "knowledge_source_count": 0,
+        }
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
     try:
