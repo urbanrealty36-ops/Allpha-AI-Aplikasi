@@ -485,7 +485,10 @@ async def quote_generation_job(
         knowledge_snapshot = await _retrieve_external_generation_knowledge(
             external["owner_id"], payload.agent_id, payload.knowledge_query
         )
-        prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
+        prompt_bytes = generation_prompt_size_bytes(
+            prompt=payload.prompt, agent_snapshot=external["agent_snapshot"],
+            skill_snapshot=external["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
+        )
         if prompt_bytes > int(route["max_prompt_bytes"]):
             raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt dan Knowledge melebihi batas byte model publik."})
         estimated_usage = prompt_bytes + max_output_tokens
@@ -506,6 +509,8 @@ async def quote_generation_job(
             "payer_role": budget.payer_role,
             "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"),
             "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
+            "agent_snapshot_sha256": external["agent_snapshot_sha256"],
+            "skill_snapshot_sha256": external["skill_snapshot_sha256"],
         }
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
@@ -519,15 +524,21 @@ async def quote_generation_job(
     max_output_tokens = payload.max_output_tokens or router_max_tokens
     if max_output_tokens > router_max_tokens:
         raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model aktif."})
-    prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
-    if prompt_bytes > int(route["max_prompt_bytes"]):
-        raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt melebihi batas byte yang disetujui."})
     skill_rows = await user_db_request("GET", "agent_skills", token, params={
         "select": "id,agent_id,version,status", "id": f"eq.{payload.skill_id}",
         "agent_id": f"eq.{payload.agent_id}", "status": "eq.published", "limit": "1",
     })
     if not skill_rows:
         raise HTTPException(404, detail={"code": "PUBLISHED_SKILL_NOT_FOUND", "message": "Skill tidak ditemukan atau belum dipublikasikan."})
+    snapshots = await _load_generation_execution_snapshots(
+        payload.agent_id, payload.skill_id, int(skill_rows[0]["version"]), token=token
+    )
+    prompt_bytes = generation_prompt_size_bytes(
+        prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
+        skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
+    )
+    if prompt_bytes > int(route["max_prompt_bytes"]):
+        raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt, Agent, Skill, dan Knowledge context melebihi batas byte yang disetujui."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
         "select": "capability_key,status", "agent_id": f"eq.{payload.agent_id}",
         "capability_key": f"eq.{payload.capability_id}", "status": "eq.approved", "limit": "1",
@@ -575,6 +586,8 @@ async def quote_generation_job(
         "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"),
         "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
         "knowledge_policy_version": knowledge_snapshot.get("policy_version"),
+        "agent_snapshot_sha256": snapshots["agent_snapshot_sha256"],
+        "skill_snapshot_sha256": snapshots["skill_snapshot_sha256"],
     }
 
 
