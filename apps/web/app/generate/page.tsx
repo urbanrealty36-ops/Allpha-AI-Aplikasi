@@ -9,7 +9,7 @@ type Agent = { id: string; display_name: string; description?: string; status: s
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; error_code?: string | null };
+type Job = { status: string; artifact_available?: boolean; error_code?: string | null; owner_reward_status?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -143,11 +143,11 @@ export default function GeneratePage() {
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
-      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; knowledge_context_sha256?: string | null; knowledge_source_count?: number };
+      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; knowledge_context_sha256?: string | null; knowledge_source_count?: number; payer_role?: string; consumer_grant_id?: string };
       if (!quote.quote_id || Date.parse(quote.expires_at) <= Date.now() || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
         throw new Error("Quote generation tidak valid atau sudah kedaluwarsa.");
       }
-      if (!window.confirm(`Estimasi: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Knowledge sources: ${quote.knowledge_source_count || 0}. Lanjutkan dan reservasi kredit?`)) {
+      if (!window.confirm(`Estimasi: ${quote.estimated_credits.toLocaleString("id-ID")} AI Credits. Model: ${quote.model_id}. Knowledge sources: ${quote.knowledge_source_count || 0}. Pembayar: ${quote.payer_role || "akun sendiri"}. Lanjutkan dan reservasi kredit?`)) {
         setNotice("Dibatalkan sebelum reservasi. Tidak ada kredit yang dipotong."); return;
       }
       const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
@@ -173,7 +173,7 @@ export default function GeneratePage() {
           const outputResponse = await fetch(artifact.url, { cache: "no-store" });
           if (!outputResponse.ok) throw new Error("Unduhan artefak generation gagal.");
           setResult(await outputResponse.text());
-          setNotice("Hasil lolos moderasi dan disimpan sebagai artefak privat. Tautan akses bersifat sementara.");
+          setNotice("Hasil lolos moderasi dan disimpan sebagai artefak privat. Creator reward: "+(job.owner_reward_status||"pending_policy")+". Tautan akses bersifat sementara.");
           return;
         }
         if (job.status === "failed" || job.status === "cancelled") throw new Error(job.error_code || "Generation gagal.");
