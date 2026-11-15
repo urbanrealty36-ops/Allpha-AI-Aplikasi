@@ -78,20 +78,28 @@ begin
         where id=v_job.id and status='queued';
         v_queued_cancelled := v_queued_cancelled + 1;
       exception when others then
-        perform public.credit_ledger_mark_pending(jsonb_build_object(
-          'reservation_id',v_job.reservation_id,
-          'reason_code','consumer_grant_revocation_release_requires_reconciliation'
-        ));
+        begin
+          perform public.credit_ledger_mark_pending(jsonb_build_object(
+            'reservation_id',v_job.reservation_id,
+            'reason_code','consumer_grant_revocation_release_requires_reconciliation'
+          ));
+        exception when others then
+          null;
+        end;
         update public.generation_jobs set status='pending_reconciliation',
           error_code='consumer_grant_revocation_release_requires_reconciliation',
           completed_at=now(),lease_token=null,lease_expires_at=null,updated_at=now()
         where id=v_job.id and status='queued';
       end;
     else
-      perform public.credit_ledger_mark_pending(jsonb_build_object(
-        'reservation_id',v_job.reservation_id,
-        'reason_code','consumer_grant_revoked_failure_release_not_approved'
-      ));
+      begin
+        perform public.credit_ledger_mark_pending(jsonb_build_object(
+          'reservation_id',v_job.reservation_id,
+          'reason_code','consumer_grant_revoked_failure_release_not_approved'
+        ));
+      exception when others then
+        null;
+      end;
       update public.generation_jobs set status='pending_reconciliation',
         error_code='consumer_grant_revoked_failure_release_not_approved',
         completed_at=now(),updated_at=now()
@@ -107,10 +115,14 @@ begin
     where consumer_grant_id=v_grant.id and status='running'
     for update
   loop
-    perform public.credit_ledger_mark_pending(jsonb_build_object(
-      'reservation_id',v_job.reservation_id,
-      'reason_code','consumer_grant_revoked_provider_outcome_unknown'
-    ));
+    begin
+      perform public.credit_ledger_mark_pending(jsonb_build_object(
+        'reservation_id',v_job.reservation_id,
+        'reason_code','consumer_grant_revoked_provider_outcome_unknown'
+      ));
+    exception when others then
+      null;
+    end;
     update public.generation_jobs set status='pending_reconciliation',
       error_code='consumer_grant_revoked_provider_outcome_unknown',
       lease_token=null,lease_expires_at=null,updated_at=now()
