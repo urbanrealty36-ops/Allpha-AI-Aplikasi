@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import hashlib
 import httpx
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
@@ -249,7 +250,7 @@ class SupabaseKeywordKnowledgeRepository:
             "select": (
                 "id,source_id,agent_id,owner_id,chunk_index,content,source_location,"
                 "source_version,content_sha256,"
-                "agent_knowledge_sources!inner(id,source_version,status,sensitivity)"
+                "agent_knowledge_sources!inner(id,owner_id,agent_id,source_version,status,sensitivity)"
             ),
             "owner_id": f"eq.{owner_id}",
             "agent_id": f"eq.{agent_id}",
@@ -375,15 +376,19 @@ class SupabaseServiceRolePublicKeywordKnowledgeRepository:
             source = row.get("agent_knowledge_sources") or {}
             if (
                 row.get("owner_id") != owner_id or row.get("agent_id") != agent_id
+                or source.get("owner_id") != owner_id or source.get("agent_id") != agent_id
                 or source.get("status") != "ready" or source.get("sensitivity") != "public"
                 or int(source.get("source_version", -1)) != int(row.get("source_version", -2))
                 or not row.get("content_sha256") or not row.get("id") or not row.get("source_id")
             ):
                 raise KnowledgeRetrievalUnavailable("public Knowledge result violated owner/source/version/sensitivity invariants")
+            content = str(row.get("content") or "")
+            if hashlib.sha256(content.encode("utf-8")).hexdigest() != str(row["content_sha256"]):
+                raise KnowledgeRetrievalUnavailable("public Knowledge chunk digest mismatch")
             hits.append(RetrievalHit(
                 owner_id=owner_id, agent_id=agent_id, source_id=str(row["source_id"]),
                 source_version=int(row["source_version"]), chunk_id=str(row["id"]),
-                content=str(row.get("content") or ""), content_sha256=str(row["content_sha256"]),
+                content=content, content_sha256=str(row["content_sha256"]),
                 source_location=row.get("source_location") or {}, sensitivity="public",
                 retrieval_method="keyword", score=0.0,
             ))
