@@ -3044,3 +3044,10 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - AI Cinema Native playback uses `expo-video` and the FastAPI playback-session/heartbeat/finish lifecycle (dependency `8523d88809d43a4ad3c0057cc4866bca29336dd4`; player `d16f550baa79790450b979330bd7fc09b4873aea`).
 - The formal implementation order remains WP-07 → WP-06 → WP-11 → WP-12. No Phase is complete from source presence alone. UI-COPY-03 remains `IN_PROGRESS`; 34/34 reference component counterparts exist, but adapted DOM/style/route/interaction and authenticated visual parity remain open.
 - No tests, build, lint, typecheck, CI, staging, real account/device verification, provider calls, new migration application, production database mutation or deployment were run. Runtime/integration acceptance remains `DEFERRED / NOT VERIFIED`.
+
+
+**WP-07 generation moderation-state contract correction — 2026-11-16:**
+- The Web Generate polling flow previously treated every `pending_reconciliation` job as an unknown provider/settlement outcome. That conflated the intentional `moderation_status=review_required` state with genuinely uncertain provider outcomes and gave creators the wrong recovery instruction.
+- The owner job-history API now includes the canonical `moderation_status` field. The Web Generate page explicitly reports that an artifact is awaiting Human review, keeps it private, and does not suggest retrying or resubmitting the generation. Other `pending_reconciliation` reasons continue to use the unknown-outcome/reconciliation message.
+- Commits: API `1d909204428f2e4f90eeec3230322fededfd2dc4`; Web `1f3caffcb673cfba54b1f5d006724acd36d72726`.
+- Source-only correction. No tests, build, lint, typecheck, CI, provider call, database mutation, migration application, staging, browser/device QA or deployment was run. WP-07 remains `in_progress / acceptance_not_verified`; this does not close the outstanding migration, moderation-policy, worker activation, multimodal input and integration acceptance blockers. Formal sequence remains WP-07 → WP-06 → WP-11 → WP-12.
