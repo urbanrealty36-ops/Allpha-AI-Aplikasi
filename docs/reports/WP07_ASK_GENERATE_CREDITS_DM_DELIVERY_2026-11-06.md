@@ -4,7 +4,7 @@
 **Repository:** `urbanrealty36-ops/Allpha-AI-Aplikasi`  
 **Branch:** `main`  
 **Canonical database:** `AllphaAiAplikasi-db` / `dvdziauyvuhcnqhrrvww`  
-**Status:** `in_progress` — source implementation advanced; full WP-07 acceptance is NOT VERIFIED.
+**Status:** `in_progress / schema_migrated / acceptance_not_verified` — production schema applied; full WP-07 acceptance is NOT VERIFIED.
 
 ## Governing scope
 
@@ -170,3 +170,21 @@ A subsequent raw-file inspection found that the source-only Generation Job SQL f
 - Owner job status now resolves queued/processing/dead deletion state from the durable deletion queue when present. Web and Native result views distinguish pending, deleted and dead-letter outcomes.
 - Commits: 1e3b3831f67a67a678141e6988ffe32ff2dc57e2, 8db30741e3572c668961d101b7e4a95f55ba8072, 66fddea8211e8d4f64b8276aa98e5b103b44e9a4, 63e45634ad14c07427006ec8824fe8fb22f33a26, 6f621a7e7745d40f10fd704a2bc2487f268b0315, 0e15588a8df1893915291f3e556d40439a4b9b94, 17314ca36d3eb41919c55a0e131f266f64c4b601, f6cd7e0aa03e2d4198c570380e21aae67f90759a.
 - The deletion schema, worker and operator queue remain source-only; no database migration, worker activation, Storage deletion, tests/build/typecheck/CI, staging or deployment was performed. WP-07 remains in_progress / acceptance_not_verified.
+
+
+
+## Production schema migration checkpoint — 2026-11-16
+
+The earlier statements in this report that the WP-07 migrations were source-only and not applied describe the pre-migration state and are superseded by this checkpoint.
+
+- Product Owner explicitly authorized direct production migration to `AllphaAiAplikasi-db` (`dvdziauyvuhcnqhrrvww`).
+- Ten migrations are now recorded in the live Supabase ledger: `20261115185037 wp07_premium_entitlement_projection_prerequisite`, `20261115185125 eng_p05_agent_version_snapshot_contract_reconciliation`, `20261115185143 wp07_durable_generation_jobs`, `20261115185203 wp07_external_consumer_dual_account`, `20261115185221 wp07_external_consumer_generation_atomic`, `20261115185238 wp07_consumer_grant_revocation_lifecycle`, `20261115185259 wp07_generation_manual_moderation`, `20261115185438 wp07_generation_artifact_owner_deletion`, `20261115185455 wp07_generation_queued_cancellation`, and `20261115185633 eng_p30_stripe_billing_subscriptions_entitlements`.
+- The first migration creates the Premium entitlement projection required by Generation Job authorization. ENG-P30 was then promoted to complete the existing Stripe billing and playback-entitlement schema dependencies. This is schema only: no products/prices/orders/receipts/subscriptions/playback entitlements were seeded, and no Stripe request was made.
+- Two SQL defects were corrected before promotion: UUID type for the atomic DM `client_message_id`, and dollar-quote delimiters in the artifact deletion retry function. Stripe checkout snapshot mismatch handling was also corrected so `review_required` persists and the FastAPI webhook does not acknowledge a non-fulfilled order as processed.
+- Read-only inspection confirms the expected 12 tables, RLS, intended service-role-only access, private `generation-artifacts` bucket (10 MiB, `text/plain`), and expanded Consumer grant scopes. The inspected new business tables have zero rows; no production user records or credit balances were modified.
+- No approved output moderation policy, active Consumer grant, billing product or active subscription exists yet. Stripe remains unconfigured/disabled by default; the Generation worker must remain gated until the required moderation adapter/policy and approved billing/credit policies are configured.
+- No tests/build/lint/typecheck/CI/browser/device QA, provider generation, Stripe call, Storage object mutation, credit transaction, staging or deployment was performed. Read-only catalog and row-count inspection is not workflow acceptance.
+- **WP-07 remains `in_progress / schema_migrated / acceptance_not_verified`.** All API/worker/DM/settlement/moderation/revocation/cancellation/deletion flows remain untested and runtime acceptance is not claimed. The formal order remains WP-07 → WP-06 → WP-11 → WP-12.
+
+Detailed migration ledger and schema verification: `docs/reports/WP07_PRODUCTION_SCHEMA_MIGRATION_2026-11-16.md`.
+
