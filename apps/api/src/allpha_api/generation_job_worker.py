@@ -230,12 +230,6 @@ async def run_once(*, batch_size: int = 5) -> int:
     if router is None:
         logger.info("generation_worker_idle reason=model_route_not_configured")
         return 0
-    try:
-        await router.preflight("private")
-    except Exception:
-        logger.warning("generation_worker_idle reason=model_route_preflight_failed")
-        return 0
-
     moderator = load_generation_output_moderator()
     moderation_policy = await _approved_moderation_policy()
     if moderator is None or moderation_policy is None:
