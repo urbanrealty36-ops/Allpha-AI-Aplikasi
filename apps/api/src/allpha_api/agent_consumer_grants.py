@@ -164,6 +164,8 @@ class AgentConsumerGrantStore:
                       agent_version: int, skill_id: str, skill_version: int,
                       runtime_policy_version: str, policy_snapshot: dict[str, Any],
                       required_scope: str = "public_invoke") -> dict[str, Any] | None:
+        if required_scope not in {"public_invoke", "generation_invoke"}:
+            raise ValueError("Consumer grant resolver scope is invalid")
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={"select":"*", "requester_user_id":f"eq.{requester_id}",
@@ -215,7 +217,7 @@ class ConsumerBudgetReservation:
         self.store = store
         self.lifecycle = lifecycle
         if payer_role not in {"consumer", "agent_owner"}:
-            raise ConsumerGrantUnavailable("approved policy must explicitly define the Consumer messaging payer")
+            raise ConsumerGrantUnavailable("approved policy must explicitly define the Consumer payer")
         self.payer_role = payer_role
         self.policy_version = policy_version
         self.approval_reference = approval_reference
@@ -313,7 +315,7 @@ class ConsumerBudgetReservation:
                 selected = (row, config, consumer, cap, entitlement, entitlement_version, capability_id)
                 break
         if selected is None:
-            raise ConsumerGrantUnavailable("no approved Consumer messaging tariff and entitlement match the active Model Router route")
+            raise ConsumerGrantUnavailable("no approved Consumer tariff and entitlement match the active Model Router route")
         row, config, consumer, cap, entitlement, entitlement_version, capability_id = selected
         store = SupabaseCreditLedgerStore(supabase_url=base, service_key=key)
         return cls(
