@@ -110,8 +110,16 @@ begin
     select exists(
       select 1 from public.agent_model_usage_metering m
       where m.idempotency_key=v_job.idempotency_key and m.task_id=v_job.task_id
+        and m.trace_id=v_job.trace_id
+        and m.owner_id=coalesce(v_job.payer_user_id,v_job.owner_user_id)::text
+        and m.agent_id=v_job.agent_id::text and m.source_id=v_job.skill_id::text
+        and m.source_version=v_job.source_version and m.sensitivity=v_job.sensitivity
+        and m.provider_id=v_job.provider_id and m.model_id=v_job.model_id
+        and m.model_version=v_job.model_version
         and m.usage_units=v_job.input_tokens+v_job.output_tokens
+        and m.usage_unit=v_job.usage_unit
         and m.cost_microunits=v_job.actual_cost_microunits
+        and m.cost_unit=v_job.cost_unit and m.pricing_version=v_job.pricing_version
     ) into v_metering_ok;
     if not v_metering_ok then
       raise exception 'GENERATION_REVIEW_METERING_EVIDENCE_MISSING' using errcode='42501';
