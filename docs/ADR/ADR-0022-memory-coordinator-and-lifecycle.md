@@ -1,11 +1,11 @@
 # ADR-0022 — Canonical Agent Memory Coordinator and Lifecycle
 
-- **Status:** PROPOSED — NOT APPROVED
+- **Status:** Product Owner APPROVED for source implementation; Privacy/Security and Data Platform activation review pending
 - **Date:** 2026-11-16
 - **Scope:** WP-07 / ENG-P06 and ENG-P10 (Memory, Knowledge, Agent Runtime, Generation and Workflow context)
 - **Decision owners:** Product Owner, Platform Architecture, Security/Privacy
 - **Implementation owner:** Agent Intelligence Engineering
-- **Approval required before:** memory schema creation, persistent memory writes, retention-policy activation, embedding/index changes, or exposing memory controls as enabled product functionality.
+- **Decision record:** Product Owner approved ADR-0022 on 2026-11-16. Source implementation may proceed. Live schema activation, persistent runtime writes, retention activation and embedding/index changes remain gated by Privacy/Security and Data Platform review.
 
 ## Context
 
@@ -20,7 +20,7 @@ The current repository contains:
 
 Knowledge corpus and personal/Agent memory must remain separate authorities. A vector table or a Knowledge chunk must not silently become private memory.
 
-## Proposed decision
+## Approved decision
 
 ### 1. One coordinator, no competing memory engine
 
@@ -85,17 +85,18 @@ The runtime receives only the scopes returned by the coordinator. A Consumer tas
 
 - Conversation Memory continues to use canonical messages.
 - Existing Knowledge ingestion/retrieval remains unchanged and is not relabelled as Memory.
-- No memory schema, memory vector dimension, retention default or persistent memory write is activated by this proposal.
-- WP-07 Memory acceptance remains blocked until the Product Owner approves this ADR and the implementation adds schema, coordinator, API, owner controls, deletion propagation and source-level evidence.
+- Memory schema, FastAPI coordinator, owner policy API and Memory Studio are implemented as source-only changes. No live Supabase migration or runtime activation is performed by this decision.
+- WP-07 Memory remains in progress until owner controls, runtime integration, deletion propagation and source-level evidence are completed. Product Owner approval is recorded; Privacy/Security and Data Platform activation review remains open.
 - Full integration/acceptance remains deferred until the user's specified verification window; source presence alone is not acceptance.
 
 ## Approval checklist
 
-- [ ] Product Owner approves the single MemoryCoordinator ownership model.
-- [ ] Product Owner approves per-type explicit consent with persistent memory disabled by default.
+- [x] Product Owner approves the single MemoryCoordinator ownership model.
+- [x] Product Owner approves per-type explicit consent with persistent memory disabled by default.
 - [ ] Security/Privacy approves scope, retention, deletion propagation and export/correction behavior.
 - [ ] Architecture approves the persistence model and embedding/index profile.
-- [ ] Only after approval: implement the versioned migration and FastAPI coordinator in the existing WP-07 / ENG-P06, ENG-P10 owners.
+- [x] Source-only versioned migration, FastAPI coordinator/API and owner Memory Studio implemented in WP-07 / ENG-P06, ENG-P10.
+- [ ] Privacy/Security and Data Platform review before live schema activation.
 
 ## Rollback
 
