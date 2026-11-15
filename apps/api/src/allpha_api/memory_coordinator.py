@@ -55,6 +55,7 @@ class MemoryCoordinator:
         desired_purposes=sorted(set(purposes)) if enabled else []
         desired_sensitivities=sorted(set(sensitivities)) if enabled else []
         if current and bool(current.get("enabled"))==enabled and current.get("consent_version")== (consent_version if enabled else None) and sorted(current.get("allowed_purposes") or [])==desired_purposes and sorted(current.get("allowed_sensitivities") or [])==desired_sensitivities and int(current.get("retention_days") or 0)==retention_days:
+            await self.transition("invalidate_policy_items",owner_id,agent_id,payload={"policy_id":current["id"],"policy_version":current["policy_version"]})
             return current
         now=datetime.now(timezone.utc).isoformat()
         body={"owner_user_id":owner_id,"agent_id":agent_id,"memory_type":memory_type,"enabled":enabled,
