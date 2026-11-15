@@ -2879,3 +2879,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added operator-only policy registry APIs for access, Qualified Watch and creator-earning policy drafts, four-eyes approval (creator cannot approve their own draft), explicit approval references, effective windows, configuration validation and privileged audit events.
 - Added subscription-plan draft creation against an active approved billing product and four-eyes activation. No products, prices, entitlement versions, watch thresholds, creator rewards or revenue splits are seeded. Cash payout remains disabled by policy validation.
 - Added `created_by` metadata to source-only policy and plan tables. Governance APIs remain unavailable until their source-only schema is promoted; no policy is activated by this source change.
+
+
+**WP-12 Qualified Watch/fraud review source checkpoint (2026-11-15):**
+- Added a policy-bound Qualified Watch evaluator. It requires a finished playback session, an approved/effective watch policy, a cleared fraud review, explicit watch-duration/completion/uniqueness thresholds, and entitlement when configured. Missing policy or fraud clearance remains pending; threshold/duplicate failures are rejected. Raw views are never promoted to qualified watches.
+- Added Super Admin-scoped manual fraud review with evidence reference, reason, optimistic status transition, and operator audit before/after evaluation. No default watch thresholds or automatic fraud clearance are created.
+- Creator earning settlement still requires a real approved billing receipt/reconciliation source and approved reward policy; no amount or payout is fabricated.

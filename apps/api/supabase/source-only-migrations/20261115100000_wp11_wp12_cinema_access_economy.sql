@@ -175,6 +175,10 @@ create table if not exists public.cinema_playback_sessions (
   watched_seconds integer not null default 0 check (watched_seconds >= 0),
   started_at timestamptz not null default now(),
   last_heartbeat_at timestamptz not null default now(),
+  fraud_status text not null default 'pending' check (fraud_status in ('pending','cleared','rejected')),
+  fraud_reviewed_by uuid references auth.users(id) on delete restrict,
+  fraud_reviewed_at timestamptz,
+  fraud_evidence_reference text,
   expires_at timestamptz not null,
   finished_at timestamptz,
   idempotency_key text not null check (char_length(idempotency_key) between 8 and 160),
@@ -222,7 +226,7 @@ create table if not exists public.cinema_qualified_watches (
   title_id uuid not null references public.cinema_titles(id) on delete restrict,
   episode_id uuid not null references public.cinema_episodes(id) on delete restrict,
   policy_version text references public.cinema_watch_policy_versions(policy_version) on delete restrict,
-  status text not null default 'pending_policy' check (status in ('pending_policy','qualified','rejected','reversed')),
+  status text not null default 'pending_policy' check (status in ('pending_policy','pending_fraud','qualified','rejected','reversed')),
   qualified_seconds integer not null default 0 check (qualified_seconds >= 0),
   decision_reason text,
   evaluated_at timestamptz,
@@ -426,6 +430,91 @@ begin
 end;
 $$;
 
+create or replace function public.cinema_evaluate_qualified_watch(p_session_id uuid)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp
+as $$
+declare
+  v_session public.cinema_playback_sessions%rowtype;
+  v_watch public.cinema_qualified_watches%rowtype;
+  v_policy public.cinema_watch_policy_versions%rowtype;
+  v_min_seconds integer;
+  v_min_ratio numeric;
+  v_window_hours integer;
+  v_require_entitlement boolean;
+  v_duplicate boolean;
+begin
+  select * into v_session from public.cinema_playback_sessions
+    where id=p_session_id and status='finished' for update;
+  if not found then raise exception 'CINEMA_PLAYBACK_NOT_FINISHED' using errcode='P0002'; end if;
+  select * into v_watch from public.cinema_qualified_watches
+    where session_id=p_session_id for update;
+  if not found then raise exception 'CINEMA_QUALIFIED_WATCH_NOT_FOUND' using errcode='P0002'; end if;
+
+  select * into v_policy from public.cinema_watch_policy_versions
+    where status='approved' and effective_at<=now()
+      and (expires_at is null or expires_at>now())
+    order by effective_at desc limit 1;
+  if not found then
+    update public.cinema_qualified_watches set status='pending_policy',
+      decision_reason='approved_watch_policy_missing',evaluated_at=now()
+      where id=v_watch.id;
+    return jsonb_build_object('outcome','pending_policy','reason','approved_watch_policy_missing');
+  end if;
+
+  if v_session.fraud_status<>'cleared' then
+    update public.cinema_qualified_watches set status='pending_fraud',
+      policy_version=v_policy.policy_version,decision_reason='fraud_review_not_cleared',evaluated_at=now()
+      where id=v_watch.id;
+    return jsonb_build_object('outcome','pending_fraud','reason','fraud_review_not_cleared');
+  end if;
+
+  v_min_seconds := (v_policy.configuration->>'minimum_watched_seconds')::integer;
+  v_min_ratio := (v_policy.configuration->>'minimum_completion_ratio')::numeric;
+  v_window_hours := (v_policy.configuration->>'unique_viewer_window_hours')::integer;
+  v_require_entitlement := coalesce((v_policy.configuration->>'require_entitlement')::boolean,true);
+  if v_min_seconds is null or v_min_seconds<1 or v_min_ratio is null or v_min_ratio<=0 or v_min_ratio>1
+     or v_window_hours is null or v_window_hours<1 or v_window_hours>8760
+     or v_policy.configuration->>'fraud_review_required' <> 'true' then
+    update public.cinema_qualified_watches set status='pending_policy',
+      policy_version=v_policy.policy_version,decision_reason='watch_policy_configuration_incomplete',evaluated_at=now()
+      where id=v_watch.id;
+    return jsonb_build_object('outcome','pending_policy','reason','watch_policy_configuration_incomplete');
+  end if;
+
+  if v_session.duration_seconds is null or v_session.watched_seconds<v_min_seconds
+     or v_session.watched_seconds::numeric / greatest(v_session.duration_seconds,1) < v_min_ratio
+     or (v_require_entitlement and v_session.entitlement_id is null) then
+    update public.cinema_qualified_watches set status='rejected',
+      policy_version=v_policy.policy_version,decision_reason='qualified_watch_threshold_not_met',
+      qualified_seconds=v_session.watched_seconds,evaluated_at=now()
+      where id=v_watch.id;
+    return jsonb_build_object('outcome','rejected','reason','qualified_watch_threshold_not_met');
+  end if;
+
+  select exists(
+    select 1 from public.cinema_qualified_watches q
+    join public.cinema_playback_sessions s on s.id=q.session_id
+    where q.id<>v_watch.id and q.status='qualified'
+      and q.owner_user_id=v_session.owner_user_id and q.title_id=v_session.title_id
+      and q.created_at >= now() - make_interval(hours=>v_window_hours)
+  ) into v_duplicate;
+  if v_duplicate then
+    update public.cinema_qualified_watches set status='rejected',
+      policy_version=v_policy.policy_version,decision_reason='duplicate_viewer_window',
+      qualified_seconds=v_session.watched_seconds,evaluated_at=now()
+      where id=v_watch.id;
+    return jsonb_build_object('outcome','rejected','reason','duplicate_viewer_window');
+  end if;
+
+  update public.cinema_qualified_watches set status='qualified',
+    policy_version=v_policy.policy_version,decision_reason='policy_qualified',
+    qualified_seconds=v_session.watched_seconds,evaluated_at=now()
+    where id=v_watch.id;
+  return jsonb_build_object('outcome','qualified','policy_version',v_policy.policy_version,
+    'qualified_seconds',v_session.watched_seconds);
+end;
+$$;
+
 alter table public.cinema_film_versions enable row level security;
 alter table public.cinema_creator_credits enable row level security;
 alter table public.cinema_subscription_plans enable row level security;
@@ -455,8 +544,10 @@ grant select, insert, update, delete on public.cinema_film_versions,
 revoke all on function public.sync_cinema_subscription_from_billing() from public, anon, authenticated;
 revoke all on function public.cinema_record_playback_heartbeat(uuid,uuid,text,uuid,integer) from public, anon, authenticated;
 revoke all on function public.cinema_finish_playback_session(uuid,uuid,text,uuid,integer) from public, anon, authenticated;
+revoke all on function public.cinema_evaluate_qualified_watch(uuid) from public, anon, authenticated;
 grant execute on function public.cinema_record_playback_heartbeat(uuid,uuid,text,uuid,integer) to service_role;
 grant execute on function public.cinema_finish_playback_session(uuid,uuid,text,uuid,integer) to service_role;
+grant execute on function public.cinema_evaluate_qualified_watch(uuid) to service_role;
 
 comment on table public.cinema_playback_sessions is 'Owner-scoped server-issued playback sessions. Client telemetry is raw evidence; qualification requires an approved versioned policy.';
 comment on table public.cinema_qualified_watches is 'Qualified Watch decisions remain pending until an approved cinema_watch_policy_versions record and evaluator are configured.';

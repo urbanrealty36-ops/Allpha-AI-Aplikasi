@@ -23,6 +23,13 @@ router = APIRouter(prefix="/v1/cinema", tags=["cinema-lifecycle"])
 
 
 
+class CinemaFraudReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: str = Field(pattern="^(clear|reject)$")
+    evidence_reference: str = Field(min_length=8,max_length=500)
+    reason: str = Field(min_length=8,max_length=500)
+
+
 class CinemaPolicyDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     policy_version: str = Field(min_length=1,max_length=80,pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
@@ -609,6 +616,28 @@ def _validate_cinema_policy(kind:str,configuration:dict[str,Any])->None:
             raise HTTPException(422,detail={"code":"CINEMA_CASH_PAYOUT_DISABLED","message":"Cash payout belum dapat diaktifkan melalui policy ini."})
     else:
         raise HTTPException(404,detail={"code":"CINEMA_POLICY_KIND_UNKNOWN","message":"Jenis policy Cinema tidak dikenal."})
+
+
+@router.post("/admin/playback-sessions/{session_id}/fraud-review")
+async def review_cinema_playback_fraud(session_id:uuid.UUID,payload:CinemaFraudReview,request:Request,
+                                       operator:dict[str,Any]=Depends(require_operator_scope("platform:billing.manage")))->dict[str,Any]:
+    sessions=await _db("GET","cinema_playback_sessions",params={
+        "select":"id,status,fraud_status,owner_user_id,title_id,episode_id",
+        "id":"eq."+str(session_id),"limit":"1",
+    })
+    if not sessions: raise HTTPException(404,detail={"code":"CINEMA_PLAYBACK_SESSION_NOT_FOUND","message":"Sesi playback tidak ditemukan."})
+    if sessions[0].get("status")!="finished":
+        raise HTTPException(409,detail={"code":"CINEMA_PLAYBACK_NOT_FINISHED","message":"Fraud review hanya dilakukan setelah sesi selesai."})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.playback.fraud_review",outcome="attempted",resource_type="cinema_playback_session",resource_id=str(session_id),metadata={"decision":payload.decision,"evidence_reference":payload.evidence_reference,"reason":payload.reason})
+    changed=await _db("PATCH","cinema_playback_sessions",params={"id":"eq."+str(session_id),"status":"eq.finished","fraud_status":"eq.pending"},payload={
+        "fraud_status":"cleared" if payload.decision=="clear" else "rejected",
+        "fraud_reviewed_by":str(operator["id"]),"fraud_reviewed_at":datetime.now(timezone.utc).isoformat(),
+        "fraud_evidence_reference":payload.evidence_reference,
+    },prefer="return=representation")
+    if not changed: raise HTTPException(409,detail={"code":"CINEMA_FRAUD_REVIEW_CONFLICT","message":"Status fraud berubah; periksa ulang sebelum memutuskan."})
+    evaluation=await _db("POST","rpc/cinema_evaluate_qualified_watch",payload={"p_session_id":str(session_id)})
+    await write_operator_audit(request,actor_user_id=str(operator["id"]),action="cinema.playback.fraud_review",outcome="allowed",resource_type="cinema_playback_session",resource_id=str(session_id),metadata={"decision":payload.decision,"evaluation":evaluation})
+    return {"session":changed[0],"qualified_watch":evaluation}
 
 
 @router.get("/admin/policies")
