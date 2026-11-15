@@ -91,19 +91,22 @@ export default function AgentStudioPage() {
     setLoading(true); setError("");
     try {
       const headers = { Authorization: "Bearer " + active.access_token };
-      const [skillResponse, capabilityResponse, toolsResponse, knowledgeResponse, grantsResponse] = await Promise.all([
+      const [skillResponse, capabilityResponse, toolsResponse, knowledgeResponse] = await Promise.all([
         fetch(`${apiBase}/v1/agents/${agentId}/skills`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/capabilities`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/tools`, { headers, cache: "no-store" }),
         fetch(`${apiBase}/v1/agents/${agentId}/knowledge/sources`, { headers, cache: "no-store" }),
-        fetch(`${apiBase}/v1/messages/agents/${agentId}/consumer-grants`, { headers, cache: "no-store" }),
       ]);
       if (!skillResponse.ok) throw new Error(await readError(skillResponse));
       if (!capabilityResponse.ok) throw new Error(await readError(capabilityResponse));
       if (!toolsResponse.ok) throw new Error(await readError(toolsResponse));
       if (!knowledgeResponse.ok) throw new Error(await readError(knowledgeResponse));
-      if (!grantsResponse.ok) throw new Error(await readError(grantsResponse));
-      const [skillBody, capabilityBody, toolsBody, knowledgeBody, grantsBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json(), knowledgeResponse.json(), grantsResponse.json()]);
+      const [skillBody, capabilityBody, toolsBody, knowledgeBody] = await Promise.all([skillResponse.json(), capabilityResponse.json(), toolsResponse.json(), knowledgeResponse.json()]);
+      let grantsBody: { items?: ConsumerGrant[] } = { items: [] };
+      try {
+        const grantsResponse = await fetch(`${apiBase}/v1/messages/agents/${agentId}/consumer-grants`, { headers, cache: "no-store" });
+        if (grantsResponse.ok) grantsBody = await grantsResponse.json();
+      } catch { /* Grant management is optional when the Consumer policy service is not configured. */ }
       setSkills(Array.isArray(skillBody.items) ? skillBody.items : []);
       setCapabilities(Array.isArray(capabilityBody.items) ? capabilityBody.items : []);
       setRegisteredTools(Array.isArray(toolsBody.items) ? toolsBody.items.filter((tool: RegisteredTool) => tool.executable) : []);
