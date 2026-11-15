@@ -62,7 +62,8 @@ import StoreAndBoothModal from './StoreAndBoothModal';
 interface ProfileViewProps {
   humanUser: HumanProfile;
   agentProfile: AIAgentProfile | null;
-  ownedAgents?: Array<{ name: string; handle: string; specialty: string; avatar: string; status: string; credits?: number | null }>;
+  ownedAgents?: Array<{ id: string; name: string; handle: string; specialty: string; avatar: string; status: string; credits?: number | null }>;
+  onSelectOwnedAgent?: (agentId: string) => void;
   showCredits?: boolean;
   showSocialCounts?: boolean;
   humanVerified?: boolean;
@@ -117,6 +118,7 @@ export default function ProfileView({
   onOpenGenerate,
   onUpdateAgent,
   onOpenAgentStudio,
+  onSelectOwnedAgent,
   onOpenAgentRuntime,
   onOpenAgentPassport,
   onOpenFilmAi,
@@ -334,8 +336,8 @@ export default function ProfileView({
               const cardBg = bgColors[idx % bgColors.length];
               return (
                 <div
-                  key={ag.name}
-                  onClick={() => setActiveProfileTab('AGENTS')}
+                  key={ag.id}
+                  onClick={() => { setActiveProfileTab('AGENTS'); onSelectOwnedAgent?.(ag.id); }}
                   className={`shrink-0 w-48 p-3 rounded-2xl ${cardBg} border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:brightness-95 transition flex items-center gap-3 cursor-pointer active:translate-x-0.5 active:translate-y-0.5`}
                 >
                   <img
@@ -702,6 +704,16 @@ export default function ProfileView({
 
             {/* Core Action Buttons */}
             <div className="pt-2 flex flex-wrap gap-2.5">
+              {hasAgentProfile && onOpenAgentStudio && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAgentStudio(agentProfile.id)}
+                  className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-black text-xs border-2 border-white shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  <span>Buka Agent Studio</span>
+                </button>
+              )}
               <button
                 onClick={() => { if (hasAgentProfile && onUpdateAgent) setIsIdentityModalOpen(true); else showToast('Identitas Agent belum tersedia atau endpoint penyimpanan belum terhubung.'); }}
                 className="flex-1 min-w-[140px] py-2.5 px-3.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center justify-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
@@ -786,9 +798,11 @@ export default function ProfileView({
                 const bgColors = ['bg-[#DDD6FE]', 'bg-[#BAE6FD]'];
                 const cardBg = bgColors[idx % bgColors.length];
                 return (
-                  <div
-                    key={ag.name}
-                    className={`p-3.5 rounded-2xl ${cardBg} border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-between gap-3`}
+                  <button
+                    key={ag.id}
+                    type="button"
+                    onClick={() => onSelectOwnedAgent?.(ag.id)}
+                    className={`w-full text-left p-3.5 rounded-2xl ${cardBg} border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-between gap-3 hover:brightness-95 transition`}
                   >
                     <div className="flex items-center gap-3">
                       <img
@@ -814,7 +828,7 @@ export default function ProfileView({
                         </span>
                       )}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -826,15 +840,11 @@ export default function ProfileView({
       {activeProfileTab === 'LIKED' && (
         <div className="space-y-3">
           <p className="text-xs text-slate-700 font-black px-1">Postingan yang Disukai oleh Anda:</p>
-          {posts.slice(0, 3).map((p) => (
-            <div key={p.id} className="p-4 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-start gap-3">
-              <Heart className="w-5 h-5 text-rose-500 fill-rose-500 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-xs font-black text-slate-900">{p.humanOwner.name} & {p.aiAgent.name}</p>
-                <p className="text-xs text-slate-700 font-semibold line-clamp-2 mt-0.5">{p.content}</p>
-              </div>
-            </div>
-          ))}
+          <div className="p-8 text-center text-slate-600 bg-white rounded-3xl border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]">
+            <Heart className="w-7 h-7 mx-auto mb-2 text-rose-400" />
+            <p className="text-xs font-bold">Daftar postingan yang Anda sukai belum tersedia dari API profil.</p>
+            <p className="text-[11px] mt-1">Konten di tab ini tidak akan diisi dari postingan milik Anda sendiri.</p>
+          </div>
         </div>
       )}
 
@@ -848,15 +858,15 @@ export default function ProfileView({
           <div className="text-xs text-slate-700 font-semibold space-y-2">
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Status Identitas:</span>
-              <span className="font-black text-emerald-700">Terverifikasi (KYC L2)</span>
+              <span className="font-black text-slate-600">Belum tersedia dari API</span>
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Bergabung Sejak:</span>
-              <span className="font-black text-slate-900">Oktober 2026</span>
+              <span className="font-black text-slate-600">Belum tersedia dari API</span>
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Ekosistem:</span>
-              <span className="font-black text-slate-900">ALLPHA UNIVERSE v3.0</span>
+              <span className="font-black text-slate-900">Human + AI Agent</span>
             </div>
             <div className="flex justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
               <span>Public Ledger Hash:</span>
