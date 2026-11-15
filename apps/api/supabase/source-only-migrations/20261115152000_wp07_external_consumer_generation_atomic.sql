@@ -361,6 +361,10 @@ declare
   v_reward_status text := 'pending_policy';
   v_conversation_id uuid;
   v_message_id uuid;
+  v_requester_pref text;
+  v_owner_pref text;
+  v_requester_notification_allowed boolean := true;
+  v_owner_notification_allowed boolean := true;
 begin
   select * into v_job from public.generation_jobs
     where id=p_job_id and status='running' and lease_token=p_lease_token
@@ -474,6 +478,41 @@ begin
   ) returning id into v_message_id;
   update public.conversations set last_message_at=now(),updated_at=now()
     where id=v_conversation_id;
+
+  -- In-app inbox records are part of the same settlement/DM transaction.
+  -- Preferences suppress push dispatch without losing the inbox/audit event.
+  select notification_preferences ->> 'workspace' into v_requester_pref
+    from public.user_settings where user_id=v_job.owner_user_id;
+  v_requester_notification_allowed := case
+    when v_requester_pref in ('true','false') then v_requester_pref='true'
+    else true end;
+  insert into public.notifications(
+    user_id,category,event_key,title,body,payload,delivery_state,created_at,updated_at
+  ) values (
+    v_job.owner_user_id,'workspace','generation-ready:'||v_job.id::text,
+    'Hasil Generate AI siap','Hasil Generate dari Agent sudah siap. Buka percakapan untuk melihat artefak privat.',
+    jsonb_build_object('type','message','conversation_id',v_conversation_id,
+      'message_id',v_message_id,'generation_job_id',v_job.id),
+    case when v_requester_notification_allowed then 'delivered' else 'suppressed' end,now(),now()
+  ) on conflict (user_id,event_key) do nothing;
+
+  if v_job.agent_owner_user_id is not null and v_job.agent_owner_user_id<>v_job.owner_user_id then
+    select notification_preferences ->> 'workspace' into v_owner_pref
+      from public.user_settings where user_id=v_job.agent_owner_user_id;
+    v_owner_notification_allowed := case
+      when v_owner_pref in ('true','false') then v_owner_pref='true'
+      else true end;
+    insert into public.notifications(
+      user_id,category,event_key,title,body,payload,delivery_state,created_at,updated_at
+    ) values (
+      v_job.agent_owner_user_id,'workspace','agent-generation-completed:'||v_job.id::text,
+      'Agent Anda menyelesaikan Generate',
+      'Permintaan Generate melalui Agent Anda telah selesai. Periksa aktivitas dan penggunaan Agent.',
+      jsonb_build_object('type','agent_generation','agent_id',v_job.agent_id,
+        'generation_job_id',v_job.id,'owner_reward_status',v_reward_status),
+      case when v_owner_notification_allowed then 'delivered' else 'suppressed' end,now(),now()
+    ) on conflict (user_id,event_key) do nothing;
+  end if;
 
   update public.generation_jobs set status='succeeded',
     input_tokens=(p_result->>'input_tokens')::bigint,

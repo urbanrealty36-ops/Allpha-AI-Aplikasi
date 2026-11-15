@@ -239,6 +239,13 @@ def _safe_push_data(notification: dict[str, Any]) -> dict[str, Any]:
     elif payload.get("type") == "community_invite_accepted" and payload.get("community_id"):
         data["type"] = "community_invite_accepted"
         data["communityId"] = str(payload["community_id"])
+    elif payload.get("type") == "agent_generation" and payload.get("agent_id") and payload.get("generation_job_id"):
+        try:
+            data["agentId"] = str(UUID(str(payload["agent_id"])))
+            data["generationJobId"] = str(UUID(str(payload["generation_job_id"])))
+        except (ValueError, TypeError, AttributeError):
+            return data
+        data["type"] = "agent_generation"
     elif payload.get("type") in {
         "feed_like", "feed_comment", "feed_comment_reply", "feed_comment_mention",
         "feed_repost", "feed_quote",
