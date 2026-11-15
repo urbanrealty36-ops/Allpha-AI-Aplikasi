@@ -142,7 +142,9 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     if (asset.size != null && asset.size > 50 * 1024 * 1024) { setError("Ukuran video maksimal 50 MiB."); return; }
+    const sameFile = Boolean(uploadAsset && uploadAsset.name === asset.name && uploadAsset.size === asset.size && uploadAsset.mimeType === asset.mimeType);
     setUploadAsset({ uri: asset.uri, name: asset.name || "cinema-video.mp4", mimeType: asset.mimeType, size: asset.size });
+    if (!sameFile) setUploadIdempotencyKey("");
   }
 
   function createClientUuid() {
