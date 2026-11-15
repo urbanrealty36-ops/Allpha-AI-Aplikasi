@@ -8,6 +8,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 type Agent = { id: string; display_name: string; description?: string; status: string };
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
+type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
 type Job = { status: string; artifact_available?: boolean; error_code?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -21,6 +22,8 @@ export default function GeneratePage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [externalAgents, setExternalAgents] = useState<ExternalAgent[]>([]);
+  const [consumerGrantId, setConsumerGrantId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [skillId, setSkillId] = useState("");
@@ -39,7 +42,7 @@ export default function GeneratePage() {
     if (!supabase) { setError("Autentikasi Allpha belum dikonfigurasi."); setLoading(false); return; }
     let active = true;
     const load = async (current: Session | null) => {
-      setSession(current); setAgents([]); setSkills([]); setCapabilities([]); setAgentId(""); setSkillId(""); setCapabilityId("");
+      setSession(current); setAgents([]); setExternalAgents([]); setConsumerGrantId(""); setSkills([]); setCapabilities([]); setAgentId(""); setSkillId(""); setCapabilityId("");
       if (!current) { setLoading(false); return; }
       setLoading(true); setError("");
       try {
@@ -47,9 +50,17 @@ export default function GeneratePage() {
         if (!response.ok) throw new Error(await errorMessage(response));
         const data = await response.json() as { items?: Agent[] };
         const eligible = (data.items || []).filter(agent => agent.status === "active");
+        let shared: ExternalAgent[] = [];
+        try {
+          const sharedResponse = await fetch(apiBase + "/v1/generation/agents", { headers: { Authorization: "Bearer " + current.access_token, Accept: "application/json" }, cache: "no-store" });
+          if (sharedResponse.ok) {
+            const sharedData = await sharedResponse.json() as { items?: ExternalAgent[] };
+            shared = (sharedData.items || []).filter(item => item.agent?.status === "active" && item.skill?.status === "published" && item.consumer_grant_id);
+          }
+        } catch { /* Own-Agent generation remains available if the optional grant catalog is unavailable. */ }
         if (!active) return;
-        setAgents(eligible);
-        if (!eligible.length) setError("Belum ada AI Agent aktif milik akun ini.");
+        setAgents(eligible); setExternalAgents(shared);
+        if (!eligible.length && !shared.length) setError("Belum ada AI Agent aktif milik Anda atau Agent publik yang memberikan grant generation.");
       } catch (cause) { if (active) setError(cause instanceof Error ? cause.message : "Agent tidak dapat dimuat."); }
       finally { if (active) setLoading(false); }
     };
@@ -97,6 +108,15 @@ export default function GeneratePage() {
     let active = true;
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json" };
     setSkills([]); setCapabilities([]); setSkillId(""); setCapabilityId(""); setError("");
+    if (consumerGrantId) {
+      const shared = externalAgents.find(item => item.consumer_grant_id === consumerGrantId && item.agent.id === agentId);
+      if (!shared) { setError("Grant Agent eksternal tidak lagi tersedia."); return () => { active = false; }; }
+      const approved = shared.capabilities.filter(item => item.status === "approved");
+      setSkills([shared.skill]); setCapabilities(approved);
+      setSkillId(shared.skill.id); setCapabilityId(approved[0]?.capability_key || "");
+      if (!approved.length) setError("Agent eksternal belum memiliki capability approved.");
+      return () => { active = false; };
+    }
     void Promise.all([
       fetch(apiBase + `/v1/agents/${agentId}/skills`, { headers, cache: "no-store" }),
       fetch(apiBase + `/v1/agents/${agentId}/capabilities`, { headers, cache: "no-store" }),
@@ -113,13 +133,13 @@ export default function GeneratePage() {
       else { setSkillId(published[0].id); setCapabilityId(approved[0].capability_key); }
     }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Skill/capability tidak dapat dimuat."); });
     return () => { active = false; };
-  }, [session, agentId]);
+  }, [session, agentId, consumerGrantId, externalAgents]);
 
   async function generate() {
     if (!session || !agentId || !skillId || !capabilityId || !prompt.trim() || busy) return;
     setBusy(true); setError(""); setNotice(""); setResult(""); setJobId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
-    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
+    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...(knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
@@ -173,12 +193,12 @@ export default function GeneratePage() {
     <section className="rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[4px_4px_0px_#0f172a] dark:bg-slate-900 dark:text-white">
       {loading ? <p role="status" className="text-sm">Memuat Agent kanonis…</p> : <>
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-bold">AI Agent<select value={agentId} onChange={event => setAgentId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.display_name}</option>)}</select></label>
+          <label className="text-sm font-bold">AI Agent<select value={agentId + "::" + consumerGrantId} onChange={event => { const [id, grant] = event.target.value.split("::"); setAgentId(id); setConsumerGrantId(grant || ""); }} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="::">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id + "::"}>{agent.display_name} · Milik saya</option>)}{externalAgents.map(item => <option key={item.consumer_grant_id} value={item.agent.id + "::" + item.consumer_grant_id}>{item.agent.display_name} · Grant pemilik</option>)}</select></label>
           <label className="text-sm font-bold">Skill published<select value={skillId} onChange={event => setSkillId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.display_name || skill.name || `Skill v${skill.version}`}</option>)}</select></label>
         </div>
         <label className="mt-4 block text-sm font-bold">Capability approved<select value={capabilityId} onChange={event => setCapabilityId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih capability</option>{capabilities.map(item => <option key={item.capability_key} value={item.capability_key}>{item.capability_key}</option>)}</select></label>
         <label className="mt-4 block text-sm font-bold">Brief / Prompt<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={7} maxLength={32768} placeholder="Jelaskan tujuan, audiens, format konten, gaya, konteks brand, dan batasan hasil…" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal dark:border-slate-700" /></label>
-        <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} rows={3} maxLength={4000} placeholder="Cari sumber Knowledge milik Agent yang boleh digunakan…" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Retrieval hanya menggunakan sumber ready yang lolos consent, ACL, sensitivity policy, dan provenance. Jika policy belum tersedia, generation ditolak.</span></label>
+        <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} disabled={!!consumerGrantId} rows={3} maxLength={4000} placeholder={consumerGrantId ? "Knowledge privat/publik Agent eksternal belum tersedia pada client ini." : "Cari sumber Knowledge milik Agent yang boleh digunakan…"} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal disabled:opacity-50 dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Retrieval milik sendiri menggunakan consent, ACL, sensitivity policy, dan provenance. Untuk Agent eksternal, Knowledge tetap dinonaktifkan sampai adapter public-only ACL tersedia.</span></label>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">Quote dan tarif selalu berasal dari policy aktif. Tidak ada harga default atau kredit buatan.</p><button onClick={() => void generate()} disabled={busy || loading || !agentId || !skillId || !capabilityId || !prompt.trim()} className="rounded-xl border-2 border-slate-900 bg-violet-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{busy ? "Memproses…" : "Minta Quote & Generate"}</button></div>
       </>}
     </section>
