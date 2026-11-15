@@ -233,10 +233,13 @@ begin
 
   select * into v_metering from public.agent_model_usage_metering
     where idempotency_key=v_source_event and task_id=v_job.task_id
-      and owner_id=v_job.payer_user_id and billing_account_id=v_job.payer_user_id
+      and owner_id=v_job.payer_user_id::text
       and usage_unit=v_job.usage_unit and usage_units=v_units
     limit 1 for share;
   if not found then raise exception 'GENERATION_USAGE_EVIDENCE_NOT_CONFIRMED' using errcode='40001'; end if;
+  if v_actual_credits <> v_units * v_job.credits_per_usage_unit then
+    raise exception 'GENERATION_PAYER_CREDIT_AMOUNT_MISMATCH' using errcode='22023';
+  end if;
 
   select * into v_policy from public.credit_policy_versions
     where policy_version=v_policy_version and approval_reference=v_approval
@@ -274,10 +277,11 @@ begin
   insert into public.credit_balance_projection(owner_user_id) values(v_owner) on conflict do nothing;
   insert into public.credit_ledger_entries(
     owner_user_id,idempotency_key,entry_type,credits,balance_delta,credit_scheme_version,
-    policy_version,capability_id,source_event_id,payload_fingerprint,metadata
+    policy_version,tariff_version,entitlement_version,capability_id,task_id,source_event_id,payload_fingerprint,metadata
   ) values (
     v_owner,v_key,'grant',v_credits,v_credits,v_policy.credit_scheme_version,
-    v_policy_version,'agent_owner_generation_reward',v_source_event,v_fingerprint,
+    v_policy_version,v_job.tariff_version,v_job.entitlement_version,'agent_owner_generation_reward',
+    v_job.task_id,v_source_event,v_fingerprint,
     jsonb_build_object('generation_job_id',v_job.id,'payer_user_id',v_job.payer_user_id,
       'requester_user_id',v_job.owner_user_id,'agent_id',v_job.agent_id,
       'actual_usage_units',v_units,'reward_policy',v_reward)
