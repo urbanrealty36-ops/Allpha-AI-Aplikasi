@@ -10,7 +10,7 @@ import asyncio
 import json
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any, Awaitable, Callable
 
@@ -283,6 +283,9 @@ class AgentRuntime:
         router: CanonicalTextGenerationRouter,
         request: TextGenerationRequest,
         consumer_authorization: AgentConsumerAuthorization | None = None,
+        skill_tool_dependencies: tuple[str, ...] = (),
+        runtime_authorization: RuntimeAuthorization | None = None,
+        skill_budget_limits: dict[str, Any] | None = None,
     ) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
         """Execute a pinned Skill through Model Router under owner or explicit consumer authorization."""
         if not requester_id or not owner_id:
@@ -322,6 +325,75 @@ class AgentRuntime:
             raise AgentRuntimeBlocked("approved Model Router route, policy and metering are required") from exc
         if not policy_version or policy_version != active_policy_version:
             raise AgentRuntimeBlocked("pinned Model Router policy version changed")
+
+        # Generation Skills may declare only registered deterministic tools.
+        # Model-driven arbitrary function calls are not inferred from Skill text.
+        dependencies = tuple(skill_tool_dependencies)
+        if len(dependencies) > self._limits.max_tool_calls or len(set(dependencies)) != len(dependencies):
+            raise AgentRuntimeBlocked("Skill tool dependency count or uniqueness is invalid")
+        if dependencies:
+            if requester_id != owner_id:
+                raise AgentRuntimeBlocked("external Consumer tool execution requires an explicit tool-scoped grant")
+            auth = runtime_authorization
+            if auth is None:
+                raise AgentRuntimeBlocked("approved runtime tool policy is required")
+            if (auth.authenticated_owner_id != owner_id or auth.owned_agent_id != agent_id
+                    or auth.agent_version != agent_version or auth.skill_id != skill_id
+                    or auth.skill_version != skill_version or not auth.skill_published
+                    or not auth.policy_approved or auth.policy_version != policy_version):
+                raise AgentRuntimeBlocked("runtime tool authorization does not match the pinned Agent/Skill")
+            limits = skill_budget_limits if isinstance(skill_budget_limits, dict) else {}
+            max_calls = limits.get("max_tool_calls", len(dependencies))
+            max_runtime = limits.get("max_runtime_seconds", 30)
+            if (not isinstance(max_calls, int) or isinstance(max_calls, bool)
+                    or max_calls < len(dependencies) or max_calls > self._limits.max_tool_calls
+                    or not isinstance(max_runtime, int) or isinstance(max_runtime, bool)
+                    or max_runtime < 1 or max_runtime > self._limits.max_runtime_seconds):
+                raise AgentRuntimeBlocked("Skill tool budget is outside runtime limits")
+            transformed_prompt = request.prompt
+            tool_deadline = time.monotonic() + min(float(max_runtime), 30.0)
+            for index, key in enumerate(dependencies):
+                tool = get_tool(key)
+                if key not in auth.approved_tool_keys:
+                    raise AgentRuntimeBlocked(f"tool is not approved by runtime policy: {key}")
+                if not set(tool.required_permission_scopes).issubset(auth.granted_scopes):
+                    raise AgentRuntimeBlocked(f"required permission scope is missing: {key}")
+                properties = tool.input_schema.get("properties") if isinstance(tool.input_schema, dict) else None
+                required = tool.input_schema.get("required") if isinstance(tool.input_schema, dict) else None
+                output_properties = tool.output_schema.get("properties") if isinstance(tool.output_schema, dict) else None
+                if (not isinstance(properties, dict) or set(properties) != {"text"}
+                        or required != ["text"] or not isinstance(output_properties, dict)
+                        or not isinstance(output_properties.get("text"), dict)
+                        or output_properties["text"].get("type") != "string"):
+                    raise AgentRuntimeBlocked(f"tool is not a supported deterministic text preprocessor: {key}")
+                envelope = AgentTaskEnvelope(
+                    task_id=f"{request.task_id}:skill-tool:{index}",
+                    task_version=1,
+                    requester_id=requester_id,
+                    agent_id=agent_id,
+                    agent_version=agent_version,
+                    owner_id=owner_id,
+                    skill_id=skill_id,
+                    skill_version=skill_version,
+                    input_classification=request.sensitivity,
+                    allowed_memory_scope=(),
+                    allowed_tool_keys=(key,),
+                    capability_scopes=tuple(auth.granted_scopes),
+                    idempotency_key=f"{request.idempotency_key}:skill-tool:{index}:{key}",
+                    trace_id=request.trace_id,
+                    deadline_monotonic=tool_deadline,
+                    max_tool_calls=1,
+                    max_runtime_seconds=min(max_runtime, 30),
+                    max_output_bytes=8192,
+                )
+                task = AgentTask(envelope)
+                tool_result = await self.execute_tool(task, auth, tool_key=key, inputs={"text": transformed_prompt})
+                value = tool_result.get("result", {}).get("text")
+                if not isinstance(value, str) or not value.strip():
+                    raise AgentRuntimeBlocked(f"tool returned an invalid text result: {key}")
+                transformed_prompt = value
+            request = replace(request, prompt=transformed_prompt)
+
         remaining = min(float(request.timeout_ms) / 1000, 30.0)
         if remaining <= 0:
             raise AgentRuntimeBlocked("generation deadline has expired")

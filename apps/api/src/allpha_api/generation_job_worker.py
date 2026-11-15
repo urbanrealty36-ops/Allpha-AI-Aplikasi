@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import json
 import os
 import uuid
 from typing import Any
@@ -20,6 +21,7 @@ from allpha_api.agent_runtime import (
     AgentRuntime,
     AgentRuntimeBlocked,
     AgentRuntimeOutcomeUnknown,
+    RuntimeAuthorization,
 )
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
@@ -211,6 +213,86 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
     return grant
 
 
+async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthorization | None:
+    """Resolve the current approved owner runtime policy for pinned Skill tools."""
+    skill = job.get("skill_snapshot") if isinstance(job.get("skill_snapshot"), dict) else {}
+    dependencies = skill.get("tool_dependencies") or []
+    if not dependencies:
+        return None
+    if job.get("consumer_grant_id"):
+        raise RuntimeError("external_consumer_tool_scopes_not_supported")
+    if not isinstance(dependencies, list) or len(dependencies) > 5 or any(not isinstance(key, str) for key in dependencies):
+        raise RuntimeError("skill_tool_dependency_contract_invalid")
+    url, key = _database()
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}
+    policy_params = {
+        "select": "agent_id,policy_version,policy_document,policy_digest,approved_tool_keys,required_permission_scopes,status",
+        "agent_id": f"eq.{job.get('agent_id')}",
+        "policy_version": f"eq.{job.get('runtime_policy_version')}",
+        "status": "eq.approved",
+        "limit": "1",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            policy_response = await client.get(f"{url}/rest/v1/agent_runtime_policies", params=policy_params, headers=headers)
+            policy_response.raise_for_status()
+            policy_rows = policy_response.json()
+            live_skill_response = await client.get(f"{url}/rest/v1/agent_skills", params={
+                "select": "id,version,status,tool_dependencies,required_permission_scopes",
+                "id": f"eq.{job.get('skill_id')}", "agent_id": f"eq.{job.get('agent_id')}",
+                "status": "eq.published", "limit": "1",
+            }, headers=headers)
+            live_skill_response.raise_for_status()
+            live_skill_rows = live_skill_response.json()
+            capability_response = await client.get(f"{url}/rest/v1/agent_capabilities", params={
+                "select": "capability_key,status,required_permission_scopes",
+                "agent_id": f"eq.{job.get('agent_id')}", "capability_key": f"eq.{job.get('capability_id')}",
+                "status": "eq.approved", "limit": "1",
+            }, headers=headers)
+            capability_response.raise_for_status()
+            capability_rows = capability_response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise RuntimeError("runtime tool authorization could not be revalidated") from exc
+    if (not isinstance(policy_rows, list) or len(policy_rows) != 1
+            or not isinstance(live_skill_rows, list) or len(live_skill_rows) != 1
+            or not isinstance(capability_rows, list) or len(capability_rows) != 1):
+        raise RuntimeError("approved runtime policy, Skill or Capability is unavailable")
+    row, live_skill, capability = policy_rows[0], live_skill_rows[0], capability_rows[0]
+    document = row.get("policy_document")
+    if not isinstance(document, dict):
+        raise RuntimeError("runtime tool policy document is invalid")
+    canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    if hashlib.sha256(canonical).hexdigest() != row.get("policy_digest"):
+        raise RuntimeError("runtime tool policy digest mismatch")
+    approved = row.get("approved_tool_keys") if isinstance(row.get("approved_tool_keys"), list) else []
+    scopes = row.get("required_permission_scopes") if isinstance(row.get("required_permission_scopes"), list) else []
+    skill_scopes = skill.get("required_permission_scopes") if isinstance(skill.get("required_permission_scopes"), list) else []
+    live_skill_scopes = live_skill.get("required_permission_scopes") if isinstance(live_skill.get("required_permission_scopes"), list) else []
+    live_dependencies = live_skill.get("tool_dependencies") if isinstance(live_skill.get("tool_dependencies"), list) else []
+    capability_scopes = capability.get("required_permission_scopes") if isinstance(capability.get("required_permission_scopes"), list) else []
+    if (str(row.get("policy_version")) != str(job.get("runtime_policy_version"))
+            or int(live_skill.get("version") or 0) != int(job.get("source_version") or 0)
+            or live_dependencies != dependencies
+            or set(live_skill_scopes) != set(skill_scopes)
+            or not set(dependencies).issubset(set(approved))
+            or not set(skill_scopes).issubset(set(scopes))
+            or not set(capability_scopes).issubset(set(scopes))
+            or capability.get("capability_key") != job.get("capability_id")):
+        raise RuntimeError("runtime policy does not authorize the current pinned Skill and Capability")
+    return RuntimeAuthorization(
+        authenticated_owner_id=str(job.get("agent_owner_user_id") or job.get("owner_user_id")),
+        owned_agent_id=str(job.get("agent_id")),
+        agent_version=int(job.get("agent_version") or 0),
+        skill_id=str(job.get("skill_id")),
+        skill_version=int(job.get("source_version") or 0),
+        skill_published=True,
+        policy_approved=True,
+        policy_version=str(job.get("runtime_policy_version")),
+        approved_tool_keys=tuple(approved),
+        granted_scopes=tuple(scopes),
+    )
+
+
 async def _execution_contract_is_current(job: dict[str, Any]) -> bool:
     """Revalidate the pinned Agent, published Skill and approved capability before provider side effects."""
     url, key = _database()
@@ -312,6 +394,7 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
         await router.preflight(sensitivity)
         if not await _execution_contract_is_current(job):
             return await _fail_before_provider(job, worker_id, "agent_skill_or_capability_revoked_or_changed")
+        runtime_tool_authorization = await _load_runtime_tool_authorization(job)
     except Exception as exc:
         # No provider side effect has started; a failed preflight is definitive and
         # may safely follow the approved failure-release policy.
@@ -361,6 +444,14 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             router=router,
             request=request,
             consumer_authorization=consumer_authorization,
+            skill_tool_dependencies=tuple(
+                job.get("skill_snapshot", {}).get("tool_dependencies") or []
+            ),
+            runtime_authorization=runtime_tool_authorization,
+            skill_budget_limits=(
+                job.get("skill_snapshot", {}).get("budget_limits")
+                if isinstance(job.get("skill_snapshot"), dict) else {}
+            ),
         )
     except AgentRuntimeOutcomeUnknown as exc:
         await _mark_pending(job, worker_id, "provider_outcome_unknown:" + type(exc).__name__)

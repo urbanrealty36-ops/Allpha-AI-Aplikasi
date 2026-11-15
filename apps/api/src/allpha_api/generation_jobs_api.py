@@ -36,6 +36,7 @@ from allpha_api.generation_prompt import (
     generation_prompt_size_bytes,
     snapshot_sha256,
 )
+from allpha_api.tool_registry import UnknownToolError, validate_tool_dependencies
 
 router = APIRouter(prefix="/v1/generation", tags=["ai-generation"])
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -163,14 +164,25 @@ async def _load_generation_execution_snapshots(
             "code": "GENERATION_SKILL_INSTRUCTIONS_MISSING",
             "message": "Skill terpublikasi belum memiliki instruksi eksekusi.",
         })
-    # WP-07 currently executes through the text-generation worker only.
-    # Do not accept a Skill that declares executable tool dependencies until
-    # the canonical tool/orchestration runtime is connected in WP-08.
-    tool_dependencies = skill_snapshot.get("tool_dependencies")
-    if tool_dependencies not in (None, []):
+    tool_dependencies = skill_snapshot.get("tool_dependencies") or []
+    if not isinstance(tool_dependencies, list) or any(not isinstance(item, str) or not item.strip() for item in tool_dependencies):
         raise HTTPException(409, detail={
-            "code": "GENERATION_SKILL_TOOL_RUNTIME_UNAVAILABLE",
-            "message": "Skill ini membutuhkan Tool Runtime yang belum tersedia pada jalur Generate. Pilih Skill tanpa dependensi tool atau lanjutkan setelah integrasi Tool Runtime tersedia.",
+            "code": "GENERATION_SKILL_TOOL_CONTRACT_INVALID",
+            "message": "Daftar dependensi tool Skill tidak valid.",
+        })
+    try:
+        validate_tool_dependencies(tool_dependencies)
+    except (UnknownToolError, ValueError) as exc:
+        raise HTTPException(409, detail={
+            "code": "GENERATION_SKILL_TOOL_UNAVAILABLE",
+            "message": "Satu atau lebih tool pada Skill belum tersedia atau kontraknya tidak valid.",
+        }) from exc
+    skill_budget = skill_snapshot.get("budget_limits") if isinstance(skill_snapshot.get("budget_limits"), dict) else {}
+    max_tool_calls = skill_budget.get("max_tool_calls", max(1, len(tool_dependencies)))
+    if not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool) or max_tool_calls < len(tool_dependencies) or max_tool_calls > 5:
+        raise HTTPException(409, detail={
+            "code": "GENERATION_SKILL_TOOL_BUDGET_INVALID",
+            "message": "Batas pemanggilan tool Skill tidak mencukupi atau melampaui batas runtime.",
         })
     return {
         "agent_snapshot": agent_snapshot,

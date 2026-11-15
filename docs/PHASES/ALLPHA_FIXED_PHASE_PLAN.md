@@ -3128,3 +3128,13 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Scope boundary: this implements bounded Conversation Memory for persisted Agent DM conversations only. It does not implement the complete six-class Memory Coordinator (Working, Conversation, Episodic, Semantic, Procedural, Long-term), persistent memory write/consent/retention/deletion, or vector/hybrid Memory retrieval. ADR-0003/0004/0005 review gates remain authoritative; do not invent physical memory schema, embedding model/dimension or consent semantics.
 - WP-07 remains IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED; formal order remains WP-07 → WP-06 → WP-11 → WP-12.
 
+
+
+**WP-07 deterministic Skill tool dependency bridge — 2026-11-16 (source implementation; not runtime verified):**
+- Generation Job creation now validates Skill tool dependencies against the canonical in-process Tool Registry instead of rejecting every non-empty dependency list.
+- AgentRuntime generation now runs only registered, deterministic text-to-text preprocessors through the existing AgentRuntime.execute_tool path before Model Router generation. Tool execution is bounded by the Skill budget, the runtime maximum five calls / 30 seconds, pinned Agent/Skill identity, approved tool keys and required permission scopes. Arbitrary model-issued function calls and side-effecting tools are not enabled by this change.
+- Generation Worker resolves the exact approved agent_runtime_policies row by the job pinned runtime policy version, verifies the policy document digest, re-reads the current Skill and Capability permission contract, and passes a server-resolved RuntimeAuthorization to Agent Runtime. External Consumer tool calls remain fail-closed because current Consumer Grant scopes do not express individual tool grants.
+- Current Tool Registry exposes only text.normalize as an executable deterministic text preprocessor. Skills declaring other unregistered tools remain rejected at job creation. This is a bounded bridge, not completion of general tool calling, multi-step tool planning, multimodal Skills, or all WP-07 acceptance.
+- No Supabase schema change or live database mutation was made. No test, build, lint, typecheck, CI, worker invocation, provider call, staging or deployment was run.
+- WP-07 remains in_progress / schema_migrated / acceptance_not_verified; next work is complete durable multi-tool planning/trace and explicit consumer tool-grant contracts, then Memory Coordinator architecture and lifecycle.
+
