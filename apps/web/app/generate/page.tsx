@@ -139,7 +139,7 @@ export default function GeneratePage() {
     if (!session || !agentId || !skillId || !capabilityId || !prompt.trim() || busy) return;
     setBusy(true); setError(""); setNotice(""); setResult(""); setJobId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
-    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...(!consumerGrantId && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
+    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: prompt.trim(), max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
@@ -184,6 +184,9 @@ export default function GeneratePage() {
     finally { setBusy(false); }
   }
 
+  const selectedExternalAgent = externalAgents.find(item => item.consumer_grant_id === consumerGrantId && item.agent.id === agentId);
+  const externalKnowledgeAllowed = !!selectedExternalAgent?.granted_scopes.includes("knowledge_public_read");
+
   if (!session) return <main className="mx-auto max-w-2xl p-6"><h1 className="text-xl font-black">Generate Content</h1><p className="mt-2 text-sm text-slate-600">Masuk ke Allpha untuk menggunakan Agent dan AI Credits.</p><Link href="/login" className="mt-4 inline-flex rounded-xl bg-slate-950 px-4 py-2 text-white">Masuk</Link></main>;
   return <main className="mx-auto min-h-screen max-w-3xl px-4 py-8 text-slate-950 dark:text-slate-100">
     <header className="mb-6 flex items-center justify-between gap-3">
@@ -198,7 +201,7 @@ export default function GeneratePage() {
         </div>
         <label className="mt-4 block text-sm font-bold">Capability approved<select value={capabilityId} onChange={event => setCapabilityId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih capability</option>{capabilities.map(item => <option key={item.capability_key} value={item.capability_key}>{item.capability_key}</option>)}</select></label>
         <label className="mt-4 block text-sm font-bold">Brief / Prompt<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={7} maxLength={32768} placeholder="Jelaskan tujuan, audiens, format konten, gaya, konteks brand, dan batasan hasil…" className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal dark:border-slate-700" /></label>
-        <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} disabled={!!consumerGrantId} rows={3} maxLength={4000} placeholder={consumerGrantId ? "Knowledge privat/publik Agent eksternal belum tersedia pada client ini." : "Cari sumber Knowledge milik Agent yang boleh digunakan…"} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal disabled:opacity-50 dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Retrieval milik sendiri menggunakan consent, ACL, sensitivity policy, dan provenance. Untuk Agent eksternal, Knowledge tetap dinonaktifkan sampai adapter public-only ACL tersedia.</span></label>
+        <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} disabled={!!consumerGrantId && !externalKnowledgeAllowed} rows={3} maxLength={4000} placeholder={consumerGrantId && !externalKnowledgeAllowed ? "Owner belum memberikan scope Knowledge publik." : "Cari sumber Knowledge yang boleh digunakan…"} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal disabled:opacity-50 dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Agent sendiri: retrieval mengikuti consent dan ACL pemilik. Agent eksternal: hanya chunk ber-sensitivity public, ready, version-matched, dan grant knowledge_public_read; data privat tidak pernah diambil.</span></label>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">Quote dan tarif selalu berasal dari policy aktif. Tidak ada harga default atau kredit buatan.</p><button onClick={() => void generate()} disabled={busy || loading || !agentId || !skillId || !capabilityId || !prompt.trim()} className="rounded-xl border-2 border-slate-900 bg-violet-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">{busy ? "Memproses…" : "Minta Quote & Generate"}</button></div>
       </>}
     </section>
