@@ -89,7 +89,7 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
 
   const handleDeleteArtifact = async () => {
     if (!artifactDeleteAvailable || artifactDeleting || isLoading) return;
-    if (!window.confirm('Hapus artefak privat ini? Tautan hasil pada DM juga tidak akan dapat membuka file setelah penghapusan diminta.')) return;
+    if (!window.confirm('Hapus artefak privat ini? URL baru akan diblokir; URL sementara yang sudah diterbitkan dapat berlaku sampai 60 detik atau sampai objek Storage dihapus.')) return;
     setError('');
     try {
       await onDeleteArtifact();
