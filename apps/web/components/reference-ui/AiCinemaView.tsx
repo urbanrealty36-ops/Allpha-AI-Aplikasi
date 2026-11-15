@@ -740,7 +740,7 @@ export default function AiCinemaView({
             <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
               <span className="px-3 py-1 rounded-full bg-rose-600 text-white font-extrabold text-xs uppercase shadow-md flex items-center gap-1.5">
                 <Flame className="w-3.5 h-3.5" />
-                <span>Trending #1 Drama Pendek AI</span>
+                <span>SOROTAN KATALOG AI CINEMA</span>
               </span>
 
               <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm text-amber-400 text-xs font-mono font-bold flex items-center gap-1">
@@ -771,7 +771,7 @@ export default function AiCinemaView({
                   className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-500 hover:to-purple-500 text-white font-extrabold text-xs shadow-lg shadow-rose-500/25 transition flex items-center gap-2"
                 >
                   <Play className="w-4 h-4 fill-white" />
-                  <span>Tonton Trailer & Part 1 (Gratis)</span>
+                  <span>{productionMode ? 'Lihat Episode & Akses' : 'Tonton Trailer & Part 1 (Gratis)'}</span>
                 </button>
 
                 <button
@@ -812,7 +812,7 @@ export default function AiCinemaView({
                 </span>
               </h3>
               <p className="text-xs text-slate-500">
-                Kelola status verifikasi dari Team Allpha, tontonan penonton, dan royalti 70%.
+                Kelola draft film, episode, dan status review dari Creator Studio.
               </p>
             </div>
 
@@ -861,7 +861,7 @@ export default function AiCinemaView({
                 {/* Earnings & Actions */}
                 <div className="pt-2.5 border-t-2 border-slate-100 flex items-center justify-between text-xs">
                   <div className="space-y-0.5">
-                    <span className="text-[10px] font-bold text-slate-500">Total Royalti (70%):</span>
+                    <span className="text-[10px] font-bold text-slate-500">Total Royalti:</span>
                     <p className="font-mono font-black text-amber-900">{film.creatorMonthlyEarningsCredits == null ? 'Belum tersedia' : `+${film.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr`}</p>
                   </div>
 
@@ -880,7 +880,7 @@ export default function AiCinemaView({
                       className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1 cursor-pointer"
                     >
                       <Play className="w-3 h-3 fill-white" />
-                      <span>Nonton</span>
+                      <span>{productionMode ? 'Lihat Episode' : 'Nonton'}</span>
                     </button>
                   </div>
                 </div>
@@ -1022,7 +1022,7 @@ export default function AiCinemaView({
 
                     {/* Profit Royalty Badge */}
                     <div className="p-2 rounded-xl bg-amber-100 border border-slate-900 flex items-center justify-between text-[10px] text-amber-950">
-                      <span className="font-bold">Royalti Kreator (70%):</span>
+                      <span className="font-bold">Royalti Kreator:</span>
                       <span className="font-mono font-black">
                         {movie.creatorMonthlyEarningsCredits == null ? 'Belum tersedia' : `+${movie.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr/bln`}
                       </span>
