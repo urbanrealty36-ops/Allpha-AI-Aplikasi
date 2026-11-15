@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import httpx
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -308,6 +309,104 @@ class KeywordOnlyKnowledgeRepository:
             owner_id=owner_id, agent_id=agent_id, query=query,
             allowed_sensitivities=allowed_sensitivities, limit=limit, trace_id=trace_id,
         )
+
+
+class SupabaseServiceRolePublicKeywordKnowledgeRepository:
+    """Service-role adapter constrained in-query to a publicly shared Agent and public sources only.
+
+    It is used only after FastAPI has verified an active generation_invoke grant and
+    knowledge_public_read scope. Private/internal/confidential/restricted chunks are
+    never queried for an external consumer.
+    """
+    def __init__(self) -> None:
+        self._url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        self._key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SECRET_KEY", "")
+        if not self._url or not self._key:
+            raise KnowledgeRetrievalUnavailable("service-role Knowledge retrieval is not configured")
+
+    async def _request(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+                response = await client.get(
+                    f"{self._url}/rest/v1/{table}", params=params,
+                    headers={"apikey": self._key, "Authorization": f"Bearer {self._key}", "Accept": "application/json"},
+                )
+                response.raise_for_status()
+                rows = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise KnowledgeRetrievalUnavailable("public Knowledge retrieval query failed") from exc
+        if not isinstance(rows, list):
+            raise KnowledgeRetrievalUnavailable("public Knowledge retrieval response is invalid")
+        return rows
+
+    async def authorize_agent(self, *, owner_id: str, agent_id: str) -> bool:
+        owners = await self._request("agent_ownerships", {
+            "select": "agent_id", "agent_id": f"eq.{agent_id}",
+            "owner_user_id": f"eq.{owner_id}", "ownership_role": "eq.owner",
+            "status": "eq.active", "limit": "1",
+        })
+        agents = await self._request("ai_agents", {
+            "select": "id", "id": f"eq.{agent_id}", "status": "eq.active",
+            "visibility": "eq.public", "limit": "1",
+        })
+        return bool(owners and agents)
+
+    async def search_hybrid(
+        self, *, owner_id: str, agent_id: str, query: str,
+        allowed_sensitivities: list[str], limit: int, trace_id: str,
+    ) -> list[RetrievalHit]:
+        if allowed_sensitivities != ["public"]:
+            raise KnowledgeAccessDenied("external consumer retrieval is restricted to public Knowledge")
+        params = {
+            "select": (
+                "id,source_id,agent_id,owner_id,chunk_index,content,source_location,"
+                "source_version,content_sha256,"
+                "agent_knowledge_sources!inner(id,source_version,status,sensitivity)"
+            ),
+            "owner_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+            "agent_knowledge_sources.status": "eq.ready",
+            "agent_knowledge_sources.sensitivity": "eq.public",
+            "search_vector": "fts(simple)." + query,
+            "order": "chunk_index.asc", "limit": str(max(1, min(limit, 8))),
+        }
+        rows = await self._request("agent_knowledge_chunks", params)
+        hits: list[RetrievalHit] = []
+        for row in rows:
+            source = row.get("agent_knowledge_sources") or {}
+            if (
+                row.get("owner_id") != owner_id or row.get("agent_id") != agent_id
+                or source.get("status") != "ready" or source.get("sensitivity") != "public"
+                or int(source.get("source_version", -1)) != int(row.get("source_version", -2))
+                or not row.get("content_sha256") or not row.get("id") or not row.get("source_id")
+            ):
+                raise KnowledgeRetrievalUnavailable("public Knowledge result violated owner/source/version/sensitivity invariants")
+            hits.append(RetrievalHit(
+                owner_id=owner_id, agent_id=agent_id, source_id=str(row["source_id"]),
+                source_version=int(row["source_version"]), chunk_id=str(row["id"]),
+                content=str(row.get("content") or ""), content_sha256=str(row["content_sha256"]),
+                source_location=row.get("source_location") or {}, sensitivity="public",
+                retrieval_method="keyword", score=0.0,
+            ))
+        return hits
+
+
+def request_scoped_external_public_retrieval_service() -> KnowledgeRetrievalService | None:
+    """Resolve canonical consent/policy and service-role adapter for grant-authorized public retrieval."""
+    from allpha_api.knowledge_policy import (
+        VersionedKnowledgeRetrievalPolicy,
+        load_policy_resolver_from_environment,
+    )
+    resolver = load_policy_resolver_from_environment()
+    if resolver is None:
+        return None
+    try:
+        repository = SupabaseServiceRolePublicKeywordKnowledgeRepository()
+    except KnowledgeRetrievalUnavailable:
+        return None
+    return KnowledgeRetrievalService(
+        repository=repository,
+        policy=VersionedKnowledgeRetrievalPolicy(resolver),
+    )
 
 
 def request_scoped_retrieval_service(request: Request) -> KnowledgeRetrievalService | None:
