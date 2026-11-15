@@ -260,7 +260,7 @@ export default function StoriesViewerModal({
                   onClick={() => handleSendReaction(em)}
                   disabled
                   title="Reaksi Story belum tersedia pada API"
-                  className="w-8 h-8 rounded-full bg-black/50 backdrop-blur-xs border border-white/30 text-sm flex items-center justify-center opacity-50 cursor-not-allowed"
+                  className="w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-xs border border-white/30 text-sm flex items-center justify-center transition active:scale-125 opacity-50 cursor-not-allowed"
                 >
                   {em}
                 </button>
