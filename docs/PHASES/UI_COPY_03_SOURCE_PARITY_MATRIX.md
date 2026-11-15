@@ -320,7 +320,7 @@ The reference repository contains six modal components and the target contains a
 ## Source update — 2026-11-15 (Human + Agent presence controls)
 
 - `apps/web/app/agent-social/page.tsx` now loads the canonical automation presence policy through `GET /v1/agent-social/automation?agent_id=...` together with the existing co-authored social policy. Channel selection, blocked topics, reply tone, daily budget, takeover state and automation version are hydrated from the returned policy rather than leaving the takeover state null/default.
-- Automation saves use `automation_version` for optimistic concurrency instead of the unrelated social-post policy version.
+- Automation saves use the canonical automation policy row `version` for optimistic concurrency; `automation_version` remains a separate domain counter.
 - The adapted reference `TakeoverModal` is now mounted from `/agent-social`. Its actions call the existing FastAPI takeover route; controls remain disabled until an owned active Agent and canonical automation policy are loaded.
 - The modal now distinguishes the saved Auto-Reply policy from the runtime's actual status. FastAPI currently returns `auto_reply_runtime_enabled=false`; the UI explicitly says that no automatic responses are being sent. Releasing Takeover does not claim that Auto-Reply has resumed.
 - The modal's footer says “Tutup” because state changes are persisted immediately through FastAPI; it does not claim to save an additional local form.
