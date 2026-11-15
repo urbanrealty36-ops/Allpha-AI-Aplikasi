@@ -22,6 +22,10 @@ type DraftEpisode = {
 type Props = { getAccessToken: () => Promise<string | null> };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string };
 type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
+type CinemaCollaborator = { id:string; collaborator_user_id?:string|null; collaborator_agent_id?:string|null; role:string; permissions:string[]; status:string };
+type CinemaInvitation = { id:string; title?:{title:string}|null; role:string; status:string };
+type CinemaCredit = { id:string; contributor_type:string; role:string; attribution_label:string };
+type CinemaVersion = { id:string; version:number; created_at:string };
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__
   ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")
@@ -81,6 +85,16 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [collaboratorUserId,setCollaboratorUserId]=useState("");
+  const [collaboratorRole,setCollaboratorRole]=useState("Editor");
+  const [collaborators,setCollaborators]=useState<CinemaCollaborator[]>([]);
+  const [invitations,setInvitations]=useState<CinemaInvitation[]>([]);
+  const [credits,setCredits]=useState<CinemaCredit[]>([]);
+  const [creditType,setCreditType]=useState("human");
+  const [creditAgentId,setCreditAgentId]=useState("");
+  const [creditRole,setCreditRole]=useState("Creator");
+  const [creditLabel,setCreditLabel]=useState("Kontribusi kreator");
+  const [versions,setVersions]=useState<CinemaVersion[]>([]);
 
   const loadTitles = useCallback(async () => {
     setLoading(true); setError("");
@@ -161,6 +175,66 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     } finally { setSaving(false); }
   }
 
+  const loadGovernance = useCallback(async () => {
+    try {
+      const inbox=await request<{items:CinemaInvitation[]}>(getAccessToken,"/v1/cinema/creator/collaborations");
+      setInvitations(inbox.items||[]);
+      if(!selectedTitleId){setCollaborators([]);setCredits([]);setVersions([]);return;}
+      const base="/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId);
+      const [c,k,v]=await Promise.all([
+        request<{items:CinemaCollaborator[]}>(getAccessToken,base+"/collaborators"),
+        request<{items:CinemaCredit[]}>(getAccessToken,base+"/credits"),
+        request<{items:CinemaVersion[]}>(getAccessToken,base+"/versions"),
+      ]);
+      setCollaborators(c.items||[]);setCredits(k.items||[]);setVersions(v.items||[]);
+    }catch(cause){setError(cause instanceof Error?cause.message:"Kolaborasi Creator Studio belum dapat dimuat.");}
+  },[getAccessToken,selectedTitleId]);
+
+  useEffect(()=>{void loadGovernance();},[loadGovernance]);
+
+  async function inviteCollaborator(){
+    if(!selectedTitleId||!collaboratorUserId.trim())return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await request(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/collaborators",{
+        method:"POST",body:JSON.stringify({collaborator_user_id:collaboratorUserId.trim(),role:collaboratorRole,permissions:["edit_metadata","upload_episodes"]}),
+      });
+      setCollaboratorUserId("");setNotice("Undangan collaborator dikirim.");await loadGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Undangan gagal dibuat.");}
+    finally{setSaving(false);}
+  }
+
+  async function decideCollaboration(id:string,decision:"accept"|"revoke"){
+    setSaving(true);setError("");setNotice("");
+    try{
+      await request(getAccessToken,"/v1/cinema/creator/collaborations/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});
+      setNotice(decision==="accept"?"Undangan diterima.":"Akses dicabut.");await loadGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Perubahan akses gagal.");}
+    finally{setSaving(false);}
+  }
+
+  async function addCredit(){
+    if(!selectedTitleId)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await request(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/credits",{
+        method:"POST",body:JSON.stringify({contributor_type:creditType,contributor_agent_id:creditType==="agent"?creditAgentId.trim():null,role:creditRole,attribution_label:creditLabel,disclosure:"Kontribusi dicatat oleh Creator Studio"}),
+      });
+      setCreditAgentId("");setNotice("Creator credit tersimpan.");await loadGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Creator credit gagal disimpan.");}
+    finally{setSaving(false);}
+  }
+
+  async function snapshotVersion(){
+    if(!selectedTitleId)return;
+    setSaving(true);setError("");setNotice("");
+    try{
+      await request(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/versions",{method:"POST",body:"{}"});
+      setNotice("Snapshot versi film tersimpan.");await loadGovernance();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Snapshot versi gagal dibuat.");}
+    finally{setSaving(false);}
+  }
+
   const field = { color: "#F8FAFC", backgroundColor: "#111827", borderColor: "#475569", borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 8 } as const;
   return (
     <View style={{ gap: 14, marginTop: 16, padding: 16, borderRadius: 20, backgroundColor: "#0F172A", borderWidth: 1, borderColor: "#334155" }}>
@@ -234,6 +308,28 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
           <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>Episode {item.episode_number} · {item.title}</Text>
           <Text style={{ color: "#CBD5E1", fontSize: 12 }}>{item.status}{item.media_id ? " · media terhubung" : " · belum ada media"}</Text>
         </View>)}
+      </View>
+      <View style={{gap:14,padding:14,borderRadius:16,backgroundColor:"#1E293B"}}>
+        <Text style={{color:"#F8FAFC",fontWeight:"900",fontSize:16}}>Kolaborator & Creator Credits</Text>
+        <Text style={{color:"#CBD5E1",fontSize:12}}>Undangan Human perlu diterima; akses dibatasi per film dan permission.</Text>
+        <TextInput accessibilityLabel="UUID akun collaborator" value={collaboratorUserId} onChangeText={setCollaboratorUserId} placeholder="UUID akun Human collaborator" placeholderTextColor="#94A3B8" style={field}/>
+        <TextInput accessibilityLabel="Peran collaborator" value={collaboratorRole} onChangeText={setCollaboratorRole} placeholder="Peran collaborator" placeholderTextColor="#94A3B8" style={field}/>
+        <Action title="Undang collaborator" disabled={saving||!selectedTitleId||!collaboratorUserId.trim()} onPress={()=>void inviteCollaborator()}/>
+        {collaborators.map(item=><View key={item.id} style={{padding:10,borderRadius:10,backgroundColor:"#0F172A",gap:5}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{item.role} · {item.status}</Text><Text style={{color:"#94A3B8",fontSize:11}}>{item.collaborator_user_id||item.collaborator_agent_id}</Text><Text style={{color:"#CBD5E1",fontSize:11}}>{item.permissions.join(", ")}</Text>{item.status!=="revoked"&&<Action title="Cabut akses" secondary onPress={()=>void decideCollaboration(item.id,"revoke")}/>}</View>)}
+        {invitations.filter(item=>item.status==="invited").map(item=><View key={item.id} style={{padding:10,borderRadius:10,backgroundColor:"#0F172A",gap:5}}><Text style={{color:"#F8FAFC"}}>{item.title?.title||"Undangan film"} · {item.role}</Text><Action title="Terima undangan" onPress={()=>void decideCollaboration(item.id,"accept")}/></View>)}
+        <View style={{height:1,backgroundColor:"#475569"}}/>
+        <Text style={{color:"#F8FAFC",fontWeight:"800"}}>Kredit kontributor</Text>
+        <View style={{flexDirection:"row",gap:8}}>
+          <Action title="Human" secondary={creditType!=="human"} onPress={()=>setCreditType("human")}/>
+          <Action title="AI Agent" secondary={creditType!=="agent"} onPress={()=>setCreditType("agent")}/>
+        </View>
+        {creditType==="agent"&&<TextInput accessibilityLabel="UUID AI Agent" value={creditAgentId} onChangeText={setCreditAgentId} placeholder="UUID AI Agent milik pemilik film" placeholderTextColor="#94A3B8" style={field}/>}
+        <TextInput accessibilityLabel="Peran kontribusi" value={creditRole} onChangeText={setCreditRole} placeholder="Peran" placeholderTextColor="#94A3B8" style={field}/>
+        <TextInput accessibilityLabel="Label atribusi" value={creditLabel} onChangeText={setCreditLabel} placeholder="Label atribusi" placeholderTextColor="#94A3B8" style={field}/>
+        <Action title="Simpan creator credit" disabled={saving||!selectedTitleId||(creditType==="agent"&&!creditAgentId.trim())} onPress={()=>void addCredit()}/>
+        {credits.map(item=><Text key={item.id} style={{color:"#CBD5E1",fontSize:12}}>{item.attribution_label} · {item.role} · {item.contributor_type}</Text>)}
+        <Action title="Simpan snapshot versi film" secondary disabled={saving||!selectedTitleId} onPress={()=>void snapshotVersion()}/>
+        {versions.map(item=><Text key={item.id} style={{color:"#94A3B8",fontSize:11}}>Versi {item.version} · {new Date(item.created_at).toLocaleString("id-ID")}</Text>)}
       </View>
       <Text style={{ color: "#94A3B8", fontSize: 12 }}>Generate, pembayaran, entitlement, moderasi dan publikasi tetap terkunci sampai kontrak backend serta policy yang disetujui tersedia. Media episode hanya dapat dipilih dari hasil processing dan scan clean.</Text>
     </View>
