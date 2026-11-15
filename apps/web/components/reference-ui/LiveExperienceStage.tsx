@@ -75,6 +75,12 @@ interface LiveExperienceStageProps {
   onOpenStoreAndBoothModal?: () => void;
   onOpenMarketplace?: () => void;
   onDeductCredits?: (amount: number, reason: string) => void;
+  onCheckout?: (input: {
+    productId: string;
+    quantity: number;
+    paymentMethod: 'AI_CREDITS' | 'QRIS' | 'VA';
+    shippingAddress?: string;
+  }) => Promise<void>;
 }
 
 const DEFAULT_SLIDES: StageSlideItem[] = [];
@@ -96,6 +102,7 @@ export default function LiveExperienceStage({
   onOpenStoreAndBoothModal,
   onOpenMarketplace,
   onDeductCredits,
+  onCheckout,
 }: LiveExperienceStageProps) {
   // Live state
   const [isLive, setIsLive] = useState(false);
