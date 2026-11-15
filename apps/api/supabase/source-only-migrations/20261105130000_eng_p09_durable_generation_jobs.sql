@@ -275,11 +275,18 @@ begin
     or coalesce(v_hash,'') !~ '^[0-9a-f]{64}$'
     or coalesce((p_result->>'input_tokens')::bigint,-1) < 0
     or coalesce((p_result->>'output_tokens')::bigint,-1) < 0
+    or coalesce((p_result->>'input_tokens')::bigint,0) + coalesce((p_result->>'output_tokens')::bigint,0) <= 0
     or coalesce((p_result->>'cost_microunits')::bigint,-1) < 0
+    or coalesce((p_result->>'cost_microunits')::bigint,-1) > v_job.max_cost_microunits
     or not exists(select 1 from storage.objects o where o.bucket_id='generation-artifacts' and o.name=v_path) then
     raise exception 'GENERATION_JOB_RESULT_INVALID' using errcode='22023';
   end if;
-  if v_job.output_sha256 is not null and v_job.output_sha256 <> v_hash then
+  if v_job.output_sha256 is not null and (
+    v_job.output_sha256 <> v_hash
+    or v_job.input_tokens is distinct from (p_result->>'input_tokens')::bigint
+    or v_job.output_tokens is distinct from (p_result->>'output_tokens')::bigint
+    or v_job.actual_cost_microunits is distinct from (p_result->>'cost_microunits')::bigint
+  ) then
     raise exception 'GENERATION_JOB_RESULT_CONFLICT' using errcode='23505';
   end if;
   update public.generation_jobs set artifact_bucket='generation-artifacts',artifact_path=v_path,output_sha256=v_hash,
