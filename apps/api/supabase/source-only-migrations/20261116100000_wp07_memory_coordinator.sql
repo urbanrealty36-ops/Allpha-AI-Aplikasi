@@ -56,3 +56,93 @@ grant all on public.agent_memory_policies,public.agent_memory_items,public.agent
 comment on table public.agent_memory_policies is 'Owner-controlled per-Agent/per-class consent and retention policy; disabled by default.';
 comment on table public.agent_memory_items is 'Private Agent Memory; Knowledge corpus and Conversation messages remain separate.';
 comment on table public.agent_memory_events is 'Content-minimized Memory lifecycle audit events.';
+
+
+-- Atomic lifecycle transitions keep the Memory item and its audit event in one transaction.
+create or replace function public.agent_memory_transition(
+ p_action text,p_owner_user_id uuid,p_agent_id uuid default null,p_item_id uuid default null,p_payload jsonb default '{}'::jsonb
+) returns jsonb language plpgsql security invoker set search_path=public,pg_temp as $$
+declare
+ v_policy public.agent_memory_policies%rowtype;
+ v_item public.agent_memory_items%rowtype;
+ v_type text; v_purpose text; v_class text; v_content text; v_digest text;
+ v_expiry timestamptz; v_decision text; v_count integer; v_result jsonb;
+begin
+ if current_user<>'service_role' then raise exception 'MEMORY_SERVICE_ROLE_REQUIRED' using errcode='42501'; end if;
+ if p_action='create_proposal' then
+  v_type:=p_payload->>'memory_type'; v_purpose:=p_payload->>'purpose'; v_class:=p_payload->>'classification';
+  v_content:=p_payload->>'content'; v_digest:=p_payload->>'content_sha256'; v_expiry:=(p_payload->>'retention_expires_at')::timestamptz;
+  select * into v_policy from public.agent_memory_policies p where p.id=(p_payload->>'policy_id')::uuid
+   and p.owner_user_id=p_owner_user_id and p.agent_id is not distinct from p_agent_id and p.memory_type=v_type for share;
+  if not found or not v_policy.enabled or v_policy.consent_version is null or v_policy.consent_revoked_at is not null
+   or not(v_purpose=any(v_policy.allowed_purposes)) or not(v_class=any(v_policy.allowed_sensitivities))
+   or v_expiry<=now() or v_expiry>now()+make_interval(days=>v_policy.retention_days)
+   or (v_type='working' and v_expiry>now()+interval '24 hours')
+   or char_length(coalesce(v_content,'')) not between 1 and 8000 or v_digest !~ '^[0-9a-f]{64}$'
+  then raise exception 'MEMORY_POLICY_DENIED' using errcode='42501'; end if;
+  if p_agent_id is not null and not exists(select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_owner_user_id and o.status='active')
+  then raise exception 'MEMORY_AGENT_OWNERSHIP_REQUIRED' using errcode='42501'; end if;
+  insert into public.agent_memory_items(policy_id,owner_user_id,agent_id,memory_type,visibility_scope,purpose,classification,content,content_sha256,source_ref,provenance,confidence,policy_version,status,retention_expires_at,created_by)
+  values(v_policy.id,p_owner_user_id,p_agent_id,v_type,case when p_agent_id is null then 'owner_private' else 'agent_private' end,v_purpose,v_class,v_content,v_digest,
+   coalesce(p_payload->'source_ref','{}'::jsonb),coalesce(p_payload->'provenance','{}'::jsonb),nullif(p_payload->>'confidence','')::numeric,
+   v_policy.policy_version,'proposed',v_expiry,p_owner_user_id) returning * into v_item;
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
+  values(p_owner_user_id,p_agent_id,v_policy.id,v_item.id,p_owner_user_id,'memory_proposed',jsonb_build_object('memory_type',v_type,'purpose',v_purpose,'classification',v_class,'content_sha256',v_digest,'policy_version',v_policy.policy_version));
+  return to_jsonb(v_item);
+ elsif p_action='decide' then
+  select * into v_item from public.agent_memory_items where id=p_item_id and owner_user_id=p_owner_user_id for update;
+  if not found or v_item.status<>'proposed' or v_item.retention_expires_at<=now() then return null; end if;
+  v_decision:=p_payload->>'decision';
+  if v_decision='approve' then
+   select * into v_policy from public.agent_memory_policies where id=v_item.policy_id for share;
+   if not found or not v_policy.enabled or v_policy.policy_version<>v_item.policy_version or v_policy.consent_revoked_at is not null
+   then raise exception 'MEMORY_POLICY_CHANGED_RECONSENT_REQUIRED' using errcode='42501'; end if;
+   update public.agent_memory_items set status='active',approved_by=p_owner_user_id,approved_at=now(),updated_at=now() where id=p_item_id returning * into v_item;
+   insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
+   values(p_owner_user_id,v_item.agent_id,v_item.policy_id,p_item_id,p_owner_user_id,'memory_approved',jsonb_build_object('policy_version',v_item.policy_version));
+  elsif v_decision='reject' then
+   update public.agent_memory_items set status='rejected',updated_at=now() where id=p_item_id returning * into v_item;
+   insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
+   values(p_owner_user_id,v_item.agent_id,v_item.policy_id,p_item_id,p_owner_user_id,'memory_rejected','{}'::jsonb);
+  else raise exception 'MEMORY_DECISION_INVALID' using errcode='22023'; end if;
+  return jsonb_build_object('id',v_item.id,'status',v_item.status);
+ elsif p_action='correct' then
+  select * into v_item from public.agent_memory_items where id=p_item_id and owner_user_id=p_owner_user_id for update;
+  v_content:=p_payload->>'content'; v_digest:=p_payload->>'content_sha256';
+  if not found or v_item.status<>'active' then return null; end if;
+  if char_length(coalesce(v_content,'')) not between 1 and 8000 or v_digest !~ '^[0-9a-f]{64}$' then raise exception 'MEMORY_CORRECTION_INVALID' using errcode='22023'; end if;
+  select * into v_policy from public.agent_memory_policies where id=v_item.policy_id for share;
+  if not found or not v_policy.enabled or v_policy.policy_version<>v_item.policy_version then raise exception 'MEMORY_POLICY_CHANGED_RECONSENT_REQUIRED' using errcode='42501'; end if;
+  update public.agent_memory_items set content=v_content,content_sha256=v_digest,version=version+1,updated_at=now() where id=p_item_id returning * into v_item;
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
+  values(p_owner_user_id,v_item.agent_id,v_item.policy_id,p_item_id,p_owner_user_id,'memory_corrected',jsonb_build_object('version',v_item.version,'content_sha256',v_digest));
+  return jsonb_build_object('id',v_item.id,'version',v_item.version);
+ elsif p_action='delete' then
+  select * into v_item from public.agent_memory_items where id=p_item_id and owner_user_id=p_owner_user_id for update;
+  if not found then return null; end if;
+  if v_item.status<>'deleted' then
+   update public.agent_memory_items set status='deleted',deleted_at=now(),updated_at=now() where id=p_item_id returning * into v_item;
+   insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
+   values(p_owner_user_id,v_item.agent_id,v_item.policy_id,p_item_id,p_owner_user_id,'memory_deleted',jsonb_build_object('content_sha256',v_item.content_sha256,'derived_memory_index_exists',false));
+  end if;
+  return jsonb_build_object('id',v_item.id,'status','deleted');
+ elsif p_action='expire' then
+  with expired as (update public.agent_memory_items i set status='expired',updated_at=now()
+   where i.owner_user_id=p_owner_user_id and i.agent_id is not distinct from p_agent_id
+    and i.status in ('proposed','active') and i.retention_expires_at<=now()
+   returning i.id,i.agent_id,i.policy_id,i.memory_type,i.content_sha256)
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,event_type,details)
+  select p_owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256) from expired e;
+  get diagnostics v_count=row_count;
+  return jsonb_build_object('expired_count',v_count);
+ elsif p_action='policy_event' then
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,actor_user_id,event_type,details)
+  values(p_owner_user_id,p_agent_id,(p_payload->>'policy_id')::uuid,p_owner_user_id,
+   case when (p_payload->>'enabled')::boolean then 'policy_enabled' else 'policy_disabled' end,
+   jsonb_build_object('memory_type',p_payload->>'memory_type','policy_version',p_payload->>'policy_version','retention_days',p_payload->>'retention_days'));
+  return jsonb_build_object('recorded',true);
+ end if;
+ raise exception 'MEMORY_ACTION_INVALID' using errcode='22023';
+end; $$;
+revoke all on function public.agent_memory_transition(text,uuid,uuid,uuid,jsonb) from public,anon,authenticated;
+grant execute on function public.agent_memory_transition(text,uuid,uuid,uuid,jsonb) to service_role;
