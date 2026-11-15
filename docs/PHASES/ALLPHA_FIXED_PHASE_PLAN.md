@@ -3051,3 +3051,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - The owner job-history API now includes the canonical `moderation_status` field. The Web Generate page explicitly reports that an artifact is awaiting Human review, keeps it private, and does not suggest retrying or resubmitting the generation. Other `pending_reconciliation` reasons continue to use the unknown-outcome/reconciliation message.
 - Commits: API `1d909204428f2e4f90eeec3230322fededfd2dc4`; Web `1f3caffcb673cfba54b1f5d006724acd36d72726`.
 - Source-only correction. No tests, build, lint, typecheck, CI, provider call, database mutation, migration application, staging, browser/device QA or deployment was run. WP-07 remains `in_progress / acceptance_not_verified`; this does not close the outstanding migration, moderation-policy, worker activation, multimodal input and integration acceptance blockers. Formal sequence remains WP-07 → WP-06 → WP-11 → WP-12.
+
+
+**WP-07 cross-client moderation review state parity — 2026-11-16:**
+- Extended the same moderation-state distinction to Native Generate Center. Web and Native now recognize `status=pending_reconciliation` plus `moderation_status=review_required` as a Human-review hold, not an unknown provider outcome. The output remains private until approval; no automatic resubmission is suggested.
+- Native commit: `777e4c9f5b7ed1beddbc5929f470109fb47641c3`. API/Web commits are recorded in the preceding WP-07 moderation-state correction checkpoint.
+- Source-only parity correction. No tests, build, lint, typecheck, CI, device QA, provider call, migration application, database mutation, staging or deployment was run. WP-07 remains `in_progress / acceptance_not_verified`; no acceptance or phase advancement is claimed.
