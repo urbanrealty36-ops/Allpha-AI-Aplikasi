@@ -190,7 +190,7 @@ grant execute on function public.agent_consumer_grant_revoke(uuid,uuid,text)
   to service_role;
 
 comment on table public.agent_consumer_grant_events is
-  'Append-only audit of external Agent Consumer grant revocation and affected generation lifecycle.';
+  'Append-only audit of external Agent Consumer grant creation, revocation and affected generation lifecycle.';
 comment on function public.agent_consumer_grant_revoke(uuid,uuid,text) is
   'Atomically revokes an owner grant, releases eligible queued reservations, and fences running jobs into reconciliation.';
 
