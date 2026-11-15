@@ -24,7 +24,7 @@ interface AskAiViewProps {
   agentName: string;
   humanOwner: string;
   specialty: string;
-  onSubmitQuery?: (query: string) => Promise<{ text: string; jobId: string; reservedCredits?: number }>;
+  onSubmitQuery?: (query: string) => Promise<{ text: string; jobId: string; conversationId?: string | null; reservedCredits?: number }>;
   onExecuteCreditReward?: (query: string) => void;
   currentUser: HumanProfile;
   availabilityMessage?: string;
@@ -39,7 +39,7 @@ export default function AskAiView({
   currentUser,
   availabilityMessage = 'Percakapan AI belum tersedia dari layanan Allpha.',
 }: AskAiViewProps) {
-  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string; isAi: boolean; timestamp: string; jobId?: string; conversationId?: string | null }>>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [requestError, setRequestError] = useState('');
@@ -64,7 +64,7 @@ export default function AskAiView({
       const userMessage = { sender: currentUser.name, text, isAi: false, timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) };
       setMessages(previous => [...previous, userMessage]);
       const result = await onSubmitQuery(text);
-      setMessages(previous => [...previous, { sender: agentName, text: result.text, isAi: true, timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }]);
+      setMessages(previous => [...previous, { sender: agentName, text: result.text, isAi: true, timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), jobId: result.jobId, conversationId: result.conversationId }]);
       setInputValue('');
     } catch (cause) {
       setRequestError(cause instanceof Error ? cause.message : 'Pertanyaan belum dapat dikirim ke Agent Runtime.');
@@ -202,6 +202,18 @@ export default function AskAiView({
                 </span>
               </div>
               <p className="whitespace-pre-wrap">{m.text}</p>
+              {m.isAi && m.jobId && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <a href={"/generate?job_id=" + encodeURIComponent(m.jobId)} className="inline-flex rounded-xl border-2 border-slate-900 bg-violet-200 px-3 py-1.5 text-[10px] font-black text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]">
+                    Buka artefak privat
+                  </a>
+                  {m.conversationId && (
+                    <a href={"/messages?conversation_id=" + encodeURIComponent(m.conversationId)} className="inline-flex rounded-xl border-2 border-slate-900 bg-emerald-200 px-3 py-1.5 text-[10px] font-black text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]">
+                      Buka DM
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ))}
