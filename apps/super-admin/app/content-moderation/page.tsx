@@ -30,8 +30,8 @@ async function apiFetch(path: string, session: Session, init: RequestInit = {}) 
   return response;
 }
 async function read<T>(response: Response): Promise<T> {
-  const data = await response.json().catch(() => ({})) as { error?: { message?: string } };
-  if (!response.ok) throw new Error(data.error?.message || `Permintaan gagal (HTTP ${response.status}).`);
+  const data = await response.json().catch(() => ({})) as { error?: { message?: string }; detail?: { message?: string } };
+  if (!response.ok) throw new Error(data.detail?.message || data.error?.message || `Permintaan gagal (HTTP ${response.status}).`);
   return data as T;
 }
 
@@ -40,7 +40,10 @@ export default function ContentModerationPage() {
   const [operator, setOperator] = useState<Operator | null>(null);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [items, setItems] = useState<ContentItem[]>([]);
-  const [generationItems, setGenerationItems] = useState<GenerationReviewItem[]>([]);\n  const [artifactDeletionItems, setArtifactDeletionItems] = useState<ArtifactDeletionItem[]>([]);\n  const [artifactDeletionQueueError, setArtifactDeletionQueueError] = useState("");\n  const [artifactDeletionReasons, setArtifactDeletionReasons] = useState<Record<string, string>>({});
+  const [generationItems, setGenerationItems] = useState<GenerationReviewItem[]>([]);
+  const [artifactDeletionItems, setArtifactDeletionItems] = useState<ArtifactDeletionItem[]>([]);
+  const [artifactDeletionQueueError, setArtifactDeletionQueueError] = useState("");
+  const [artifactDeletionReasons, setArtifactDeletionReasons] = useState<Record<string, string>>({});
   const [generationQueueError, setGenerationQueueError] = useState("");
   const [generationPreview, setGenerationPreview] = useState<{ id: string; text: string } | null>(null);
   const [generationPreviewBusyId, setGenerationPreviewBusyId] = useState<string | null>(null);
