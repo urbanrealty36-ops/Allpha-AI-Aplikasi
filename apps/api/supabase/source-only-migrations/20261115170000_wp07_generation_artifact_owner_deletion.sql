@@ -27,6 +27,8 @@ create table if not exists public.generation_artifact_deletion_jobs (
   lease_token uuid,
   lease_expires_at timestamptz,
   error_code text,
+  last_retried_by uuid references auth.users(id) on delete restrict,
+  last_retry_reason text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   completed_at timestamptz,
@@ -202,6 +204,37 @@ begin
 end;
 $$;
 
+create or replace function public.generation_retry_artifact_deletion(p_command jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_id uuid := nullif(p_command->>'deletion_job_id','')::uuid;
+  v_actor uuid := nullif(p_command->>'actor_user_id','')::uuid;
+  v_reason text := btrim(coalesce(p_command->>'reason',''));
+  v_job public.generation_artifact_deletion_jobs;
+begin
+  if v_id is null or v_actor is null or char_length(v_reason)<8 or char_length(v_reason)>500 then
+    raise exception 'GENERATION_ARTIFACT_DELETE_RETRY_INVALID' using errcode='22023';
+  end if;
+  select * into v_job
+  from public.generation_artifact_deletion_jobs
+  where id=v_id
+  for update;
+  if not found then raise exception 'GENERATION_ARTIFACT_DELETE_JOB_NOT_FOUND' using errcode='P0002'; end if;
+  if v_job.status<>'dead' then
+    raise exception 'GENERATION_ARTIFACT_DELETE_RETRY_STATE_CONFLICT' using errcode='40001';
+  end if;
+  update public.generation_artifact_deletion_jobs
+  set status='queued',attempts=0,available_at=now(),lease_token=null,lease_expires_at=null,
+      error_code=null,last_retried_by=v_actor,last_retry_reason=v_reason,updated_at=now()
+  where id=v_id;
+  return jsonb_build_object('deletion_job_id',v_id,'status','queued','attempts_reset',true);
+end;
+$;
+
 create or replace function public.fail_generation_artifact_deletion(p_command jsonb)
 returns jsonb
 language plpgsql
@@ -237,12 +270,14 @@ $$;
 revoke all on function public.generation_request_artifact_deletion(jsonb),
   public.claim_generation_artifact_deletions(jsonb),
   public.complete_generation_artifact_deletion(jsonb),
-  public.fail_generation_artifact_deletion(jsonb)
+  public.fail_generation_artifact_deletion(jsonb),
+  public.generation_retry_artifact_deletion(jsonb)
 from public,anon,authenticated,service_role;
 grant execute on function public.generation_request_artifact_deletion(jsonb),
   public.claim_generation_artifact_deletions(jsonb),
   public.complete_generation_artifact_deletion(jsonb),
-  public.fail_generation_artifact_deletion(jsonb)
+  public.fail_generation_artifact_deletion(jsonb),
+  public.generation_retry_artifact_deletion(jsonb)
 to service_role;
 
 comment on table public.generation_artifact_deletion_jobs is
