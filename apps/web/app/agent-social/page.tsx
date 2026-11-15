@@ -6,6 +6,7 @@ import { getBrowserSupabase } from "../../lib/supabase";
 
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { id?: string; allowed_actions: string[]; approval_mode: string; disclosure_text: string; is_enabled: boolean; version: number };
+type Automation = { auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; allowed_tool_scopes: string[]; max_replies_per_minute: number; daily_credit_budget: number; quiet_hours: Record<string, unknown>; escalation_rules: Record<string, unknown>; takeover_active: boolean; automation_version: number };
 type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string };\ntype DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
@@ -16,7 +17,7 @@ export default function AgentSocialPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentId, setAgentId] = useState("");
   const [policy, setPolicy] = useState<Policy | null>(null);
-  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);\n  const [automation, setAutomation] = useState<Automation | null>(null);\n  const [blockedTopicsText, setBlockedTopicsText] = useState("");\n  const [channels, setChannels] = useState<string[]>([]);\n  const [replyTone, setReplyTone] = useState("friendly_concise");\n  const [dailyBudget, setDailyBudget] = useState("0");\n  const [takeoverBusy, setTakeoverBusy] = useState(false);
   const [actions, setActions] = useState<string[]>(["draft_post"]);
   const [mode, setMode] = useState("every_post");
   const [disclosure, setDisclosure] = useState("Dibuat bersama AI Agent");
@@ -102,7 +103,28 @@ export default function AgentSocialPage() {
         <button disabled={busy || !agentId} onClick={save} className="mt-5 rounded-full border-2 border-slate-900 bg-slate-900 px-6 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? "Menyimpan…" : "Simpan Kebijakan"}</button>
       </>}
     </section>
-    <section className="rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a] sm:p-6"><div className="flex justify-between gap-3"><h2 className="text-xl font-black">Kotak Persetujuan</h2><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold">{approvals.filter(item => item.status === "pending").length} menunggu</span></div>
+
+    <section className="rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a] sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><p className="text-xs font-black uppercase tracking-widest text-sky-700">Human takeover · Auto Reply policy</p><h2 className="mt-1 text-xl font-black">Kontrol Otomatisasi Agent</h2><p className="mt-1 text-sm text-slate-600">Pengaturan disimpan melalui FastAPI. Eksekusi Auto Reply tetap nonaktif sampai event consumer dan policy runtime tersambung.</p></div>
+        <span className={"rounded-full border-2 border-slate-900 px-3 py-1 text-xs font-black " + (automation?.takeover_active ? "bg-purple-100 text-purple-900" : "bg-sky-100 text-sky-900")}>{automation?.takeover_active ? "TAKEOVER HUMAN" : "AUTO REPLY DISABLED"}</span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {["comments","mentions","dm","live_chat"].map(channel => <label key={channel} className="flex items-center gap-3 rounded-xl border-2 border-slate-200 p-3 text-sm font-semibold"><input type="checkbox" checked={channels.includes(channel)} onChange={e => setChannels(old => e.target.checked ? [...old,channel] : old.filter(x => x !== channel))}/>{channel.replace("_"," ")}</label>)}
+      </div>
+      <label className="mt-4 block text-xs font-bold">Topik yang diblokir (pisahkan dengan koma)</label>
+      <input value={blockedTopicsText} onChange={e => setBlockedTopicsText(e.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 p-3 text-sm" placeholder="mis. data pribadi, instruksi berbahaya"/>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs font-bold">Gaya komunikasi<select value={replyTone} onChange={e => setReplyTone(e.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 p-3"><option value="friendly_concise">Ramah & ringkas</option><option value="professional">Profesional</option><option value="warm">Hangat</option><option value="formal">Formal</option></select></label>
+        <label className="block text-xs font-bold">Batas budget harian (AI Credits)<input type="number" min="0" step="1" value={dailyBudget} onChange={e => setDailyBudget(e.target.value)} className="mt-1 w-full rounded-xl border-2 border-slate-900 p-3"/></label>
+      </div>
+      <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Auto Reply belum dapat diaktifkan: runtime event consumer, quota reservation dan output moderation belum terhubung. Takeover selalu menghentikan Auto Reply dan mencabut approval pending.</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button disabled={busy || !agentId} onClick={async () => { setBusy(true); setError(""); try { const data = await api("/v1/agent-social/automation/" + agentId,{method:"PUT",body:JSON.stringify({auto_reply_channels:channels,blocked_topics:blockedTopicsText.split(",").map(x=>x.trim()).filter(Boolean),reply_tone:replyTone,allowed_tool_scopes:[],max_replies_per_minute:1,daily_credit_budget:Math.max(0,Math.floor(Number(dailyBudget)||0)),quiet_hours:{},escalation_rules:{},expected_version:policy?.version}); setAutomation(data.policy); setNotice("Konfigurasi Auto Reply tersimpan; eksekusi tetap nonaktif."); await load(); } catch(e) { setError(e instanceof Error?e.message:"Konfigurasi gagal disimpan."); } finally { setBusy(false); } }} className="rounded-full border-2 border-slate-900 bg-sky-300 px-5 py-3 text-sm font-black">Simpan Pengaturan Auto Reply</button>
+        <button disabled={busy || !agentId} onClick={async () => { setTakeoverBusy(true); setError(""); try { const active = !automation?.takeover_active; const data = await api("/v1/agent-social/takeover/" + agentId,{method:"POST",body:JSON.stringify({takeover_active:active,reason:active?"owner_manual_takeover":"owner_released_takeover"})}); setAutomation(data.policy); setNotice(active?"Takeover aktif. Approval pending dicabut.":"Takeover dilepas; Auto Reply tetap nonaktif sampai runtime diaktifkan."); await load(); } catch(e) { setError(e instanceof Error?e.message:"Takeover gagal diperbarui."); } finally { setTakeoverBusy(false); } }} className={"rounded-full border-2 border-slate-900 px-5 py-3 text-sm font-black " + (automation?.takeover_active ? "bg-purple-200" : "bg-white")}>{takeoverBusy?"Memproses…":automation?.takeover_active?"Lepas Takeover":"Ambil Alih Sekarang"}</button>
+      </div>
+    </section>
+\n    <section className="rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[3px_3px_0px_#0f172a] sm:p-6"><div className="flex justify-between gap-3"><h2 className="text-xl font-black">Kotak Persetujuan</h2><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold">{approvals.filter(item => item.status === "pending").length} menunggu</span></div>
       {loading ? <p className="py-8 text-sm text-slate-500">Memuat…</p> : approvals.length === 0 ? <p className="py-8 text-sm text-slate-600">Belum ada permintaan persetujuan.</p> : <div className="mt-4 space-y-3">{approvals.map(item => <article key={item.id} className="rounded-2xl border-2 border-slate-200 p-4"><div className="flex flex-wrap justify-between gap-2"><strong>{item.action_type.replaceAll("_", " ")}</strong><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{item.status}</span></div><p className="mt-2 text-xs text-slate-500">{new Date(item.requested_at).toLocaleString("id-ID")} · {item.content_id}</p><p className="mt-2 text-sm text-slate-600">{item.disclosure_snapshot}</p>{item.status === "pending" && <div className="mt-4 flex gap-2"><button disabled={busy} onClick={() => decide(item.id, "approve")} className="rounded-full border-2 border-slate-900 bg-slate-900 px-4 py-2 text-xs font-bold text-white">Setujui</button><button disabled={busy} onClick={() => decide(item.id, "reject")} className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-bold">Tolak</button></div>}{item.status === "approved" && <button disabled={busy} onClick={() => revoke(item.id)} className="mt-3 rounded-full border-2 border-rose-700 px-4 py-2 text-xs font-bold text-rose-700">Cabut persetujuan</button>}</article>)}</div>}
     </section>
   </div></main>;

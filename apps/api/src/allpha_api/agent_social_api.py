@@ -21,6 +21,78 @@ class PolicyWrite(BaseModel):
     expected_version: int | None = Field(default=None, ge=1)
 
 
+
+class AutomationPolicyWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    auto_reply_channels: list[Literal["comments", "mentions", "dm", "live_chat"]] = Field(default_factory=list, max_length=4)
+    blocked_topics: list[str] = Field(default_factory=list, max_length=100)
+    reply_tone: Literal["friendly_concise", "professional", "warm", "formal"] = "friendly_concise"
+    allowed_tool_scopes: list[str] = Field(default_factory=list, max_length=20)
+    max_replies_per_minute: int = Field(default=1, ge=1, le=20)
+    daily_credit_budget: int = Field(default=0, ge=0)
+    quiet_hours: dict[str, Any] = Field(default_factory=dict)
+    escalation_rules: dict[str, Any] = Field(default_factory=dict)
+    expected_version: int = Field(ge=1)
+
+
+class TakeoverWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    takeover_active: bool
+    reason: str = Field(default="owner_manual_takeover", min_length=3, max_length=500)
+
+
+@router.get("/automation")
+async def get_automation(agent_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    rows = await _server_db("GET", "agent_social_presence_policies", params={
+        "select": "id,agent_id,version,auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,max_replies_per_minute,daily_credit_budget,quiet_hours,escalation_rules,owner_approval_required,output_moderation_required,takeover_active,takeover_started_at,automation_version",
+        "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
+    })
+    return {"policy": rows[0] if rows else None, "auto_reply_runtime_enabled": False,
+            "runtime_reason": "AUTO_REPLY_RUNTIME_NOT_CONNECTED"}
+
+
+@router.put("/automation/{agent_id}")
+async def put_automation(agent_id: uuid.UUID, payload: AutomationPolicyWrite,
+                         user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    if any(not topic.strip() or len(topic.strip()) > 120 for topic in payload.blocked_topics):
+        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_BLOCKED_TOPIC_INVALID", "message": "Topik yang diblokir harus berisi 1–120 karakter."})
+    if any(not scope.strip() or len(scope.strip()) > 120 for scope in payload.allowed_tool_scopes):
+        raise HTTPException(422, detail={"code": "AGENT_SOCIAL_TOOL_SCOPE_INVALID", "message": "Tool scope harus berisi 1–120 karakter."})
+    result = await _server_db("POST", "rpc/save_agent_social_automation_policy", body={
+        "p_owner_user_id": owner_id, "p_agent_id": str(agent_id),
+        "p_auto_reply_channels": payload.auto_reply_channels,
+        "p_blocked_topics": [item.strip() for item in payload.blocked_topics],
+        "p_reply_tone": payload.reply_tone, "p_allowed_tool_scopes": payload.allowed_tool_scopes,
+        "p_max_replies_per_minute": payload.max_replies_per_minute,
+        "p_daily_credit_budget": payload.daily_credit_budget,
+        "p_quiet_hours": payload.quiet_hours, "p_escalation_rules": payload.escalation_rules,
+        "p_expected_version": payload.expected_version,
+    })
+    if not isinstance(result, dict) or result.get("outcome") != "saved":
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_AUTOMATION_UNCONFIRMED", "message": "Pengaturan belum dapat dikonfirmasi."})
+    return {"policy": result.get("policy"), "auto_reply_runtime_enabled": False,
+            "reason": result.get("reason")}
+
+
+@router.post("/takeover/{agent_id}")
+async def set_takeover(agent_id: uuid.UUID, payload: TakeoverWrite,
+                       user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    result = await _server_db("POST", "rpc/set_agent_social_takeover", body={
+        "p_owner_user_id": owner_id, "p_agent_id": str(agent_id),
+        "p_takeover_active": payload.takeover_active, "p_reason": payload.reason,
+    })
+    if not isinstance(result, dict) or result.get("outcome") != "saved":
+        raise HTTPException(503, detail={"code": "AGENT_SOCIAL_TAKEOVER_UNCONFIRMED", "message": "Perubahan takeover belum dapat dikonfirmasi."})
+    return {"policy": result.get("policy"), "revoked_pending_approvals": result.get("revoked_pending_approvals", 0),
+            "auto_reply_enabled": False, "outcome": "saved"}
+
+
 class CoauthoredDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     agent_id: uuid.UUID

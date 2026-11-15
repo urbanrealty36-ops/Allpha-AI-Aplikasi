@@ -2811,3 +2811,11 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - **WP-07 remains IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED**; this checkpoint only repairs its source migration. External consumer Agent execution, Knowledge ACL/context snapshot, output moderation, private generation artifacts, ENG-P18 DM delivery, approved dual-account settlement and Native Generate parity remain open.
 - **WP-11/WP-12 remain IN_PROGRESS / SOURCE_FOUNDATION_ONLY**; Creator Studio version/credits integration, Native and Super Admin parity, approved Stripe products, access/watch policy administration, qualified-watch evaluator and creator earning reconciliation remain open.
 - **Next:** complete WP-07 vertical integration without starting WP-08; continue WP-11/WP-12 and Social Auto Reply/Takeover under their existing owners. No phase is complete from source presence alone.
+
+
+**WP-06 Auto Reply policy and Human Takeover source checkpoint (2026-11-15):**
+- Added source-only automation policy fields for allowed channels, blocked topics, response tone, tool scopes, per-minute rate cap, owner-defined daily AI Credit budget, quiet hours, escalation rules, mandatory owner approval and output moderation, plus explicit takeover state.
+- Added service-role-only transactional RPCs for saving automation policy and activating/releasing Human Takeover. Takeover always disables Auto Reply and revokes pending Agent approvals in the same database transaction, with a durable control-event record.
+- Added FastAPI owner-scoped GET/PUT automation and POST takeover contracts. Web and Native owner controls now expose configuration/status and takeover actions while preserving existing visual styling.
+- Auto Reply execution intentionally remains disabled (`AUTO_REPLY_RUNTIME_NOT_CONNECTED`): the event consumer, budget reservation, ACL-filtered context, moderation and canonical publish hook are not yet connected. No UI reports autonomous replies as active. Takeover remains usable once the source migration is promoted.
+- Migration is source-only and has not been applied. No tests/build/typecheck, staging, live account journey or deployment performed. WP-06 remains in progress / runtime acceptance deferred.
