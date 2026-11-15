@@ -10,11 +10,13 @@ import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+
+from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
 from allpha_api.auth import current_user, user_db_request
 from allpha_api.agent_consumer_grants import (
@@ -38,6 +40,12 @@ from allpha_api.generation_prompt import (
 router = APIRouter(prefix="/v1/generation", tags=["ai-generation"])
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 
+
+class GenerationManualReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["approve", "reject"]
+    reason: str = Field(min_length=8, max_length=500)
+    evidence_reference: str = Field(min_length=8, max_length=200)
 
 class GenerationJobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -891,3 +899,111 @@ async def get_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(c
     job.pop("artifact_path", None)
     job["artifact_available"] = artifact_available
     return {"job": job}
+
+
+@router.get("/admin/review-queue")
+async def generation_output_review_queue(
+    limit: int = 50,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    if limit < 1 or limit > 100:
+        raise HTTPException(422, detail={"code": "GENERATION_REVIEW_LIMIT_INVALID", "message": "Batas antrean harus 1–100."})
+    rows = await _admin_request("GET", "generation_jobs", params={
+        "select": "id,owner_user_id,agent_owner_user_id,agent_id,skill_id,task_id,trace_id,status,moderation_status,error_code,created_at,updated_at",
+        "status": "eq.pending_reconciliation", "moderation_status": "eq.review_required",
+        "order": "created_at.asc", "limit": str(limit),
+    })
+    items = rows or []
+    await write_operator_audit(None, actor_user_id=str(operator["id"]), action="generation.output_review_queue.read",
+        outcome="allowed", resource_type="generation_output_queue", resource_id="pending",
+        metadata={"count": len(items)})
+    return {"items": items, "limit": limit}
+
+
+@router.get("/admin/jobs/{job_id}/artifact")
+async def generation_output_review_artifact(
+    job_id: uuid.UUID,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    rows = await _admin_request("GET", "generation_jobs", params={
+        "select": "id,status,moderation_status,artifact_bucket,artifact_path,output_sha256",
+        "id": f"eq.{job_id}", "status": "eq.pending_reconciliation",
+        "moderation_status": "eq.review_required", "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(404, detail={"code": "GENERATION_REVIEW_NOT_FOUND", "message": "Output tidak ditemukan pada antrean review."})
+    job = rows[0]
+    if job.get("artifact_bucket") != "generation-artifacts" or not job.get("artifact_path") or not job.get("output_sha256"):
+        raise HTTPException(409, detail={"code": "GENERATION_REVIEW_ARTIFACT_UNAVAILABLE", "message": "Artefak privat belum memiliki bukti penyimpanan yang lengkap."})
+    signed = await _signed_generation_artifact(job["artifact_bucket"], job["artifact_path"], expires_in=180)
+    await write_operator_audit(None, actor_user_id=str(operator["id"]), action="generation.output_review.preview",
+        outcome="allowed", resource_type="generation_job", resource_id=str(job_id),
+        metadata={"expires_in_seconds": 180, "output_sha256": job["output_sha256"]})
+    return {"job_id": str(job_id), "url": signed, "expires_in_seconds": 180, "visibility": "private"}
+
+
+@router.post("/admin/jobs/{job_id}/review")
+async def review_generation_output(
+    job_id: uuid.UUID,
+    payload: GenerationManualReview,
+    request: Request,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:content.moderate")),
+) -> dict[str, Any]:
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="generation.output_review",
+        outcome="attempted", resource_type="generation_job", resource_id=str(job_id),
+        metadata={"decision": payload.decision, "reason": payload.reason, "evidence_reference": payload.evidence_reference})
+    prepared = await _admin_request("POST", "rpc/generation_prepare_manual_review", body={
+        "p_job_id": str(job_id), "p_reviewer_user_id": str(operator["id"]),
+        "p_decision": payload.decision, "p_reason": payload.reason.strip(),
+        "p_evidence_reference": payload.evidence_reference.strip(),
+    })
+    if not isinstance(prepared, dict):
+        raise HTTPException(503, detail={"code": "GENERATION_REVIEW_NOT_CONFIRMED", "message": "Keputusan review belum dapat dikonfirmasi."})
+    if payload.decision == "reject":
+        await write_operator_audit(request, actor_user_id=str(operator["id"]), action="generation.output_review",
+            outcome="allowed", resource_type="generation_job", resource_id=str(job_id),
+            metadata={"decision": "reject", "status": prepared.get("status"), "reason": payload.reason,
+                      "evidence_reference": payload.evidence_reference})
+        return {"job_id": str(job_id), "decision": "reject", "status": prepared.get("status"),
+                "reservation_state": prepared.get("reservation_state"), "artifact_visibility": "private"}
+    if prepared.get("status") == "succeeded":
+        return {"job_id": str(job_id), "decision": "approve", "status": "succeeded", "idempotent_replay": True}
+    lease_token = prepared.get("lease_token")
+    if not isinstance(lease_token, str) or not lease_token:
+        raise HTTPException(503, detail={"code": "GENERATION_REVIEW_LEASE_UNAVAILABLE", "message": "Lease finalisasi output belum tersedia."})
+    result = {
+        "input_tokens": prepared.get("input_tokens"),
+        "output_tokens": prepared.get("output_tokens"),
+        "cost_microunits": prepared.get("actual_cost_microunits"),
+        "source_event_id": prepared.get("source_event_id"),
+    }
+    try:
+        completion = await _admin_request("POST", "rpc/generation_complete_job", body={
+            "p_job_id": str(job_id), "p_lease_token": lease_token, "p_result": result,
+        })
+    except HTTPException:
+        current = await _admin_request("GET", "generation_jobs", params={
+            "select": "status", "id": f"eq.{job_id}", "limit": "1",
+        })
+        if current and current[0].get("status") == "succeeded":
+            completion = {"status": "succeeded", "idempotent_replay": True}
+        else:
+            try:
+                await _admin_request("POST", "rpc/generation_mark_pending_reconciliation", body={
+                    "p_job_id": str(job_id), "p_lease_token": lease_token,
+                    "p_reason_code": "manual_moderation_approved_settlement_pending",
+                })
+            except HTTPException:
+                pass
+            await write_operator_audit(request, actor_user_id=str(operator["id"]), action="generation.output_review",
+                outcome="pending_reconciliation", resource_type="generation_job", resource_id=str(job_id),
+                metadata={"decision": "approve", "reason_code": "SETTLEMENT_NOT_CONFIRMED",
+                          "evidence_reference": payload.evidence_reference})
+            raise HTTPException(409, detail={"code": "GENERATION_REVIEW_SETTLEMENT_PENDING",
+                "message": "Moderasi disetujui, tetapi settlement/DM belum terkonfirmasi. Job tetap dalam rekonsiliasi dan tidak akan menjalankan provider ulang."})
+    await write_operator_audit(request, actor_user_id=str(operator["id"]), action="generation.output_review",
+        outcome="allowed", resource_type="generation_job", resource_id=str(job_id),
+        metadata={"decision": "approve", "status": (completion or {}).get("status", "succeeded"),
+                  "evidence_reference": payload.evidence_reference})
+    return {"job_id": str(job_id), "decision": "approve", "status": "succeeded",
+            "completion": completion, "artifact_visibility": "private"}
