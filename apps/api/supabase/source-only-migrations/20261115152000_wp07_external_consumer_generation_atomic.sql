@@ -55,7 +55,24 @@ begin
       or v_existing.tariff_version <> p_command->>'tariff_version'
       or v_existing.entitlement_version <> p_command->>'entitlement_version'
       or v_existing.model_id <> p_command->>'model_id'
-      or v_existing.model_version <> p_command->>'model_version' then
+      or v_existing.model_version <> p_command->>'model_version'
+      or v_existing.provider_id <> p_command->>'provider_id'
+      or v_existing.pricing_version <> p_command->>'pricing_version'
+      or v_existing.sensitivity <> p_command->>'sensitivity'
+      or v_existing.max_output_tokens <> (p_command->>'max_output_tokens')::integer
+      or v_existing.timeout_ms <> (p_command->>'timeout_ms')::integer
+      or v_existing.estimated_usage_units <> (p_command->>'estimated_usage_units')::bigint
+      or v_existing.usage_unit <> p_command->>'usage_unit'
+      or v_existing.estimated_cost_microunits <> (p_command->>'estimated_cost_microunits')::bigint
+      or v_existing.cost_unit <> p_command->>'cost_unit'
+      or v_existing.credits_to_reserve <> (p_command->>'credits_to_reserve')::bigint
+      or v_existing.credits_per_usage_unit <> (p_command->>'credits_per_usage_unit')::bigint
+      or v_existing.credit_scheme_version <> p_command->>'credit_scheme_version'
+      or v_existing.policy_approval_reference <> p_command->>'policy_approval_reference'
+      or v_existing.allow_success_settlement <> (p_command->>'allow_success_settlement')::boolean
+      or v_existing.allow_definitive_failure_release <> (p_command->>'allow_definitive_failure_release')::boolean
+      or v_existing.allow_partial_settlement <> (p_command->>'allow_partial_settlement')::boolean
+      or v_existing.max_cost_microunits <> (p_command->>'max_cost_microunits')::bigint then
       raise exception 'GENERATION_JOB_IDEMPOTENCY_CONFLICT' using errcode='23505';
     end if;
     return jsonb_build_object('job_id',v_existing.id,'task_id',v_existing.task_id,
