@@ -18,7 +18,6 @@ import httpx
 from allpha_api.agent_runtime import (
     AgentConsumerAuthorization,
     AgentRuntime,
-    AgentRuntimeBlocked,
 )
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
@@ -306,12 +305,15 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
         return "pending_reconciliation"
 
     try:
-        sensitivity = _require_pinned_model_route(job, router)
+        _require_pinned_model_route(job, router)
         if not await _execution_contract_is_current(job):
             return await _fail_before_provider(job, worker_id, "agent_skill_or_capability_revoked_or_changed")
     except Exception as exc:
-        await _mark_pending(job, worker_id, "generation_preflight_unknown:" + type(exc).__name__)
-        return "pending_reconciliation"
+        # No provider side effect has started; a failed preflight is definitive and
+        # may safely follow the approved failure-release policy.
+        return await _fail_before_provider(
+            job, worker_id, "generation_preflight_unavailable:" + type(exc).__name__
+        )
 
     consumer_authorization = None
     if job.get("consumer_grant_id"):
