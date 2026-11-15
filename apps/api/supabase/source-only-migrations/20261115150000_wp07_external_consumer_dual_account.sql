@@ -36,8 +36,8 @@ alter table public.generation_jobs
   add column if not exists payer_role text generated always as (
     case
       when payer_user_id is null or owner_user_id is null or agent_owner_user_id is null then null
-      when payer_user_id = owner_user_id then 'consumer'
       when payer_user_id = agent_owner_user_id then 'agent_owner'
+      when payer_user_id = owner_user_id then 'consumer'
       else 'invalid'
     end
   ) stored,
