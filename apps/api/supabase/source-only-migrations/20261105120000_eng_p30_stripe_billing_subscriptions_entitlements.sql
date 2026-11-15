@@ -1,6 +1,6 @@
--- ENG-P30 Stripe billing, receipts, subscription and playback entitlement.
--- SOURCE ONLY: do not apply to production. Apply through the approved isolated
--- non-production migration/recovery gate. No products/prices are seeded.
+-- ENG-P30 Stripe billing, receipts, subscription and playback entitlement schema.
+-- Production schema prerequisite for WP-07 Premium entitlement checks and Cinema playback.
+-- Explicit Product Owner approval recorded 2026-11-16. No products/prices are seeded.
 -- Stripe is the sole provider. Client redirects never fulfill orders.
 begin;
 
@@ -299,7 +299,8 @@ begin
     or lower(p_currency) <> v_order.currency then
     update public.billing_orders set status='review_required',updated_at=now() where id=p_order_id;
     update public.stripe_webhook_events set status='failed',last_error_code='checkout_snapshot_mismatch' where event_id=p_event_id;
-    raise exception 'BILLING_CHECKOUT_SNAPSHOT_MISMATCH' using errcode='23514';
+    return jsonb_build_object('fulfilled',false,'idempotent_replay',false,
+      'status','review_required','order_id',p_order_id,'reason_code','checkout_snapshot_mismatch');
   end if;
   if v_order.purpose='ai_credit_topup' then
     if coalesce((v_order.product_snapshot->>'credits_grant')::bigint,0) <= 0 then
