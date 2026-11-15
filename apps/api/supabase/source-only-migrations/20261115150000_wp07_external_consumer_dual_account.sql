@@ -25,47 +25,11 @@ alter table public.generation_jobs
   add column if not exists skill_snapshot jsonb not null default '{}'::jsonb
     check (jsonb_typeof(skill_snapshot)='object'),
   add column if not exists skill_instructions_sha256 text
-    check (skill_instructions_sha256 is null or skill_instructions_sha256 ~ '^[0-9a-f]{64}    check (owner_reward_status in ('pending_policy','settled','not_eligible','reconciliation_required'));
-
-update public.generation_jobs j
-set agent_owner_user_id = coalesce(j.agent_owner_user_id, j.owner_user_id),
-    payer_user_id = coalesce(j.payer_user_id, j.owner_user_id),
-    agent_version = coalesce(j.agent_version, a.version)
-from public.ai_agents a
-where a.id = j.agent_id
-  and (j.agent_owner_user_id is null or j.payer_user_id is null or j.agent_version is null);
-
-alter table public.generation_jobs
-  alter column agent_owner_user_id set not null,
-  alter column payer_user_id set not null,
-  alter column agent_version set not null;
-
-alter table public.generation_jobs
-  drop constraint if exists generation_jobs_external_policy_snapshot;
-alter table public.generation_jobs
-  add constraint generation_jobs_external_policy_snapshot
-  check (consumer_grant_id is null or
-    (agent_version is not null and runtime_policy_version is not null)) not valid;
-
-create index if not exists generation_jobs_agent_owner_created_idx
-  on public.generation_jobs(agent_owner_user_id, created_at desc);
-create index if not exists generation_jobs_payer_created_idx
-  on public.generation_jobs(payer_user_id, created_at desc);
-create index if not exists generation_jobs_consumer_grant_idx
-  on public.generation_jobs(consumer_grant_id, created_at desc)
-  where consumer_grant_id is not null;
-
-comment on column public.generation_jobs.owner_user_id is
-  'Authenticated requester and private artifact recipient; not necessarily the Agent owner or credit payer.';
-comment on column public.generation_jobs.agent_owner_user_id is
-  'Canonical Human owner of the selected Agent, derived and verified by FastAPI and the generation RPC.';
-comment on column public.generation_jobs.payer_user_id is
-  'Credit account selected only from the approved consumer generation policy; never client supplied.';
-comment on column public.generation_jobs.owner_reward_status is
-  'Creator reward is pending until an approved generation_owner_reward policy permits an idempotent owner credit.';
-
-commit;
-),
+    check (skill_instructions_sha256 is null or skill_instructions_sha256 ~ '^[0-9a-f]{64}$'),
+  add column if not exists agent_snapshot_sha256 text
+    check (agent_snapshot_sha256 is null or agent_snapshot_sha256 ~ '^[0-9a-f]{64}$'),
+  add column if not exists skill_snapshot_sha256 text
+    check (skill_snapshot_sha256 is null or skill_snapshot_sha256 ~ '^[0-9a-f]{64}$'),
   add column if not exists owner_reward_status text not null default 'pending_policy'
     check (owner_reward_status in ('pending_policy','settled','not_eligible','reconciliation_required'));
 
@@ -105,5 +69,11 @@ comment on column public.generation_jobs.payer_user_id is
   'Credit account selected only from the approved consumer generation policy; never client supplied.';
 comment on column public.generation_jobs.owner_reward_status is
   'Creator reward is pending until an approved generation_owner_reward policy permits an idempotent owner credit.';
+comment on column public.generation_jobs.agent_snapshot is
+  'Versioned Agent identity, persona, disclosure and boundaries captured at job creation.';
+comment on column public.generation_jobs.skill_snapshot is
+  'Immutable published Agent Skill version snapshot used by the generation worker.';
+comment on column public.generation_jobs.skill_instructions_sha256 is
+  'SHA-256 of the exact Skill instructions used to assemble the canonical system prompt.';
 
 commit;
