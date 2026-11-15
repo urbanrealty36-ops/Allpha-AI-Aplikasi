@@ -363,3 +363,12 @@ Read-only Git blob SHA comparison was run between the source repository urbanrea
 - All fixed 70% royalty and Rp/AI Credit subscription-price claims in the reference AiCinemaView are now conditional demo-only copy. The production route states that monetization, settlement and pricing remain unavailable until the relevant billing/royalty policies are approved and connected.
 - Production mode cannot open the reference's local VIP subscription confirmation or local creator-verification flow; the backend remains the authority for subscription entitlement, moderation, publication and creator settlement.
 - Commit: `0c76f379b79c02071d41afdf5ec6159856df948e`.
+
+## WP-07 Generate Studio artifact safety and result clarity — 2026-11-15
+
+- The reference GenerateModal remains the active Web generation form. Its result heading now identifies the current output as a text draft rather than implying that a rendered Reels/video file has been generated. The existing upload panel explicitly states that local logo/product media upload is not yet wired to a canonical media-input snapshot contract.
+- The reference GenerateModal now exposes requester-only deletion of a completed private artifact. The `/generate?job_id=...` route also exposes the same action when opened from the DM receipt, so a user does not need to reopen the generation modal to manage the artifact.
+- Native GenerateCenter exposes the corresponding requester-only deletion action. Both clients call FastAPI; neither deletes directly from Supabase Storage.
+- The UI explains the 60-second signed URL window accurately: new signed URLs are blocked after deletion is requested, but a URL already issued can remain usable until the object is deleted or the URL expires.
+- Automatic retention/expiry is not shown as configured; retention periods and deletion SLAs remain open policy decisions in the Master PRD.
+- This UI source update is not browser/device parity acceptance. No build, lint, typecheck, CI, staging or deployment was run.
