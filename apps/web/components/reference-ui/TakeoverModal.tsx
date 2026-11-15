@@ -20,6 +20,7 @@ interface TakeoverModalProps {
   onToggleTakeover: () => void;
   agentName: string;
   actionsEnabled?: boolean;
+  autoReplyRuntimeEnabled?: boolean;
 }
 
 export default function TakeoverModal({
@@ -29,6 +30,7 @@ export default function TakeoverModal({
   onToggleTakeover,
   agentName,
   actionsEnabled = false,
+  autoReplyRuntimeEnabled = false,
 }: TakeoverModalProps) {
   const [activeNotice, setActiveNotice] = React.useState<string | null>(null);
 
@@ -80,22 +82,22 @@ export default function TakeoverModal({
             }`}
           >
             <Bot className="w-3.5 h-3.5 stroke-[2.5px]" />
-            <span>AI Auto-Reply</span>
+            <span>{autoReplyRuntimeEnabled ? "AI Auto-Reply" : "AI Auto-Reply · runtime nonaktif"}</span>
           </button>
         </div>
 
         {/* Current Status Box */}
         <div className="mt-4 p-3.5 rounded-2xl bg-amber-50 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a]">
           <div className="flex items-center gap-3">
-            <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 shrink-0 ${isTakeoverActive ? 'bg-amber-400' : 'bg-emerald-500 animate-pulse'}`} />
+            <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 shrink-0 ${isTakeoverActive ? 'bg-amber-400' : autoReplyRuntimeEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
             <div>
               <p className="text-xs font-black text-slate-900">
-                Mode: {actionsEnabled ? (isTakeoverActive ? 'Takeover Human Aktif' : 'AI Auto-Reply Aktif') : 'Status aktual belum dikonfirmasi API'}
+                Mode: {actionsEnabled ? (isTakeoverActive ? 'Takeover Human Aktif' : autoReplyRuntimeEnabled ? 'AI Auto-Reply Aktif' : 'Auto-Reply Runtime Belum Aktif') : 'Status aktual belum dikonfirmasi API'}
               </p>
               <p className="text-[11px] font-semibold text-slate-700 mt-0.5 leading-snug">
                 {!actionsEnabled ? 'Kontrol takeover dinonaktifkan sampai status dan mutasi tersedia melalui API kanonis.' : isTakeoverActive
                   ? 'Anda merespons langsung sebagai Human Owner. AI dihentikan sementara.'
-                  : `${agentName} merespons komentar dan pesan masuk secara otomatis.`}
+                   : autoReplyRuntimeEnabled ? `${agentName} merespons komentar dan pesan masuk sesuai policy.` : 'Policy Auto-Reply tersimpan, tetapi runtime event consumer belum aktif. Agent tidak mengirim respons otomatis.'}
               </p>
             </div>
           </div>
@@ -110,7 +112,7 @@ export default function TakeoverModal({
           >
             <div className="flex items-center gap-2.5">
               <Power className="w-4 h-4 text-rose-600 stroke-[2.5px]" />
-              <span>{isTakeoverActive ? 'Aktifkan Kembali AI Auto-Reply' : 'Ambil Alih (Takeover Manual)'}</span>
+              <span>{isTakeoverActive ? 'Lepas Takeover (Auto-Reply tetap mengikuti status runtime)' : 'Ambil Alih (Takeover Manual)'}</span>
             </div>
             <span className="font-mono font-black">›</span>
           </button>
