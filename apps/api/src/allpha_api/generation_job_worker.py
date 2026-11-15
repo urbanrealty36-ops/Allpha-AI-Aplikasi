@@ -18,7 +18,10 @@ import httpx
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
-from allpha_api.generation_output_moderation import load_generation_output_moderator
+from allpha_api.generation_output_moderation import (
+    ManualReviewOnlyModerator,
+    load_generation_output_moderator,
+)
 
 logger = logging.getLogger("allpha.generation.worker")
 _TIMEOUT = httpx.Timeout(15.0, connect=3.0)
@@ -330,6 +333,13 @@ async def run_once(*, batch_size: int = 5) -> int:
     moderation_policy = await _approved_moderation_policy()
     if moderator is None or moderation_policy is None:
         logger.info("generation_worker_idle reason=output_moderation_not_approved_or_configured")
+        return 0
+    policy_configuration = moderation_policy.get("configuration")
+    if isinstance(moderator, ManualReviewOnlyModerator) and (
+        not isinstance(policy_configuration, dict)
+        or not moderator.supports_policy(policy_configuration)
+    ):
+        logger.info("generation_worker_idle reason=approved_policy_not_manual_review_only")
         return 0
     worker_id = str(uuid.uuid4())
     jobs = await _rpc("claim_generation_jobs", {
