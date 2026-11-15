@@ -75,6 +75,10 @@ class AgentRuntimeBlocked(ValueError):
     """Runtime must not execute when an authorization/policy invariant is absent."""
 
 
+class AgentRuntimeOutcomeUnknown(RuntimeError):
+    """Provider invocation may have started; the caller must reconcile, never replay."""
+
+
 @dataclass(frozen=True)
 class AgentTaskEnvelope:
     task_id: str
@@ -324,4 +328,6 @@ class AgentRuntime:
         try:
             return await asyncio.wait_for(router.generate(request), timeout=remaining)
         except asyncio.TimeoutError as exc:
-            raise AgentRuntimeBlocked("Skill generation exceeded the runtime deadline") from exc
+            # The provider may have accepted the request before the local deadline
+            # elapsed. Callers must reconcile the outcome instead of releasing or replaying.
+            raise AgentRuntimeOutcomeUnknown("Skill generation provider outcome is unknown after runtime deadline") from exc
