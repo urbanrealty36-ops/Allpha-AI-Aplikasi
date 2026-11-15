@@ -197,6 +197,22 @@ begin
     raise exception 'GENERATION_ACTUAL_USAGE_EXCEEDS_RESERVATION' using errcode='22023';
   end if;
 
+  -- Re-check external permission immediately before settlement and delivery.
+  -- Revocation during a running provider call prevents publication and leaves
+  -- the reservation for explicit reconciliation; no output is sent to the consumer.
+  if v_job.consumer_grant_id is not null and not exists (
+    select 1 from public.agent_consumer_grants g
+    where g.id=v_job.consumer_grant_id
+      and g.requester_user_id=v_job.owner_user_id
+      and g.owner_user_id=v_job.agent_owner_user_id
+      and g.agent_id=v_job.agent_id
+      and g.status='active'
+      and g.granted_scopes @> array['generation_invoke']::text[]
+      and (g.expires_at is null or g.expires_at > now())
+  ) then
+    raise exception 'GENERATION_CONSUMER_GRANT_REVOKED' using errcode='42501';
+  end if;
+
   -- The debit/settlement and creator reward credit are in this same PostgreSQL
   -- transaction. No client-supplied payer or reward amount is trusted.
   perform public.credit_ledger_settle(jsonb_build_object(
