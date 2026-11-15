@@ -3072,3 +3072,12 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Stories route now mounts the reference `StoriesViewerModal` with canonical API Story records; image/video media is supported, create hands off to the canonical form, and reply uses the authenticated DM API. Reaction remains disabled because a canonical Story-reaction endpoint is not exposed. Commits: `ccc76b00f4816dc65b6df1fa0fc1bc582754f591`, `6b018a0517a9337ede09c2be0922d72a319c9ea8`, `45134d9cf72a5bbd2415a9d747a1a2aa4ffddc65`.
 - UI reference matrix updated with route-level source inspection and explicit visual-parity limitations. Commit: `8db1407b4efbc8147d11d2286d1fbc04446a6549`.
 - No tests/build/lint/typecheck/CI/browser/device QA, provider calls, migration application, Supabase mutation, staging or deployment were performed. WP-07 and UI-COPY-03 remain `in_progress / acceptance_not_verified`; no phase is completed or promoted.
+
+
+**WP-07 canonical Supabase schema reconciliation — read-only inspection, 2026-11-16:**
+- Inspected the connected `AllphaAiAplikasi-db` project (`dvdziauyvuhcnqhrrvww`) using read-only table and migration metadata. The applied migration ledger currently ends at `20261115115440 / wp11_cinema_client_write_lockdown`.
+- The live public schema contains the Agent Runtime, Workflow, messaging, Social, and Cinema catalog tables, but does **not** contain `generation_jobs` or the WP-07 generation moderation/artifact lifecycle schema. The applied migration ledger does not contain the WP-07 Generation Job migration chain.
+- The source-only migration directory contains the Generation Job base migration plus external Consumer dual-account, atomic generation/DM settlement, grant revocation, manual moderation, artifact owner-deletion and queued-cancellation migrations. Raw source inspection confirms each of the seven reviewed WP-07 SQL files has one terminal `COMMIT;`; this does not prove the SQL is executable or safe to apply.
+- Therefore Web/Native/API source wiring is present, but the canonical Supabase runtime contract remains unavailable until this migration chain is reconciled into a forward-only authorized migration plan and explicitly applied. No migration was applied and no database object or data was changed during this inspection.
+- This evidence keeps WP-07 `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`. No later phase is promoted; formal order remains WP-07 → WP-06 → WP-11 → WP-12. Live remains under WP-10 / ENG-P25/P26 pending ADR approval.
+
