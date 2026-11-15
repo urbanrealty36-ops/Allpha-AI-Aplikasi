@@ -56,6 +56,7 @@ from allpha_api.community_api import router as community_router
 from allpha_api.notification_api import router as notification_router
 from allpha_api.stripe_billing_api import router as stripe_billing_router
 from allpha_api.generation_jobs_api import router as generation_jobs_router
+from allpha_api.memory_api import router as memory_router
 from allpha_api.social_graph_outbox_worker import OutboxWorker
 
 APP_NAME = "allpha-api"
@@ -1398,3 +1399,4 @@ app.include_router(community_router)
 app.include_router(notification_router)
 app.include_router(stripe_billing_router)
 app.include_router(generation_jobs_router)
+app.include_router(memory_router)
