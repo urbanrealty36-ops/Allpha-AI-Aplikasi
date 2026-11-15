@@ -19,11 +19,15 @@ class GenerationOutputModerator(Protocol):
 class ManualReviewOnlyModerator:
     """Fail-closed adapter: every output is held for an attributed Human review."""
 
+    @staticmethod
+    def supports_policy(policy: dict[str, Any]) -> bool:
+        return policy.get("mode") == "manual_review_only" and policy.get("manual_review_only") is True
+
     async def moderate(self, *, text: str, policy: dict[str, Any], metadata: dict[str, str]) -> dict[str, Any]:
+        if not self.supports_policy(policy):
+            raise RuntimeError("manual review adapter requires an explicitly approved manual_review_only policy")
         if not isinstance(text, str) or not text.strip():
             return {"decision": "review_required", "reason_code": "empty_output"}
-        if policy.get("mode") != "manual_review_only" or policy.get("manual_review_only") is not True:
-            raise RuntimeError("manual review adapter requires an explicitly approved manual_review_only policy")
         return {
             "decision": "review_required",
             "reason_code": "manual_review_required",
