@@ -6,7 +6,8 @@ type Props = { session: Session; apiBase: string };
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version: number };
 type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
-type Automation = { auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; daily_credit_budget: number; takeover_active: boolean };\ntype DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
+type Automation = { auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; daily_credit_budget: number; takeover_active: boolean };
+type DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
 const styles = {
   page: { flexGrow: 1, backgroundColor: "#0B1020", padding: 18, gap: 14 } as const,
@@ -98,7 +99,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       <Text style={styles.body}>Status: {automation?.takeover_active ? "Takeover Human aktif" : "Takeover dilepas · Auto Reply masih nonaktif"}</Text>
       <Text onPress={async () => { if (!agentId) return; setBusy(true); setError(""); try { const active = !automation?.takeover_active; const result = await api("/v1/agent-social/takeover/" + agentId,{method:"POST",body:JSON.stringify({takeover_active:active,reason:active?"owner_manual_takeover_native":"owner_released_takeover_native"})}); setAutomation(result.policy as Automation); setNotice(active?"Takeover aktif; approval pending dicabut.":"Takeover dilepas; Auto Reply belum diaktifkan."); await load(); } catch(cause) { setError(cause instanceof Error?cause.message:"Takeover gagal."); } finally { setBusy(false); } }} style={styles.action}>{automation?.takeover_active ? "Lepas Takeover" : "Ambil Alih Sekarang"}</Text>
     </View>
-\n    <View style={styles.card}><Text style={styles.title}>Approval Inbox</Text><Text style={styles.body}>{approvals.filter(x => x.status === "pending").length} permintaan menunggu keputusan</Text>
+    <View style={styles.card}><Text style={styles.title}>Approval Inbox</Text><Text style={styles.body}>{approvals.filter(x => x.status === "pending").length} permintaan menunggu keputusan</Text>
       {approvals.length === 0 ? <Text style={styles.body}>Belum ada approval.</Text> : approvals.map(item => <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 12, gap: 8 }}>
         <Text style={styles.body}>{item.action_type} · {item.status}</Text><Text style={styles.body}>{new Date(item.requested_at).toLocaleString("id-ID")}</Text><Text style={styles.body}>{item.disclosure_snapshot}</Text>
         {item.status === "pending" && <><Text onPress={() => void decide(item.id, "approve")} style={styles.action}>Setujui</Text><Text onPress={() => void decide(item.id, "reject")} style={styles.action}>Tolak</Text></>}
