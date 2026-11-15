@@ -100,4 +100,5 @@ def generation_prompt_size_bytes(
         skill_snapshot=skill_snapshot,
         knowledge_snapshot=knowledge_snapshot,
     )
-    return len(system_prompt.encode("utf-8")) + len(user_prompt.encode("utf-8"))
+    combined = (system_prompt + "\n\n" + user_prompt) if system_prompt else user_prompt
+    return len(combined.encode("utf-8"))
