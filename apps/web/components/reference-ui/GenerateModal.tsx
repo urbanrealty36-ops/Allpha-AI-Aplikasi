@@ -29,6 +29,27 @@ export interface GenerateRequest {
   brief: string;
 }
 
+const BRIEF_PRESETS: Array<{ id: string; label: string; contentType: GenerateContentType; brief: string }> = [
+  {
+    id: "food-beverage",
+    label: "F&B / Kuliner",
+    contentType: "REELS_BRAND",
+    brief: "Buat konsep konten yang menonjolkan keunggulan produk, bahan atau proses utama, pengalaman pelanggan, dan ajakan bertindak yang jelas. Jangan mengarang klaim kualitas, sertifikasi, harga, atau testimoni.",
+  },
+  {
+    id: "fashion-lifestyle",
+    label: "Fashion / Lifestyle",
+    contentType: "CAMPAIGN_SUITE",
+    brief: "Susun konsep kampanye yang menampilkan desain, material, detail penggunaan, manfaat yang dapat dibuktikan, variasi konten, dan ajakan bertindak. Gunakan hanya informasi produk yang saya berikan.",
+  },
+  {
+    id: "digital-spatial",
+    label: "Digital / 3D",
+    contentType: "FEED_POST",
+    brief: "Buat konsep konten digital atau 3D yang menjelaskan use-case, fitur utama, konteks penggunaan, manfaat, dan arahan visual. Hindari klaim performa atau kompatibilitas yang belum saya berikan.",
+  },
+];
+
 interface GenerateModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -212,9 +233,30 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, canCancelGe
           </p>
         </div>
 
-        {/* Brand presets are intentionally not seeded with demo business data. */}
-        <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 p-3 text-[11px] font-semibold leading-relaxed text-slate-800 shadow-[2px_2px_0px_#0f172a]">
-          Preset brand akan muncul setelah katalog Brand/Business terhubung ke API kanonis. Masukkan identitas brand Anda sendiri; tidak ada contoh bisnis yang diperlakukan sebagai data nyata.
+        {/* Reference quick-preset composition adapted as reusable prompt templates, not seeded business identities. */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-black text-slate-900">Template Brief Kreatif:</span>
+            <span className="text-slate-500 font-bold">1-Klik Isi Brief</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {BRIEF_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                title="Mengisi template brief; tidak membuat atau menyimpan data bisnis."
+                aria-pressed={customBrief === preset.brief}
+                onClick={() => {
+                  setContentType(preset.contentType);
+                  setCustomBrief(preset.brief);
+                }}
+                className="shrink-0 px-3 py-1.5 rounded-2xl border-2 border-slate-900 bg-amber-50 hover:bg-amber-100 text-xs font-black text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-2 cursor-pointer"
+              >
+                <Palette className="w-4 h-4" />
+                <span className="truncate max-w-[130px]">{preset.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Form Inputs */}
