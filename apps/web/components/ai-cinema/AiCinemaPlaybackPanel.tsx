@@ -6,12 +6,15 @@ import { getBrowserSupabase } from "../../lib/supabase";
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type Title = { id: string; title: string };
 type Episode = { id: string; episode_number: number; title: string; synopsis?: string | null; duration_seconds?: number | null; is_free_preview: boolean; locked: boolean; playback_url?: string | null };
-type Playback = { title: { id: string; title: string; maturity_rating: string }; episodes: Episode[]; premium_entitled: boolean };\ntype ActivePlayback = { session_id: string; session_token: string; episode_id: string; playback_url: string; last_heartbeat_at: number };
+type Playback = { title: { id: string; title: string; maturity_rating: string }; episodes: Episode[]; premium_entitled: boolean };
+type ActivePlayback = { session_id: string; session_token: string; episode_id: string; playback_url: string; last_heartbeat_at: number };
 
 export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
   const [selected, setSelected] = useState<Playback | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState("");\n  const [activePlayback, setActivePlayback] = useState<ActivePlayback | null>(null);\n  const heartbeatLock = useRef(false);
+  const [error, setError] = useState("");
+  const [activePlayback, setActivePlayback] = useState<ActivePlayback | null>(null);
+  const heartbeatLock = useRef(false);
 
   async function openTitle(title: Title) {
     setBusy(title.id); setError(""); setSelected(null);
