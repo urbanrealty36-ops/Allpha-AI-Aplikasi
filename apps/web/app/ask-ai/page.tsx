@@ -11,7 +11,7 @@ type MeResponse = { user?: { id: string; email?: string }; profile?: { username?
 type Agent = { id: string; handle: string; display_name: string; description: string; status: string };
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
-type GenerationJob = { id: string; status: string; moderation_status?: string; artifact_available?: boolean; error_code?: string | null; credits_to_reserve?: number };
+type GenerationJob = { id: string; status: string; moderation_status?: string; artifact_available?: boolean; dm_conversation_id?: string | null; error_code?: string | null; credits_to_reserve?: number };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function readError(response: Response): Promise<string> {
@@ -129,7 +129,7 @@ export default function AskAiPage() {
         if (!contentResponse.ok) throw new Error("Artefak generation belum dapat diunduh.");
         const text = await contentResponse.text();
         if (!text.trim()) throw new Error("Artefak generation kosong.");
-        return { text, jobId: created.job_id, reservedCredits: created.reserved_credits };
+        return { text, jobId: created.job_id, conversationId: job.dm_conversation_id ?? null, reservedCredits: created.reserved_credits };
       }
       if (job.status === "failed" || job.status === "cancelled") {
         throw new Error(job.error_code || "Generation gagal. Reservasi mengikuti kebijakan refund yang berlaku.");
