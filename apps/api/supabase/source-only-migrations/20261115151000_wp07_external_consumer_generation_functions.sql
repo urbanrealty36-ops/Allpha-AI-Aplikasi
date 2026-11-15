@@ -87,6 +87,7 @@ begin
         and g.skill_id=v_skill and g.skill_version=v_skill_row.version
         and g.runtime_policy_version=p_command->>'runtime_policy_version'
         and g.status='active' and g.granted_scopes @> array['generation_invoke']::text[]
+        and (coalesce(p_command->>'knowledge_context_sha256','')='' or g.granted_scopes @> array['knowledge_public_read']::text[])
         and (g.expires_at is null or g.expires_at > now())
         and g.capability_id=p_command->>'capability_id'
         and g.credit_scheme_version=p_command->>'credit_scheme_version'
@@ -208,6 +209,7 @@ begin
       and g.agent_id=v_job.agent_id
       and g.status='active'
       and g.granted_scopes @> array['generation_invoke']::text[]
+      and (v_job.knowledge_context_sha256 is null or g.granted_scopes @> array['knowledge_public_read']::text[])
       and (g.expires_at is null or g.expires_at > now())
   ) then
     raise exception 'GENERATION_CONSUMER_GRANT_REVOKED' using errcode='42501';
