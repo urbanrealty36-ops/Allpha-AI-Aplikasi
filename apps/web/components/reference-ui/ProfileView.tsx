@@ -335,10 +335,12 @@ export default function ProfileView({
               const bgColors = ['bg-[#BAE6FD]', 'bg-[#DDD6FE]', 'bg-[#FEF08A]'];
               const cardBg = bgColors[idx % bgColors.length];
               return (
-                <div
+                <button
+                  type="button"
                   key={ag.id}
                   onClick={() => { setActiveProfileTab('AGENTS'); onSelectOwnedAgent?.(ag.id); }}
-                  className={`shrink-0 w-48 p-3 rounded-2xl ${cardBg} border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:brightness-95 transition flex items-center gap-3 cursor-pointer active:translate-x-0.5 active:translate-y-0.5`}
+                  aria-label={`Pilih Agent ${ag.name}`}
+                  className={`shrink-0 w-48 p-3 text-left rounded-2xl ${cardBg} border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:brightness-95 transition flex items-center gap-3 cursor-pointer active:translate-x-0.5 active:translate-y-0.5`}
                 >
                   <img
                     src={ag.avatar}
@@ -358,7 +360,7 @@ export default function ProfileView({
                       </p>
                     )}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -794,7 +796,7 @@ export default function ProfileView({
               AI Agent Companion Lainnya
             </h4>
             <div className="space-y-2.5">
-              {ownedAgents.filter(a => a.name !== agentProfile.name).map((ag, idx) => {
+              {ownedAgents.filter(a => a.id !== agentProfile.id).map((ag, idx) => {
                 const bgColors = ['bg-[#DDD6FE]', 'bg-[#BAE6FD]'];
                 const cardBg = bgColors[idx % bgColors.length];
                 return (
