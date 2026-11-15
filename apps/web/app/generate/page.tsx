@@ -10,7 +10,7 @@ type Agent = { id: string; display_name: string; description?: string; status: s
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
+type Job = { status: string; moderation_status?: string | null; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function errorMessage(response: Response) {
@@ -210,6 +210,10 @@ export default function GeneratePage() {
           return null;
         }
         if (job.status === "pending_reconciliation") {
+          if (job.moderation_status === "review_required") {
+            setNotice("Output sudah diterima dan sedang menunggu pemeriksaan Human. Artefak tetap privat sampai reviewer menyetujui; permintaan tidak dikirim ulang.");
+            return null;
+          }
           if (job.error_code === "cancel_release_policy_not_approved") {
             setNotice("Pembatalan tercatat, tetapi policy belum mengizinkan pelepasan reservasi. Saldo menunggu rekonsiliasi.");
             return null;
