@@ -173,12 +173,14 @@ class MemoryCoordinator:
         p={"select":"id,memory_type,content,classification,source_ref,provenance,confidence,version,content_sha256,policy_id,policy_version,created_at",
            "owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","policy_id":f"in.({','.join(policy_ids)})",
            "purpose":f"eq.{purpose}","status":"eq.active","retention_expires_at":f"gt.{datetime.now(timezone.utc).isoformat()}",
-           "order":"created_at.desc","limit":str(max(1,min(limit,30)))}
+           "classification":f"in.({','.join(sorted(set().union(*(s for s in sensitivities.values()))))})",
+           "order":"created_at.desc","limit":"30"}
+        if query:p["search_vector"]="fts.simple."+query
         rows=await self.db("GET","agent_memory_items",params=p)
         out=[]; used=0
         for row in rows or []:
+            if len(out)>=max(1,min(limit,30)):break
             if row["policy_version"]!=versions.get(row["policy_id"]) or row.get("classification") not in sensitivities.get(row["policy_id"],set()):continue
-            if query and query.lower() not in str(row["content"]).lower():continue
             content=str(row["content"]); remaining=max_chars-used
             if remaining<=0:break
             content=content[:remaining]; used+=len(content)
