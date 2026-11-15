@@ -3016,3 +3016,31 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Live Stage source correction: added the missing optional typed Commerce `onCheckout` callback prop to the adapted `LiveExperienceStage` component; the route remains unavailable until the Live Session API/provider ADR is approved.
 - Source commits: Live Stage `44e3f843d097c80f843c1e655ce610ce1c623bfb`; Native Video dependency `8523d88809d43a4ad3c0057cc4866bca29336dd4`; Native playback/heartbeat `d16f550baa79790450b979330bd7fc09b4873aea`.
 - No tests, build, lint, typecheck, CI, physical-device QA, migration application, provider call, staging or deployment were run. WP-11/WP-12 remain `IN_PROGRESS / SOURCE_FOUNDATION_ONLY`; runtime and acceptance remain NOT VERIFIED.
+
+
+**WP-11 / AI Cinema Creator Studio — media pipeline source integration (2026-11-16):**
+- Added owner-scoped `GET /v1/cinema/creator/media` to expose the current creator's uploaded/processing/ready/failed media states. The endpoint checks ownership through the canonical content record and does not return Storage paths or signed URLs.
+- Web and Native Creator Studio now upload MP4/WebM through the existing content lifecycle: create a private draft via `POST /v1/content`, then multipart `POST /v1/content/{content_id}/media` with a UUID `Idempotency-Key`. No client-side Supabase business writes or direct Storage access were added.
+- Creator Studio lists media processing/scan states; only `status=ready`, `scan_status=clean`, and `processed_at` media can be attached to a Cinema episode. Upload success is not described as processing completion. The existing media workers and authenticated provider callback remain authoritative for readiness.
+- Web Creator Workspace visual tokens were aligned to the reference palette/borders/offset shadows; this is source-level styling alignment, not screenshot/pixel acceptance. Native uses Expo DocumentPicker and the same FastAPI contract.
+- Commits: API `5c22c1427d6d28ebf642246d914319422b3dde03`; Web upload `3842be7b675ac45de8491e45e2f742df3f571590`, retry/idempotency `127dac2bc6e3f0e875379fa2d03036ef8efb685e`, same-file retry `02e71c6772dd286ed37a983620c18b9aa959ee0a`, reference styling `76239e2db5169cf67a748b87288075dc4b748e9c`, border/picker polish `dd37438fa2c6e29b649d1a41b6e7e340e1ed0f2b`, `6c8f889dcab12221ca76bc70d1534a63f5acdfa7`; Native upload `01908c07a55cabd6043e43b3d8e0f821f5fde7d0`, retry `59cb5ead5db0e9c760a720f17d388c57f022f27d`, same-file retry `4472cdeb7995139f75efd925c5ae8708b7c5f531`.
+- Remaining: no Cinema video-generation provider/contract is approved or wired; existing Cloudinary path is asynchronous upload transcode, not AI video generation. Generation Job readiness remains governed by WP-07 and the approved Model Router/moderation policy. Cover/trailer attachment, captions/subtitles, versioned timeline and Creator Studio governance parity remain open.
+- WP-11/WP-12 remain `IN_PROGRESS / SOURCE_FOUNDATION_ONLY`; no runtime or acceptance status is advanced.
+
+**WP-06 — Native Agent Social Automation policy integration (2026-11-16):**
+- Native Agent Social Controls now load the owner-scoped automation policy from `GET /v1/agent-social/automation?agent_id=...`, render allowed channels, blocked topics, reply tone and daily AI Credit budget, and persist versioned changes through `PUT /v1/agent-social/automation/{agent_id}`.
+- Takeover state is read from the canonical policy and the existing FastAPI takeover endpoint remains the only state-changing path. Auto Reply execution remains explicitly disabled until the durable event consumer, budget reservation, ACL-filtered context, moderation and canonical publish lifecycle are connected.
+- Source correction also normalized escaped newline sequences that had made the Native component invalid TSX.
+- Commit: `d11f3bb8841a...` (Native automation policy integration; preceding source-line normalization commits `9ca86efde2e4...`, `948521b72ada...`).
+- No tests, builds, lint, typecheck, CI, live account journey, Supabase mutation, migration application, staging, browser/device QA or deployment were run. WP-06 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`.
+
+**WP-10 / Live Stage source contract correction and external adapter audit (2026-11-16):**
+- Corrected the missing typed optional Commerce `onCheckout` callback prop in the reference-derived Live Stage component (commit `44e3f843d097c80f843c1e655ce610ce1c623bfb`). This does not create a Live Session API or enable checkout without a real Commerce callback.
+- Read-only external repository audit is recorded in `docs/reports/EXTERNAL_REALTIME_AVATAR_ADAPTER_AUDIT_2026-11-16.md`. Vision Agents is a selective adapter candidate only; AIRI is a selective avatar/renderer/lip-sync source candidate requiring React/Three.js adaptation; LangQing is research-only because source/license/dependency evidence is insufficient. No external source or package dependency was imported.
+- ADR-WP10-001 remains proposed/not approved. No Live media provider is selected, no Live Session router exists, and the Stage remains unavailable until the canonical ADR decision and API/control-plane implementation are approved.
+- WP-10 remains blocked; no provider token, room, recording, or live media traffic is enabled.
+
+**Cross-domain source checkpoint — 2026-11-16:**
+- AI Cinema Native playback uses `expo-video` and the FastAPI playback-session/heartbeat/finish lifecycle (dependency `8523d88809d43a4ad3c0057cc4866bca29336dd4`; player `d16f550baa79790450b979330bd7fc09b4873aea`).
+- The formal implementation order remains WP-07 → WP-06 → WP-11 → WP-12. No Phase is complete from source presence alone. UI-COPY-03 remains `IN_PROGRESS`; 34/34 reference component counterparts exist, but adapted DOM/style/route/interaction and authenticated visual parity remain open.
+- No tests, build, lint, typecheck, CI, staging, real account/device verification, provider calls, new migration application, production database mutation or deployment were run. Runtime/integration acceptance remains `DEFERRED / NOT VERIFIED`.

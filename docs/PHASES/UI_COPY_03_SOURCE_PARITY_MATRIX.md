@@ -386,3 +386,12 @@ Read-only source/target component comparison against Allpha-Front-End-UI-New mai
 - MessagesView: source 213 lines; target 160. Search, tabs, conversation rows and AI identity badge remain. Sample unread badge/avatar fallbacks are removed in favor of canonical counts and neutral avatar placeholders, plus loading/empty states.
 - LiveExperienceStage: source 898 lines; target 717. Host/Agent slots, presentation screen, product catalogue, live chat, feedback and checkout-modal composition remain. Default slides/products/chat/viewer/likes and local simulation are removed. Host/media/slide/chat/like controls remain fail-closed until Live Session contracts exist. Checkout CTA now requires a real onCheckout Commerce callback; the modal is unreachable without it, and fixed 85% seller royalty copy has been removed.
 - These line-count comparisons are structural review signals, not pixel-parity acceptance. The active routes, CSS tokens, typography and source composition still require final visual/interaction review; no browser/device/build validation was run.
+
+
+## Source update — 2026-11-16: AI Cinema Creator Studio media and reference-token reconciliation
+- The target-only Web `AiCinemaCreatorWorkspace` adapter now uploads episode video using the canonical content/media API instead of asking users to find an already-ready file in another surface. It also displays owner-scoped uploaded/processing/ready/failed states from `GET /v1/cinema/creator/media`.
+- Ready media selection remains limited to server-confirmed `ready + clean + processed_at`. Upload receipt is not treated as media readiness; worker/transcode/scan/callback remain authoritative.
+- The Web Creator Workspace was aligned to the source AI Cinema palette vocabulary: white/slate surfaces, slate-900 borders, sky/rose accents and offset shadows. This is a source-level token reconciliation only; no browser screenshot/pixel diff was run.
+- Native Creator Studio exposes the equivalent upload flow using Expo DocumentPicker and the same FastAPI endpoints. Native platform layout remains a platform adaptation; no Android/iOS screenshot/device parity was run.
+- The adapted `AiCinemaView` itself remains the canonical catalogue reference component. Creator Workspace and Playback remain target-only adapters; they must not replace or redesign the reference catalogue.
+- UI-COPY-03 remains `IN_PROGRESS`: no component is missing by filename, but full visual/interaction parity and authenticated-state evidence are not established.
