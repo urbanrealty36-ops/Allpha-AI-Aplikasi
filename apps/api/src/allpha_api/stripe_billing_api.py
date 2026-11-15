@@ -573,7 +573,7 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                     raise ValueError("stripe_subscription_period_missing")
                 if obj.get("customer") and subscription_snapshot.get("customer") != obj.get("customer"):
                     raise ValueError("stripe_subscription_customer_mismatch")
-            await _rpc("billing_finalize_stripe_checkout", {
+            finalized = await _rpc("billing_finalize_stripe_checkout", {
                 "p_event_id": event_id, "p_order_id": str(order_id),
                 "p_session_id": str(obj.get("id") or ""),
                 "p_owner_user_id": str(metadata.get("owner_user_id") or ""),
@@ -586,6 +586,8 @@ async def stripe_webhook(request: Request, stripe_signature: str | None = Header
                 "p_current_period_start": datetime.fromtimestamp(int(subscription_snapshot["current_period_start"]), tz=timezone.utc).isoformat() if subscription_snapshot.get("current_period_start") else None,
                 "p_current_period_end": datetime.fromtimestamp(int(subscription_snapshot["current_period_end"]), tz=timezone.utc).isoformat() if subscription_snapshot.get("current_period_end") else None,
             })
+            if not isinstance(finalized, dict) or finalized.get("fulfilled") is not True:
+                raise ValueError("billing_checkout_snapshot_requires_review")
         elif event_type in {"customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"}:
             sub_id = _event_subscription_id(obj)
             if sub_id:
