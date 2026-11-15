@@ -606,7 +606,7 @@ async def create_generation_job(
 
     prompt_hash = hashlib.sha256(payload.prompt.encode("utf-8")).hexdigest()
     existing = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,prompt_sha256,knowledge_context_sha256,consumer_grant_id,agent_id,skill_id,capability_id,status,credits_to_reserve",
+        "select": "id,task_id,prompt_sha256,knowledge_context_sha256,agent_snapshot_sha256,skill_snapshot_sha256,consumer_grant_id,agent_id,skill_id,capability_id,status,credits_to_reserve",
         "owner_user_id": f"eq.{user['id']}", "idempotency_key": f"eq.{idempotency_key}", "limit": "1",
     })
     if existing:
@@ -614,6 +614,8 @@ async def create_generation_job(
         if (prior.get("prompt_sha256") != prompt_hash or str(prior.get("agent_id")) != str(payload.agent_id)
             or str(prior.get("skill_id")) != str(payload.skill_id) or prior.get("capability_id") != payload.capability_id
             or prior.get("knowledge_context_sha256") != payload.quoted_knowledge_context_sha256
+            or prior.get("agent_snapshot_sha256") != payload.quoted_agent_snapshot_sha256
+            or prior.get("skill_snapshot_sha256") != payload.quoted_skill_snapshot_sha256
             or str(prior.get("consumer_grant_id") or "") != str(payload.consumer_grant_id or "")):
             raise HTTPException(409, detail={"code": "GENERATION_JOB_IDEMPOTENCY_CONFLICT", "message": "Idempotency-Key telah digunakan untuk permintaan generation yang berbeda."})
         return {"job_id": prior["id"], "task_id": prior["task_id"], "status": prior["status"],
@@ -634,9 +636,15 @@ async def create_generation_job(
         )
         if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
             raise HTTPException(409, detail={"code":"GENERATION_KNOWLEDGE_QUOTE_STALE","message":"Knowledge publik atau policy berubah. Minta quote baru."})
-        prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
+        if (payload.quoted_agent_snapshot_sha256 != external["agent_snapshot_sha256"]
+            or payload.quoted_skill_snapshot_sha256 != external["skill_snapshot_sha256"]):
+            raise HTTPException(409, detail={"code":"GENERATION_SKILL_QUOTE_STALE","message":"Versi Agent atau Skill berubah. Minta quote generation baru."})
+        prompt_bytes = generation_prompt_size_bytes(
+            prompt=payload.prompt, agent_snapshot=external["agent_snapshot"],
+            skill_snapshot=external["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
+        )
         if prompt_bytes > int(route["max_prompt_bytes"]):
-            raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt dan Knowledge melebihi batas byte model publik."})
+            raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt, Agent, Skill, dan Knowledge context melebihi batas byte model publik."})
         estimated_usage_units = prompt_bytes + max_output_tokens
         if estimated_usage_units > budget.max_usage_units:
             raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
@@ -663,6 +671,9 @@ async def create_generation_job(
             "consumer_grant_id": str(external["grant"]["id"]),
             "payer_role": budget.payer_role,
             "runtime_policy_version": external["runtime_policy_version"],
+            "agent_version": external["agent_snapshot"]["version"],
+            "agent_snapshot_sha256": external["agent_snapshot_sha256"],
+            "skill_snapshot_sha256": external["skill_snapshot_sha256"],
             "agent_id": str(payload.agent_id), "skill_id": str(payload.skill_id),
             "source_version": int(skill["version"]), "capability_id": payload.capability_id,
             "sensitivity": "public", "task_id": task_id, "trace_id": trace_id,
@@ -710,12 +721,21 @@ async def create_generation_job(
     if not skill_rows:
         raise HTTPException(404, detail={"code": "PUBLISHED_SKILL_NOT_FOUND", "message": "Skill tidak ditemukan atau belum dipublikasikan untuk Agent ini."})
     skill = skill_rows[0]
+    snapshots = await _load_generation_execution_snapshots(
+        payload.agent_id, payload.skill_id, int(skill["version"]), token=token
+    )
+    if (payload.quoted_agent_snapshot_sha256 != snapshots["agent_snapshot_sha256"]
+        or payload.quoted_skill_snapshot_sha256 != snapshots["skill_snapshot_sha256"]):
+        raise HTTPException(409, detail={"code":"GENERATION_SKILL_QUOTE_STALE","message":"Versi Agent atau Skill berubah. Minta quote generation baru."})
+    prompt_bytes = generation_prompt_size_bytes(
+        prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
+        skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
+    )
+    if prompt_bytes > int(route["max_prompt_bytes"]):
+        raise HTTPException(422, detail={"code":"PROMPT_EXCEEDS_APPROVED_BOUND","message":"Prompt, Agent, Skill, dan Knowledge context melebihi batas byte model."})
     knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
     if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("snapshot_sha256"):
         raise HTTPException(409, detail={"code": "GENERATION_KNOWLEDGE_QUOTE_STALE", "message": "Sumber atau policy Knowledge berubah. Minta quote baru."})
-    prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
-    if prompt_bytes > int(route["max_prompt_bytes"]):
-        raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt melebihi batas byte yang disetujui."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
         "select": "capability_key,status", "agent_id": f"eq.{payload.agent_id}",
         "capability_key": f"eq.{payload.capability_id}", "status": "eq.approved", "limit": "1",
@@ -775,6 +795,9 @@ async def create_generation_job(
         "payer_user_id": str(user["id"]),
         "consumer_grant_id": None,
         "payer_role": "agent_owner",
+        "agent_version": snapshots["agent_snapshot"]["version"],
+        "agent_snapshot_sha256": snapshots["agent_snapshot_sha256"],
+        "skill_snapshot_sha256": snapshots["skill_snapshot_sha256"],
         "agent_id": str(payload.agent_id),
         "skill_id": str(payload.skill_id),
         "source_version": int(skill["version"]),
