@@ -10,6 +10,8 @@ type CinemaTitle = {
   moderation_status: string; rights_status: string; version: number; updated_at: string;
 };
 type Queue = { items: CinemaTitle[] };
+type CinemaPolicy = { policy_version:string; approval_reference:string; status:string; created_by?:string|null; configuration:Record<string,unknown> };
+type PolicyRegistry = { policies:Record<string,CinemaPolicy[]>; subscription_plans:Array<{plan_key:string;status:string;product_key:string;created_by?:string}> };
 type AuthPayload = { access_token?: string; refresh_token?: string; expires_in?: number; user?: { id: string; email?: string }; error_description?: string; msg?: string };
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -56,6 +58,13 @@ export default function CinemaGovernancePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [policyRegistry,setPolicyRegistry]=useState<PolicyRegistry|null>(null);
+  const [policyKind,setPolicyKind]=useState("access");
+  const [policyVersion,setPolicyVersion]=useState("");
+  const [approvalReference,setApprovalReference]=useState("");
+  const [policyConfig,setPolicyConfig]=useState("{}");
+  const [effectiveAt,setEffectiveAt]=useState("");
+  const [policyReason,setPolicyReason]=useState("");
 
   const loadQueues = useCallback(async (active: Session) => {
     const [m, r, l] = await Promise.all([
@@ -66,13 +75,43 @@ export default function CinemaGovernancePage() {
     setModeration(m.items || []); setRights(r.items || []); setLifecycle(l.items || []);
   }, []);
 
+  const loadPolicies = useCallback(async (active:Session) => {
+    const data=await read<PolicyRegistry>(await apiFetch("/v1/cinema/admin/policies",active));
+    setPolicyRegistry(data);
+  },[]);
+
+  async function createPolicy(event:FormEvent) {
+    event.preventDefault();if(!session)return;
+    setBusy(true);setError("");setNotice("");
+    try {
+      await read(await apiFetch("/v1/cinema/admin/policies/"+policyKind,session,{method:"POST",body:JSON.stringify({
+        policy_version:policyVersion.trim(),approval_reference:approvalReference.trim(),
+        configuration:JSON.parse(policyConfig),effective_at:effectiveAt,
+      })}));
+      setNotice("Draft policy tersimpan; perlu persetujuan operator kedua.");await loadPolicies(session);
+    } catch(cause) { setError(cause instanceof Error?cause.message:"Draft policy gagal dibuat."); }
+    finally { setBusy(false); }
+  }
+
+  async function approvePolicy(kind:string,version:string) {
+    if(!session||policyReason.trim().length<8){setError("Alasan approval minimal 8 karakter.");return;}
+    setBusy(true);setError("");setNotice("");
+    try {
+      await read(await apiFetch("/v1/cinema/admin/policies/"+kind+"/"+encodeURIComponent(version)+"/approve",session,{method:"POST",body:JSON.stringify({reason:policyReason.trim()})}));
+      setNotice("Policy disetujui oleh operator kedua.");setPolicyReason("");await loadPolicies(session);
+    } catch(cause) { setError(cause instanceof Error?cause.message:"Approval policy gagal."); }
+    finally { setBusy(false); }
+  }
+
   async function login(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
       const active = await authRequest({ email: email.trim(), password }, "password");
       const result = await read<{ operator: Operator }>(await apiFetch("/v1/admin/operator/access", active));
-      if (!result.operator.scopes.includes("platform:content.moderate")) throw new Error("Scope platform:content.moderate diperlukan untuk moderasi, rights review dan lifecycle.");
-      setSession(active); setOperator(result.operator); setPassword(""); await loadQueues(active);
+      if (!result.operator.scopes.some(scope=>["platform:content.moderate","platform:billing.manage"].includes(scope))) throw new Error("Scope operator Cinema diperlukan.");
+      setSession(active); setOperator(result.operator); setPassword("");
+      if(result.operator.scopes.includes("platform:content.moderate")) await loadQueues(active);
+      if(result.operator.scopes.includes("platform:billing.manage")) await loadPolicies(active);
     } catch (cause) {
       setSession(null); setOperator(null);
       setError(cause instanceof Error ? cause.message : "Login operator gagal.");
@@ -82,7 +121,10 @@ export default function CinemaGovernancePage() {
   async function refresh() {
     if (!session) return;
     setBusy(true); setError("");
-    try { await loadQueues(session); } catch (cause) { setError(cause instanceof Error ? cause.message : "Antrean gagal dimuat."); }
+    try {
+      if(operator?.scopes.includes("platform:content.moderate")) await loadQueues(session);
+      if(operator?.scopes.includes("platform:billing.manage")) await loadPolicies(session);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Antrean gagal dimuat."); }
     finally { setBusy(false); }
   }
 
@@ -149,6 +191,21 @@ export default function CinemaGovernancePage() {
         <span>Operator: {operator.email || operator.id} · platform:content.moderate</span>
         <button disabled={busy} onClick={() => void refresh()} className="text-blue-600 hover:underline">Muat ulang antrean</button>
       </div>
+      {operator.scopes.includes("platform:billing.manage") && <section className="mb-8 space-y-4 rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
+        <div><p className="text-xs font-semibold uppercase tracking-widest text-cyan-700">Policy control plane</p><h2 className="text-xl font-semibold">Access · Qualified Watch · Creator Earnings</h2><p className="text-sm text-slate-500">Tidak ada nilai finansial atau threshold bawaan. Semua draft memerlukan approval reference dan persetujuan operator berbeda.</p></div>
+        <form onSubmit={createPolicy} className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm">Jenis policy<select value={policyKind} onChange={e=>setPolicyKind(e.target.value)} className={inputClass}><option value="access">Playback Access</option><option value="watch">Qualified Watch & Fraud</option><option value="earning">Creator Earning</option></select></label>
+          <label className="text-sm">Policy version<input required value={policyVersion} onChange={e=>setPolicyVersion(e.target.value)} className={inputClass}/></label>
+          <label className="text-sm">Approval reference<input required value={approvalReference} onChange={e=>setApprovalReference(e.target.value)} className={inputClass}/></label>
+          <label className="text-sm">Effective at<input required type="datetime-local" value={effectiveAt} onChange={e=>setEffectiveAt(e.target.value)} className={inputClass}/></label>
+          <label className="text-sm md:col-span-2">Configuration JSON<textarea required rows={5} value={policyConfig} onChange={e=>setPolicyConfig(e.target.value)} className={inputClass} spellCheck={false}/></label>
+          <button disabled={busy} className="w-fit rounded-xl bg-cyan-700 px-4 py-2 text-sm font-semibold text-white">Buat draft policy</button>
+        </form>
+        <label className="block text-sm">Alasan approval<textarea value={policyReason} onChange={e=>setPolicyReason(e.target.value)} minLength={8} maxLength={500} className={inputClass}/></label>
+        {(["access","watch","earning"] as const).map(kind=><div key={kind} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><h3 className="font-semibold capitalize">{kind}</h3>
+          {(policyRegistry?.policies?.[kind]||[]).map(item=><div key={item.policy_version} className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-100 p-3 text-xs dark:bg-slate-800"><span>{item.policy_version} · {item.status} · {item.approval_reference}</span>{item.status==="draft"&&item.created_by!==operator.id&&<button disabled={busy} onClick={()=>void approvePolicy(kind,item.policy_version)} className="rounded-lg bg-emerald-700 px-3 py-1 font-semibold text-white">Approve (four-eyes)</button>}</div>)}
+        </div>)}
+      </section>}
       <section className="mb-8 space-y-3">
         <div><h2 className="text-xl font-semibold">Hak cipta / rights review</h2><p className="text-sm text-slate-500">Setiap keputusan wajib menyertakan referensi bukti dan alasan; clearance tidak otomatis menerbitkan film.</p></div>
         {rights.length === 0 ? <p className={cardClass + " text-sm text-slate-500"}>Tidak ada judul yang menunggu pemeriksaan hak.</p> : rights.map(item => <article key={item.id} className={cardClass}>
