@@ -872,32 +872,64 @@ async def _signed_generation_artifact(bucket: str, path: str, *, expires_in: int
 @router.get("/jobs/{job_id}/artifact")
 async def get_generation_artifact(job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows=await _admin_request("GET","generation_jobs",params={
-        "select":"id,owner_user_id,status,artifact_bucket,artifact_path,moderation_status",
+        "select":"id,owner_user_id,status,artifact_bucket,artifact_path,moderation_status,artifact_deletion_requested_at,artifact_deleted_at",
         "id":f"eq.{job_id}","owner_user_id":f"eq.{user['id']}","limit":"1",
     })
     if not rows:
         raise HTTPException(404,detail={"code":"GENERATION_JOB_NOT_FOUND","message":"Generation job tidak ditemukan."})
     job=rows[0]
+    if job.get("artifact_deleted_at"):
+        raise HTTPException(410,detail={"code":"GENERATION_ARTIFACT_DELETED","message":"Artefak privat sudah dihapus oleh pemiliknya."})
+    if job.get("artifact_deletion_requested_at"):
+        raise HTTPException(409,detail={"code":"GENERATION_ARTIFACT_DELETION_PENDING","message":"Penghapusan artefak sedang diproses; akses telah dinonaktifkan."})
     if job.get("status")!="succeeded" or job.get("moderation_status")!="approved" or job.get("artifact_bucket")!="generation-artifacts" or not job.get("artifact_path"):
         raise HTTPException(409,detail={"code":"GENERATION_ARTIFACT_NOT_READY","message":"Artefak belum selesai dimoderasi dan dipublikasikan secara privat."})
     signed=await _signed_generation_artifact(job["artifact_bucket"],job["artifact_path"])
     return {"job_id":str(job_id),"url":signed,"expires_in_seconds":300,"visibility":"private"}
 
 
+@router.delete("/jobs/{job_id}/artifact")
+async def request_generation_artifact_deletion(
+    job_id: uuid.UUID,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    if not idempotency_key or not 8 <= len(idempotency_key) <= 160:
+        raise HTTPException(400, detail={"code":"IDEMPOTENCY_KEY_REQUIRED","message":"Idempotency-Key 8–160 karakter wajib dikirim."})
+    rows = await _admin_request("GET", "generation_jobs", params={
+        "select":"id,owner_user_id,status,moderation_status,artifact_bucket,artifact_path,artifact_deleted_at",
+        "id":f"eq.{job_id}", "owner_user_id":f"eq.{user['id']}", "limit":"1",
+    })
+    if not rows:
+        raise HTTPException(404, detail={"code":"GENERATION_JOB_NOT_FOUND","message":"Generation job tidak ditemukan."})
+    job = rows[0]
+    if job.get("status") != "succeeded" or job.get("moderation_status") != "approved" or job.get("artifact_bucket") != "generation-artifacts" or not job.get("artifact_path"):
+        raise HTTPException(409, detail={"code":"GENERATION_ARTIFACT_NOT_DELETABLE","message":"Hanya artefak privat yang selesai dan disetujui yang dapat dihapus."})
+    result = await _rpc("generation_request_artifact_deletion", {
+        "job_id":str(job_id), "owner_user_id":str(user["id"]),
+        "requested_by":str(user["id"]), "idempotency_key":idempotency_key,
+    })
+    if not isinstance(result, dict) or str(result.get("job_id")) != str(job_id):
+        raise HTTPException(503, detail={"code":"GENERATION_ARTIFACT_DELETE_UNCONFIRMED","message":"Permintaan penghapusan belum dapat dikonfirmasi."})
+    return {**result, "artifact_available":False}
+
+
 @router.get("/jobs/{job_id}")
 async def get_generation_job(job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,capability_id,status,credits_to_reserve,owner_reward_status,dm_conversation_id,created_at,started_at,completed_at,error_code,artifact_bucket,artifact_path,output_sha256,moderation_status,input_tokens,output_tokens",
+        "select": "id,task_id,capability_id,status,credits_to_reserve,owner_reward_status,dm_conversation_id,created_at,started_at,completed_at,error_code,artifact_bucket,artifact_path,output_sha256,moderation_status,input_tokens,output_tokens,artifact_deletion_requested_at,artifact_deleted_at",
         "id": f"eq.{job_id}", "owner_user_id": f"eq.{user['id']}", "limit": "1",
     })
     if not rows:
         raise HTTPException(404, detail={"code": "GENERATION_JOB_NOT_FOUND", "message": "Generation job tidak ditemukan."})
     job = rows[0]
     artifact_available = bool(job.get("status") == "succeeded" and job.get("moderation_status") == "approved"
-                              and job.get("artifact_bucket") == "generation-artifacts" and job.get("artifact_path"))
+                              and job.get("artifact_bucket") == "generation-artifacts" and job.get("artifact_path")
+                              and not job.get("artifact_deletion_requested_at") and not job.get("artifact_deleted_at"))
     job.pop("artifact_bucket", None)
     job.pop("artifact_path", None)
     job["artifact_available"] = artifact_available
+    job["artifact_deletion_status"] = "deleted" if job.get("artifact_deleted_at") else "pending" if job.get("artifact_deletion_requested_at") else "available" if artifact_available else "unavailable"
     return {"job": job}
 
 
