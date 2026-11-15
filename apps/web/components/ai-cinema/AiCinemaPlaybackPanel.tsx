@@ -39,10 +39,11 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
       const auth = getBrowserSupabase();
       const session = auth ? (await auth.auth.getSession()).data.session : null;
       if (!session?.access_token) throw new Error("Masuk untuk memulai sesi pemutaran. Preview publik dapat diaktifkan setelah kebijakan akses disetujui.");
+      const idempotencyKey = crypto.randomUUID();
       const response = await fetch(apiBase + "/v1/cinema/titles/" + encodeURIComponent(selected!.title.id) + "/episodes/" + encodeURIComponent(episode.id) + "/playback-session", {
         method: "POST", cache: "no-store",
-        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ idempotency_key: crypto.randomUUID() }),
+        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ idempotency_key: idempotencyKey }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.detail?.message || "Sesi pemutaran belum dapat dimulai.");
