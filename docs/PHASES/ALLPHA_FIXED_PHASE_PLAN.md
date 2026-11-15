@@ -2799,3 +2799,15 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 
 
 **WP-07 source migration correction (2026-11-06):** Final raw-file inspection found the source-only Generation Job migration contains a duplicated trailing SQL segment after its first `COMMIT;` (two commit terminators). The cleanup attempt was blocked and did not succeed. Treat this migration as invalid/unusable and do not apply it until the duplicate tail is removed and the full SQL is reviewed. The initial SHA-256 constraint repair applies only to the first copy. WP-07 remains `in_progress / acceptance_not_verified`.
+
+
+**Product Owner source implementation checkpoint — WP-07 migration repair and AI Cinema lifecycle foundation (2026-11-15):**
+- Direct target is canonical `main` at baseline `2c5a083da1c87935fa3ae2813f512247f95491b1`; no branch or pull request is created.
+- Repaired the WP-07 source-only durable Generation Job migration by removing the malformed duplicate SQL tail after its first complete `COMMIT;`. The repaired migration remains source-only and has not been applied.
+- Added a source-only AI Cinema lifecycle schema for FastAPI-only business writes, episode/title owner consistency, film versions, Human/Agent creator credits, operator-managed subscription-plan mapping, verified Stripe subscription projection, approved access-policy versions, playback sessions and server-measured heartbeat events, pending Qualified Watch records, and non-cash creator earning policy/ledger records.
+- No product, price, currency conversion, credit allowance, territory/maturity policy, concurrent-stream value, qualified-watch threshold, creator/platform split, payout provider, cash withdrawal or royalty amount is seeded. Stripe activation and creator cash payout remain fail-closed under ADR-0021.
+- Added canonical FastAPI contracts for playback sessions, heartbeats, finish, Cinema subscription plan/subscription reads and creator earning reads. Playback remains fail-closed until approved access policy, media readiness, subscription and entitlement configuration exist.
+- No Supabase migration was applied, no production rows were changed, and no Stripe/provider call was made. No tests, builds, lint, typecheck, browser/device checks, staging or deployment were performed. Runtime integration and acceptance remain `DEFERRED / NOT VERIFIED`.
+- **WP-07 remains IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED**; this checkpoint only repairs its source migration. External consumer Agent execution, Knowledge ACL/context snapshot, output moderation, private generation artifacts, ENG-P18 DM delivery, approved dual-account settlement and Native Generate parity remain open.
+- **WP-11/WP-12 remain IN_PROGRESS / SOURCE_FOUNDATION_ONLY**; Creator Studio version/credits integration, Native and Super Admin parity, approved Stripe products, access/watch policy administration, qualified-watch evaluator and creator earning reconciliation remain open.
+- **Next:** complete WP-07 vertical integration without starting WP-08; continue WP-11/WP-12 and Social Auto Reply/Takeover under their existing owners. No phase is complete from source presence alone.
