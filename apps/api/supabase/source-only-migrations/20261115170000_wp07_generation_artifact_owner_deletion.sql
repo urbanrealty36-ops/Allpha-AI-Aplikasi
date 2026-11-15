@@ -209,7 +209,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_id uuid := nullif(p_command->>'deletion_job_id','')::uuid;
   v_actor uuid := nullif(p_command->>'actor_user_id','')::uuid;
@@ -233,7 +233,7 @@ begin
   where id=v_id;
   return jsonb_build_object('deletion_job_id',v_id,'status','queued','attempts_reset',true);
 end;
-$;
+$$;
 
 create or replace function public.fail_generation_artifact_deletion(p_command jsonb)
 returns jsonb
