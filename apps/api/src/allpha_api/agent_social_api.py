@@ -90,6 +90,9 @@ async def set_takeover(agent_id: uuid.UUID, payload: TakeoverWrite,
     if not isinstance(result, dict) or result.get("outcome") != "saved":
         raise HTTPException(503, detail={"code": "AGENT_SOCIAL_TAKEOVER_UNCONFIRMED", "message": "Perubahan takeover belum dapat dikonfirmasi."})
     return {"policy": result.get("policy"), "revoked_pending_approvals": result.get("revoked_pending_approvals", 0),
+            "automation_grants_revoked": result.get("automation_grants_revoked", 0),
+            "tasks_cancelled": result.get("tasks_cancelled", 0),
+            "tasks_signalled": result.get("tasks_signalled", 0),
             "auto_reply_enabled": False, "outcome": "saved"}
 
 

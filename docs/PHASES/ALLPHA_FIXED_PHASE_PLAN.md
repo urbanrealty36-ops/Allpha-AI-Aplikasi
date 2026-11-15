@@ -2845,3 +2845,10 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added a Native Generate Center in the existing React Native Profile workspace, using the same FastAPI quote/job/artifact endpoints as Web. Agent, published Skill and approved capability are loaded from canonical APIs; the user confirms the server-calculated AI Credit quote before job creation.
 - Native output is retrieved only through the owner-scoped short-lived signed artifact URL after the job is succeeded and output moderation is approved. No direct Supabase business writes or mock data were added.
 - Native screen is source-integrated into the existing navigation. Runtime and build acceptance are not verified; no device test, staging or deployment performed.
+
+
+**WP-06 Human Takeover cancellation/revocation source checkpoint (2026-11-15):**
+- Corrected the Auto Reply channel allowlist validation to use PostgreSQL array containment (the earlier subtraction expression was invalid).
+- Added service-role-only social automation grant and run registries. Human Takeover now revokes active social-automation grants, revokes pending approvals, cancels queued/pre-execution runtime tasks, and signals running/validating runtime tasks with `cancel_requested` while preserving their lease for cooperative checkpoint cancellation. All changes occur in the same database transaction and counts are written to the audit event.
+- This cancellation applies only to explicitly registered social-automation runs; it does not revoke unrelated public Agent Consumer grants or unrelated Agent tasks. Auto Reply execution remains disabled until the event consumer and canonical publish lifecycle are implemented.
+- Migration remains source-only. No database changes, staging, tests or deployment performed.
