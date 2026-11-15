@@ -1,8 +1,7 @@
--- SOURCE ONLY — WP-07 external Agent consumer generation and dual-account settlement fields.
--- Depends on 20261019134319_eng_p18_agent_consumer_grants.sql,
--- 20261105130000_eng_p09_durable_generation_jobs.sql, and
--- 20261115140000_eng_p05_agent_version_snapshot_contract.sql.
--- Do not apply to canonical production or staging during the current source-only work window.
+-- WP-07 external Agent consumer generation and dual-account settlement fields.
+-- Production promotion dependencies: existing ENG-P18 consumer grants, WP-07 durable jobs,
+-- and 20261115185125_eng_p05_agent_version_snapshot_contract_reconciliation.
+-- Explicit Product Owner approval recorded 2026-11-16.
 begin;
 
 alter table public.agent_consumer_grants
