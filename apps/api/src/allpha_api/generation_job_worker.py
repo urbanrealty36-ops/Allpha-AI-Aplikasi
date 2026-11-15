@@ -127,12 +127,13 @@ async def _build_execution_prompt(job: dict[str, Any]) -> str:
 async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
                        moderator: Any, moderation_policy: dict[str, Any]) -> str:
     try:
+        execution_prompt = await _build_execution_prompt(job)
         request = TextGenerationRequest(
             task_id=str(job["task_id"]),
             trace_id=str(job["trace_id"]),
             idempotency_key=str(job["idempotency_key"]),
             sensitivity=str(job["sensitivity"]),
-            prompt=_build_execution_prompt(job),
+            prompt=execution_prompt,
             max_output_tokens=int(job["max_output_tokens"]),
             timeout_ms=int(job["timeout_ms"]),
             owner_id=str(job.get("payer_user_id") or job["owner_user_id"]),
