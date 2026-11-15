@@ -228,6 +228,45 @@ export default function ProfilePage() {
   } : previous);
   setError("");
  }
+ async function selectProfileAgent(agentId: string): Promise<void> {
+  const selected = agents.find(item => item.id === agentId);
+  if (!selected) return;
+  const nextProfile: AIAgentProfile = {
+   id: selected.id,
+   name: selected.display_name,
+   handle: selected.handle,
+   avatar: selected.avatar_url || "/icon.svg",
+   ownerId: human.id,
+   ownerName: human.name,
+   ownerHandle: human.username,
+   specialty: selected.description || "Belum ditentukan",
+   category: typeof selected.persona?.category === "string" ? selected.persona.category : "Belum ditentukan",
+   bidang: typeof selected.persona?.category === "string" ? selected.persona.category as AIAgentProfile["bidang"] : undefined,
+   bio: selected.description || "",
+   skills: [],
+   avatar3DCodename: typeof selected.persona?.profile_avatar_codename === "string" ? selected.persona.profile_avatar_codename : undefined,
+   creditsEarned: 0,
+   autoReply: false,
+   model: "Belum tersedia",
+   goals: [],
+   tasks: [],
+  };
+  setSelectedAgent(nextProfile);
+  setSelectedAgentStatus(selected.status || "Belum tersedia");
+  if (!session) return;
+  try {
+   const response = await fetch(apiBase + "/v1/agents/" + encodeURIComponent(selected.id) + "/skills", {
+    headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+    cache: "no-store",
+   });
+   if (!response.ok) throw new Error("Skill Agent belum dapat dimuat dari Allpha API.");
+   const payload = await response.json() as { items?: ApiAgentSkill[] };
+   const skills = (payload.items || []).filter(skill => skill.status === "published").map(skill => skill.name);
+   setSelectedAgent(previous => previous?.id === selected.id ? { ...previous, skills } : previous);
+  } catch (cause) {
+   setError(cause instanceof Error ? cause.message : "Skill Agent belum dapat dimuat.");
+  }
+ }
  async function toggleProfileLike(postId: string) {
   if (!session) { setError("Masuk kembali untuk menyukai postingan."); return; }
   const post = posts.find(item => item.id === postId);
@@ -243,5 +282,5 @@ export default function ProfilePage() {
    setError("");
   } catch (cause) { setError(cause instanceof Error ? cause.message : "Reaksi gagal disimpan."); }
  }
- return <>{error&&<p role="alert" className="mx-auto max-w-xl px-4 pt-3 text-xs text-amber-800">{error}</p>}<ProfileView humanUser={human} agentProfile={selectedAgent} ownedAgents={agents.map(a=>({name:a.display_name,handle:a.handle,specialty:a.description||"Belum ditentukan",avatar:a.avatar_url||"/icon.svg",status:a.status}))} knowledgeDocs={knowledgeDocs} posts={posts} isTakeoverActive={null} onLikePost={toggleProfileLike} onSelectPost={(post)=>{window.location.assign("/feed?content="+encodeURIComponent(post.id))}} showCredits={false} showSocialCounts={false} humanVerified={false} agentStatusLabel={selectedAgentStatus||"Belum ada Agent aktif"} onOpenTakeoverModal={()=>{window.location.assign("/agents")}} onOpenCreditsHub={()=>{window.location.assign("/skill-challenges")}} onOpenWorld3D={()=>{window.location.assign("/spatial/navigation")}} onOpenOnboarding={()=>{window.location.assign("/account")}} onOpenAccountSettings={(tab = "settings")=>{window.location.assign("/account?tab="+encodeURIComponent(tab))}} onUpdateAgent={updateProfileAgent} onOpenAgentStudio={(agentId)=>{window.location.assign("/agents/"+encodeURIComponent(agentId)+"/studio")}} onOpenAgentRuntime={(agentId)=>{window.location.assign("/agents?agent="+encodeURIComponent(agentId))}} onOpenAgentPassport={(handle)=>{const ownedAgent=agents.find(item=>item.handle===handle.replace(/^@/,""));if(!ownedAgent||ownedAgent.visibility!=="public"||ownedAgent.status!=="active"){setError("Agent Passport publik hanya tersedia untuk Agent aktif dengan visibilitas publik.");return;}window.location.assign("/agents/passport/"+encodeURIComponent(ownedAgent.handle));}} initialOpenStoreAndBooth={openStoreAndBooth} onRevokeOtherSessions={async()=>{if(!supabase) throw new Error("Autentikasi belum tersedia."); const {error}=await supabase.auth.signOut({scope:"others"}); if(error) throw error;}} onLogout={async()=>{if(!supabase) throw new Error("Autentikasi belum tersedia."); const {error}=await supabase.auth.signOut(); if(error) throw error; window.location.assign("/login");}} /></>;
+ return <>{error&&<p role="alert" className="mx-auto max-w-xl px-4 pt-3 text-xs text-amber-800">{error}</p>}<ProfileView humanUser={human} agentProfile={selectedAgent} ownedAgents={agents.map(a=>({id:a.id,name:a.display_name,handle:a.handle,specialty:a.description||"Belum ditentukan",avatar:a.avatar_url||"/icon.svg",status:a.status}))} onSelectOwnedAgent={selectProfileAgent} knowledgeDocs={knowledgeDocs} posts={posts} isTakeoverActive={null} onLikePost={toggleProfileLike} onSelectPost={(post)=>{window.location.assign("/feed?content="+encodeURIComponent(post.id))}} showCredits={false} showSocialCounts={false} humanVerified={false} agentStatusLabel={selectedAgentStatus||"Belum ada Agent aktif"} onOpenTakeoverModal={()=>{window.location.assign("/agents")}} onOpenCreditsHub={()=>{window.location.assign("/skill-challenges")}} onOpenWorld3D={()=>{window.location.assign("/spatial/navigation")}} onOpenOnboarding={()=>{window.location.assign("/account")}} onOpenAccountSettings={(tab = "settings")=>{window.location.assign("/account?tab="+encodeURIComponent(tab))}} onUpdateAgent={updateProfileAgent} onOpenAgentStudio={(agentId)=>{window.location.assign("/agents/"+encodeURIComponent(agentId)+"/studio")}} onOpenAgentRuntime={(agentId)=>{window.location.assign("/agents?agent="+encodeURIComponent(agentId))}} onOpenAgentPassport={(handle)=>{const ownedAgent=agents.find(item=>item.handle===handle.replace(/^@/,""));if(!ownedAgent||ownedAgent.visibility!=="public"||ownedAgent.status!=="active"){setError("Agent Passport publik hanya tersedia untuk Agent aktif dengan visibilitas publik.");return;}window.location.assign("/agents/passport/"+encodeURIComponent(ownedAgent.handle));}} initialOpenStoreAndBooth={openStoreAndBooth} onRevokeOtherSessions={async()=>{if(!supabase) throw new Error("Autentikasi belum tersedia."); const {error}=await supabase.auth.signOut({scope:"others"}); if(error) throw error;}} onLogout={async()=>{if(!supabase) throw new Error("Autentikasi belum tersedia."); const {error}=await supabase.auth.signOut(); if(error) throw error; window.location.assign("/login");}} /></>;
 }
