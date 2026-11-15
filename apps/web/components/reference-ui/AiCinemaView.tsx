@@ -567,6 +567,11 @@ export default function AiCinemaView({
 
   // Handler for opening a movie in theater modal
   const handleOpenTheater = (movie: AiMovieItem, episodeNum = 1, showTrailer = false) => {
+    if (productionMode) {
+      document.getElementById("ai-cinema-playback")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      showToast(`Pilih “${movie.title}” pada panel pemutaran untuk memeriksa sesi dan entitlement.`);
+      return;
+    }
     setActiveTheaterMovie(movie);
     setActiveEpisodeNumber(episodeNum);
     setIsViewingTrailerInTheater(showTrailer);
@@ -775,7 +780,7 @@ export default function AiCinemaView({
                       onPostTrailerToFeed(featuredMovie);
                       showToast(`Trailer "${featuredMovie.title}" berhasil diposting ke Feed & Reels Anda!`);
                     } else {
-                      showToast('Tautan trailer disalin!');
+                      showToast(productionMode ? 'Berbagi trailer belum terhubung ke layanan Feed/Share.' : 'Tautan trailer disalin!');
                     }
                   }}
                   className="px-3.5 py-2.5 rounded-2xl bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-bold text-xs transition flex items-center gap-1.5"
