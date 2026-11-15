@@ -94,13 +94,59 @@ class EpisodeCreate(BaseModel):
 
 @router.get("/catalog")
 async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str | None = None) -> dict[str,Any]:
-    """Only public, moderated and rights-cleared titles are discoverable."""
+    """Return only public titles and server-derived, permission-safe catalogue metadata."""
     params = {"select":TITLE_FIELDS,"status":"eq.published","moderation_status":"eq.approved","rights_status":"eq.cleared","order":"published_at.desc","limit":str(limit)}
     if genre:
         if genre not in GENRES: raise HTTPException(422,detail={"code":"CINEMA_GENRE_INVALID","message":"Genre tidak valid."})
         params["genre"] = f"eq.{genre}"
     rows = await _db("GET","cinema_titles",params=params)
-    return {"items":rows or [],"next_cursor":None}
+    titles = rows or []
+    if not titles:
+        return {"items":[],"next_cursor":None}
+
+    title_ids = [str(item["id"]) for item in titles if item.get("id")]
+    episode_rows = await _db("GET","cinema_episodes",params={
+        "select":"id,title_id,owner_id", "title_id":"in.("+",".join(title_ids)+")",
+        "status":"eq.ready", "limit":"5000",
+    })
+    episode_counts: dict[str,int] = {}
+    title_owner = {str(item["id"]):str(item["owner_id"]) for item in titles}
+    for episode in episode_rows or []:
+        title_id = str(episode.get("title_id") or "")
+        if title_id in title_owner and str(episode.get("owner_id")) == title_owner[title_id]:
+            episode_counts[title_id] = episode_counts.get(title_id,0) + 1
+
+    media_ids = sorted({str(item[key]) for item in titles for key in ("cover_media_id","trailer_media_id") if item.get(key)})
+    media_by_id: dict[str,dict[str,Any]] = {}
+    if media_ids:
+        media_rows = await _db("GET","content_media",params={
+            "select":"id,owner_id,storage_path,status,scan_status,processed_at,derivatives",
+            "id":"in.("+",".join(media_ids)+")", "status":"eq.ready", "scan_status":"eq.clean",
+            "limit":str(min(100,len(media_ids))),
+        })
+        media_by_id = {
+            str(media["id"]):media for media in (media_rows or [])
+            if media.get("processed_at") and isinstance(media.get("derivatives"),list)
+            and media.get("storage_path")
+        }
+
+    for item in titles:
+        title_id = str(item["id"])
+        item["episodes_count"] = episode_counts.get(title_id,0)
+        for source_key, output_key in (("cover_media_id","cover_preview_url"),("trailer_media_id","trailer_preview_url")):
+            media = media_by_id.get(str(item.get(source_key) or ""))
+            if not media or str(media.get("owner_id")) != str(item.get("owner_id")):
+                item[output_key] = None
+                continue
+            derivatives = media.get("derivatives") or []
+            preferred = next((d.get("storage_path") for d in derivatives
+                if isinstance(d,dict) and d.get("kind") in ("display","rendition_1","thumbnail")
+                and isinstance(d.get("storage_path"),str) and d.get("storage_path")),None)
+            try:
+                item[output_key] = await _signed_media_preview_url(preferred or str(media["storage_path"]),expires_in=300)
+            except HTTPException:
+                item[output_key] = None
+    return {"items":titles,"next_cursor":None}
 
 
 
