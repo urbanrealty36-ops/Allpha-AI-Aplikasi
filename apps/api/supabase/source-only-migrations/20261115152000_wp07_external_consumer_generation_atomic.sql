@@ -368,19 +368,29 @@ begin
     v_reward_status := 'not_eligible';
   end if;
 
-  insert into public.conversations(kind,title,created_by)
-  values ('agent','Hasil Generate AI',v_job.owner_user_id)
-  returning id into v_conversation_id;
-  insert into public.conversation_participants(conversation_id,user_id,participant_type)
-  values (v_conversation_id,v_job.owner_user_id,'human');
-  insert into public.conversation_participants(conversation_id,agent_id,participant_type)
-  values (v_conversation_id,v_job.agent_id,'agent');
+  select c.id into v_conversation_id
+    from public.conversations c
+    where c.kind='agent'
+      and exists (select 1 from public.conversation_participants p
+        where p.conversation_id=c.id and p.user_id=v_job.owner_user_id and p.participant_type='human')
+      and exists (select 1 from public.conversation_participants p
+        where p.conversation_id=c.id and p.agent_id=v_job.agent_id and p.participant_type='agent')
+    order by c.updated_at desc limit 1 for update;
+  if v_conversation_id is null then
+    insert into public.conversations(kind,title,created_by)
+    values ('agent','Percakapan Agent',v_job.owner_user_id)
+    returning id into v_conversation_id;
+    insert into public.conversation_participants(conversation_id,user_id,participant_type)
+    values (v_conversation_id,v_job.owner_user_id,'human');
+    insert into public.conversation_participants(conversation_id,agent_id,participant_type)
+    values (v_conversation_id,v_job.agent_id,'agent');
+  end if;
   insert into public.messages(
     conversation_id,sender_type,sender_agent_id,body,client_message_id,delivery_status,generation_job_id
   ) values (
     v_conversation_id,'agent',v_job.agent_id,
     'Hasil Generate AI sudah siap. Artefak privat dapat dibuka melalui tombol hasil di percakapan ini.',
-    v_job.id,'sent',v_job.id
+    v_job.id::text,'sent',v_job.id
   ) returning id into v_message_id;
   update public.conversations set last_message_at=now(),updated_at=now()
     where id=v_conversation_id;
