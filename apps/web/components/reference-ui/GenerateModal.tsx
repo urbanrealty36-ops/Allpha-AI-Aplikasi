@@ -35,119 +35,40 @@ interface GenerateModalProps {
   onGenerate: (request: GenerateRequest) => Promise<string | null>;
 }
 
-export default function GenerateModal({
-  isOpen,
-  onClose,
-  contextPost,
-  onRewardTriggered,
-}: GenerateModalProps) {
-  const [contentType, setContentType] = useState<ContentType>('REELS_BRAND');
-  const [brandName, setBrandName] = useState('Brand Studio Saya');
-  const [productDetails, setProductDetails] = useState('Solusi Kreatif Digital');
+export default function GenerateModal({ isOpen, onClose, onGenerate }: GenerateModalProps) {
+  const [contentType, setContentType] = useState<GenerateContentType>('REELS_BRAND');
+  const [brandName, setBrandName] = useState('');
+  const [productDetails, setProductDetails] = useState('');
   const [customBrief, setCustomBrief] = useState('');
-  
-  // Media Assets State
-  const [logoMedia, setLogoMedia] = useState<{ url: string; name: string; type: 'image' | 'video' } | null>({
-    url: 'https://picsum.photos/seed/default-brand-logo/150/150',
-    name: 'logo_brand_vector.png',
-    type: 'image',
-  });
-  const [productMedia, setProductMedia] = useState<{ url: string; name: string; type: 'image' | 'video' } | null>({
-    url: 'https://picsum.photos/seed/product-asset-demo/300/300',
-    name: 'product_showcase.jpg',
-    type: 'image',
-  });
-
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
-
-  const logoInputRef = useRef<HTMLInputElement>(null);
-  const productInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   if (!isOpen) return null;
 
-  // Handle Logo Upload from Local Device
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const isVideo = file.type.startsWith('video');
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setLogoMedia({
-          url: event.target?.result as string,
-          name: file.name,
-          type: isVideo ? 'video' : 'image',
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Handle Product Upload from Local Device
-  const handleProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const isVideo = file.type.startsWith('video');
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setProductMedia({
-          url: event.target?.result as string,
-          name: file.name,
-          type: isVideo ? 'video' : 'image',
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleApplyPreset = (preset: BrandPreset) => {
-    setBrandName(preset.name);
-    setProductDetails(preset.product);
-    setLogoMedia({
-      url: preset.logoUrl,
-      name: `${preset.name.toLowerCase().replace(/\s+/g, '_')}_logo.png`,
-      type: 'image',
-    });
-    setProductMedia({
-      url: preset.productUrl,
-      name: `${preset.name.toLowerCase().replace(/\s+/g, '_')}_product.jpg`,
-      type: 'image',
-    });
-  };
-
   const handleGenerate = async () => {
+    if (isLoading || !brandName.trim() || !productDetails.trim() || !customBrief.trim()) return;
     setIsLoading(true);
     setResult(null);
-
-    const query = customBrief || `Generate konten ${contentType} dengan branding ${brandName} dan produk ${productDetails}.`;
-
+    setError('');
+    setNotice('');
     try {
-      const res = await fetch('/api/agent/interact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'brand_reels',
-          contentType,
-          agentName: contextPost?.aiAgent.name || 'Luna AI',
-          agentSpecialty: contextPost?.aiAgent.specialty || 'Kreativitas & Desain 3D',
-          humanOwner: contextPost?.humanOwner.name || 'Alex Tamara',
-          userQuestion: query,
-          brandName,
-          productDetails,
-          logoName: logoMedia?.name || '',
-          hasLogo: !!logoMedia,
-          hasProductMedia: !!productMedia,
-          context: contextPost?.content,
-        }),
+      const output = await onGenerate({
+        contentType,
+        brandName: brandName.trim(),
+        productDetails: productDetails.trim(),
+        brief: customBrief.trim(),
       });
-
-      const data = await res.json();
-      setResult(data.text);
-      onRewardTriggered(brandName, query);
-    } catch {
-      setResult(`✨ Hasil generation dari AI Agent dengan branding ${brandName}. Hasil akan tersedia setelah backend mengonfirmasi artefak dan DM.`);
-      onRewardTriggered(brandName, query);
+      if (output) {
+        setResult(output);
+        setNotice('Job selesai. Artefak privat dan pengiriman DM mengikuti konfirmasi backend.');
+      } else {
+        setNotice('Job belum menghasilkan artefak yang dapat ditampilkan. Periksa status Generation Job; permintaan tidak dikirim ulang otomatis.');
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Generation tidak dapat diselesaikan.');
     } finally {
       setIsLoading(false);
     }
@@ -175,7 +96,7 @@ export default function GenerateModal({
                 AI Content & Reels Studio
               </h2>
               <p className="text-[11px] font-semibold text-slate-600">
-                Didukung oleh {contextPost?.aiAgent.name || 'Luna AI'} (Milik @{contextPost?.humanOwner.handle || 'alextamara'})
+                Generation memakai Agent, Skill, Knowledge, dan Model Router yang dipilih pada halaman sebelumnya.
               </p>
             </div>
           </div>
@@ -360,7 +281,7 @@ export default function GenerateModal({
                 className="flex-1 py-2.5 rounded-2xl bg-emerald-300 hover:bg-emerald-400 text-slate-950 font-black text-xs border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5 stroke-[2.5px]" />
-                <span>Buka di Direct Message</span>
+                <span>Buka Direct Message</span>
               </button>
               <button
                 onClick={() => {
