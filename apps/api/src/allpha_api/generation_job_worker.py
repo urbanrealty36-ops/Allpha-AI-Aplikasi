@@ -19,6 +19,7 @@ from allpha_api.agent_runtime import (
     AgentConsumerAuthorization,
     AgentRuntime,
     AgentRuntimeBlocked,
+    AgentRuntimeOutcomeUnknown,
 )
 from allpha_api.model_router import TextGenerationRequest
 from allpha_api.generation_prompt import build_generation_prompts, snapshot_sha256
@@ -361,6 +362,9 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             request=request,
             consumer_authorization=consumer_authorization,
         )
+    except AgentRuntimeOutcomeUnknown as exc:
+        await _mark_pending(job, worker_id, "provider_outcome_unknown:" + type(exc).__name__)
+        return "pending_reconciliation"
     except AgentRuntimeBlocked as exc:
         # The runtime rejected the request before provider execution.
         return await _fail_before_provider(
