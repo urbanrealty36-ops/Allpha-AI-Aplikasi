@@ -27,6 +27,7 @@ from allpha_api.knowledge_retrieval import (
     KnowledgeRetrievalUnavailable,
     RetrievalRequest,
     request_scoped_retrieval_service,
+    request_scoped_external_public_retrieval_service,
 )
 
 router = APIRouter(prefix="/v1/generation", tags=["ai-generation"])
@@ -178,6 +179,66 @@ async def _retrieve_generation_knowledge(
     }
 
 
+async def _retrieve_external_generation_knowledge(
+    owner_id: str, agent_id: uuid.UUID, query: str | None
+) -> dict[str, Any]:
+    if not query:
+        return {}
+    service = request_scoped_external_public_retrieval_service()
+    if not isinstance(service, KnowledgeRetrievalService) or service.policy is None:
+        raise HTTPException(503, detail={
+            "code": "EXTERNAL_AGENT_KNOWLEDGE_POLICY_UNAVAILABLE",
+            "message": "Policy consent dan retrieval Knowledge publik belum tersedia.",
+        })
+    trace_id = str(uuid.uuid4())
+    try:
+        allowed = await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=str(agent_id))
+        if "public" not in allowed:
+            raise KnowledgeAccessDenied("owner policy does not permit public Knowledge retrieval")
+        hits = await service.retrieve(RetrievalRequest(
+            owner_id=owner_id, agent_id=str(agent_id), query=query,
+            allowed_sensitivities=["public"], limit=8, trace_id=trace_id,
+        ))
+    except KnowledgeAccessDenied as exc:
+        raise HTTPException(403, detail={
+            "code": "EXTERNAL_AGENT_KNOWLEDGE_ACCESS_DENIED",
+            "message": "Consent, public sensitivity, atau grant Knowledge tidak mengizinkan retrieval.",
+        }) from exc
+    except KnowledgeRetrievalUnavailable as exc:
+        raise HTTPException(503, detail={
+            "code": "EXTERNAL_AGENT_KNOWLEDGE_UNAVAILABLE",
+            "message": "Retrieval Knowledge publik belum siap atau provenance tidak valid.",
+        }) from exc
+    parts: list[str] = []
+    sources: list[dict[str, Any]] = []
+    remaining = 16000
+    for hit in hits:
+        content = hit.content[:remaining]
+        if not content:
+            break
+        parts.append(content)
+        sources.append({
+            "source_id": hit.source_id, "source_version": hit.source_version,
+            "chunk_id": hit.chunk_id, "content_sha256": hit.content_sha256,
+            "source_location": hit.source_location, "sensitivity": "public",
+            "retrieval_method": hit.retrieval_method,
+        })
+        remaining -= len(content)
+        if remaining <= 0:
+            break
+    context = "\n\n".join(parts)
+    resolved = getattr(service.policy, "last_resolved", None)
+    if resolved is None:
+        raise HTTPException(503, detail={"code":"EXTERNAL_AGENT_KNOWLEDGE_POLICY_SNAPSHOT_MISSING","message":"Snapshot policy Knowledge tidak tersedia."})
+    return {
+        "context": context, "context_sha256": hashlib.sha256(context.encode("utf-8")).hexdigest(),
+        "sources": sources, "policy_version": resolved.policy_version,
+        "consent_version": resolved.consent_version,
+        "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
+        "trace_id": trace_id, "scope": "public",
+    }
+
+
 async def _external_generation_context(
     payload: GenerationJobCreate, requester_id: str, router_instance: Any
 ) -> dict[str, Any]:
@@ -226,10 +287,8 @@ async def _external_generation_context(
         raise HTTPException(503, detail={"code": "EXTERNAL_AGENT_GENERATION_POLICY_UNAVAILABLE", "message": "Tarif, grant, atau policy generation Agent eksternal belum tersedia."}) from exc
     if not grant or str(grant.get("id")) != str(payload.consumer_grant_id):
         raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_GENERATION_GRANT_DENIED", "message": "Grant generation tidak aktif, tidak cocok, atau telah dicabut."})
-    if payload.knowledge_query:
-        if "knowledge_public_read" not in (grant.get("granted_scopes") or []):
-            raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_KNOWLEDGE_SCOPE_DENIED", "message": "Grant tidak mengizinkan Knowledge publik Agent."})
-        raise HTTPException(503, detail={"code": "EXTERNAL_AGENT_KNOWLEDGE_RETRIEVAL_UNAVAILABLE", "message": "Adapter retrieval service-role dengan filter public ACL belum tersedia; Knowledge eksternal ditolak agar tidak membuka data privat."})
+    if payload.knowledge_query and "knowledge_public_read" not in (grant.get("granted_scopes") or []):
+        raise HTTPException(403, detail={"code": "EXTERNAL_AGENT_KNOWLEDGE_SCOPE_DENIED", "message": "Grant tidak mengizinkan Knowledge publik Agent."})
     payer_id = budget.billing_account_id(requester_id=requester_id, owner_id=owner_id)
     subscriptions = await _admin_request("GET", "billing_subscriptions", params={
         "select": "id,owner_user_id,entitlement_version,status,current_period_end",
@@ -306,7 +365,10 @@ async def quote_generation_job(
         max_output_tokens = payload.max_output_tokens or router_instance.max_output_tokens_for("public")
         if max_output_tokens > router_instance.max_output_tokens_for("public"):
             raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model publik."})
-        prompt_bytes = len(payload.prompt.encode("utf-8"))
+        knowledge_snapshot = await _retrieve_external_generation_knowledge(
+            external["owner_id"], payload.agent_id, payload.knowledge_query
+        )
+        prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
         estimated_usage = prompt_bytes + max_output_tokens
         if estimated_usage > budget.max_usage_units:
             raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
@@ -323,7 +385,8 @@ async def quote_generation_job(
             "entitlement_version": budget.entitlement_version,
             "consumer_grant_id": str(external["grant"]["id"]),
             "payer_role": budget.payer_role,
-            "knowledge_context_sha256": None, "knowledge_source_count": 0,
+            "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"),
+            "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
         }
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
@@ -434,7 +497,12 @@ async def create_generation_job(
         max_output_tokens = payload.max_output_tokens or router_instance.max_output_tokens_for("public")
         if max_output_tokens > router_instance.max_output_tokens_for("public"):
             raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model publik."})
-        prompt_bytes = len(payload.prompt.encode("utf-8"))
+        knowledge_snapshot = await _retrieve_external_generation_knowledge(
+            external["owner_id"], payload.agent_id, payload.knowledge_query
+        )
+        if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("context_sha256"):
+            raise HTTPException(409, detail={"code":"GENERATION_KNOWLEDGE_QUOTE_STALE","message":"Knowledge publik atau policy berubah. Minta quote baru."})
+        prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
         estimated_usage_units = prompt_bytes + max_output_tokens
         if estimated_usage_units > budget.max_usage_units:
             raise HTTPException(422, detail={"code": "CONSUMER_USAGE_LIMIT_EXCEEDED", "message": "Permintaan melebihi batas usage yang disetujui pemilik Agent."})
@@ -465,8 +533,8 @@ async def create_generation_job(
             "source_version": int(skill["version"]), "capability_id": payload.capability_id,
             "sensitivity": "public", "task_id": task_id, "trace_id": trace_id,
             "idempotency_key": idempotency_key, "prompt": payload.prompt,
-            "prompt_sha256": prompt_hash, "knowledge_snapshot": {},
-            "knowledge_context_sha256": None, "max_output_tokens": max_output_tokens,
+            "prompt_sha256": prompt_hash, "knowledge_snapshot": knowledge_snapshot,
+            "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"), "max_output_tokens": max_output_tokens,
             "timeout_ms": min(120000, max(100, int(route.get("max_latency_ms") or 30000))),
             "estimated_usage_units": estimated_usage_units, "usage_unit": budget.usage_unit,
             "estimated_cost_microunits": budget.max_cost_microunits, "cost_unit": budget.cost_unit,
