@@ -16,6 +16,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.knowledge_retrieval import (
+    KnowledgeAccessDenied,
+    KnowledgeRetrievalService,
+    KnowledgeRetrievalUnavailable,
+    RetrievalRequest,
+    request_scoped_retrieval_service,
+)
 
 router = APIRouter(prefix="/v1/generation", tags=["ai-generation"])
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -32,6 +39,8 @@ class GenerationJobCreate(BaseModel):
     quoted_policy_version: str | None = Field(default=None, min_length=1, max_length=80)
     quoted_tariff_version: str | None = Field(default=None, min_length=1, max_length=80)
     quoted_model_id: str | None = Field(default=None, min_length=1, max_length=128)
+    knowledge_query: str | None = Field(default=None, min_length=1, max_length=4000)
+    quoted_knowledge_context_sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
 
 def _db_config() -> tuple[str, str]:
@@ -98,6 +107,71 @@ async def _approved_credit_policy(entitlement_version: str) -> tuple[dict[str, A
     raise HTTPException(503, detail={"code": "AI_CREDIT_POLICY_UNAVAILABLE", "message": "Belum ada AI Credit policy approved yang berlaku untuk entitlement akun ini."})
 
 
+async def _retrieve_generation_knowledge(
+    request: Request, user: dict[str, Any], agent_id: uuid.UUID, query: str | None
+) -> dict[str, Any]:
+    if not query:
+        return {}
+    service = request_scoped_retrieval_service(request)
+    if not isinstance(service, KnowledgeRetrievalService) or service.policy is None:
+        raise HTTPException(503, detail={
+            "code": "GENERATION_KNOWLEDGE_POLICY_UNAVAILABLE",
+            "message": "Knowledge belum dapat digunakan karena policy dan retrieval ACL belum tersedia.",
+        })
+    owner_id = str(user["id"])
+    trace_id = str(getattr(request.state, "request_id", "") or uuid.uuid4())
+    try:
+        allowed = await service.policy.allowed_sensitivities(owner_id=owner_id, agent_id=str(agent_id))
+        if not allowed:
+            raise KnowledgeRetrievalUnavailable("knowledge sensitivity policy is empty")
+        hits = await service.retrieve(RetrievalRequest(
+            owner_id=owner_id, agent_id=str(agent_id), query=query,
+            allowed_sensitivities=allowed, limit=8, trace_id=trace_id,
+        ))
+    except KnowledgeAccessDenied as exc:
+        raise HTTPException(403, detail={
+            "code": "GENERATION_KNOWLEDGE_ACCESS_DENIED",
+            "message": "Knowledge tidak dapat diakses oleh pemilik Agent ini.",
+        }) from exc
+    except KnowledgeRetrievalUnavailable as exc:
+        raise HTTPException(503, detail={
+            "code": "GENERATION_KNOWLEDGE_UNAVAILABLE",
+            "message": "Knowledge ACL, consent, index, atau retrieval belum siap.",
+        }) from exc
+    context_parts: list[str] = []
+    sources: list[dict[str, Any]] = []
+    remaining = 24000
+    for hit in hits:
+        content = hit.content[:remaining]
+        if not content:
+            break
+        context_parts.append(content)
+        sources.append({
+            "source_id": hit.source_id, "source_version": hit.source_version,
+            "chunk_id": hit.chunk_id, "content_sha256": hit.content_sha256,
+            "source_location": hit.source_location, "sensitivity": hit.sensitivity,
+            "retrieval_method": hit.retrieval_method,
+        })
+        remaining -= len(content)
+        if remaining <= 0:
+            break
+    context = "\n\n".join(context_parts)
+    digest = hashlib.sha256(context.encode("utf-8")).hexdigest()
+    resolved = getattr(service.policy, "last_resolved", None)
+    if resolved is None:
+        raise HTTPException(503, detail={
+            "code": "GENERATION_KNOWLEDGE_POLICY_SNAPSHOT_MISSING",
+            "message": "Snapshot policy Knowledge tidak dapat dikonfirmasi.",
+        })
+    return {
+        "context": context, "context_sha256": digest, "sources": sources,
+        "policy_version": resolved.policy_version,
+        "consent_version": resolved.consent_version,
+        "resolved_at_version": getattr(resolved, "resolved_at_version", resolved.policy_version),
+        "trace_id": trace_id,
+    }
+
+
 @router.post("/quote")
 async def quote_generation_job(
     payload: GenerationJobCreate,
@@ -117,10 +191,11 @@ async def quote_generation_job(
         router_max_tokens = router_instance.max_output_tokens_for("private")
     except Exception as exc:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_NOT_READY", "message": "Model, cost policy, atau metering belum disetujui."}) from exc
+    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
     max_output_tokens = payload.max_output_tokens or router_max_tokens
     if max_output_tokens > router_max_tokens:
         raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model aktif."})
-    prompt_bytes = len(payload.prompt.encode("utf-8"))
+    prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt melebihi batas byte yang disetujui."})
     skill_rows = await user_db_request("GET", "agent_skills", token, params={
@@ -173,6 +248,9 @@ async def quote_generation_job(
         "model_id": route["model_id"], "model_version": route["model_version"],
         "policy_version": policy_row["policy_version"], "tariff_version": tariff_version,
         "entitlement_version": entitlement_version,
+        "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"),
+        "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
+        "knowledge_policy_version": knowledge_snapshot.get("policy_version"),
     }
 
 
@@ -191,13 +269,14 @@ async def create_generation_job(
 
     prompt_hash = hashlib.sha256(payload.prompt.encode("utf-8")).hexdigest()
     existing = await _admin_request("GET", "generation_jobs", params={
-        "select": "id,task_id,prompt_sha256,agent_id,skill_id,capability_id,status,credits_to_reserve",
+        "select": "id,task_id,prompt_sha256,knowledge_context_sha256,agent_id,skill_id,capability_id,status,credits_to_reserve",
         "owner_user_id": f"eq.{user['id']}", "idempotency_key": f"eq.{idempotency_key}", "limit": "1",
     })
     if existing:
         prior = existing[0]
         if (prior.get("prompt_sha256") != prompt_hash or str(prior.get("agent_id")) != str(payload.agent_id)
-            or str(prior.get("skill_id")) != str(payload.skill_id) or prior.get("capability_id") != payload.capability_id):
+            or str(prior.get("skill_id")) != str(payload.skill_id) or prior.get("capability_id") != payload.capability_id
+            or prior.get("knowledge_context_sha256") != payload.quoted_knowledge_context_sha256):
             raise HTTPException(409, detail={"code": "GENERATION_JOB_IDEMPOTENCY_CONFLICT", "message": "Idempotency-Key telah digunakan untuk permintaan generation yang berbeda."})
         return {"job_id": prior["id"], "task_id": prior["task_id"], "status": prior["status"],
             "idempotent_replay": True, "reserved_credits": prior.get("credits_to_reserve")}
@@ -212,9 +291,10 @@ async def create_generation_job(
     except Exception as exc:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_NOT_READY", "message": "AI generation fail-closed karena route, runtime policy, atau model-cost registry belum siap."}) from exc
 
-    prompt_bytes = len(payload.prompt.encode("utf-8"))
+    prompt_bytes = len(payload.prompt.encode("utf-8")) + len(str(knowledge_snapshot.get("context") or "").encode("utf-8"))
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt melebihi batas byte yang disetujui."})
+    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
     max_output_tokens = payload.max_output_tokens or router_max_tokens
     if max_output_tokens > router_max_tokens:
         raise HTTPException(422, detail={"code": "OUTPUT_TOKEN_LIMIT_EXCEEDED", "message": "Batas output melebihi policy model aktif."})
@@ -226,6 +306,9 @@ async def create_generation_job(
     if not skill_rows:
         raise HTTPException(404, detail={"code": "PUBLISHED_SKILL_NOT_FOUND", "message": "Skill tidak ditemukan atau belum dipublikasikan untuk Agent ini."})
     skill = skill_rows[0]
+    knowledge_snapshot = await _retrieve_generation_knowledge(request, user, payload.agent_id, payload.knowledge_query)
+    if payload.knowledge_query and payload.quoted_knowledge_context_sha256 != knowledge_snapshot.get("context_sha256"):
+        raise HTTPException(409, detail={"code": "GENERATION_KNOWLEDGE_QUOTE_STALE", "message": "Sumber atau policy Knowledge berubah. Minta quote baru."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
         "select": "capability_key,status", "agent_id": f"eq.{payload.agent_id}",
         "capability_key": f"eq.{payload.capability_id}", "status": "eq.approved", "limit": "1",
@@ -291,6 +374,8 @@ async def create_generation_job(
         "idempotency_key": idempotency_key,
         "prompt": payload.prompt,
         "prompt_sha256": prompt_hash,
+        "knowledge_snapshot": knowledge_snapshot,
+        "knowledge_context_sha256": knowledge_snapshot.get("context_sha256"),
         "max_output_tokens": max_output_tokens,
         "timeout_ms": timeout_ms,
         "estimated_usage_units": estimated_usage_units,
