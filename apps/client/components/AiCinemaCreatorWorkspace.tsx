@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 
 type DraftTitle = {
   id: string;
@@ -22,6 +23,8 @@ type DraftEpisode = {
 type Props = { getAccessToken: () => Promise<string | null> };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string };
 type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
+type CreatorMedia = ReadyMedia & { status: string; scan_status: string; processed_at?: string | null; created_at: string };
+type UploadAsset = { uri: string; name: string; mimeType?: string | null; size?: number | null };
 type CinemaCollaborator = { id:string; collaborator_user_id?:string|null; collaborator_agent_id?:string|null; role:string; permissions:string[]; status:string };
 type CinemaInvitation = { id:string; title?:{title:string}|null; role:string; status:string };
 type CinemaCredit = { id:string; contributor_type:string; role:string; attribution_label:string };
@@ -39,7 +42,7 @@ async function request<T>(getAccessToken: Props["getAccessToken"], path: string,
     cache: "no-store",
     headers: {
       Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.body && !(typeof FormData !== "undefined" && init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       Authorization: "Bearer " + token,
       ...init.headers,
     },
@@ -71,6 +74,8 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
+  const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
+  const [uploadAsset, setUploadAsset] = useState<UploadAsset | null>(null);
   const [selectedMediaId, setSelectedMediaId] = useState("");
   const [selectedTitleId, setSelectedTitleId] = useState("");
   const [title, setTitle] = useState("");
@@ -100,7 +105,12 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
     setLoading(true); setError("");
     try {
       const result = await request<{ items: DraftTitle[] }>(getAccessToken, "/v1/cinema/creator/titles?limit=100");
-      try { const media = await request<{ items: ReadyMedia[] }>(getAccessToken, "/v1/cinema/creator/media-ready"); setReadyMedia(Array.isArray(media.items) ? media.items : []); } catch { setReadyMedia([]); }
+      try {
+        const media = await request<{ items: CreatorMedia[] }>(getAccessToken, "/v1/cinema/creator/media");
+        const rows = Array.isArray(media.items) ? media.items : [];
+        setCreatorMedia(rows);
+        setReadyMedia(rows.filter(item => item.status === "ready" && item.scan_status === "clean" && item.processed_at).map(({ id, filename, media_type, size_bytes }) => ({ id, filename, media_type, size_bytes })));
+      } catch { setCreatorMedia([]); setReadyMedia([]); }
       try { setCapabilityStatus(await request<CreatorStatus>(getAccessToken, "/v1/cinema/creator/status")); } catch { setCapabilityStatus(null); }
       const rows = Array.isArray(result.items) ? result.items : [];
       setTitles(rows);
@@ -123,6 +133,38 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
 
   useEffect(() => { void loadTitles(); }, [loadTitles]);
   useEffect(() => { void loadEpisodes(selectedTitleId); }, [loadEpisodes, selectedTitleId]);
+
+  async function pickCinemaVideo() {
+    setError("");
+    const result = await DocumentPicker.getDocumentAsync({ type: ["video/mp4", "video/webm"], copyToCacheDirectory: true, multiple: false });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (asset.size != null && asset.size > 50 * 1024 * 1024) { setError("Ukuran video maksimal 50 MiB."); return; }
+    setUploadAsset({ uri: asset.uri, name: asset.name || "cinema-video.mp4", mimeType: asset.mimeType, size: asset.size });
+  }
+
+  function createClientUuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, character => {
+      const random = Math.floor(Math.random() * 16);
+      return (character === "x" ? random : (random & 0x3) | 0x8).toString(16);
+    });
+  }
+
+  async function uploadCinemaMedia() {
+    if (!uploadAsset) return;
+    if (uploadAsset.size != null && (uploadAsset.size <= 0 || uploadAsset.size > 50 * 1024 * 1024)) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const draft = await request<{ item: { id: string } }>(getAccessToken, "/v1/content", { method: "POST", body: JSON.stringify({ body: "", visibility: "private", content_type: "video" }) });
+      const form = new FormData();
+      form.append("file", { uri: uploadAsset.uri, name: uploadAsset.name, type: uploadAsset.mimeType || "video/mp4" } as any);
+      const uploaded = await request<{ item: CreatorMedia }>(getAccessToken, "/v1/content/" + encodeURIComponent(draft.item.id) + "/media", { method: "POST", headers: { "Idempotency-Key": createClientUuid() }, body: form });
+      setUploadAsset(null);
+      setNotice("Video diterima pipeline media Allpha (" + (uploaded.item?.status || "uploaded") + "). Tunggu pemindaian dan transcode; media dapat dipilih setelah ready dan scan clean.");
+      await loadTitles();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Upload video AI Cinema gagal."); }
+    finally { setSaving(false); }
+  }
 
   async function createTitle() {
     if (!title.trim()) return;
@@ -288,6 +330,15 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
         </Pressable>
         <Action title={saving ? "Mengajukan…" : "Ajukan rights review & moderasi"} disabled={saving || !selectedTitleId || !rightsConfirmed || !aiDisclosureConfirmed} onPress={() => void submitForReview()}/>
         <Text style={{ color: "#94A3B8", fontSize: 11 }}>API menolak pengajuan jika semua episode belum memiliki media ready dan scan clean. Operator tetap memutuskan rights dan moderasi.</Text>
+      </View>
+      <View style={{ gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#1E293B" }}>
+        <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>Upload video film · Media Pipeline</Text>
+        <Text style={{ color: "#94A3B8", fontSize: 11 }}>MP4/WebM maksimal 50 MiB. File dikirim ke FastAPI dan Supabase Storage; worker dan scan menentukan kapan media siap.</Text>
+        <Action title={uploadAsset ? "Ganti video" : "Pilih video MP4/WebM"} secondary onPress={() => void pickCinemaVideo()} disabled={saving}/>
+        {uploadAsset && <Text style={{ color: "#CBD5E1", fontSize: 11 }}>{uploadAsset.name}{uploadAsset.size ? " · " + (uploadAsset.size / 1024 / 1024).toFixed(1) + " MiB" : ""}</Text>}
+        <Action title={saving ? "Mengunggah…" : "Unggah video ke Media Pipeline"} disabled={saving || !uploadAsset} onPress={() => void uploadCinemaMedia()}/>
+        <Text style={{ color: "#CBD5E1", fontSize: 12, fontWeight: "700" }}>Status media saya</Text>
+        {creatorMedia.length ? creatorMedia.map(media => <Text key={media.id} style={{ color: "#94A3B8", fontSize: 11 }}>{media.filename} · {media.status} · scan {media.scan_status}{media.processed_at ? " · " + new Date(media.processed_at).toLocaleString("id-ID") : ""}</Text>) : <Text style={{ color: "#94A3B8", fontSize: 11 }}>Belum ada media milik akun ini.</Text>}
       </View>
       <View style={{ gap: 8 }}>
         <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>Episode {selectedTitleId ? "· film terpilih" : "· pilih film terlebih dahulu"}</Text>
