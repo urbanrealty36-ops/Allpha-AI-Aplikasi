@@ -129,7 +129,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
 
   async function createAndPoll(token:string,body:Record<string,unknown>,quote:Record<string,any>){
     try{
-      const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id,...(quote.knowledge_context_sha256?{quoted_knowledge_context_sha256:quote.knowledge_context_sha256}:{})})});
+      const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id,quoted_agent_snapshot_sha256:quote.agent_snapshot_sha256,quoted_skill_snapshot_sha256:quote.skill_snapshot_sha256,...(quote.knowledge_context_sha256?{quoted_knowledge_context_sha256:quote.knowledge_context_sha256}:{})})});
       if(!created.job_id)throw new Error("Generation Job belum terkonfirmasi.");
       setJobId(created.job_id);
       for(let attempt=0;attempt<60;attempt++){
