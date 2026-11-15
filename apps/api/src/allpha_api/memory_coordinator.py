@@ -134,7 +134,7 @@ class MemoryCoordinator:
         result=await self.transition("delete",owner_id,item_id=item_id)
         return result if isinstance(result,dict) else None
 
-    async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None):
+    async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None,max_sensitivity=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
         if purpose not in PURPOSES:return []
         ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
@@ -151,10 +151,13 @@ class MemoryCoordinator:
            "order":"created_at.desc","limit":"30"}
         if query:p["search_vector"]="fts.simple."+query
         rows=await self.db("GET","agent_memory_items",params=p)
+        if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
+        sensitivity_rank={name:index for index,name in enumerate(SENSITIVITIES)}
         out=[]; used=0
         for row in rows or []:
             if len(out)>=max(1,min(limit,30)):break
             if row["policy_version"]!=versions.get(row["policy_id"]) or row.get("classification") not in sensitivities.get(row["policy_id"],set()):continue
+            if max_sensitivity is not None and sensitivity_rank.get(row.get("classification"),99)>sensitivity_rank[max_sensitivity]:continue
             content=str(row["content"]); remaining=max_chars-used
             if remaining<=0:break
             content=content[:remaining]; used+=len(content)
