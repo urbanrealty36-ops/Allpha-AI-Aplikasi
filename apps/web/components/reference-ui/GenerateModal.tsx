@@ -94,7 +94,7 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, directMessa
     try {
       await onDeleteArtifact();
       setResult(null);
-      setNotice('Permintaan penghapusan diterima. Akses artefak telah dinonaktifkan; pembersihan Storage berjalan melalui worker.');
+      setNotice('Permintaan penghapusan diterima. URL baru diblokir; URL lama berakhir maksimal 60 detik atau saat objek Storage dihapus.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Penghapusan artefak belum dapat dikonfirmasi.');
     }
