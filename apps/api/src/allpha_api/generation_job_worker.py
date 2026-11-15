@@ -165,6 +165,7 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> bool:
     checks = {
         "agent_version": job.get("agent_version"),
         "skill_version": job.get("source_version"),
+        "runtime_policy_version": job.get("runtime_policy_version"),
         "capability_id": job.get("capability_id"),
         "credit_scheme_version": job.get("credit_scheme_version"),
         "approval_reference": job.get("policy_approval_reference"),
