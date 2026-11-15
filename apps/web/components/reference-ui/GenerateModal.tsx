@@ -245,10 +245,46 @@ export default function GenerateModal({ isOpen, onClose, onGenerate, canCancelGe
             />
           </div>
 
-          <div className="rounded-3xl border-2 border-slate-900 bg-purple-50 p-4 text-xs leading-relaxed text-slate-800 shadow-[3px_3px_0px_#0f172a]">
-            <h3 className="mb-1 flex items-center gap-2 font-black text-slate-950"><Upload className="h-4 w-4"/> Upload logo & aset produk</h3>
-            <p>Upload media belum diaktifkan pada modal ini karena harus melewati upload-intent, quarantine, validasi, pemrosesan dan hak akses Media Pipeline melalui FastAPI. File lokal tidak akan dianggap tersimpan atau diproses oleh AI.</p>
-            <p className="mt-2 font-bold text-purple-950">Gunakan brief teks untuk saat ini. Integrasi upload akan diaktifkan setelah kontrak media kanonis tersedia.</p>
+          {/* Reference GenerateModal media-picker composition; controls stay disabled until
+              a quarantined, scanned and capability-matched generation input contract exists. */}
+          <div className="p-4 rounded-3xl bg-purple-50 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] space-y-3">
+            <h3 className="font-black text-xs text-slate-950 flex items-center gap-1.5">
+              <Upload className="w-4 h-4 text-purple-700 stroke-[2.5px]" />
+              <span>Unggah Aset Visual Logo & Produk (Image / Video)</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
+                <span className="font-black text-[11px] text-slate-950">1. Logo Brand:</span>
+                <div className="text-center py-3 text-slate-400">
+                  <ImageIcon className="w-6 h-6 mx-auto mb-1 opacity-50" />
+                  <p className="text-[10px] font-bold">Belum ada logo dipilih</p>
+                </div>
+                <input type="file" accept="image/*" disabled className="hidden" aria-label="Pilih logo brand" />
+                <button type="button" disabled title="Upload belum tersedia pada Generation Input API" className="w-full py-2 rounded-xl border-2 border-slate-900 bg-purple-100 text-purple-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60">
+                  <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
+                  <span>Pilih File Logo (JPG/PNG)</span>
+                </button>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] space-y-2">
+                <span className="font-black text-[11px] text-slate-950">2. Aset Produk:</span>
+                <div className="text-center py-3 text-slate-400">
+                  <Video className="w-6 h-6 mx-auto mb-1 opacity-50" />
+                  <p className="text-[10px] font-bold">Belum ada produk dipilih</p>
+                </div>
+                <input type="file" accept="image/*,video/*" disabled className="hidden" aria-label="Pilih aset produk" />
+                <button type="button" disabled title="Upload belum tersedia pada Generation Input API" className="w-full py-2 rounded-xl border-2 border-slate-900 bg-cyan-100 text-cyan-950 text-[10px] font-black shadow-[1.5px_1.5px_0px_#0f172a] flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60">
+                  <Upload className="w-3.5 h-3.5 stroke-[2.5px]" />
+                  <span>Pilih File Produk (Foto/Video)</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 p-2.5 rounded-2xl bg-purple-100 border-2 border-slate-900 text-purple-950 text-[11px] shadow-2xs font-semibold">
+              <Sparkles className="w-4 h-4 text-purple-800 shrink-0 stroke-[2.5px]" />
+              <span><strong>AI Vision Engine belum aktif:</strong> media hanya dapat diaktifkan setelah tersedia input snapshot privat, scanning/quarantine, izin penggunaan dan Model Router dengan capability image/video yang disetujui. File lokal tidak akan dianggap tersimpan atau dibaca AI.</span>
+            </div>
           </div>
 
           <div>
