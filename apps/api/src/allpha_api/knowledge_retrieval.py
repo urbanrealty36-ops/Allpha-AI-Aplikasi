@@ -362,7 +362,7 @@ class SupabaseServiceRolePublicKeywordKnowledgeRepository:
             "select": (
                 "id,source_id,agent_id,owner_id,chunk_index,content,source_location,"
                 "source_version,content_sha256,"
-                "agent_knowledge_sources!inner(id,source_version,status,sensitivity)"
+                "agent_knowledge_sources!inner(id,owner_id,agent_id,source_version,status,sensitivity)"
             ),
             "owner_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
             "agent_knowledge_sources.status": "eq.ready",
