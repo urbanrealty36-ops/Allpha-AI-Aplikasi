@@ -7,6 +7,7 @@ pending_reconciliation; no automatic provider replay is allowed.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import replace
 import hashlib
 import logging
@@ -595,17 +596,29 @@ async def run_once(*, batch_size: int = 5) -> int:
 async def run_forever() -> None:
     poll_seconds = max(1, min(int(os.getenv("ALLPHA_GENERATION_WORKER_POLL_SECONDS", "5")), 60))
     batch_size = max(1, min(int(os.getenv("ALLPHA_GENERATION_WORKER_BATCH_SIZE", "5")), 20))
+    generation_enabled = os.getenv("ALLPHA_GENERATION_WORKER_ENABLED", "false").strip().lower() == "true"
+    memory_enabled = os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "false").strip().lower() == "true"
+    last_memory_expiry = 0.0
     while True:
-        try:
-            await run_once(batch_size=batch_size)
-        except Exception as exc:
-            logger.error("generation_worker_batch_failed error_type=%s", type(exc).__name__)
+        if memory_enabled and time.monotonic() - last_memory_expiry >= 60:
+            try:
+                await MemoryCoordinator().expire_all()
+            except Exception as exc:
+                logger.error("memory_retention_purge_failed error_type=%s", type(exc).__name__)
+            last_memory_expiry = time.monotonic()
+        if generation_enabled:
+            try:
+                await run_once(batch_size=batch_size)
+            except Exception as exc:
+                logger.error("generation_worker_batch_failed error_type=%s", type(exc).__name__)
         await asyncio.sleep(poll_seconds)
 
 
 def main() -> None:
-    if os.getenv("ALLPHA_GENERATION_WORKER_ENABLED", "false").strip().lower() != "true":
-        logger.info("generation_worker_disabled")
+    generation_enabled = os.getenv("ALLPHA_GENERATION_WORKER_ENABLED", "false").strip().lower() == "true"
+    memory_enabled = os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "false").strip().lower() == "true"
+    if not generation_enabled and not memory_enabled:
+        logger.info("generation_and_memory_workers_disabled")
         return
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
     asyncio.run(run_forever())
