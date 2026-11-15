@@ -2985,3 +2985,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Commit: `a955ab6454ca6ebb9a097ce19f5055c6379f6a68`; report commit: `d79fab30a7acf82c9a25ad7498792d70e0f1384b`.
 - No tests/build/lint/typecheck/CI/provider calls/worker activation/database writes/migration application/staging/browser-device QA/deployment were performed.
 - WP-07 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`: approved policy configuration, migration application through an authorized path, worker activation, owner-reward approval, multimodal input contract and integration acceptance remain outstanding. Formal order remains WP-07 → WP-06 → WP-11 → WP-12.
+
+**WP-07 manual moderation policy pre-claim guard (2026-11-15):**
+- Added an explicit `supports_policy` predicate to the built-in manual-review-only adapter and a worker guard before `claim_generation_jobs`. If the selected adapter is manual-review-only but the effective approved policy is not explicitly `mode=manual_review_only` and `manual_review_only=true`, the worker remains idle before claiming jobs or invoking a provider.
+- This closes a source-level mismatch path that could otherwise have left a generated artifact outside the Human review queue. It does not create/approve policy, enable the worker or alter the migration status.
+- Correction commits: `0baf055cb5745fed39ad618b28a60600f5e5cbce`, `2fdf58107865eaa08504e9db1c0e5df3fbfb1bec`.
+- No tests/build/lint/typecheck/CI/provider calls/worker activation/database writes/migration application/staging/browser-device QA/deployment were performed. WP-07 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`; required phase order remains WP-07 → WP-06 → WP-11 → WP-12.
