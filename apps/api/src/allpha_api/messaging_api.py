@@ -85,6 +85,28 @@ class ConsumerGrantRevoke(BaseModel):
     reason: str = Field(default="owner_revoked", min_length=1, max_length=300)
 
 
+@router.get("/agents/{agent_id}/consumer-grants")
+async def list_consumer_grants(
+    agent_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    token = getattr(request.state, "supabase_access_token", None)
+    if not token:
+        raise HTTPException(401, detail={"code":"AUTH_REQUIRED","message":"Sesi login diperlukan."})
+    owners = await user_db_request("GET", "agent_ownerships", token, params={
+        "select":"agent_id", "agent_id":f"eq.{agent_id}",
+        "owner_user_id":f"eq.{user['id']}", "ownership_role":"eq.owner",
+        "status":"eq.active", "limit":"1",
+    })
+    if not owners:
+        raise HTTPException(404, detail={"code":"AGENT_OWNER_REQUIRED","message":"Hanya pemilik Agent yang dapat melihat Consumer grants."})
+    items = await AgentConsumerGrantStore.from_environment().list_for_owner(
+        owner_id=str(user["id"]), agent_id=str(agent_id)
+    )
+    return {"items":items}
+
+
 @router.post("/agents/{agent_id}/consumer-grants", status_code=201)
 async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreate,
                                 request: Request, user: dict[str,Any] = Depends(current_user)):
