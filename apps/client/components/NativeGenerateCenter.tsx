@@ -5,9 +5,9 @@ type Agent = { id: string; display_name: string; status: string };
 type Skill = { id: string; name: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
 type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
-type Job = { status: string; artifact_available?: boolean; error_code?: string | null };
+type Job = { status: string; artifact_available?: boolean; error_code?: string | null; owner_reward_status?: string | null };
 
-export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: string; getAccessToken: () => Promise<string> }) {
+export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = null }: { apiBase: string; getAccessToken: () => Promise<string>; initialJobId?: string | null }) {
   const [agents,setAgents]=useState<Agent[]>([]);
   const [externalAgents,setExternalAgents]=useState<ExternalAgent[]>([]);
   const [consumerGrantId,setConsumerGrantId]=useState("");
@@ -82,6 +82,35 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
     return ()=>{active=false;};
   },[agentId,consumerGrantId,externalAgents,getAccessToken,apiBase]);
 
+  useEffect(()=>{
+    if(!initialJobId)return;
+    let active=true;
+    void (async()=>{
+      setBusy(true);setError("");setNotice("");setJobId(initialJobId);
+      try{
+        const token=await getAccessToken();
+        const status=await api("/v1/generation/jobs/"+encodeURIComponent(initialJobId),token);
+        const job=status.job as Job|undefined;
+        if(!job)throw new Error("Generation Job tidak ditemukan.");
+        if(job.status!=="succeeded"||!job.artifact_available){
+          setNotice("Generation Job belum memiliki artefak yang dapat dibuka ("+job.status+").");
+          return;
+        }
+        const artifact=await api("/v1/generation/jobs/"+encodeURIComponent(initialJobId)+"/artifact",token);
+        if(!artifact.url)throw new Error("Referensi artefak privat belum tersedia.");
+        const response=await fetch(artifact.url,{cache:"no-store"});
+        if(!response.ok)throw new Error("Unduhan artefak privat gagal.");
+        const output=await response.text();
+        if(active){
+          setResult(output);
+          setNotice("Artefak privat dibuka dari DM. Creator reward: "+(job.owner_reward_status||"pending_policy")+".");
+        }
+      }catch(cause){if(active)setError(cause instanceof Error?cause.message:"Artefak privat tidak dapat dibuka.");}
+      finally{if(active)setBusy(false);}
+    })();
+    return()=>{active=false;};
+  },[initialJobId,apiBase,getAccessToken]);
+
   async function runGeneration(){
     if(!agentId||!skillId||!capabilityId||!prompt.trim()||busy)return;
     setBusy(true);setError("");setNotice("");setResult("");setJobId("");
@@ -113,7 +142,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken }: { apiBase: str
           const response=await fetch(artifact.url,{cache:"no-store"});
           if(!response.ok)throw new Error("Artefak privat tidak dapat diunduh.");
           setResult(await response.text());
-          setNotice("Hasil lolos moderasi dan tersimpan sebagai artefak privat.");
+          setNotice("Hasil lolos moderasi dan tersimpan sebagai artefak privat. Creator reward: "+(job.owner_reward_status||"pending_policy")+".");
           return;
         }
         if(job.status==="pending_reconciliation")throw new Error("Hasil masih dalam rekonsiliasi. Tidak ada pengulangan provider otomatis.");
