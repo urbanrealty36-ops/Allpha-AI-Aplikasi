@@ -2976,3 +2976,12 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - No tests/build/lint/typecheck/CI/provider call/production database mutation/migration application/worker activation/staging/browser-device QA/deployment was performed.
 - WP-07 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`. Open blockers remain the unapplied migration chain, approved moderation adapter/policy, approved owner-reward values, persistent worker activation, multimodal input adapter, and authorized integration acceptance. The formal order remains WP-07 → WP-06 → WP-11 → WP-12; no later phase is promoted or marked complete.
 
+
+
+**WP-07 manual review-only moderation adapter source checkpoint (2026-11-15):**
+- Added a built-in fail-closed `ManualReviewOnlyModerator` in `apps/api/src/allpha_api/generation_output_moderation.py`. It never approves or rejects automatically; every output is routed to the existing attributed Human review lifecycle.
+- The adapter requires an effective database moderation policy with `status=approved` and explicit configuration `mode=manual_review_only`, `manual_review_only=true`. No policy row or approval is created by this code change. Without an effective approved policy, the worker remains idle.
+- Source report: `docs/reports/WP07_MANUAL_REVIEW_ONLY_ADAPTER_SOURCE_CHECKPOINT_2026-11-15.md`.
+- Commit: `a955ab6454ca6ebb9a097ce19f5055c6379f6a68`; report commit: `d79fab30a7acf82c9a25ad7498792d70e0f1384b`.
+- No tests/build/lint/typecheck/CI/provider calls/worker activation/database writes/migration application/staging/browser-device QA/deployment were performed.
+- WP-07 remains `IN_PROGRESS / ACCEPTANCE_NOT_VERIFIED`: approved policy configuration, migration application through an authorized path, worker activation, owner-reward approval, multimodal input contract and integration acceptance remain outstanding. Formal order remains WP-07 → WP-06 → WP-11 → WP-12.
