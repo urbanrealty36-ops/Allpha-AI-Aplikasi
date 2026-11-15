@@ -86,7 +86,7 @@ export default function CinemaGovernancePage() {
     try {
       await read(await apiFetch("/v1/cinema/admin/policies/"+policyKind,session,{method:"POST",body:JSON.stringify({
         policy_version:policyVersion.trim(),approval_reference:approvalReference.trim(),
-        configuration:JSON.parse(policyConfig),effective_at:effectiveAt,
+        configuration:JSON.parse(policyConfig),effective_at:new Date(effectiveAt).toISOString(),
       })}));
       setNotice("Draft policy tersimpan; perlu persetujuan operator kedua.");await loadPolicies(session);
     } catch(cause) { setError(cause instanceof Error?cause.message:"Draft policy gagal dibuat."); }
