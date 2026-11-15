@@ -69,9 +69,13 @@ class OpenAICompatibleTextGenerationAdapter:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        messages = []
+        if request.system_prompt.strip():
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.prompt})
         body = {
             "model": model_id,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": messages,
             "max_tokens": request.max_output_tokens,
             "stream": False,
         }
