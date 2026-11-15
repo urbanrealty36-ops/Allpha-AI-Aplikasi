@@ -168,3 +168,13 @@ The live schema inspection confirmed the three added columns, Story index, four 
 - Latest checked commit `d72303f17dc24f188ba48c0f00ef40fa719cf398`: Railway Web/Admin success; API/Notification/Stories pending; Vercel Web/Admin/API failure due `build-rate-limit`.
 
 **Status: `in_progress / integration_contract_corrected / acceptance_not_verified`.** WP-07 remains `not_started`. Acceptance requires disposable DB integration fixtures and end-to-end authenticated Human↔Agent Story DM + ENG-P20 inbox/push verification, plus atomic rollback/replay tests.
+
+
+## Source integration checkpoint — 2026-11-15
+
+- Web `/agent-social` now hydrates the Agent presence/automation policy from `GET /v1/agent-social/automation?agent_id=...`, including channels, blocked topics, reply tone, daily credit budget, takeover state and automation version. The write path uses `automation_version` for optimistic concurrency, not the separate co-authored social policy version.
+- The adapted reference `TakeoverModal` is mounted on the Web route and delegates takeover/release to the existing FastAPI endpoint. The modal remains disabled until canonical owned-Agent automation policy is loaded.
+- FastAPI still returns `auto_reply_runtime_enabled=false`; the modal explicitly distinguishes a persisted policy from an active runtime and never claims that AI is replying automatically. Releasing takeover does not claim that Auto-Reply has resumed.
+- The “Simpan Pengaturan” footer was changed to “Tutup” because the state mutations are performed immediately through FastAPI.
+- Commits: `07d248a6564f823d92507192d44158a9d443cba3`, `f99df0f0ffd07be07771571963c18a928d0ffe5a`, `c53c3a5387294d5f93bcce69632948e1c9c044be`, `4b794326e52227c79d31491e4a0b474805903e79`.
+- No E2E, build, typecheck, CI, device QA, Supabase mutation, staging or deployment was run. WP-06 remains `in_progress / integration_contract_corrected / acceptance_not_verified`; this is a source/UI correction, not phase completion.
