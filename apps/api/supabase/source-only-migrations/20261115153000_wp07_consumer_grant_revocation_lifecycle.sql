@@ -17,7 +17,7 @@ create table if not exists public.agent_consumer_grant_events (
 );
 create or replace function public.audit_agent_consumer_grant_created()
 returns trigger language plpgsql security definer set search_path = ''
-as $
+as $$
 begin
   insert into public.agent_consumer_grant_events(
     grant_id,requester_user_id,owner_user_id,agent_id,actor_user_id,
@@ -36,7 +36,7 @@ begin
   );
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists agent_consumer_grant_created_audit on public.agent_consumer_grants;
 create trigger agent_consumer_grant_created_audit
