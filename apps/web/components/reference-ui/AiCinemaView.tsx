@@ -71,7 +71,7 @@ export interface AiMovieItem {
   bannerImage: string;
   episodesCount: number;
   totalViews: string;
-  rating: number;
+  rating: number | null;
   durationPerEp: string;
   releaseYear: string;
   producerHuman: {
@@ -87,7 +87,7 @@ export interface AiMovieItem {
   };
   synopsis: string;
   aiTechStack: string;
-  creatorMonthlyEarningsCredits: number;
+  creatorMonthlyEarningsCredits: number | null;
   isTrending?: boolean;
   isFeatured?: boolean;
   trailerTitle?: string;
@@ -734,8 +734,8 @@ export default function AiCinemaView({
 
               <span className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm text-amber-400 text-xs font-mono font-bold flex items-center gap-1">
                 <Star className="w-3.5 h-3.5 fill-amber-400" />
-                <span>{featuredMovie.rating}</span>
-                <span className="text-white/60">({featuredMovie.totalViews} Penonton)</span>
+                <span>{featuredMovie.rating == null ? 'Belum ada rating' : featuredMovie.rating}</span>
+                <span className="text-white/60">({featuredMovie.totalViews || 'Data penonton belum tersedia'})</span>
               </span>
             </div>
 
@@ -851,7 +851,7 @@ export default function AiCinemaView({
                 <div className="pt-2.5 border-t-2 border-slate-100 flex items-center justify-between text-xs">
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold text-slate-500">Total Royalti (70%):</span>
-                    <p className="font-mono font-black text-amber-900">+{film.creatorMonthlyEarningsCredits} Cr</p>
+                    <p className="font-mono font-black text-amber-900">{film.creatorMonthlyEarningsCredits == null ? 'Belum tersedia' : `+${film.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr`}</p>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -957,10 +957,10 @@ export default function AiCinemaView({
                     <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-xs text-white">
                       <span className="font-mono text-[11px] font-black text-amber-300 flex items-center gap-1">
                         <Star className="w-3 h-3 fill-amber-300" />
-                        {movie.rating}
+                        {movie.rating == null ? '—' : movie.rating}
                       </span>
                       <span className="text-[10px] text-slate-200 font-mono font-bold">
-                        {movie.episodesCount} Episode ({movie.totalViews})
+                        {movie.episodesCount} Episode · {movie.totalViews || 'Views belum tersedia'}
                       </span>
                     </div>
                   </div>
@@ -1003,7 +1003,7 @@ export default function AiCinemaView({
                     <div className="p-2 rounded-xl bg-amber-100 border border-slate-900 flex items-center justify-between text-[10px] text-amber-950">
                       <span className="font-bold">Royalti Kreator (70%):</span>
                       <span className="font-mono font-black">
-                        +{movie.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr/bln
+                        {movie.creatorMonthlyEarningsCredits == null ? 'Belum tersedia' : `+${movie.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr/bln`}
                       </span>
                     </div>
                   </div>
@@ -1702,7 +1702,7 @@ export default function AiCinemaView({
                 <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
                   <span>AI Tech Stack: {activeTheaterMovie.aiTechStack}</span>
                   <span className="text-amber-300 font-mono">
-                    Royalti Kreator: +{activeTheaterMovie.creatorMonthlyEarningsCredits} Cr/bln
+                    Royalti Kreator: {activeTheaterMovie.creatorMonthlyEarningsCredits == null ? 'Belum tersedia' : `+${activeTheaterMovie.creatorMonthlyEarningsCredits.toLocaleString('id-ID')} Cr/bln` }
                   </span>
                 </div>
               </div>
