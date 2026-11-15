@@ -92,7 +92,7 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
     </div>
     {error && <p role="alert" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {selected && <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-semibold">{selected.title.title}</h3><p className="text-xs text-slate-500">Maturity: {selected.title.maturity_rating} · {selected.premium_entitled ? "Premium entitlement aktif" : "Preview saja"}</p></div><button onClick={() => setSelected(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs">Tutup</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-semibold">{selected.title.title}</h3><p className="text-xs text-slate-500">Maturity: {selected.title.maturity_rating} · Hak akses dan entitlement diperiksa ulang oleh server saat sesi dimulai.</p></div><button onClick={() => setSelected(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs">Tutup</button></div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {selected.episodes.map(episode => <article key={episode.id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
           <div className="flex items-center justify-between gap-2"><h4 className="font-medium">Episode {episode.episode_number}: {episode.title}</h4><span className="text-[10px] uppercase text-slate-500">{episode.is_free_preview ? "Free preview" : "Premium"}</span></div>
