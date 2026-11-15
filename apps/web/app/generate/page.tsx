@@ -98,6 +98,10 @@ export default function GeneratePage() {
           setNotice("Penghapusan artefak membutuhkan pemulihan operator. Artefak tetap privat; hubungi dukungan Allpha.");
           return;
         }
+        if (statusPayload.job.status === "pending_reconciliation" && statusPayload.job.moderation_status === "review_required") {
+          setNotice("Output generation sedang menunggu pemeriksaan Human. Artefak tetap privat sampai reviewer menyetujui; jangan kirim ulang permintaan ini.");
+          return;
+        }
         if (statusPayload.job.status !== "succeeded" || !statusPayload.job.artifact_available) {
           throw new Error(statusPayload.job.error_code || "Artefak belum tersedia atau masih menunggu rekonsiliasi.");
         }
