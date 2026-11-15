@@ -2819,3 +2819,9 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Added FastAPI owner-scoped GET/PUT automation and POST takeover contracts. Web and Native owner controls now expose configuration/status and takeover actions while preserving existing visual styling.
 - Auto Reply execution intentionally remains disabled (`AUTO_REPLY_RUNTIME_NOT_CONNECTED`): the event consumer, budget reservation, ACL-filtered context, moderation and canonical publish hook are not yet connected. No UI reports autonomous replies as active. Takeover remains usable once the source migration is promoted.
 - Migration is source-only and has not been applied. No tests/build/typecheck, staging, live account journey or deployment performed. WP-06 remains in progress / runtime acceptance deferred.
+
+
+**AI Cinema secure playback follow-up (2026-11-15):**
+- Replaced the legacy catalogue playback response that returned signed media URLs directly with metadata-only episode projection. All private media URLs now require the authenticated playback-session endpoint and its access-policy, media-readiness, Premium entitlement and concurrent-stream checks.
+- Connected Web and Native playback controls to create a server-owned playback session before opening media. Web sends idempotent heartbeat events every 15 seconds and a finish event; Native creates an authenticated playback session before opening the temporary signed URL. No watch is marked qualified from a UI click or raw page impression.
+- Guest playback remains disabled until an approved policy explicitly enables it and a guest-session contract is implemented. Current source does not claim anonymous video playback is available.

@@ -1,18 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { getBrowserSupabase } from "../../lib/supabase";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type Title = { id: string; title: string };
 type Episode = { id: string; episode_number: number; title: string; synopsis?: string | null; duration_seconds?: number | null; is_free_preview: boolean; locked: boolean; playback_url?: string | null };
-type Playback = { title: { id: string; title: string; maturity_rating: string }; episodes: Episode[]; premium_entitled: boolean };
+type Playback = { title: { id: string; title: string; maturity_rating: string }; episodes: Episode[]; premium_entitled: boolean };\ntype ActivePlayback = { session_id: string; session_token: string; episode_id: string; playback_url: string; last_heartbeat_at: number };
 
 export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
   const [selected, setSelected] = useState<Playback | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState("");\n  const [activePlayback, setActivePlayback] = useState<ActivePlayback | null>(null);\n  const heartbeatLock = useRef(false);
 
   async function openTitle(title: Title) {
     setBusy(title.id); setError(""); setSelected(null);
@@ -31,6 +30,45 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
     } finally { setBusy(null); }
   }
 
+  async function startEpisode(episode: Episode) {
+    setError(""); setBusy(episode.id);
+    try {
+      const auth = getBrowserSupabase();
+      const session = auth ? (await auth.auth.getSession()).data.session : null;
+      if (!session?.access_token) throw new Error("Masuk untuk memulai sesi pemutaran. Preview publik dapat diaktifkan setelah kebijakan akses disetujui.");
+      const response = await fetch(apiBase + "/v1/cinema/titles/" + encodeURIComponent(selected!.title.id) + "/episodes/" + encodeURIComponent(episode.id) + "/playback-session", {
+        method: "POST", cache: "no-store",
+        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ idempotency_key: crypto.randomUUID() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.detail?.message || "Sesi pemutaran belum dapat dimulai.");
+      setActivePlayback({ session_id: data.session.id, session_token: data.session_token, episode_id: episode.id, playback_url: data.playback_url, last_heartbeat_at: Date.now() });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Sesi pemutaran gagal."); }
+    finally { setBusy(null); }
+  }
+
+  async function sendHeartbeat(position: number, finish = false) {
+    if (!activePlayback || heartbeatLock.current) return;
+    heartbeatLock.current = true;
+    try {
+      const auth = getBrowserSupabase();
+      const session = auth ? (await auth.auth.getSession()).data.session : null;
+      if (!session?.access_token) return;
+      await fetch(apiBase + "/v1/cinema/playback-sessions/" + activePlayback.session_id + (finish ? "/finish" : "/heartbeat"), {
+        method: "POST", cache: "no-store",
+        headers: { Authorization: "Bearer " + session.access_token, "Content-Type": "application/json", "X-Cinema-Session-Token": activePlayback.session_token },
+        body: JSON.stringify({ event_id: crypto.randomUUID(), position_seconds: Math.max(0, Math.floor(position)) }),
+      });
+    } finally { heartbeatLock.current = false; }
+  }
+
+  function onPlaybackTime(position: number) {
+    if (!activePlayback || Date.now() - activePlayback.last_heartbeat_at < 15000) return;
+    setActivePlayback(current => current ? { ...current, last_heartbeat_at: Date.now() } : current);
+    void sendHeartbeat(position);
+  }
+
   if (!titles.length) return null;
   return <section className="mx-auto my-8 w-full max-w-6xl px-4 sm:px-6">
     <div className="mb-4"><p className="text-xs font-semibold uppercase tracking-[.2em] text-cyan-700">Watch · Entitlement</p><h2 className="mt-2 text-2xl font-semibold">Tonton AI Cinema</h2><p className="mt-1 text-sm text-slate-500">Preview gratis tersedia sesuai penandaan episode. Episode premium memerlukan entitlement server yang aktif.</p></div>
@@ -43,7 +81,7 @@ export default function AiCinemaPlaybackPanel({ titles }: { titles: Title[] }) {
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {selected.episodes.map(episode => <article key={episode.id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
           <div className="flex items-center justify-between gap-2"><h4 className="font-medium">Episode {episode.episode_number}: {episode.title}</h4><span className="text-[10px] uppercase text-slate-500">{episode.is_free_preview ? "Free preview" : "Premium"}</span></div>
-          {episode.locked ? <div className="mt-3 rounded-lg border border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-700">Episode terkunci. <Link href="/billing" className="font-semibold text-cyan-700 underline">Lihat paket Premium</Link></div> : episode.playback_url ? <video className="mt-3 aspect-video w-full rounded-lg bg-black" controls preload="none" src={episode.playback_url}>Browser tidak mendukung video.</video> : <p className="mt-3 text-xs text-amber-700">Media belum siap untuk diputar.</p>}
+          {activePlayback?.episode_id === episode.id ? <video className="mt-3 aspect-video w-full rounded-lg bg-black" controls autoPlay preload="none" src={activePlayback.playback_url} onTimeUpdate={event => onPlaybackTime(event.currentTarget.currentTime)} onEnded={event => { void sendHeartbeat(event.currentTarget.currentTime, true); setActivePlayback(null); }}>Browser tidak mendukung video.</video> : <div className="mt-3 rounded-lg border border-slate-200 p-4 text-sm text-slate-600 dark:border-slate-700"><p>URL playback hanya diterbitkan setelah pemeriksaan sesi, media dan entitlement.</p><button disabled={busy !== null} onClick={() => void startEpisode(episode)} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy === episode.id ? "Menyiapkan sesi…" : episode.is_free_preview ? "Mulai Preview" : "Periksa Premium & Putar"}</button></div>}
           {episode.synopsis && <p className="mt-2 text-xs text-slate-500">{episode.synopsis}</p>}
         </article>)}
       </div>

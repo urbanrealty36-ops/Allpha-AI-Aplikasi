@@ -38,6 +38,24 @@ export function AiCinemaPlaybackCenter({ getAccessToken }: { getAccessToken?: ()
     finally { setBusy(null); }
   }
 
+  async function startEpisode(title: Playback["title"], episode: Episode) {
+    if (!getAccessToken) { setError("Masuk untuk memulai sesi pemutaran."); return; }
+    setBusy(episode.id); setError("");
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Sesi login diperlukan untuk memulai playback.");
+      const response = await fetch(apiBase + "/v1/cinema/titles/" + encodeURIComponent(title.id) + "/episodes/" + encodeURIComponent(episode.id) + "/playback-session", {
+        method: "POST", cache: "no-store",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ idempotency_key: "native-" + Date.now() + "-" + Math.random().toString(36).slice(2) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.detail?.message || "Sesi pemutaran belum dapat dimulai.");
+      await Linking.openURL(data.playback_url);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Playback gagal dimulai."); }
+    finally { setBusy(null); }
+  }
+
   return <View style={{ gap: 13 }}>
     <Text style={{ color: "#A5B4FC", fontSize: 11, fontWeight: "800", letterSpacing: 2 }}>AI CINEMA · WATCH</Text>
     <Text style={{ color: "#F7F8FF", fontSize: 22, fontWeight: "800" }}>Film & episode</Text>
@@ -53,7 +71,7 @@ export function AiCinemaPlaybackCenter({ getAccessToken }: { getAccessToken?: ()
       {selected.episodes.map(episode => <View key={episode.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 10, gap: 5 }}>
         <Text style={{ color: "#F7F8FF", fontWeight: "600" }}>Episode {episode.episode_number}: {episode.title}</Text>
         <Text style={{ color: "#A5ADC3", fontSize: 10 }}>{episode.is_free_preview ? "FREE PREVIEW" : "PREMIUM"}</Text>
-        {episode.locked ? <Pressable onPress={() => void Linking.openURL("https://allpha.web.id/billing")}><Text style={{ color: "#A5B4FC", fontSize: 12, textDecorationLine: "underline" }}>Terkunci · Lihat paket Premium</Text></Pressable> : episode.playback_url ? <Pressable onPress={() => void Linking.openURL(episode.playback_url!)}><Text style={{ color: "#86EFAC", fontSize: 12, fontWeight: "800" }}>Putar episode ↗</Text></Pressable> : <Text style={{ color: "#FBBF24", fontSize: 11 }}>Media belum siap.</Text>}
+        <Pressable disabled={busy !== null} onPress={() => void startEpisode(selected.title, episode)}><Text style={{ color: "#A5B4FC", fontSize: 12, fontWeight: "800" }}>{busy === episode.id ? "Menyiapkan sesi…" : episode.is_free_preview ? "Mulai Preview" : "Periksa Premium & Putar"}</Text></Pressable>
         {episode.synopsis ? <Text style={{ color: "#A5ADC3", fontSize: 11 }}>{episode.synopsis}</Text> : null}
       </View>)}
       <Text style={{ color: "#747E9A", fontSize: 10 }}>URL media bersifat sementara. Kebijakan wilayah, maturity, dan concurrent streams masih menunggu persetujuan.</Text>
