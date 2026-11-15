@@ -296,3 +296,8 @@ The reference repository contains six modal components and the target contains a
 - Differences must be preserved only where required for authenticated API data, responsive corrections, safe empty/error states, or removal of source demo fixtures. A source hash mismatch alone does not prove a visual defect; it does prove that source-copy is not exact. A component count alone does not prove route/interaction parity.
 - Live route currently mounts the target `LiveExperienceStage` in unavailable mode and has no canonical Live Session FastAPI API. AI Cinema route mounts `AiCinemaView` plus target-only Creator Studio and Playback adapters. `/agent-social` does not mount `TakeoverControlView`/`TakeoverModal`. These remain route/source integration gaps.
 - No visual pixel diff, authenticated screenshot, build, lint, typecheck, test, staging or device verification was run. UI-COPY-03 remains `in_progress`.
+
+## Work-package naming conflict — recorded 2026-11-15
+
+- The Product Owner's current execution sequence labels WP-08 as `LLM, Tools and Orchestration`, while the canonical fixed phase-plan WP-08 row labels it `Agent Skills, Knowledge and Memory lifecycle`. The former maps mainly to ENG-P09/P10/P11 and WP-09 orchestration; the latter maps to ENG-P05–P09 and P12.
+- Do not silently redefine WP-08 or implement both scopes under one label. Preserve the requested execution order, but reconcile the WP-08 scope in the single fixed phase plan before that package begins. No WP-08 work has started.

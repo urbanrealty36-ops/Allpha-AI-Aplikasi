@@ -2913,3 +2913,7 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - Exact Git blob comparison against reference `main` (`b6c9fc728d5d031a28b22fbbec9a546846900e87`) confirms `reference-globals.css` is byte-identical to source `app/globals.css`.
 - The current `LiveExperienceStage`, `AiCinemaView`, `FeedView`, `ProfileView`, `Navbar` and `BottomNav` target copies are not byte-identical to source. Some differences are intentional adapters/fail-closed states (e.g. no hard-coded unread count in BottomNav, API-driven Cinema catalog/empty state, responsive Live layout); full JSX/class/interaction parity still requires component-by-component classification and must not be inferred from file presence.
 - No visual/browser/device validation was run in this execution. UI-COPY-03 remains `in_progress`.
+
+**WP-08 scope reconciliation blocker (2026-11-15):**
+- The fixed phase plan's canonical WP-08 row defines `Agent Skills, Knowledge and Memory lifecycle` (ENG-P05–P09, P12, P34, P36). The latest Product Owner execution order describes WP-08 as `LLM, Tools and Orchestration` (which the fixed plan assigns across ENG-P09/P10/P11 and WP-09 orchestration). These are materially different scopes and must not be silently merged or relabelled.
+- Preserve the Product Owner's requested order WP-07 → WP-06 → WP-11 → WP-12 → WP-08, but before starting WP-08 update this single fixed plan with an explicit scope/owner mapping decision. Until then, no WP-08 work is started; the canonical ENG-P00–ENG-P37 ownership remains authoritative.
