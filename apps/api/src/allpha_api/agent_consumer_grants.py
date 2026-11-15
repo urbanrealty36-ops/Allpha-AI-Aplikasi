@@ -137,6 +137,18 @@ class AgentConsumerGrantStore:
             raise ConsumerGrantUnavailable("Consumer grant creation was not confirmed")
         return rows[0]
 
+    async def list_for_owner(self, *, owner_id: str, agent_id: str) -> list[dict[str, Any]]:
+        rows = await self._request(
+            "GET", "agent_consumer_grants",
+            params={
+                "select": "id,requester_user_id,agent_id,skill_id,granted_scopes,status,expires_at,granted_at,revoked_at,revoke_reason",
+                "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+                "order": "granted_at.desc", "limit": "100",
+            },
+        )
+        return rows if isinstance(rows, list) else []
+
+
     async def revoke(self, *, grant_id: str, owner_id: str, agent_id: str,
                      reason: str) -> dict[str, Any]:
         rows = await self._request(
