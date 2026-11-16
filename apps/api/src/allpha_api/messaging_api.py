@@ -127,6 +127,8 @@ class ConsumerGrantCreate(BaseModel):
     allowed_tool_keys: list[str] = Field(default_factory=list, max_length=5)
     max_tool_calls: int = Field(default=0, ge=0, le=5)
     max_tool_runtime_seconds: int = Field(default=0, ge=0, le=30)
+    max_tool_calls: int = Field(default=0, ge=0, le=5)
+    max_tool_runtime_seconds: int = Field(default=0, ge=0, le=30)
 
 
 class ConsumerGrantRevoke(BaseModel):
