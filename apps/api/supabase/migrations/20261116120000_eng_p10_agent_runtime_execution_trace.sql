@@ -7,6 +7,9 @@ alter table public.agent_runtime_tasks
   add column if not exists execution_event_seq bigint not null default 0
     check (execution_event_seq >= 0);
 
+create unique index if not exists agent_runtime_tasks_id_owner_uq
+  on public.agent_runtime_tasks(id,owner_user_id);
+
 create table if not exists public.agent_runtime_execution_events (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.agent_runtime_tasks(id) on delete cascade,
