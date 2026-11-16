@@ -1,8 +1,24 @@
 "use client";
 
-import LiveExperienceStage from "../../components/reference-ui/LiveExperienceStage";
+import { useState } from "react";
+import LiveExperienceStage, { type StageSlideItem } from "../../components/reference-ui/LiveExperienceStage";
+import LiveStageAgentPrepPanel from "../../components/live/LiveStageAgentPrepPanel";
 
-/** Source-faithful Live Stage shell. Runtime data and media actions remain disabled until a canonical Live session is returned by FastAPI. */
 export default function LivePage() {
-  return <LiveExperienceStage onBackToFeed={() => { window.location.assign("/feed"); }} userCredits={null} agentCredits={null} liveStateAvailable={false} />;
+  const [revision, setRevision] = useState(0);
+  const [stageTopic, setStageTopic] = useState<string | undefined>(undefined);
+  const [stageSlides, setStageSlides] = useState<StageSlideItem[] | undefined>(undefined);
+
+  function applyOutline(topic: string, slides: StageSlideItem[]) {
+    setStageTopic(topic);
+    setStageSlides(slides);
+    setRevision(value => value + 1);
+  }
+
+  return (
+    <>
+      <LiveExperienceStage key={revision} onBackToFeed={() => { window.location.assign("/feed"); }} userCredits={null} agentCredits={null} liveStateAvailable={false} initialTopic={stageTopic} initialSlides={stageSlides} />
+      <LiveStageAgentPrepPanel onApply={applyOutline} />
+    </>
+  );
 }
