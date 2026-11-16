@@ -46,6 +46,7 @@ def grant_row(**changes):
         "runtime_policy_version": "public-runtime-v4",
         **snapshot(),
         "granted_scopes": ["public_invoke"],
+        "allowed_tool_keys": [],
         "status": "active",
         "idempotency_key": "grant-key-1",
         "expires_at": None,
@@ -86,6 +87,49 @@ def test_create_persists_complete_policy_snapshot_and_owner_identity():
     ))
     assert result["status"] == "active"
     assert [call[0] for call in seen] == ["GET", "POST"]
+
+
+def test_create_accepts_only_explicit_registered_tool_allowlist_with_generation_scope():
+    seen = {}
+
+    async def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json=[])
+        payload = json.loads((await request.aread()).decode())
+        seen.update(payload)
+        return httpx.Response(201, json=[grant_row(
+            granted_scopes=["generation_invoke", "tool_invoke"],
+            allowed_tool_keys=["text.normalize"],
+        )])
+
+    result = asyncio.run(make_store(handler).create(
+        requester_id=REQUESTER, owner_id=OWNER, agent_id=AGENT, agent_version=2,
+        skill_id=SKILL, skill_version=3, runtime_policy_version="public-runtime-v4",
+        idempotency_key="grant-tool-key-1", expires_at=None, policy_snapshot=snapshot(),
+        granted_scopes=["generation_invoke", "tool_invoke"],
+        allowed_tool_keys=["text.normalize"],
+    ))
+    assert result["allowed_tool_keys"] == ["text.normalize"]
+    assert seen["granted_scopes"] == ["generation_invoke", "tool_invoke"]
+    assert seen["allowed_tool_keys"] == ["text.normalize"]
+
+
+def test_tool_invoke_requires_generation_and_explicit_allowlist():
+    store = make_store(lambda request: httpx.Response(200, json=[]))
+    with pytest.raises(ValueError, match="requires generation permission"):
+        asyncio.run(store.create(
+            requester_id=REQUESTER, owner_id=OWNER, agent_id=AGENT, agent_version=2,
+            skill_id=SKILL, skill_version=3, runtime_policy_version="public-runtime-v4",
+            idempotency_key="grant-tool-invalid-1", expires_at=None, policy_snapshot=snapshot(),
+            granted_scopes=["tool_invoke"], allowed_tool_keys=["text.normalize"],
+        ))
+    with pytest.raises(ValueError, match="allowlist"):
+        asyncio.run(store.create(
+            requester_id=REQUESTER, owner_id=OWNER, agent_id=AGENT, agent_version=2,
+            skill_id=SKILL, skill_version=3, runtime_policy_version="public-runtime-v4",
+            idempotency_key="grant-tool-invalid-2", expires_at=None, policy_snapshot=snapshot(),
+            granted_scopes=["generation_invoke", "tool_invoke"], allowed_tool_keys=[],
+        ))
 
 
 def test_create_replay_is_idempotent_but_changed_policy_conflicts():
