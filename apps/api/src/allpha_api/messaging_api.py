@@ -125,6 +125,8 @@ class ConsumerGrantCreate(BaseModel):
     expires_at: datetime | None = None
     granted_scopes: list[str] = Field(default_factory=lambda: ["public_invoke"], min_length=1, max_length=4)
     allowed_tool_keys: list[str] = Field(default_factory=list, max_length=5)
+    max_tool_calls: int = Field(default=0, ge=0, le=5)
+    max_tool_runtime_seconds: int = Field(default=0, ge=0, le=30)
 
 
 class ConsumerGrantRevoke(BaseModel):
@@ -173,7 +175,7 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
     if not agents or agents[0].get("status") != "active" or agents[0].get("visibility") != "public":
         raise HTTPException(409, detail={"code":"PUBLIC_AGENT_NOT_READY","message":"Grant hanya tersedia untuk Agent publik yang aktif."})
     skills = await _db("GET","agent_skills",params={
-        "select":"id,agent_id,version,status,tool_dependencies,required_permission_scopes","id":f"eq.{payload.skill_id}",
+        "select":"id,agent_id,version,status,tool_dependencies,required_permission_scopes,budget_limits","id":f"eq.{payload.skill_id}",
         "agent_id":f"eq.{agent_id}","status":"eq.published","limit":"1"})
     if not skills:
         raise HTTPException(409, detail={"code":"PUBLISHED_SKILL_REQUIRED","message":"Pilih Skill terpublikasi yang dimiliki Agent ini."})
@@ -189,6 +191,13 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
     if generation_scope and skill_dependencies and not has_tool_scope:
         raise HTTPException(422, detail={"code":"TOOL_GRANT_REQUIRED_FOR_SKILL","message":"Skill ini memiliki dependensi tool; grant harus menyebutkan tool_invoke dan allowlist eksplisit."})
     if has_tool_scope:
+        skill_budget = skills[0].get("budget_limits") if isinstance(skills[0].get("budget_limits"), dict) else {}
+        skill_max_calls = skill_budget.get("max_tool_calls", 1)
+        skill_max_runtime = skill_budget.get("max_runtime_seconds", 30)
+        if (not 1 <= payload.max_tool_calls <= 5 or payload.max_tool_calls > int(skill_max_calls)
+                or not 1 <= payload.max_tool_runtime_seconds <= 30
+                or payload.max_tool_runtime_seconds > int(skill_max_runtime)):
+            raise HTTPException(422, detail={"code":"CONSUMER_TOOL_BUDGET_INVALID","message":"Budget tool Consumer harus positif dan tidak boleh melampaui budget Skill yang dipin."})
         if not allowed_tool_keys or set(allowed_tool_keys) != set(skill_dependencies):
             raise HTTPException(422, detail={"code":"TOOL_ALLOWLIST_MUST_MATCH_SKILL","message":"Allowlist harus sama persis dengan seluruh dependensi tool Skill yang dipin."})
         try:
@@ -210,6 +219,8 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
                     or not isinstance(output_properties.get("text"), dict)
                     or output_properties["text"].get("type") != "string"):
                 raise HTTPException(409, detail={"code":"CONSUMER_TOOL_ADAPTER_UNAVAILABLE","message":"Tool belum memiliki adapter Generation yang aman untuk External Consumer."})
+    if not has_tool_scope and (payload.max_tool_calls != 0 or payload.max_tool_runtime_seconds != 0):
+        raise HTTPException(422, detail={"code":"CONSUMER_TOOL_BUDGET_WITHOUT_SCOPE","message":"Budget tool hanya dapat diberikan bersama scope tool_invoke."})
     text_router = getattr(request.app.state,"text_generation_router",None)
     if text_router is None:
         raise HTTPException(503, detail={"code":"AGENT_RUNTIME_NOT_READY","message":"Model Router belum tersedia."})
@@ -269,6 +280,8 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
             policy_snapshot=budget.policy_snapshot(),
             granted_scopes=granted_scopes,
             allowed_tool_keys=allowed_tool_keys,
+            max_tool_calls=payload.max_tool_calls,
+            max_tool_runtime_seconds=payload.max_tool_runtime_seconds,
         )
     except (TextGenerationRouterUnavailable, ConsumerGrantUnavailable, ValueError) as exc:
         raise HTTPException(503, detail={"code":"CONSUMER_GRANT_UNAVAILABLE","message":"Grant tidak dapat disimpan atau policy runtime belum siap."}) from exc
