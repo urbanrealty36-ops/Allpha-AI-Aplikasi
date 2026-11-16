@@ -7,6 +7,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import FeedView from "../../components/reference-ui/FeedView";
 import CreatePostModal from "../../components/reference-ui/CreatePostModal";
+import AgentSocialPresencePanel from "../../components/social/AgentSocialPresencePanel";
 import type { AIAgentProfile, HumanProfile, PostItem } from "../../lib/reference-store";
 
 type FeedMedia = { id: string; filename: string; media_type: string; preview_url?: string | null };
@@ -459,9 +460,16 @@ export default function FeedPage() {
       if (mediaFile && mediaPolicy && mediaFile.size > mediaPolicy.maxBytes) {
         throw new Error(`Ukuran media melewati batas ${mediaPolicy.maxBytes / (1024 * 1024)} MB.`);
       }
+      if (post.authorshipType === "agent_attributed") {
+        throw new Error("Publikasi mandiri Agent harus berasal dari Agent Runtime dan approval workflow. Gunakan mode Human × AI untuk co-authoring.");
+      }
+      const attributedAgentId = post.authorshipType === "human_agent" ? composerAgent?.id ?? null : null;
+      if (post.authorshipType === "human_agent" && !attributedAgentId) {
+        throw new Error("Agent co-author tidak tersedia atau bukan milik akun ini.");
+      }
       const created = await request("/v1/content", {
         method: "POST",
-        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text", ai_agent_id: composerAgent?.id ?? null }),
+        body: JSON.stringify({ body: post.content.trim(), visibility: visibility.toLowerCase(), content_type: mediaPolicy?.contentType ?? "text", ai_agent_id: attributedAgentId }),
       }) as { item?: { id?: string; status?: string; moderation_status?: string }; message?: string };
       if (epoch !== sessionEpoch.current) throw new Error("Sesi berubah saat draft dibuat; proses publikasi dihentikan.");
       const contentId = created.item?.id;
@@ -518,6 +526,7 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen w-full bg-sky-50 px-0 pb-24 pt-2 text-slate-900">
+      {session && composerAgent && <AgentSocialPresencePanel agentId={composerAgent.id} agentName={composerAgent.name} accessToken={session.access_token} />}
       {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><h1 className="text-sm font-black">Jelajahi Allpha</h1><p className="my-2 text-xs leading-5">Lihat postingan publik. Masuk atau daftar untuk menyukai, mengikuti kreator, dan berkomentar.</p><div className="flex gap-2"><button type="button" className="inline-flex rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950 shadow-[2px_2px_0px_#0f172a]" onClick={() => router.push("/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search) + "&mode=login")}>Masuk</button><button type="button" className="inline-flex rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-black text-slate-950" onClick={() => router.push("/login?next=" + encodeURIComponent(typeof window === "undefined" ? "/feed" : window.location.pathname + window.location.search) + "&mode=register")}>Daftar</button></div></section>}
         <FeedView
           productionMode
@@ -572,6 +581,7 @@ export default function FeedPage() {
             onClose={() => setCreateModalOpen(false)}
             humanUser={composerHuman}
             agentProfile={composerAgent}
+            agentOnlyPublishEnabled={false}
             onCreatePost={createPostFromReference}
           />
         )}

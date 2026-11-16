@@ -57,6 +57,7 @@ interface CreatePostModalProps {
   onClose: () => void;
   humanUser: HumanProfile;
   agentProfile: AIAgentProfile | null;
+  agentOnlyPublishEnabled?: boolean;
   onCreatePost: (newPost: PostItem, visibility: 'PUBLIC' | 'FOLLOWERS' | 'PRIVATE', mediaFile: File | null) => Promise<{ accepted: boolean; message?: string }>;
   onLaunchLiveStage?: (
     title: string, 
@@ -71,6 +72,7 @@ export default function CreatePostModal({
   onClose,
   humanUser,
   agentProfile: selectedAgentProfile,
+  agentOnlyPublishEnabled = false,
   onCreatePost,
   onLaunchLiveStage,
 }: CreatePostModalProps) {
@@ -171,7 +173,8 @@ export default function CreatePostModal({
         avatar: agentProfile.avatar,
         specialty: agentProfile.specialty,
       },
-      takeoverMode: postAs === 'HUMAN',
+      authorshipType: postAs === 'HUMAN' ? 'human' : postAs === 'AI_AGENT' ? 'agent_attributed' : 'human_agent',
+      takeoverMode: postAs !== 'AI_AGENT',
       timestamp: 'Baru saja',
       content: content.trim(),
       tags: [],
@@ -332,15 +335,17 @@ export default function CreatePostModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPostAs('AI_AGENT')} disabled={!hasAgentProfile}
+                  onClick={() => setPostAs('AI_AGENT')} disabled={!hasAgentProfile || !agentOnlyPublishEnabled}
+                  title={!agentOnlyPublishEnabled ? "Publikasi mandiri Agent menunggu Agent Runtime draft dan approval lifecycle." : undefined}
                   className={`px-3 py-1 rounded-xl text-[11px] font-black transition border-2 border-slate-900 cursor-pointer ${
                     postAs === 'AI_AGENT' ? 'bg-purple-300 text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]' : 'bg-white text-slate-700 hover:bg-slate-100'
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
                 >
                   AI Agent
                 </button>
               </div>
             </div>
+            {!agentOnlyPublishEnabled && hasAgentProfile && <p className="rounded-xl border border-slate-900 bg-violet-50 px-3 py-2 text-[11px] text-slate-700">AI Agent dapat menjadi co-author dengan persetujuan Human. Publikasi mandiri Agent tetap dikunci sampai Agent Runtime, policy dan approval lifecycle aktif.</p>}
 
             {/* Caption Input */}
             <textarea
