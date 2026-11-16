@@ -123,7 +123,7 @@ def test_tool_invoke_requires_generation_and_explicit_allowlist():
             idempotency_key="grant-tool-invalid-1", expires_at=None, policy_snapshot=snapshot(),
             granted_scopes=["tool_invoke"], allowed_tool_keys=["text.normalize"],
         ))
-    with pytest.raises(ValueError, match="allowlist"):
+    with pytest.raises(ValueError, match="explicitly allowed tools"):
         asyncio.run(store.create(
             requester_id=REQUESTER, owner_id=OWNER, agent_id=AGENT, agent_version=2,
             skill_id=SKILL, skill_version=3, runtime_policy_version="public-runtime-v4",
