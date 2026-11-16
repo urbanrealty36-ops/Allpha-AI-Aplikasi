@@ -79,9 +79,70 @@ declare
  v_item public.agent_memory_items%rowtype;
  v_type text; v_purpose text; v_class text; v_content text; v_digest text;
  v_expiry timestamptz; v_decision text; v_count integer; v_result jsonb;
+ v_enabled boolean; v_purposes text[]; v_sensitivities text[]; v_retention integer;
 begin
  if current_user<>'service_role' then raise exception 'MEMORY_SERVICE_ROLE_REQUIRED' using errcode='42501'; end if;
- if p_action='create_proposal' then
+ if p_action='set_policy' then
+  v_type:=p_payload->>'memory_type';
+  v_enabled:=coalesce((p_payload->>'enabled')::boolean,false);
+  v_retention:=coalesce((p_payload->>'retention_days')::integer,30);
+  if v_type not in ('working','episodic','semantic','procedural','long_term')
+   or v_retention not between 1 and 3650 or (v_type='working' and v_retention<>1)
+   or jsonb_typeof(coalesce(p_payload->'allowed_purposes','[]'::jsonb))<>'array'
+   or jsonb_typeof(coalesce(p_payload->'allowed_sensitivities','[]'::jsonb))<>'array'
+  then raise exception 'MEMORY_POLICY_INVALID' using errcode='22023'; end if;
+  select coalesce(array_agg(distinct value order by value),'{}'::text[]) into v_purposes
+   from jsonb_array_elements_text(coalesce(p_payload->'allowed_purposes','[]'::jsonb)) as x(value);
+  select coalesce(array_agg(distinct value order by value),'{}'::text[]) into v_sensitivities
+   from jsonb_array_elements_text(coalesce(p_payload->'allowed_sensitivities','[]'::jsonb)) as x(value);
+  if v_enabled and (
+   p_payload->>'consent_version'<>'allpha.memory.v1'
+   or cardinality(v_purposes)=0 or not(v_purposes <@ array['agent_generation_context','agent_runtime_context','workflow_context','personalization_context']::text[])
+   or cardinality(v_sensitivities)=0 or not(v_sensitivities <@ array['public','internal','confidential','restricted']::text[])
+  ) then raise exception 'MEMORY_CONSENT_REQUIRED' using errcode='42501'; end if;
+  if p_agent_id is not null and not exists(
+   select 1 from public.agent_ownerships o where o.agent_id=p_agent_id and o.owner_user_id=p_owner_user_id and o.status='active'
+  ) then raise exception 'MEMORY_AGENT_OWNERSHIP_REQUIRED' using errcode='42501'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_owner_user_id::text||':'||coalesce(p_agent_id::text,'personal')||':'||v_type,0));
+  select * into v_policy from public.agent_memory_policies p
+   where p.owner_user_id=p_owner_user_id and p.agent_id is not distinct from p_agent_id and p.memory_type=v_type for update;
+  if found and v_policy.enabled=v_enabled
+   and v_policy.consent_version is not distinct from case when v_enabled then p_payload->>'consent_version' else null end
+   and v_policy.allowed_purposes=v_purposes and v_policy.allowed_sensitivities=v_sensitivities
+   and v_policy.retention_days=v_retention
+  then return to_jsonb(v_policy); end if;
+  if found then
+   update public.agent_memory_policies set enabled=v_enabled,
+    consent_version=case when v_enabled then p_payload->>'consent_version' else null end,
+    consent_granted_at=case when v_enabled then now() else null end,
+    consent_revoked_at=case when v_enabled then null else now() end,
+    allowed_purposes=v_purposes,allowed_sensitivities=v_sensitivities,
+    retention_days=v_retention,policy_version=policy_version+1,updated_at=now()
+   where id=v_policy.id returning * into v_policy;
+  else
+   insert into public.agent_memory_policies(owner_user_id,agent_id,memory_type,enabled,consent_version,
+    consent_granted_at,consent_revoked_at,allowed_purposes,allowed_sensitivities,retention_days,policy_version)
+   values(p_owner_user_id,p_agent_id,v_type,v_enabled,
+    case when v_enabled then p_payload->>'consent_version' else null end,
+    case when v_enabled then now() else null end,case when v_enabled then null else now() end,
+    v_purposes,v_sensitivities,v_retention,1) returning * into v_policy;
+  end if;
+  with invalidated as (
+   update public.agent_memory_items set status='expired',content='[policy version changed]',
+    source_ref='{}'::jsonb,provenance='{}'::jsonb,confidence=null,updated_at=now()
+   where policy_id=v_policy.id and status in ('proposed','active')
+   returning id,agent_id,policy_id,memory_type,content_sha256
+  )
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,event_type,details)
+  select p_owner_user_id,e.agent_id,e.policy_id,e.id,'memory_expired',
+   jsonb_build_object('memory_type',e.memory_type,'content_sha256',e.content_sha256,'reason','policy_version_changed','content_scrubbed',true)
+  from invalidated e;
+  insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,actor_user_id,event_type,details)
+  values(p_owner_user_id,p_agent_id,v_policy.id,p_owner_user_id,
+   case when v_enabled then 'policy_enabled' else 'policy_disabled' end,
+   jsonb_build_object('memory_type',v_type,'policy_version',v_policy.policy_version,'retention_days',v_retention));
+  return to_jsonb(v_policy);
+ elsif p_action='create_proposal' then
   v_type:=p_payload->>'memory_type'; v_purpose:=p_payload->>'purpose'; v_class:=p_payload->>'classification';
   v_content:=p_payload->>'content'; v_digest:=p_payload->>'content_sha256'; v_expiry:=(p_payload->>'retention_expires_at')::timestamptz;
   select * into v_policy from public.agent_memory_policies p where p.id=(p_payload->>'policy_id')::uuid
