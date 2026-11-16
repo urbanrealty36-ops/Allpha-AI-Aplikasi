@@ -46,7 +46,7 @@ export default function AgentRuntimeTracePage() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [tools, setTools] = useState<RegisteredTool[]>([]);
   const [selectedSkillId, setSelectedSkillId] = useState("");
-  const [planJson, setPlanJson] = useState('[\\n  {\\n    "step_id": "normalize",\\n    "tool_key": "text.normalize",\\n    "inputs": { "text": "  Contoh   input  " },\\n    "bindings": {}\\n  },\\n  {\\n    "step_id": "truncate",\\n    "tool_key": "text.truncate",\\n    "inputs": { "max_chars": 80 },\\n    "bindings": { "text": { "step_id": "normalize", "path": "text" } }\\n  }\\n]');
+  const [planJson, setPlanJson] = useState('[\n  {\n    "step_id": "normalize",\n    "tool_key": "text.normalize",\n    "inputs": { "text": "  Contoh   input  " },\n    "bindings": {}\n  },\n  {\n    "step_id": "truncate",\n    "tool_key": "text.truncate",\n    "inputs": { "max_chars": 80 },\n    "bindings": { "text": { "step_id": "normalize", "path": "text" } }\n  }\n]');
   const [catalogError, setCatalogError] = useState("");
   const [notice, setNotice] = useState("");
   const [creating, setCreating] = useState(false);
