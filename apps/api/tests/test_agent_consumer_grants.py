@@ -202,6 +202,31 @@ def test_resolve_requires_exact_policy_snapshot_and_scope():
     assert stale is None
 
 
+def test_resolve_tool_scope_requires_exact_allowlist_and_grant_budgets():
+    row = grant_row(
+        granted_scopes=["generation_invoke", "tool_invoke"],
+        allowed_tool_keys=["text.normalize"],
+        max_tool_calls=1, max_tool_runtime_seconds=3,
+    )
+    seen = {}
+
+    async def handler(request):
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(200, json=[row])
+
+    result = asyncio.run(make_store(handler).resolve(
+        requester_id=REQUESTER, owner_id=OWNER, agent_id=AGENT, agent_version=2,
+        skill_id=SKILL, skill_version=3, runtime_policy_version="public-runtime-v4",
+        policy_snapshot=snapshot(), required_scope="tool_invoke",
+        allowed_tool_keys=["text.normalize"], max_tool_calls=1, max_tool_runtime_seconds=3,
+    ))
+    assert result == row
+    assert seen["params"]["granted_scopes"] == "cs.{tool_invoke}"
+    assert seen["params"]["allowed_tool_keys"] == "cs.{text.normalize}"
+    assert seen["params"]["max_tool_calls"] == "eq.1"
+    assert seen["params"]["max_tool_runtime_seconds"] == "eq.3"
+
+
 def test_revoke_is_idempotent_and_scoped_to_owner_and_agent():
     calls = []
 
