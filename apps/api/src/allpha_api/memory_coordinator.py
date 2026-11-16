@@ -140,29 +140,58 @@ class MemoryCoordinator:
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
         if purpose not in PURPOSES:return []
         if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
+        if not isinstance(max_chars,int) or isinstance(max_chars,bool) or max_chars<1:return []
         ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
         if not ownership:return []
         policies=await self.policies(owner_id,agent_id)
-        enabled=[p for p in policies if p["enabled"] and not p.get("consent_revoked_at") and purpose in (p.get("allowed_purposes") or [])]
+        enabled=[p for p in policies if p["enabled"] and not p.get("consent_revoked_at")
+                 and p.get("consent_version")==CONSENT_VERSION and purpose in (p.get("allowed_purposes") or [])]
         if not enabled:return []
         await self.expire(owner_id,agent_id)
-        policy_ids=[p["id"] for p in enabled]; versions={p["id"]:p["policy_version"] for p in enabled}; sensitivities={p["id"]:set(p.get("allowed_sensitivities") or []) for p in enabled}
-        p={"select":"id,memory_type,content,classification,source_ref,provenance,confidence,version,content_sha256,policy_id,policy_version,created_at",
-           "owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","policy_id":f"in.({','.join(policy_ids)})",
-           "purpose":f"eq.{purpose}","status":"eq.active","retention_expires_at":f"gt.{datetime.now(timezone.utc).isoformat()}",
-           "classification":f"in.({','.join(sorted(set().union(*(s for s in sensitivities.values()))))})",
-           "order":"created_at.desc","limit":"30"}
-        if query:p["search_vector"]="plfts.simple."+query
-        rows=await self.db("GET","agent_memory_items",params=p)
-        if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
+        policy_ids=[p["id"] for p in enabled]
+        versions={p["id"]:p["policy_version"] for p in enabled}
+        sensitivities={p["id"]:set(p.get("allowed_sensitivities") or []) for p in enabled}
+        allowed_sensitivities=sorted(set().union(*sensitivities.values()))
+        if not allowed_sensitivities:return []
+        normalized_query=str(query).strip()[:300] if query is not None else None
+        if normalized_query=="":normalized_query=None
+        rows=await self.db("POST","rpc/agent_memory_search",body={
+            "p_owner_user_id":owner_id,
+            "p_agent_id":agent_id,
+            "p_policy_ids":policy_ids,
+            "p_purpose":purpose,
+            "p_allowed_sensitivities":allowed_sensitivities,
+            "p_query":normalized_query,
+            "p_max_sensitivity":max_sensitivity,
+            "p_limit":max(1,min(limit,30)),
+        })
+        if not isinstance(rows,list):
+            raise MemoryUnavailable("Memory retrieval RPC returned an invalid result")
         sensitivity_rank={name:index for index,name in enumerate(SENSITIVITIES)}
         out=[]; used=0
-        for row in rows or []:
-            if len(out)>=max(1,min(limit,30)):break
-            if row["policy_version"]!=versions.get(row["policy_id"]) or row.get("classification") not in sensitivities.get(row["policy_id"],set()):continue
-            if max_sensitivity is not None and sensitivity_rank.get(row.get("classification"),99)>sensitivity_rank[max_sensitivity]:continue
-            content=str(row["content"]); remaining=max_chars-used
+        for row in rows:
+            policy_id=row.get("policy_id")
+            classification=row.get("classification")
+            if policy_id not in versions or row.get("policy_version")!=versions.get(policy_id):
+                raise MemoryDenied("Memory policy changed during retrieval")
+            if classification not in sensitivities.get(policy_id,set()):
+                raise MemoryDenied("Memory classification is outside the current owner policy")
+            if max_sensitivity is not None and sensitivity_rank.get(classification,99)>sensitivity_rank[max_sensitivity]:
+                raise MemoryDenied("Memory retrieval exceeded the requested sensitivity ceiling")
+            content=str(row.get("content") or "")
+            digest=hashlib.sha256(content.encode()).hexdigest()
+            if not content or digest!=row.get("content_sha256"):
+                raise MemoryUnavailable("Memory content digest verification failed")
+            remaining=max_chars-used
             if remaining<=0:break
-            content=content[:remaining]; used+=len(content)
-            out.append({**row,"content":content,"retrieval_method":"keyword" if query else "metadata"})
+            bounded=content[:remaining]
+            used+=len(bounded)
+            score=row.get("retrieval_score",0)
+            try:score=float(score or 0)
+            except (TypeError,ValueError):raise MemoryUnavailable("Memory retrieval score is invalid")
+            if not (score==score and abs(score)!=float("inf")):
+                raise MemoryUnavailable("Memory retrieval score is not finite")
+            out.append({**row,"content":bounded,"retrieval_method":"keyword" if normalized_query else "metadata",
+                        "retrieval_score":score})
+            if used>=max_chars:break
         return out
