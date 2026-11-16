@@ -157,7 +157,7 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
     url, key = _database()
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     params = {
-        "select": "id,requester_user_id,owner_user_id,agent_id,agent_version,skill_id,skill_version,runtime_policy_version,capability_id,granted_scopes,allowed_tool_keys,status,expires_at,credit_scheme_version,approval_reference,tariff_version,entitlement_version,max_usage_units,max_cost_microunits,cost_unit,pricing_version,payer_role,allow_success_settlement,allow_definitive_failure_release,allow_partial_settlement",
+        "select": "id,requester_user_id,owner_user_id,agent_id,agent_version,skill_id,skill_version,runtime_policy_version,capability_id,granted_scopes,allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds,status,expires_at,credit_scheme_version,approval_reference,tariff_version,entitlement_version,max_usage_units,max_cost_microunits,cost_unit,pricing_version,payer_role,allow_success_settlement,allow_definitive_failure_release,allow_partial_settlement",
         "id": f"eq.{grant_id}",
         "requester_user_id": f"eq.{job.get('owner_user_id')}",
         "owner_user_id": f"eq.{job.get('agent_owner_user_id')}",
@@ -215,10 +215,17 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
     skill_snapshot = job.get("skill_snapshot") if isinstance(job.get("skill_snapshot"), dict) else {}
     dependencies = skill_snapshot.get("tool_dependencies") if isinstance(skill_snapshot.get("tool_dependencies"), list) else []
     if dependencies:
+        skill_budget = skill_snapshot.get("budget_limits") if isinstance(skill_snapshot.get("budget_limits"), dict) else {}
+        max_tool_calls = grant.get("max_tool_calls")
+        max_tool_runtime = grant.get("max_tool_runtime_seconds")
         if ("tool_invoke" not in scopes or set(allowed_tools) != set(dependencies)
-                or any(key != "text.normalize" for key in dependencies)):
+                or any(key != "text.normalize" for key in dependencies)
+                or not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool)
+                or max_tool_calls < len(dependencies) or max_tool_calls > min(5, int(skill_budget.get("max_tool_calls", 1)))
+                or not isinstance(max_tool_runtime, int) or isinstance(max_tool_runtime, bool)
+                or not 1 <= max_tool_runtime <= min(30, int(skill_budget.get("max_runtime_seconds", 30)))):
             return None
-    elif allowed_tools or "tool_invoke" in scopes:
+    elif allowed_tools or "tool_invoke" in scopes or grant.get("max_tool_calls") != 0 or grant.get("max_tool_runtime_seconds") != 0:
         return None
     if job.get("knowledge_context_sha256") and "knowledge_public_read" not in scopes:
         return None
@@ -441,6 +448,8 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
                 policy_version=str(job["runtime_policy_version"]),
                 granted_scopes=tuple(grant.get("granted_scopes") or ()),
                 allowed_tool_keys=tuple(grant.get("allowed_tool_keys") or ()),
+                max_tool_calls=int(grant.get("max_tool_calls") or 0),
+                max_tool_runtime_seconds=int(grant.get("max_tool_runtime_seconds") or 0),
                 allowed_memory_scope=(),
                 budget_reserved=True,
                 metering_ready=True,
