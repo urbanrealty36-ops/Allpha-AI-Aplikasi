@@ -224,6 +224,13 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def list_agent_tasks(self, owner_id: str, agent_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        return await self.request("GET", "agent_runtime_tasks", params={
+            "select": "id,session_id,agent_id,skill_id,agent_version,skill_version,state,tool_key,trace_id,created_at,updated_at,completed_at,error_code,execution_event_seq",
+            "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+            "order": "created_at.desc", "limit": str(max(1, min(limit, 100))),
+        }) or []
+
     async def list_tasks(self, owner_id: str, session_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
         return await self.request("GET", "agent_runtime_tasks", params={
             "select": "id,session_id,agent_id,skill_id,state,tool_key,trace_id,created_at,updated_at,completed_at,error_code",
