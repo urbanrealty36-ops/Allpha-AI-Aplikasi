@@ -30,12 +30,27 @@ class SessionCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ToolPlanBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    step_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+    path: str = Field(default="", max_length=500)
+
+
+class ToolPlanStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    step_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+    tool_key: str = Field(min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    bindings: dict[str, ToolPlanBinding] = Field(default_factory=dict)
+
+
 class TaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     session_id: uuid.UUID
     skill_id: uuid.UUID
-    tool_key: str = Field(min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
+    tool_key: str | None = Field(default=None, min_length=3, max_length=100, pattern=r"^[a-z][a-z0-9_.:-]+$")
     inputs: dict[str, Any] = Field(default_factory=dict)
+    tool_plan: list[ToolPlanStep] | None = Field(default=None, max_length=5)
     idempotency_key: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
     budget_limits: dict[str, int] = Field(default_factory=dict)
 
@@ -73,6 +88,295 @@ async def _owned_session(store: AgentRuntimeStore, owner_id: str, session_id: st
     if not row:
         raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Sesi tidak ditemukan."})
     return row
+
+
+def _stored_tool_plan(row: dict[str, Any]) -> list[dict[str, Any]] | None:
+    payload = row.get("input_payload")
+    if not isinstance(payload, dict) or payload.get("_runtime_plan_version") != 1:
+        return None
+    steps = payload.get("steps")
+    if not isinstance(steps, list) or not 1 <= len(steps) <= 5:
+        raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_INVALID", "message": "Rencana tool tersimpan tidak valid."})
+    return steps
+
+
+def _resolve_plan_inputs(step: dict[str, Any], outputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    inputs = dict(step.get("inputs") or {})
+    bindings = step.get("bindings") or {}
+    if not isinstance(bindings, dict):
+        raise AgentRuntimeBlocked("tool plan bindings are invalid")
+    for target, binding in bindings.items():
+        if not isinstance(target, str) or target in inputs or not isinstance(binding, dict):
+            raise AgentRuntimeBlocked("tool plan binding target is invalid")
+        source_id = binding.get("step_id")
+        if source_id not in outputs:
+            raise AgentRuntimeBlocked("tool plan dependency output is unavailable")
+        value: Any = outputs[source_id]
+        path = binding.get("path", "")
+        if not isinstance(path, str) or len(path) > 500:
+            raise AgentRuntimeBlocked("tool plan binding path is invalid")
+        for segment in path.split(".") if path else []:
+            if isinstance(value, dict) and segment in value:
+                value = value[segment]
+            elif isinstance(value, list) and segment.isdigit() and int(segment) < len(value):
+                value = value[int(segment)]
+            else:
+                raise AgentRuntimeBlocked("tool plan binding path does not resolve")
+        inputs[target] = value
+    return inputs
+
+
+async def _execute_planned_task(
+    store: AgentRuntimeStore, owner_id: str, task_id: str, initial_row: dict[str, Any]
+) -> dict[str, Any]:
+    row = initial_row
+    if row.get("state") == "succeeded":
+        return {"task": row, "idempotent_replay": True}
+    if row.get("state") == "cancelled":
+        raise HTTPException(status_code=409, detail={"code": "TASK_CANCELLED", "message": "Task telah dibatalkan."})
+    resuming = row.get("state") == "executing"
+    if not resuming and row.get("state") != "created":
+        raise HTTPException(status_code=409, detail={"code": "TASK_NOT_EXECUTABLE", "message": "Task tidak berada pada state yang dapat dieksekusi."})
+    if resuming:
+        try:
+            lease_expiry = datetime.fromisoformat(str(row.get("lease_expires_at")).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=409, detail={"code": "TASK_LEASE_UNKNOWN", "message": "Lease task tidak dapat diverifikasi; replay tidak dilakukan."})
+        if lease_expiry.tzinfo is None or lease_expiry > datetime.now(timezone.utc):
+            raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task masih memiliki lease aktif."})
+        if row.get("effect_outcome") in {"started", "unknown"}:
+            raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Outcome efek tidak diketahui; replay otomatis dilarang."})
+
+    plan = _stored_tool_plan(row)
+    if plan is None:
+        raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_MISSING", "message": "Rencana tool tidak tersedia."})
+    agent = await store.get_agent(owner_id, str(row["agent_id"]))
+    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]))
+    if not agent or not skill or skill.get("status") != "published":
+        raise HTTPException(status_code=409, detail={"code": "PINNED_AGENT_SKILL_UNAVAILABLE", "message": "Agent atau Skill tidak lagi tersedia."})
+    if int(agent["version"]) != int(row["agent_version"]) or int(skill["version"]) != int(row["skill_version"]):
+        raise HTTPException(status_code=409, detail={"code": "PINNED_VERSION_CHANGED", "message": "Versi Agent atau Skill berubah; buat task baru."})
+
+    tool_keys = [step.get("tool_key") for step in plan]
+    step_ids = [step.get("step_id") for step in plan]
+    if (any(not isinstance(key, str) for key in tool_keys)
+            or any(not isinstance(step_id, str) for step_id in step_ids)
+            or len(set(step_ids)) != len(step_ids)
+            or not set(tool_keys).issubset(set(skill.get("tool_dependencies") or []))):
+        raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_SKILL_SCOPE_DENIED", "message": "Rencana melampaui dependensi tool Skill."})
+    seen_steps: set[str] = set()
+    for step in plan:
+        if not isinstance(step.get("inputs"), dict) or not isinstance(step.get("bindings"), dict):
+            raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_INVALID", "message": "Input atau binding langkah tidak valid."})
+        for binding in step["bindings"].values():
+            if not isinstance(binding, dict) or binding.get("step_id") not in seen_steps:
+                raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_DEPENDENCY_INVALID", "message": "Dependensi hanya boleh menunjuk langkah yang telah selesai sebelumnya."})
+        seen_steps.add(str(step["step_id"]))
+        try:
+            definition = get_tool(step["tool_key"])
+        except UnknownToolError as exc:
+            raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool pada rencana tidak terdaftar."}) from exc
+        if getattr(definition, "execution_class", "side_effecting") != "pure":
+            raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_SIDE_EFFECT_BLOCKED", "message": "Tool dengan efek samping memerlukan kontrak receipt dan approval khusus."})
+
+    capabilities: dict[str, dict[str, Any]] = {}
+    for tool_key in sorted(set(tool_keys)):
+        capability = await store.get_approved_capability(str(row["agent_id"]), tool_key)
+        if not capability or not capability.get("runtime_policy_id"):
+            raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_UNAVAILABLE", "message": "Setiap tool harus terikat ke capability dan policy runtime yang disetujui."})
+        capabilities[tool_key] = capability
+    policy_ids = {item.get("runtime_policy_id") for item in capabilities.values()}
+    policy_versions = {item.get("policy_version") for item in capabilities.values()}
+    if len(policy_ids) != 1 or len(policy_versions) != 1:
+        raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_POLICY_MISMATCH", "message": "Semua tool dalam satu rencana harus memakai policy runtime yang sama."})
+    policy = await store.get_approved_runtime_policy(str(row["agent_id"]), str(next(iter(policy_ids))))
+    if not policy or policy.get("policy_version") != next(iter(policy_versions)):
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_UNAVAILABLE", "message": "Policy runtime tidak aktif atau tidak cocok."})
+    try:
+        canonical_policy = json.dumps(policy["policy_document"], ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":"), allow_nan=False).encode("utf-8")
+        actual_digest = hashlib.sha256(canonical_policy).hexdigest()
+    except (KeyError, TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_INVALID", "message": "Dokumen policy tidak valid."}) from exc
+    if actual_digest != policy.get("policy_digest"):
+        raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_DIGEST_MISMATCH", "message": "Digest policy tidak cocok."})
+    approved_keys = set(policy.get("approved_tool_keys") or [])
+    policy_scopes = set(policy.get("required_permission_scopes") or [])
+    skill_scopes = set(skill.get("required_permission_scopes") or [])
+    if not set(tool_keys).issubset(approved_keys) or not skill_scopes.issubset(policy_scopes):
+        raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_TOOL_DENIED", "message": "Policy runtime tidak menyetujui semua tool atau scope Skill."})
+    for capability in capabilities.values():
+        if not set(capability.get("required_permission_scopes") or []).issubset(policy_scopes):
+            raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_SCOPE_DENIED", "message": "Scope capability melampaui policy runtime."})
+
+    lease_token = str(uuid.uuid4())
+    claimed = await store.claim_task(owner_id, task_id, lease_token, lease_seconds=60)
+    if not claimed:
+        latest = await store.get_task(owner_id, task_id)
+        if latest and latest.get("state") == "succeeded":
+            return {"task": latest, "idempotent_replay": True}
+        raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau lease tidak tersedia."})
+    row = claimed
+    skill_budget = skill.get("budget_limits") or {}
+    task_budget = row.get("task_budget_limits") or {}
+    max_runtime = min(30, max(1, int(skill_budget.get("max_runtime_seconds", 30))),
+                      max(1, int(task_budget.get("max_runtime_seconds", skill_budget.get("max_runtime_seconds", 30)))))
+    max_calls = min(5, max(1, int(skill_budget.get("max_tool_calls", 1))),
+                    max(1, int(task_budget.get("max_tool_calls", skill_budget.get("max_tool_calls", 1)))))
+    if max_calls < len(plan):
+        raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_BUDGET_EXCEEDED", "message": "Budget tool tidak mencukupi jumlah langkah."})
+    auth = RuntimeAuthorization(
+        authenticated_owner_id=owner_id, owned_agent_id=str(row["agent_id"]),
+        agent_version=int(agent["version"]), skill_id=str(row["skill_id"]),
+        skill_version=int(skill["version"]), skill_published=True,
+        policy_approved=True, policy_version=str(policy["policy_version"]),
+        approved_tool_keys=tuple(policy.get("approved_tool_keys") or []),
+        granted_scopes=tuple(policy.get("required_permission_scopes") or []),
+    )
+
+    checkpoints = await store.list_checkpoints(task_id, limit=5)
+    outputs: dict[str, dict[str, Any]] = {}
+    completed_steps: list[dict[str, Any]] = []
+    invalid_checkpoint: dict[str, str] | None = None
+    if len(checkpoints) > len(plan) or int(row.get("checkpoint_seq") or 0) != len(checkpoints):
+        invalid_checkpoint = {"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Urutan checkpoint tidak cocok dengan rencana."}
+    if invalid_checkpoint is None:
+        for index, checkpoint in enumerate(checkpoints):
+            expected = plan[index]
+            expected_key = "step:" + str(expected["step_id"])
+            result_payload = checkpoint.get("result_payload")
+            if (int(checkpoint.get("sequence") or 0) != index + 1
+                    or checkpoint.get("step_key") != expected_key
+                    or checkpoint.get("input_fingerprint") != row.get("request_fingerprint")
+                    or not isinstance(result_payload, dict)
+                    or result_payload.get("step_id") != expected.get("step_id")
+                    or result_payload.get("tool_key") != expected.get("tool_key")
+                    or result_payload.get("state") != "succeeded"):
+                invalid_checkpoint = {"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Checkpoint tidak cocok dengan langkah yang dipin."}
+                break
+            try:
+                checkpoint_bytes = json.dumps(result_payload, ensure_ascii=False, sort_keys=True,
+                                              separators=(",", ":"), allow_nan=False).encode("utf-8")
+            except (TypeError, ValueError, UnicodeEncodeError):
+                invalid_checkpoint = {"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Payload checkpoint tidak valid."}
+                break
+            if hashlib.sha256(checkpoint_bytes).hexdigest() != checkpoint.get("checkpoint_hash"):
+                invalid_checkpoint = {"code": "RUNTIME_CHECKPOINT_DIGEST_MISMATCH", "message": "Digest checkpoint tidak cocok."}
+                break
+            output = result_payload.get("result")
+            if not isinstance(output, dict):
+                invalid_checkpoint = {"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Output langkah checkpoint tidak valid."}
+                break
+            outputs[str(expected["step_id"])] = output
+            completed_steps.append({"step_id": expected["step_id"], "tool_key": expected["tool_key"], "result": output, "resumed": True})
+    if invalid_checkpoint is not None:
+        failed = await store.finalize_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            state="failed", output_payload=None, error_code=invalid_checkpoint["code"],
+            event_log=list(row.get("event_log") or []),
+        )
+        if not failed:
+            raise AgentRuntimePersistenceError("invalid planned checkpoint could not be terminalized")
+        raise HTTPException(status_code=409, detail=invalid_checkpoint)
+
+    deadline = time.monotonic() + max_runtime
+    trace_events: list[dict[str, Any]] = []
+    try:
+        for index, step in enumerate(plan[len(completed_steps):], start=len(completed_steps)):
+            step_key = "step:" + str(step["step_id"])
+            inputs = _resolve_plan_inputs(step, outputs)
+            envelope = AgentTaskEnvelope(
+                task_id=task_id, task_version=int(row["task_version"]),
+                requester_id=owner_id, agent_id=str(row["agent_id"]),
+                agent_version=int(row["agent_version"]), owner_id=owner_id,
+                skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
+                input_classification="user_input", allowed_memory_scope=(),
+                allowed_tool_keys=tuple(tool_keys),
+                capability_scopes=tuple(policy.get("required_permission_scopes") or []),
+                idempotency_key=f"{row['idempotency_key']}:{step['step_id']}",
+                trace_id=str(row["trace_id"]), deadline_monotonic=deadline,
+                max_tool_calls=max_calls, max_runtime_seconds=max_runtime,
+            )
+            task = AgentTask(envelope)
+
+            async def persist_runtime_event(event: dict[str, Any], current_step_key: str = step_key) -> None:
+                event["step_key"] = current_step_key
+                saved = await store.append_execution_event(
+                    owner_id, task_id, lease_token, int(row["task_version"]), event,
+                )
+                if not saved:
+                    raise AgentRuntimePersistenceError("runtime execution event was not durably committed")
+
+            result = await _runtime.execute_tool(
+                task, auth, tool_key=str(step["tool_key"]), inputs=inputs,
+                event_sink=persist_runtime_event, step_key=step_key,
+            )
+            result_payload = {
+                "state": "succeeded", "step_id": step["step_id"],
+                "tool_key": step["tool_key"], "result": result["result"],
+            }
+            checkpoint_bytes = json.dumps(result_payload, ensure_ascii=False, sort_keys=True,
+                                          separators=(",", ":"), allow_nan=False).encode("utf-8")
+            if len(checkpoint_bytes) > 16_384:
+                raise AgentRuntimeBlocked("tool step checkpoint exceeded the task output limit")
+            checkpoint = await store.append_checkpoint(
+                owner_id, task_id, lease_token, int(row["task_version"]),
+                int(row.get("checkpoint_seq") or 0) + index + 1,
+                step_key, str(row["request_fingerprint"]),
+                hashlib.sha256(checkpoint_bytes).hexdigest(), result_payload,
+            )
+            if not checkpoint:
+                raise AgentRuntimePersistenceError("tool step checkpoint could not be durably committed")
+            outputs[str(step["step_id"])] = result["result"]
+            completed_steps.append({"step_id": step["step_id"], "tool_key": step["tool_key"], "result": result["result"], "resumed": False})
+            trace_events.extend(result.get("events") or [])
+
+        output_payload = {
+            "state": "succeeded", "tool_plan_version": 1,
+            "steps": completed_steps, "result": outputs[str(plan[-1]["step_id"])],
+            "policy_version": policy["policy_version"], "trace_id": row["trace_id"],
+            "idempotency_key": row["idempotency_key"], "events": trace_events,
+            "provider_execution": False,
+        }
+        output_bytes = json.dumps(output_payload, ensure_ascii=False, sort_keys=True,
+                                  separators=(",", ":"), allow_nan=False).encode("utf-8")
+        if len(output_bytes) > 65_536:
+            raise AgentRuntimeBlocked("tool plan aggregate output exceeded the task limit")
+        event_log = list(row.get("event_log") or []) + trace_events
+        completed = await store.finalize_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            state="succeeded", output_payload=output_payload, error_code=None,
+            event_log=event_log,
+        )
+        if not completed:
+            raise AgentRuntimePersistenceError("planned task result could not be durably committed")
+        return {"task": completed, "idempotent_replay": False}
+    except (AgentRuntimeBlocked, UnknownToolError) as exc:
+        partial = {
+            "state": "partially_succeeded" if completed_steps else "failed",
+            "tool_plan_version": 1, "steps": completed_steps,
+            "trace_id": row["trace_id"], "error_code": "TOOL_PLAN_STEP_FAILED",
+        } if completed_steps else None
+        failed = await store.finalize_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            state="partially_succeeded" if completed_steps else "failed",
+            output_payload=partial, error_code="TOOL_PLAN_STEP_FAILED",
+            event_log=list(row.get("event_log") or []) + trace_events,
+        )
+        if not failed:
+            raise AgentRuntimePersistenceError("planned task failure could not be durably committed") from exc
+        raise HTTPException(status_code=422, detail={"code": "TOOL_PLAN_STEP_FAILED", "message": "Salah satu langkah tool ditolak atau gagal; hasil langkah yang selesai tetap tersimpan."}) from exc
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if exc.status_code == 409 and str(detail.get("code", "")).startswith("RUNTIME_CHECKPOINT_"):
+            failed = await store.finalize_task(
+                owner_id, task_id, lease_token, int(row["task_version"]),
+                state="failed", output_payload=None, error_code=str(detail["code"]),
+                event_log=list(row.get("event_log") or []),
+            )
+            if not failed:
+                raise AgentRuntimePersistenceError("invalid planned checkpoint could not be terminalized") from exc
+        raise
 
 
 @router.post("/sessions", status_code=201)
@@ -122,16 +426,73 @@ async def create_task(payload: TaskCreate, request: Request,
         skill = await store.get_skill(owner_id, agent_id, str(payload.skill_id))
         if not agent or not skill or skill.get("status") != "published":
             raise HTTPException(status_code=404, detail={"code": "PUBLISHED_SKILL_NOT_FOUND", "message": "Skill terpublikasi tidak ditemukan."})
-        try:
-            tool = get_tool(payload.tool_key)
-        except UnknownToolError as exc:
-            raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool tidak terdaftar."}) from exc
-        if payload.tool_key not in (skill.get("tool_dependencies") or []):
-            raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Tool tidak tercantum pada Skill."})
+        dependencies = skill.get("tool_dependencies") or []
+        if not isinstance(dependencies, list):
+            raise HTTPException(status_code=409, detail={"code": "SKILL_TOOL_CONTRACT_INVALID", "message": "Kontrak dependensi tool Skill tidak valid."})
+
+        normalized_plan: list[dict[str, Any]] = []
+        if payload.tool_plan:
+            if payload.tool_key and payload.tool_key != payload.tool_plan[0].tool_key:
+                raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_PRIMARY_TOOL_MISMATCH", "message": "Tool utama harus sama dengan langkah pertama dalam rencana."})
+            prior_steps: set[str] = set()
+            for step in payload.tool_plan:
+                if step.step_id in prior_steps:
+                    raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_DUPLICATE_STEP", "message": "ID langkah dalam rencana harus unik."})
+                if step.tool_key not in dependencies:
+                    raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Semua tool dalam rencana harus tercantum pada Skill."})
+                try:
+                    tool = get_tool(step.tool_key)
+                except UnknownToolError as exc:
+                    raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool tidak terdaftar."}) from exc
+                if getattr(tool, "execution_class", "side_effecting") != "pure":
+                    raise HTTPException(status_code=403, detail={"code": "TOOL_PLAN_SIDE_EFFECT_BLOCKED", "message": "Rencana multi-langkah saat ini hanya menerima tool deterministik tanpa efek samping."})
+                bindings: dict[str, Any] = {}
+                properties = tool.input_schema.get("properties", {}) if isinstance(tool.input_schema, dict) else {}
+                for target, binding in step.bindings.items():
+                    if target in step.inputs or target not in properties:
+                        raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_BINDING_INVALID", "message": "Binding harus mengisi field input yang belum diisi dan terdaftar pada schema tool."})
+                    if binding.step_id not in prior_steps:
+                        raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_DEPENDENCY_ORDER_INVALID", "message": "Langkah hanya boleh memakai output dari langkah sebelumnya."})
+                    bindings[target] = {"step_id": binding.step_id, "path": binding.path}
+                normalized_plan.append({
+                    "step_id": step.step_id, "tool_key": step.tool_key,
+                    "inputs": step.inputs, "bindings": bindings,
+                })
+                prior_steps.add(step.step_id)
+            tool_key = normalized_plan[0]["tool_key"]
+            input_payload = {"_runtime_plan_version": 1, "steps": normalized_plan}
+            required_calls = len(normalized_plan)
+        else:
+            if not payload.tool_key:
+                raise HTTPException(status_code=422, detail={"code": "TASK_TOOL_REQUIRED", "message": "Pilih satu tool atau kirim rencana tool."})
+            try:
+                get_tool(payload.tool_key)
+            except UnknownToolError as exc:
+                raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool tidak terdaftar."}) from exc
+            if payload.tool_key not in dependencies:
+                raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Tool tidak tercantum pada Skill."})
+            tool_key, input_payload, required_calls = payload.tool_key, payload.inputs, 1
+
+        skill_budget = skill.get("budget_limits") or {}
+        skill_max_calls = skill_budget.get("max_tool_calls", 1)
+        if not isinstance(skill_max_calls, int) or isinstance(skill_max_calls, bool) or skill_max_calls < required_calls or skill_max_calls > 5:
+            raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_EXCEEDS_SKILL_BUDGET", "message": "Jumlah langkah melampaui batas pemanggilan tool pada Skill."})
+        requested_budget = dict(payload.budget_limits)
+        if "max_tool_calls" not in requested_budget:
+            requested_budget["max_tool_calls"] = required_calls
+        if set(requested_budget) - {"max_runtime_seconds", "max_tool_calls"} or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in requested_budget.values()):
+            raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_BUDGET", "message": "Budget task tidak valid."})
+        for key, value in requested_budget.items():
+            allowed = int(skill_budget.get(key, 30 if key == "max_runtime_seconds" else 1))
+            if value > allowed:
+                raise HTTPException(status_code=403, detail={"code": "TASK_BUDGET_EXCEEDS_SKILL_LIMIT", "message": "Budget task melampaui batas Skill."})
+        if requested_budget["max_tool_calls"] < required_calls:
+            raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_TOOL_BUDGET_TOO_SMALL", "message": "Batas pemanggilan tool tidak mencukupi jumlah langkah."})
+
         try:
             encoded = json.dumps({
                 "session_id": str(payload.session_id), "skill_id": str(payload.skill_id),
-                "tool_key": payload.tool_key, "inputs": payload.inputs, "budget_limits": payload.budget_limits,
+                "tool_key": tool_key, "input_payload": input_payload, "budget_limits": requested_budget,
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
         except (TypeError, ValueError, UnicodeEncodeError) as exc:
             raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_INPUT", "message": "Input task harus berupa JSON valid."}) from exc
@@ -139,22 +500,14 @@ async def create_task(payload: TaskCreate, request: Request,
             raise HTTPException(status_code=413, detail={"code": "TASK_INPUT_TOO_LARGE", "message": "Input task melebihi 16 KiB."})
         fingerprint = hashlib.sha256(encoded).hexdigest()
         trace_id = request.headers.get("x-request-id") or str(uuid.uuid4())
-        requested_budget = payload.budget_limits
-        if set(requested_budget) - {"max_runtime_seconds", "max_tool_calls"} or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in requested_budget.values()):
-            raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_BUDGET", "message": "Batas budget task tidak valid."})
-        skill_budget = skill.get("budget_limits") or {}
-        for key, value in requested_budget.items():
-            allowed = int(skill_budget.get(key, 30 if key == "max_runtime_seconds" else 1))
-            if value > allowed:
-                raise HTTPException(status_code=403, detail={"code": "TASK_BUDGET_EXCEEDS_SKILL_LIMIT", "message": "Budget task melampaui batas Skill."})
         body = {
             "owner_user_id": owner_id, "session_id": str(payload.session_id),
             "agent_id": agent_id, "skill_id": str(payload.skill_id),
             "agent_version": int(agent["version"]), "skill_version": int(skill["version"]),
             "state": "created", "idempotency_key": payload.idempotency_key,
-            "request_fingerprint": fingerprint, "tool_key": payload.tool_key,
-            "input_payload": payload.inputs, "task_budget_limits": requested_budget, "event_log": [_event("created", trace_id)],
-            "trace_id": trace_id,
+            "request_fingerprint": fingerprint, "tool_key": tool_key,
+            "input_payload": input_payload, "task_budget_limits": requested_budget,
+            "event_log": [_event("created", trace_id)], "trace_id": trace_id,
         }
         try:
             row = await store.create_task(body)
@@ -168,7 +521,6 @@ async def create_task(payload: TaskCreate, request: Request,
             raise
     except AgentRuntimePersistenceError as exc:
         raise _error(exc) from exc
-
 
 @router.get("/tasks")
 async def list_agent_tasks(agent_id: uuid.UUID, limit: int = 50,
@@ -276,6 +628,8 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         row = await store.get_task(owner_id, str(task_id))
         if not row:
             raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task tidak ditemukan."})
+        if _stored_tool_plan(row) is not None:
+            return await _execute_planned_task(store, owner_id, str(task_id), row)
         if row["state"] == "succeeded":
             return {"task": row, "idempotent_replay": True}
         if row["state"] == "cancelled":
