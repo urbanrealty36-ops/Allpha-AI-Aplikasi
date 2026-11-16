@@ -8,6 +8,7 @@ import {getBrowserSupabase} from "../../../../lib/supabase";
 type T="working"|"episodic"|"semantic"|"procedural"|"long_term";
 type Policy={id:string;memory_type:T;enabled:boolean;retention_days:number;policy_version:number};
 type Item={id:string;memory_type:T;content:string;classification:string;purpose:string;status:string;version:number;retention_expires_at:string};
+type RetrievedItem={id:string;memory_type:T;content:string;classification:string;purpose:string;retrieval_method:"keyword"|"metadata"};
 const api=(process.env.NEXT_PUBLIC_API_BASE_URL||(process.env.NODE_ENV==="production"?"https://api.allpha.web.id":"http://localhost:8000")).replace(/\/$/,"");
 const defs:{key:T;title:string;description:string;days:number}[]=[
 {key:"working",title:"Working Memory",description:"Konteks tugas/sesi sementara, maksimum 24 jam.",days:1},
@@ -23,6 +24,7 @@ export default function AgentMemoryPage(){
  const [enabled,setEnabled]=useState<Record<string,boolean>>({}),[retention,setRetention]=useState<Record<string,number>>({}),[consent,setConsent]=useState(false);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [editing,setEditing]=useState(""),[draft,setDraft]=useState("");
+ const [retrievalQuery,setRetrievalQuery]=useState(""),[retrievalPurpose,setRetrievalPurpose]=useState("agent_generation_context"),[retrievalResults,setRetrievalResults]=useState<RetrievedItem[]>([]),[retrievalBusy,setRetrievalBusy]=useState(false);
  const [proposalType,setProposalType]=useState<T>("episodic"),[proposalPurpose,setProposalPurpose]=useState("agent_generation_context"),[proposalClass,setProposalClass]=useState("internal"),[proposalText,setProposalText]=useState("");
  const load=useCallback(async(s:Session)=>{
   setLoading(true);setError("");
@@ -68,6 +70,14 @@ export default function AgentMemoryPage(){
    setConsent(false);setEnabled({});setNotice("Semua persetujuan Memory dicabut; item lama tidak lagi memenuhi policy version untuk retrieval.");await load(session);
   }catch(e){setError(e instanceof Error?e.message:"Pencabutan consent tidak selesai; periksa setiap policy.");await load(session);}
   finally{setSaving("");}
+ }
+ async function retrieveMemory(){
+  if(!session)return;setRetrievalBusy(true);setError("");setNotice("");
+  try{
+   const r=await fetch(api+"/v1/memory/context",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
+    body:JSON.stringify({agent_id:agentId,purpose:retrievalPurpose,query:retrievalQuery.trim()||null,limit:12})});
+   if(!r.ok)throw new Error(await err(r));const body=await r.json();setRetrievalResults(Array.isArray(body.items)?body.items:[]);
+  }catch(e){setError(e instanceof Error?e.message:"Retrieval Memory gagal.");}finally{setRetrievalBusy(false);}
  }
  async function createProposal(){
   if(!session)return;
@@ -119,6 +129,11 @@ export default function AgentMemoryPage(){
    </article>;})}</div>
   </section>
   <section className="rounded-2xl border p-4 sm:p-5"><h2 className="text-lg font-semibold">Conversation Memory</h2><p className="mt-1 text-sm text-neutral-600">Riwayat percakapan menggunakan tabel conversations/messages kanonis. Konteks dibatasi berdasarkan participant dan panjang pesan; tidak diduplikasi ke tabel Memory.</p><span className="mt-3 inline-flex rounded-full border px-2 py-1 text-xs">Canonical message store · Read-only</span></section>
+  <section className="space-y-3 rounded-2xl border p-4 sm:p-5">
+   <div><h2 className="text-lg font-semibold">Cari konteks Memory</h2><p className="mt-1 text-sm text-neutral-600">Gunakan retrieval API dengan scope Agent dan tujuan yang dipilih. Hasil mengikuti consent, klasifikasi, policy version, retensi dan ownership di backend.</p></div>
+   <div className="flex flex-col gap-2 sm:flex-row"><input value={retrievalQuery} onChange={e=>setRetrievalQuery(e.target.value)} maxLength={300} placeholder="Cari fakta atau konteks (opsional)" className="min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm"/><select value={retrievalPurpose} onChange={e=>setRetrievalPurpose(e.target.value)} className="rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="agent_generation_context">Generation</option><option value="agent_runtime_context">Agent Runtime</option></select><button disabled={retrievalBusy||!policies.some(p=>p.enabled)} onClick={()=>void retrieveMemory()} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{retrievalBusy?"Mencari…":"Cari Memory"}</button></div>
+   {retrievalResults.length===0?<p className="text-xs text-neutral-500">Belum ada hasil retrieval pada sesi ini. Retrieval runtime tetap bergantung pada migration dan feature flag backend.</p>:<div className="space-y-2">{retrievalResults.map(item=><article key={item.id} className="rounded-xl border p-3"><div className="flex flex-wrap items-center gap-2 text-xs"><strong className="capitalize">{item.memory_type.replace("_"," ")}</strong><span className="rounded-full border px-2 py-0.5">{item.classification}</span><span className="text-neutral-500">{item.retrieval_method}</span></div><p className="mt-2 whitespace-pre-wrap text-sm">{item.content}</p></article>)}</div>}
+  </section>
   <section className="space-y-3 rounded-2xl border p-4 sm:p-5">
    <div><h2 className="text-lg font-semibold">Ajukan Memory secara manual</h2><p className="mt-1 text-sm text-neutral-600">Buat proposal yang berasal dari pemilik. Proposal tidak langsung aktif; persetujuan tetap diperlukan. Ekstraksi otomatis dari model belum diaktifkan.</p></div>
    <div className="grid gap-3 sm:grid-cols-3">
