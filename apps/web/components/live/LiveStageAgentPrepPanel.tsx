@@ -8,7 +8,7 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV 
 type SkillChoice = { id: string; name?: string | null; display_name?: string | null; generation_compatible: boolean; generation_block_reason?: string | null };
 type AgentChoice = { agent: { id: string; display_name: string }; skills: SkillChoice[]; capabilities: { capability_key: string }[] };
 type RequestPayload = { agent_id: string; skill_id: string; capability_id: string; prompt: string; max_output_tokens: number };
-type Quote = { expires_at: string; estimated_credits: number; estimated_usage_units: number; usage_unit: string; model_id: string; policy_version: string; tariff_version: string; agent_snapshot_sha256: string; skill_snapshot_sha256: string; knowledge_context_sha256?: string | null; request: RequestPayload };
+type Quote = { expires_at: string; estimated_credits: number; estimated_usage_units: number; usage_unit: string; model_id: string; policy_version: string; tariff_version: string; agent_snapshot_sha256: string; skill_snapshot_sha256: string; tool_inputs_sha256: string; knowledge_context_sha256?: string | null; request: RequestPayload };
 type Job = { id: string; status: string; moderation_status?: string; artifact_available?: boolean; error_code?: string | null; input_tokens?: number; output_tokens?: number };
 type Outline = { title: string; slides: StageSlideItem[] };
 
@@ -117,6 +117,7 @@ export default function LiveStageAgentPrepPanel({ onApply }: { onApply: (topic: 
         quoted_model_id: quote.model_id,
         quoted_agent_snapshot_sha256: quote.agent_snapshot_sha256,
         quoted_skill_snapshot_sha256: quote.skill_snapshot_sha256,
+        quoted_tool_inputs_sha256: quote.tool_inputs_sha256,
       };
       if (quote.knowledge_context_sha256) body.quoted_knowledge_context_sha256 = quote.knowledge_context_sha256;
       const created = await authorizedRequest<{ job_id: string; status: string }>("/v1/generation/jobs", {

@@ -26,7 +26,7 @@ type CreatorStatus = { generation: string; generation_jobs: string; billing: str
 type RuntimeSkillChoice = { id: string; version: number; name?: string | null; display_name?: string | null; generation_compatible: boolean; generation_block_reason?: string | null };
 type RuntimeAgentChoice = { agent: { id: string; version: number; display_name: string; description?: string; visibility?: string; disclosure?: string }; skills: RuntimeSkillChoice[]; capabilities: { capability_key: string }[] };
 type GenerationRequestPayload = { agent_id: string; skill_id: string; capability_id: string; prompt: string; max_output_tokens: number };
-type GenerationQuote = { expires_at: string; estimated_credits: number; estimated_usage_units: number; usage_unit: string; provider_id: string; model_id: string; model_version: string; policy_version: string; tariff_version: string; entitlement_version: string; knowledge_context_sha256?: string | null; agent_snapshot_sha256: string; skill_snapshot_sha256: string; request: GenerationRequestPayload };
+type GenerationQuote = { expires_at: string; estimated_credits: number; estimated_usage_units: number; usage_unit: string; provider_id: string; model_id: string; model_version: string; policy_version: string; tariff_version: string; entitlement_version: string; knowledge_context_sha256?: string | null; agent_snapshot_sha256: string; skill_snapshot_sha256: string; tool_inputs_sha256: string; request: GenerationRequestPayload };
 type GenerationJob = { id: string; task_id?: string; status: string; moderation_status?: string; artifact_available?: boolean; error_code?: string | null; input_tokens?: number; output_tokens?: number };
 type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
 type CreatorMedia = ReadyMedia & { status: string; scan_status: string; processed_at?: string | null; created_at: string };
@@ -310,6 +310,7 @@ export default function AiCinemaCreatorWorkspace() {
         quoted_model_id: generationQuote.model_id,
         quoted_agent_snapshot_sha256: generationQuote.agent_snapshot_sha256,
         quoted_skill_snapshot_sha256: generationQuote.skill_snapshot_sha256,
+        quoted_tool_inputs_sha256: generationQuote.tool_inputs_sha256,
       };
       if (generationQuote.knowledge_context_sha256) body.quoted_knowledge_context_sha256 = generationQuote.knowledge_context_sha256;
       const created = await authorizedRequest<{ job_id: string; status: string; reserved_credits: number }>("/v1/generation/jobs", {
