@@ -20,6 +20,7 @@ TASK = "55555555-5555-4555-8555-555555555555"
 class FakeRuntimeStore:
     sessions = {}
     tasks = {}
+    events = {}
     capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                   "required_permission_scopes": [], "status": "approved",
                   "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
@@ -91,6 +92,31 @@ class FakeRuntimeStore:
                     "lease_expires_at": None, "completed_at": "now", "updated_at": "now",
                     "task_version": row["task_version"] + 1})
         return copy.deepcopy(row)
+
+    async def append_execution_event(self, owner_id, task_id, lease_token, task_version, event):
+        row = self.tasks.get(task_id)
+        if not row or row["owner_user_id"] != owner_id or row.get("execution_lease_token") != lease_token or row["task_version"] != task_version:
+            return None
+        sequence = len(self.events.setdefault(task_id, [])) + 1
+        saved = {"id": str(uuid.uuid4()), "task_id": task_id, "sequence": sequence,
+                 "task_version": task_version, "trace_id": row["trace_id"],
+                 "event_type": "state_transition", "state": event["state"],
+                 "step_key": "tool:" + event.get("tool_key", "runtime"),
+                 "details": {"reason_code": event.get("reason_code")} if event.get("reason_code") else {},
+                 "created_at": "now"}
+        self.events[task_id].append(saved)
+        row["execution_event_seq"] = sequence
+        return copy.deepcopy(saved)
+
+    async def list_execution_events(self, owner_id, task_id, limit=200):
+        row = self.tasks.get(task_id)
+        if not row or row["owner_user_id"] != owner_id:
+            return []
+        return copy.deepcopy(self.events.get(task_id, [])[:limit])
+
+    async def list_agent_tasks(self, owner_id, agent_id, limit=50):
+        return [copy.deepcopy(row) for row in self.tasks.values()
+                if row["owner_user_id"] == owner_id and row["agent_id"] == agent_id][:limit]
 
     async def append_checkpoint(self, owner_id, task_id, lease_token, task_version, sequence, step_key,
                                 input_fingerprint, checkpoint_hash, result_payload):
@@ -174,6 +200,7 @@ def client(monkeypatch, *, user_id=OWNER):
 def setup_function():
     FakeRuntimeStore.sessions = {}
     FakeRuntimeStore.tasks = {}
+    FakeRuntimeStore.events = {}
     FakeRuntimeStore.capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                                    "required_permission_scopes": [], "status": "approved",
                                    "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
