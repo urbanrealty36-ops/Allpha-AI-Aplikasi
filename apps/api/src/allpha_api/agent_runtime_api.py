@@ -170,6 +170,19 @@ async def create_task(payload: TaskCreate, request: Request,
         raise _error(exc) from exc
 
 
+@router.get("/tasks")
+async def list_agent_tasks(agent_id: uuid.UUID, limit: int = 50,
+                           user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    store, owner_id = _store(), str(user["id"])
+    try:
+        agent = await store.get_agent(owner_id, str(agent_id))
+        if not agent:
+            raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": "Agent tidak ditemukan."})
+        return {"items": await store.list_agent_tasks(owner_id, str(agent_id), limit=limit)}
+    except AgentRuntimePersistenceError as exc:
+        raise _error(exc) from exc
+
+
 @router.get("/tasks/{task_id}")
 async def get_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     try:
