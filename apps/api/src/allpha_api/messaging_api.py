@@ -13,7 +13,7 @@ from allpha_api.agent_runtime_store import AgentRuntimeStore, AgentRuntimePersis
 from allpha_api.model_router import TextGenerationRequest, TextGenerationRouterUnavailable
 from allpha_api.agent_consumer_grants import AgentConsumerGrantStore, ConsumerBudgetReservation, ConsumerGrantUnavailable
 from allpha_api.agent_runtime import AgentConsumerAuthorization
-from allpha_api.memory_coordinator import MemoryCoordinator
+from allpha_api.memory_coordinator import MemoryCoordinator, MemoryDenied, MemoryUnavailable
 from allpha_api.tool_registry import UnknownToolError, get_tool, validate_tool_dependencies
 
 router = APIRouter(prefix="/v1/messages", tags=["messaging"])
@@ -575,6 +575,19 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
                     "client_message_id":f"eq.{reply_id}","limit":"1"})
             if reply_created:
                 agent_reply = {"status":"sent","message":reply_created[0],"trace_id":evidence.trace_id}
+                if is_owner:
+                    try:
+                        proposal = await MemoryCoordinator().propose_explicit_intent(
+                            owner_id, agent_id, body, purpose="agent_runtime_context",
+                            source_ref={"kind":"owner_agent_message","conversation_id":str(conversation_id),
+                                        "message_id":str(created[0]["id"])},
+                        )
+                        if proposal:
+                            agent_reply["memory_proposal"] = {"id":str(proposal["id"]),"status":"proposed"}
+                    except (MemoryUnavailable, MemoryDenied):
+                        # Memory capture is an optional owner-controlled side effect;
+                        # it must never fail or replay an already completed Agent reply.
+                        pass
                 await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},
                           body={"updated_at":_now(),"last_message_at":reply_created[0]["created_at"]},
                           prefer="return=minimal")
