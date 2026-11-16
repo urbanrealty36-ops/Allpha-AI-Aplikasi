@@ -70,8 +70,142 @@ _TEXT_NORMALIZE = ToolDefinition(
     handler=_normalize_text,
 )
 
+def _truncate_text(payload: dict[str, Any]) -> dict[str, Any]:
+    text = payload["text"]
+    limit = payload["max_chars"]
+    return {"text": text[:limit], "truncated": len(text) > limit}
+
+
+def _split_text(payload: dict[str, Any]) -> dict[str, Any]:
+    text, separator, max_parts = payload["text"], payload["separator"], payload["max_parts"]
+    if separator == "":
+        raise ValueError("separator must not be empty")
+    return {"parts": text.split(separator, max_parts - 1)}
+
+
+def _pick_json(payload: dict[str, Any]) -> dict[str, Any]:
+    value: Any = payload["value"]
+    path = payload["path"]
+    if len(path) > 500:
+        raise ValueError("path must contain at most 500 characters")
+    for segment in path.split(".") if path else []:
+        if isinstance(value, dict) and segment in value:
+            value = value[segment]
+        elif isinstance(value, list) and segment.isdigit() and int(segment) < len(value):
+            value = value[int(segment)]
+        else:
+            return {"found": False, "value": None}
+    return {"found": True, "value": value}
+
+
+def _merge_json(payload: dict[str, Any]) -> dict[str, Any]:
+    return {"value": {**payload["left"], **payload["right"]}}
+
+
+_TEXT_TRUNCATE = ToolDefinition(
+    key="text.truncate", version="1.0.0", name="Truncate text",
+    description="Truncate text to an explicit maximum character count.",
+    risk_level="low", required_permission_scopes=(),
+    input_schema={"type":"object","properties":{
+        "text":{"type":"string","maxLength":16000},
+        "max_chars":{"type":"integer","minimum":1,"maximum":16000}},
+        "required":["text","max_chars"],"additionalProperties":False},
+    output_schema={"type":"object","properties":{
+        "text":{"type":"string","maxLength":16000},"truncated":{"type":"boolean"}},
+        "required":["text","truncated"],"additionalProperties":False},
+    handler=_truncate_text,
+)
+
+_TEXT_SPLIT = ToolDefinition(
+    key="text.split", version="1.0.0", name="Split text",
+    description="Split text using a literal separator with a bounded number of parts.",
+    risk_level="low", required_permission_scopes=(),
+    input_schema={"type":"object","properties":{
+        "text":{"type":"string","maxLength":16000},
+        "separator":{"type":"string","minLength":1,"maxLength":100},
+        "max_parts":{"type":"integer","minimum":1,"maximum":100}},
+        "required":["text","separator","max_parts"],"additionalProperties":False},
+    output_schema={"type":"object","properties":{
+        "parts":{"type":"array","maxItems":100,"items":{"type":"string","maxLength":16000}}},
+        "required":["parts"],"additionalProperties":False},
+    handler=_split_text,
+)
+
+_JSON_PICK = ToolDefinition(
+    key="json.pick", version="1.0.0", name="Pick JSON value",
+    description="Read a nested object key or array index from caller-provided JSON without side effects.",
+    risk_level="low", required_permission_scopes=(),
+    input_schema={"type":"object","properties":{
+        "value":{"type":"object","maxProperties":200},
+        "path":{"type":"string","maxLength":500}},
+        "required":["value","path"],"additionalProperties":False},
+    output_schema={"type":"object","properties":{
+        "found":{"type":"boolean"},"value":{}},
+        "required":["found","value"],"additionalProperties":False},
+    handler=_pick_json,
+)
+
+_JSON_MERGE = ToolDefinition(
+    key="json.merge", version="1.0.0", name="Merge JSON objects",
+    description="Shallow-merge two caller-provided JSON objects; right-hand keys take precedence.",
+    risk_level="low", required_permission_scopes=(),
+    input_schema={"type":"object","properties":{
+        "left":{"type":"object","maxProperties":200},
+        "right":{"type":"object","maxProperties":200}},
+        "required":["left","right"],"additionalProperties":False},
+    output_schema={"type":"object","properties":{
+        "value":{"type":"object","maxProperties":400}},
+        "required":["value"],"additionalProperties":False},
+    handler=_merge_json,
+)
+
+
+def _validate_schema(value: Any, schema: dict[str, Any], path: str = "value") -> None:
+    expected = schema.get("type")
+    types = expected if isinstance(expected, list) else [expected] if expected else []
+    checks = {
+        "object": lambda v: isinstance(v, dict),
+        "array": lambda v: isinstance(v, list),
+        "string": lambda v: isinstance(v, str),
+        "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+        "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+        "boolean": lambda v: isinstance(v, bool),
+        "null": lambda v: v is None,
+    }
+    if types and not any(checks[t](value) for t in types if t in checks):
+        raise ToolInputError(f"{path} has an invalid type")
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        missing = sorted(set(schema.get("required", [])) - set(value))
+        if missing:
+            raise ToolInputError(f"{path} missing required field(s): {', '.join(missing)}")
+        if schema.get("additionalProperties") is False:
+            unknown = sorted(set(value) - set(properties))
+            if unknown:
+                raise ToolInputError(f"{path} contains unexpected field(s): {', '.join(unknown)}")
+        if len(value) > schema.get("maxProperties", 1000):
+            raise ToolInputError(f"{path} exceeds maximum properties")
+        for key, child in value.items():
+            if key in properties:
+                _validate_schema(child, properties[key], f"{path}.{key}")
+    if isinstance(value, list):
+        if len(value) > schema.get("maxItems", 1000):
+            raise ToolInputError(f"{path} exceeds maximum items")
+        if isinstance(schema.get("items"), dict):
+            for index, child in enumerate(value):
+                _validate_schema(child, schema["items"], f"{path}[{index}]")
+    if isinstance(value, str):
+        if len(value) < schema.get("minLength", 0) or len(value) > schema.get("maxLength", 1000000):
+            raise ToolInputError(f"{path} length is outside the allowed range")
+        if "enum" in schema and value not in schema["enum"]:
+            raise ToolInputError(f"{path} is not an allowed value")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value < schema.get("minimum", float("-inf")) or value > schema.get("maximum", float("inf")):
+            raise ToolInputError(f"{path} is outside the allowed range")
+
+
 # This immutable mapping is the single in-process source of tool metadata and handlers.
-_TOOL_REGISTRY: dict[str, ToolDefinition] = {_TEXT_NORMALIZE.key: _TEXT_NORMALIZE}
+_TOOL_REGISTRY: dict[str, ToolDefinition] = {tool.key: tool for tool in (_TEXT_NORMALIZE, _TEXT_TRUNCATE, _TEXT_SPLIT, _JSON_PICK, _JSON_MERGE)}
 
 
 class UnknownToolError(ValueError):
@@ -105,13 +239,14 @@ def execute_tool(tool_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     tool = get_tool(tool_key)
     if not isinstance(payload, dict):
         raise ToolInputError("tool input must be an object")
-    unknown_fields = sorted(set(payload) - set(tool.input_schema["properties"]))
-    if unknown_fields:
-        raise ToolInputError(f"unexpected input field(s): {', '.join(unknown_fields)}")
-    for field in tool.input_schema["required"]:
-        if field not in payload:
-            raise ToolInputError(f"missing required input field: {field}")
     try:
-        return tool.handler(payload)
+        _validate_schema(payload, tool.input_schema, "input")
+        result = tool.handler(payload)
+        if not isinstance(result, dict):
+            raise ToolInputError("tool handler must return an object")
+        _validate_schema(result, tool.output_schema, "output")
+        return result
+    except ToolInputError:
+        raise
     except ValueError as exc:
         raise ToolInputError(str(exc)) from exc
