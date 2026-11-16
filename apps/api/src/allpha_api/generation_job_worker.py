@@ -469,7 +469,7 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             memory_items = await MemoryCoordinator().retrieve_context(
                 str(job.get("agent_owner_user_id") or job.get("owner_user_id")),
                 str(job["agent_id"]), purpose="agent_generation_context", limit=12, max_chars=6000,
-                max_sensitivity=str(job.get("sensitivity") or ""),
+                query=request.prompt[:300], max_sensitivity=str(job.get("sensitivity") or ""),
             )
             if memory_items:
                 lines = [f"[{item.get('memory_type')} | ref={item.get('id')} | v={item.get('version')}] {item.get('content')}" for item in memory_items]
