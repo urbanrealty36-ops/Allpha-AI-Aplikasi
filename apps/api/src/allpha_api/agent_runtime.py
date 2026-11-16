@@ -136,6 +136,8 @@ class AgentConsumerAuthorization:
     policy_version: str
     granted_scopes: tuple[str, ...] = ()
     allowed_tool_keys: tuple[str, ...] = ()
+    max_tool_calls: int = 0
+    max_tool_runtime_seconds: int = 0
     allowed_memory_scope: tuple[str, ...] = ()
     budget_reserved: bool = False
     metering_ready: bool = False
@@ -351,6 +353,12 @@ class AgentRuntime:
                     raise AgentRuntimeBlocked("external Consumer tool execution requires an explicit tool-scoped grant")
                 if not set(dependencies).issubset(set(consumer.allowed_tool_keys)):
                     raise AgentRuntimeBlocked("external Consumer grant does not allow every pinned Skill tool")
+                if (not isinstance(consumer.max_tool_calls, int) or isinstance(consumer.max_tool_calls, bool)
+                        or not 1 <= consumer.max_tool_calls <= 5
+                        or not isinstance(consumer.max_tool_runtime_seconds, int)
+                        or isinstance(consumer.max_tool_runtime_seconds, bool)
+                        or not 1 <= consumer.max_tool_runtime_seconds <= 30):
+                    raise AgentRuntimeBlocked("external Consumer tool budget is invalid")
             auth = runtime_authorization
             if auth is None:
                 raise AgentRuntimeBlocked("approved runtime tool policy is required")
@@ -362,11 +370,14 @@ class AgentRuntime:
             limits = skill_budget_limits if isinstance(skill_budget_limits, dict) else {}
             max_calls = limits.get("max_tool_calls", len(dependencies))
             max_runtime = limits.get("max_runtime_seconds", 30)
+            if requester_id != owner_id:
+                max_calls = min(max_calls, consumer_authorization.max_tool_calls)
+                max_runtime = min(max_runtime, consumer_authorization.max_tool_runtime_seconds)
             if (not isinstance(max_calls, int) or isinstance(max_calls, bool)
                     or max_calls < len(dependencies) or max_calls > self._limits.max_tool_calls
                     or not isinstance(max_runtime, int) or isinstance(max_runtime, bool)
                     or max_runtime < 1 or max_runtime > self._limits.max_runtime_seconds):
-                raise AgentRuntimeBlocked("Skill tool budget is outside runtime limits")
+                raise AgentRuntimeBlocked("Skill or Consumer tool budget is outside runtime limits")
             transformed_prompt = request.prompt
             tool_deadline = time.monotonic() + min(float(max_runtime), 30.0)
             for index, key in enumerate(dependencies):
