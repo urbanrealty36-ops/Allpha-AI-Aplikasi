@@ -39,7 +39,7 @@ begin
   if current_user <> 'service_role' then
     raise exception 'MEMORY_SERVICE_ROLE_REQUIRED' using errcode='42501';
   end if;
-  if p_owner_user_id is null
+  if p_owner_user_id is null or p_purpose is null
     or p_purpose not in ('agent_generation_context','agent_runtime_context','workflow_context','personalization_context')
     or p_policy_ids is null or cardinality(p_policy_ids) not between 1 and 20
     or p_allowed_sensitivities is null or cardinality(p_allowed_sensitivities) not between 1 and 4
