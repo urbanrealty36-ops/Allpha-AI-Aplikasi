@@ -528,6 +528,7 @@ async def _process_job(job: dict[str, Any], worker_id: str, router: Any,
             skill_tool_dependencies=tuple(
                 job.get("skill_snapshot", {}).get("tool_dependencies") or []
             ),
+            skill_tool_inputs=job.get("tool_inputs") if isinstance(job.get("tool_inputs"), dict) else {},
             runtime_authorization=runtime_tool_authorization,
             skill_budget_limits=(
                 job.get("skill_snapshot", {}).get("budget_limits")
