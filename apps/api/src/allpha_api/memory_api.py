@@ -38,6 +38,7 @@ class ContextInput(BaseModel):
  agent_id:uuid.UUID
  purpose:str="agent_runtime_context"
  query:str|None=Field(default=None,max_length=300)
+ max_sensitivity:str|None=None
  limit:int=Field(default=12,ge=1,le=30)
 
 def _store():return MemoryCoordinator()
@@ -124,5 +125,9 @@ async def delete(item_id:uuid.UUID,user:dict[str,Any]=Depends(current_user)):
 async def context(payload:ContextInput,request:Request,user:dict[str,Any]=Depends(current_user)):
  await _owner(payload.agent_id,request,user)
  if payload.purpose not in PURPOSES:raise HTTPException(422,detail={"code":"MEMORY_PURPOSE_INVALID","message":"Tujuan retrieval Memory tidak didukung."})
- try:return {"items":await _store().retrieve_context(str(user["id"]),str(payload.agent_id),purpose=payload.purpose,query=payload.query,limit=payload.limit),"retrieval_mode":"keyword_or_metadata","private_scope":"owner_agent"}
+ if payload.max_sensitivity is not None and payload.max_sensitivity not in {"public","internal","confidential","restricted"}:
+  raise HTTPException(422,detail={"code":"MEMORY_SENSITIVITY_INVALID","message":"Batas sensitivitas Memory tidak valid."})
+ try:
+  items=await _store().retrieve_context(str(user["id"]),str(payload.agent_id),purpose=payload.purpose,query=payload.query,limit=payload.limit,max_sensitivity=payload.max_sensitivity)
+  return {"items":items,"retrieval_mode":"keyword_ranked" if payload.query and payload.query.strip() else "metadata_recency","private_scope":"owner_agent"}
  except (MemoryUnavailable,MemoryDenied) as exc:raise _error(exc) from exc
