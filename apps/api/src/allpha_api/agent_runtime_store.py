@@ -182,10 +182,13 @@ class AgentRuntimeStore:
         details: dict[str, Any] = {}
         if isinstance(reason, str) and reason:
             details["reason_code"] = reason[:120]
+        event_type = event.get("event_type")
+        if event_type not in {"state_transition", "checkpoint_resumed", "execution_reconciled"}:
+            event_type = "state_transition"
         rows = await self.request("POST", "rpc/append_agent_runtime_execution_event", body={
             "p_task_id": task_id, "p_owner_user_id": owner_id,
             "p_lease_token": lease_token, "p_task_version": task_version,
-            "p_event_type": "state_transition", "p_state": state,
+            "p_event_type": event_type, "p_state": state,
             "p_step_key": str(event.get("step_key") or ("tool:" + str(event.get("tool_key") or "runtime")))[:160],
             "p_details": details,
         })
