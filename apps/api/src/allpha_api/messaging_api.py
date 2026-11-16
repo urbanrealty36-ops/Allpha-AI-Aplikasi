@@ -217,6 +217,39 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
         await text_router.preflight("public")
         policy_version = text_router.policy_version_for("public")
         route_snapshot = text_router.route_snapshot_for("public")
+        if has_tool_scope:
+            policies = await _db("GET", "agent_runtime_policies", params={
+                "select":"id,agent_id,policy_version,policy_document,policy_digest,approved_tool_keys,required_permission_scopes,status",
+                "agent_id":f"eq.{agent_id}", "policy_version":f"eq.{policy_version}",
+                "status":"eq.approved", "limit":"1",
+            })
+            if not policies:
+                raise HTTPException(409, detail={"code":"RUNTIME_TOOL_POLICY_UNAVAILABLE","message":"Policy tool Agent yang disetujui tidak tersedia."})
+            runtime_policy = policies[0]
+            document = runtime_policy.get("policy_document")
+            if not isinstance(document, dict):
+                raise HTTPException(409, detail={"code":"RUNTIME_TOOL_POLICY_INVALID","message":"Dokumen policy tool tidak valid."})
+            canonical = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+            if hashlib.sha256(canonical).hexdigest() != runtime_policy.get("policy_digest"):
+                raise HTTPException(409, detail={"code":"RUNTIME_TOOL_POLICY_DIGEST_MISMATCH","message":"Digest policy tool tidak cocok."})
+            approved_keys = set(runtime_policy.get("approved_tool_keys") or [])
+            policy_scopes = set(runtime_policy.get("required_permission_scopes") or [])
+            skill_scopes = set(skills[0].get("required_permission_scopes") or [])
+            if not set(allowed_tool_keys).issubset(approved_keys) or not skill_scopes.issubset(policy_scopes):
+                raise HTTPException(403, detail={"code":"RUNTIME_TOOL_POLICY_DENIED","message":"Policy runtime tidak menyetujui seluruh tool atau scope Skill."})
+            capability_rows = await _db("GET", "agent_capabilities", params={
+                "select":"id,capability_key,required_permission_scopes,status,policy_version,runtime_policy_id",
+                "agent_id":f"eq.{agent_id}", "capability_key":"in.(" + ",".join(allowed_tool_keys) + ")",
+                "status":"eq.approved", "limit":"5",
+            })
+            capability_map = {item.get("capability_key"): item for item in capability_rows or []}
+            if set(capability_map) != set(allowed_tool_keys):
+                raise HTTPException(403, detail={"code":"RUNTIME_TOOL_CAPABILITY_MISSING","message":"Capability untuk setiap tool belum disetujui."})
+            for tool_key, capability in capability_map.items():
+                if (capability.get("runtime_policy_id") != runtime_policy.get("id")
+                        or capability.get("policy_version") != policy_version
+                        or not set(capability.get("required_permission_scopes") or []).issubset(policy_scopes)):
+                    raise HTTPException(403, detail={"code":"RUNTIME_TOOL_CAPABILITY_POLICY_MISMATCH","message":"Capability tidak terikat pada policy runtime yang disetujui."})
         # Do not issue a grant until the approved Consumer tariff, payer and
         # settlement policy are present and match the actual Model Router route.
         budget = await ConsumerBudgetReservation.from_environment(
