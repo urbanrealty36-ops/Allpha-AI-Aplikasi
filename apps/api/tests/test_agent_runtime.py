@@ -7,6 +7,7 @@ from allpha_api.agent_runtime import (
     AgentRuntime, AgentRuntimeBlocked, AgentTask, AgentTaskEnvelope, AgentTaskState,
     RuntimeAuthorization, AgentConsumerAuthorization,
 )
+from allpha_api.model_router import TextGenerationRequest
 
 
 def envelope(**changes):
@@ -118,6 +119,81 @@ def test_consumer_generation_requires_explicit_owner_approved_grant():
             requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
             agent_version=3, skill_id="skill-1", skill_version=2, skill_published=True,
             policy_version="public-v1", router=None, request=None,
+        ))
+
+
+def test_consumer_tool_execution_requires_tool_scope_and_exact_allowlist_without_memory():
+    class FakeRouter:
+        seen_prompt = None
+        def policy_version_for(self, sensitivity):
+            assert sensitivity == "public"
+            return "public-v1"
+        def require_runtime_ready(self, sensitivity):
+            assert sensitivity == "public"
+        async def generate(self, request):
+            self.seen_prompt = request.prompt
+            return ("generated", "evidence")
+
+    consumer = AgentConsumerAuthorization(
+        requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+        agent_version=3, skill_id="skill-1", skill_version=2,
+        agent_public=True, agent_active=True, skill_published=True,
+        grant_active=True, policy_approved=True, policy_version="public-v1",
+        granted_scopes=("generation_invoke", "tool_invoke"),
+        allowed_tool_keys=("text.normalize",), allowed_memory_scope=(),
+        budget_reserved=True, metering_ready=True,
+    )
+    runtime_auth = RuntimeAuthorization(
+        authenticated_owner_id="owner-1", owned_agent_id="agent-1", agent_version=3,
+        skill_id="skill-1", skill_version=2, skill_published=True, policy_approved=True,
+        policy_version="public-v1", approved_tool_keys=("text.normalize",), granted_scopes=(),
+    )
+    request = TextGenerationRequest(
+        task_id="consumer-task", trace_id="consumer-trace", idempotency_key="consumer-idem",
+        sensitivity="public", prompt="  hello   world  ", max_output_tokens=64, timeout_ms=5000,
+        owner_id="owner-1", agent_id="agent-1", source_id="skill-1", source_version=2,
+    )
+    router = FakeRouter()
+    result = asyncio.run(AgentRuntime().execute_skill_generation(
+        requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+        agent_version=3, skill_id="skill-1", skill_version=2, skill_published=True,
+        policy_version="public-v1", router=router, request=request,
+        consumer_authorization=consumer, skill_tool_dependencies=("text.normalize",),
+        runtime_authorization=runtime_auth,
+        skill_budget_limits={"max_tool_calls": 1, "max_runtime_seconds": 3},
+    ))
+    assert result == ("generated", "evidence")
+    assert router.seen_prompt == "hello world"
+    assert consumer.allowed_memory_scope == ()
+
+
+def test_consumer_cannot_execute_skill_tool_without_tool_invoke_scope():
+    consumer = AgentConsumerAuthorization(
+        requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+        agent_version=3, skill_id="skill-1", skill_version=2,
+        agent_public=True, agent_active=True, skill_published=True,
+        grant_active=True, policy_approved=True, policy_version="public-v1",
+        granted_scopes=("generation_invoke",), allowed_tool_keys=(),
+        allowed_memory_scope=(), budget_reserved=True, metering_ready=True,
+    )
+    runtime_auth = RuntimeAuthorization(
+        authenticated_owner_id="owner-1", owned_agent_id="agent-1", agent_version=3,
+        skill_id="skill-1", skill_version=2, skill_published=True, policy_approved=True,
+        policy_version="public-v1", approved_tool_keys=("text.normalize",), granted_scopes=(),
+    )
+    request = TextGenerationRequest(
+        task_id="consumer-task", trace_id="consumer-trace", idempotency_key="consumer-idem",
+        sensitivity="public", prompt="hello", max_output_tokens=64, timeout_ms=5000,
+        owner_id="owner-1", agent_id="agent-1", source_id="skill-1", source_version=2,
+    )
+    with pytest.raises(AgentRuntimeBlocked, match="explicit tool-scoped grant"):
+        asyncio.run(AgentRuntime().execute_skill_generation(
+            requester_id="consumer-1", owner_id="owner-1", agent_id="agent-1",
+            agent_version=3, skill_id="skill-1", skill_version=2, skill_published=True,
+            policy_version="public-v1", router=None, request=request,
+            consumer_authorization=consumer, skill_tool_dependencies=("text.normalize",),
+            runtime_authorization=runtime_auth,
+            skill_budget_limits={"max_tool_calls": 1, "max_runtime_seconds": 3},
         ))
 
 
