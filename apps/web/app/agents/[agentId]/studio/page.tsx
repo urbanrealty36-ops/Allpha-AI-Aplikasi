@@ -22,7 +22,7 @@ type Capability = {
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
 };
 type SkillVersion = { id: string; version: number; created_at: string; snapshot: { name?: string; changelog?: string; status?: string } };
-type ConsumerGrant = { id: string; requester_user_id: string; skill_id: string; granted_scopes: string[]; allowed_tool_keys?: string[]; status: string; expires_at?: string | null; granted_at: string; revoked_at?: string | null; revoke_reason?: string | null };
+type ConsumerGrant = { id: string; requester_user_id: string; skill_id: string; granted_scopes: string[]; allowed_tool_keys?: string[]; max_tool_calls?: number; max_tool_runtime_seconds?: number; status: string; expires_at?: string | null; granted_at: string; revoked_at?: string | null; revoke_reason?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function readError(response: Response) {
@@ -87,6 +87,8 @@ export default function AgentStudioPage() {
   const [consumerGrants, setConsumerGrants] = useState<ConsumerGrant[]>([]);
   const [sharePublicKnowledge, setSharePublicKnowledge] = useState(false);
   const [allowConsumerTools, setAllowConsumerTools] = useState(false);
+  const [consumerMaxToolCalls, setConsumerMaxToolCalls] = useState("1");
+  const [consumerMaxToolRuntime, setConsumerMaxToolRuntime] = useState("3");
 
   const load = useCallback(async (active: Session) => {
     setLoading(true); setError("");
@@ -310,11 +312,13 @@ export default function AgentStudioPage() {
           idempotency_key: crypto.randomUUID(),
           granted_scopes: ["generation_invoke", ...(sharePublicKnowledge ? ["knowledge_public_read"] : []), ...(allowConsumerTools ? ["tool_invoke"] : [])],
           allowed_tool_keys: allowConsumerTools ? dependencies : [],
+          max_tool_calls: allowConsumerTools ? Number(consumerMaxToolCalls) : 0,
+          max_tool_runtime_seconds: allowConsumerTools ? Number(consumerMaxToolRuntime) : 0,
         }),
       });
       if (!response.ok) throw new Error(await readError(response));
       const body = await response.json() as { grant?: { id?: string } };
-      setConsumerUserId(""); setSharePublicKnowledge(false); setAllowConsumerTools(false);
+      setConsumerUserId(""); setSharePublicKnowledge(false); setAllowConsumerTools(false); setConsumerMaxToolCalls("1"); setConsumerMaxToolRuntime("3");
       setNotice("Grant generation tersimpan untuk akun yang dipilih. Scope mengikuti pilihan akses; Knowledge privat tidak pernah dibagikan." + (body.grant?.id ? " Grant ID: " + body.grant.id : ""));
       await load(session);
     } catch (cause) {
@@ -428,7 +432,7 @@ export default function AgentStudioPage() {
         <div><h2 className="text-xl font-semibold">Grant Consumer untuk AI Generation</h2><p className="mt-1 text-sm text-neutral-600">Izinkan akun lain menggunakan Agent publik melalui AI Credits dan policy yang disetujui. Grant terikat pada versi Agent, Skill, runtime policy, tarif, serta allowlist tool bila dipilih. Private Memory tidak pernah diberikan kepada External Consumer.</p></div>
         <form onSubmit={createGenerationGrant} className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">Akun Consumer (UUID)<input required value={consumerUserId} onChange={event => setConsumerUserId(event.target.value)} className="rounded-lg border px-3 py-2 font-mono text-xs" placeholder="UUID pengguna yang akan diberi akses"/></label>
-          <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => { setConsumerSkillId(event.target.value); setAllowConsumerTools(false); }} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
+          <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => { setConsumerSkillId(event.target.value); setAllowConsumerTools(false); setConsumerMaxToolCalls("1"); setConsumerMaxToolRuntime("3"); }} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
           <label className="sm:col-span-2 flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" checked={sharePublicKnowledge} onChange={event => setSharePublicKnowledge(event.target.checked)} className="mt-1"/><span><strong>Izinkan Knowledge publik</strong><span className="mt-1 block text-xs text-neutral-500">Hanya sumber ber-sensitivity public, status ready, versi cocok, consent aktif, dan provenance tervalidasi. Tidak memberikan akses ke Knowledge privat/internal/confidential/restricted.</span></span></label>
           {(() => {
             const selected = skills.find(skill => skill.id === consumerSkillId);
@@ -440,12 +444,23 @@ export default function AgentStudioPage() {
               <span><strong>Izinkan tool execution dengan allowlist eksplisit</strong><span className="mt-1 block text-xs text-slate-600">{supported ? "Hanya text.normalize untuk Skill versi ini. Grant tool terpisah dari generation_invoke; tidak membuka private Memory, Workflow, atau resource lain." : "Belum tersedia: adapter External Consumer saat ini hanya mendukung text.normalize. Skill ini memiliki dependensi: " + dependencies.join(", ") + "."}</span></span>
             </label>;
           })()}
+          {(() => {
+            const selected = skills.find(skill => skill.id === consumerSkillId);
+            const dependencies = selected?.tool_dependencies ?? [];
+            const supported = dependencies.length === 1 && dependencies[0] === "text.normalize";
+            if (!supported) return null;
+            return <div className="sm:col-span-2 grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm">Maksimum tool calls<input type="number" min={1} max={5} value={consumerMaxToolCalls} onChange={event => setConsumerMaxToolCalls(event.target.value)} className="rounded-lg border px-3 py-2"/></label>
+              <label className="grid gap-1 text-sm">Maksimum runtime tool (detik)<input type="number" min={1} max={30} value={consumerMaxToolRuntime} onChange={event => setConsumerMaxToolRuntime(event.target.value)} className="rounded-lg border px-3 py-2"/></label>
+              <p className="sm:col-span-2 text-xs text-neutral-500">Batas ini berlaku per grant dan tidak boleh melampaui budget Skill yang dipin.</p>
+            </div>;
+          })()}
           <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId || (Boolean(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies?.length) && !allowConsumerTools) || (Boolean(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies?.some(key => key !== "text.normalize")))} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
         </form>
       </section>
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
         <div><h2 className="text-xl font-semibold">Consumer grants aktif dan riwayat</h2><p className="mt-1 text-sm text-neutral-600">Grant generation terikat pada versi Agent/Skill, runtime policy, tarif, dan masa berlaku. Jika tool_invoke diberikan, hanya tool yang tercantum dalam allowlist grant yang dapat digunakan; adapter saat ini dibatasi pada text.normalize. Tidak ada izin private Memory, Workflow, atau resource lain. Revocation diperiksa kembali sebelum hasil generation diselesaikan dan dikirim melalui DM.</p></div>
-        {consumerGrants.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-500">Belum ada Consumer grant untuk Agent ini.</p> : <div className="space-y-2">{consumerGrants.map(grant => <article key={grant.id} className="rounded-xl border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="break-all text-sm font-semibold">{grant.requester_user_id}</p><p className="mt-1 text-xs text-neutral-500">Skill {grant.skill_id} · {grant.granted_scopes.join(", ")} · {grant.expires_at ? "Berlaku sampai " + new Date(grant.expires_at).toLocaleString("id-ID") : "Tanpa tanggal kedaluwarsa"}</p><p className="mt-1 text-xs text-neutral-500">Status: {grant.status} · {new Date(grant.granted_at).toLocaleString("id-ID")}</p>{grant.allowed_tool_keys?.length ? <p className="mt-1 text-xs text-sky-700">Tool allowlist: {grant.allowed_tool_keys.join(", ")}</p> : null}</div>{grant.status === "active" && <button disabled={saving} onClick={() => void revokeGenerationGrant(grant.id)} className="rounded-lg border-2 border-rose-600 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Cabut Grant</button>}</div></article>)}</div>}
+        {consumerGrants.length === 0 ? <p className="rounded-xl border border-dashed p-4 text-sm text-neutral-500">Belum ada Consumer grant untuk Agent ini.</p> : <div className="space-y-2">{consumerGrants.map(grant => <article key={grant.id} className="rounded-xl border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="break-all text-sm font-semibold">{grant.requester_user_id}</p><p className="mt-1 text-xs text-neutral-500">Skill {grant.skill_id} · {grant.granted_scopes.join(", ")} · {grant.expires_at ? "Berlaku sampai " + new Date(grant.expires_at).toLocaleString("id-ID") : "Tanpa tanggal kedaluwarsa"}</p><p className="mt-1 text-xs text-neutral-500">Status: {grant.status} · {new Date(grant.granted_at).toLocaleString("id-ID")}</p>{grant.allowed_tool_keys?.length ? <p className="mt-1 text-xs text-sky-700">Tool allowlist: {grant.allowed_tool_keys.join(", ")} · {grant.max_tool_calls ?? 0} calls / {grant.max_tool_runtime_seconds ?? 0}s</p> : null}</div>{grant.status === "active" && <button disabled={saving} onClick={() => void revokeGenerationGrant(grant.id)} className="rounded-lg border-2 border-rose-600 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Cabut Grant</button>}</div></article>)}</div>}
       </section>
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
         <div><h2 className="text-xl font-semibold">Capability yang diminta</h2><p className="mt-1 text-sm text-neutral-600">Deklarasi ini bukan izin eksekusi. Runtime harus memeriksa izin, policy, dan risiko pada setiap aksi.</p></div>
