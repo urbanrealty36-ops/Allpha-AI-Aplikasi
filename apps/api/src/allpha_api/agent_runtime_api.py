@@ -209,14 +209,6 @@ async def _execute_planned_task(
         if not set(capability.get("required_permission_scopes") or []).issubset(policy_scopes):
             raise HTTPException(status_code=403, detail={"code": "RUNTIME_POLICY_SCOPE_DENIED", "message": "Scope capability melampaui policy runtime."})
 
-    lease_token = str(uuid.uuid4())
-    claimed = await store.claim_task(owner_id, task_id, lease_token, lease_seconds=60)
-    if not claimed:
-        latest = await store.get_task(owner_id, task_id)
-        if latest and latest.get("state") == "succeeded":
-            return {"task": latest, "idempotent_replay": True}
-        raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau lease tidak tersedia."})
-    row = claimed
     skill_budget = skill.get("budget_limits") or {}
     task_budget = row.get("task_budget_limits") or {}
     max_runtime = min(30, max(1, int(skill_budget.get("max_runtime_seconds", 30))),
@@ -225,6 +217,15 @@ async def _execute_planned_task(
                     max(1, int(task_budget.get("max_tool_calls", skill_budget.get("max_tool_calls", 1)))))
     if max_calls < len(plan):
         raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_BUDGET_EXCEEDED", "message": "Budget tool tidak mencukupi jumlah langkah."})
+
+    lease_token = str(uuid.uuid4())
+    claimed = await store.claim_task(owner_id, task_id, lease_token, lease_seconds=60)
+    if not claimed:
+        latest = await store.get_task(owner_id, task_id)
+        if latest and latest.get("state") == "succeeded":
+            return {"task": latest, "idempotent_replay": True}
+        raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau lease tidak tersedia."})
+    row = claimed
     auth = RuntimeAuthorization(
         authenticated_owner_id=owner_id, owned_agent_id=str(row["agent_id"]),
         agent_version=int(agent["version"]), skill_id=str(row["skill_id"]),
