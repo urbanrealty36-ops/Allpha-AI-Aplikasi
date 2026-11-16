@@ -4,7 +4,9 @@
 begin;
 
 alter table public.agent_consumer_grants
-  add column if not exists allowed_tool_keys text[] not null default '{}'::text[];
+  add column if not exists allowed_tool_keys text[] not null default '{}'::text[],
+  add column if not exists max_tool_calls integer not null default 0,
+  add column if not exists max_tool_runtime_seconds integer not null default 0;
 
 alter table public.agent_consumer_grants
   drop constraint if exists agent_consumer_grant_scopes;
@@ -26,9 +28,15 @@ alter table public.agent_consumer_grants
   add constraint agent_consumer_grant_tool_scope_contract check (
     cardinality(allowed_tool_keys) <= 5
     and (
-      ('tool_invoke' = any(granted_scopes) and cardinality(allowed_tool_keys) between 1 and 5)
+      ('tool_invoke' = any(granted_scopes)
+        and cardinality(allowed_tool_keys) between 1 and 5
+        and max_tool_calls between 1 and 5
+        and max_tool_runtime_seconds between 1 and 30)
       or
-      (not ('tool_invoke' = any(granted_scopes)) and cardinality(allowed_tool_keys) = 0)
+      (not ('tool_invoke' = any(granted_scopes))
+        and cardinality(allowed_tool_keys) = 0
+        and max_tool_calls = 0
+        and max_tool_runtime_seconds = 0)
     )
   );
 
@@ -73,6 +81,9 @@ returns trigger language plpgsql security definer set search_path = '' as $$
 declare
   v_grant public.agent_consumer_grants;
   v_dependencies text[] := '{}'::text[];
+  v_skill_budget jsonb := '{}'::jsonb;
+  v_skill_max_calls integer := 1;
+  v_skill_max_runtime integer := 30;
 begin
   if new.consumer_grant_id is null then
     return new;
@@ -95,14 +106,22 @@ begin
   end if;
 
   if cardinality(v_dependencies) > 0 then
+    v_skill_budget := coalesce(new.skill_snapshot->'budget_limits', '{}'::jsonb);
+    v_skill_max_calls := coalesce((v_skill_budget->>'max_tool_calls')::integer, 1);
+    v_skill_max_runtime := coalesce((v_skill_budget->>'max_runtime_seconds')::integer, 30);
     if not ('tool_invoke' = any(v_grant.granted_scopes))
       or cardinality(v_grant.allowed_tool_keys) <> cardinality(v_dependencies)
       or not (v_grant.allowed_tool_keys @> v_dependencies)
-      or not (v_dependencies @> v_grant.allowed_tool_keys) then
+      or not (v_dependencies @> v_grant.allowed_tool_keys)
+      or v_grant.max_tool_calls < cardinality(v_dependencies)
+      or v_grant.max_tool_calls > least(5, v_skill_max_calls)
+      or v_grant.max_tool_runtime_seconds > least(30, v_skill_max_runtime) then
       raise exception 'GENERATION_CONSUMER_TOOL_GRANT_REQUIRED' using errcode='42501';
     end if;
   elsif 'tool_invoke' = any(v_grant.granted_scopes)
-    or cardinality(v_grant.allowed_tool_keys) <> 0 then
+    or cardinality(v_grant.allowed_tool_keys) <> 0
+    or v_grant.max_tool_calls <> 0
+    or v_grant.max_tool_runtime_seconds <> 0 then
     raise exception 'GENERATION_CONSUMER_TOOL_GRANT_NOT_NEEDED' using errcode='22023';
   end if;
 
@@ -138,6 +157,7 @@ begin
       'agent_version',new.agent_version,'skill_id',new.skill_id,
       'skill_version',new.skill_version,'runtime_policy_version',new.runtime_policy_version,
       'granted_scopes',new.granted_scopes,'allowed_tool_keys',new.allowed_tool_keys,
+      'max_tool_calls',new.max_tool_calls,'max_tool_runtime_seconds',new.max_tool_runtime_seconds,
       'capability_id',new.capability_id,
       'credit_scheme_version',new.credit_scheme_version,'tariff_version',new.tariff_version,
       'entitlement_version',new.entitlement_version,'payer_role',new.payer_role,
@@ -155,6 +175,10 @@ grant execute on function public.audit_agent_consumer_grant_created()
 
 comment on column public.agent_consumer_grants.allowed_tool_keys is
   'Exact owner-approved allowlist for tool_invoke. Must match the pinned Skill dependency set for external Generation; no private Memory permission is represented here.';
+comment on column public.agent_consumer_grants.max_tool_calls is
+  'Owner-approved per-grant maximum number of deterministic tool calls; zero unless tool_invoke is explicitly granted.';
+comment on column public.agent_consumer_grants.max_tool_runtime_seconds is
+  'Owner-approved per-grant maximum tool runtime seconds; zero unless tool_invoke is explicitly granted.';
 comment on function public.guard_external_generation_tool_grant() is
   'Rejects external Generation jobs whose pinned Skill tool dependencies do not exactly match the active Consumer grant allowlist.';
 
