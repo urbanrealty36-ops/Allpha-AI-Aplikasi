@@ -664,6 +664,12 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
                 raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Efek telah dimulai tanpa receipt selesai; replay otomatis dilarang."})
         elif row["state"] != "created":
             raise HTTPException(status_code=409, detail={"code": "TASK_NOT_EXECUTABLE", "message": "Task tidak berada pada state yang dapat dieksekusi."})
+        try:
+            definition = get_tool(str(row["tool_key"]))
+        except UnknownToolError as exc:
+            raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool tidak lagi terdaftar."}) from exc
+        if getattr(definition, "execution_class", "side_effecting") != "pure":
+            raise HTTPException(status_code=403, detail={"code": "TOOL_SIDE_EFFECT_BLOCKED", "message": "Tool dengan efek samping belum memiliki kontrak receipt dan approval yang aktif."})
         agent = await store.get_agent(owner_id, row["agent_id"])
         skill = await store.get_skill(owner_id, row["agent_id"], row["skill_id"])
         capability = await store.get_approved_capability(row["agent_id"], row["tool_key"])
