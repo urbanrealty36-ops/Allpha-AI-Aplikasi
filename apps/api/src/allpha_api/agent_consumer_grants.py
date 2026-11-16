@@ -201,15 +201,21 @@ class AgentConsumerGrantStore:
                       agent_version: int, skill_id: str, skill_version: int,
                       runtime_policy_version: str, policy_snapshot: dict[str, Any],
                       required_scope: str = "public_invoke",
-                      allowed_tool_keys: list[str] | None = None) -> dict[str, Any] | None:
+                      allowed_tool_keys: list[str] | None = None,
+                      max_tool_calls: int = 0,
+                      max_tool_runtime_seconds: int = 0) -> dict[str, Any] | None:
         if required_scope not in {"public_invoke", "generation_invoke", "tool_invoke"}:
             raise ValueError("Consumer grant resolver scope is invalid")
         required_tools = sorted(set(allowed_tool_keys or []))
         if required_scope == "tool_invoke":
-            if not required_tools or len(required_tools) > 5:
-                raise ValueError("tool_invoke resolver requires an explicit 1-5 tool allowlist")
-        elif required_tools:
-            raise ValueError("tool allowlist can only be resolved with tool_invoke scope")
+            if (not required_tools or len(required_tools) > 5
+                    or not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool)
+                    or not 1 <= max_tool_calls <= 5
+                    or not isinstance(max_tool_runtime_seconds, int) or isinstance(max_tool_runtime_seconds, bool)
+                    or not 1 <= max_tool_runtime_seconds <= 30):
+                raise ValueError("tool_invoke resolver requires an explicit allowlist and bounded budgets")
+        elif required_tools or max_tool_calls != 0 or max_tool_runtime_seconds != 0:
+            raise ValueError("tool allowlist and budgets can only be resolved with tool_invoke scope")
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={"select":"*", "requester_user_id":f"eq.{requester_id}",
@@ -218,6 +224,7 @@ class AgentConsumerGrantStore:
                     "skill_version":f"eq.{skill_version}", "runtime_policy_version":f"eq.{runtime_policy_version}",
                     "status":"eq.active", "granted_scopes":f"cs.{{{required_scope}}}",
                     **({"allowed_tool_keys": "cs.{" + ",".join(required_tools) + "}"} if required_tools else {}),
+                    **({"max_tool_calls": f"eq.{max_tool_calls}", "max_tool_runtime_seconds": f"eq.{max_tool_runtime_seconds}"} if required_tools else {}),
                     "capability_id":f"eq.{policy_snapshot['capability_id']}",
                     "credit_scheme_version":f"eq.{policy_snapshot['credit_scheme_version']}",
                     "approval_reference":f"eq.{policy_snapshot['approval_reference']}",
