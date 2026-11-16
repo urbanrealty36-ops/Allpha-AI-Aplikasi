@@ -168,6 +168,29 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def append_execution_event(self, owner_id: str, task_id: str, lease_token: str,
+                                     task_version: int, event: dict[str, Any]) -> dict[str, Any] | None:
+        state = str(event.get("state") or "")
+        reason = event.get("reason_code")
+        details: dict[str, Any] = {}
+        if isinstance(reason, str) and reason:
+            details["reason_code"] = reason[:120]
+        rows = await self.request("POST", "rpc/append_agent_runtime_execution_event", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id,
+            "p_lease_token": lease_token, "p_task_version": task_version,
+            "p_event_type": "state_transition", "p_state": state,
+            "p_step_key": "tool:" + str(event.get("tool_key") or "runtime")[:150],
+            "p_details": details,
+        })
+        return rows[0] if rows else None
+
+    async def list_execution_events(self, owner_id: str, task_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        return await self.request("GET", "agent_runtime_execution_events", params={
+            "select": "id,task_id,sequence,task_version,trace_id,event_type,state,step_key,details,created_at",
+            "owner_user_id": f"eq.{owner_id}", "task_id": f"eq.{task_id}",
+            "order": "sequence.asc", "limit": str(max(1, min(limit, 500))),
+        }) or []
+
     async def create_session(self, body: dict[str, Any]) -> dict[str, Any]:
         rows = await self.request("POST", "agent_runtime_sessions",
                                   params={"select": "*"}, body=body, prefer="return=representation")
