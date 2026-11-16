@@ -281,6 +281,7 @@ async def _execute_planned_task(
 
     deadline = time.monotonic() + max_runtime
     trace_events: list[dict[str, Any]] = []
+    next_checkpoint_sequence = int(row.get("checkpoint_seq") or 0) + 1
     try:
         for index, step in enumerate(plan[len(completed_steps):], start=len(completed_steps)):
             step_key = "step:" + str(step["step_id"])
@@ -321,12 +322,13 @@ async def _execute_planned_task(
                 raise AgentRuntimeBlocked("tool step checkpoint exceeded the task output limit")
             checkpoint = await store.append_checkpoint(
                 owner_id, task_id, lease_token, int(row["task_version"]),
-                int(row.get("checkpoint_seq") or 0) + index + 1,
+                next_checkpoint_sequence,
                 step_key, str(row["request_fingerprint"]),
                 hashlib.sha256(checkpoint_bytes).hexdigest(), result_payload,
             )
             if not checkpoint:
                 raise AgentRuntimePersistenceError("tool step checkpoint could not be durably committed")
+            next_checkpoint_sequence += 1
             outputs[str(step["step_id"])] = result["result"]
             completed_steps.append({"step_id": step["step_id"], "tool_key": step["tool_key"], "result": result["result"], "resumed": False})
             trace_events.extend(result.get("events") or [])
