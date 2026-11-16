@@ -79,7 +79,9 @@ class AgentConsumerGrantStore:
                      runtime_policy_version: str, idempotency_key: str,
                      expires_at: str | None, policy_snapshot: dict[str, Any],
                      granted_scopes: list[str] | None = None,
-                     allowed_tool_keys: list[str] | None = None) -> dict[str, Any]:
+                     allowed_tool_keys: list[str] | None = None,
+                     max_tool_calls: int = 0,
+                     max_tool_runtime_seconds: int = 0) -> dict[str, Any]:
         if requester_id == owner_id:
             raise ValueError("owner cannot create a Consumer grant for themselves")
         if not idempotency_key.strip():
@@ -107,6 +109,14 @@ class AgentConsumerGrantStore:
                 raise ValueError("Consumer generation tool adapter is not available for every requested tool")
         elif tool_keys:
             raise ValueError("allowed_tool_keys requires the tool_invoke scope")
+        if "tool_invoke" in scopes:
+            if (not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool)
+                    or not 1 <= max_tool_calls <= 5
+                    or not isinstance(max_tool_runtime_seconds, int) or isinstance(max_tool_runtime_seconds, bool)
+                    or not 1 <= max_tool_runtime_seconds <= 30):
+                raise ValueError("tool_invoke requires an explicit bounded tool call and runtime budget")
+        elif max_tool_calls != 0 or max_tool_runtime_seconds != 0:
+            raise ValueError("tool budgets require the tool_invoke scope")
         payload = {
             "requester_user_id": requester_id,
             "owner_user_id": owner_id,
@@ -130,6 +140,8 @@ class AgentConsumerGrantStore:
             "allow_partial_settlement": bool(policy_snapshot["allow_partial_settlement"]),
             "granted_scopes": scopes,
             "allowed_tool_keys": tool_keys,
+            "max_tool_calls": max_tool_calls,
+            "max_tool_runtime_seconds": max_tool_runtime_seconds,
             "status": "active",
             "idempotency_key": idempotency_key,
             "expires_at": expires_at,
@@ -141,7 +153,7 @@ class AgentConsumerGrantStore:
                     "skill_version","runtime_policy_version","expires_at","capability_id",
                     "credit_scheme_version","approval_reference","tariff_version","entitlement_version",
                     "max_usage_units","max_cost_microunits","cost_unit","pricing_version","payer_role",
-                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes","allowed_tool_keys")
+                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes","allowed_tool_keys","max_tool_calls","max_tool_runtime_seconds")
             if any(row.get(key) != payload.get(key) for key in keys):
                 raise ConsumerGrantUnavailable("grant idempotency key was reused with different parameters")
             if row.get("status") == "active":
@@ -156,7 +168,7 @@ class AgentConsumerGrantStore:
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={
-                "select": "id,requester_user_id,agent_id,skill_id,granted_scopes,allowed_tool_keys,status,expires_at,granted_at,revoked_at,revoke_reason",
+                "select": "id,requester_user_id,agent_id,skill_id,granted_scopes,allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds,status,expires_at,granted_at,revoked_at,revoke_reason",
                 "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
                 "order": "granted_at.desc", "limit": "100",
             },
