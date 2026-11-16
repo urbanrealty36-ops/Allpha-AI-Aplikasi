@@ -138,6 +138,13 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def list_checkpoints(self, task_id: str, *, limit: int = 5) -> list[dict[str, Any]]:
+        return await self.request("GET", "agent_runtime_checkpoints", params={
+            "select": "task_id,task_version,sequence,step_key,input_fingerprint,checkpoint_hash,result_payload,created_at",
+            "task_id": f"eq.{task_id}", "order": "sequence.asc",
+            "limit": str(max(1, min(limit, 5))),
+        }) or []
+
     async def begin_effect(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
                           step_key: str, idempotency_key: str, input_fingerprint: str) -> dict[str, Any] | None:
         rows = await self.request("POST", "rpc/begin_agent_runtime_effect", body={
@@ -179,7 +186,7 @@ class AgentRuntimeStore:
             "p_task_id": task_id, "p_owner_user_id": owner_id,
             "p_lease_token": lease_token, "p_task_version": task_version,
             "p_event_type": "state_transition", "p_state": state,
-            "p_step_key": "tool:" + str(event.get("tool_key") or "runtime")[:150],
+            "p_step_key": str(event.get("step_key") or ("tool:" + str(event.get("tool_key") or "runtime")))[:160],
             "p_details": details,
         })
         return rows[0] if rows else None
