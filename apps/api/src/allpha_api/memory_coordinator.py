@@ -1,6 +1,6 @@
 """Single canonical persistence and retrieval boundary for owner-private Agent Memory."""
 from __future__ import annotations
-import hashlib, os
+import hashlib, os, re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import httpx
@@ -119,6 +119,49 @@ class MemoryCoordinator:
         if not isinstance(row,dict) or not row.get("id"): raise MemoryUnavailable("Memory proposal was not created")
         return row
 
+    async def propose_explicit_intent(self,owner_id,agent_id,text,*,purpose="agent_runtime_context",source_ref=None):
+        """Create a pending proposal only when the owner explicitly asks to remember content."""
+        if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":
+            return None
+        if purpose not in {"agent_runtime_context","agent_generation_context"}:
+            return None
+        source=str(text or "").strip()
+        if not source or len(source)>8000:
+            return None
+        lowered=source.lower()
+        if re.search(r"\\b(?:do not|don't|never|jangan)\\s+(?:remember|ingat)\\b",lowered):
+            return None
+        patterns=(
+            r"\\b(?:please\\s+)?(?:remember(?:\\s+that)?|keep\\s+in\\s+mind(?:\\s+that)?|save\\s+this(?:\\s+as)?|note\\s+that)\\s+(.+)$",
+            r"\\b(?:tolong\\s+)?(?:ingat(?:lah)?(?:\\s+bahwa)?|simpan(?:lah)?(?:\\s+bahwa)?|catat(?:lah)?(?:\\s+bahwa)?)\\s+(.+)$",
+        )
+        match=next((re.search(pattern,source,re.IGNORECASE|re.DOTALL) for pattern in patterns
+                    if re.search(pattern,source,re.IGNORECASE|re.DOTALL)),None)
+        if not match:
+            return None
+        content=match.group(1).strip().strip('“”"\\' ')
+        if not content or len(content)>8000:
+            return None
+        policy=next((p for p in await self.policies(owner_id,agent_id)
+                     if p.get("memory_type")=="long_term"),None)
+        if (not policy or not policy.get("enabled")
+                or policy.get("consent_version")!=CONSENT_VERSION
+                or policy.get("consent_revoked_at")
+                or purpose not in (policy.get("allowed_purposes") or [])):
+            return None
+        allowed=set(policy.get("allowed_sensitivities") or [])
+        classification=next((level for level in reversed(SENSITIVITIES) if level in allowed),None)
+        if classification is None:
+            return None
+        source_digest=hashlib.sha256(source.encode()).hexdigest()
+        return await self.propose(
+            owner_id,agent_id,"long_term",purpose,classification,content,
+            source_ref or {"kind":"owner_explicit_memory_intent"},
+            {"created_by":"owner","capture_mode":"explicit_intent",
+             "source_text_sha256":source_digest},
+            1.0,int(policy.get("retention_days") or 365),
+        )
+
     async def decide(self,owner_id,item_id,decision):
         if decision not in ("approve","reject"): raise MemoryDenied("Decision must be approve or reject")
         if decision=="approve" and os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":
@@ -139,6 +182,9 @@ class MemoryCoordinator:
     async def retrieve_context(self,owner_id,agent_id,purpose="agent_generation_context",limit=12,max_chars=6000,query=None,max_sensitivity=None):
         if os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED","false").lower()!="true":return []
         if purpose not in PURPOSES:return []
+        # The owner-only API uses "private" as a caller classification; policy
+        # allowed_sensitivities remains the authoritative item-level ceiling.
+        if max_sensitivity=="private":max_sensitivity=None
         if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
         if not isinstance(max_chars,int) or isinstance(max_chars,bool) or max_chars<1:return []
         max_chars=min(max_chars,12000)
