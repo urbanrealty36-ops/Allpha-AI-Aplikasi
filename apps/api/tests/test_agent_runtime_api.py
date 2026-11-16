@@ -106,7 +106,7 @@ class FakeRuntimeStore:
         sequence = len(self.events.setdefault(task_id, [])) + 1
         saved = {"id": str(uuid.uuid4()), "task_id": task_id, "sequence": sequence,
                  "task_version": task_version, "trace_id": row["trace_id"],
-                 "event_type": "state_transition", "state": event["state"],
+                 "event_type": event.get("event_type", "state_transition"), "state": event["state"],
                  "step_key": event.get("step_key") or ("tool:" + event.get("tool_key", "runtime")),
                  "details": {"reason_code": event.get("reason_code")} if event.get("reason_code") else {},
                  "created_at": "now"}
@@ -367,6 +367,54 @@ def test_multi_tool_plan_checkpoints_each_step_and_recovers_outputs(monkeypatch)
         events = FakeRuntimeStore.events[task["id"]]
         assert any(item["step_key"] == "step:normalize" for item in events)
         assert any(item["step_key"] == "step:truncate" for item in events)
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_multi_tool_plan_resumes_from_last_durable_step_checkpoint(monkeypatch):
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        created = c.post("/v1/agent-runtime/tasks", json={
+            "session_id": sid, "skill_id": SKILL,
+            "tool_plan": [
+                {"step_id": "normalize", "tool_key": "text.normalize",
+                 "inputs": {"text": "  Hello   world  "}},
+                {"step_id": "truncate", "tool_key": "text.truncate",
+                 "inputs": {"max_chars": 5},
+                 "bindings": {"text": {"step_id": "normalize", "path": "text"}}},
+            ],
+            "idempotency_key": "task-plan-resume-001",
+            "budget_limits": {"max_runtime_seconds": 3, "max_tool_calls": 2},
+        })
+        assert created.status_code == 201
+        task_id = created.json()["task"]["id"]
+        step_result = {"state": "succeeded", "step_id": "normalize",
+                       "tool_key": "text.normalize", "result": {"text": "Hello world"}}
+        checkpoint_bytes = json.dumps(step_result, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":"), allow_nan=False).encode()
+        checkpoint = {
+            "task_id": task_id, "task_version": 2, "sequence": 1,
+            "step_key": "step:normalize",
+            "input_fingerprint": FakeRuntimeStore.tasks[task_id]["request_fingerprint"],
+            "checkpoint_hash": hashlib.sha256(checkpoint_bytes).hexdigest(),
+            "result_payload": step_result,
+        }
+        FakeRuntimeStore.checkpoints[task_id] = [checkpoint]
+        FakeRuntimeStore.tasks[task_id].update({
+            "state": "executing", "task_version": 2, "checkpoint_seq": 1,
+            "effect_outcome": "completed", "lease_expires_at": "2000-01-01T00:00:00+00:00",
+        })
+
+        resumed = c.post(f"/v1/agent-runtime/tasks/{task_id}/execute")
+        assert resumed.status_code == 200
+        result = resumed.json()["task"]
+        assert result["state"] == "succeeded"
+        assert result["output_payload"]["result"]["text"] == "Hello"
+        assert len(FakeRuntimeStore.checkpoints[task_id]) == 2
+        assert any(event["event_type"] == "checkpoint_resumed"
+                   and event["step_key"] == "step:normalize"
+                   for event in FakeRuntimeStore.events[task_id])
     finally:
         app.dependency_overrides.pop(current_user, None)
 
