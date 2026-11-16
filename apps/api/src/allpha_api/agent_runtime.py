@@ -135,6 +135,7 @@ class AgentConsumerAuthorization:
     policy_approved: bool
     policy_version: str
     granted_scopes: tuple[str, ...] = ()
+    allowed_tool_keys: tuple[str, ...] = ()
     allowed_memory_scope: tuple[str, ...] = ()
     budget_reserved: bool = False
     metering_ready: bool = False
@@ -345,7 +346,11 @@ class AgentRuntime:
             raise AgentRuntimeBlocked("Skill tool dependency count or uniqueness is invalid")
         if dependencies:
             if requester_id != owner_id:
-                raise AgentRuntimeBlocked("external Consumer tool execution requires an explicit tool-scoped grant")
+                consumer = consumer_authorization
+                if consumer is None or "tool_invoke" not in consumer.granted_scopes:
+                    raise AgentRuntimeBlocked("external Consumer tool execution requires an explicit tool-scoped grant")
+                if not set(dependencies).issubset(set(consumer.allowed_tool_keys)):
+                    raise AgentRuntimeBlocked("external Consumer grant does not allow every pinned Skill tool")
             auth = runtime_authorization
             if auth is None:
                 raise AgentRuntimeBlocked("approved runtime tool policy is required")
@@ -366,6 +371,12 @@ class AgentRuntime:
             tool_deadline = time.monotonic() + min(float(max_runtime), 30.0)
             for index, key in enumerate(dependencies):
                 tool = get_tool(key)
+                if getattr(tool, "execution_class", "side_effecting") != "pure":
+                    raise AgentRuntimeBlocked(f"side-effecting Skill tool is not enabled: {key}")
+                if requester_id != owner_id and (
+                    consumer_authorization is None or key not in consumer_authorization.allowed_tool_keys
+                ):
+                    raise AgentRuntimeBlocked(f"tool is not present in the external Consumer grant: {key}")
                 if key not in auth.approved_tool_keys:
                     raise AgentRuntimeBlocked(f"tool is not approved by runtime policy: {key}")
                 if not set(tool.required_permission_scopes).issubset(auth.granted_scopes):
