@@ -16,7 +16,7 @@ from allpha_api.agent_runtime import (
     AgentTaskState, RuntimeAuthorization,
 )
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, user_db_request
 from allpha_api.tool_registry import ToolInputError, UnknownToolError, get_tool
 
 router = APIRouter(prefix="/v1/agent-runtime", tags=["agent-runtime"])
@@ -391,6 +391,108 @@ async def _execute_planned_task(
             if not failed:
                 raise AgentRuntimePersistenceError("invalid planned checkpoint could not be terminalized") from exc
         raise
+
+
+@router.get("/agents")
+async def list_owned_agents(
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Return the authenticated owner's active Agents and published execution choices.
+
+    This is a read projection only. It does not expose private Memory, Agent prompts,
+    service credentials, unpublished Skills, or another owner's Agent records.
+    """
+    token = getattr(request.state, "supabase_access_token", None)
+    if not token:
+        raise HTTPException(status_code=401, detail={
+            "code": "AUTH_REQUIRED", "message": "Sesi login diperlukan.",
+        })
+    owner_id = str(user["id"])
+    ownerships = await user_db_request("GET", "agent_ownerships", token, params={
+        "select": "agent_id",
+        "owner_user_id": f"eq.{owner_id}",
+        "ownership_role": "eq.owner",
+        "status": "eq.active",
+        "limit": "100",
+    })
+    agent_ids = list(dict.fromkeys(
+        str(row.get("agent_id")) for row in (ownerships or [])
+        if isinstance(row, dict) and row.get("agent_id")
+    ))
+    if not agent_ids:
+        return {"items": []}
+    agent_filter = "in.(" + ",".join(agent_ids) + ")"
+    agents = await user_db_request("GET", "ai_agents", token, params={
+        "select": "id,version,status,visibility,display_name,description,disclosure",
+        "id": agent_filter,
+        "status": "eq.active",
+        "limit": "100",
+    })
+    live_ids = list(dict.fromkeys(
+        str(row.get("id")) for row in (agents or [])
+        if isinstance(row, dict) and row.get("id")
+    ))
+    if not live_ids:
+        return {"items": []}
+    live_filter = "in.(" + ",".join(live_ids) + ")"
+    skills = await user_db_request("GET", "agent_skills", token, params={
+        "select": "id,agent_id,version,status,name,display_name,tool_dependencies,required_permission_scopes,budget_limits",
+        "agent_id": live_filter,
+        "status": "eq.published",
+        "order": "updated_at.desc",
+        "limit": "500",
+    })
+    capabilities = await user_db_request("GET", "agent_capabilities", token, params={
+        "select": "agent_id,capability_key,status,required_permission_scopes",
+        "agent_id": live_filter,
+        "status": "eq.approved",
+        "limit": "500",
+    })
+    skills_by_agent: dict[str, list[dict[str, Any]]] = {}
+    for skill in skills or []:
+        if not isinstance(skill, dict):
+            continue
+        dependencies = skill.get("tool_dependencies") if isinstance(skill.get("tool_dependencies"), list) else []
+        compatible = all(key == "text.normalize" for key in dependencies)
+        skills_by_agent.setdefault(str(skill.get("agent_id")), []).append({
+            "id": str(skill.get("id")),
+            "version": int(skill.get("version") or 0),
+            "name": skill.get("name"),
+            "display_name": skill.get("display_name"),
+            "status": skill.get("status"),
+            "tool_dependencies": dependencies,
+            "required_permission_scopes": skill.get("required_permission_scopes") or [],
+            "budget_limits": skill.get("budget_limits") if isinstance(skill.get("budget_limits"), dict) else {},
+            "generation_compatible": compatible,
+            "generation_block_reason": None if compatible else "GENERATION_TOOL_ADAPTER_UNAVAILABLE",
+        })
+    capabilities_by_agent: dict[str, list[dict[str, Any]]] = {}
+    for capability in capabilities or []:
+        if not isinstance(capability, dict):
+            continue
+        capabilities_by_agent.setdefault(str(capability.get("agent_id")), []).append({
+            "capability_key": str(capability.get("capability_key") or ""),
+            "required_permission_scopes": capability.get("required_permission_scopes") or [],
+        })
+    return {
+        "items": [
+            {
+                "agent": {
+                    "id": str(agent["id"]),
+                    "version": int(agent.get("version") or 0),
+                    "display_name": agent.get("display_name") or "",
+                    "description": agent.get("description") or "",
+                    "visibility": agent.get("visibility"),
+                    "disclosure": agent.get("disclosure") or "",
+                },
+                "skills": skills_by_agent.get(str(agent["id"]), []),
+                "capabilities": capabilities_by_agent.get(str(agent["id"]), []),
+            }
+            for agent in agents or []
+            if isinstance(agent, dict) and agent.get("id")
+        ]
+    }
 
 
 @router.post("/sessions", status_code=201)

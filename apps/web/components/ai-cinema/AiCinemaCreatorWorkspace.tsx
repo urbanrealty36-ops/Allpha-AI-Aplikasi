@@ -23,6 +23,11 @@ type DraftEpisode = {
   duration_seconds?: number | null;
 };
 type CreatorStatus = { generation: string; generation_jobs: string; billing: string; playback_entitlement: string; generation_reason?: string | null; billing_reason?: string | null; entitlement_reason?: string | null };
+type RuntimeSkillChoice = { id: string; version: number; name?: string | null; display_name?: string | null; generation_compatible: boolean; generation_block_reason?: string | null };
+type RuntimeAgentChoice = { agent: { id: string; version: number; display_name: string; description?: string; visibility?: string; disclosure?: string }; skills: RuntimeSkillChoice[]; capabilities: { capability_key: string }[] };
+type GenerationRequestPayload = { agent_id: string; skill_id: string; capability_id: string; prompt: string; max_output_tokens: number };
+type GenerationQuote = { expires_at: string; estimated_credits: number; estimated_usage_units: number; usage_unit: string; provider_id: string; model_id: string; model_version: string; policy_version: string; tariff_version: string; entitlement_version: string; knowledge_context_sha256?: string | null; agent_snapshot_sha256: string; skill_snapshot_sha256: string; request: GenerationRequestPayload };
+type GenerationJob = { id: string; task_id?: string; status: string; moderation_status?: string; artifact_available?: boolean; error_code?: string | null; input_tokens?: number; output_tokens?: number };
 type ReadyMedia = { id: string; filename: string; media_type: string; size_bytes: number };
 type CreatorMedia = ReadyMedia & { status: string; scan_status: string; processed_at?: string | null; created_at: string };
 type CinemaCollaborator = { id: string; collaborator_user_id?: string | null; collaborator_agent_id?: string | null; role: string; permissions: string[]; status: string };
@@ -87,6 +92,17 @@ export default function AiCinemaCreatorWorkspace() {
   const [creditRole, setCreditRole] = useState("Creator");
   const [creditLabel, setCreditLabel] = useState("Kontribusi kreator");
   const [versions, setVersions] = useState<CinemaVersion[]>([]);
+  const [runtimeAgents, setRuntimeAgents] = useState<RuntimeAgentChoice[]>([]);
+  const [runtimeAgentsState, setRuntimeAgentsState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+  const [generationAgentId, setGenerationAgentId] = useState("");
+  const [generationSkillId, setGenerationSkillId] = useState("");
+  const [generationCapabilityId, setGenerationCapabilityId] = useState("");
+  const [generationPrompt, setGenerationPrompt] = useState("");
+  const [generationQuote, setGenerationQuote] = useState<GenerationQuote | null>(null);
+  const [generationJobId, setGenerationJobId] = useState("");
+  const [generationJob, setGenerationJob] = useState<GenerationJob | null>(null);
+  const [generationArtifactText, setGenerationArtifactText] = useState("");
+  const [generationBusy, setGenerationBusy] = useState(false);
 
   const loadCapabilityStatus = useCallback(async () => {
     try {
@@ -96,6 +112,41 @@ export default function AiCinemaCreatorWorkspace() {
       setCapabilityStatus(null);
     }
   }, []);
+
+  const loadRuntimeAgents = useCallback(async () => {
+    setRuntimeAgentsState("loading");
+    try {
+      const result = await authorizedRequest<{ items: RuntimeAgentChoice[] }>("/v1/agent-runtime/agents");
+      const items = Array.isArray(result.items) ? result.items : [];
+      setRuntimeAgents(items);
+      setGenerationAgentId(current => items.some(item => item.agent.id === current) ? current : items[0]?.agent.id ?? "");
+      setRuntimeAgentsState("ready");
+    } catch {
+      setRuntimeAgents([]);
+      setRuntimeAgentsState("unavailable");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (capabilityStatus?.generation === "configured"
+        && capabilityStatus.generation_jobs === "available"
+        && capabilityStatus.billing === "available") {
+      void loadRuntimeAgents();
+    } else {
+      setRuntimeAgents([]);
+      setRuntimeAgentsState("idle");
+      setGenerationQuote(null);
+    }
+  }, [capabilityStatus, loadRuntimeAgents]);
+
+  useEffect(() => {
+    const selected = runtimeAgents.find(item => item.agent.id === generationAgentId);
+    const compatibleSkills = (selected?.skills || []).filter(skill => skill.generation_compatible);
+    setGenerationSkillId(current => compatibleSkills.some(skill => skill.id === current) ? current : compatibleSkills[0]?.id ?? "");
+    const capabilities = selected?.capabilities || [];
+    setGenerationCapabilityId(current => capabilities.some(item => item.capability_key === current) ? current : capabilities[0]?.capability_key ?? "");
+    setGenerationQuote(null);
+  }, [runtimeAgents, generationAgentId]);
 
   const loadCreatorMedia = useCallback(async () => {
     try {
@@ -209,6 +260,113 @@ export default function AiCinemaCreatorWorkspace() {
 
 
 
+  const selectedRuntimeAgent = runtimeAgents.find(item => item.agent.id === generationAgentId);
+  const selectedRuntimeSkill = selectedRuntimeAgent?.skills.find(item => item.id === generationSkillId && item.generation_compatible);
+
+  async function quoteCinemaGeneration() {
+    if (!selectedRuntimeAgent || !selectedRuntimeSkill || !generationCapabilityId || !generationPrompt.trim()) return;
+    setGenerationBusy(true); setError(""); setNotice(""); setGenerationJob(null); setGenerationJobId(""); setGenerationArtifactText("");
+    try {
+      const payload: GenerationRequestPayload = {
+        agent_id: selectedRuntimeAgent.agent.id,
+        skill_id: selectedRuntimeSkill.id,
+        capability_id: generationCapabilityId,
+        prompt: generationPrompt.trim(),
+        max_output_tokens: 2048,
+      };
+      const quote = await authorizedRequest<Omit<GenerationQuote, "request">>("/v1/generation/quote", {
+        method: "POST", body: JSON.stringify(payload),
+      });
+      setGenerationQuote({ ...quote, request: payload });
+      setNotice("Estimasi AI Credits berhasil dihitung. Periksa biaya dan masa berlaku sebelum menjalankan generation.");
+    } catch (cause) {
+      setGenerationQuote(null);
+      setError(cause instanceof Error ? cause.message : "Quote AI Cinema tidak tersedia.");
+    } finally { setGenerationBusy(false); }
+  }
+
+  async function startCinemaGeneration() {
+    if (!generationQuote || new Date(generationQuote.expires_at).getTime() <= Date.now()) {
+      setGenerationQuote(null);
+      setError("Quote sudah kedaluwarsa. Hitung ulang estimasi sebelum menjalankan generation.");
+      return;
+    }
+    const currentRequest = generationQuote.request;
+    if (currentRequest.prompt !== generationPrompt.trim()
+        || currentRequest.agent_id !== generationAgentId
+        || currentRequest.skill_id !== generationSkillId
+        || currentRequest.capability_id !== generationCapabilityId) {
+      setGenerationQuote(null);
+      setError("Pilihan Agent, Skill, Capability atau prompt berubah. Hitung ulang quote.");
+      return;
+    }
+    setGenerationBusy(true); setError(""); setNotice("");
+    try {
+      const body: Record<string, unknown> = {
+        ...currentRequest,
+        quoted_credits: generationQuote.estimated_credits,
+        quoted_policy_version: generationQuote.policy_version,
+        quoted_tariff_version: generationQuote.tariff_version,
+        quoted_model_id: generationQuote.model_id,
+        quoted_agent_snapshot_sha256: generationQuote.agent_snapshot_sha256,
+        quoted_skill_snapshot_sha256: generationQuote.skill_snapshot_sha256,
+      };
+      if (generationQuote.knowledge_context_sha256) body.quoted_knowledge_context_sha256 = generationQuote.knowledge_context_sha256;
+      const created = await authorizedRequest<{ job_id: string; status: string; reserved_credits: number }>("/v1/generation/jobs", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify(body),
+      });
+      setGenerationJobId(created.job_id);
+      setGenerationJob({ id: created.job_id, status: created.status });
+      setGenerationQuote(null);
+      setNotice("Generation Job dibuat melalui Agent Runtime dan AI Credit reservation. Output menunggu proses dan moderation.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Generation Job AI Cinema gagal dibuat.");
+    } finally { setGenerationBusy(false); }
+  }
+
+  useEffect(() => {
+    if (!generationJobId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const result = await authorizedRequest<{ job: GenerationJob }>("/v1/generation/jobs/" + encodeURIComponent(generationJobId));
+        if (!active) return;
+        setGenerationJob(result.job);
+        if (result.job.status === "succeeded" && result.job.artifact_available) {
+          const artifact = await authorizedRequest<{ url: string }>("/v1/generation/jobs/" + encodeURIComponent(generationJobId) + "/artifact");
+          const response = await fetch(artifact.url, { cache: "no-store" });
+          if (!response.ok) throw new Error("Artefak generation privat tidak dapat diambil.");
+          const output = await response.text();
+          if (active) setGenerationArtifactText(output.slice(0, 100000));
+          return;
+        }
+        if (["failed", "cancelled", "pending_reconciliation", "succeeded"].includes(result.job.status)) return;
+        timer = setTimeout(poll, 4000);
+      } catch (cause) {
+        if (!active) return;
+        setError(cause instanceof Error ? cause.message : "Status Generation Job belum dapat dimuat.");
+        timer = setTimeout(poll, 8000);
+      }
+    };
+    void poll();
+    return () => { active = false; if (timer) clearTimeout(timer); };
+  }, [generationJobId]);
+
+  async function cancelCinemaGeneration() {
+    if (!generationJobId || generationJob?.status !== "queued") return;
+    setGenerationBusy(true); setError(""); setNotice("");
+    try {
+      await authorizedRequest("/v1/generation/jobs/" + encodeURIComponent(generationJobId) + "/cancel", { method: "POST" });
+      setGenerationJob(current => current ? { ...current, status: "cancelled" } : current);
+      setNotice("Generation Job yang belum diproses berhasil diminta pembatalannya.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Generation Job tidak dapat dibatalkan.");
+    } finally { setGenerationBusy(false); }
+  }
+
   async function uploadCinemaMedia() {
     if (!uploadFile || !uploadFile.type.startsWith("video/")) { setError("Pilih file video MP4 atau WebM terlebih dahulu."); return; }
     if (uploadFile.size <= 0 || uploadFile.size > 50 * 1024 * 1024) { setError("Ukuran video harus lebih dari 0 dan maksimal 50 MiB."); return; }
@@ -295,6 +453,50 @@ export default function AiCinemaCreatorWorkspace() {
       </div>}
       {error && <p role="alert" className="mb-4 rounded-xl border border-2 border-slate-900 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       {notice && <p role="status" className="mb-4 rounded-xl border border-2 border-slate-900 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      <section className="mb-6 space-y-3 rounded-2xl border-2 border-slate-900 bg-violet-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><p className="text-xs font-black uppercase tracking-[.18em] text-violet-800">AI Cinema · Agent Runtime</p><h3 className="mt-1 text-lg font-black text-slate-950">AI Script & Story Development</h3><p className="mt-1 text-xs text-slate-700">Generate sinopsis, screenplay brief atau outline episode melalui Generation Jobs, Model Router, Memory policy dan AI Credit ledger. Output hanya dapat digunakan setelah moderation approved.</p></div>
+          <span className="rounded-lg border-2 border-slate-900 bg-white px-3 py-1 text-xs font-bold text-slate-800">{capabilityStatus?.generation === "configured" && capabilityStatus.billing === "available" ? "Runtime tersedia menurut status API" : "Menunggu policy / entitlement"}</span>
+        </div>
+        {capabilityStatus?.generation !== "configured" || capabilityStatus.generation_jobs !== "available" || capabilityStatus.billing !== "available" ? (
+          <p className="rounded-xl border border-2 border-slate-900 bg-amber-50 p-3 text-xs text-amber-900">Generation belum dapat dijalankan. FastAPI belum mengonfirmasi seluruh schema Generation Job, output moderation, Model Router, approved credit policy dan billing entitlement. UI tidak membuat job atau biaya palsu.</p>
+        ) : (
+          <>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="block text-xs font-semibold text-slate-700">Agent milik Anda
+                <select value={generationAgentId} onChange={event => { setGenerationAgentId(event.target.value); setGenerationQuote(null); }} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-white p-3 text-sm text-slate-950">
+                  {runtimeAgents.map(item => <option key={item.agent.id} value={item.agent.id}>{item.agent.display_name || item.agent.id}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-semibold text-slate-700">Published Skill
+                <select value={generationSkillId} onChange={event => { setGenerationSkillId(event.target.value); setGenerationQuote(null); }} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-white p-3 text-sm text-slate-950">
+                  {(selectedRuntimeAgent?.skills || []).filter(skill => skill.generation_compatible).map(skill => <option key={skill.id} value={skill.id}>{skill.display_name || skill.name || skill.id} · v{skill.version}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-semibold text-slate-700">Approved Capability
+                <select value={generationCapabilityId} onChange={event => { setGenerationCapabilityId(event.target.value); setGenerationQuote(null); }} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-white p-3 text-sm text-slate-950">
+                  {(selectedRuntimeAgent?.capabilities || []).map(capability => <option key={capability.capability_key} value={capability.capability_key}>{capability.capability_key}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="block text-xs font-semibold text-slate-700">Instruksi produksi
+              <textarea value={generationPrompt} onChange={event => { setGenerationPrompt(event.target.value); setGenerationQuote(null); }} maxLength={12000} rows={4} placeholder="Buat screenplay outline 8 episode untuk drama misteri, lengkap dengan logline, karakter, konflik utama dan cliffhanger tiap episode." className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-white p-3 text-sm text-slate-950" />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => void quoteCinemaGeneration()} disabled={generationBusy || !selectedRuntimeAgent || !selectedRuntimeSkill || !generationCapabilityId || !generationPrompt.trim()} className="rounded-xl border-2 border-slate-900 bg-white px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-40">Hitung AI Credits</button>
+              <button type="button" onClick={() => void startCinemaGeneration()} disabled={generationBusy || !generationQuote} className="rounded-xl border-2 border-slate-900 bg-violet-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-40">Jalankan Generation</button>
+              {generationJob?.status === "queued" && <button type="button" onClick={() => void cancelCinemaGeneration()} disabled={generationBusy} className="rounded-xl border-2 border-slate-900 bg-rose-100 px-4 py-2 text-sm font-bold text-rose-900 disabled:opacity-40">Batalkan antrean</button>}
+            </div>
+            {generationQuote && <p className="rounded-xl border border-2 border-slate-900 bg-white p-3 text-xs text-slate-800">Estimasi: <strong>{generationQuote.estimated_credits.toLocaleString("id-ID")} AI Credits</strong> · {generationQuote.estimated_usage_units.toLocaleString("id-ID")} {generationQuote.usage_unit} · {generationQuote.model_id} · berlaku sampai {new Date(generationQuote.expires_at).toLocaleString("id-ID")}. Quote akan diverifikasi ulang oleh FastAPI saat job dibuat.</p>}
+            {generationJob && <div className="rounded-xl border border-2 border-slate-900 bg-white p-3 text-xs text-slate-800"><p><strong>Generation Job:</strong> {generationJob.id} · <strong>Status:</strong> {generationJob.status} · <strong>Moderation:</strong> {generationJob.moderation_status || "menunggu hasil"}</p>{generationJob.error_code && <p className="mt-1 text-rose-800">Error: {generationJob.error_code}</p>}{generationJob.status === "succeeded" && !generationJob.artifact_available && <p className="mt-1 text-amber-800">Output belum dapat diakses sampai moderation menyetujui artefak privat.</p>}</div>}
+            {generationArtifactText && <div className="space-y-2 rounded-xl border border-2 border-slate-900 bg-white p-3"><p className="text-xs font-bold text-emerald-800">Artefak teks tersedia · moderation approved</p><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-800">{generationArtifactText}</pre><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSynopsis(generationArtifactText.slice(0, 5000))} className="rounded-lg border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-bold">Gunakan sebagai sinopsis film</button><button type="button" onClick={() => setEpisodeSynopsis(generationArtifactText.slice(0, 3000))} className="rounded-lg border-2 border-slate-900 bg-rose-100 px-3 py-2 text-xs font-bold">Gunakan sebagai sinopsis episode</button></div></div>}
+            {runtimeAgentsState === "loading" && <p className="text-xs text-slate-600">Memuat Agent dan Skill milik Anda…</p>}
+            {runtimeAgentsState === "ready" && runtimeAgents.length === 0 && <p className="text-xs text-slate-600">Belum ada Agent aktif dengan ownership Anda.</p>}
+            {runtimeAgentsState === "ready" && selectedRuntimeAgent && !selectedRuntimeSkill && <p className="text-xs text-amber-800">Agent ini belum memiliki Published Skill dengan tool adapter Generation yang tersedia.</p>}
+            {runtimeAgentsState === "unavailable" && <p className="text-xs text-rose-800">Katalog Agent Runtime tidak dapat dimuat. Periksa koneksi FastAPI dan ownership policy.</p>}
+          </>
+        )}
+      </section>
       <div className="grid gap-6 lg:grid-cols-2">
         <form onSubmit={createTitle} className="space-y-3 rounded-2xl border-2 border-slate-900 bg-white p-4">
           <h3 className="font-bold">Buat draft film</h3>
