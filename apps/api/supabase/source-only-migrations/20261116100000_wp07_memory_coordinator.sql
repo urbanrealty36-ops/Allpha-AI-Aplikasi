@@ -86,7 +86,7 @@ begin
   v_type:=p_payload->>'memory_type';
   v_enabled:=coalesce((p_payload->>'enabled')::boolean,false);
   v_retention:=coalesce((p_payload->>'retention_days')::integer,30);
-  if v_type not in ('working','episodic','semantic','procedural','long_term')
+  if v_type is null or v_type not in ('working','episodic','semantic','procedural','long_term')
    or v_retention not between 1 and 3650 or (v_type='working' and v_retention<>1)
    or jsonb_typeof(coalesce(p_payload->'allowed_purposes','[]'::jsonb))<>'array'
    or jsonb_typeof(coalesce(p_payload->'allowed_sensitivities','[]'::jsonb))<>'array'
