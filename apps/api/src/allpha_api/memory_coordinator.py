@@ -129,11 +129,11 @@ class MemoryCoordinator:
         if not source or len(source)>8000:
             return None
         lowered=source.lower()
-        if re.search(r"\b(?:do not|don't|never|jangan)\\s+(?:remember|ingat)\\b",lowered):
+        if re.search(r"\b(?:do not|don't|never|jangan)\s+(?:remember|ingat)\b",lowered):
             return None
         patterns=(
-            r"\b(?:please\\s+)?(?:remember(?:\\s+that)?|keep\\s+in\\s+mind(?:\\s+that)?|save\\s+this(?:\\s+as)?|note\\s+that)\\s+(.+)$",
-            r"\b(?:tolong\\s+)?(?:ingat(?:lah)?(?:\\s+bahwa)?|simpan(?:lah)?(?:\\s+bahwa)?|catat(?:lah)?(?:\\s+bahwa)?)\\s+(.+)$",
+            r"\b(?:please\s+)?(?:remember(?:\s+that)?|keep\s+in\s+mind(?:\s+that)?|save\s+this(?:\s+as)?|note\s+that)\s+(.+)$",
+            r"\b(?:tolong\s+)?(?:ingat(?:lah)?(?:\s+bahwa)?|simpan(?:lah)?(?:\s+bahwa)?|catat(?:lah)?(?:\s+bahwa)?)\s+(.+)$",
         )
         match=next((re.search(pattern,source,re.IGNORECASE|re.DOTALL) for pattern in patterns
                     if re.search(pattern,source,re.IGNORECASE|re.DOTALL)),None)
