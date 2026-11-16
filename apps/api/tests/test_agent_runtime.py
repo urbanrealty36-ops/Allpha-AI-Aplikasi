@@ -140,7 +140,8 @@ def test_consumer_tool_execution_requires_tool_scope_and_exact_allowlist_without
         agent_public=True, agent_active=True, skill_published=True,
         grant_active=True, policy_approved=True, policy_version="public-v1",
         granted_scopes=("generation_invoke", "tool_invoke"),
-        allowed_tool_keys=("text.normalize",), allowed_memory_scope=(),
+        allowed_tool_keys=("text.normalize",), max_tool_calls=1,
+        max_tool_runtime_seconds=3, allowed_memory_scope=(),
         budget_reserved=True, metering_ready=True,
     )
     runtime_auth = RuntimeAuthorization(
