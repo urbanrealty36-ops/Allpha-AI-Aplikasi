@@ -245,6 +245,14 @@ def validate_tool_input_partial(tool_key: str, payload: dict[str, Any]) -> None:
     _validate_schema(payload, tool.input_schema, "input", allow_missing_required=True)
 
 
+def validate_tool_input(tool_key: str, payload: dict[str, Any]) -> None:
+    """Validate a complete registered tool input before scheduling execution."""
+    tool = get_tool(tool_key)
+    if not isinstance(payload, dict):
+        raise ToolInputError("tool input must be an object")
+    _validate_schema(payload, tool.input_schema, "input")
+
+
 def execute_tool(tool_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     tool = get_tool(tool_key)
     if not isinstance(payload, dict):

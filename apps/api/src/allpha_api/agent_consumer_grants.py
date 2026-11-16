@@ -20,7 +20,7 @@ from allpha_api.credit_ledger_service import (
     ReservationReceipt,
 )
 from allpha_api.supabase_credit_ledger_store import SupabaseCreditLedgerStore
-from allpha_api.tool_registry import UnknownToolError, validate_tool_dependencies
+from allpha_api.tool_registry import UnknownToolError, get_tool, validate_tool_dependencies
 
 
 class ConsumerGrantUnavailable(RuntimeError):
@@ -105,8 +105,9 @@ class AgentConsumerGrantStore:
                 validate_tool_dependencies(tool_keys)
             except (UnknownToolError, ValueError) as exc:
                 raise ValueError("Consumer tool allowlist contains an unregistered tool") from exc
-            if any(key != "text.normalize" for key in tool_keys):
-                raise ValueError("Consumer generation tool adapter is not available for every requested tool")
+            for key in tool_keys:
+                if get_tool(key).execution_class != "pure":
+                    raise ValueError("External Consumer grants may include only deterministic pure tools")
         elif tool_keys:
             raise ValueError("allowed_tool_keys requires the tool_invoke scope")
         if "tool_invoke" in scopes:
@@ -224,7 +225,7 @@ class AgentConsumerGrantStore:
                     "skill_version":f"eq.{skill_version}", "runtime_policy_version":f"eq.{runtime_policy_version}",
                     "status":"eq.active", "granted_scopes":f"cs.{{{required_scope}}}",
                     **({"allowed_tool_keys": "cs.{" + ",".join(required_tools) + "}"} if required_tools else {}),
-                    **({"max_tool_calls": f"eq.{max_tool_calls}", "max_tool_runtime_seconds": f"eq.{max_tool_runtime_seconds}"} if required_tools else {}),
+                    **({"max_tool_calls": f"lte.{max_tool_calls}", "max_tool_runtime_seconds": f"lte.{max_tool_runtime_seconds}"} if required_tools else {}),
                     "capability_id":f"eq.{policy_snapshot['capability_id']}",
                     "credit_scheme_version":f"eq.{policy_snapshot['credit_scheme_version']}",
                     "approval_reference":f"eq.{policy_snapshot['approval_reference']}",
@@ -248,8 +249,24 @@ class AgentConsumerGrantStore:
         for key, value in policy_snapshot.items():
             if row.get(key) != value:
                 return None
-        if required_tools and not set(required_tools).issubset(set(row.get("allowed_tool_keys") or [])):
-            return None
+        if required_tools:
+            granted_tools = set(row.get("allowed_tool_keys") or [])
+            if granted_tools != set(required_tools):
+                return None
+            if int(row.get("max_tool_calls") or 0) < len(required_tools) or int(row.get("max_tool_calls") or 0) > max_tool_calls:
+                return None
+            if int(row.get("max_tool_runtime_seconds") or 0) < 1 or int(row.get("max_tool_runtime_seconds") or 0) > max_tool_runtime_seconds:
+                return None
+            if "generation_invoke" not in set(row.get("granted_scopes") or []):
+                return None
+            if any(scope.startswith("memory.") or scope in {"private_memory_read", "owner_private_memory"} for scope in row.get("granted_scopes") or []):
+                return None
+            try:
+                validate_tool_dependencies(required_tools)
+                if any(get_tool(key).execution_class != "pure" for key in required_tools):
+                    return None
+            except (UnknownToolError, ValueError):
+                return None
         return row
 
 

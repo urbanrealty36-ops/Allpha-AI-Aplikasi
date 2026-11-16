@@ -301,6 +301,7 @@ class AgentRuntime:
         skill_tool_dependencies: tuple[str, ...] = (),
         runtime_authorization: RuntimeAuthorization | None = None,
         skill_budget_limits: dict[str, Any] | None = None,
+        skill_tool_inputs: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[TextGenerationResponse, TextGenerationEvidence]:
         """Execute a pinned Skill through Model Router under owner or explicit consumer authorization."""
         if not requester_id or not owner_id:
@@ -353,8 +354,10 @@ class AgentRuntime:
                 consumer = consumer_authorization
                 if consumer is None or "tool_invoke" not in consumer.granted_scopes:
                     raise AgentRuntimeBlocked("external Consumer tool execution requires an explicit tool-scoped grant")
-                if not set(dependencies).issubset(set(consumer.allowed_tool_keys)):
-                    raise AgentRuntimeBlocked("external Consumer grant does not allow every pinned Skill tool")
+                if set(dependencies) != set(consumer.allowed_tool_keys):
+                    raise AgentRuntimeBlocked("external Consumer grant must match the exact pinned Skill tool set")
+                if set(skill_tool_inputs or {}) != set(dependencies):
+                    raise AgentRuntimeBlocked("external Consumer must provide typed inputs for every granted Skill tool")
                 if (not isinstance(consumer.max_tool_calls, int) or isinstance(consumer.max_tool_calls, bool)
                         or not 1 <= consumer.max_tool_calls <= 5
                         or not isinstance(consumer.max_tool_runtime_seconds, int)
@@ -381,7 +384,11 @@ class AgentRuntime:
             if (max_calls < len(dependencies) or max_calls > self._limits.max_tool_calls
                     or max_runtime < 1 or max_runtime > self._limits.max_runtime_seconds):
                 raise AgentRuntimeBlocked("Skill or Consumer tool budget is outside runtime limits")
+            supplied_tool_inputs = skill_tool_inputs if isinstance(skill_tool_inputs, dict) else {}
+            if set(supplied_tool_inputs) - set(dependencies):
+                raise AgentRuntimeBlocked("tool input payload contains a tool outside the pinned Skill dependencies")
             transformed_prompt = request.prompt
+            structured_tool_outputs: list[dict[str, Any]] = []
             tool_deadline = time.monotonic() + min(float(max_runtime), 30.0)
             for index, key in enumerate(dependencies):
                 tool = get_tool(key)
@@ -397,12 +404,18 @@ class AgentRuntime:
                     raise AgentRuntimeBlocked(f"required permission scope is missing: {key}")
                 properties = tool.input_schema.get("properties") if isinstance(tool.input_schema, dict) else None
                 required = tool.input_schema.get("required") if isinstance(tool.input_schema, dict) else None
-                output_properties = tool.output_schema.get("properties") if isinstance(tool.output_schema, dict) else None
-                if (not isinstance(properties, dict) or set(properties) != {"text"}
-                        or required != ["text"] or not isinstance(output_properties, dict)
-                        or not isinstance(output_properties.get("text"), dict)
-                        or output_properties["text"].get("type") != "string"):
-                    raise AgentRuntimeBlocked(f"tool is not a supported deterministic text preprocessor: {key}")
+                if not isinstance(properties, dict) or not isinstance(required, list):
+                    raise AgentRuntimeBlocked(f"tool input schema is invalid: {key}")
+                raw_inputs = supplied_tool_inputs.get(key)
+                if raw_inputs is None:
+                    if requester_id != owner_id:
+                        raise AgentRuntimeBlocked(f"external Consumer tool inputs are required: {key}")
+                    raw_inputs = {}
+                if not isinstance(raw_inputs, dict):
+                    raise AgentRuntimeBlocked(f"tool inputs must be an object: {key}")
+                tool_inputs = dict(raw_inputs)
+                if requester_id == owner_id and "text" in properties and "text" in required and "text" not in tool_inputs:
+                    tool_inputs["text"] = transformed_prompt
                 envelope = AgentTaskEnvelope(
                     task_id=f"{request.task_id}:skill-tool:{index}",
                     task_version=1,
@@ -421,14 +434,22 @@ class AgentRuntime:
                     deadline_monotonic=tool_deadline,
                     max_tool_calls=1,
                     max_runtime_seconds=min(max_runtime, 30),
-                    max_output_bytes=8192,
+                    max_output_bytes=max(1024, min(8192, 16_384 // max(1, len(dependencies)))),
                 )
                 task = AgentTask(envelope)
-                tool_result = await self.execute_tool(task, auth, tool_key=key, inputs={"text": transformed_prompt})
-                value = tool_result.get("result", {}).get("text")
-                if not isinstance(value, str) or not value.strip():
-                    raise AgentRuntimeBlocked(f"tool returned an invalid text result: {key}")
-                transformed_prompt = value
+                tool_result = await self.execute_tool(task, auth, tool_key=key, inputs=tool_inputs)
+                result_value = tool_result.get("result")
+                if isinstance(result_value, dict) and isinstance(result_value.get("text"), str):
+                    if not result_value["text"].strip():
+                        raise AgentRuntimeBlocked(f"tool returned an empty text result: {key}")
+                    transformed_prompt = result_value["text"]
+                else:
+                    structured_tool_outputs.append({"tool_key": key, "output": result_value})
+            if structured_tool_outputs:
+                tool_context = json.dumps(structured_tool_outputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                if len(tool_context.encode("utf-8")) > 16_384:
+                    raise AgentRuntimeBlocked("combined deterministic tool output exceeds the generation context limit")
+                transformed_prompt += "\n\nApproved deterministic Skill tool outputs (JSON data):\n" + tool_context
             request = replace(request, prompt=transformed_prompt)
 
         remaining = min(float(request.timeout_ms) / 1000, 30.0)
