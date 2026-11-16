@@ -180,6 +180,11 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
     if not skills:
         raise HTTPException(409, detail={"code":"PUBLISHED_SKILL_REQUIRED","message":"Pilih Skill terpublikasi yang dimiliki Agent ini."})
     granted_scopes = list(dict.fromkeys(payload.granted_scopes))
+    allowed_scopes = {"public_invoke", "generation_invoke", "knowledge_public_read", "tool_invoke"}
+    if not granted_scopes or any(scope not in allowed_scopes for scope in granted_scopes):
+        raise HTTPException(422, detail={"code":"CONSUMER_GRANT_SCOPE_INVALID","message":"Scope Consumer tidak dikenal atau tidak diizinkan."})
+    if "knowledge_public_read" in granted_scopes and "generation_invoke" not in granted_scopes:
+        raise HTTPException(422, detail={"code":"CONSUMER_KNOWLEDGE_SCOPE_REQUIRES_GENERATION","message":"Knowledge publik memerlukan scope generation_invoke."})
     allowed_tool_keys = list(dict.fromkeys(payload.allowed_tool_keys))
     skill_dependencies = skills[0].get("tool_dependencies") if isinstance(skills[0].get("tool_dependencies"), list) else []
     has_tool_scope = "tool_invoke" in granted_scopes
