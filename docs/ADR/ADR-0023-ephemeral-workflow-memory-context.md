@@ -1,6 +1,6 @@
 # ADR-0023 — Ephemeral Memory Context for Durable Workflow Execution
 
-- **Status:** PROPOSED — requires Product Owner, Privacy/Security and Platform Architecture approval before implementation or activation
+- **Status:** PARTIALLY APPROVED — Product Owner approved Option B on 2026-11-16; Privacy/Security, Platform Architecture and Data Platform approval remain required before activation
 - **Date:** 2026-11-16
 - **Scope:** WP-07 / ENG-P06, ENG-P10 and ENG-P11
 - **Owners:** Product Owner, Platform Architecture, Privacy/Security, Data Platform
@@ -110,7 +110,7 @@ A future External Consumer tool grant requires a separate approved contract cove
 
 ## Approval checklist
 
-- [ ] Product Owner approves Option B as the target contract.
+- [x] Product Owner approves Option B as the target contract (explicit approval recorded 2026-11-16).
 - [ ] Privacy/Security approves non-persistence, context lifetime, deletion and downstream output boundaries.
 - [ ] Platform Architecture approves the opaque reference and Workflow/Coordinator API contract.
 - [ ] Data Platform approves schema/RPC, retention and audit implications.

@@ -17,7 +17,7 @@ from allpha_api.agent_runtime import (
 )
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 from allpha_api.auth import current_user
-from allpha_api.tool_registry import UnknownToolError, get_tool
+from allpha_api.tool_registry import ToolInputError, UnknownToolError, get_tool
 
 router = APIRouter(prefix="/v1/agent-runtime", tags=["agent-runtime"])
 _runtime = AgentRuntime()
@@ -365,7 +365,7 @@ async def _execute_planned_task(
         if not completed:
             raise AgentRuntimePersistenceError("planned task result could not be durably committed")
         return {"task": completed, "idempotent_replay": False}
-    except (AgentRuntimeBlocked, UnknownToolError) as exc:
+    except (AgentRuntimeBlocked, UnknownToolError, ToolInputError) as exc:
         partial = {
             "state": "partially_succeeded" if completed_steps else "failed",
             "tool_plan_version": 1, "steps": completed_steps,

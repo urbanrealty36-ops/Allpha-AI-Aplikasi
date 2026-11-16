@@ -154,13 +154,38 @@ class MemoryCoordinator:
         if classification is None:
             return None
         source_digest=hashlib.sha256(source.encode()).hexdigest()
-        return await self.propose(
-            owner_id,agent_id,"long_term",purpose,classification,content,
-            source_ref or {"kind":"owner_explicit_memory_intent"},
-            {"created_by":"owner","capture_mode":"explicit_intent",
-             "source_text_sha256":source_digest},
-            1.0,int(policy.get("retention_days") or 365),
-        )
+        resolved_source_ref = source_ref or {"kind":"owner_explicit_memory_intent"}
+        generation_job_id = resolved_source_ref.get("generation_job_id") if isinstance(resolved_source_ref,dict) else None
+
+        async def existing_source_proposal():
+            if not isinstance(generation_job_id,str) or not generation_job_id:
+                return None
+            rows = await self.db("GET","agent_memory_items",params={
+                "select":"id,status,memory_type,purpose,classification,policy_version,retention_expires_at",
+                "owner_user_id":f"eq.{owner_id}",
+                "agent_id":f"eq.{agent_id}" if agent_id else "is.null",
+                "source_ref->>generation_job_id":f"eq.{generation_job_id}",
+                "limit":"1",
+            })
+            return rows[0] if rows else None
+
+        existing = await existing_source_proposal()
+        if existing:
+            return existing
+        try:
+            return await self.propose(
+                owner_id,agent_id,"long_term",purpose,classification,content,
+                resolved_source_ref,
+                {"created_by":"owner","capture_mode":"explicit_intent",
+                 "source_text_sha256":source_digest},
+                1.0,int(policy.get("retention_days") or 365),
+            )
+        except MemoryDenied:
+            # A concurrent worker may have won the unique source-key insert.
+            existing = await existing_source_proposal()
+            if existing:
+                return existing
+            raise
 
     async def decide(self,owner_id,item_id,decision):
         if decision not in ("approve","reject"): raise MemoryDenied("Decision must be approve or reject")

@@ -107,7 +107,7 @@ def _merge_json(payload: dict[str, Any]) -> dict[str, Any]:
 _TEXT_TRUNCATE = ToolDefinition(
     key="text.truncate", version="1.0.0", name="Truncate text",
     description="Truncate text to an explicit maximum character count.",
-    risk_level="low", execution_class="pure" required_permission_scopes=(),
+    risk_level="low", execution_class="pure", required_permission_scopes=(),
     input_schema={"type":"object","properties":{
         "text":{"type":"string","maxLength":16000},
         "max_chars":{"type":"integer","minimum":1,"maximum":16000}},
@@ -121,7 +121,7 @@ _TEXT_TRUNCATE = ToolDefinition(
 _TEXT_SPLIT = ToolDefinition(
     key="text.split", version="1.0.0", name="Split text",
     description="Split text using a literal separator with a bounded number of parts.",
-    risk_level="low", execution_class="pure" required_permission_scopes=(),
+    risk_level="low", execution_class="pure", required_permission_scopes=(),
     input_schema={"type":"object","properties":{
         "text":{"type":"string","maxLength":16000},
         "separator":{"type":"string","minLength":1,"maxLength":100},
@@ -136,7 +136,7 @@ _TEXT_SPLIT = ToolDefinition(
 _JSON_PICK = ToolDefinition(
     key="json.pick", version="1.0.0", name="Pick JSON value",
     description="Read a nested object key or array index from caller-provided JSON without side effects.",
-    risk_level="low", execution_class="pure" required_permission_scopes=(),
+    risk_level="low", execution_class="pure", required_permission_scopes=(),
     input_schema={"type":"object","properties":{
         "value":{"type":"object","maxProperties":200},
         "path":{"type":"string","maxLength":500}},
@@ -150,7 +150,7 @@ _JSON_PICK = ToolDefinition(
 _JSON_MERGE = ToolDefinition(
     key="json.merge", version="1.0.0", name="Merge JSON objects",
     description="Shallow-merge two caller-provided JSON objects; right-hand keys take precedence.",
-    risk_level="low", execution_class="pure" required_permission_scopes=(),
+    risk_level="low", execution_class="pure", required_permission_scopes=(),
     input_schema={"type":"object","properties":{
         "left":{"type":"object","maxProperties":200},
         "right":{"type":"object","maxProperties":200}},
