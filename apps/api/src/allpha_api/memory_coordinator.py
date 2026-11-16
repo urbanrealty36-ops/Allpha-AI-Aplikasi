@@ -141,6 +141,7 @@ class MemoryCoordinator:
         if purpose not in PURPOSES:return []
         if max_sensitivity is not None and max_sensitivity not in SENSITIVITIES:return []
         if not isinstance(max_chars,int) or isinstance(max_chars,bool) or max_chars<1:return []
+        max_chars=min(max_chars,12000)
         ownership=await self.db("GET","agent_ownerships",params={"select":"agent_id","owner_user_id":f"eq.{owner_id}","agent_id":f"eq.{agent_id}","status":"eq.active","limit":"1"})
         if not ownership:return []
         policies=await self.policies(owner_id,agent_id)
