@@ -7,6 +7,7 @@ the credential or write directly to runtime tables.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -263,3 +264,51 @@ class AgentRuntimeStore:
             "idempotency_key": f"eq.{key}", "limit": "1",
         })
         return rows[0] if rows else None
+
+    async def create_tool_plan_reservation(self, body: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        rows = await self.request(
+            "POST", "agent_runtime_tool_plans", params={"select": "*"}, body=body,
+            prefer="resolution=ignore-duplicates,return=representation",
+        )
+        if rows:
+            return rows[0], True
+        existing = await self.find_tool_plan_by_idempotency(
+            str(body["owner_user_id"]), str(body["idempotency_key"])
+        )
+        if not existing:
+            raise AgentRuntimePersistenceError("tool-plan reservation was not confirmed")
+        return existing, False
+
+    async def find_tool_plan_by_idempotency(self, owner_id: str, key: str) -> dict[str, Any] | None:
+        rows = await self.request("GET", "agent_runtime_tool_plans", params={
+            "select": "*", "owner_user_id": f"eq.{owner_id}",
+            "idempotency_key": f"eq.{key}", "limit": "1",
+        })
+        return rows[0] if rows else None
+
+    async def get_tool_plan(self, owner_id: str, plan_id: str) -> dict[str, Any] | None:
+        rows = await self.request("GET", "agent_runtime_tool_plans", params={
+            "select": "*", "id": f"eq.{plan_id}", "owner_user_id": f"eq.{owner_id}", "limit": "1",
+        })
+        return rows[0] if rows else None
+
+    async def update_tool_plan(self, owner_id: str, plan_id: str, body: dict[str, Any],
+                               *, expected_status: str = "planning") -> dict[str, Any] | None:
+        rows = await self.request("PATCH", "agent_runtime_tool_plans", params={
+            "select": "*", "id": f"eq.{plan_id}", "owner_user_id": f"eq.{owner_id}",
+            "status": f"eq.{expected_status}",
+        }, body=body, prefer="return=representation")
+        return rows[0] if rows else None
+
+    async def mark_tool_plan_used(self, owner_id: str, plan_id: str, task_id: str) -> dict[str, Any] | None:
+        rows = await self.request("PATCH", "agent_runtime_tool_plans", params={
+            "select": "*", "id": f"eq.{plan_id}", "owner_user_id": f"eq.{owner_id}",
+            "status": "eq.completed",
+        }, body={"status": "used", "task_id": task_id, "updated_at": datetime.now(timezone.utc).isoformat()},
+           prefer="return=representation")
+        if rows:
+            return rows[0]
+        existing = await self.get_tool_plan(owner_id, plan_id)
+        if existing and existing.get("status") == "used" and str(existing.get("task_id")) == task_id:
+            return existing
+        return None
