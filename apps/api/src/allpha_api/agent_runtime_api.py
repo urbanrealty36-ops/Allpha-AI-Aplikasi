@@ -280,6 +280,17 @@ async def _execute_planned_task(
             raise AgentRuntimePersistenceError("invalid planned checkpoint could not be terminalized")
         raise HTTPException(status_code=409, detail=invalid_checkpoint)
 
+    if resuming:
+        for resumed_step in plan[:len(completed_steps)]:
+            saved_event = await store.append_execution_event(
+                owner_id, task_id, lease_token, int(row["task_version"]),
+                {"event_type": "checkpoint_resumed", "state": "planning",
+                 "step_key": "step:" + str(resumed_step["step_id"]),
+                 "reason_code": "durable_step_checkpoint_reused"},
+            )
+            if not saved_event:
+                raise AgentRuntimePersistenceError("checkpoint resume event could not be durably committed")
+
     deadline = time.monotonic() + max_runtime
     trace_events: list[dict[str, Any]] = []
     next_checkpoint_sequence = int(row.get("checkpoint_seq") or 0) + 1
