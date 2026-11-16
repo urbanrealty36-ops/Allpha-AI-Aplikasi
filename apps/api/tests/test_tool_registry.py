@@ -78,7 +78,7 @@ def test_tool_catalog_exposes_handler_metadata_not_runtime_authority():
         assert response.status_code == 200
         assert response.json()["runtime_mode"] == "owner_preview_only"
         assert response.json()["agent_autonomy_enabled"] is False
-        assert response.json()["items"][0]["key"] == "text.normalize"
+        assert response.json()["items"][0]["key"] == "json.merge"
     finally:
         app.dependency_overrides.clear()
 
