@@ -139,7 +139,7 @@ class MemoryCoordinator:
                     if re.search(pattern,source,re.IGNORECASE|re.DOTALL)),None)
         if not match:
             return None
-        content=match.group(1).strip().strip('“”"\\' ')
+        content=match.group(1).strip()
         if not content or len(content)>8000:
             return None
         policy=next((p for p in await self.policies(owner_id,agent_id)
