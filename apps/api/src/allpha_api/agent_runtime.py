@@ -321,7 +321,9 @@ class AgentRuntime:
                 raise AgentRuntimeBlocked("consumer authorization policy version mismatch")
             if not auth.budget_reserved or not auth.metering_ready:
                 raise AgentRuntimeBlocked("consumer budget reservation and metering must be ready")
-            if auth.allowed_memory_scope:
+            if (auth.allowed_memory_scope
+                    or any(scope in {"private_memory_read", "owner_private_memory", "memory.private.read"}
+                           or scope.startswith("memory.") for scope in auth.granted_scopes)):
                 raise AgentRuntimeBlocked("consumer generation cannot access owner-private memory by default")
             if request.sensitivity != "public" or request.owner_id != owner_id:
                 raise AgentRuntimeBlocked("consumer generation must use the public route with the canonical owner context")
