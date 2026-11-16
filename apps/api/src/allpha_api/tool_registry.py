@@ -20,6 +20,7 @@ class ToolDefinition:
     name: str
     description: str
     risk_level: str
+    execution_class: str
     required_permission_scopes: tuple[str, ...]
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
@@ -32,6 +33,7 @@ class ToolDefinition:
             "name": self.name,
             "description": self.description,
             "risk_level": self.risk_level,
+            "execution_class": self.execution_class,
             "required_permission_scopes": list(self.required_permission_scopes),
             "input_schema": self.input_schema,
             "output_schema": self.output_schema,
@@ -53,7 +55,7 @@ _TEXT_NORMALIZE = ToolDefinition(
     version="1.0.0",
     name="Normalize text",
     description="Trim leading/trailing whitespace and collapse internal whitespace.",
-    risk_level="low",
+    risk_level="low", execution_class="pure",
     required_permission_scopes=(),
     input_schema={
         "type": "object",
