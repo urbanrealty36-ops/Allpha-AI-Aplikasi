@@ -222,7 +222,7 @@ class AgentRuntime:
             task.transition(next_state, reason=reason)
             event = dict(task.events[-1])
             event["tool_key"] = tool_key
-            event["step_key"] = step_key
+            event["step_key"] = step_key if step_key != "tool" else "tool:" + tool_key
             if event_sink is not None:
                 await event_sink(event)
 
