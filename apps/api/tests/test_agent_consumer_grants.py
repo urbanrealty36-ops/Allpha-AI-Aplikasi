@@ -47,6 +47,8 @@ def grant_row(**changes):
         **snapshot(),
         "granted_scopes": ["public_invoke"],
         "allowed_tool_keys": [],
+        "max_tool_calls": 0,
+        "max_tool_runtime_seconds": 0,
         "status": "active",
         "idempotency_key": "grant-key-1",
         "expires_at": None,
@@ -99,7 +101,7 @@ def test_create_accepts_only_explicit_registered_tool_allowlist_with_generation_
         seen.update(payload)
         return httpx.Response(201, json=[grant_row(
             granted_scopes=["generation_invoke", "tool_invoke"],
-            allowed_tool_keys=["text.normalize"],
+            allowed_tool_keys=["text.normalize"], max_tool_calls=1, max_tool_runtime_seconds=3,
         )])
 
     result = asyncio.run(make_store(handler).create(
@@ -107,11 +109,13 @@ def test_create_accepts_only_explicit_registered_tool_allowlist_with_generation_
         skill_id=SKILL, skill_version=3, runtime_policy_version="public-runtime-v4",
         idempotency_key="grant-tool-key-1", expires_at=None, policy_snapshot=snapshot(),
         granted_scopes=["generation_invoke", "tool_invoke"],
-        allowed_tool_keys=["text.normalize"],
+        allowed_tool_keys=["text.normalize"], max_tool_calls=1, max_tool_runtime_seconds=3,
     ))
     assert result["allowed_tool_keys"] == ["text.normalize"]
     assert seen["granted_scopes"] == ["generation_invoke", "tool_invoke"]
     assert seen["allowed_tool_keys"] == ["text.normalize"]
+    assert seen["max_tool_calls"] == 1
+    assert seen["max_tool_runtime_seconds"] == 3
 
 
 def test_tool_invoke_requires_generation_and_explicit_allowlist():
