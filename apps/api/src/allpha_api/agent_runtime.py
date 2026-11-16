@@ -213,6 +213,7 @@ class AgentRuntime:
         tool_key: str,
         inputs: dict[str, Any],
         event_sink: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        step_key: str = "tool",
     ) -> dict[str, Any]:
         """Execute one registered tool and durably emit each state transition when a sink is supplied."""
         self.authorize(task.envelope, auth)
@@ -221,6 +222,7 @@ class AgentRuntime:
             task.transition(next_state, reason=reason)
             event = dict(task.events[-1])
             event["tool_key"] = tool_key
+            event["step_key"] = step_key
             if event_sink is not None:
                 await event_sink(event)
 
