@@ -53,7 +53,7 @@ export default function AgentMemoryPage(){
   try{
    const r=await fetch(api+"/v1/memory/policies/"+type,{method:"PUT",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
     body:JSON.stringify({agent_id:agentId,enabled:on,consent_version:on?"allpha.memory.v1":null,
-     allowed_purposes:on?["agent_generation_context","agent_runtime_context","workflow_context"]:[],
+     allowed_purposes:on?["agent_generation_context","agent_runtime_context"]:[],
      allowed_sensitivities:on?["public","internal","confidential"]:[],retention_days:type==="working"?1:Number(retention[type]??30)})});
    if(!r.ok)throw new Error(await err(r));setNotice(on?"Policy Memory diaktifkan dengan approval manual.":"Policy dinonaktifkan; retrieval akan berhenti.");await load(session);
   }catch(e){setError(e instanceof Error?e.message:"Policy gagal disimpan.");}finally{setSaving("");}
