@@ -3229,3 +3229,51 @@ The reference repository tree currently contains 148 tracked paths. Under `compo
 - **Validation boundary:** test source was added/updated, but no tests, build, lint, typecheck, CI, Supabase migration apply, provider call, staging, browser/device QA, or deployment was run.
 - **Next WP-07 actions:** (1) finish general model-driven structured function calling and multi-tool plan generation from Model Router output (the current owner-authored JSON plan is a bounded explicit contract only); (2) extend Consumer tool adapters beyond `text.normalize` only after per-tool input/output and budget contracts are reviewed; (3) finish Memory semantic/vector retrieval and automatic proposal extraction/lifecycle; (4) obtain and record all required ADR-0023 approvals before implementing the short-lived Workflow–Memory context reference; (5) then integrate WP-07 into AI Cinema, Live Stage and AI Social Network.
 - **Status:** WP-07 remains `IN_PROGRESS / SCHEMA_MIGRATED / ACCEPTANCE_NOT_VERIFIED`. No later phase is promoted. ADR-0023 remains `PROPOSED`; Workflow Memory is still disabled.
+
+
+---
+
+## WP-07 implementation checkpoint — 2026-11-16 (after explicit Product Owner direction)
+
+**Repository:** \`urbanrealty36-ops/Allpha-AI-Aplikasi\`  
+**Branch:** \`main\`  
+**Source HEAD at checkpoint:** \`66c5543de78449a2c4aa4d99d3894d1ab650057f\`  
+**Status:** \`IN_PROGRESS / SOURCE_IMPLEMENTED / SCHEMA_MIGRATIONS_NOT_APPLIED / ACCEPTANCE_NOT_VERIFIED\`
+
+### Changes committed
+
+- \`91c7fba77355801158eaa79a62fd1af0d7992365\` — fixed malformed Tool Registry keyword separators; persisted \`ToolInputError\` as a durable per-step failure; made explicit owner Memory proposals idempotent by generation-job source reference; wired owner-authored explicit remember intent into Generation Worker; corrected Memory prompt delimiters; added source-only idempotency index; recorded Product Owner approval of ADR-0023 Option B.
+- \`66c5543de78449a2c4aa4d99d3894d1ab650057f\` — added authenticated owner-scoped \`GET /v1/agent-runtime/agents\` projection for active owned Agents, published Skills and approved Capabilities; connected AI Cinema Creator Workspace to Generation quote, job creation, job status, private artifact retrieval, queued cancellation, AI Credit quote display and moderation-gated use of generated script/story text.
+
+### Important boundaries
+
+- The new Agent catalog endpoint returns no Memory records, private prompts, service credentials, unpublished Skills or other owners' Agents.
+- Generation Skill choices are restricted to the currently supported deterministic text-generation adapter (\`text.normalize\` or no tool dependencies). Other Skill tool dependencies remain unavailable to Generation until their typed adapters are implemented.
+- AI Cinema work in this checkpoint is **text-based script/story development** through the canonical Generation Job lifecycle. It is not AI video rendering. No approved video-generation capability/provider has been identified in this checkpoint.
+- The connected Supabase read-only check found no approved row in \`credit_policy_versions\`; the existing Creator status therefore keeps AI Generation disabled until a valid policy, moderation, billing and entitlement contract is available. No wallet, credits, job or entitlement was fabricated.
+- The explicit Product Owner direction is recorded in ADR-0023. Privacy/Security, Platform Architecture and Data Platform approvals remain outstanding. Option C remains the active Workflow–Memory runtime behavior; no Workflow Memory reference resolution is activated.
+- ADR-0004 continues to block physical vector schema/index activation until the embedding profile, provider/model/version, exact dimension, index and Data Platform approval are recorded. No dimension/provider was guessed.
+- WP-10 Live media provider ADR remains proposed. The reference Live Stage is mounted but \`liveStateAvailable=false\`; no media provider, WebRTC/SFU, recording or live transport is activated.
+- The Social Feed, Reels and Stories routes mount their corresponding reference components and call canonical APIs. Agent Social automation/policy/draft/approval/takeover endpoints exist, but the full owner UI-to-runtime autonomous social lifecycle is not yet accepted as complete.
+
+### UI/UX reference audit checkpoint
+
+- The current reference repository \`urbanrealty36-ops/Allpha-Front-End-UI-New\` at \`b6c9fc728d5d031a28b22fbbec9a546846900e87\` contains 34 component files under \`components/\`.
+- The target repository contains matching counterparts for all 34 source component paths under \`apps/web/components/reference-ui/\`; no source component path was missing in the file inventory comparison.
+- Confirmed route usage: Feed uses \`FeedView\` and \`CreatePostModal\`; Reels uses \`ReelsView\`; Stories uses \`StoriesViewerModal\`; AI Cinema uses \`AiCinemaView\` plus Creator Workspace and Playback Panel; Live mounts \`LiveExperienceStage\`.
+- Component presence is not visual parity evidence. No browser, viewport, Android/iOS, accessibility, screenshot or interaction review was performed. Live Stage remains backend-unavailable.
+- Newly added AI Cinema Creator controls follow the existing reference-derived border, typography, pastel surface, button and spacing language; they do not replace or redesign the reference catalogue screen.
+
+### Validation and deployment boundary
+
+No unit/integration/e2e tests, build, lint, typecheck, CI run, worker invocation, model/provider call, browser/device QA, staging, deployment or production migration was executed. Supabase work in this checkpoint was read-only. Source-only migrations remain unapplied. Do not mark any exit gate passed from these commits alone.
+
+### Remaining WP-07 work, in required order
+
+1. Complete general Model Router-driven structured function calling and multi-tool planning with durable idempotency, bounded budgets, persisted per-step checkpoints and recovery.
+2. Complete External Consumer per-tool adapters and typed input/output contracts beyond \`text.normalize\`, retaining empty private Memory scope and no implicit workflow/resource permissions.
+3. Complete Memory retrieval and proposal lifecycle. Semantic/vector retrieval remains blocked by ADR-0004's unapproved embedding/index contract; no physical vector DDL or hybrid claim until approved.
+4. Complete Workflow–Memory using only short-lived opaque context references after all ADR-0023 approvals. Product Owner approval is recorded; Privacy/Security, Platform Architecture and Data Platform sign-offs remain outstanding. Never persist retrieved Memory text in workflow definition, run input, event, checkpoint, output or log.
+5. Continue WP-07 vertical integration into AI Cinema, Live Stage and AI Social Network. AI Cinema script/story Generation UI is now wired to canonical Generation Jobs but remains policy-gated. Live media transport remains gated by its provider ADR. Social autonomous co-authoring and takeover still require end-to-end UI/API/runtime closure.
+
+**No later work package is promoted.** Formal sequence remains WP-07 → WP-06 → WP-11 → WP-12. WP-10 remains separately blocked by its media-provider decision.
