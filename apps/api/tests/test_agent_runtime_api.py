@@ -372,6 +372,13 @@ def test_approved_tool_execution_persists_result_and_replay(monkeypatch):
         assert claim_index == 1
         assert repeated.status_code == 200
         assert repeated.json()["idempotent_replay"] is True
+        trace = c.get(f"/v1/agent-runtime/tasks/{task['id']}/events")
+        assert trace.status_code == 200
+        assert [event["sequence"] for event in trace.json()["items"]] == list(range(1, 8))
+        assert [event["state"] for event in trace.json()["items"]] == state_sequence[1:]
+        history = c.get(f"/v1/agent-runtime/tasks?agent_id={AGENT}")
+        assert history.status_code == 200
+        assert history.json()["items"][0]["id"] == task["id"]
     finally:
         app.dependency_overrides.pop(current_user, None)
 
