@@ -36,7 +36,7 @@ from allpha_api.generation_prompt import (
     generation_prompt_size_bytes,
     snapshot_sha256,
 )
-from allpha_api.tool_registry import UnknownToolError, validate_tool_dependencies
+from allpha_api.tool_registry import ToolInputError, UnknownToolError, get_tool, validate_tool_dependencies, validate_tool_input
 
 router = APIRouter(prefix="/v1/generation", tags=["ai-generation"])
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -69,6 +69,8 @@ class GenerationJobCreate(BaseModel):
     quoted_agent_snapshot_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     quoted_skill_snapshot_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     consumer_grant_id: uuid.UUID | None = None
+    tool_inputs: dict[str, dict[str, Any]] = Field(default_factory=dict, max_length=5)
+    quoted_tool_inputs_sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
 
 def _db_config() -> tuple[str, str]:
@@ -211,6 +213,61 @@ async def _approved_credit_policy(entitlement_version: str) -> tuple[dict[str, A
         if isinstance(entitlement, dict):
             return row, config, entitlement
     raise HTTPException(503, detail={"code": "AI_CREDIT_POLICY_UNAVAILABLE", "message": "Belum ada AI Credit policy approved yang berlaku untuk entitlement akun ini."})
+
+
+def _resolve_generation_tool_inputs(
+    payload: GenerationJobCreate, skill_snapshot: dict[str, Any], *, external: bool
+) -> dict[str, dict[str, Any]]:
+    dependencies = skill_snapshot.get("tool_dependencies") or []
+    if not isinstance(dependencies, list) or len(dependencies) > 5 or any(not isinstance(key, str) for key in dependencies):
+        raise HTTPException(409, detail={"code": "GENERATION_SKILL_TOOL_CONTRACT_INVALID", "message": "Kontrak tool Skill tidak valid."})
+    try:
+        validate_tool_dependencies(dependencies)
+    except (UnknownToolError, ValueError) as exc:
+        raise HTTPException(409, detail={"code": "GENERATION_SKILL_TOOL_CONTRACT_INVALID", "message": "Skill merujuk tool yang tidak terdaftar."}) from exc
+    budget = skill_snapshot.get("budget_limits") if isinstance(skill_snapshot.get("budget_limits"), dict) else {}
+    if dependencies:
+        max_calls = budget.get("max_tool_calls", len(dependencies))
+        max_runtime = budget.get("max_runtime_seconds", 30)
+        if (not isinstance(max_calls, int) or isinstance(max_calls, bool) or max_calls < len(dependencies) or max_calls > 5
+                or not isinstance(max_runtime, int) or isinstance(max_runtime, bool) or not 1 <= max_runtime <= 30):
+            raise HTTPException(403, detail={"code": "GENERATION_SKILL_TOOL_BUDGET_INVALID", "message": "Budget tool Skill tidak memenuhi batas runtime."})
+    provided = payload.tool_inputs if isinstance(payload.tool_inputs, dict) else {}
+    if set(provided) - set(dependencies):
+        raise HTTPException(422, detail={"code": "GENERATION_TOOL_INPUT_NOT_DECLARED", "message": "Tool input memuat tool di luar dependency Skill."})
+    if external and set(provided) != set(dependencies):
+        raise HTTPException(403, detail={"code": "EXTERNAL_CONSUMER_TOOL_INPUT_REQUIRED", "message": "External Consumer wajib mengirim typed input untuk setiap tool yang diberikan."})
+    normalized: dict[str, dict[str, Any]] = {}
+    for tool_key in dependencies:
+        tool = get_tool(tool_key)
+        if tool.execution_class != "pure":
+            raise HTTPException(403, detail={"code": "GENERATION_TOOL_NOT_PURE", "message": "Generation hanya menerima deterministic pure tools."})
+        raw = provided.get(tool_key)
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise HTTPException(422, detail={"code": "GENERATION_TOOL_INPUT_INVALID", "message": "Setiap tool input harus berupa object."})
+        value = dict(raw)
+        properties = tool.input_schema.get("properties", {}) if isinstance(tool.input_schema, dict) else {}
+        required = tool.input_schema.get("required", []) if isinstance(tool.input_schema, dict) else []
+        if not external and "text" in properties and "text" in required and "text" not in value:
+            value["text"] = payload.prompt
+        try:
+            validate_tool_input(tool_key, value)
+        except ToolInputError as exc:
+            raise HTTPException(422, detail={"code": "GENERATION_TOOL_INPUT_INVALID", "message": "Input tidak sesuai schema tool " + tool_key + "."}) from exc
+        normalized[tool_key] = value
+    serialized = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    if len(serialized.encode("utf-8")) > 16_384:
+        raise HTTPException(422, detail={"code": "GENERATION_TOOL_INPUT_TOO_LARGE", "message": "Gabungan tool input melebihi batas 16 KiB."})
+    return normalized
+
+
+def _generation_tool_context_bytes(tool_inputs: dict[str, dict[str, Any]]) -> int:
+    if not tool_inputs:
+        return 0
+    serialized = json.dumps(tool_inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return len(serialized.encode("utf-8")) + 16_384
 
 
 async def _retrieve_generation_knowledge(
@@ -419,12 +476,29 @@ async def _external_generation_context(
             expected_usage_unit="tokens_total",
         )
         runtime_policy_version = router_instance.policy_version_for("public")
-        grant = await AgentConsumerGrantStore.from_environment().resolve(
-            requester_id=requester_id, owner_id=owner_id, agent_id=str(payload.agent_id),
-            agent_version=int(agent["version"]), skill_id=str(payload.skill_id),
-            skill_version=int(skill["version"]), runtime_policy_version=runtime_policy_version,
-            policy_snapshot=budget.policy_snapshot(), required_scope="generation_invoke",
-        )
+        dependencies = snapshots["skill_snapshot"].get("tool_dependencies") or []
+        grant_store = AgentConsumerGrantStore.from_environment()
+        if dependencies:
+            skill_budget = snapshots["skill_snapshot"].get("budget_limits") if isinstance(snapshots["skill_snapshot"].get("budget_limits"), dict) else {}
+            max_tool_calls = min(5, int(skill_budget.get("max_tool_calls") or len(dependencies)))
+            max_tool_runtime = min(30, int(skill_budget.get("max_runtime_seconds") or 30))
+            if max_tool_calls < len(dependencies):
+                raise HTTPException(403, detail={"code": "EXTERNAL_CONSUMER_SKILL_TOOL_BUDGET_INVALID", "message": "Budget Skill tidak cukup untuk seluruh tool dependency."})
+            grant = await grant_store.resolve(
+                requester_id=requester_id, owner_id=owner_id, agent_id=str(payload.agent_id),
+                agent_version=int(agent["version"]), skill_id=str(payload.skill_id),
+                skill_version=int(skill["version"]), runtime_policy_version=runtime_policy_version,
+                policy_snapshot=budget.policy_snapshot(), required_scope="tool_invoke",
+                allowed_tool_keys=dependencies, max_tool_calls=max_tool_calls,
+                max_tool_runtime_seconds=max_tool_runtime,
+            )
+        else:
+            grant = await grant_store.resolve(
+                requester_id=requester_id, owner_id=owner_id, agent_id=str(payload.agent_id),
+                agent_version=int(agent["version"]), skill_id=str(payload.skill_id),
+                skill_version=int(skill["version"]), runtime_policy_version=runtime_policy_version,
+                policy_snapshot=budget.policy_snapshot(), required_scope="generation_invoke",
+            )
     except HTTPException:
         raise
     except Exception as exc:
@@ -461,7 +535,7 @@ async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -
     """List only current, public Agent grants that explicitly permit generation."""
     now = datetime.now(timezone.utc).isoformat()
     grants = await _admin_request("GET", "agent_consumer_grants", params={
-        "select": "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,capability_id,granted_scopes,expires_at,status",
+        "select": "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,capability_id,granted_scopes,allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds,expires_at,status",
         "requester_user_id": f"eq.{user['id']}", "status": "eq.active",
         "granted_scopes": "cs.{generation_invoke}",
         "or": f"(expires_at.is.null,expires_at.gt.{now})",
@@ -474,7 +548,7 @@ async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -
             "id": f"eq.{grant['agent_id']}", "status": "eq.active", "visibility": "eq.public", "limit": "1",
         })
         skills = await _admin_request("GET", "agent_skills", params={
-            "select": "id,agent_id,version,status,name,display_name",
+            "select": "id,agent_id,version,status,name,display_name,tool_dependencies,budget_limits",
             "id": f"eq.{grant['skill_id']}", "agent_id": f"eq.{grant['agent_id']}", "status": "eq.published", "limit": "1",
         })
         caps = await _admin_request("GET", "agent_capabilities", params={
@@ -487,11 +561,32 @@ async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -
             continue
         if int(skills[0].get("version") or 0) != int(grant.get("skill_version") or -1):
             continue
+        dependencies = skills[0].get("tool_dependencies") if isinstance(skills[0].get("tool_dependencies"), list) else []
+        allowed_tools = grant.get("allowed_tool_keys") if isinstance(grant.get("allowed_tool_keys"), list) else []
+        if dependencies and ("tool_invoke" not in (grant.get("granted_scopes") or []) or set(allowed_tools) != set(dependencies)):
+            continue
+        if not dependencies and (allowed_tools or "tool_invoke" in (grant.get("granted_scopes") or [])):
+            continue
+        tool_contracts = []
+        try:
+            validate_tool_dependencies(dependencies)
+            for tool_key in dependencies:
+                definition = get_tool(tool_key)
+                if definition.execution_class != "pure" or tool_key not in allowed_tools:
+                    tool_contracts = []
+                    break
+                tool_contracts.append(definition.public_contract())
+        except (UnknownToolError, ValueError):
+            continue
         items.append({
             "agent": agents[0], "owner_user_id": grant["owner_user_id"],
             "skill": skills[0], "capabilities": caps or [],
             "consumer_grant_id": grant["id"],
             "granted_scopes": grant.get("granted_scopes") or [],
+            "allowed_tool_keys": allowed_tools,
+            "max_tool_calls": grant.get("max_tool_calls", 0),
+            "max_tool_runtime_seconds": grant.get("max_tool_runtime_seconds", 0),
+            "tool_contracts": tool_contracts,
         })
     return {"items": items}
 
@@ -511,6 +606,8 @@ async def quote_generation_job(
         if router_instance is None:
             raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
         external = await _external_generation_context(payload, str(user["id"]), router_instance)
+        tool_inputs = _resolve_generation_tool_inputs(payload, external["skill_snapshot"], external=True)
+        tool_inputs_sha256 = snapshot_sha256(tool_inputs)
         route = external["route"]
         budget: ConsumerBudgetReservation = external["budget"]
         max_output_tokens = payload.max_output_tokens or router_instance.max_output_tokens_for("public")
@@ -522,7 +619,7 @@ async def quote_generation_job(
         prompt_bytes = generation_prompt_size_bytes(
             prompt=payload.prompt, agent_snapshot=external["agent_snapshot"],
             skill_snapshot=external["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
-        )
+        ) + _generation_tool_context_bytes(tool_inputs)
         if prompt_bytes > int(route["max_prompt_bytes"]):
             raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt dan Knowledge melebihi batas byte model publik."})
         estimated_usage = prompt_bytes + max_output_tokens
@@ -545,6 +642,7 @@ async def quote_generation_job(
             "knowledge_source_count": len(knowledge_snapshot.get("sources") or []),
             "agent_snapshot_sha256": external["agent_snapshot_sha256"],
             "skill_snapshot_sha256": external["skill_snapshot_sha256"],
+            "tool_inputs_sha256": tool_inputs_sha256,
         }
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
@@ -567,10 +665,12 @@ async def quote_generation_job(
     snapshots = await _load_generation_execution_snapshots(
         payload.agent_id, payload.skill_id, int(skill_rows[0]["version"]), token=token
     )
+    tool_inputs = _resolve_generation_tool_inputs(payload, snapshots["skill_snapshot"], external=False)
+    tool_inputs_sha256 = snapshot_sha256(tool_inputs)
     prompt_bytes = generation_prompt_size_bytes(
         prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
         skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
-    )
+    ) + _generation_tool_context_bytes(tool_inputs)
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt, Agent, Skill, dan Knowledge context melebihi batas byte yang disetujui."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
@@ -622,6 +722,7 @@ async def quote_generation_job(
         "knowledge_policy_version": knowledge_snapshot.get("policy_version"),
         "agent_snapshot_sha256": snapshots["agent_snapshot_sha256"],
         "skill_snapshot_sha256": snapshots["skill_snapshot_sha256"],
+        "tool_inputs_sha256": tool_inputs_sha256,
     }
 
 
@@ -644,6 +745,10 @@ async def create_generation_job(
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum memiliki provider, model, policy, dan metering yang disetujui."})
     if payload.consumer_grant_id is not None:
         external = await _external_generation_context(payload, str(user["id"]), router_instance)
+        tool_inputs = _resolve_generation_tool_inputs(payload, external["skill_snapshot"], external=True)
+        tool_inputs_sha256 = snapshot_sha256(tool_inputs)
+        if payload.quoted_tool_inputs_sha256 != tool_inputs_sha256:
+            raise HTTPException(409, detail={"code": "GENERATION_TOOL_INPUT_QUOTE_STALE", "message": "Tool input berubah. Minta quote generation baru."})
         route = external["route"]
         budget: ConsumerBudgetReservation = external["budget"]
         max_output_tokens = payload.max_output_tokens or router_instance.max_output_tokens_for("public")
@@ -660,7 +765,7 @@ async def create_generation_job(
         prompt_bytes = generation_prompt_size_bytes(
             prompt=payload.prompt, agent_snapshot=external["agent_snapshot"],
             skill_snapshot=external["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
-        )
+        ) + _generation_tool_context_bytes(tool_inputs)
         if prompt_bytes > int(route["max_prompt_bytes"]):
             raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt, Agent, Skill, dan Knowledge context melebihi batas byte model publik."})
         estimated_usage_units = prompt_bytes + max_output_tokens
@@ -697,6 +802,7 @@ async def create_generation_job(
             "sensitivity": "public", "task_id": task_id, "trace_id": trace_id,
             "idempotency_key": idempotency_key, "prompt": payload.prompt,
             "prompt_sha256": prompt_hash, "knowledge_snapshot": knowledge_snapshot,
+            "tool_inputs": tool_inputs,
             "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"), "max_output_tokens": max_output_tokens,
             "timeout_ms": min(120000, max(100, int(route.get("max_latency_ms") or 30000))),
             "estimated_usage_units": estimated_usage_units, "usage_unit": budget.usage_unit,
@@ -712,7 +818,7 @@ async def create_generation_job(
             "model_version": route["model_version"], "pricing_version": budget.pricing_version,
             "max_cost_microunits": budget.max_cost_microunits,
         }
-        created = await _rpc("generation_create_job", command)
+        created = await _rpc("generation_create_job_with_tool_inputs", command)
         if not isinstance(created, dict) or not created.get("job_id"):
             raise HTTPException(503, detail={"code": "GENERATION_JOB_NOT_CONFIRMED", "message": "Generation Job eksternal belum dapat dikonfirmasi."})
         return {
@@ -742,6 +848,10 @@ async def create_generation_job(
     snapshots = await _load_generation_execution_snapshots(
         payload.agent_id, payload.skill_id, int(skill["version"]), token=token
     )
+    tool_inputs = _resolve_generation_tool_inputs(payload, snapshots["skill_snapshot"], external=False)
+    tool_inputs_sha256 = snapshot_sha256(tool_inputs)
+    if payload.quoted_tool_inputs_sha256 != tool_inputs_sha256:
+        raise HTTPException(409, detail={"code": "GENERATION_TOOL_INPUT_QUOTE_STALE", "message": "Tool input berubah. Minta quote generation baru."})
     if (payload.quoted_agent_snapshot_sha256 != snapshots["agent_snapshot_sha256"]
         or payload.quoted_skill_snapshot_sha256 != snapshots["skill_snapshot_sha256"]):
         raise HTTPException(409, detail={"code":"GENERATION_SKILL_QUOTE_STALE","message":"Versi Agent atau Skill berubah. Minta quote generation baru."})
@@ -751,7 +861,7 @@ async def create_generation_job(
     prompt_bytes = generation_prompt_size_bytes(
         prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
         skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
-    )
+    ) + _generation_tool_context_bytes(tool_inputs)
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code":"PROMPT_EXCEEDS_APPROVED_BOUND","message":"Prompt, Agent, Skill, dan Knowledge context melebihi batas byte model."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
@@ -827,6 +937,7 @@ async def create_generation_job(
         "idempotency_key": idempotency_key,
         "prompt": payload.prompt,
         "prompt_sha256": prompt_hash,
+        "tool_inputs": tool_inputs,
         "knowledge_snapshot": knowledge_snapshot,
         "knowledge_context_sha256": knowledge_snapshot.get("snapshot_sha256"),
         "max_output_tokens": max_output_tokens,
@@ -851,7 +962,7 @@ async def create_generation_job(
         "pricing_version": pricing_version,
         "max_cost_microunits": max_cost_microunits,
     }
-    created = await _rpc("generation_create_job", command)
+    created = await _rpc("generation_create_job_with_tool_inputs", command)
     if not isinstance(created, dict) or not created.get("job_id"):
         raise HTTPException(503, detail={"code": "GENERATION_JOB_NOT_CONFIRMED", "message": "Generation job dan AI Credit reservation belum terkonfirmasi."})
     return {"job_id": created["job_id"], "task_id": created.get("task_id"), "status": created.get("status"),
