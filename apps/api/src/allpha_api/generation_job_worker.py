@@ -216,14 +216,18 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
     dependencies = skill_snapshot.get("tool_dependencies") if isinstance(skill_snapshot.get("tool_dependencies"), list) else []
     if dependencies:
         skill_budget = skill_snapshot.get("budget_limits") if isinstance(skill_snapshot.get("budget_limits"), dict) else {}
+        skill_max_calls = skill_budget.get("max_tool_calls", 1)
+        skill_max_runtime = skill_budget.get("max_runtime_seconds", 30)
         max_tool_calls = grant.get("max_tool_calls")
         max_tool_runtime = grant.get("max_tool_runtime_seconds")
-        if ("tool_invoke" not in scopes or set(allowed_tools) != set(dependencies)
-                or any(key != "text.normalize" for key in dependencies)
+        if (not isinstance(skill_max_calls, int) or isinstance(skill_max_calls, bool)
+                or not isinstance(skill_max_runtime, int) or isinstance(skill_max_runtime, bool)
                 or not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool)
-                or max_tool_calls < len(dependencies) or max_tool_calls > min(5, int(skill_budget.get("max_tool_calls", 1)))
                 or not isinstance(max_tool_runtime, int) or isinstance(max_tool_runtime, bool)
-                or not 1 <= max_tool_runtime <= min(30, int(skill_budget.get("max_runtime_seconds", 30)))):
+                or "tool_invoke" not in scopes or set(allowed_tools) != set(dependencies)
+                or any(key != "text.normalize" for key in dependencies)
+                or max_tool_calls < len(dependencies) or max_tool_calls > min(5, skill_max_calls)
+                or not 1 <= max_tool_runtime <= min(30, skill_max_runtime)):
             return None
     elif allowed_tools or "tool_invoke" in scopes or grant.get("max_tool_calls") != 0 or grant.get("max_tool_runtime_seconds") != 0:
         return None
