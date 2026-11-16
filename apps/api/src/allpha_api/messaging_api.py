@@ -532,7 +532,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
             if uid == owner_id and reservation is None:
                 memory_items = await MemoryCoordinator().retrieve_context(
                     owner_id, str(agent_id), purpose="agent_runtime_context", limit=8,
-                    max_chars=4000, max_sensitivity=sensitivity,
+                    max_chars=4000, query=body[:300], max_sensitivity=sensitivity,
                 )
                 if memory_items:
                     memory_lines = [
