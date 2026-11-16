@@ -445,6 +445,8 @@ async def create_task(payload: TaskCreate, request: Request,
             raise HTTPException(status_code=409, detail={"code": "SKILL_TOOL_CONTRACT_INVALID", "message": "Kontrak dependensi tool Skill tidak valid."})
 
         normalized_plan: list[dict[str, Any]] = []
+        if payload.tool_plan and payload.inputs:
+            raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_INPUT_CONFLICT", "message": "Gunakan input pada setiap langkah rencana, bukan field inputs terpisah."})
         if payload.tool_plan:
             if payload.tool_key and payload.tool_key != payload.tool_plan[0].tool_key:
                 raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_PRIMARY_TOOL_MISMATCH", "message": "Tool utama harus sama dengan langkah pertama dalam rencana."})
@@ -485,8 +487,6 @@ async def create_task(payload: TaskCreate, request: Request,
                 raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool tidak terdaftar."}) from exc
             if getattr(definition, "execution_class", "side_effecting") != "pure":
                 raise HTTPException(status_code=403, detail={"code": "TOOL_SIDE_EFFECT_BLOCKED", "message": "Tool dengan efek samping belum memiliki kontrak receipt dan approval yang aktif."})
-            if payload.tool_plan and payload.inputs:
-                raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_INPUT_CONFLICT", "message": "Gunakan input pada setiap langkah rencana, bukan field inputs terpisah."})
             if payload.tool_key not in dependencies:
                 raise HTTPException(status_code=403, detail={"code": "TOOL_NOT_DECLARED", "message": "Tool tidak tercantum pada Skill."})
             tool_key, input_payload, required_calls = payload.tool_key, payload.inputs, 1
