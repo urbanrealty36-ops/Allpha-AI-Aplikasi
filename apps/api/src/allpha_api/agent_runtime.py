@@ -212,44 +212,54 @@ class AgentRuntime:
         *,
         tool_key: str,
         inputs: dict[str, Any],
+        event_sink: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
+        """Execute one registered tool and durably emit each state transition when a sink is supplied."""
         self.authorize(task.envelope, auth)
+
+        async def transition(next_state: AgentTaskState, *, reason: str | None = None) -> None:
+            task.transition(next_state, reason=reason)
+            event = dict(task.events[-1])
+            event["tool_key"] = tool_key
+            if event_sink is not None:
+                await event_sink(event)
+
         if task.state == AgentTaskState.CREATED:
-            task.transition(AgentTaskState.POLICY_CHECK)
+            await transition(AgentTaskState.POLICY_CHECK)
         if task.state == AgentTaskState.POLICY_CHECK:
-            task.transition(AgentTaskState.BUDGET_RESERVED)
-            task.transition(AgentTaskState.CONTEXT_BUILDING)
-            task.transition(AgentTaskState.PLANNING)
+            await transition(AgentTaskState.BUDGET_RESERVED)
+            await transition(AgentTaskState.CONTEXT_BUILDING)
+            await transition(AgentTaskState.PLANNING)
         if task.state != AgentTaskState.PLANNING:
             raise AgentRuntimeBlocked("task is not ready for execution")
         if tool_key not in task.envelope.allowed_tool_keys:
             raise AgentRuntimeBlocked("tool is not in the pinned task envelope")
-        task.transition(AgentTaskState.EXECUTING)
+        await transition(AgentTaskState.EXECUTING)
         remaining = min(
             task.envelope.deadline_monotonic - time.monotonic(),
             float(task.envelope.max_runtime_seconds),
         )
         if remaining <= 0:
-            task.transition(AgentTaskState.TIMED_OUT, reason="deadline_expired")
+            await transition(AgentTaskState.TIMED_OUT, reason="deadline_expired")
             raise AgentRuntimeBlocked("task deadline has expired")
         try:
             result = await asyncio.wait_for(asyncio.to_thread(execute_tool, tool_key, inputs), timeout=remaining)
         except asyncio.TimeoutError as exc:
-            task.transition(AgentTaskState.TIMED_OUT, reason="tool_timeout")
+            await transition(AgentTaskState.TIMED_OUT, reason="tool_timeout")
             task.error_code = "TOOL_TIMEOUT"
             raise AgentRuntimeBlocked("tool execution timed out") from exc
         except (ToolInputError, UnknownToolError) as exc:
-            task.transition(AgentTaskState.FAILED, reason="tool_contract_error")
+            await transition(AgentTaskState.FAILED, reason="tool_contract_error")
             task.error_code = "TOOL_CONTRACT_ERROR"
             raise AgentRuntimeBlocked("tool input or registry contract rejected the call") from exc
-        encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
         if len(encoded) > task.envelope.max_output_bytes:
-            task.transition(AgentTaskState.FAILED, reason="output_limit_exceeded")
+            await transition(AgentTaskState.FAILED, reason="output_limit_exceeded")
             task.error_code = "TOOL_OUTPUT_TOO_LARGE"
             raise AgentRuntimeBlocked("tool output exceeded the task output limit")
-        task.transition(AgentTaskState.VALIDATING)
+        await transition(AgentTaskState.VALIDATING)
         task.result = result
-        task.transition(AgentTaskState.SUCCEEDED)
+        await transition(AgentTaskState.SUCCEEDED)
         return {
             "task_id": task.envelope.task_id,
             "task_version": task.envelope.task_version,
@@ -264,7 +274,7 @@ class AgentRuntime:
             "trace_id": task.envelope.trace_id,
             "idempotency_key": task.envelope.idempotency_key,
             "events": list(task.events),
-            "persistence": "not_configured",
+            "persistence": "durable_event_sink" if event_sink is not None else "not_configured",
             "provider_execution": False,
         }
 
