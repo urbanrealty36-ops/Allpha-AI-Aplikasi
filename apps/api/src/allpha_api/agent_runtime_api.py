@@ -181,6 +181,19 @@ async def get_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(current_us
     return {"task": row}
 
 
+@router.get("/tasks/{task_id}/events")
+async def list_task_events(task_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    store, owner_id = _store(), str(user["id"])
+    try:
+        task = await store.get_task(owner_id, str(task_id))
+        if not task:
+            raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task tidak ditemukan."})
+        return {"items": await store.list_execution_events(owner_id, str(task_id), limit=500),
+                "trace_id": task.get("trace_id"), "task_id": str(task_id)}
+    except AgentRuntimePersistenceError as exc:
+        raise _error(exc) from exc
+
+
 @router.post("/tasks/{task_id}/cancel")
 async def cancel_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     store, owner_id = _store(), str(user["id"])
@@ -345,7 +358,16 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
                     raise HTTPException(status_code=409, detail={"code": "RUNTIME_CHECKPOINT_INVALID", "message": "Checkpoint bukan hasil terminal yang dapat dipulihkan."})
                 resumed_from_checkpoint = True
             else:
-                result = await _runtime.execute_tool(task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"])
+                async def persist_runtime_event(event: dict[str, Any]) -> None:
+                    saved_event = await store.append_execution_event(
+                        owner_id, str(task_id), lease_token, int(row["task_version"]), event,
+                    )
+                    if not saved_event:
+                        raise AgentRuntimePersistenceError("runtime execution event was not durably committed")
+                result = await _runtime.execute_tool(
+                    task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"],
+                    event_sink=persist_runtime_event,
+                )
                 checkpoint_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True,
                                               separators=(",", ":"), allow_nan=False).encode("utf-8")
                 checkpoint = await store.append_checkpoint(
