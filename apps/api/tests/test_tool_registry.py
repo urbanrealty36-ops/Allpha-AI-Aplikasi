@@ -26,9 +26,24 @@ def auth_as(user_id="owner-a"):
 
 def test_registry_contains_only_concrete_executable_handlers():
     tools = list_tools()
-    assert [tool["key"] for tool in tools] == ["text.normalize"]
+    assert [tool["key"] for tool in tools] == ["json.merge", "json.pick", "text.normalize", "text.split", "text.truncate"]
     assert all(tool["executable"] is True for tool in tools)
     assert execute_tool("text.normalize", {"text": "  hello\n  allpha  "}) == {"text": "hello allpha"}
+
+
+def test_registry_executes_typed_json_and_text_tools():
+    assert execute_tool("text.truncate", {"text": "abcdef", "max_chars": 3}) == {
+        "text": "abc", "truncated": True,
+    }
+    assert execute_tool("text.split", {"text": "a,b,c", "separator": ",", "max_parts": 2}) == {
+        "parts": ["a", "b,c"],
+    }
+    assert execute_tool("json.pick", {"value": {"profile": {"name": "Allpha"}}, "path": "profile.name"}) == {
+        "found": True, "value": "Allpha",
+    }
+    assert execute_tool("json.merge", {"left": {"a": 1}, "right": {"a": 2, "b": 3}}) == {
+        "value": {"a": 2, "b": 3},
+    }
 
 
 def test_registry_rejects_unknown_tool_and_invalid_inputs():
@@ -44,8 +59,12 @@ def test_registry_rejects_unknown_tool_and_invalid_inputs():
         execute_tool("text.normalize", {})
     with pytest.raises(ToolInputError, match="unexpected input"):
         execute_tool("text.normalize", {"text": "ok", "extra": True})
-    with pytest.raises(ToolInputError, match="4000"):
+    with pytest.raises(ToolInputError, match="length"):
         execute_tool("text.normalize", {"text": "x" * 4001})
+    with pytest.raises(ToolInputError, match="invalid type"):
+        execute_tool("text.truncate", {"text": "ok", "max_chars": True})
+    with pytest.raises(ToolInputError, match="outside the allowed range"):
+        execute_tool("text.truncate", {"text": "ok", "max_chars": 0})
 
 
 def test_tool_catalog_requires_authentication():
