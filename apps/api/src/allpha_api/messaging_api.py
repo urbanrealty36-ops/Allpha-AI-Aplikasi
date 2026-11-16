@@ -194,9 +194,13 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
         skill_budget = skills[0].get("budget_limits") if isinstance(skills[0].get("budget_limits"), dict) else {}
         skill_max_calls = skill_budget.get("max_tool_calls", 1)
         skill_max_runtime = skill_budget.get("max_runtime_seconds", 30)
-        if (not 1 <= payload.max_tool_calls <= 5 or payload.max_tool_calls > int(skill_max_calls)
+        if (not isinstance(skill_max_calls, int) or isinstance(skill_max_calls, bool)
+                or not isinstance(skill_max_runtime, int) or isinstance(skill_max_runtime, bool)
+                or skill_max_calls < len(skill_dependencies) or skill_max_calls > 5
+                or not 1 <= skill_max_runtime <= 30
+                or not 1 <= payload.max_tool_calls <= 5 or payload.max_tool_calls > skill_max_calls
                 or not 1 <= payload.max_tool_runtime_seconds <= 30
-                or payload.max_tool_runtime_seconds > int(skill_max_runtime)):
+                or payload.max_tool_runtime_seconds > skill_max_runtime):
             raise HTTPException(422, detail={"code":"CONSUMER_TOOL_BUDGET_INVALID","message":"Budget tool Consumer harus positif dan tidak boleh melampaui budget Skill yang dipin."})
         if not allowed_tool_keys or set(allowed_tool_keys) != set(skill_dependencies):
             raise HTTPException(422, detail={"code":"TOOL_ALLOWLIST_MUST_MATCH_SKILL","message":"Allowlist harus sama persis dengan seluruh dependensi tool Skill yang dipin."})
