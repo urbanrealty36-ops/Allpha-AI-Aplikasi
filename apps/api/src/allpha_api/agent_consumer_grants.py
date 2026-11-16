@@ -20,6 +20,7 @@ from allpha_api.credit_ledger_service import (
     ReservationReceipt,
 )
 from allpha_api.supabase_credit_ledger_store import SupabaseCreditLedgerStore
+from allpha_api.tool_registry import UnknownToolError, validate_tool_dependencies
 
 
 class ConsumerGrantUnavailable(RuntimeError):
@@ -77,7 +78,8 @@ class AgentConsumerGrantStore:
                      agent_version: int, skill_id: str, skill_version: int,
                      runtime_policy_version: str, idempotency_key: str,
                      expires_at: str | None, policy_snapshot: dict[str, Any],
-                     granted_scopes: list[str] | None = None) -> dict[str, Any]:
+                     granted_scopes: list[str] | None = None,
+                     allowed_tool_keys: list[str] | None = None) -> dict[str, Any]:
         if requester_id == owner_id:
             raise ValueError("owner cannot create a Consumer grant for themselves")
         if not idempotency_key.strip():
@@ -88,11 +90,23 @@ class AgentConsumerGrantStore:
                     "idempotency_key":f"eq.{idempotency_key}", "limit":"1"},
         )
         scopes = list(dict.fromkeys(granted_scopes or ["public_invoke"]))
-        allowed_scopes = {"public_invoke", "generation_invoke", "knowledge_public_read"}
+        allowed_scopes = {"public_invoke", "generation_invoke", "knowledge_public_read", "tool_invoke"}
+        tool_keys = list(dict.fromkeys(allowed_tool_keys or []))
         if not scopes or any(scope not in allowed_scopes for scope in scopes):
             raise ValueError("Consumer grant scopes are invalid")
         if "knowledge_public_read" in scopes and "generation_invoke" not in scopes:
             raise ValueError("public Knowledge scope requires generation permission")
+        if "tool_invoke" in scopes:
+            if "generation_invoke" not in scopes or not 1 <= len(tool_keys) <= 5:
+                raise ValueError("tool_invoke requires generation permission and 1-5 explicitly allowed tools")
+            try:
+                validate_tool_dependencies(tool_keys)
+            except (UnknownToolError, ValueError) as exc:
+                raise ValueError("Consumer tool allowlist contains an unregistered tool") from exc
+            if any(key != "text.normalize" for key in tool_keys):
+                raise ValueError("Consumer generation tool adapter is not available for every requested tool")
+        elif tool_keys:
+            raise ValueError("allowed_tool_keys requires the tool_invoke scope")
         payload = {
             "requester_user_id": requester_id,
             "owner_user_id": owner_id,
@@ -115,6 +129,7 @@ class AgentConsumerGrantStore:
             "allow_definitive_failure_release": bool(policy_snapshot["allow_definitive_failure_release"]),
             "allow_partial_settlement": bool(policy_snapshot["allow_partial_settlement"]),
             "granted_scopes": scopes,
+            "allowed_tool_keys": tool_keys,
             "status": "active",
             "idempotency_key": idempotency_key,
             "expires_at": expires_at,
@@ -126,7 +141,7 @@ class AgentConsumerGrantStore:
                     "skill_version","runtime_policy_version","expires_at","capability_id",
                     "credit_scheme_version","approval_reference","tariff_version","entitlement_version",
                     "max_usage_units","max_cost_microunits","cost_unit","pricing_version","payer_role",
-                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes")
+                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes","allowed_tool_keys")
             if any(row.get(key) != payload.get(key) for key in keys):
                 raise ConsumerGrantUnavailable("grant idempotency key was reused with different parameters")
             if row.get("status") == "active":
@@ -141,7 +156,7 @@ class AgentConsumerGrantStore:
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={
-                "select": "id,requester_user_id,agent_id,skill_id,granted_scopes,status,expires_at,granted_at,revoked_at,revoke_reason",
+                "select": "id,requester_user_id,agent_id,skill_id,granted_scopes,allowed_tool_keys,status,expires_at,granted_at,revoked_at,revoke_reason",
                 "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
                 "order": "granted_at.desc", "limit": "100",
             },
@@ -174,7 +189,7 @@ class AgentConsumerGrantStore:
                       agent_version: int, skill_id: str, skill_version: int,
                       runtime_policy_version: str, policy_snapshot: dict[str, Any],
                       required_scope: str = "public_invoke") -> dict[str, Any] | None:
-        if required_scope not in {"public_invoke", "generation_invoke"}:
+        if required_scope not in {"public_invoke", "generation_invoke", "tool_invoke"}:
             raise ValueError("Consumer grant resolver scope is invalid")
         rows = await self._request(
             "GET", "agent_consumer_grants",
