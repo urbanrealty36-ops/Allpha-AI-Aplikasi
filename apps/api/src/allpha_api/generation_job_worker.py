@@ -215,6 +215,12 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
     skill_snapshot = job.get("skill_snapshot") if isinstance(job.get("skill_snapshot"), dict) else {}
     dependencies = skill_snapshot.get("tool_dependencies") if isinstance(skill_snapshot.get("tool_dependencies"), list) else []
     if dependencies:
+        try:
+            validate_tool_dependencies(dependencies)
+            if any(get_tool(key).execution_class != "pure" for key in dependencies):
+                return None
+        except (ValueError, Exception):
+            return None
         skill_budget = skill_snapshot.get("budget_limits") if isinstance(skill_snapshot.get("budget_limits"), dict) else {}
         skill_max_calls = skill_budget.get("max_tool_calls", 1)
         skill_max_runtime = skill_budget.get("max_runtime_seconds", 30)
@@ -225,7 +231,6 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
                 or not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool)
                 or not isinstance(max_tool_runtime, int) or isinstance(max_tool_runtime, bool)
                 or "tool_invoke" not in scopes or set(allowed_tools) != set(dependencies)
-                or any(key != "text.normalize" for key in dependencies)
                 or max_tool_calls < len(dependencies) or max_tool_calls > min(5, skill_max_calls)
                 or not 1 <= max_tool_runtime <= min(30, skill_max_runtime)):
             return None
@@ -244,13 +249,18 @@ async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthor
         return None
     if not isinstance(dependencies, list) or len(dependencies) > 5 or any(not isinstance(key, str) for key in dependencies):
         raise RuntimeError("skill_tool_dependency_contract_invalid")
+    try:
+        validate_tool_dependencies(dependencies)
+        if any(get_tool(key).execution_class != "pure" for key in dependencies):
+            raise RuntimeError("skill_tool_dependency_not_pure")
+    except (ValueError, Exception) as exc:
+        raise RuntimeError("skill_tool_dependency_contract_invalid") from exc
     if job.get("consumer_grant_id"):
         grant = await _consumer_grant_is_current(job)
         allowed_tools = grant.get("allowed_tool_keys") if isinstance(grant, dict) and isinstance(grant.get("allowed_tool_keys"), list) else []
         scopes = grant.get("granted_scopes") if isinstance(grant, dict) and isinstance(grant.get("granted_scopes"), list) else []
         if (grant is None or "tool_invoke" not in scopes
-                or set(allowed_tools) != set(dependencies)
-                or any(key != "text.normalize" for key in dependencies)):
+                or set(allowed_tools) != set(dependencies)):
             raise RuntimeError("external_consumer_tool_grant_missing_or_adapter_unsupported")
     url, key = _database()
     headers = {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}
