@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import pytest
 
@@ -47,15 +48,14 @@ def memory_row(*, content="The owner prefers concise summaries.", classification
     }
 
 
-@pytest.mark.asyncio
-async def test_retrieve_context_uses_ranked_policy_scoped_search_and_content_digest(monkeypatch):
+def test_retrieve_context_uses_ranked_policy_scoped_search_and_content_digest(monkeypatch):
     monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
     store = FakeMemoryCoordinator(rows=[memory_row()])
-    items = await store.retrieve_context(
+    items = asyncio.run(store.retrieve_context(
         OWNER, AGENT, purpose="agent_generation_context",
         query="How should summaries be written?", limit=8, max_chars=2000,
         max_sensitivity="internal",
-    )
+    ))
     assert len(items) == 1
     assert items[0]["retrieval_method"] == "keyword"
     assert items[0]["retrieval_score"] == 0.75
@@ -68,41 +68,37 @@ async def test_retrieve_context_uses_ranked_policy_scoped_search_and_content_dig
     assert search["body"]["p_policy_ids"] == ["policy-1"]
 
 
-@pytest.mark.asyncio
-async def test_retrieve_context_uses_metadata_recency_when_query_is_absent(monkeypatch):
+def test_retrieve_context_uses_metadata_recency_when_query_is_absent(monkeypatch):
     monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
     store = FakeMemoryCoordinator(rows=[memory_row()])
-    items = await store.retrieve_context(OWNER, AGENT, purpose="agent_generation_context")
+    items = asyncio.run(store.retrieve_context(OWNER, AGENT, purpose="agent_generation_context"))
     assert items[0]["retrieval_method"] == "metadata"
     search = next(call for call in store.calls if call["path"] == "rpc/agent_memory_search")
     assert search["body"]["p_query"] is None
 
 
-@pytest.mark.asyncio
-async def test_retrieve_context_fails_closed_on_policy_or_digest_mismatch(monkeypatch):
+def test_retrieve_context_fails_closed_on_policy_or_digest_mismatch(monkeypatch):
     monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
     policy_mismatch = FakeMemoryCoordinator(rows=[memory_row(policy_version=99)])
     with pytest.raises(MemoryDenied):
-        await policy_mismatch.retrieve_context(OWNER, AGENT, query="preference")
+        asyncio.run(policy_mismatch.retrieve_context(OWNER, AGENT, query="preference"))
 
     digest_mismatch = FakeMemoryCoordinator(rows=[{**memory_row(), "content_sha256": "0" * 64}])
     with pytest.raises(MemoryUnavailable):
-        await digest_mismatch.retrieve_context(OWNER, AGENT, query="preference")
+        asyncio.run(digest_mismatch.retrieve_context(OWNER, AGENT, query="preference"))
 
 
-@pytest.mark.asyncio
-async def test_retrieve_context_does_not_search_without_active_agent_ownership(monkeypatch):
+def test_retrieve_context_does_not_search_without_active_agent_ownership(monkeypatch):
     monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
     store = FakeMemoryCoordinator(owned=False, rows=[memory_row()])
-    assert await store.retrieve_context(OWNER, AGENT, query="preference") == []
+    assert asyncio.run(store.retrieve_context(OWNER, AGENT, query="preference")) == []
     assert not any(call["path"] == "rpc/agent_memory_search" for call in store.calls)
 
 
-@pytest.mark.asyncio
-async def test_retrieve_context_rejects_rows_above_sensitivity_ceiling(monkeypatch):
+def test_retrieve_context_rejects_rows_above_sensitivity_ceiling(monkeypatch):
     monkeypatch.setenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "true")
     store = FakeMemoryCoordinator(rows=[memory_row(classification="confidential")])
     with pytest.raises(MemoryDenied):
-        await store.retrieve_context(
+        asyncio.run(store.retrieve_context(
             OWNER, AGENT, query="preference", max_sensitivity="internal",
-        )
+        ))
