@@ -89,9 +89,9 @@ class AgentConsumerGrantStore:
             params={"select":"*", "owner_user_id":f"eq.{owner_id}",
                     "idempotency_key":f"eq.{idempotency_key}", "limit":"1"},
         )
-        scopes = list(dict.fromkeys(granted_scopes or ["public_invoke"]))
+        scopes = sorted(set(granted_scopes or ["public_invoke"]))
         allowed_scopes = {"public_invoke", "generation_invoke", "knowledge_public_read", "tool_invoke"}
-        tool_keys = list(dict.fromkeys(allowed_tool_keys or []))
+        tool_keys = sorted(set(allowed_tool_keys or []))
         if not scopes or any(scope not in allowed_scopes for scope in scopes):
             raise ValueError("Consumer grant scopes are invalid")
         if "knowledge_public_read" in scopes and "generation_invoke" not in scopes:
@@ -188,9 +188,16 @@ class AgentConsumerGrantStore:
     async def resolve(self, *, requester_id: str, owner_id: str, agent_id: str,
                       agent_version: int, skill_id: str, skill_version: int,
                       runtime_policy_version: str, policy_snapshot: dict[str, Any],
-                      required_scope: str = "public_invoke") -> dict[str, Any] | None:
+                      required_scope: str = "public_invoke",
+                      allowed_tool_keys: list[str] | None = None) -> dict[str, Any] | None:
         if required_scope not in {"public_invoke", "generation_invoke", "tool_invoke"}:
             raise ValueError("Consumer grant resolver scope is invalid")
+        required_tools = sorted(set(allowed_tool_keys or []))
+        if required_scope == "tool_invoke":
+            if not required_tools or len(required_tools) > 5:
+                raise ValueError("tool_invoke resolver requires an explicit 1-5 tool allowlist")
+        elif required_tools:
+            raise ValueError("tool allowlist can only be resolved with tool_invoke scope")
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={"select":"*", "requester_user_id":f"eq.{requester_id}",
@@ -198,6 +205,7 @@ class AgentConsumerGrantStore:
                     "agent_version":f"eq.{agent_version}", "skill_id":f"eq.{skill_id}",
                     "skill_version":f"eq.{skill_version}", "runtime_policy_version":f"eq.{runtime_policy_version}",
                     "status":"eq.active", "granted_scopes":f"cs.{{{required_scope}}}",
+                    **({"allowed_tool_keys": "cs.{" + ",".join(required_tools) + "}"} if required_tools else {}),
                     "capability_id":f"eq.{policy_snapshot['capability_id']}",
                     "credit_scheme_version":f"eq.{policy_snapshot['credit_scheme_version']}",
                     "approval_reference":f"eq.{policy_snapshot['approval_reference']}",
@@ -221,6 +229,8 @@ class AgentConsumerGrantStore:
         for key, value in policy_snapshot.items():
             if row.get(key) != value:
                 return None
+        if required_tools and not set(required_tools).issubset(set(row.get("allowed_tool_keys") or [])):
+            return None
         return row
 
 
