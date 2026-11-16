@@ -157,7 +157,7 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
     url, key = _database()
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     params = {
-        "select": "id,requester_user_id,owner_user_id,agent_id,agent_version,skill_id,skill_version,capability_id,granted_scopes,allowed_tool_keys,status,expires_at,credit_scheme_version,approval_reference,tariff_version,entitlement_version,max_usage_units,max_cost_microunits,cost_unit,pricing_version,payer_role,allow_success_settlement,allow_definitive_failure_release,allow_partial_settlement",
+        "select": "id,requester_user_id,owner_user_id,agent_id,agent_version,skill_id,skill_version,runtime_policy_version,capability_id,granted_scopes,allowed_tool_keys,status,expires_at,credit_scheme_version,approval_reference,tariff_version,entitlement_version,max_usage_units,max_cost_microunits,cost_unit,pricing_version,payer_role,allow_success_settlement,allow_definitive_failure_release,allow_partial_settlement",
         "id": f"eq.{grant_id}",
         "requester_user_id": f"eq.{job.get('owner_user_id')}",
         "owner_user_id": f"eq.{job.get('agent_owner_user_id')}",
