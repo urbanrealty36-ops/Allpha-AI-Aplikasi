@@ -13,7 +13,8 @@ type RetrievalResponse = { trace_id: string; results: RetrievalResult[] };
 type Skill = {
   id: string; agent_id: string; slug: string; name: string; description: string;
   category: string; instructions: string; required_permission_scopes: string[];
-  tool_dependencies: string[]; version: number; status: "draft" | "published" | "archived";
+  tool_dependencies: string[]; budget_limits?: { max_runtime_seconds?: number; max_tool_calls?: number };
+  version: number; status: "draft" | "published" | "archived";
   changelog?: string; updated_at?: string;
 };
 type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean; input_schema?: Record<string, unknown> };
