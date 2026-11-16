@@ -162,7 +162,7 @@ _JSON_MERGE = ToolDefinition(
 )
 
 
-def _validate_schema(value: Any, schema: dict[str, Any], path: str = "value") -> None:
+def _validate_schema(value: Any, schema: dict[str, Any], path: str = "value", *, allow_missing_required: bool = False) -> None:
     expected = schema.get("type")
     types = expected if isinstance(expected, list) else [expected] if expected else []
     checks = {
@@ -179,7 +179,7 @@ def _validate_schema(value: Any, schema: dict[str, Any], path: str = "value") ->
     if isinstance(value, dict):
         properties = schema.get("properties", {})
         missing = sorted(set(schema.get("required", [])) - set(value))
-        if missing:
+        if missing and not allow_missing_required:
             raise ToolInputError(f"{path} missing required field(s): {', '.join(missing)}")
         if schema.get("additionalProperties") is False:
             unknown = sorted(set(value) - set(properties))
@@ -189,13 +189,13 @@ def _validate_schema(value: Any, schema: dict[str, Any], path: str = "value") ->
             raise ToolInputError(f"{path} exceeds maximum properties")
         for key, child in value.items():
             if key in properties:
-                _validate_schema(child, properties[key], f"{path}.{key}")
+                _validate_schema(child, properties[key], f"{path}.{key}", allow_missing_required=allow_missing_required)
     if isinstance(value, list):
         if len(value) > schema.get("maxItems", 1000):
             raise ToolInputError(f"{path} exceeds maximum items")
         if isinstance(schema.get("items"), dict):
             for index, child in enumerate(value):
-                _validate_schema(child, schema["items"], f"{path}[{index}]")
+                _validate_schema(child, schema["items"], f"{path}[{index}]", allow_missing_required=allow_missing_required)
     if isinstance(value, str):
         if len(value) < schema.get("minLength", 0) or len(value) > schema.get("maxLength", 1000000):
             raise ToolInputError(f"{path} length is outside the allowed range")
@@ -235,6 +235,14 @@ def validate_tool_dependencies(dependencies: list[str]) -> None:
     unknown = sorted(set(dependencies) - _TOOL_REGISTRY.keys())
     if unknown:
         raise UnknownToolError(", ".join(unknown))
+
+
+def validate_tool_input_partial(tool_key: str, payload: dict[str, Any]) -> None:
+    """Validate supplied fields without requiring fields that a plan binding fills later."""
+    tool = get_tool(tool_key)
+    if not isinstance(payload, dict):
+        raise ToolInputError("tool input must be an object")
+    _validate_schema(payload, tool.input_schema, "input", allow_missing_required=True)
 
 
 def execute_tool(tool_key: str, payload: dict[str, Any]) -> dict[str, Any]:

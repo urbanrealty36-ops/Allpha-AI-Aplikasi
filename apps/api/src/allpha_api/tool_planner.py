@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from allpha_api.tool_registry import ToolInputError, validate_tool_input_partial
+
 class ToolPlanValidationError(ValueError):
     """Model output is not a safe, schema-compatible tool plan."""
 
@@ -59,6 +61,10 @@ def parse_tool_plan(raw_text: str, *, allowed_tools: dict[str, Any], max_steps: 
         if not isinstance(inputs, dict) or not isinstance(bindings, dict):
             raise ToolPlanValidationError("step inputs and bindings must be JSON objects")
         tool = allowed_tools[tool_key]
+        try:
+            validate_tool_input_partial(tool_key, inputs)
+        except ToolInputError as exc:
+            raise ToolPlanValidationError("planner supplied values outside the registered tool input contract") from exc
         input_schema = getattr(tool, "input_schema", {})
         output_schema = getattr(tool, "output_schema", {})
         properties = input_schema.get("properties", {}) if isinstance(input_schema, dict) else {}

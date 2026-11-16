@@ -27,7 +27,10 @@ async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promi
     },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body?.detail?.message || body?.detail || body?.message || "Permintaan Generation gagal.");
+  if (!response.ok) {
+    const detail = body?.detail;
+    throw new Error(typeof detail === "string" ? detail : detail?.message || body?.message || "Permintaan Generation gagal.");
+  }
   return body as T;
 }
 
