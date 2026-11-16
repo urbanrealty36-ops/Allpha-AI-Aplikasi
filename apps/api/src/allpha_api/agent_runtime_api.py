@@ -569,10 +569,14 @@ async def get_tool_planner_status(request: Request, user: dict[str, Any] = Depen
     if router is None:
         return {"enabled": False, "reason_code": "TEXT_GENERATION_ROUTER_UNAVAILABLE"}
     try:
+        await _store().find_tool_plan_by_idempotency(str(user["id"]), "__planner_schema_probe__")
+    except AgentRuntimePersistenceError:
+        return {"enabled": False, "reason_code": "TOOL_PLAN_SCHEMA_UNAVAILABLE"}
+    try:
         readiness = await router.preflight("internal")
     except Exception as exc:
         return {"enabled": False, "reason_code": getattr(exc, "category", "TEXT_GENERATION_POLICY_UNAVAILABLE")}
-    return {"enabled": True, "reason_code": None, "route": readiness.get("route")}
+    return {"enabled": True, "reason_code": None, "route": readiness.get("route"), "billing_mode": "router_metered"}
 
 
 @router.post("/tasks/plan", status_code=201)
@@ -655,8 +659,14 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
             if reservation.get("request_fingerprint") != fingerprint:
                 raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_IDEMPOTENCY_CONFLICT", "message": "Idempotency key sudah digunakan untuk goal atau Skill berbeda."})
             if reservation.get("status") == "completed" and not _iso_expired(reservation.get("expires_at")):
-                return {"plan_id": reservation["id"], "tool_plan": reservation.get("tool_plan") or [], "planner_evidence": reservation.get("planner_evidence") or {}, "idempotent_replay": True}
+                return {"plan_id": reservation["id"], "tool_plan": reservation.get("tool_plan") or [], "planner_evidence": reservation.get("planner_evidence") or {}, "expires_at": reservation.get("expires_at"), "idempotent_replay": True}
             if reservation.get("status") == "planning":
+                if _iso_expired(reservation.get("expires_at")):
+                    await store.update_tool_plan(owner_id, str(reservation["id"]), {
+                        "status": "outcome_unknown", "error_code": "TOOL_PLAN_RESERVATION_EXPIRED",
+                        "updated_at": _now(),
+                    })
+                    raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_OUTCOME_UNKNOWN", "message": "Reservasi planner kedaluwarsa tanpa hasil terkonfirmasi. Jangan ulangi provider call dengan key yang sama."})
                 raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_IN_PROGRESS", "message": "Perencanaan dengan idempotency key ini masih berlangsung; jangan kirim ulang dengan key yang sama."})
             raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_NOT_REPLAYABLE", "message": "Hasil planner tidak dapat diputar ulang. Gunakan idempotency key baru setelah memeriksa status."})
         router = _text_router(request)
@@ -703,7 +713,7 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
         })
         if not completed:
             raise HTTPException(status_code=503, detail={"code": "TOOL_PLAN_PERSISTENCE_UNCONFIRMED", "message": "Rencana berhasil dibuat tetapi penyimpanan durabel belum terkonfirmasi; jangan ulangi provider call dengan key yang sama."})
-        return {"plan_id": completed["id"], "tool_plan": validated_plan, "planner_evidence": planner_evidence, "idempotent_replay": False}
+        return {"plan_id": completed["id"], "tool_plan": validated_plan, "planner_evidence": planner_evidence, "expires_at": completed.get("expires_at"), "idempotent_replay": False}
     except AgentRuntimePersistenceError as exc:
         raise _error(exc) from exc
 
@@ -743,6 +753,8 @@ async def create_task(payload: TaskCreate, request: Request,
                 raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_NOT_READY", "message": "Rencana tool belum selesai atau sudah kedaluwarsa."})
             if str(plan_row.get("session_id")) != str(payload.session_id) or str(plan_row.get("agent_id")) != agent_id or str(plan_row.get("skill_id")) != str(payload.skill_id):
                 raise HTTPException(status_code=403, detail={"code": "TOOL_PLAN_SCOPE_MISMATCH", "message": "Rencana tool tidak terikat pada Agent, Skill dan sesi ini."})
+            if int(plan_row.get("agent_version") or 0) != int(agent.get("version") or 0) or int(plan_row.get("skill_version") or 0) != int(skill.get("version") or 0):
+                raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_SNAPSHOT_STALE", "message": "Versi Agent atau Skill berubah setelah planning. Buat rencana baru."})
             if plan_row.get("idempotency_key") != payload.idempotency_key:
                 raise HTTPException(status_code=409, detail={"code": "TOOL_PLAN_IDEMPOTENCY_MISMATCH", "message": "Task harus memakai idempotency key yang sama dengan planner."})
             raw_steps = plan_row.get("tool_plan")
