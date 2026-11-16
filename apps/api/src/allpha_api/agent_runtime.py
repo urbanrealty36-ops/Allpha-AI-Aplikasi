@@ -370,12 +370,13 @@ class AgentRuntime:
             limits = skill_budget_limits if isinstance(skill_budget_limits, dict) else {}
             max_calls = limits.get("max_tool_calls", len(dependencies))
             max_runtime = limits.get("max_runtime_seconds", 30)
+            if (not isinstance(max_calls, int) or isinstance(max_calls, bool)
+                    or not isinstance(max_runtime, int) or isinstance(max_runtime, bool)):
+                raise AgentRuntimeBlocked("Skill tool budget is invalid")
             if requester_id != owner_id:
                 max_calls = min(max_calls, consumer_authorization.max_tool_calls)
                 max_runtime = min(max_runtime, consumer_authorization.max_tool_runtime_seconds)
-            if (not isinstance(max_calls, int) or isinstance(max_calls, bool)
-                    or max_calls < len(dependencies) or max_calls > self._limits.max_tool_calls
-                    or not isinstance(max_runtime, int) or isinstance(max_runtime, bool)
+            if (max_calls < len(dependencies) or max_calls > self._limits.max_tool_calls
                     or max_runtime < 1 or max_runtime > self._limits.max_runtime_seconds):
                 raise AgentRuntimeBlocked("Skill or Consumer tool budget is outside runtime limits")
             transformed_prompt = request.prompt
