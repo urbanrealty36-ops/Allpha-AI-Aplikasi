@@ -21,16 +21,18 @@ class FakeRuntimeStore:
     sessions = {}
     tasks = {}
     events = {}
+    checkpoints = {}
+    approved_tools = ["text.normalize", "text.truncate", "text.split", "json.pick", "json.merge"]
     capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                   "required_permission_scopes": [], "status": "approved",
                   "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
                   "updated_at": "2026-10-15T00:00:00Z"}
-    policy_document = {"policy_version": "runtime-policy-v1", "approved_tool_keys": ["text.normalize"],
+    policy_document = {"policy_version": "runtime-policy-v1", "approved_tool_keys": approved_tools,
                        "required_permission_scopes": []}
     policy = {"id": "policy-1", "agent_id": AGENT, "policy_version": "runtime-policy-v1",
               "policy_document": policy_document,
               "policy_digest": hashlib.sha256(json.dumps(policy_document, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-              "approved_tool_keys": ["text.normalize"], "required_permission_scopes": [],
+              "approved_tool_keys": approved_tools, "required_permission_scopes": [],
               "risk_constraints": {}, "status": "approved"}
 
     @classmethod
@@ -48,12 +50,16 @@ class FakeRuntimeStore:
     async def get_skill(self, owner_id, agent_id, skill_id):
         if await self.owner_has_agent(owner_id, agent_id) and skill_id == SKILL:
             return {"id": SKILL, "agent_id": AGENT, "version": 1, "status": "published",
-                    "tool_dependencies": ["text.normalize"], "required_permission_scopes": [],
-                    "budget_limits": {"max_runtime_seconds": 3, "max_tool_calls": 1}}
+                    "tool_dependencies": list(FakeRuntimeStore.approved_tools), "required_permission_scopes": [],
+                    "budget_limits": {"max_runtime_seconds": 3, "max_tool_calls": 5}}
         return None
 
     async def get_approved_capability(self, agent_id, tool_key):
-        return copy.deepcopy(self.capability) if agent_id == AGENT and tool_key == "text.normalize" else None
+        if agent_id == AGENT and tool_key in self.approved_tools:
+            capability = copy.deepcopy(self.capability)
+            capability["capability_key"] = tool_key
+            return capability
+        return None
 
     async def get_approved_runtime_policy(self, agent_id, policy_id):
         return copy.deepcopy(self.policy) if agent_id == AGENT and policy_id == self.policy["id"] and self.policy["status"] == "approved" else None
@@ -101,7 +107,7 @@ class FakeRuntimeStore:
         saved = {"id": str(uuid.uuid4()), "task_id": task_id, "sequence": sequence,
                  "task_version": task_version, "trace_id": row["trace_id"],
                  "event_type": "state_transition", "state": event["state"],
-                 "step_key": "tool:" + event.get("tool_key", "runtime"),
+                 "step_key": event.get("step_key") or ("tool:" + event.get("tool_key", "runtime")),
                  "details": {"reason_code": event.get("reason_code")} if event.get("reason_code") else {},
                  "created_at": "now"}
         self.events[task_id].append(saved)
@@ -131,7 +137,11 @@ class FakeRuntimeStore:
                    "input_fingerprint": input_fingerprint, "checkpoint_hash": checkpoint_hash,
                    "result_payload": copy.deepcopy(result_payload)}
         row["checkpoint"] = copy.deepcopy(receipt)
+        self.checkpoints.setdefault(task_id, []).append(copy.deepcopy(receipt))
         return receipt
+
+    async def list_checkpoints(self, task_id, limit=5):
+        return copy.deepcopy(self.checkpoints.get(task_id, [])[:limit])
 
     async def get_latest_checkpoint(self, task_id):
         row = self.tasks.get(task_id)
@@ -201,17 +211,18 @@ def setup_function():
     FakeRuntimeStore.sessions = {}
     FakeRuntimeStore.tasks = {}
     FakeRuntimeStore.events = {}
+    FakeRuntimeStore.checkpoints = {}
     FakeRuntimeStore.capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                                    "required_permission_scopes": [], "status": "approved",
                                    "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
                                    "updated_at": "2026-10-15T00:00:00Z"}
     FakeRuntimeStore.policy = {"id": "policy-1", "agent_id": AGENT, "policy_version": "runtime-policy-v1",
-                               "policy_document": {"policy_version": "runtime-policy-v1", "approved_tool_keys": ["text.normalize"],
+                               "policy_document": {"policy_version": "runtime-policy-v1", "approved_tool_keys": FakeRuntimeStore.approved_tools,
                                                    "required_permission_scopes": []},
                                "policy_digest": hashlib.sha256(json.dumps({"policy_version": "runtime-policy-v1",
                                    "approved_tool_keys": ["text.normalize"], "required_permission_scopes": []},
                                    sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-                               "approved_tool_keys": ["text.normalize"], "required_permission_scopes": [],
+                               "approved_tool_keys": FakeRuntimeStore.approved_tools, "required_permission_scopes": [],
                                "risk_constraints": {}, "status": "approved"}
 
 
@@ -320,6 +331,42 @@ def test_other_owner_cannot_read_or_cancel_task(monkeypatch):
     try:
         assert c.get(f"/v1/agent-runtime/tasks/{task['id']}").status_code == 404
         assert c.post(f"/v1/agent-runtime/tasks/{task['id']}/cancel").status_code == 404
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_multi_tool_plan_checkpoints_each_step_and_recovers_outputs(monkeypatch):
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        created = c.post("/v1/agent-runtime/tasks", json={
+            "session_id": sid,
+            "skill_id": SKILL,
+            "tool_plan": [
+                {"step_id": "normalize", "tool_key": "text.normalize",
+                 "inputs": {"text": "  Hello   world  "}},
+                {"step_id": "truncate", "tool_key": "text.truncate",
+                 "inputs": {"max_chars": 5},
+                 "bindings": {"text": {"step_id": "normalize", "path": "text"}}},
+            ],
+            "idempotency_key": "task-plan-001",
+            "budget_limits": {"max_runtime_seconds": 3, "max_tool_calls": 2},
+        })
+        assert created.status_code == 201
+        task = created.json()["task"]
+        assert task["tool_key"] == "text.normalize"
+        assert task["input_payload"]["_runtime_plan_version"] == 1
+
+        executed = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
+        assert executed.status_code == 200
+        result = executed.json()["task"]
+        assert result["state"] == "succeeded"
+        assert result["output_payload"]["result"]["text"] == "Hello"
+        checkpoints = FakeRuntimeStore.checkpoints[task["id"]]
+        assert [item["step_key"] for item in checkpoints] == ["step:normalize", "step:truncate"]
+        events = FakeRuntimeStore.events[task["id"]]
+        assert any(item["step_key"] == "step:normalize" for item in events)
+        assert any(item["step_key"] == "step:truncate" for item in events)
     finally:
         app.dependency_overrides.pop(current_user, None)
 
