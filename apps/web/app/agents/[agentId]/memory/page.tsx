@@ -23,6 +23,7 @@ export default function AgentMemoryPage(){
  const [enabled,setEnabled]=useState<Record<string,boolean>>({}),[retention,setRetention]=useState<Record<string,number>>({}),[consent,setConsent]=useState(false);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [editing,setEditing]=useState(""),[draft,setDraft]=useState("");
+ const [proposalType,setProposalType]=useState<T>("episodic"),[proposalPurpose,setProposalPurpose]=useState("agent_generation_context"),[proposalClass,setProposalClass]=useState("internal"),[proposalText,setProposalText]=useState("");
  const load=useCallback(async(s:Session)=>{
   setLoading(true);setError("");
   try{
@@ -68,6 +69,19 @@ export default function AgentMemoryPage(){
   }catch(e){setError(e instanceof Error?e.message:"Pencabutan consent tidak selesai; periksa setiap policy.");await load(session);}
   finally{setSaving("");}
  }
+ async function createProposal(){
+  if(!session)return;
+  const policy=policies.find(x=>x.memory_type===proposalType);
+  if(!policy?.enabled){setError("Aktifkan consent untuk kelas Memory ini sebelum membuat proposal.");return;}
+  if(!proposalText.trim()){setError("Isi konten proposal terlebih dahulu.");return;}
+  setSaving("proposal");setError("");setNotice("");
+  try{
+   const r=await fetch(api+"/v1/memory/proposals",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},
+    body:JSON.stringify({agent_id:agentId,memory_type:proposalType,purpose:proposalPurpose,classification:proposalClass,content:proposalText.trim(),source_ref:{kind:"owner_manual"},provenance:{created_by:"owner",capture_mode:"manual"},retention_days:proposalType==="working"?1:undefined})});
+   if(!r.ok)throw new Error(await err(r));
+   setProposalText("");setNotice("Proposal tersimpan untuk keputusan pemilik. Proposal belum aktif dan belum masuk retrieval.");await load(session);
+  }catch(e){setError(e instanceof Error?e.message:"Proposal Memory gagal dibuat.");}finally{setSaving("");}
+ }
  async function decide(item:Item,decision:"approve"|"reject"){
   if(!session)return;setSaving(item.id);
   try{const r=await fetch(api+"/v1/memory/items/"+item.id+"/decision",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({decision})});
@@ -105,6 +119,17 @@ export default function AgentMemoryPage(){
    </article>;})}</div>
   </section>
   <section className="rounded-2xl border p-4 sm:p-5"><h2 className="text-lg font-semibold">Conversation Memory</h2><p className="mt-1 text-sm text-neutral-600">Riwayat percakapan menggunakan tabel conversations/messages kanonis. Konteks dibatasi berdasarkan participant dan panjang pesan; tidak diduplikasi ke tabel Memory.</p><span className="mt-3 inline-flex rounded-full border px-2 py-1 text-xs">Canonical message store · Read-only</span></section>
+  <section className="space-y-3 rounded-2xl border p-4 sm:p-5">
+   <div><h2 className="text-lg font-semibold">Ajukan Memory secara manual</h2><p className="mt-1 text-sm text-neutral-600">Buat proposal yang berasal dari pemilik. Proposal tidak langsung aktif; persetujuan tetap diperlukan. Ekstraksi otomatis dari model belum diaktifkan.</p></div>
+   <div className="grid gap-3 sm:grid-cols-3">
+    <label className="space-y-1 text-xs font-medium text-neutral-600">Kelas Memory<select value={proposalType} onChange={e=>setProposalType(e.target.value as T)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900">{defs.map(d=><option key={d.key} value={d.key} disabled={!policies.find(p=>p.memory_type===d.key)?.enabled}>{d.title}{policies.find(p=>p.memory_type===d.key)?.enabled?"":" · consent nonaktif"}</option>)}</select></label>
+    <label className="space-y-1 text-xs font-medium text-neutral-600">Tujuan<select value={proposalPurpose} onChange={e=>setProposalPurpose(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="agent_generation_context">Generation context</option><option value="agent_runtime_context">Agent runtime context</option><option value="workflow_context">Workflow context</option><option value="personalization_context">Personalization context</option></select></label>
+    <label className="space-y-1 text-xs font-medium text-neutral-600">Klasifikasi<select value={proposalClass} onChange={e=>setProposalClass(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm text-neutral-900"><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="restricted">Restricted</option></select></label>
+   </div>
+   <textarea value={proposalText} onChange={e=>setProposalText(e.target.value)} rows={4} maxLength={8000} placeholder="Tuliskan fakta, preferensi atau kejadian yang ingin diajukan sebagai Memory…" className="w-full rounded-xl border p-3 text-sm"/>
+   <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-neutral-500">{proposalText.length}/8000 karakter · Manual owner input</span><button disabled={saving==="proposal"||!policies.some(p=>p.memory_type===proposalType&&p.enabled)||!proposalText.trim()} onClick={()=>void createProposal()} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving==="proposal"?"Menyimpan proposal…":"Ajukan untuk persetujuan"}</button></div>
+   {!policies.some(p=>p.memory_type===proposalType&&p.enabled)&&<p className="text-xs text-amber-700">Kelas yang dipilih belum memiliki consent aktif. Proposal tetap diblokir oleh UI dan API sampai pemilik mengaktifkan policy.</p>}
+  </section>
   <section className="space-y-3 rounded-2xl border p-4 sm:p-5"><div><h2 className="text-lg font-semibold">Memory proposals dan item tersimpan</h2><p className="mt-1 text-sm text-neutral-600">Hanya item yang disetujui dan policy version-nya masih berlaku yang masuk retrieval. Saat ini metadata/keyword; vector/hybrid belum diaktifkan.</p></div>
    {items.length===0?<p className="rounded-xl border border-dashed p-4 text-sm text-neutral-600">Belum ada proposal atau item Memory.</p>:items.map(item=><article key={item.id} className="rounded-xl border p-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-2"><strong className="capitalize">{item.memory_type.replace("_"," ")}</strong><span className="rounded-full border px-2 py-0.5 text-xs">{item.status}</span><span className="rounded-full border px-2 py-0.5 text-xs">{item.classification}</span></div><span className="text-xs text-neutral-500">v{item.version}</span></div>
