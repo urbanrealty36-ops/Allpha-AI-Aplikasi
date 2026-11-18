@@ -57,6 +57,8 @@ class FakeRuntimeStore:
 
     async def get_approved_capability(self, agent_id, tool_key):
         if agent_id == AGENT and tool_key in self.approved_tools:
+            if self.capability is None:
+                return None
             capability = copy.deepcopy(self.capability)
             capability["capability_key"] = tool_key
             return capability
@@ -222,12 +224,15 @@ def setup_function():
                                    "required_permission_scopes": [], "status": "approved",
                                    "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
                                    "updated_at": "2026-10-15T00:00:00Z"}
+    policy_document = {"policy_version": "runtime-policy-v1",
+                        "approved_tool_keys": FakeRuntimeStore.approved_tools,
+                        "required_permission_scopes": []}
+    policy_digest = hashlib.sha256(json.dumps(
+        policy_document, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")).hexdigest()
     FakeRuntimeStore.policy = {"id": "policy-1", "agent_id": AGENT, "policy_version": "runtime-policy-v1",
-                               "policy_document": {"policy_version": "runtime-policy-v1", "approved_tool_keys": FakeRuntimeStore.approved_tools,
-                                                   "required_permission_scopes": []},
-                               "policy_digest": hashlib.sha256(json.dumps({"policy_version": "runtime-policy-v1",
-                                   "approved_tool_keys": ["text.normalize"], "required_permission_scopes": []},
-                                   sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                               "policy_document": policy_document, "policy_digest": policy_digest,
                                "approved_tool_keys": FakeRuntimeStore.approved_tools, "required_permission_scopes": [],
                                "risk_constraints": {}, "status": "approved"}
 
