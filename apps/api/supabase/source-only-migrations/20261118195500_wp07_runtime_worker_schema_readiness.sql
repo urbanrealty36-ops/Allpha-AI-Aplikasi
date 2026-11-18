@@ -16,6 +16,8 @@ declare
   v_column text;
   v_column_spec text[];
   v_function text;
+  v_proc regprocedure;
+  v_missing_privileges text[] := '{}'::text[];
   v_required_tables text[] := array[
     'agent_runtime_sessions','agent_runtime_tasks','agent_runtime_checkpoints',
     'agent_runtime_tool_plans','ai_agents','agent_skills',
@@ -39,6 +41,12 @@ declare
     array['agent_runtime_tasks','trace_id'],
     array['agent_runtime_tasks','event_log'],
     array['agent_runtime_checkpoints','task_id'],
+    array['agent_runtime_checkpoints','task_version'],
+    array['agent_runtime_checkpoints','sequence'],
+    array['agent_runtime_checkpoints','step_key'],
+    array['agent_runtime_checkpoints','input_fingerprint'],
+    array['agent_runtime_checkpoints','checkpoint_hash'],
+    array['agent_runtime_checkpoints','result_payload'],
     array['agent_runtime_tool_plans','owner_user_id'],
     array['agent_runtime_tool_plans','idempotency_key'],
     array['agent_runtime_tool_plans','request_fingerprint']
@@ -61,6 +69,8 @@ begin
   foreach v_table in array v_required_tables loop
     if to_regclass('public.' || v_table) is null then
       v_missing_tables := array_append(v_missing_tables, v_table);
+    elsif not has_table_privilege('service_role', 'public.' || v_table, 'SELECT') then
+      v_missing_privileges := array_append(v_missing_privileges, v_table || ':SELECT');
     end if;
   end loop;
 
@@ -76,18 +86,23 @@ begin
   end loop;
 
   foreach v_function in array v_required_functions loop
-    if to_regprocedure(v_function) is null then
+    v_proc := to_regprocedure(v_function);
+    if v_proc is null then
       v_missing_functions := array_append(v_missing_functions, v_function);
+    elsif not has_function_privilege('service_role', v_proc, 'EXECUTE') then
+      v_missing_privileges := array_append(v_missing_privileges, v_function || ':EXECUTE');
     end if;
   end loop;
 
   return jsonb_build_object(
     'ready', cardinality(v_missing_tables)=0
       and cardinality(v_missing_columns)=0
-      and cardinality(v_missing_functions)=0,
+      and cardinality(v_missing_functions)=0
+      and cardinality(v_missing_privileges)=0,
     'missing_tables', to_jsonb(v_missing_tables),
     'missing_columns', to_jsonb(v_missing_columns),
     'missing_functions', to_jsonb(v_missing_functions),
+    'missing_privileges', to_jsonb(v_missing_privileges),
     'checked_at', now()
   );
 end;
