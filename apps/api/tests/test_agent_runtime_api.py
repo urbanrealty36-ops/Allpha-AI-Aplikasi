@@ -41,6 +41,10 @@ class FakeRuntimeStore:
     def from_environment(cls):
         return cls()
 
+    async def runtime_schema_readiness(self):
+        return {"ready": True, "missing_tables": [], "missing_columns": [],
+                "missing_functions": [], "missing_privileges": []}
+
     async def get_agent(self, owner_id, agent_id):
         if owner_id == OWNER and agent_id == AGENT:
             return {"id": AGENT, "version": 1, "status": "active", "updated_at": "2026-10-15T00:00:00Z"}
