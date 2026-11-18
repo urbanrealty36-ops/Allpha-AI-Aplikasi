@@ -65,7 +65,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         setReplyTone(currentAutomation?.reply_tone || "friendly_concise");
         setDailyBudget(String(currentAutomation?.daily_credit_budget ?? 0));
         setPolicy(current);
-        setActions(current?.allowed_actions || ["draft_post"]); setMode(current?.approval_mode || "every_post");
+        setActions(current?.allowed_actions || ["draft_post"]); setMode(current?.approval_mode === "disabled" ? "disabled" : "every_post");
         setDisclosure(current?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(current?.is_enabled ?? false);
       } else { setPolicy(null); setAutomation(null); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); }
     } catch (cause) { setPolicy(null); setAutomation(null); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
