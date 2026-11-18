@@ -27,6 +27,10 @@ class ConsumerGrantUnavailable(RuntimeError):
     """A durable Consumer grant or approved runtime budget is unavailable."""
 
 
+def _tool_grants_enabled() -> bool:
+    return os.getenv("ALLPHA_EXTERNAL_CONSUMER_TOOL_GRANTS_ENABLED", "false").lower() == "true"
+
+
 class AgentConsumerGrantStore:
     _timeout = httpx.Timeout(10.0, connect=3.0)
 
@@ -99,6 +103,8 @@ class AgentConsumerGrantStore:
         if "knowledge_public_read" in scopes and "generation_invoke" not in scopes:
             raise ValueError("public Knowledge scope requires generation permission")
         if "tool_invoke" in scopes:
+            if not _tool_grants_enabled():
+                raise ConsumerGrantUnavailable("per-tool Consumer grants are not activated until the approved schema migration is present")
             if "generation_invoke" not in scopes or not 1 <= len(tool_keys) <= 5:
                 raise ValueError("tool_invoke requires generation permission and 1-5 explicitly allowed tools")
             try:
@@ -140,21 +146,26 @@ class AgentConsumerGrantStore:
             "allow_definitive_failure_release": bool(policy_snapshot["allow_definitive_failure_release"]),
             "allow_partial_settlement": bool(policy_snapshot["allow_partial_settlement"]),
             "granted_scopes": scopes,
-            "allowed_tool_keys": tool_keys,
-            "max_tool_calls": max_tool_calls,
-            "max_tool_runtime_seconds": max_tool_runtime_seconds,
             "status": "active",
             "idempotency_key": idempotency_key,
             "expires_at": expires_at,
             "granted_by": owner_id,
         }
+        if "tool_invoke" in scopes:
+            payload.update({
+                "allowed_tool_keys": tool_keys,
+                "max_tool_calls": max_tool_calls,
+                "max_tool_runtime_seconds": max_tool_runtime_seconds,
+            })
         if existing:
             row = existing[0]
             keys = ("requester_user_id","owner_user_id","agent_id","agent_version","skill_id",
                     "skill_version","runtime_policy_version","expires_at","capability_id",
                     "credit_scheme_version","approval_reference","tariff_version","entitlement_version",
                     "max_usage_units","max_cost_microunits","cost_unit","pricing_version","payer_role",
-                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes","allowed_tool_keys","max_tool_calls","max_tool_runtime_seconds")
+                    "allow_success_settlement","allow_definitive_failure_release","allow_partial_settlement","granted_scopes")
+            if "tool_invoke" in scopes:
+                keys += ("allowed_tool_keys","max_tool_calls","max_tool_runtime_seconds")
             if any(row.get(key) != payload.get(key) for key in keys):
                 raise ConsumerGrantUnavailable("grant idempotency key was reused with different parameters")
             if row.get("status") == "active":
@@ -169,12 +180,19 @@ class AgentConsumerGrantStore:
         rows = await self._request(
             "GET", "agent_consumer_grants",
             params={
-                "select": "id,requester_user_id,agent_id,skill_id,granted_scopes,allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds,status,expires_at,granted_at,revoked_at,revoke_reason",
+                "select": (
+                    "id,requester_user_id,agent_id,skill_id,granted_scopes,status,expires_at,granted_at,revoked_at,revoke_reason"
+                    + (",allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds" if _tool_grants_enabled() else "")
+                ),
                 "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
                 "order": "granted_at.desc", "limit": "100",
             },
         )
-        return rows if isinstance(rows, list) else []
+        if not isinstance(rows, list):
+            return []
+        if not _tool_grants_enabled():
+            return [{**row, "allowed_tool_keys": [], "max_tool_calls": 0, "max_tool_runtime_seconds": 0} for row in rows]
+        return rows
 
 
     async def revoke(self, *, grant_id: str, owner_id: str, agent_id: str,
@@ -209,6 +227,8 @@ class AgentConsumerGrantStore:
             raise ValueError("Consumer grant resolver scope is invalid")
         required_tools = sorted(set(allowed_tool_keys or []))
         if required_scope == "tool_invoke":
+            if not _tool_grants_enabled():
+                raise ConsumerGrantUnavailable("per-tool Consumer grant schema is not activated")
             if (not required_tools or len(required_tools) > 5
                     or not isinstance(max_tool_calls, int) or isinstance(max_tool_calls, bool)
                     or not 1 <= max_tool_calls <= 5

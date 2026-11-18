@@ -57,6 +57,11 @@ def grant_row(**changes):
     return row
 
 
+@pytest.fixture(autouse=True)
+def enable_tool_grant_schema(monkeypatch):
+    monkeypatch.setenv("ALLPHA_EXTERNAL_CONSUMER_TOOL_GRANTS_ENABLED", "true")
+
+
 def make_store(handler):
     return AgentConsumerGrantStore(
         supabase_url="https://example.supabase.co",

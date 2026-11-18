@@ -207,6 +207,11 @@ def client(monkeypatch, *, user_id=OWNER):
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def enable_runtime_trace_schema(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_RUNTIME_TRACE_ENABLED", "true")
+
+
 def setup_function():
     FakeRuntimeStore.sessions = {}
     FakeRuntimeStore.tasks = {}

@@ -28,6 +28,7 @@ declare
   v_job public.generation_jobs;
   v_dependencies text[];
   v_input_keys text[];
+  v_skill_snapshot jsonb;
 begin
   if jsonb_typeof(v_inputs) <> 'object' then
     raise exception 'GENERATION_TOOL_INPUTS_MUST_BE_OBJECT' using errcode = '22023';
@@ -50,11 +51,13 @@ begin
     raise exception 'GENERATION_JOB_NOT_FOUND' using errcode = 'P0002';
   end if;
 
+  v_skill_snapshot := coalesce(v_job.skill_snapshot, '{}'::jsonb);
+  if jsonb_typeof(coalesce(v_skill_snapshot->'tool_dependencies', '[]'::jsonb)) <> 'array' then
+    raise exception 'GENERATION_SKILL_TOOL_DEPENDENCIES_INVALID' using errcode = '22023';
+  end if;
   select coalesce(array_agg(d.tool_key order by d.tool_key), array[]::text[])
   into v_dependencies
-  from public.agent_skills s
-  cross join lateral jsonb_array_elements_text(coalesce(s.tool_dependencies, '[]'::jsonb)) as d(tool_key)
-  where s.id = v_job.skill_id;
+  from jsonb_array_elements_text(coalesce(v_skill_snapshot->'tool_dependencies', '[]'::jsonb)) as d(tool_key);
 
   select coalesce(array_agg(k.tool_key order by k.tool_key), array[]::text[])
   into v_input_keys

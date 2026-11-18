@@ -215,12 +215,18 @@ async def _approved_credit_policy(entitlement_version: str) -> tuple[dict[str, A
     raise HTTPException(503, detail={"code": "AI_CREDIT_POLICY_UNAVAILABLE", "message": "Belum ada AI Credit policy approved yang berlaku untuk entitlement akun ini."})
 
 
+def _generation_tool_inputs_enabled() -> bool:
+    return os.getenv("ALLPHA_GENERATION_TOOL_INPUTS_ENABLED", "false").lower() == "true"
+
+
 def _resolve_generation_tool_inputs(
     payload: GenerationJobCreate, skill_snapshot: dict[str, Any], *, external: bool
 ) -> dict[str, dict[str, Any]]:
     dependencies = skill_snapshot.get("tool_dependencies") or []
     if not isinstance(dependencies, list) or len(dependencies) > 5 or any(not isinstance(key, str) for key in dependencies):
         raise HTTPException(409, detail={"code": "GENERATION_SKILL_TOOL_CONTRACT_INVALID", "message": "Kontrak tool Skill tidak valid."})
+    if dependencies and not _generation_tool_inputs_enabled():
+        raise HTTPException(503, detail={"code": "GENERATION_TOOL_INPUT_SCHEMA_NOT_ACTIVE", "message": "Generation Skill tool inputs menunggu migration dan aktivasi schema WP-07."})
     try:
         validate_tool_dependencies(dependencies)
     except (UnknownToolError, ValueError) as exc:
@@ -477,6 +483,8 @@ async def _external_generation_context(
         )
         runtime_policy_version = router_instance.policy_version_for("public")
         dependencies = snapshots["skill_snapshot"].get("tool_dependencies") or []
+        if dependencies and os.getenv("ALLPHA_EXTERNAL_CONSUMER_TOOL_GRANTS_ENABLED", "false").lower() != "true":
+            raise HTTPException(503, detail={"code": "EXTERNAL_CONSUMER_TOOL_GRANTS_NOT_ACTIVE", "message": "Per-tool Consumer Grant menunggu migration dan aktivasi schema WP-07."})
         grant_store = AgentConsumerGrantStore.from_environment()
         if dependencies:
             skill_budget = snapshots["skill_snapshot"].get("budget_limits") if isinstance(snapshots["skill_snapshot"].get("budget_limits"), dict) else {}
@@ -534,8 +542,11 @@ async def _external_generation_context(
 async def list_generation_agents(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """List only current, public Agent grants that explicitly permit generation."""
     now = datetime.now(timezone.utc).isoformat()
+    grant_select = "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,capability_id,granted_scopes,expires_at,status"
+    if _generation_tool_inputs_enabled() and os.getenv("ALLPHA_EXTERNAL_CONSUMER_TOOL_GRANTS_ENABLED", "false").lower() == "true":
+        grant_select += ",allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds"
     grants = await _admin_request("GET", "agent_consumer_grants", params={
-        "select": "id,owner_user_id,agent_id,agent_version,skill_id,skill_version,capability_id,granted_scopes,allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds,expires_at,status",
+        "select": grant_select,
         "requester_user_id": f"eq.{user['id']}", "status": "eq.active",
         "granted_scopes": "cs.{generation_invoke}",
         "or": f"(expires_at.is.null,expires_at.gt.{now})",
@@ -747,7 +758,7 @@ async def create_generation_job(
         external = await _external_generation_context(payload, str(user["id"]), router_instance)
         tool_inputs = _resolve_generation_tool_inputs(payload, external["skill_snapshot"], external=True)
         tool_inputs_sha256 = snapshot_sha256(tool_inputs)
-        if payload.quoted_tool_inputs_sha256 != tool_inputs_sha256:
+        if tool_inputs and payload.quoted_tool_inputs_sha256 != tool_inputs_sha256:
             raise HTTPException(409, detail={"code": "GENERATION_TOOL_INPUT_QUOTE_STALE", "message": "Tool input berubah. Minta quote generation baru."})
         route = external["route"]
         budget: ConsumerBudgetReservation = external["budget"]
@@ -818,7 +829,7 @@ async def create_generation_job(
             "model_version": route["model_version"], "pricing_version": budget.pricing_version,
             "max_cost_microunits": budget.max_cost_microunits,
         }
-        created = await _rpc("generation_create_job_with_tool_inputs", command)
+        created = await _rpc("generation_create_job_with_tool_inputs" if tool_inputs else "generation_create_job", command)
         if not isinstance(created, dict) or not created.get("job_id"):
             raise HTTPException(503, detail={"code": "GENERATION_JOB_NOT_CONFIRMED", "message": "Generation Job eksternal belum dapat dikonfirmasi."})
         return {
@@ -850,7 +861,7 @@ async def create_generation_job(
     )
     tool_inputs = _resolve_generation_tool_inputs(payload, snapshots["skill_snapshot"], external=False)
     tool_inputs_sha256 = snapshot_sha256(tool_inputs)
-    if payload.quoted_tool_inputs_sha256 != tool_inputs_sha256:
+    if tool_inputs and payload.quoted_tool_inputs_sha256 != tool_inputs_sha256:
         raise HTTPException(409, detail={"code": "GENERATION_TOOL_INPUT_QUOTE_STALE", "message": "Tool input berubah. Minta quote generation baru."})
     if (payload.quoted_agent_snapshot_sha256 != snapshots["agent_snapshot_sha256"]
         or payload.quoted_skill_snapshot_sha256 != snapshots["skill_snapshot_sha256"]):
@@ -962,7 +973,7 @@ async def create_generation_job(
         "pricing_version": pricing_version,
         "max_cost_microunits": max_cost_microunits,
     }
-    created = await _rpc("generation_create_job_with_tool_inputs", command)
+    created = await _rpc("generation_create_job_with_tool_inputs" if tool_inputs else "generation_create_job", command)
     if not isinstance(created, dict) or not created.get("job_id"):
         raise HTTPException(503, detail={"code": "GENERATION_JOB_NOT_CONFIRMED", "message": "Generation job dan AI Credit reservation belum terkonfirmasi."})
     return {"job_id": created["job_id"], "task_id": created.get("task_id"), "status": created.get("status"),

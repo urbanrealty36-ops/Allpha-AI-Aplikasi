@@ -89,6 +89,10 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _execution_trace_enabled() -> bool:
+    return os.getenv("ALLPHA_AGENT_RUNTIME_TRACE_ENABLED", "false").lower() == "true"
+
+
 def _text_router(request: Request):
     router = getattr(request.app.state, "text_generation_router", None)
     if router is None:
@@ -312,7 +316,8 @@ async def _execute_planned_task(
             raise AgentRuntimePersistenceError("invalid planned checkpoint could not be terminalized")
         raise HTTPException(status_code=409, detail=invalid_checkpoint)
 
-    if resuming:
+    trace_enabled = _execution_trace_enabled()
+    if resuming and trace_enabled:
         for resumed_step in plan[:len(completed_steps)]:
             saved_event = await store.append_execution_event(
                 owner_id, task_id, lease_token, int(row["task_version"]),
@@ -354,7 +359,7 @@ async def _execute_planned_task(
 
             result = await _runtime.execute_tool(
                 task, auth, tool_key=str(step["tool_key"]), inputs=inputs,
-                event_sink=persist_runtime_event, step_key=step_key,
+                event_sink=persist_runtime_event if trace_enabled else None, step_key=step_key,
             )
             result_payload = {
                 "state": "succeeded", "step_id": step["step_id"],
@@ -904,8 +909,11 @@ async def list_task_events(task_id: uuid.UUID, user: dict[str, Any] = Depends(cu
         task = await store.get_task(owner_id, str(task_id))
         if not task:
             raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task tidak ditemukan."})
+        if not _execution_trace_enabled():
+            return {"items": [], "trace_available": False,
+                    "trace_id": task.get("trace_id"), "task_id": str(task_id)}
         return {"items": await store.list_execution_events(owner_id, str(task_id), limit=500),
-                "trace_id": task.get("trace_id"), "task_id": str(task_id)}
+                "trace_available": True, "trace_id": task.get("trace_id"), "task_id": str(task_id)}
     except AgentRuntimePersistenceError as exc:
         raise _error(exc) from exc
 
@@ -1090,7 +1098,7 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
                         raise AgentRuntimePersistenceError("runtime execution event was not durably committed")
                 result = await _runtime.execute_tool(
                     task, auth, tool_key=str(row["tool_key"]), inputs=row["input_payload"],
-                    event_sink=persist_runtime_event,
+                    event_sink=persist_runtime_event if _execution_trace_enabled() else None,
                 )
                 checkpoint_bytes = json.dumps(result, ensure_ascii=False, sort_keys=True,
                                               separators=(",", ":"), allow_nan=False).encode("utf-8")

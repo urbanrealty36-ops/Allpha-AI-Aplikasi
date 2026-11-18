@@ -156,8 +156,16 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
         return True
     url, key = _database()
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    skill_snapshot = job.get("skill_snapshot") if isinstance(job.get("skill_snapshot"), dict) else {}
+    dependencies = skill_snapshot.get("tool_dependencies") if isinstance(skill_snapshot.get("tool_dependencies"), list) else []
+    tool_grants_enabled = os.getenv("ALLPHA_EXTERNAL_CONSUMER_TOOL_GRANTS_ENABLED", "false").lower() == "true"
+    if dependencies and not tool_grants_enabled:
+        return None
+    grant_select = "id,requester_user_id,owner_user_id,agent_id,agent_version,skill_id,skill_version,runtime_policy_version,capability_id,granted_scopes,status,expires_at,credit_scheme_version,approval_reference,tariff_version,entitlement_version,max_usage_units,max_cost_microunits,cost_unit,pricing_version,payer_role,allow_success_settlement,allow_definitive_failure_release,allow_partial_settlement"
+    if dependencies:
+        grant_select += ",allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds"
     params = {
-        "select": "id,requester_user_id,owner_user_id,agent_id,agent_version,skill_id,skill_version,runtime_policy_version,capability_id,granted_scopes,allowed_tool_keys,max_tool_calls,max_tool_runtime_seconds,status,expires_at,credit_scheme_version,approval_reference,tariff_version,entitlement_version,max_usage_units,max_cost_microunits,cost_unit,pricing_version,payer_role,allow_success_settlement,allow_definitive_failure_release,allow_partial_settlement",
+        "select": grant_select,
         "id": f"eq.{grant_id}",
         "requester_user_id": f"eq.{job.get('owner_user_id')}",
         "owner_user_id": f"eq.{job.get('agent_owner_user_id')}",
@@ -212,8 +220,6 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
         return None
     scopes = grant.get("granted_scopes") if isinstance(grant.get("granted_scopes"), list) else []
     allowed_tools = grant.get("allowed_tool_keys") if isinstance(grant.get("allowed_tool_keys"), list) else []
-    skill_snapshot = job.get("skill_snapshot") if isinstance(job.get("skill_snapshot"), dict) else {}
-    dependencies = skill_snapshot.get("tool_dependencies") if isinstance(skill_snapshot.get("tool_dependencies"), list) else []
     if dependencies:
         try:
             validate_tool_dependencies(dependencies)
@@ -234,7 +240,7 @@ async def _consumer_grant_is_current(job: dict[str, Any]) -> dict[str, Any] | No
                 or max_tool_calls < len(dependencies) or max_tool_calls > min(5, skill_max_calls)
                 or not 1 <= max_tool_runtime <= min(30, skill_max_runtime)):
             return None
-    elif allowed_tools or "tool_invoke" in scopes or grant.get("max_tool_calls") != 0 or grant.get("max_tool_runtime_seconds") != 0:
+    elif allowed_tools or "tool_invoke" in scopes or int(grant.get("max_tool_calls") or 0) != 0 or int(grant.get("max_tool_runtime_seconds") or 0) != 0:
         return None
     if job.get("knowledge_context_sha256") and "knowledge_public_read" not in scopes:
         return None
