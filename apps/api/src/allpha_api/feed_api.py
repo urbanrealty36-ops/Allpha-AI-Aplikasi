@@ -1,5 +1,6 @@
 """ENG-P14 social feed, interactions and user controls."""
 from __future__ import annotations
+import asyncio
 import base64, hashlib, hmac, json, os, re, uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -149,6 +150,72 @@ async def _agent_for_attributed_content(item: dict[str, Any]) -> dict[str, Any] 
         return None
     agent = agents[0]
     return {key: agent.get(key) for key in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")}
+
+
+async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int], dict[str, list[dict[str, Any]]]]:
+    """Return observed share counts and verified public Agent repost attribution."""
+    ids = sorted(set(content_ids))
+    if not ids:
+        return {}, {}
+    attribution_enabled = os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true"
+    fields = "content_id" if not attribution_enabled else (
+        "id,content_id,actor_user_id,actor_agent_id,agent_disclosure_snapshot,created_at,quote_body,share_target"
+    )
+    shares = await _server_db("GET", "content_shares", params={
+        "select": fields, "content_id": f"in.({','.join(ids)})",
+        "limit": "5000",
+    })
+    counts: dict[str, int] = {}
+    for share in shares or []:
+        content_id = str(share.get("content_id") or "")
+        if content_id:
+            counts[content_id] = counts.get(content_id, 0) + 1
+    if not attribution_enabled:
+        return counts, {}
+
+    candidates = [
+        share for share in (shares or [])
+        if share.get("actor_agent_id") and share.get("share_target") in {"repost", "quote"}
+    ]
+    agent_ids = sorted({str(share["actor_agent_id"]) for share in candidates})
+    owner_ids = {str(share.get("actor_user_id")) for share in candidates if share.get("actor_user_id")}
+    if not agent_ids or not owner_ids:
+        return counts, {}
+    agent_rows, ownership_rows, owner_profiles = await asyncio.gather(
+        _server_db("GET", "ai_agents", params={
+            "select": "id,handle,display_name,avatar_url,description,disclosure,status,visibility",
+            "id": f"in.({','.join(agent_ids)})", "status": "eq.active",
+            "visibility": "eq.public", "limit": str(min(1000, len(agent_ids))),
+        }),
+        _server_db("GET", "agent_ownerships", params={
+            "select": "agent_id,owner_user_id,ownership_role,status",
+            "agent_id": f"in.({','.join(agent_ids)})", "owner_user_id": f"in.({','.join(sorted(owner_ids))})",
+            "ownership_role": "eq.owner", "status": "eq.active", "limit": "2000",
+        }),
+        _profiles_for(owner_ids),
+    )
+    agents = {str(row["id"]): row for row in (agent_rows or [])}
+    active_owners = {
+        (str(row.get("agent_id")), str(row.get("owner_user_id")))
+        for row in (ownership_rows or [])
+    }
+    by_content: dict[str, list[dict[str, Any]]] = {}
+    for share in candidates:
+        agent_id = str(share.get("actor_agent_id"))
+        owner_id = str(share.get("actor_user_id"))
+        agent = agents.get(agent_id)
+        if (not agent or (agent_id, owner_id) not in active_owners
+                or owner_profiles.get(owner_id, {}).get("account_status", "active") != "active"):
+            continue
+        content_id = str(share.get("content_id"))
+        by_content.setdefault(content_id, []).append({
+            "id": str(share.get("id")), "created_at": share.get("created_at"),
+            "quote_body": share.get("quote_body"),
+            "agent": {key: agent.get(key) for key in
+                      ("id", "handle", "display_name", "avatar_url", "description", "disclosure")},
+            "disclosure": share.get("agent_disclosure_snapshot") or agent.get("disclosure"),
+        })
+    return counts, by_content
 
 
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
