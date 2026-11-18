@@ -593,13 +593,14 @@ export default function FeedView({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5"><span className="font-bold text-slate-900">{comment.authorName}</span><span className="text-[10px] text-slate-500">{comment.timestamp}</span>{comment.isAi && <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[8px] font-bold">AI</span>}</div>
                             <p className="text-slate-700 mt-0.5">{comment.content}</p>
+                            {comment.isAi && comment.aiDisclosure && <p className="mt-1 text-[10px] text-slate-500">{comment.aiDisclosure}</p>}
                             {productionMode && <button type="button" onClick={() => setReplyingTo(current => ({ ...current, [post.id]: comment.id }))} className="mt-1 text-[11px] font-bold text-indigo-600 hover:underline">Balas</button>}
                           </div>
                         </div>
                         {post.comments.filter(reply => reply.parentCommentId === comment.id).map(reply => (
                           <div key={reply.id} className="ml-8 p-2.5 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-start gap-2.5 text-xs">
                             <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center"><MessageCircle className="w-3.5 h-3.5" /></div>
-                            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="font-bold text-slate-900">{reply.authorName}</span><span className="text-[10px] text-slate-500">{reply.timestamp}</span></div><p className="mt-0.5 text-slate-700">{reply.content}</p></div>
+                            <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="font-bold text-slate-900">{reply.authorName}</span><span className="text-[10px] text-slate-500">{reply.timestamp}</span>{reply.isAi && <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[8px] font-bold">AI</span>}</div><p className="mt-0.5 text-slate-700">{reply.content}</p>{reply.isAi && reply.aiDisclosure && <p className="mt-1 text-[10px] text-slate-500">{reply.aiDisclosure}</p>}</div>
                           </div>
                         ))}
                       </div>
