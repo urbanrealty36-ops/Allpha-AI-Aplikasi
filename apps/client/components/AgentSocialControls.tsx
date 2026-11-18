@@ -27,7 +27,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   const [actions, setActions] = useState<string[]>(["draft_post"]);
   const [mode, setMode] = useState<Policy["approval_mode"]>("every_post");
   const [disclosure, setDisclosure] = useState("Dibuat bersama AI Agent");
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [automation, setAutomation] = useState<Automation | null>(null);
   const [channels, setChannels] = useState<string[]>([]);
@@ -45,7 +45,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     return data;
   }, [apiBase, session.access_token]);
   const load = useCallback(async () => {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setPolicy(null); setAutomation(null); setEnabled(false);
     try {
       const [a, p] = await Promise.all([api("/v1/agents"), api("/v1/agent-social/approvals")]);
       const active = (a.items || []).filter((x: Agent) => x.status === "active");
@@ -66,9 +66,9 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         setDailyBudget(String(currentAutomation?.daily_credit_budget ?? 0));
         setPolicy(current);
         setActions(current?.allowed_actions || ["draft_post"]); setMode(current?.approval_mode || "every_post");
-        setDisclosure(current?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(current?.is_enabled ?? true);
-      } else { setPolicy(null); setAutomation(null); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
+        setDisclosure(current?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(current?.is_enabled ?? false);
+      } else { setPolicy(null); setAutomation(null); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); }
+    } catch (cause) { setPolicy(null); setAutomation(null); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, [api, agentId]);
   useEffect(() => { void load(); }, [load]);
@@ -123,10 +123,11 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         <Text style={styles.kicker}>IZIN TINDAKAN</Text>
         {choices.map(key => <Text key={key} onPress={() => setActions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key])} style={styles.action}>{actions.includes(key) ? "☑ " : "□ "}{key.replaceAll("_", " ")}</Text>)}
         <Text style={styles.kicker}>MODE APPROVAL</Text>
-        {(["every_post", "high_risk_only", "disabled"] as const).map(value => <Text key={value} onPress={() => setMode(value)} style={styles.action}>{mode === value ? "✓ " : ""}{value}</Text>)}
+        {(["every_post", "high_risk_only", "disabled"] as const).map(value => <Text key={value} onPress={value === "high_risk_only" ? undefined : () => setMode(value)} style={[styles.action, { opacity: value === "high_risk_only" ? 0.45 : 1 }]}>{mode === value ? "✓ " : ""}{value}{value === "high_risk_only" ? " · belum didukung runtime" : ""}</Text>)}
+        {mode === "high_risk_only" && <Text style={styles.error}>Mode lama ini belum didukung oleh runtime. Pilih every_post atau disabled sebelum menyimpan.</Text>}
         <Text style={styles.kicker}>DISCLOSURE PUBLIK</Text><TextInput value={disclosure} onChangeText={setDisclosure} maxLength={180} style={styles.field}/>
         <Text onPress={() => setEnabled(value => !value)} style={styles.action}>{enabled ? "☑" : "□"} Kebijakan aktif</Text>
-        <Text onPress={() => void save()} style={[styles.action, { backgroundColor: busy ? "#303A58" : "#A5B4FC", color: "#10152A", fontWeight: "800" }]}>{busy ? "Menyimpan…" : "Simpan Kebijakan"}</Text>
+        <Text onPress={busy || !disclosure.trim() || (enabled && mode !== "disabled" && actions.length === 0) || mode === "high_risk_only" ? undefined : () => void save()} style={[styles.action, { backgroundColor: busy ? "#303A58" : "#A5B4FC", color: "#10152A", fontWeight: "800", opacity: busy || !disclosure.trim() || (enabled && mode !== "disabled" && actions.length === 0) || mode === "high_risk_only" ? 0.45 : 1 }]}>{busy ? "Menyimpan…" : "Simpan Kebijakan"}</Text>
       </>}
     </View>
 
