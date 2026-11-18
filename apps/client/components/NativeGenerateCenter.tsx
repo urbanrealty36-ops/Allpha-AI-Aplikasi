@@ -4,7 +4,8 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View 
 type Agent = { id: string; display_name: string; status: string };
 type Skill = { id: string; name: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
-type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
+type ToolContract = { key: string; description: string; input_schema: { properties?: Record<string, { type?: string }>; required?: string[] } };
+type ExternalAgent = { agent: Agent; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[]; tool_contracts?: ToolContract[] };
 type Job = { status: string; moderation_status?: string | null; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null };
 
 export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = null }: { apiBase: string; getAccessToken: () => Promise<string>; initialJobId?: string | null }) {
@@ -18,6 +19,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
   const [capabilityId,setCapabilityId]=useState("");
   const [prompt,setPrompt]=useState("");
   const [knowledgeQuery,setKnowledgeQuery]=useState("");
+  const [toolInputsJson,setToolInputsJson]=useState("{}");
   const [busy,setBusy]=useState(false);
   const [canCancelGeneration,setCanCancelGeneration]=useState(false);
   const [deletingArtifact,setDeletingArtifact]=useState(false);
@@ -178,8 +180,16 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
     setBusy(true);setCanCancelGeneration(false);setError("");setNotice("");setResult("");setJobId("");
     try{
       const token=await getAccessToken();
-      const externalKnowledgeAllowed=!!externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.granted_scopes.includes("knowledge_public_read");
-      const body={agent_id:agentId,skill_id:skillId,capability_id:capabilityId,prompt:prompt.trim(),max_output_tokens:1800,...(consumerGrantId?{consumer_grant_id:consumerGrantId}:{}),...((!consumerGrantId||externalKnowledgeAllowed)&&knowledgeQuery.trim()?{knowledge_query:knowledgeQuery.trim()}: {})};
+      const selectedExternal=externalAgents.find(item=>item.consumer_grant_id===consumerGrantId);
+      const externalKnowledgeAllowed=!!selectedExternal?.granted_scopes.includes("knowledge_public_read");
+      let toolInputs:Record<string,Record<string,unknown>>={};
+      if(consumerGrantId&&(selectedExternal?.tool_contracts||[]).length){
+        let parsed:unknown;
+        try{parsed=JSON.parse(toolInputsJson);}catch{throw new Error("Tool inputs harus berupa JSON object yang valid.");}
+        if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error("Tool inputs harus berupa JSON object keyed by tool key.");
+        toolInputs=parsed as Record<string,Record<string,unknown>>;
+      }
+      const body={agent_id:agentId,skill_id:skillId,capability_id:capabilityId,prompt:prompt.trim(),max_output_tokens:1800,...(consumerGrantId?{consumer_grant_id:consumerGrantId}:{}),...(Object.keys(toolInputs).length?{tool_inputs:toolInputs}:{}),...((!consumerGrantId||externalKnowledgeAllowed)&&knowledgeQuery.trim()?{knowledge_query:knowledgeQuery.trim()}: {})};
       const quote=await api("/v1/generation/quote",token,{method:"POST",body:JSON.stringify(body)});
       if(!quote.quote_id||Date.parse(quote.expires_at)<=Date.now()||!Number.isSafeInteger(quote.estimated_credits)||quote.estimated_credits<=0)throw new Error("Quote tidak valid atau telah kedaluwarsa.");
       Alert.alert("Konfirmasi AI Credits","Estimasi "+quote.estimated_credits.toLocaleString("id-ID")+" AI Credits · "+quote.model_id,[
@@ -191,7 +201,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
 
   async function createAndPoll(token:string,body:Record<string,unknown>,quote:Record<string,any>){
     try{
-      const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id,quoted_agent_snapshot_sha256:quote.agent_snapshot_sha256,quoted_skill_snapshot_sha256:quote.skill_snapshot_sha256,...(quote.knowledge_context_sha256?{quoted_knowledge_context_sha256:quote.knowledge_context_sha256}:{})})});
+      const created=await api("/v1/generation/jobs",token,{method:"POST",headers:{"Idempotency-Key":createNativeId()},body:JSON.stringify({...body,quoted_credits:quote.estimated_credits,quoted_policy_version:quote.policy_version,quoted_tariff_version:quote.tariff_version,quoted_model_id:quote.model_id,quoted_agent_snapshot_sha256:quote.agent_snapshot_sha256,quoted_skill_snapshot_sha256:quote.skill_snapshot_sha256,...(quote.knowledge_context_sha256?{quoted_knowledge_context_sha256:quote.knowledge_context_sha256}:{}),...(quote.tool_inputs_sha256?{quoted_tool_inputs_sha256:quote.tool_inputs_sha256}:{})})});
       if(!created.job_id)throw new Error("Generation Job belum terkonfirmasi.");
       setJobId(created.job_id);
       setCanCancelGeneration(true);
@@ -239,12 +249,18 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
       {loading?<ActivityIndicator color="#A5B4FC"/>:<>
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>AI Agent</Text>
         {agents.map(agent=><Pressable key={agent.id} onPress={()=>{setAgentId(agent.id);setConsumerGrantId("");setKnowledgeQuery("");}} style={{borderWidth:1,borderColor:agentId===agent.id&&!consumerGrantId?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{agent.display_name} · Milik saya{agentId===agent.id&&!consumerGrantId?"  ✓":""}</Text></Pressable>)}
-        {externalAgents.map(item=><Pressable key={item.consumer_grant_id} onPress={()=>{setAgentId(item.agent.id);setConsumerGrantId(item.consumer_grant_id);setKnowledgeQuery("");}} style={{borderWidth:1,borderColor:consumerGrantId===item.consumer_grant_id?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{item.agent.display_name} · Grant pemilik{consumerGrantId===item.consumer_grant_id?"  ✓":""}</Text></Pressable>)}
+        {externalAgents.map(item=><Pressable key={item.consumer_grant_id} onPress={()=>{setAgentId(item.agent.id);setConsumerGrantId(item.consumer_grant_id);setKnowledgeQuery("");setToolInputsJson(makeToolInputsTemplate(item.tool_contracts||[]));}} style={{borderWidth:1,borderColor:consumerGrantId===item.consumer_grant_id?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{item.agent.display_name} · Grant pemilik{consumerGrantId===item.consumer_grant_id?"  ✓":""}</Text></Pressable>)}
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Skill published</Text>
         {skills.map(skill=><Pressable key={skill.id} onPress={()=>setSkillId(skill.id)} style={{borderWidth:1,borderColor:skillId===skill.id?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC"}}>{skill.name} · v{skill.version}{skillId===skill.id?"  ✓":""}</Text></Pressable>)}
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Capability approved</Text>
         {capabilities.map(cap=><Pressable key={cap.capability_key} onPress={()=>setCapabilityId(cap.capability_key)} style={{borderWidth:1,borderColor:capabilityId===cap.capability_key?"#A5B4FC":"#35405C",borderRadius:12,padding:11}}><Text style={{color:"#F8FAFC"}}>{cap.capability_key}{capabilityId===cap.capability_key?"  ✓":""}</Text></Pressable>)}
         <TextInput accessibilityLabel="Instruksi generation" value={prompt} onChangeText={setPrompt} multiline maxLength={32768} placeholder="Jelaskan konten yang ingin dibuat…" placeholderTextColor="#8490AA" style={{minHeight:130,borderRadius:14,borderWidth:1,borderColor:"#35405C",padding:12,color:"#F8FAFC",textAlignVertical:"top"}}/>
+        {!!externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.tool_contracts?.length&&<>
+          <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Typed tool inputs · JSON</Text>
+          <Text style={{color:"#AAB4CC",fontSize:12}}>Isi object sesuai kontrak setiap tool. API akan memvalidasi tipe, required fields, permission dan grant sebelum reservasi kredit.</Text>
+          {externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.tool_contracts?.map(contract=><Text key={contract.key} style={{color:"#CBD5E1",fontSize:11}}>{contract.key}: {contract.description} · required {JSON.stringify(contract.input_schema.required||[])}</Text>)}
+          <TextInput accessibilityLabel="Typed tool inputs JSON" value={toolInputsJson} onChangeText={setToolInputsJson} multiline autoCapitalize="none" autoCorrect={false} placeholder='{"text.normalize":{"text":"..."}}' placeholderTextColor="#8490AA" style={{minHeight:150,borderRadius:14,borderWidth:1,borderColor:"#35405C",padding:12,color:"#F8FAFC",textAlignVertical:"top",fontFamily:"monospace"}}/>
+        </>}
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Knowledge context (opsional)</Text>
         <TextInput accessibilityLabel="Query Knowledge" value={knowledgeQuery} onChangeText={setKnowledgeQuery} editable={!consumerGrantId||!!externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.granted_scopes.includes("knowledge_public_read")} multiline maxLength={4000} placeholder={consumerGrantId&&!externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.granted_scopes.includes("knowledge_public_read")?"Owner belum memberikan scope Knowledge publik.":"Cari sumber Knowledge yang diizinkan…"} placeholderTextColor="#8490AA" style={{minHeight:74,borderRadius:14,borderWidth:1,borderColor:"#35405C",padding:12,color:"#F8FAFC",textAlignVertical:"top",opacity:consumerGrantId?0.5:1}}/>
         <Pressable disabled={busy||!skillId||!capabilityId||!prompt.trim()} onPress={()=>void runGeneration()} style={{borderRadius:999,backgroundColor:"#A5B4FC",padding:14,alignItems:"center",opacity:busy||!skillId||!capabilityId||!prompt.trim()?0.5:1}}><Text style={{color:"#111827",fontWeight:"900"}}>{busy?"Memproses…":"Minta Quote & Generate"}</Text></Pressable>
@@ -263,4 +279,22 @@ function createNativeId() {
     const random = Math.floor(Math.random() * 16);
     return (token === "x" ? random : (random & 3) | 8).toString(16);
   });
+}
+
+
+function makeToolInputsTemplate(contracts: ToolContract[]): string {
+  const defaultValue = (type?: string): unknown => {
+    if (type === "string") return "";
+    if (type === "integer" || type === "number") return 1;
+    if (type === "boolean") return false;
+    if (type === "array") return [];
+    if (type === "object") return {};
+    return null;
+  };
+  const value = Object.fromEntries(contracts.map(contract => {
+    const properties = contract.input_schema?.properties || {};
+    const required = contract.input_schema?.required || [];
+    return [contract.key, Object.fromEntries(required.map(key => [key, defaultValue(properties[key]?.type)]))];
+  }));
+  return JSON.stringify(value, null, 2);
 }
