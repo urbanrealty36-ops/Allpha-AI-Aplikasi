@@ -53,7 +53,6 @@ begin
    where t.id=p_task_id
      and t.owner_user_id=p_owner_user_id
      and t.execution_attempts<t.max_execution_attempts
-     and not t.cancel_requested
      and (
        (t.state in ('created','queued','retrying')
          and (t.next_attempt_at is null or t.next_attempt_at<=now()))
