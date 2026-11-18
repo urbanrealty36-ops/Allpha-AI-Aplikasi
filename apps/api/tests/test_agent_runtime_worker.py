@@ -18,8 +18,8 @@ class FakeStore:
         self.reaped += 1
         return 0
 
-    async def fail_unclaimed_task(self, owner_id, task_id, task_version, error_code):
-        self.failed_unclaimed.append((owner_id, task_id, task_version, error_code))
+    async def fail_unclaimed_task(self, owner_id, task_id, task_version, error_code, lease_token=None):
+        self.failed_unclaimed.append((owner_id, task_id, task_version, error_code, lease_token))
         return {"id": task_id, "state": "failed"}
 
     async def list_runnable_planned_tasks(self, *, limit=10):
@@ -88,5 +88,5 @@ def test_worker_terminalizes_unclaimed_preflight_failures(monkeypatch):
 
     assert processed == 1
     assert store.failed_unclaimed == [
-        ("owner-1", "task-denied", 4, "RUNTIME_POLICY_SCOPE_DENIED")
+        ("owner-1", "task-denied", 4, "RUNTIME_POLICY_SCOPE_DENIED", None)
     ]
