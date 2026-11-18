@@ -78,6 +78,7 @@ class OpenAICompatibleTextGenerationAdapter:
             "messages": messages,
             "max_tokens": request.max_output_tokens,
             "stream": False,
+            **({"response_format": {"type": request.response_format}} if request.response_format else {}),
         }
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000)), transport=self._transport) as client:
