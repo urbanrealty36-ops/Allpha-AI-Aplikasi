@@ -69,6 +69,10 @@ async def run_once(store: AgentRuntimeStore) -> int:
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             code = str(detail.get("code") or "RUNTIME_TASK_REJECTED")
+            if row.get("cancel_requested") is True:
+                logger.info("Runtime task cancellation remains pending; task_id=%s code=%s", task_id, code)
+                processed += 1
+                continue
             if row.get("state") in {"created", "queued", "retrying", "executing"}:
                 try:
                     await store.fail_unclaimed_task(
