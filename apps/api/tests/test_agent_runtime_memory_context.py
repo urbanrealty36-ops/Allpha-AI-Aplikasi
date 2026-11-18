@@ -11,6 +11,7 @@ def memory_item(content="Owner prefers concise, direct explanations."):
         "id": "memory-item-1",
         "content": content,
         "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "retrieved_content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
         "memory_type": "long_term",
         "classification": "internal",
         "version": 3,
@@ -31,6 +32,7 @@ def test_memory_snapshot_contains_only_consent_scoped_prompt_data_and_provenance
     assert references == [{
         "id": "memory-item-1",
         "content_sha256": memory_item()["content_sha256"],
+        "retrieved_content_sha256": memory_item()["retrieved_content_sha256"],
         "version": 3,
         "policy_version": 5,
     }]
@@ -47,3 +49,22 @@ def test_memory_snapshot_fails_closed_when_content_digest_or_version_is_invalid(
     invalid_version = {**memory_item(), "version": True}
     with pytest.raises(MemoryUnavailable):
         _memory_context_snapshot([invalid_version])
+
+
+
+def test_memory_snapshot_accepts_verified_bounded_excerpt_with_full_source_digest():
+    full_content = "A" * 7000
+    excerpt = full_content[:3000]
+    item = {
+        **memory_item(full_content),
+        "content": excerpt,
+        "retrieved_content_sha256": hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+    }
+
+    context, references, digest = _memory_context_snapshot([item])
+
+    assert context[0]["content"] == excerpt
+    assert references[0]["content_sha256"] == hashlib.sha256(full_content.encode("utf-8")).hexdigest()
+    assert references[0]["retrieved_content_sha256"] == hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
+    assert references[0]["content_sha256"] != references[0]["retrieved_content_sha256"]
+    assert len(digest) == 64
