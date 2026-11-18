@@ -258,7 +258,7 @@ export function NativeGenerateCenter({ apiBase, getAccessToken, initialJobId = n
         {!!externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.tool_contracts?.length&&<>
           <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Typed tool inputs · JSON</Text>
           <Text style={{color:"#AAB4CC",fontSize:12}}>Isi object sesuai kontrak setiap tool. API akan memvalidasi tipe, required fields, permission dan grant sebelum reservasi kredit.</Text>
-          {externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.tool_contracts?.map(contract=><Text key={contract.key} style={{color:"#CBD5E1",fontSize:11}}>{contract.key}: {contract.description} · required {JSON.stringify(contract.input_schema.required||[])}</Text>)}
+          {externalAgents.find(item=>item.consumer_grant_id===consumerGrantId)?.tool_contracts?.map(contract=><Text key={contract.key} style={{color:"#CBD5E1",fontSize:11}}>{contract.key}: {contract.description} · schema {JSON.stringify(contract.input_schema)}</Text>)}
           <TextInput accessibilityLabel="Typed tool inputs JSON" value={toolInputsJson} onChangeText={setToolInputsJson} multiline autoCapitalize="none" autoCorrect={false} placeholder='{"text.normalize":{"text":"..."}}' placeholderTextColor="#8490AA" style={{minHeight:150,borderRadius:14,borderWidth:1,borderColor:"#35405C",padding:12,color:"#F8FAFC",textAlignVertical:"top",fontFamily:"monospace"}}/>
         </>}
         <Text style={{color:"#E2E8F0",fontWeight:"800"}}>Knowledge context (opsional)</Text>
