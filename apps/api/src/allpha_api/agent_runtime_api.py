@@ -723,9 +723,19 @@ async def get_tool_planner_status(request: Request, user: dict[str, Any] = Depen
     if router is None:
         return {"enabled": False, "reason_code": "TEXT_GENERATION_ROUTER_UNAVAILABLE"}
     try:
-        await _store().find_tool_plan_by_idempotency(str(user["id"]), "__planner_schema_probe__")
+        store = _store()
+        await store.find_tool_plan_by_idempotency(str(user["id"]), "__planner_schema_probe__")
+        schema_readiness = await store.runtime_schema_readiness()
     except AgentRuntimePersistenceError:
         return {"enabled": False, "reason_code": "TOOL_PLAN_SCHEMA_UNAVAILABLE"}
+    if schema_readiness.get("ready") is not True:
+        return {
+            "enabled": False, "reason_code": "RUNTIME_SCHEMA_NOT_READY",
+            "missing_tables": schema_readiness.get("missing_tables") or [],
+            "missing_columns": schema_readiness.get("missing_columns") or [],
+            "missing_functions": schema_readiness.get("missing_functions") or [],
+            "missing_privileges": schema_readiness.get("missing_privileges") or [],
+        }
     try:
         readiness = await router.preflight("private")
     except Exception as exc:
@@ -739,6 +749,19 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
     if os.getenv("ALLPHA_AGENT_TOOL_PLANNER_ENABLED", "false").lower() != "true":
         raise HTTPException(status_code=503, detail={"code": "TOOL_PLANNER_DISABLED", "message": "AI tool planner belum diaktifkan oleh policy deployment."})
     store, owner_id = _store(), str(user["id"])
+    try:
+        schema_readiness = await store.runtime_schema_readiness()
+    except AgentRuntimePersistenceError as exc:
+        raise _error(exc) from exc
+    if schema_readiness.get("ready") is not True:
+        raise HTTPException(status_code=503, detail={
+            "code": "RUNTIME_SCHEMA_NOT_READY",
+            "message": "Schema Agent Runtime belum lengkap; planner tidak akan memanggil Model Router.",
+            "missing_tables": schema_readiness.get("missing_tables") or [],
+            "missing_columns": schema_readiness.get("missing_columns") or [],
+            "missing_functions": schema_readiness.get("missing_functions") or [],
+            "missing_privileges": schema_readiness.get("missing_privileges") or [],
+        })
     session = await _owned_session(store, owner_id, str(payload.session_id))
     if session.get("status") != "active":
         raise HTTPException(status_code=409, detail={"code": "SESSION_NOT_ACTIVE", "message": "Sesi tidak aktif."})
