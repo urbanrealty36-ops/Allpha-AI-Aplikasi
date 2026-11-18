@@ -509,3 +509,55 @@ def test_capability_review_migration_protects_fields_and_audits_transactionally(
     assert "as $$\nbegin" in sql
     assert "\nend;\n$$;" in sql
     assert "returns trigger\nlanguage plpgsql\nset search_path = ''\nas $\nbegin" not in sql
+
+
+
+def test_agent_social_governance_snapshot_is_read_only_and_schema_aware(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        return [{
+            "id": "grant-1", "user_id": "operator",
+            "scopes": ["platform:security.audit.read"], "status": "active",
+            "expires_at": None,
+        }]
+
+    async def fake_audit(request, **kwargs):
+        return None
+
+    async def fake_privileged(method, table, **kwargs):
+        calls.append((method, table, kwargs))
+        if table == "agent_social_presence_policies":
+            return [{
+                "id": "policy-1", "owner_user_id": "owner-1", "agent_id": "agent-1",
+                "allowed_actions": ["draft_post"], "approval_mode": "every_post",
+                "disclosure_text": "Dibuat bersama AI Agent", "is_enabled": True,
+                "version": 2, "updated_at": "2026-11-18T00:00:00Z",
+            }]
+        if table == "agent_social_action_approvals":
+            return [{
+                "id": "approval-1", "owner_user_id": "owner-1", "agent_id": "agent-1",
+                "action_type": "draft_post", "status": "pending",
+                "requested_at": "2026-11-18T00:00:00Z",
+            }]
+        raise AssertionError(f"automation table must not be queried while schema gate is off: {table}")
+
+    monkeypatch.setattr(security, "user_db_request", fake_db)
+    monkeypatch.setattr(security, "write_operator_audit", fake_audit)
+    monkeypatch.setattr(security, "privileged_rest_request", fake_privileged)
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false")
+    install_auth("operator")
+    try:
+        response = client.get("/v1/admin/operator/agent-social/governance?limit=25")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["policies"]) == 1
+        assert body["approvals"][0]["status"] == "pending"
+        assert body["automation_schema_active"] is False
+        assert body["control_events"] == []
+        assert [call[1] for call in calls] == [
+            "agent_social_presence_policies", "agent_social_action_approvals"
+        ]
+        assert all("body" not in call[2] for call in calls)
+    finally:
+        app.dependency_overrides.clear()
