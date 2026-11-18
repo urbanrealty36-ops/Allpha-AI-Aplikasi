@@ -1847,6 +1847,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
               {!runtimePlanJsonBySession[item.id]?.trim() && <TextInput accessibilityLabel="Input task JSON" value={runtimeInputsBySession[item.id] ?? "{}"} onChangeText={value => setRuntimeInputsBySession(current => ({ ...current, [item.id]: value }))} multiline style={[field,{minHeight:72,textAlignVertical:"top"}]} placeholder="{ } input task JSON" placeholderTextColor="#8B94AC"/>}
               <Button title={runtimeTaskBusy === item.id ? "Membuat task…" : runtimePlanJsonBySession[item.id]?.trim() ? "Buat multi-step task" : "Buat task"} disabled={runtimeTaskBusy === item.id || !selectedSkill || (!runtimePlanJsonBySession[item.id]?.trim() && !runtimeToolBySession[item.id])} onPress={() => void createRuntimeTask(item)}/>
               <Text style={s.kicker}>TASK LIFECYCLE</Text>
+              <Text style={s.muted}>Eksekusi tetap membutuhkan policy runtime yang disetujui.</Text>
               {tasks.length === 0 ? <Text style={s.muted}>Belum ada task pada sesi ini.</Text> : tasks.map(task => <View key={task.id} style={s.card}>
                 <Text style={s.body}>{task.tool_key || "multi-step plan"} · {task.state}</Text><Text style={s.muted}>ID: {task.id} · {task.error_code ?? "Tanpa error"}</Text>
                 {task.output_payload && <Text style={s.muted}>Output: {JSON.stringify(task.output_payload)}</Text>}
