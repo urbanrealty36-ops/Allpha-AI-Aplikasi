@@ -101,7 +101,18 @@ begin
     raise exception 'runtime_retry_stale_or_uncertain_effect' using errcode='40001';
   end if;
 
-  if v_task.execution_attempts>=v_task.max_execution_attempts then
+  if v_task.cancel_requested then
+    return query update public.agent_runtime_tasks t
+      set state='cancelled',error_code='cancelled_by_requester',
+          output_payload=p_output_payload,completed_at=now(),updated_at=now(),
+          execution_lease_token=null,lease_expires_at=null,next_attempt_at=null,
+          event_log=coalesce(p_event_log,'[]'::jsonb)||jsonb_build_array(jsonb_build_object(
+            'state','cancelled','at',now(),'trace_id',t.trace_id,
+            'reason_code','cancelled_by_requester')),
+          task_version=t.task_version+1
+      where t.id=p_task_id and t.owner_user_id=p_owner_user_id
+      returning t.*;
+  elsif v_task.execution_attempts>=v_task.max_execution_attempts then
     return query update public.agent_runtime_tasks t
       set state='failed',error_code='RUNTIME_RETRY_EXHAUSTED',
           output_payload=p_output_payload,completed_at=now(),updated_at=now(),
@@ -146,6 +157,7 @@ begin
            'state','failed','at',now(),'trace_id',t.trace_id,
            'reason_code','retry_attempt_limit_reached'))
    where t.execution_attempts>=t.max_execution_attempts
+     and not t.cancel_requested
      and coalesce(t.effect_outcome,'none') not in ('started','unknown')
      and (
        (t.state='executing' and t.lease_expires_at<=now())
