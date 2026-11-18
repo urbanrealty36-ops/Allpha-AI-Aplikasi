@@ -562,12 +562,9 @@ async def get_my_profile_feed(
     saves = await _server_db("GET", "content_saves", params={
         "select": "content_id,actor_user_id", "content_id": in_ids, "limit": "5000",
     })
-    shares = await _server_db("GET", "content_shares", params={
-        "select": "content_id", "content_id": in_ids, "limit": "5000",
-    })
+    shares_by_id, agent_shares_by_content = await _agent_share_metadata(ids)
     likes_by_id: dict[str, int] = {}
     comments_by_id: dict[str, int] = {}
-    shares_by_id: dict[str, int] = {}
     viewer_reactions: dict[str, str] = {}
     viewer_saves: set[str] = set()
     for row in reactions or []:
@@ -582,9 +579,6 @@ async def get_my_profile_feed(
         content_id = str(row["content_id"])
         if str(row.get("actor_user_id")) == owner:
             viewer_saves.add(content_id)
-    for row in shares or []:
-        content_id = str(row["content_id"])
-        shares_by_id[content_id] = shares_by_id.get(content_id, 0) + 1
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     media = await _server_db("GET", "content_media", params={
         "select": MEDIA_FIELDS, "content_id": in_ids, "owner_id": f"eq.{owner}",
@@ -604,6 +598,7 @@ async def get_my_profile_feed(
         items.append({
             **row,
             "media": media_by_id.get(content_id, []),
+            "agent_shares": agent_shares_by_content.get(content_id, []),
             "creator": {
                 "username": creator.get("username"),
                 "display_name": creator.get("display_name") or creator.get("username") or "Kreator",
