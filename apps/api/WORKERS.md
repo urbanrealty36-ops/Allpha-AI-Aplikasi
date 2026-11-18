@@ -203,3 +203,8 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - Exhausted attempts are terminalized as `RUNTIME_RETRY_EXHAUSTED`. Preflight policy/contract failures are also terminalized through an owner/task-version/lease-fenced RPC so the worker does not poll a permanently invalid task forever.
 - Lease heartbeat is fenced by owner, task, lease token and task version. A cancellation request is returned to the worker without extending the lease; the worker checkpoints any completed pure step and finalizes the task as cancelled.
 - All new database changes are source-only and not present in the connected Supabase migration ledger. Worker activation remains disabled until canonical migrations are applied and runtime verification is authorized.
+
+
+### Worker schema readiness gate
+
+Before reaping, listing or claiming any Agent Runtime task, `run_once` calls the read-only `agent_runtime_worker_schema_readiness()` RPC. The worker stays idle unless the complete canonical task/session/checkpoint/tool-plan tables, retry/lease columns and claim/heartbeat/checkpoint/finalization/retry RPC signatures are present. A missing migration or RPC is reported as missing schema and no task is claimed. This gate is independent of `ALLPHA_AGENT_RUNTIME_WORKER_ENABLED`; both the schema predicate and the explicit worker flag must pass.
