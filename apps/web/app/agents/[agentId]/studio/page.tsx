@@ -17,7 +17,7 @@ type Skill = {
   version: number; status: "draft" | "published" | "archived";
   changelog?: string; updated_at?: string;
 };
-type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; required_permission_scopes: string[]; executable: boolean; input_schema?: Record<string, unknown> };
+type RegisteredTool = { key: string; version: string; name: string; description: string; risk_level: string; execution_class: string; required_permission_scopes: string[]; executable: boolean; input_schema?: Record<string, unknown>; output_schema?: Record<string, unknown> };
 type Capability = {
   id: string; capability_key: string; description: string; risk_level: string;
   status: "requested" | "approved" | "denied" | "revoked"; required_permission_scopes: string[];
@@ -90,6 +90,13 @@ export default function AgentStudioPage() {
   const [allowConsumerTools, setAllowConsumerTools] = useState(false);
   const [consumerMaxToolCalls, setConsumerMaxToolCalls] = useState("1");
   const [consumerMaxToolRuntime, setConsumerMaxToolRuntime] = useState("3");
+
+  const supportsConsumerTools = (dependencies: string[]) =>
+    dependencies.length > 0 && dependencies.length <= 5
+    && dependencies.every(key => registeredTools.some(tool =>
+      tool.key === key && tool.executable && tool.execution_class === "pure"
+      && tool.input_schema?.type === "object" && tool.output_schema?.type === "object"
+    ));
 
   const load = useCallback(async (active: Session) => {
     setLoading(true); setError("");
@@ -297,9 +304,9 @@ export default function AgentStudioPage() {
     try {
       const selectedSkill = skills.find(skill => skill.id === consumerSkillId);
       const dependencies = selectedSkill?.tool_dependencies ?? [];
-      const supportedToolGrant = dependencies.length === 1 && dependencies[0] === "text.normalize";
+      const supportedToolGrant = supportsConsumerTools(dependencies);
       if (dependencies.length > 0 && (!supportedToolGrant || !allowConsumerTools)) {
-        throw new Error("Skill ini memerlukan tool yang belum memiliki adapter External Consumer. Saat ini hanya text.normalize yang dapat diberi grant tool.");
+        throw new Error("Skill ini memerlukan grant untuk seluruh dependency tool. Pastikan semua dependency terdaftar sebagai pure tool dan aktifkan allowlist eksplisit.");
       }
       if (allowConsumerTools && !supportedToolGrant) {
         throw new Error("Allowlist tool Consumer tidak cocok dengan Skill yang dipilih.");
@@ -433,22 +440,26 @@ export default function AgentStudioPage() {
         <div><h2 className="text-xl font-semibold">Grant Consumer untuk AI Generation</h2><p className="mt-1 text-sm text-neutral-600">Izinkan akun lain menggunakan Agent publik melalui AI Credits dan policy yang disetujui. Grant terikat pada versi Agent, Skill, runtime policy, tarif, serta allowlist tool bila dipilih. Private Memory tidak pernah diberikan kepada External Consumer.</p></div>
         <form onSubmit={createGenerationGrant} className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">Akun Consumer (UUID)<input required value={consumerUserId} onChange={event => setConsumerUserId(event.target.value)} className="rounded-lg border px-3 py-2 font-mono text-xs" placeholder="UUID pengguna yang akan diberi akses"/></label>
-          <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => { setConsumerSkillId(event.target.value); setAllowConsumerTools(false); setConsumerMaxToolCalls("1"); setConsumerMaxToolRuntime("3"); }} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
+          <label className="grid gap-1 text-sm">Skill published<select required value={consumerSkillId} onChange={event => { const selected = skills.find(skill => skill.id === event.target.value); setConsumerSkillId(event.target.value); setAllowConsumerTools(false); setConsumerMaxToolCalls(String(Math.max(1, selected?.tool_dependencies?.length || 1))); setConsumerMaxToolRuntime(String(Math.min(30, selected?.budget_limits?.max_runtime_seconds || 3))); }} className="rounded-lg border px-3 py-2"><option value="">Pilih Skill</option>{skills.filter(skill => skill.status === "published").map(skill => <option key={skill.id} value={skill.id}>{skill.name} · v{skill.version}</option>)}</select></label>
           <label className="sm:col-span-2 flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" checked={sharePublicKnowledge} onChange={event => setSharePublicKnowledge(event.target.checked)} className="mt-1"/><span><strong>Izinkan Knowledge publik</strong><span className="mt-1 block text-xs text-neutral-500">Hanya sumber ber-sensitivity public, status ready, versi cocok, consent aktif, dan provenance tervalidasi. Tidak memberikan akses ke Knowledge privat/internal/confidential/restricted.</span></span></label>
           {(() => {
             const selected = skills.find(skill => skill.id === consumerSkillId);
             const dependencies = selected?.tool_dependencies ?? [];
-            const supported = dependencies.length === 1 && dependencies[0] === "text.normalize";
+            const supported = supportsConsumerTools(dependencies);
             if (dependencies.length === 0) return null;
-            return <label className="sm:col-span-2 flex items-start gap-2 rounded-lg border-2 border-slate-900 bg-amber-50 p-3 text-sm">
-              <input type="checkbox" checked={allowConsumerTools} onChange={event => setAllowConsumerTools(event.target.checked)} disabled={!supported} className="mt-1"/>
-              <span><strong>Izinkan tool execution dengan allowlist eksplisit</strong><span className="mt-1 block text-xs text-slate-600">{supported ? "Hanya text.normalize untuk Skill versi ini. Grant tool terpisah dari generation_invoke; tidak membuka private Memory, Workflow, atau resource lain." : "Belum tersedia: adapter External Consumer saat ini hanya mendukung text.normalize. Skill ini memiliki dependensi: " + dependencies.join(", ") + "."}</span></span>
-            </label>;
+            const contracts = registeredTools.filter(tool => dependencies.includes(tool.key));
+            return <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-slate-900 bg-amber-50 p-3 text-sm">
+              <label className="flex items-start gap-2">
+                <input type="checkbox" checked={allowConsumerTools} onChange={event => setAllowConsumerTools(event.target.checked)} disabled={!supported} className="mt-1"/>
+                <span><strong>Izinkan tool execution dengan allowlist eksplisit</strong><span className="mt-1 block text-xs text-slate-600">{supported ? "Semua dependency di bawah adalah pure tool terdaftar. Setiap tool akan menerima input JSON sesuai schema terdaftar; tidak membuka private Memory, Workflow, atau resource lain." : "Grant tidak tersedia karena ada dependency yang belum terdaftar sebagai pure tool dengan kontrak input/output object: " + dependencies.join(", ") + "."}</span></span>
+              </label>
+              {contracts.map(tool => <div key={tool.key} className="rounded-lg border bg-white/70 p-2"><p className="font-semibold">{tool.key} · v{tool.version}</p><p className="text-xs text-slate-600">{tool.description}</p><pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[10px] text-slate-500">{JSON.stringify(tool.input_schema)}</pre></div>)}
+            </div>;
           })()}
           {(() => {
             const selected = skills.find(skill => skill.id === consumerSkillId);
             const dependencies = selected?.tool_dependencies ?? [];
-            const supported = dependencies.length === 1 && dependencies[0] === "text.normalize";
+            const supported = supportsConsumerTools(dependencies);
             if (!supported) return null;
             return <div className="sm:col-span-2 grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
               <label className="grid gap-1 text-sm">Maksimum tool calls<input type="number" min={1} max={5} value={consumerMaxToolCalls} onChange={event => setConsumerMaxToolCalls(event.target.value)} className="rounded-lg border px-3 py-2"/></label>
@@ -456,7 +467,7 @@ export default function AgentStudioPage() {
               <p className="sm:col-span-2 text-xs text-neutral-500">Batas ini berlaku per grant dan tidak boleh melampaui budget Skill yang dipin.</p>
             </div>;
           })()}
-          <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId || (Boolean(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies?.length) && !allowConsumerTools) || (Boolean(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies?.some(key => key !== "text.normalize")))} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
+          <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-neutral-500">Grant tidak dibuat jika policy consumer_agent_generation, public Model Router, entitlement, atau tarif belum disetujui.</p><button disabled={saving || !session || !consumerUserId.trim() || !consumerSkillId || (Boolean(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies?.length) && !allowConsumerTools) || (Boolean(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies?.length) && !supportsConsumerTools(skills.find(skill => skill.id === consumerSkillId)?.tool_dependencies ?? []))} className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Menyimpan…" : "Beri Grant Generation"}</button></div>
         </form>
       </section>
       <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
