@@ -60,10 +60,11 @@ async def run_once(store: AgentRuntimeStore) -> int:
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             code = str(detail.get("code") or "RUNTIME_TASK_REJECTED")
-            if row.get("state") in {"created", "queued", "retrying"}:
+            if row.get("state") in {"created", "queued", "retrying", "executing"}:
                 try:
                     await store.fail_unclaimed_task(
                         owner_id, task_id, int(row.get("task_version") or 1), code,
+                        lease_token=row.get("execution_lease_token"),
                     )
                 except AgentRuntimePersistenceError:
                     logger.exception("Could not terminalize unclaimed runtime task; task_id=%s", task_id)
