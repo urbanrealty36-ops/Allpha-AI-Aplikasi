@@ -5,16 +5,14 @@ from allpha_api.agent_runtime_api import _runtime_lease_heartbeat
 
 class ImmediateHeartbeatStop:
     def __init__(self):
-        self.waited = False
+        self.wait_calls = 0
 
     def is_set(self):
-        return self.waited
+        return self.wait_calls > 1
 
     async def wait(self):
-        if not self.waited:
-            self.waited = True
-            raise asyncio.TimeoutError
-        return True
+        self.wait_calls += 1
+        raise asyncio.TimeoutError
 
 
 class HeartbeatStore:
