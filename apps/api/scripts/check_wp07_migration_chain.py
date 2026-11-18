@@ -13,7 +13,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -104,12 +103,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         "source_only_applied": len(report["source_only_applied"]),
         "source_only_pending": len(report["source_only_pending"]),
     }
-    clean = not report["applied_without_source"] and not report["source_only_applied"]
-    if args.require_clean:
-        clean = clean and not report["canonical_pending"]
-    report["status"] = "clean" if clean else "drift_or_pending"
+    has_drift = bool(report["applied_without_source"] or report["source_only_applied"])
+    has_pending = bool(report["canonical_pending"])
+    report["status"] = "drift" if has_drift else ("pending" if has_pending else "clean")
     print(json.dumps(report, indent=2))
-    return 0 if clean else 1
+    if has_drift or (args.require_clean and has_pending):
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
