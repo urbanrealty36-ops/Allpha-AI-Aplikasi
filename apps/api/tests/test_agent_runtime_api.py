@@ -3,6 +3,7 @@ import hashlib
 import json
 import pytest
 import uuid
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -202,6 +203,19 @@ class FakeRuntimeStore:
         row.update(body)
         return copy.deepcopy(row)
 
+    async def create_tool_plan_reservation(self, body):
+        plan_id = str(uuid.uuid4())
+        row = {"id": plan_id, "expires_at": "2099-01-01T00:00:00+00:00", **body}
+        self.tool_plans[plan_id] = row
+        return copy.deepcopy(row), True
+
+    async def update_tool_plan(self, owner_id, plan_id, body):
+        row = self.tool_plans.get(plan_id)
+        if not row or row.get("owner_user_id") != owner_id:
+            return None
+        row.update(body)
+        return copy.deepcopy(row)
+
 
 def client(monkeypatch, *, user_id=OWNER):
     import allpha_api.agent_runtime_api as runtime_api
@@ -220,6 +234,7 @@ def setup_function():
     FakeRuntimeStore.tasks = {}
     FakeRuntimeStore.events = {}
     FakeRuntimeStore.checkpoints = {}
+    FakeRuntimeStore.tool_plans = {}
     FakeRuntimeStore.capability = {"id": "cap-1", "agent_id": AGENT, "capability_key": "text.normalize",
                                    "required_permission_scopes": [], "status": "approved",
                                    "policy_version": "runtime-policy-v1", "runtime_policy_id": "policy-1",
@@ -630,3 +645,59 @@ def test_recovery_marks_unknown_effect_failed_without_replay(monkeypatch):
         app.dependency_overrides.pop(current_user, None)
 
 
+
+
+
+def test_tool_planner_repairs_one_invalid_structured_response(monkeypatch):
+    import allpha_api.agent_runtime_api as runtime_api
+
+    class FakeRouter:
+        def __init__(self):
+            self.requests = []
+
+        async def preflight(self, sensitivity):
+            assert sensitivity == "private"
+            return {"ready": True}
+
+        def max_output_tokens_for(self, sensitivity):
+            return 768
+
+        async def generate(self, generation_request):
+            self.requests.append(generation_request)
+            output = (
+                '{"steps":[{"step_id":"normalize","tool_key":"unknown.tool","inputs":{},"bindings":{}}]}'
+                if len(self.requests) == 1 else
+                '{"steps":[{"step_id":"normalize","tool_key":"text.normalize","inputs":{"text":"hello"},"bindings":{}}]}'
+            )
+            evidence = SimpleNamespace(
+                provider_id="provider-test", model_id="model-test", model_version="model-v1",
+                policy_id="private-policy", policy_version="private-v1",
+                input_tokens=10, output_tokens=12, cost_microunits=100,
+                cost_unit="USD", pricing_version="price-v1", latency_ms=20,
+                evidence_sha256="a" * 64,
+            )
+            return SimpleNamespace(output_text=output), evidence
+
+    c = client(monkeypatch)
+    router = FakeRouter()
+    monkeypatch.setattr(app.state, "text_generation_router", router, raising=False)
+    monkeypatch.setenv("ALLPHA_AGENT_TOOL_PLANNER_ENABLED", "true")
+    try:
+        session_id = create_session(c)
+        response = c.post("/v1/agent-runtime/tasks/plan", json={
+            "session_id": session_id, "skill_id": SKILL,
+            "intent": "Normalize this short text",
+            "idempotency_key": "planner-repair-001",
+        })
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["tool_plan"][0]["tool_key"] == "text.normalize"
+        assert payload["planner_evidence"]["replan_count"] == 1
+        assert len(payload["planner_evidence"]["planning_attempts"]) == 2
+        assert router.requests[0].response_format == "json_object"
+        assert router.requests[1].response_format == "json_object"
+        assert router.requests[0].task_id != router.requests[1].task_id
+        assert router.requests[0].idempotency_key != router.requests[1].idempotency_key
+        assert "PRIOR INVALID JSON" in router.requests[1].prompt
+    finally:
+        app.dependency_overrides.pop(current_user, None)
