@@ -3270,9 +3270,9 @@ No unit/integration/e2e tests, build, lint, typecheck, CI run, worker invocation
 
 ### Remaining WP-07 work, in required order
 
-1. Complete general Model Router-driven structured function calling and multi-tool planning with durable idempotency, bounded budgets, persisted per-step checkpoints and recovery.
+1. Activate and acceptance-verify the existing Model Router-driven one-shot structured planner, typed tool schema/binding validation, bounded budgets, durable idempotency and per-step checkpoint recovery after the tool-plan reservation and execution-trace migrations are approved and applied. Iterative model function-calling/replanning is a separate remaining capability; do not claim it is already implemented.
 2. Complete External Consumer per-tool adapters and typed input/output contracts beyond \`text.normalize\`, retaining empty private Memory scope and no implicit workflow/resource permissions.
-3. Complete Memory retrieval and proposal lifecycle. Semantic/vector retrieval remains blocked by ADR-0004's unapproved embedding/index contract; no physical vector DDL or hybrid claim until approved.
+3. Activate and acceptance-verify the source Memory Coordinator retrieval and explicit owner proposal lifecycle after the Memory schema/ranked-search migrations are approved and applied. Keyword-ranked retrieval is the current source implementation; semantic/vector retrieval remains blocked by ADR-0004's unapproved embedding/index contract, and automatic model-generated proposals remain open. No physical vector DDL or hybrid claim until approved.
 4. Complete Workflow–Memory using only short-lived opaque context references after all ADR-0023 approvals. Product Owner approval is recorded; Privacy/Security, Platform Architecture and Data Platform sign-offs remain outstanding. Never persist retrieved Memory text in workflow definition, run input, event, checkpoint, output or log.
 5. Continue WP-07 vertical integration into AI Cinema, Live Stage and AI Social Network. AI Cinema script/story Generation UI is now wired to canonical Generation Jobs but remains policy-gated. Live media transport remains gated by its provider ADR. Social autonomous co-authoring and takeover still require end-to-end UI/API/runtime closure.
 
@@ -3322,3 +3322,12 @@ No unit/integration/e2e tests, build, lint, typecheck, CI run, worker invocation
 - Existing single-tool task creation remains available. Task execute/cancel/recover actions continue through FastAPI. The Native UI displays the plan expiry and Model Router metering evidence when returned.
 - Planner activation remains disabled by default until the durable tool-plan reservation migration is applied and the deployment flag is enabled. Owner-authored plans continue to rely on the already-applied per-step checkpoint schema.
 - No Expo build, TypeScript check, Android/iOS device run, backend test, CI, staging or deployment was performed. This is source integration only.
+
+
+WP-07 implementation commit index — 2026-11-18:
+- 4425036b489a6d1da7462692b5db39fd3d58669d — legacy runtime/Consumer/Generation compatibility gates.
+- 9f7edf30485c9cd41734c2ed5516602c9ce0d6f9 — Native Agent Social fail-closed defaults and unsupported approval-mode guard.
+- d63e53bedda282dbcbb27f0cb0349c343b1df0c8 — non-content Memory provenance in Generation Job results.
+- 7f14ebbb44f64fcaf967802d31d229fb15d82109 — preserve full-item vs retrieved-excerpt Memory digests.
+- afa837009ec7633972d6915e689790b14320af05 — Native Agent Runtime multi-tool plan composer and Model Router planner status.
+- These commits are source changes only. No test, build, CI, migration application, provider execution, staging or deployment evidence is claimed.
