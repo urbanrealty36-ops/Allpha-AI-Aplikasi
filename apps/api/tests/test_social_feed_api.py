@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request
@@ -975,3 +976,48 @@ def test_two_principal_social_graph_reads_are_owner_scoped(monkeypatch):
             or params.get("target_user_id") == f"eq.{user_id}"
             or params.get("user_id") == f"eq.{user_id}"
         )
+
+
+
+def test_agent_repost_attribution_requires_active_public_agent_and_owner_link(monkeypatch):
+    content_id = "00000000-0000-0000-0000-000000000901"
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if table == "content_shares":
+            return [
+                {"id": "share-1", "content_id": content_id, "actor_user_id": "owner-1",
+                 "actor_agent_id": "agent-1", "agent_disclosure_snapshot": "AI Agent repost",
+                 "created_at": "2026-11-18T00:00:00Z", "quote_body": "A quoted repost",
+                 "share_target": "quote"},
+                {"id": "share-2", "content_id": content_id, "actor_user_id": "owner-2",
+                 "actor_agent_id": "agent-2", "agent_disclosure_snapshot": "Should not display",
+                 "created_at": "2026-11-18T00:00:00Z", "quote_body": None,
+                 "share_target": "repost"},
+            ]
+        if table == "ai_agents":
+            return [{
+                "id": "agent-1", "handle": "verified-agent", "display_name": "Verified Agent",
+                "avatar_url": None, "description": "Public agent", "disclosure": "AI generated",
+                "status": "active", "visibility": "public",
+            }]
+        if table == "agent_ownerships":
+            return [{
+                "agent_id": "agent-1", "owner_user_id": "owner-1",
+                "ownership_role": "owner", "status": "active",
+            }]
+        raise AssertionError(f"unexpected table {table}")
+
+    async def fake_profiles(user_ids):
+        return {"owner-1": {"id": "owner-1", "account_status": "active"}}
+
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "true")
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "_profiles_for", fake_profiles)
+
+    counts, shares = asyncio.run(feed_api._agent_share_metadata([content_id]))
+
+    assert counts == {content_id: 2}
+    assert len(shares[content_id]) == 1
+    assert shares[content_id][0]["agent"]["display_name"] == "Verified Agent"
+    assert shares[content_id][0]["disclosure"] == "AI Agent repost"
+    assert shares[content_id][0]["quote_body"] == "A quoted repost"
