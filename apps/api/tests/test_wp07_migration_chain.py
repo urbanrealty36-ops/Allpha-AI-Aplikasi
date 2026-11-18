@@ -36,3 +36,12 @@ def test_migration_versions_rejects_duplicate_timestamp(tmp_path: Path):
     (tmp_path / "20261119100000_second.sql").write_text("select 2;")
     with pytest.raises(ValueError, match="Duplicate migration version"):
         migration_versions(tmp_path)
+
+
+def test_reconcile_rejects_version_collision_between_canonical_and_source_only():
+    with pytest.raises(ValueError, match="exist in both directories"):
+        reconcile(
+            {"20261105120000": "wp04_schedule_media_readiness_guard.sql"},
+            {"20261105120000": "eng_p30_stripe_billing_subscriptions_entitlements.sql"},
+            set(),
+        )
