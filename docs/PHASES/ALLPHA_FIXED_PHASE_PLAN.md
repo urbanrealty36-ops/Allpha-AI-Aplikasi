@@ -3314,3 +3314,11 @@ No unit/integration/e2e tests, build, lint, typecheck, CI run, worker invocation
 **WP-07 Memory context evidence correction — 2026-11-18:**
 - Generation provenance distinguishes the full persisted Memory item digest from the digest of the bounded retrieved excerpt. The MemoryCoordinator verifies the full source digest before truncation; the worker must not incorrectly compare a truncated excerpt to the full-item digest.
 - Runtime context remains bounded to the MemoryCoordinator's 6,000-character retrieval budget and a 32 KiB UTF-8 serialized-context ceiling. Only hashes and metadata are persisted; no Memory text is stored in the Generation Job result.
+
+
+**WP-07 Native Runtime multi-step plan composer — 2026-11-18 (source implementation; device acceptance not run):**
+- Native Agent Studio now exposes the same canonical Model Router planner status and plan endpoint as Web, with an owner-authored JSON multi-step fallback using the existing FastAPI task contract.
+- Native plan submission validates 1–5 unique steps, declared Skill tool dependencies, object-shaped inputs/bindings and Skill call/runtime budgets before submitting. A durable planner reservation is used when the backend returns a plan ID; editing the plan invalidates that reservation and submits the reviewed JSON as an owner-authored plan.
+- Existing single-tool task creation remains available. Task execute/cancel/recover actions continue through FastAPI. The Native UI displays the plan expiry and Model Router metering evidence when returned.
+- Planner activation remains disabled by default until the durable tool-plan reservation migration is applied and the deployment flag is enabled. Owner-authored plans continue to rely on the already-applied per-step checkpoint schema.
+- No Expo build, TypeScript check, Android/iOS device run, backend test, CI, staging or deployment was performed. This is source integration only.

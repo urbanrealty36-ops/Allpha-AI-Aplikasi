@@ -67,10 +67,12 @@ type RegisteredTool = { key: string; version: string; name: string; description:
 type AgentSkill = { id: string; slug: string; name: string; description?: string; status: "draft" | "published" | "archived"; version: number; required_permission_scopes?: string[]; tool_dependencies?: string[] };
 type AgentCapability = { id: string; capability_key: string; description?: string; status: "requested" | "approved" | "denied" | "revoked"; risk_level: string };
 type RuntimeSession = { id: string; owner_user_id: string; agent_id: string; title: string; status: string; created_at: string; last_activity_at: string };
-type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[] };
+type RuntimeSkill = { id: string; slug: string; name: string; status: "draft" | "published" | "archived"; version: number; tool_dependencies?: string[]; budget_limits?: { max_runtime_seconds?: number; max_tool_calls?: number } };
+type RuntimePlannerStatus = { enabled: boolean; reason_code?: string | null; route?: string | null; billing_mode?: string | null };
+type RuntimePlannerEvidence = { model_id?: string; provider_id?: string; input_tokens?: number; output_tokens?: number; cost_microunits?: number; cost_unit?: string; evidence_sha256?: string };
 type ChallengeSkill = { id: string; agent_id: string; slug: string; name: string; status: string; version: number; tests?: Record<string, unknown>[]; hidden_challenges_available?: boolean; evaluation_rubric_available?: boolean };
 type ChallengeRun = { id: string; agent_id: string; skill_id: string; agent_version: number; skill_version: number; challenge_key: string; status: string; challenge_input: Record<string, unknown>; evaluation_result?: Record<string, unknown> | null; evidence_digest?: string | null; runtime_evidence_digest?: string | null; previous_version_comparison?: Record<string, unknown> | null; release_decision?: string | null; release_decision_reason?: string | null; created_at: string };
-type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
+type RuntimeTask = { id: string; session_id: string; skill_id: string; tool_key?: string; state: string; input_payload?: Record<string, unknown>; output_payload?: Record<string, unknown> | null; error_code?: string | null; created_at: string; updated_at: string; trace_id: string };
 type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha256: string; status: string; processing_stage: string; error_code?: string | null; created_at: string; latest_job?: { id: string; status: string; stage: string; attempt: number; progress: number; error_code?: string | null } | null };
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
@@ -467,6 +469,12 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [runtimeSkillBySession, setRuntimeSkillBySession] = useState<Record<string, string>>({});
   const [runtimeToolBySession, setRuntimeToolBySession] = useState<Record<string, string>>({});
   const [runtimeInputsBySession, setRuntimeInputsBySession] = useState<Record<string, string>>({});
+  const [runtimePlanJsonBySession, setRuntimePlanJsonBySession] = useState<Record<string, string>>({});
+  const [runtimePlanIntentBySession, setRuntimePlanIntentBySession] = useState<Record<string, string>>({});
+  const [runtimePlannedToolPlanIdBySession, setRuntimePlannedToolPlanIdBySession] = useState<Record<string, string>>({});
+  const [runtimePlanExpiresAtBySession, setRuntimePlanExpiresAtBySession] = useState<Record<string, string>>({});
+  const [runtimePlannerEvidenceBySession, setRuntimePlannerEvidenceBySession] = useState<Record<string, RuntimePlannerEvidence | null>>({});
+  const [runtimePlannerStatus, setRuntimePlannerStatus] = useState<RuntimePlannerStatus>({ enabled: false, reason_code: "NOT_CHECKED" });
   const [runtimeTaskBusy, setRuntimeTaskBusy] = useState<string | null>(null);
   const [challengeAgentId, setChallengeAgentId] = useState("");
   const [challengeSkills, setChallengeSkills] = useState<ChallengeSkill[]>([]);
@@ -1011,6 +1019,14 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     const body = await apiRequest("/v1/agent-runtime/sessions/" + encodeURIComponent(sessionId)) as { tasks?: RuntimeTask[] };
     setRuntimeTasks(current => ({ ...current, [sessionId]: body.tasks ?? [] }));
   }
+  async function loadRuntimePlannerStatus() {
+    try {
+      const body = await apiRequest("/v1/agent-runtime/planner/status") as RuntimePlannerStatus;
+      setRuntimePlannerStatus(body);
+    } catch {
+      setRuntimePlannerStatus({ enabled: false, reason_code: "PLANNER_STATUS_UNAVAILABLE" });
+    }
+  }
   async function loadRuntimeSessions(agentId: string) {
     setRuntimeSessionBusy(agentId); setError("");
     try {
@@ -1018,6 +1034,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       const items = (body.items ?? []).filter(item => item.agent_id === agentId);
       setRuntimeSessions(current => ({ ...current, [agentId]: items }));
       await loadRuntimeCatalog(agentId);
+      await loadRuntimePlannerStatus();
       await Promise.all(items.map(item => loadRuntimeSessionTasks(item.id)));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Sesi runtime tidak dapat dimuat."); }
     finally { setRuntimeSessionBusy(null); }
@@ -1031,29 +1048,109 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       setRuntimeSessions(current => ({ ...current, [agent.id]: [body.session, ...(current[agent.id] ?? []).filter(item => item.id !== body.session.id)] }));
       setRuntimeTasks(current => ({ ...current, [body.session.id]: [] }));
       await loadRuntimeCatalog(agent.id);
+      await loadRuntimePlannerStatus();
       setMessage("Sesi runtime tersimpan melalui FastAPI. Pilih Skill terpublikasi untuk membuat task.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Sesi runtime tidak dapat dibuat."); }
     finally { setRuntimeSessionBusy(null); }
   }
   async function createRuntimeTask(item: RuntimeSession) {
-    const skillId = runtimeSkillBySession[item.id], toolKey = runtimeToolBySession[item.id];
-    if (!skillId || !toolKey) { setError("Pilih Skill terpublikasi dan tool yang dideklarasikan."); return; }
+    const skillId = runtimeSkillBySession[item.id];
+    const toolKey = runtimeToolBySession[item.id];
+    const selectedSkill = (runtimeSkills[item.agent_id] || []).find(skill => skill.id === skillId);
+    const plannedId = runtimePlannedToolPlanIdBySession[item.id];
+    const planText = (runtimePlanJsonBySession[item.id] || "").trim();
+    if (!skillId || (!plannedId && !planText && !toolKey)) {
+      setError("Pilih Skill dan tool, atau susun rencana multi-step.");
+      return;
+    }
     setRuntimeTaskBusy(item.id); setError(""); setMessage("");
     try {
-      let inputs: Record<string, unknown>;
-      try {
-        const parsed: unknown = JSON.parse(runtimeInputsBySession[item.id] || "{}");
-        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Input task harus berupa objek JSON.");
-        inputs = parsed as Record<string, unknown>;
-      } catch (cause) { throw new Error(cause instanceof Error ? cause.message : "Input JSON tidak valid."); }
-      const idempotencyKey = "native-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+      const idempotencyKey = "native-" + createClientUuid();
+      let command: Record<string, unknown>;
+      if (plannedId || planText) {
+        let parsedPlan: unknown;
+        try {
+          parsedPlan = JSON.parse(planText);
+        } catch (cause) {
+          throw new Error(cause instanceof Error ? cause.message : "JSON tool plan tidak valid.");
+        }
+        if (!Array.isArray(parsedPlan) || parsedPlan.length < 1 || parsedPlan.length > 5) {
+          throw new Error("Rencana harus berisi 1 sampai 5 langkah.");
+        }
+        const allowed = new Set(selectedSkill?.tool_dependencies ?? []);
+        const seen = new Set<string>();
+        for (const step of parsedPlan) {
+          if (!step || typeof step !== "object" || Array.isArray(step)) throw new Error("Setiap langkah harus berupa object.");
+          const value = step as Record<string, unknown>;
+          if (typeof value.step_id !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(value.step_id) ||
+              seen.has(value.step_id) || typeof value.tool_key !== "string" || !allowed.has(value.tool_key)) {
+            throw new Error("Setiap step_id harus unik dan tool harus tercantum pada Skill terpilih.");
+          }
+          if (value.inputs !== undefined && (!value.inputs || typeof value.inputs !== "object" || Array.isArray(value.inputs))) {
+            throw new Error("inputs setiap langkah harus berupa object.");
+          }
+          if (value.bindings !== undefined && (!value.bindings || typeof value.bindings !== "object" || Array.isArray(value.bindings))) {
+            throw new Error("bindings setiap langkah harus berupa object.");
+          }
+          seen.add(value.step_id);
+        }
+        const maxCalls = Math.min(5, Number(selectedSkill?.budget_limits?.max_tool_calls ?? parsedPlan.length));
+        const maxRuntime = Math.min(30, Number(selectedSkill?.budget_limits?.max_runtime_seconds ?? 30));
+        if (maxCalls < parsedPlan.length) throw new Error("Budget Skill belum mengizinkan jumlah langkah pada rencana.");
+        command = {
+          session_id: item.id,
+          skill_id: skillId,
+          idempotency_key: idempotencyKey,
+          budget_limits: { max_tool_calls: maxCalls, max_runtime_seconds: maxRuntime },
+          ...(plannedId ? { tool_plan_id: plannedId } : { tool_plan: parsedPlan }),
+        };
+      } else {
+        let inputs: Record<string, unknown>;
+        try {
+          const parsed: unknown = JSON.parse(runtimeInputsBySession[item.id] || "{}");
+          if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Input task harus berupa objek JSON.");
+          inputs = parsed as Record<string, unknown>;
+        } catch (cause) { throw new Error(cause instanceof Error ? cause.message : "Input JSON tidak valid."); }
+        command = { session_id: item.id, skill_id: skillId, tool_key: toolKey, inputs, idempotency_key: idempotencyKey };
+      }
       const body = await apiRequest("/v1/agent-runtime/tasks", {
-        method: "POST", body: JSON.stringify({ session_id: item.id, skill_id: skillId, tool_key: toolKey, inputs, idempotency_key: idempotencyKey }),
+        method: "POST", body: JSON.stringify(command),
       }) as { task: RuntimeTask; idempotent_replay?: boolean };
       setRuntimeTasks(current => ({ ...current, [item.id]: [body.task, ...(current[item.id] ?? []).filter(task => task.id !== body.task.id)] }));
       setRuntimeInputsBySession(current => ({ ...current, [item.id]: "{}" }));
-      setMessage(body.idempotent_replay ? "Task sudah pernah diterima; status dipulihkan." : "Task tersimpan melalui API. Eksekusi tetap membutuhkan policy runtime yang disetujui.");
+      setRuntimePlanJsonBySession(current => ({ ...current, [item.id]: "" }));
+      setRuntimePlannedToolPlanIdBySession(current => ({ ...current, [item.id]: "" }));
+      setRuntimePlanExpiresAtBySession(current => ({ ...current, [item.id]: "" }));
+      setRuntimePlannerEvidenceBySession(current => ({ ...current, [item.id]: null }));
+      setMessage(body.idempotent_replay ? "Task sudah pernah diterima; status dipulihkan." : "Task tersimpan melalui API. Setiap langkah menggunakan checkpoint dan policy runtime yang disetujui.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Task tidak dapat dibuat."); }
+    finally { setRuntimeTaskBusy(null); }
+  }
+
+  async function planRuntimeTask(item: RuntimeSession) {
+    const skillId = runtimeSkillBySession[item.id];
+    const intent = (runtimePlanIntentBySession[item.id] || "").trim();
+    if (!skillId || !intent || !runtimePlannerStatus.enabled || runtimeTaskBusy) return;
+    setRuntimeTaskBusy(item.id); setError(""); setMessage("");
+    try {
+      const body = await apiRequest("/v1/agent-runtime/tasks/plan", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: item.id,
+          skill_id: skillId,
+          intent,
+          idempotency_key: "native-plan-" + createClientUuid(),
+        }),
+      }) as { plan_id?: string; tool_plan?: unknown[]; expires_at?: string; planner_evidence?: RuntimePlannerEvidence };
+      if (typeof body.plan_id !== "string" || !Array.isArray(body.tool_plan)) {
+        throw new Error("Model Router tidak mengembalikan rencana durable yang valid.");
+      }
+      setRuntimePlannedToolPlanIdBySession(current => ({ ...current, [item.id]: body.plan_id! }));
+      setRuntimePlanJsonBySession(current => ({ ...current, [item.id]: JSON.stringify(body.tool_plan, null, 2) }));
+      setRuntimePlanExpiresAtBySession(current => ({ ...current, [item.id]: body.expires_at || "" }));
+      setRuntimePlannerEvidenceBySession(current => ({ ...current, [item.id]: body.planner_evidence || null }));
+      setMessage("Rencana AI tersimpan. Tinjau seluruh langkah sebelum membuat task.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "AI tool planner tidak dapat membuat rencana."); }
     finally { setRuntimeTaskBusy(null); }
   }
   async function runtimeTaskAction(item: RuntimeSession, task: RuntimeTask, action: "execute" | "cancel" | "recover") {
@@ -1736,15 +1833,22 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
             return <View key={item.id} style={s.socialRow}>
               <Text style={s.body}>{item.title} · {item.status}</Text><Text style={s.muted}>{new Date(item.last_activity_at).toLocaleString("id-ID")} · {item.id}</Text>
               <Text style={s.kicker}>SKILL TERPUBLIKASI</Text>
-              {(runtimeSkills[agent.id] ?? []).filter(skill => skill.status === "published").map(skill => <Button key={skill.id} title={(runtimeSkillBySession[item.id] === skill.id ? "✓ " : "") + skill.name + " · v" + skill.version} secondary disabled={runtimeTaskBusy === item.id} onPress={() => { setRuntimeSkillBySession(current => ({ ...current, [item.id]: skill.id })); setRuntimeToolBySession(current => ({ ...current, [item.id]: "" })); }}/>)}
+              {(runtimeSkills[agent.id] ?? []).filter(skill => skill.status === "published").map(skill => <Button key={skill.id} title={(runtimeSkillBySession[item.id] === skill.id ? "✓ " : "") + skill.name + " · v" + skill.version} secondary disabled={runtimeTaskBusy === item.id} onPress={() => { setRuntimeSkillBySession(current => ({ ...current, [item.id]: skill.id })); setRuntimeToolBySession(current => ({ ...current, [item.id]: "" })); setRuntimePlanJsonBySession(current => ({ ...current, [item.id]: "" })); setRuntimePlannedToolPlanIdBySession(current => ({ ...current, [item.id]: "" })); setRuntimePlanExpiresAtBySession(current => ({ ...current, [item.id]: "" })); setRuntimePlannerEvidenceBySession(current => ({ ...current, [item.id]: null })); }}/>)}
               {!(runtimeSkills[agent.id] ?? []).some(skill => skill.status === "published") && <Text style={s.muted}>Belum ada Skill terpublikasi. Draft tidak dapat dieksekusi.</Text>}
               <Text style={s.kicker}>TOOL YANG DIDEKLARASIKAN SKILL</Text>
               {(runtimeTools[agent.id] ?? []).filter(tool => allowedToolKeys.includes(tool.key)).map(tool => <Button key={tool.key} title={(runtimeToolBySession[item.id] === tool.key ? "✓ " : "") + tool.name + " · " + tool.key} secondary disabled={!selectedSkill || runtimeTaskBusy === item.id} onPress={() => setRuntimeToolBySession(current => ({ ...current, [item.id]: tool.key }))}/>)}
-              <TextInput accessibilityLabel="Input task JSON" value={runtimeInputsBySession[item.id] ?? "{}"} onChangeText={value => setRuntimeInputsBySession(current => ({ ...current, [item.id]: value }))} multiline style={[field,{minHeight:72,textAlignVertical:"top"}]} placeholder="{ } input task JSON" placeholderTextColor="#8B94AC"/>
-              <Button title={runtimeTaskBusy === item.id ? "Membuat task…" : "Buat task"} disabled={runtimeTaskBusy === item.id || !selectedSkill || !runtimeToolBySession[item.id]} onPress={() => void createRuntimeTask(item)}/>
+              <Text style={s.kicker}>MODEL ROUTER TOOL PLANNER · {runtimePlannerStatus.enabled ? "READY" : runtimePlannerStatus.reason_code || "DISABLED"}</Text>
+              <TextInput accessibilityLabel="Tujuan rencana multi-step" value={runtimePlanIntentBySession[item.id] ?? ""} onChangeText={value => setRuntimePlanIntentBySession(current => ({ ...current, [item.id]: value }))} multiline style={[field,{minHeight:64,textAlignVertical:"top"}]} placeholder="Jelaskan tujuan yang perlu diselesaikan Agent…" placeholderTextColor="#8B94AC"/>
+              <Button title={runtimeTaskBusy === item.id ? "Merencanakan…" : "Rencanakan dengan AI"} secondary disabled={runtimeTaskBusy === item.id || !selectedSkill || !runtimePlannerStatus.enabled || !(runtimePlanIntentBySession[item.id] || "").trim()} onPress={() => void planRuntimeTask(item)}/>
+              {runtimePlannerEvidenceBySession[item.id] && <Text style={s.muted}>Model {runtimePlannerEvidenceBySession[item.id]?.model_id || "—"} · {runtimePlannerEvidenceBySession[item.id]?.input_tokens ?? 0} input / {runtimePlannerEvidenceBySession[item.id]?.output_tokens ?? 0} output tokens · {runtimePlannerEvidenceBySession[item.id]?.cost_microunits ?? "—"} {runtimePlannerEvidenceBySession[item.id]?.cost_unit || ""}</Text>}
+              {!!runtimePlanExpiresAtBySession[item.id] && <Text style={s.muted}>Rencana berlaku sampai {new Date(runtimePlanExpiresAtBySession[item.id]).toLocaleString("id-ID")}</Text>}
+              <Text style={s.kicker}>JSON MULTI-STEP PLAN · OPSIONAL</Text>
+              <TextInput accessibilityLabel="Tool plan JSON" value={runtimePlanJsonBySession[item.id] ?? ""} onChangeText={value => { setRuntimePlanJsonBySession(current => ({ ...current, [item.id]: value })); setRuntimePlannedToolPlanIdBySession(current => ({ ...current, [item.id]: "" })); setRuntimePlanExpiresAtBySession(current => ({ ...current, [item.id]: "" })); setRuntimePlannerEvidenceBySession(current => ({ ...current, [item.id]: null })); }} multiline style={[field,{minHeight:112,textAlignVertical:"top"}]} placeholder={'[{"step_id":"step_one","tool_key":"text.normalize","inputs":{"text":"..."}, "bindings":{}}]'} placeholderTextColor="#8B94AC"/>
+              {!runtimePlanJsonBySession[item.id]?.trim() && <TextInput accessibilityLabel="Input task JSON" value={runtimeInputsBySession[item.id] ?? "{}"} onChangeText={value => setRuntimeInputsBySession(current => ({ ...current, [item.id]: value }))} multiline style={[field,{minHeight:72,textAlignVertical:"top"}]} placeholder="{ } input task JSON" placeholderTextColor="#8B94AC"/>}
+              <Button title={runtimeTaskBusy === item.id ? "Membuat task…" : runtimePlanJsonBySession[item.id]?.trim() ? "Buat multi-step task" : "Buat task"} disabled={runtimeTaskBusy === item.id || !selectedSkill || (!runtimePlanJsonBySession[item.id]?.trim() && !runtimeToolBySession[item.id])} onPress={() => void createRuntimeTask(item)}/>
               <Text style={s.kicker}>TASK LIFECYCLE</Text>
               {tasks.length === 0 ? <Text style={s.muted}>Belum ada task pada sesi ini.</Text> : tasks.map(task => <View key={task.id} style={s.card}>
-                <Text style={s.body}>{task.tool_key} · {task.state}</Text><Text style={s.muted}>ID: {task.id} · {task.error_code ?? "Tanpa error"}</Text>
+                <Text style={s.body}>{task.tool_key || "multi-step plan"} · {task.state}</Text><Text style={s.muted}>ID: {task.id} · {task.error_code ?? "Tanpa error"}</Text>
                 {task.output_payload && <Text style={s.muted}>Output: {JSON.stringify(task.output_payload)}</Text>}
                 <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                   <Button title="Jalankan" secondary disabled={runtimeTaskBusy === task.id || task.state !== "created"} onPress={() => void runtimeTaskAction(item, task, "execute")}/>
