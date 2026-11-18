@@ -235,6 +235,22 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def list_runnable_planned_tasks(self, *, limit: int = 10) -> list[dict[str, Any]]:
+        """Return created or lease-expired planned tasks for the server-only worker."""
+        bounded_limit = max(1, min(limit, 25))
+        plan_filter = {"input_payload->>_runtime_plan_version": "eq.1"}
+        created = await self.request("GET", "agent_runtime_tasks", params={
+            "select": "*", "state": "eq.created", **plan_filter,
+            "order": "created_at.asc", "limit": str(bounded_limit),
+        }) or []
+        now = datetime.now(timezone.utc).isoformat()
+        expired = await self.request("GET", "agent_runtime_tasks", params={
+            "select": "*", "state": "eq.executing", "lease_expires_at": f"lte.{now}",
+            **plan_filter, "order": "created_at.asc", "limit": str(bounded_limit),
+        }) or []
+        by_id = {str(row.get("id")): row for row in [*created, *expired] if row.get("id")}
+        return sorted(by_id.values(), key=lambda row: str(row.get("created_at") or ""))[:bounded_limit]
+
     async def list_agent_tasks(self, owner_id: str, agent_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
         return await self.request("GET", "agent_runtime_tasks", params={
             "select": "id,session_id,agent_id,skill_id,agent_version,skill_version,state,tool_key,trace_id,created_at,updated_at,completed_at,error_code,execution_event_seq",
