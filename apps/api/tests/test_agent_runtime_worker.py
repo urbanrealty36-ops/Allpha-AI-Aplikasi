@@ -1,5 +1,4 @@
-import pytest
-from fastapi import HTTPException
+import asyncio
 
 from allpha_api import agent_runtime_worker as worker
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError
@@ -21,8 +20,7 @@ class FakeStore:
         return {"id": task_id, "state": "failed"}
 
 
-@pytest.mark.asyncio
-async def test_worker_terminalizes_unknown_effect_and_executes_only_replay_safe_tasks(monkeypatch):
+def test_worker_terminalizes_unknown_effect_and_executes_only_replay_safe_tasks(monkeypatch):
     store = FakeStore([
         {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "unknown"},
         {"id": "task-created", "owner_user_id": "owner-1", "state": "created", "effect_outcome": None},
@@ -34,15 +32,14 @@ async def test_worker_terminalizes_unknown_effect_and_executes_only_replay_safe_
         return {"task": {"id": task_id, "state": "succeeded"}}
 
     monkeypatch.setattr(worker, "_execute_planned_task", fake_execute)
-    processed = await worker.run_once(store)
+    processed = asyncio.run(worker.run_once(store))
 
     assert processed == 2
     assert store.unknown == [("owner-1", "task-unknown")]
     assert executed == [("owner-1", "task-created")]
 
 
-@pytest.mark.asyncio
-async def test_worker_stops_batch_when_unknown_effect_cannot_be_terminalized(monkeypatch):
+def test_worker_stops_batch_when_unknown_effect_cannot_be_terminalized(monkeypatch):
     store = FakeStore([
         {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "started"},
         {"id": "task-created", "owner_user_id": "owner-1", "state": "created", "effect_outcome": None},
@@ -54,7 +51,7 @@ async def test_worker_stops_batch_when_unknown_effect_cannot_be_terminalized(mon
         executed.append(task_id)
 
     monkeypatch.setattr(worker, "_execute_planned_task", fake_execute)
-    processed = await worker.run_once(store)
+    processed = asyncio.run(worker.run_once(store))
 
     assert processed == 0
     assert executed == []
