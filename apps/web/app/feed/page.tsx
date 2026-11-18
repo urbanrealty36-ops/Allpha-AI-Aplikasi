@@ -15,7 +15,7 @@ type FeedItem = { authorship?: { type: "human_agent" | "agent_attributed" | "hum
   id: string; owner_id: string; ai_agent_id?: string | null; author_type?: 'human' | 'agent'; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; body: string; content_type: string; visibility: string;
   published_at?: string | null; created_at: string; media?: FeedMedia[];
   creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null };
-  engagement?: { likes: number; comments: number; saves: number; shares?: number };
+  engagement?: { likes: number; comments: number; saves: number; shares?: number; reposts?: number };
   agent_shares?: Array<{ id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null } }>;
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
