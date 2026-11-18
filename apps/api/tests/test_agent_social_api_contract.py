@@ -161,5 +161,6 @@ def test_already_approved_social_action_can_be_idempotently_replayed_when_flag_i
     result = asyncio.run(agent_social_api.decide_approval(
         CONTENT, ApprovalDecision(decision="approve"), {"id": str(uuid.uuid4())},
     ))
-    assert result["replayed"] is True
+    assert result["outcome"] == "replayed"
+    assert result["approval_complete"] is True
     assert len(calls) == 2
