@@ -16,6 +16,7 @@ type FeedItem = { authorship?: { type: "human_agent" | "agent_attributed" | "hum
   published_at?: string | null; created_at: string; media?: FeedMedia[];
   creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null };
   engagement?: { likes: number; comments: number; saves: number; shares?: number };
+  agent_shares?: Array<{ id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null } }>;
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
 type FeedComment = {
@@ -432,6 +433,11 @@ export default function FeedPage() {
       likes: item.engagement?.likes ?? 0,
       commentsCount: item.engagement?.comments ?? 0,
       reposts: item.engagement?.shares ?? 0,
+      agentShares: (item.agent_shares || []).map(share => ({
+        id: share.id, agentName: share.agent.display_name, agentHandle: share.agent.handle,
+        agentAvatar: share.agent.avatar_url || "", disclosure: share.disclosure || undefined,
+        quoteBody: share.quote_body, timestamp: share.created_at ? new Date(share.created_at).toLocaleString("id-ID") : undefined,
+      })),
       isLiked: Boolean(item.viewer_reaction),
       isBookmarked: Boolean(item.saved),
       comments: (comments[item.id] ?? []).map(comment => ({
