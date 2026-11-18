@@ -278,10 +278,11 @@ class AgentRuntimeStore:
         return int(result or 0)
 
     async def fail_unclaimed_task(self, owner_id: str, task_id: str, task_version: int,
-                                  error_code: str) -> dict[str, Any] | None:
+                                  error_code: str, lease_token: str | None = None) -> dict[str, Any] | None:
         rows = await self.request("POST", "rpc/fail_unclaimed_agent_runtime_task", body={
             "p_task_id": task_id, "p_owner_user_id": owner_id,
             "p_task_version": task_version, "p_error_code": error_code,
+            "p_lease_token": lease_token,
         })
         return rows[0] if rows else None
 
