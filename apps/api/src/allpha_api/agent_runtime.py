@@ -79,6 +79,10 @@ class AgentRuntimeOutcomeUnknown(RuntimeError):
     """Provider invocation may have started; the caller must reconcile, never replay."""
 
 
+class AgentRuntimeRetryable(RuntimeError):
+    """A bounded retryable failure for a deterministic, side-effect-free tool."""
+
+
 @dataclass(frozen=True)
 class AgentTaskEnvelope:
     task_id: str
@@ -252,7 +256,7 @@ class AgentRuntime:
         except asyncio.TimeoutError as exc:
             await transition(AgentTaskState.TIMED_OUT, reason="tool_timeout")
             task.error_code = "TOOL_TIMEOUT"
-            raise AgentRuntimeBlocked("tool execution timed out") from exc
+            raise AgentRuntimeRetryable("TOOL_TIMEOUT") from exc
         except (ToolInputError, UnknownToolError) as exc:
             await transition(AgentTaskState.FAILED, reason="tool_contract_error")
             task.error_code = "TOOL_CONTRACT_ERROR"
