@@ -8,8 +8,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
-
 from fastapi import HTTPException
 
 from allpha_api.agent_runtime_api import _execute_planned_task
@@ -82,9 +80,8 @@ async def serve() -> None:
     logger.info("Agent Runtime worker started; poll_seconds=%s batch_size=%s", interval, _batch_size())
     while True:
         try:
-            processed = await run_once(store)
-            if processed == 0:
-                await asyncio.sleep(interval)
+            await run_once(store)
+            await asyncio.sleep(interval)
         except AgentRuntimePersistenceError:
             logger.exception("Agent Runtime worker persistence unavailable")
             await asyncio.sleep(interval)
