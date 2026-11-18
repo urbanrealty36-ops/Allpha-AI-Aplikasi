@@ -67,6 +67,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         const currentAutomation = automationResult.policy as Automation | null;
         setAutomationGrants(grantsResult.items || []);
         setAutomation(currentAutomation);
+        setGrantScopes([]);
         setChannels(currentAutomation?.auto_reply_channels || []);
         setBlockedTopicsText((currentAutomation?.blocked_topics || []).join(", "));
         setReplyTone(currentAutomation?.reply_tone || "friendly_concise");
@@ -116,7 +117,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     const hours = Math.max(1, Math.min(720, Math.floor(Number(grantExpiryHours) || 24)));
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await api("/v1/agent-social/automation/grants?agent_id=" + encodeURIComponent(agentId), {
+      await api("/v1/agent-social/automation/grants?agent_id=" + encodeURIComponent(agentId), {
         method: "POST",
         body: JSON.stringify({
           granted_scopes: grantScopes,
