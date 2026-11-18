@@ -5,7 +5,7 @@ type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_r
 type Automation = { auto_reply_enabled?: boolean; auto_reply_channels?: string[]; automation_version?: number; takeover_active?: boolean };
 type Approval = { id: string; agent_id: string; content_id: string; action_type: string; content_version: number; status: string; disclosure_snapshot?: string; requested_at: string };
 export default function AgentSocialPresencePanel({agentId,agentName,accessToken}:{agentId:string;agentName:string;accessToken:string}) {
- const [policy,setPolicy]=useState<Policy|null>(null),[automation,setAutomation]=useState<Automation|null>(null),[approvals,setApprovals]=useState<Approval[]>([]);
+ const [policy,setPolicy]=useState<Policy|null>(null),[automation,setAutomation]=useState<Automation|null>(null),[approvals,setApprovals]=useState<Approval[]>([]),[actionDispatchEnabled,setActionDispatchEnabled]=useState(false);
  const [actions,setActions]=useState<string[]>(["draft_post"]),[mode,setMode]=useState<Policy["approval_mode"]>("every_post"),[disclosure,setDisclosure]=useState("Dibuat bersama AI Agent"),[enabled,setEnabled]=useState(false);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const api=useCallback(async <T,>(path:string,init:RequestInit={}):Promise<T>=>{
@@ -19,9 +19,9 @@ export default function AgentSocialPresencePanel({agentId,agentName,accessToken}
    const [p,a,q]=await Promise.all([
     api<{policy:Policy|null}>("/v1/agent-social/policy?agent_id="+encodeURIComponent(agentId)),
     api<{policy:Automation|null;auto_reply_runtime_enabled:boolean}>("/v1/agent-social/automation?agent_id="+encodeURIComponent(agentId)),
-    api<{items:Approval[]}>("/v1/agent-social/approvals")
+    api<{items:Approval[];action_dispatch_enabled?:boolean}>("/v1/agent-social/approvals")
    ]);
-   setPolicy(p.policy);setAutomation(a.policy);setActions(p.policy?.allowed_actions||["draft_post"]);setMode(p.policy?.approval_mode||"every_post");setDisclosure(p.policy?.disclosure_text||"Dibuat bersama AI Agent");setEnabled(Boolean(p.policy?.is_enabled&&!p.policy?.revoked_at));setApprovals((q.items||[]).filter(x=>x.agent_id===agentId));
+   setPolicy(p.policy);setAutomation(a.policy);setActions(p.policy?.allowed_actions||["draft_post"]);setMode(p.policy?.approval_mode||"every_post");setDisclosure(p.policy?.disclosure_text||"Dibuat bersama AI Agent");setEnabled(Boolean(p.policy?.is_enabled&&!p.policy?.revoked_at));setApprovals((q.items||[]).filter(x=>x.agent_id===agentId));setActionDispatchEnabled(q.action_dispatch_enabled===true);
   }catch(e){setError(e instanceof Error?e.message:"Kebijakan Agent Social tidak dapat dimuat.");}finally{setLoading(false);}
  },[agentId,api]);
  useEffect(()=>{void load();},[load]);
@@ -36,6 +36,9 @@ export default function AgentSocialPresencePanel({agentId,agentName,accessToken}
   catch(e){setError(e instanceof Error?e.message:"Takeover belum dapat dikonfirmasi.");}finally{setSaving(false);}
  }
  async function decide(id:string,decision:"approve"|"reject"){
+  const approval=approvals.find(item=>item.id===id);
+  const dispatchBlocked=!!approval&&["draft_post","draft_comment","draft_reply","suggest_repost"].includes(approval.action_type);
+  if(decision==="approve"&&dispatchBlocked&&!actionDispatchEnabled){setError("Eksekusi aksi ini menunggu migration atribusi dan dispatch WP-06 aktif.");return;}
   if(decision==="approve"&&typeof window!=="undefined"&&!window.confirm("Setujui draft Agent? Persetujuan dapat meneruskan konten ke moderation sesuai policy."))return;
   setSaving(true);setError("");setNotice("");
   try{await api("/v1/agent-social/approvals/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision,reason:decision==="approve"?"owner_approved":"owner_rejected"})});setNotice("Keputusan tercatat oleh transaksi backend.");await load();}
@@ -68,7 +71,8 @@ export default function AgentSocialPresencePanel({agentId,agentName,accessToken}
     </div>
    </div>
    <div className="mt-3 rounded-xl border border-slate-300 bg-white p-3"><div className="flex items-center justify-between"><strong className="text-xs text-slate-900">Approval Queue</strong><span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">{pending.length} menunggu</span></div>
-    {pending.length===0?<p className="mt-2 text-xs text-slate-600">Belum ada draft yang menunggu persetujuan.</p>:<div className="mt-2 space-y-2">{pending.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-2"><div className="min-w-0"><p className="text-xs font-bold text-slate-900">{item.action_type} · v{item.content_version}</p><p className="truncate text-[10px] text-slate-600">Content {item.content_id} · {new Date(item.requested_at).toLocaleString("id-ID")}</p><p className="text-[10px] text-slate-500">{item.disclosure_snapshot||"AI Agent contribution"}</p></div><div className="flex gap-1"><button type="button" onClick={()=>void decide(item.id,"approve")} disabled={saving} className="rounded-lg border border-slate-900 bg-emerald-200 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Approve</button><button type="button" onClick={()=>void decide(item.id,"reject")} disabled={saving} className="rounded-lg border border-slate-900 bg-rose-100 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Reject</button></div></div>)}</div>}
+    {!actionDispatchEnabled&&<p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900">Approval post/comment/reply/repost dikunci sampai migration atribusi dan dispatch WP-06 aktif. Story DM tetap tersedia sesuai lifecycle.</p>}
+    {pending.length===0?<p className="mt-2 text-xs text-slate-600">Belum ada draft yang menunggu persetujuan.</p>:<div className="mt-2 space-y-2">{pending.map(item=>{const dispatchBlocked=["draft_post","draft_comment","draft_reply","suggest_repost"].includes(item.action_type);return <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-2"><div className="min-w-0"><p className="text-xs font-bold text-slate-900">{item.action_type} · v{item.content_version}</p><p className="truncate text-[10px] text-slate-600">Content {item.content_id} · {new Date(item.requested_at).toLocaleString("id-ID")}</p><p className="text-[10px] text-slate-500">{item.disclosure_snapshot||"AI Agent contribution"}</p></div><div className="flex gap-1"><button type="button" onClick={()=>void decide(item.id,"approve")} disabled={saving||(dispatchBlocked&&!actionDispatchEnabled)} className="rounded-lg border border-slate-900 bg-emerald-200 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Approve</button><button type="button" onClick={()=>void decide(item.id,"reject")} disabled={saving} className="rounded-lg border border-slate-900 bg-rose-100 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Reject</button></div></div>})}</div>}
    </div>
    {approvals.filter(x=>x.status==="approved").length>0&&<div className="mt-2 flex flex-wrap gap-2">{approvals.filter(x=>x.status==="approved").slice(0,5).map(item=><button key={item.id} type="button" onClick={()=>void revoke(item.id)} disabled={saving} className="rounded-lg border border-slate-900 bg-white px-2 py-1 text-[10px] font-semibold disabled:opacity-40">Cabut approval {item.action_type}</button>)}</div>}
   </>}
