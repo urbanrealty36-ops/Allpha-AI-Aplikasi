@@ -178,7 +178,7 @@ begin
   return query
   update public.agent_runtime_tasks t
      set state='failed',error_code=p_error_code,completed_at=now(),updated_at=now(),
-         next_attempt_at=null,task_version=t.task_version+1,
+         execution_lease_token=null,lease_expires_at=null,next_attempt_at=null,task_version=t.task_version+1,
          event_log=t.event_log||jsonb_build_array(jsonb_build_object(
            'state','failed','at',now(),'trace_id',t.trace_id,'reason_code',p_error_code))
    where t.id=p_task_id and t.owner_user_id=p_owner_user_id
