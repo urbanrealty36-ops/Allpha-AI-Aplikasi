@@ -198,7 +198,7 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 ### Bounded retry and recovery contract
 
 - Source migration `20261118195000_wp07_durable_retry_attempts.sql` adds durable `execution_attempts`, `max_execution_attempts` (default 3, maximum 5), and `next_attempt_at`. The claim RPC increments attempts atomically and only claims due work.
-- Only deterministic, registered pure-tool timeout is classified retryable in the current runtime. Retry delay is bounded exponential backoff (5s, 10s, then 20s; maximum 60s). The retry RPC preserves completed step checkpoints and rejects any task whose effect outcome is `started` or `unknown`.
+- Only deterministic, registered pure-tool timeout is classified retryable in the current runtime. Retry delay is bounded exponential backoff (default three attempts means 5s and 10s retry delays; a configured five-attempt task may use 20s and 40s; maximum 60s). The retry RPC preserves completed step checkpoints and rejects any task whose effect outcome is `started` or `unknown`.
 - Worker crashes/persistence interruptions recover from the last verified checkpoint only when the lease expires and the effect outcome is known safe. Unknown effects are terminalized as `EXECUTION_OUTCOME_UNKNOWN` and are never replayed.
 - Exhausted attempts are terminalized as `RUNTIME_RETRY_EXHAUSTED`. Preflight policy/contract failures are also terminalized through an owner/task-version/lease-fenced RPC so the worker does not poll a permanently invalid task forever.
 - Lease heartbeat is fenced by owner, task, lease token and task version. A cancellation request is returned to the worker without extending the lease; the worker checkpoints any completed pure step and finalizes the task as cancelled.
