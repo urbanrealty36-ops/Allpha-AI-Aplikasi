@@ -145,6 +145,7 @@ def test_active_model_cost_verifier_accepts_only_matching_effective_active_tarif
             "input_micro_cost_per_token": 3,
             "output_micro_cost_per_token": 5,
             "max_cost_microunits": 100,
+            "policy_approved": True,
             "status": "active",
             "effective_at": "2026-10-16T00:00:00+00:00",
         }])
