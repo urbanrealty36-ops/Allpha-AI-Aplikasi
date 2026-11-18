@@ -245,20 +245,45 @@ class AgentRuntimeStore:
         return rows[0] if rows else None
 
     async def list_runnable_planned_tasks(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        """Return created or lease-expired planned tasks for the server-only worker."""
+        """Return due created/queued/retrying or lease-expired planned tasks."""
         bounded_limit = max(1, min(limit, 25))
         plan_filter = {"input_payload->>_runtime_plan_version": "eq.1"}
-        created = await self.request("GET", "agent_runtime_tasks", params={
-            "select": "*", "state": "eq.created", **plan_filter,
-            "order": "created_at.asc", "limit": str(bounded_limit),
-        }) or []
         now = datetime.now(timezone.utc).isoformat()
+        due = await self.request("GET", "agent_runtime_tasks", params={
+            "select": "*", "state": "in.(created,queued,retrying)",
+            "or": f"(next_attempt_at.is.null,next_attempt_at.lte.{now})",
+            **plan_filter, "order": "created_at.asc", "limit": str(bounded_limit),
+        }) or []
         expired = await self.request("GET", "agent_runtime_tasks", params={
             "select": "*", "state": "eq.executing", "lease_expires_at": f"lte.{now}",
             **plan_filter, "order": "created_at.asc", "limit": str(bounded_limit),
         }) or []
-        by_id = {str(row.get("id")): row for row in [*created, *expired] if row.get("id")}
+        by_id = {str(row.get("id")): row for row in [*due, *expired] if row.get("id")}
         return sorted(by_id.values(), key=lambda row: str(row.get("created_at") or ""))[:bounded_limit]
+
+    async def schedule_retry_task(self, owner_id: str, task_id: str, lease_token: str,
+                                  task_version: int, *, error_code: str,
+                                  retry_after_seconds: int, output_payload: dict[str, Any] | None,
+                                  event_log: list[dict[str, Any]]) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/schedule_agent_runtime_retry", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id,
+            "p_lease_token": lease_token, "p_task_version": task_version,
+            "p_error_code": error_code, "p_retry_after_seconds": retry_after_seconds,
+            "p_output_payload": output_payload, "p_event_log": event_log,
+        })
+        return rows[0] if rows else None
+
+    async def reap_retry_exhaustion(self) -> int:
+        result = await self.request("POST", "rpc/reap_agent_runtime_retry_exhaustion", body={})
+        return int(result or 0)
+
+    async def fail_unclaimed_task(self, owner_id: str, task_id: str, task_version: int,
+                                  error_code: str) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/fail_unclaimed_agent_runtime_task", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id,
+            "p_task_version": task_version, "p_error_code": error_code,
+        })
+        return rows[0] if rows else None
 
     async def list_agent_tasks(self, owner_id: str, agent_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
         return await self.request("GET", "agent_runtime_tasks", params={
