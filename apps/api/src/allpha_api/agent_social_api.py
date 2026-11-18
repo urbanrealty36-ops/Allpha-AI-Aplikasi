@@ -13,6 +13,19 @@ from allpha_api.content_api import _server_db
 
 router = APIRouter(prefix="/v1/agent-social", tags=["agent-social-presence"])
 
+
+def _automation_schema_enabled() -> bool:
+    return os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() == "true"
+
+
+def _require_automation_schema() -> None:
+    if not _automation_schema_enabled():
+        raise HTTPException(503, detail={
+            "code": "AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE",
+            "message": "Schema automation WP-06 belum diterapkan pada database kanonis; perubahan belum diaktifkan.",
+        })
+
+
 class PolicyWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allowed_actions: list[Literal["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"]] = Field(default_factory=lambda: ["draft_post"], max_length=5)
@@ -46,6 +59,9 @@ class TakeoverWrite(BaseModel):
 async def get_automation(agent_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     owner_id = str(user["id"])
     await _active_owned_agent(owner_id, str(agent_id))
+    if not _automation_schema_enabled():
+        return {"policy": None, "auto_reply_runtime_enabled": False,
+                "runtime_reason": "AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE"}
     rows = await _server_db("GET", "agent_social_presence_policies", params={
         "select": "id,agent_id,version,auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,max_replies_per_minute,daily_credit_budget,quiet_hours,escalation_rules,owner_approval_required,output_moderation_required,takeover_active,takeover_started_at,automation_version",
         "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
@@ -59,6 +75,7 @@ async def put_automation(agent_id: uuid.UUID, payload: AutomationPolicyWrite,
                          user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     owner_id = str(user["id"])
     await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
     if any(not topic.strip() or len(topic.strip()) > 120 for topic in payload.blocked_topics):
         raise HTTPException(422, detail={"code": "AGENT_SOCIAL_BLOCKED_TOPIC_INVALID", "message": "Topik yang diblokir harus berisi 1–120 karakter."})
     if any(not scope.strip() or len(scope.strip()) > 120 for scope in payload.allowed_tool_scopes):
@@ -84,6 +101,7 @@ async def set_takeover(agent_id: uuid.UUID, payload: TakeoverWrite,
                        user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     owner_id = str(user["id"])
     await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
     result = await _server_db("POST", "rpc/set_agent_social_takeover", body={
         "p_owner_user_id": owner_id, "p_agent_id": str(agent_id),
         "p_takeover_active": payload.takeover_active, "p_reason": payload.reason,
