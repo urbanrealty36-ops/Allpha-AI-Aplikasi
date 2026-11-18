@@ -115,6 +115,15 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def heartbeat_task(self, owner_id: str, task_id: str, lease_token: str,
+                             task_version: int, *, lease_seconds: int = 60) -> dict[str, Any] | None:
+        rows = await self.request("POST", "rpc/heartbeat_agent_runtime_task", body={
+            "p_task_id": task_id, "p_owner_user_id": owner_id,
+            "p_lease_token": lease_token, "p_task_version": task_version,
+            "p_lease_seconds": lease_seconds,
+        })
+        return rows[0] if rows else None
+
     async def mark_unknown_effect(self, owner_id: str, task_id: str) -> dict[str, Any] | None:
         rows = await self.request("POST", "rpc/mark_agent_runtime_effect_unknown", body={
             "p_task_id": task_id, "p_owner_user_id": owner_id,
