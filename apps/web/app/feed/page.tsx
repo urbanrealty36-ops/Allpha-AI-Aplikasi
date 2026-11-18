@@ -440,6 +440,7 @@ export default function FeedPage() {
         authorHandle: comment.agent_author?.handle || "",
         authorAvatar: comment.agent_author?.avatar_url || "",
         isAi: comment.author_type === "agent" || Boolean(comment.actor_agent_id),
+        aiDisclosure: comment.agent_disclosure_snapshot || undefined,
         content: comment.body, timestamp: new Date(comment.created_at).toLocaleString("id-ID"), likes: 0,
         parentCommentId: comment.parent_comment_id ?? null,
       })),
