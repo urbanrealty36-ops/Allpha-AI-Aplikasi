@@ -419,8 +419,8 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000"})
     saves = await _server_db("GET", "content_saves", params={"select": "content_id,actor_user_id", "content_id": in_ids, "limit": "5000"})
-    shares = await _server_db("GET", "content_shares", params={"select": "content_id", "content_id": in_ids, "limit": "5000"})
-    likes: dict[str, int] = {}; comment_counts: dict[str, int] = {}; save_counts: dict[str, int] = {}; share_counts: dict[str, int] = {}
+    share_counts, agent_shares_by_content = await _agent_share_metadata(ids)
+    likes: dict[str, int] = {}; comment_counts: dict[str, int] = {}; save_counts: dict[str, int] = {}
     viewer_reactions: dict[str, str] = {}; viewer_saves: set[str] = set()
     for row in reactions or []:
         cid = str(row["content_id"]); likes[cid] = likes.get(cid, 0) + 1
@@ -430,8 +430,6 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     for row in saves or []:
         cid = str(row["content_id"]); save_counts[cid] = save_counts.get(cid, 0) + 1
         if owner and str(row.get("actor_user_id")) == owner: viewer_saves.add(cid)
-    for row in shares or []:
-        cid = str(row["content_id"]); share_counts[cid] = share_counts.get(cid, 0) + 1
     ranked = []
     for row in candidates:
         cid = str(row["id"])
@@ -514,6 +512,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     for row in page:
         cid = str(row["id"]); item = {k: v for k, v in row.items() if k != "_rank"}
         item["media"] = media_by_id.get(cid, [])
+        item["agent_shares"] = agent_shares_by_content.get(cid, [])
         creator = profile_by_id.get(str(row.get("owner_id")), {})
         item["creator"] = {"username": creator.get("username"), "display_name": creator.get("display_name") or creator.get("username") or "Kreator", "avatar_url": creator.get("avatar_url")}
         agent = agent_by_id.get(str(row.get("ai_agent_id") or ""))
