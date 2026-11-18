@@ -41,9 +41,11 @@ class FakeRuntimeStore:
     def from_environment(cls):
         return cls()
 
+    runtime_readiness = {"ready": True, "missing_tables": [], "missing_columns": [],
+                         "missing_functions": [], "missing_privileges": []}
+
     async def runtime_schema_readiness(self):
-        return {"ready": True, "missing_tables": [], "missing_columns": [],
-                "missing_functions": [], "missing_privileges": []}
+        return copy.deepcopy(self.runtime_readiness)
 
     async def get_agent(self, owner_id, agent_id):
         if owner_id == OWNER and agent_id == AGENT:
@@ -722,4 +724,49 @@ def test_cancelled_task_is_finalized_before_any_tool_execution(monkeypatch):
         assert response.json()["task"]["error_code"] == "cancelled_by_requester"
         assert FakeRuntimeStore.checkpoints.get(task["id"], []) == []
     finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+
+def test_model_planner_refuses_provider_call_when_runtime_schema_is_incomplete(monkeypatch):
+    class FakeRouter:
+        def __init__(self):
+            self.requests = []
+
+        async def preflight(self, sensitivity):
+            return {"route": "private-test"}
+
+        def max_output_tokens_for(self, sensitivity):
+            return 768
+
+        async def generate(self, generation_request):
+            self.requests.append(generation_request)
+            raise AssertionError("Model Router must not be called before schema readiness")
+
+    c = client(monkeypatch)
+    router = FakeRouter()
+    monkeypatch.setattr(app.state, "text_generation_router", router, raising=False)
+    monkeypatch.setenv("ALLPHA_AGENT_TOOL_PLANNER_ENABLED", "true")
+    FakeRuntimeStore.runtime_readiness = {
+        "ready": False,
+        "missing_tables": ["agent_runtime_tool_plans"],
+        "missing_columns": ["agent_runtime_tasks.execution_attempts"],
+        "missing_functions": ["public.heartbeat_agent_runtime_task(uuid,uuid,uuid,integer,integer)"],
+        "missing_privileges": [],
+    }
+    try:
+        session_id = create_session(c)
+        response = c.post("/v1/agent-runtime/tasks/plan", json={
+            "session_id": session_id, "skill_id": SKILL,
+            "intent": "Normalize this short text",
+            "idempotency_key": "planner-schema-not-ready-001",
+        })
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "RUNTIME_SCHEMA_NOT_READY"
+        assert router.requests == []
+    finally:
+        FakeRuntimeStore.runtime_readiness = {
+            "ready": True, "missing_tables": [], "missing_columns": [],
+            "missing_functions": [], "missing_privileges": [],
+        }
         app.dependency_overrides.pop(current_user, None)
