@@ -596,17 +596,47 @@ async def get_my_profile_feed(
         media_by_id.setdefault(str(row["content_id"]), []).append(item)
     profile_rows = await _profiles_for({owner})
     creator = profile_rows.get(owner, {})
+    attributed_ids = sorted({str(row.get("ai_agent_id")) for row in page if row.get("ai_agent_id")})
+    profile_agent_by_id: dict[str, dict[str, Any]] = {}
+    if attributed_ids:
+        profile_agents, profile_ownerships = await asyncio.gather(
+            _server_db("GET", "ai_agents", params={
+                "select": "id,handle,display_name,avatar_url,description,disclosure,status,visibility",
+                "id": f"in.({','.join(attributed_ids)})", "status": "eq.active",
+                "visibility": "eq.public", "limit": str(min(1000, len(attributed_ids))),
+            }),
+            _server_db("GET", "agent_ownerships", params={
+                "select": "agent_id,owner_user_id,ownership_role,status",
+                "agent_id": f"in.({','.join(attributed_ids)})", "owner_user_id": f"eq.{owner}",
+                "ownership_role": "eq.owner", "status": "eq.active", "limit": "1000",
+            }),
+        )
+        active_profile_agents = {str(item.get("agent_id")) for item in (profile_ownerships or [])}
+        profile_agent_by_id = {
+            str(item["id"]): item for item in (profile_agents or [])
+            if str(item.get("id")) in active_profile_agents
+        }
     items = []
     for row in page:
         content_id = str(row["id"])
-        items.append({
-            **row,
+        agent = profile_agent_by_id.get(str(row.get("ai_agent_id") or ""))
+        provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        item = {key: value for key, value in row.items() if key != "provenance"}
+        item.update({
             "media": media_by_id.get(content_id, []),
             "agent_shares": agent_shares_by_content.get(content_id, []),
             "creator": {
                 "username": creator.get("username"),
                 "display_name": creator.get("display_name") or creator.get("username") or "Kreator",
                 "avatar_url": creator.get("avatar_url"),
+            },
+            "agent": ({key: agent.get(key) for key in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None),
+            "author_type": "agent" if agent else "human",
+            "authorship": {
+                "type": "human_agent" if agent and provenance.get("coauthored") is True else ("agent_attributed" if agent else "human"),
+                "human_owner_id": owner if agent and provenance.get("coauthored") is True else None,
+                "agent": ({key: agent.get(key) for key in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")} if agent else None),
+                "disclosure": (provenance.get("disclosure") if provenance.get("coauthored") is True else (agent.get("disclosure") if agent else None)),
             },
             "engagement": {
                 "likes": likes_by_id.get(content_id, 0),
@@ -618,6 +648,7 @@ async def get_my_profile_feed(
             "viewer_reaction": viewer_reactions.get(content_id),
             "saved": content_id in viewer_saves,
         })
+        items.append(item)
     return {"items": items, "count": len(items), "source": "authenticated_owner_content"}
 
 
