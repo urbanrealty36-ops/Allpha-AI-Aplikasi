@@ -257,13 +257,15 @@ class MemoryCoordinator:
             remaining=max_chars-used
             if remaining<=0:break
             bounded=content[:remaining]
+            retrieved_digest=hashlib.sha256(bounded.encode()).hexdigest()
             used+=len(bounded)
             score=row.get("retrieval_score",0)
             try:score=float(score or 0)
             except (TypeError,ValueError):raise MemoryUnavailable("Memory retrieval score is invalid")
             if not (score==score and abs(score)!=float("inf")):
                 raise MemoryUnavailable("Memory retrieval score is not finite")
-            out.append({**row,"content":bounded,"retrieval_method":"keyword" if normalized_query else "metadata",
+            out.append({**row,"content":bounded,"retrieved_content_sha256":retrieved_digest,
+                        "retrieval_method":"keyword" if normalized_query else "metadata",
                         "retrieval_score":score})
             if used>=max_chars:break
         return out
