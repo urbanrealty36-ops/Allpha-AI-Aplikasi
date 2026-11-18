@@ -160,7 +160,7 @@ import json
 import time
 from datetime import datetime, timezone
 from dataclasses import asdict
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
 
 @dataclass(frozen=True)
@@ -178,6 +178,7 @@ class TextGenerationRequest:
     source_version: int = 1
     billing_account_id: str | None = None
     system_prompt: str = ""
+    response_format: Literal["json_object"] | None = None
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
