@@ -17,7 +17,7 @@ begin
   if (select auth.role()) <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  if p_lease_seconds < 5 or p_lease_seconds > 300 then
+  if p_lease_seconds is null or p_lease_seconds < 5 or p_lease_seconds > 300 then
     raise exception 'lease_duration_out_of_bounds' using errcode='22023';
   end if;
 
