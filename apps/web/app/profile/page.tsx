@@ -231,6 +231,10 @@ export default function ProfilePage() {
  async function selectProfileAgent(agentId: string): Promise<void> {
   const selected = agents.find(item => item.id === agentId);
   if (!selected) return;
+  if (!human) {
+   setError("Profil Human belum tersedia. Muat ulang setelah provisioning profil selesai.");
+   return;
+  }
   const nextProfile: AIAgentProfile = {
    id: selected.id,
    name: selected.display_name,
