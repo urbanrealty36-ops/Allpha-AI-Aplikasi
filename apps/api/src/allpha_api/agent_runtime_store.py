@@ -244,6 +244,12 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
+    async def runtime_schema_readiness(self) -> dict[str, Any]:
+        result = await self.request("POST", "rpc/agent_runtime_worker_schema_readiness", body={})
+        if not isinstance(result, dict) or not isinstance(result.get("ready"), bool):
+            raise AgentRuntimePersistenceError("runtime worker schema readiness response is invalid")
+        return result
+
     async def list_runnable_planned_tasks(self, *, limit: int = 10) -> list[dict[str, Any]]:
         """Return due created/queued/retrying or lease-expired planned tasks."""
         bounded_limit = max(1, min(limit, 25))
