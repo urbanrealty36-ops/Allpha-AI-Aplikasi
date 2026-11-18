@@ -137,6 +137,39 @@ def _stored_tool_plan(row: dict[str, Any]) -> list[dict[str, Any]] | None:
     return steps
 
 
+def _memory_context_snapshot(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    """Build a bounded prompt payload and non-content provenance for planner idempotency."""
+    context: list[dict[str, Any]] = []
+    references: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise MemoryUnavailable("Memory retrieval returned a malformed item")
+        content = item.get("content")
+        content_sha256 = item.get("content_sha256")
+        item_id = item.get("id")
+        version = item.get("version")
+        policy_version = item.get("policy_version")
+        if (not isinstance(content, str) or not content
+                or not isinstance(content_sha256, str)
+                or hashlib.sha256(content.encode("utf-8")).hexdigest() != content_sha256
+                or not isinstance(item_id, str) or not item_id
+                or not isinstance(version, int) or isinstance(version, bool) or version < 1
+                or not isinstance(policy_version, int) or isinstance(policy_version, bool) or policy_version < 1):
+            raise MemoryUnavailable("Memory retrieval provenance is incomplete or invalid")
+        context.append({
+            "memory_type": str(item.get("memory_type") or ""),
+            "classification": str(item.get("classification") or ""),
+            "content": content,
+        })
+        references.append({
+            "id": item_id, "content_sha256": content_sha256,
+            "version": version, "policy_version": policy_version,
+        })
+    encoded = json.dumps(context, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return context, references, hashlib.sha256(encoded).hexdigest()
+
+
 def _resolve_plan_inputs(step: dict[str, Any], outputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
     inputs = dict(step.get("inputs") or {})
     bindings = step.get("bindings") or {}
@@ -657,20 +690,13 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
                     "code": "MEMORY_CONTEXT_UNAVAILABLE",
                     "message": "Memory berizin tidak dapat diverifikasi; perencanaan dihentikan.",
                 }) from exc
-        memory_context_payload = [
-            {"memory_type": item.get("memory_type"), "classification": item.get("classification"),
-             "content": item.get("content", "")}
-            for item in memory_items
-            if isinstance(item, dict) and isinstance(item.get("content"), str)
-        ]
-        memory_context_bytes = json.dumps(memory_context_payload, ensure_ascii=False, sort_keys=True,
-                                          separators=(",", ":"), allow_nan=False).encode("utf-8")
-        memory_context_sha256 = hashlib.sha256(memory_context_bytes).hexdigest()
-        memory_context_refs = [
-            {"id": str(item["id"]), "content_sha256": str(item["content_sha256"]),
-             "version": int(item["version"]), "policy_version": int(item["policy_version"])}
-            for item in memory_items if isinstance(item, dict) and item.get("id")
-        ]
+        try:
+            memory_context_payload, memory_context_refs, memory_context_sha256 = _memory_context_snapshot(memory_items)
+        except MemoryUnavailable as exc:
+            raise HTTPException(status_code=503, detail={
+                "code": "MEMORY_CONTEXT_UNAVAILABLE",
+                "message": "Provenance Memory tidak valid; perencanaan dihentikan.",
+            }) from exc
         intent_sha = hashlib.sha256(payload.intent.encode("utf-8")).hexdigest()
         fingerprint_material = json.dumps({
             "owner_id": owner_id, "session_id": str(payload.session_id),
