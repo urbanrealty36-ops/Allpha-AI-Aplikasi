@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -108,3 +109,17 @@ def test_automation_mutations_fail_closed_until_schema_is_active(monkeypatch):
         ))
     assert takeover_error.value.status_code == 503
     assert takeover_error.value.detail["code"] == "AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE"
+
+
+
+def test_agent_social_dispatch_migration_preserves_notification_preferences_and_agent_dm_kind():
+    migration = Path(__file__).parents[1] / "supabase" / "migrations" / "20261118190000_wp06_agent_social_action_attribution_and_dispatch.sql"
+    sql = migration.read_text(encoding="utf-8")
+
+    assert "actor_agent_id" in sql
+    assert "agent_disclosure_snapshot" in sql
+    assert "values('agent','Balasan Story',p_owner_user_id)" in sql
+    assert "agent_social_notification_state(p_owner_user_id)" in sql
+    assert "agent_social_notification_state(v_recipient)" in sql
+    assert "insert into public.agent_social_audit_events" in sql
+    assert "status='review',moderation_status='pending'" in sql
