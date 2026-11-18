@@ -37,7 +37,8 @@ def _batch_size() -> int:
 
 
 async def run_once(store: AgentRuntimeStore) -> int:
-    """Process one bounded batch. Unknown effects are terminalized, never replayed."""
+    """Process one bounded batch with bounded retries and fail-closed terminalization."""
+    await store.reap_retry_exhaustion()
     rows = await store.list_runnable_planned_tasks(limit=_batch_size())
     processed = 0
     for row in rows:
@@ -58,8 +59,17 @@ async def run_once(store: AgentRuntimeStore) -> int:
             processed += 1
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
+            code = str(detail.get("code") or "RUNTIME_TASK_REJECTED")
+            if row.get("state") in {"created", "queued", "retrying"}:
+                try:
+                    await store.fail_unclaimed_task(
+                        owner_id, task_id, int(row.get("task_version") or 1), code,
+                    )
+                except AgentRuntimePersistenceError:
+                    logger.exception("Could not terminalize unclaimed runtime task; task_id=%s", task_id)
+                    break
             logger.info("Runtime task not completed; task_id=%s status=%s code=%s",
-                        task_id, exc.status_code, detail.get("code", "RUNTIME_TASK_REJECTED"))
+                        task_id, exc.status_code, code)
             processed += 1
         except AgentRuntimePersistenceError:
             # Outcome may be uncertain. Stop this batch and let lease/recovery logic decide.
