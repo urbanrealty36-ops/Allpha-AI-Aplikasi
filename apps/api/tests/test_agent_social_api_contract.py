@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from pydantic import ValidationError
 from fastapi import HTTPException
 
 from allpha_api import agent_social_api
-from allpha_api.agent_social_api import (ApprovalDecision, AutomationPolicyWrite, CoauthoredDraft, PolicyWrite, TakeoverWrite)
+from allpha_api.agent_social_api import (ApprovalDecision, AutomationGrantRevoke, AutomationGrantWrite, AutomationPolicyWrite, CoauthoredDraft, PolicyWrite, TakeoverWrite)
 
 
 AGENT = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -164,3 +165,63 @@ def test_already_approved_social_action_can_be_idempotently_replayed_when_flag_i
     assert result["outcome"] == "replayed"
     assert result["approval_complete"] is True
     assert len(calls) == 2
+
+
+
+def test_automation_grant_contract_rejects_duplicate_or_expired_scopes():
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+    with pytest.raises(ValidationError):
+        AutomationGrantWrite(
+            granted_scopes=["comments", "comments"],
+            idempotency_key="social-grant-001", expires_at=future,
+        )
+    with pytest.raises(ValidationError):
+        AutomationGrantWrite(
+            granted_scopes=["comments"],
+            idempotency_key="social-grant-002",
+            expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+
+
+def test_automation_grant_read_is_safe_when_schema_is_not_active(monkeypatch):
+    async def owned(owner_id, agent_id):
+        return {"id": agent_id}
+
+    async def forbidden_db(*args, **kwargs):
+        raise AssertionError("automation grant schema must not be queried while its feature gate is off")
+
+    monkeypatch.setattr(agent_social_api, "_active_owned_agent", owned)
+    monkeypatch.setattr(agent_social_api, "_server_db", forbidden_db)
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false")
+
+    result = asyncio.run(agent_social_api.list_automation_grants(
+        AGENT, {"id": str(uuid.uuid4())},
+    ))
+    assert result == {"items": [], "schema_active": False, "auto_reply_runtime_enabled": False}
+
+
+def test_automation_grant_create_and_revoke_fail_closed_until_schema_is_active(monkeypatch):
+    async def owned(owner_id, agent_id):
+        return {"id": agent_id}
+
+    async def forbidden_db(*args, **kwargs):
+        raise AssertionError("automation grant schema must not be queried while its feature gate is off")
+
+    monkeypatch.setattr(agent_social_api, "_active_owned_agent", owned)
+    monkeypatch.setattr(agent_social_api, "_server_db", forbidden_db)
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false")
+    owner = {"id": str(uuid.uuid4())}
+    grant = AutomationGrantWrite(
+        granted_scopes=["comments"], idempotency_key="social-grant-003",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+
+    with pytest.raises(HTTPException) as create_error:
+        asyncio.run(agent_social_api.create_automation_grant(AGENT, grant, owner))
+    assert create_error.value.status_code == 503
+
+    with pytest.raises(HTTPException) as revoke_error:
+        asyncio.run(agent_social_api.revoke_automation_grant(
+            AGENT, uuid.uuid4(), AutomationGrantRevoke(), owner,
+        ))
+    assert revoke_error.value.status_code == 503
