@@ -199,11 +199,19 @@ class AgentConsumerGrantStore:
                      reason: str) -> dict[str, Any]:
         rows = await self._request(
             "GET", "agent_consumer_grants",
-            params={"select":"id,status,owner_user_id,agent_id", "id":f"eq.{grant_id}",
+            params={"select":"id,status,owner_user_id,agent_id,revoked_at,revoke_reason", "id":f"eq.{grant_id}",
                     "owner_user_id":f"eq.{owner_id}", "agent_id":f"eq.{agent_id}", "limit":"1"},
         )
         if not rows:
             raise LookupError("Consumer grant not found")
+        if rows[0].get("status") == "revoked":
+            return {
+                "grant_id": grant_id, "agent_id": agent_id, "status": "revoked",
+                "revoked_at": rows[0].get("revoked_at"),
+                "revoke_reason": rows[0].get("revoke_reason"),
+                "queued_cancelled": 0, "queued_pending_reconciliation": 0,
+                "running_pending_reconciliation": 0,
+            }
         result = await self._request(
             "POST", "rpc/agent_consumer_grant_revoke",
             body={
