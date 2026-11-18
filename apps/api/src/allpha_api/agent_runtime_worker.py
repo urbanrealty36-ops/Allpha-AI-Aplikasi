@@ -37,7 +37,16 @@ def _batch_size() -> int:
 
 
 async def run_once(store: AgentRuntimeStore) -> int:
-    """Process one bounded batch with bounded retries and fail-closed terminalization."""
+    """Process one bounded batch only after the complete canonical schema is ready."""
+    readiness = await store.runtime_schema_readiness()
+    if readiness.get("ready") is not True:
+        logger.error(
+            "Agent Runtime worker remains idle; missing_tables=%s missing_columns=%s missing_functions=%s",
+            readiness.get("missing_tables") or [],
+            readiness.get("missing_columns") or [],
+            readiness.get("missing_functions") or [],
+        )
+        return 0
     await store.reap_retry_exhaustion()
     rows = await store.list_runnable_planned_tasks(limit=_batch_size())
     processed = 0
