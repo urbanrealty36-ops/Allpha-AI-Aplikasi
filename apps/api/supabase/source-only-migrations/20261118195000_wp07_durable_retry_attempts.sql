@@ -161,7 +161,8 @@ create or replace function public.fail_unclaimed_agent_runtime_task(
   p_task_id uuid,
   p_owner_user_id uuid,
   p_task_version integer,
-  p_error_code text
+  p_error_code text,
+  p_lease_token uuid default null
 ) returns setof public.agent_runtime_tasks
 language plpgsql
 security definer
@@ -182,8 +183,13 @@ begin
            'state','failed','at',now(),'trace_id',t.trace_id,'reason_code',p_error_code))
    where t.id=p_task_id and t.owner_user_id=p_owner_user_id
      and t.task_version=p_task_version
-     and t.state in ('created','queued','retrying')
-     and t.execution_lease_token is null
+     and (
+       (t.state in ('created','queued','retrying') and t.execution_lease_token is null)
+       or
+       (t.state='executing' and t.lease_expires_at<=now()
+         and t.execution_lease_token is not distinct from p_lease_token
+         and coalesce(t.effect_outcome,'none') not in ('started','unknown'))
+     )
   returning t.*;
 end;
 $$;
@@ -194,7 +200,7 @@ revoke all on function public.schedule_agent_runtime_retry(uuid,uuid,uuid,intege
   from public,anon,authenticated;
 revoke all on function public.reap_agent_runtime_retry_exhaustion()
   from public,anon,authenticated;
-revoke all on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text)
+revoke all on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid)
   from public,anon,authenticated;
 grant execute on function public.claim_agent_runtime_task(uuid,uuid,uuid,integer) to service_role;
 grant execute on function public.schedule_agent_runtime_retry(uuid,uuid,uuid,integer,text,integer,jsonb,jsonb) to service_role;
