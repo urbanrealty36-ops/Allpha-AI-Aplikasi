@@ -1,6 +1,7 @@
 """Authenticated FastAPI endpoints for the ENG-P10 Agent Runtime."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -196,6 +197,35 @@ def _resolve_plan_inputs(step: dict[str, Any], outputs: dict[str, dict[str, Any]
     return inputs
 
 
+async def _runtime_lease_heartbeat(
+    store: AgentRuntimeStore, owner_id: str, task_id: str, lease_token: str,
+    task_version: int, stop: asyncio.Event, lease_lost: asyncio.Event,
+    cancellation_requested: asyncio.Event,
+) -> None:
+    """Renew a live worker lease and surface cancellation without extending it."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=15)
+            return
+        except asyncio.TimeoutError:
+            pass
+        if stop.is_set():
+            return
+        try:
+            current = await store.heartbeat_task(
+                owner_id, task_id, lease_token, task_version, lease_seconds=60,
+            )
+        except AgentRuntimePersistenceError:
+            lease_lost.set()
+            return
+        if not current:
+            lease_lost.set()
+            return
+        if current.get("cancel_requested"):
+            cancellation_requested.set()
+            return
+
+
 async def _execute_planned_task(
     store: AgentRuntimeStore, owner_id: str, task_id: str, initial_row: dict[str, Any]
 ) -> dict[str, Any]:
@@ -365,8 +395,39 @@ async def _execute_planned_task(
     deadline = time.monotonic() + max_runtime
     trace_events: list[dict[str, Any]] = []
     next_checkpoint_sequence = int(row.get("checkpoint_seq") or 0) + 1
+    heartbeat_stop = asyncio.Event()
+    lease_lost = asyncio.Event()
+    cancellation_requested = asyncio.Event()
+    heartbeat_task = asyncio.create_task(_runtime_lease_heartbeat(
+        store, owner_id, task_id, lease_token, int(row["task_version"]),
+        heartbeat_stop, lease_lost, cancellation_requested,
+    ))
+
+    async def finish_cancelled_if_requested() -> dict[str, Any] | None:
+        if lease_lost.is_set():
+            raise AgentRuntimePersistenceError("runtime task lease heartbeat was lost")
+        if not cancellation_requested.is_set() and not row.get("cancel_requested"):
+            return None
+        partial = {
+            "state": "cancelled", "tool_plan_version": 1,
+            "steps": completed_steps, "trace_id": row["trace_id"],
+            "result": outputs.get(str(plan[len(completed_steps) - 1]["step_id"])) if completed_steps else None,
+        } if completed_steps else None
+        cancelled = await store.finalize_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            state="cancelled", output_payload=partial,
+            error_code="cancelled_by_requester",
+            event_log=list(row.get("event_log") or []) + trace_events,
+        )
+        if not cancelled:
+            raise AgentRuntimePersistenceError("cancelled runtime task could not be durably committed")
+        return {"task": cancelled, "idempotent_replay": False}
+
     try:
         for index, step in enumerate(plan[len(completed_steps):], start=len(completed_steps)):
+            cancelled = await finish_cancelled_if_requested()
+            if cancelled:
+                return cancelled
             step_key = "step:" + str(step["step_id"])
             inputs = _resolve_plan_inputs(step, outputs)
             envelope = AgentTaskEnvelope(
@@ -416,6 +477,9 @@ async def _execute_planned_task(
             completed_steps.append({"step_id": step["step_id"], "tool_key": step["tool_key"], "result": result["result"], "resumed": False})
             trace_events.extend(result.get("events") or [])
 
+        cancelled = await finish_cancelled_if_requested()
+        if cancelled:
+            return cancelled
         output_payload = {
             "state": "succeeded", "tool_plan_version": 1,
             "steps": completed_steps, "result": outputs[str(plan[-1]["step_id"])],
@@ -462,6 +526,12 @@ async def _execute_planned_task(
             if not failed:
                 raise AgentRuntimePersistenceError("invalid planned checkpoint could not be terminalized") from exc
         raise
+    finally:
+        heartbeat_stop.set()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
 
 @router.get("/agents")
