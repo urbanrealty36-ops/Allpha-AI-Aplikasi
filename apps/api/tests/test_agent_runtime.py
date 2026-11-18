@@ -162,6 +162,7 @@ def test_consumer_tool_execution_requires_tool_scope_and_exact_allowlist_without
         consumer_authorization=consumer, skill_tool_dependencies=("text.normalize",),
         runtime_authorization=runtime_auth,
         skill_budget_limits={"max_tool_calls": 1, "max_runtime_seconds": 3},
+        skill_tool_inputs={"text.normalize": {"text": "  hello   world  "}},
     ))
     assert result == ("generated", "evidence")
     assert router.seen_prompt == "hello world"
