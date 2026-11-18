@@ -338,6 +338,15 @@ class AgentRuntime:
             raise AgentRuntimeBlocked("canonical Agent and Skill identity/version are required")
         if not skill_published:
             raise AgentRuntimeBlocked("only a published Skill version can execute")
+        preflight_dependencies = tuple(skill_tool_dependencies)
+        if requester_id != owner_id and preflight_dependencies:
+            consumer = consumer_authorization
+            if consumer is None or "tool_invoke" not in consumer.granted_scopes:
+                raise AgentRuntimeBlocked("external Consumer tool execution requires an explicit tool-scoped grant")
+            if set(preflight_dependencies) != set(consumer.allowed_tool_keys):
+                raise AgentRuntimeBlocked("external Consumer grant must match the exact pinned Skill tool set")
+            if set(skill_tool_inputs or {}) != set(preflight_dependencies):
+                raise AgentRuntimeBlocked("external Consumer must provide typed inputs for every granted Skill tool")
         if request.task_id == "" or not request.idempotency_key or not request.trace_id:
             raise AgentRuntimeBlocked("generation task, trace and idempotency identities are required")
         try:
