@@ -654,7 +654,7 @@ def test_recovery_marks_unknown_effect_failed_without_replay(monkeypatch):
 
 
 
-def test_tool_planner_repairs_one_invalid_structured_response(monkeypatch):
+def test_tool_planner_replans_twice_after_invalid_structured_responses(monkeypatch):
     import allpha_api.agent_runtime_api as runtime_api
 
     class FakeRouter:
@@ -673,6 +673,8 @@ def test_tool_planner_repairs_one_invalid_structured_response(monkeypatch):
             output = (
                 '{"steps":[{"step_id":"normalize","tool_key":"unknown.tool","inputs":{},"bindings":{}}]}'
                 if len(self.requests) == 1 else
+                '{"steps":[{"step_id":"normalize","tool_key":"text.normalize","inputs":{},"bindings":{}}]}'
+                if len(self.requests) == 2 else
                 '{"steps":[{"step_id":"normalize","tool_key":"text.normalize","inputs":{"text":"hello"},"bindings":{}}]}'
             )
             evidence = SimpleNamespace(
@@ -698,13 +700,15 @@ def test_tool_planner_repairs_one_invalid_structured_response(monkeypatch):
         assert response.status_code == 201
         payload = response.json()
         assert payload["tool_plan"][0]["tool_key"] == "text.normalize"
-        assert payload["planner_evidence"]["replan_count"] == 1
-        assert len(payload["planner_evidence"]["planning_attempts"]) == 2
+        assert payload["planner_evidence"]["replan_count"] == 2
+        assert len(payload["planner_evidence"]["planning_attempts"]) == 3
         assert router.requests[0].response_format == "json_object"
         assert router.requests[1].response_format == "json_object"
-        assert router.requests[0].task_id != router.requests[1].task_id
-        assert router.requests[0].idempotency_key != router.requests[1].idempotency_key
+        assert router.requests[2].response_format == "json_object"
+        assert len({item.task_id for item in router.requests}) == 3
+        assert len({item.idempotency_key for item in router.requests}) == 3
         assert "PRIOR INVALID JSON" in router.requests[1].prompt
+        assert "PRIOR INVALID JSON" in router.requests[2].prompt
     finally:
         app.dependency_overrides.pop(current_user, None)
 
