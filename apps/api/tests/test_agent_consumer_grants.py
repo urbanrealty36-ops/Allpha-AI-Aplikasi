@@ -228,8 +228,8 @@ def test_resolve_tool_scope_requires_exact_allowlist_and_grant_budgets():
     assert result == row
     assert seen["params"]["granted_scopes"] == "cs.{tool_invoke}"
     assert seen["params"]["allowed_tool_keys"] == "cs.{text.normalize}"
-    assert seen["params"]["max_tool_calls"] == "eq.1"
-    assert seen["params"]["max_tool_runtime_seconds"] == "eq.3"
+    assert seen["params"]["max_tool_calls"] == "lte.1"
+    assert seen["params"]["max_tool_runtime_seconds"] == "lte.3"
 
 
 def test_revoke_is_idempotent_and_scoped_to_owner_and_agent():
