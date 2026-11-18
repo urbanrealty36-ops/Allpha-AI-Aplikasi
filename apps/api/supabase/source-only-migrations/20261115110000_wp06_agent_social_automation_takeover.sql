@@ -2,6 +2,16 @@
 -- Auto Reply execution remains disabled until the canonical event consumer is wired and approved.
 begin;
 
+alter table public.agent_social_audit_events
+  drop constraint if exists agent_social_audit_events_event_type_check;
+alter table public.agent_social_audit_events
+  add constraint agent_social_audit_events_event_type_check
+  check (event_type in (
+    'policy_created','policy_updated','policy_disabled','draft_requested',
+    'approval_approved','approval_rejected','approval_revoked',
+    'automation_policy_saved','takeover_activated','takeover_released'
+  ));
+
 alter table public.agent_social_presence_policies
   add column if not exists auto_reply_enabled boolean not null default false,
   add column if not exists auto_reply_channels text[] not null default '{}'::text[],
