@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from allpha_api.agent_runtime import (
-    AgentRuntime, AgentRuntimeBlocked, AgentTask, AgentTaskEnvelope,
+    AgentRuntime, AgentRuntimeBlocked, AgentRuntimeRetryable, AgentTask, AgentTaskEnvelope,
     AgentTaskState, RuntimeAuthorization,
 )
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
@@ -239,7 +239,7 @@ async def _execute_planned_task(
     if row.get("state") == "cancelled":
         raise HTTPException(status_code=409, detail={"code": "TASK_CANCELLED", "message": "Task telah dibatalkan."})
     resuming = row.get("state") == "executing"
-    if not resuming and row.get("state") != "created":
+    if not resuming and row.get("state") not in {"created", "queued", "retrying"}:
         raise HTTPException(status_code=409, detail={"code": "TASK_NOT_EXECUTABLE", "message": "Task tidak berada pada state yang dapat dieksekusi."})
     if resuming:
         try:
@@ -504,6 +504,23 @@ async def _execute_planned_task(
         if not completed:
             raise AgentRuntimePersistenceError("planned task result could not be durably committed")
         return {"task": completed, "idempotent_replay": False}
+    except AgentRuntimeRetryable as exc:
+        attempts = max(1, int(row.get("execution_attempts") or 1))
+        retry_after = min(60, 5 * (2 ** max(0, attempts - 1)))
+        partial = {
+            "state": "partially_succeeded" if completed_steps else "retrying",
+            "tool_plan_version": 1, "steps": completed_steps,
+            "trace_id": row["trace_id"], "error_code": str(exc),
+        } if completed_steps else None
+        retried = await store.schedule_retry_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            error_code=str(exc), retry_after_seconds=retry_after,
+            output_payload=partial,
+            event_log=list(row.get("event_log") or []) + trace_events,
+        )
+        if not retried:
+            raise AgentRuntimePersistenceError("retry scheduling was not durably committed") from exc
+        return {"task": retried, "retry_scheduled": retried.get("state") == "retrying"}
     except (AgentRuntimeBlocked, UnknownToolError, ToolInputError) as exc:
         partial = {
             "state": "partially_succeeded" if completed_steps else "failed",
