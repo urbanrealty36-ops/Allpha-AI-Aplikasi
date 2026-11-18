@@ -1,11 +1,12 @@
 """WP-06 owner-governed Human + AI Agent social presence contracts."""
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from allpha_api.auth import current_user
 from allpha_api.content_api import _server_db
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/v1/agent-social", tags=["agent-social-presence"])
 class PolicyWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allowed_actions: list[Literal["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"]] = Field(default_factory=lambda: ["draft_post"], max_length=5)
-    approval_mode: Literal["every_post", "high_risk_only", "disabled"] = "every_post"
+    approval_mode: Literal["every_post", "disabled"] = "every_post"
     disclosure_text: str = Field(default="Dibuat bersama AI Agent", min_length=8, max_length=180)
     is_enabled: bool = True
     expected_version: int | None = Field(default=None, ge=1)
@@ -106,6 +107,25 @@ class CoauthoredDraft(BaseModel):
     target_content_id: uuid.UUID | None = None
     target_comment_id: uuid.UUID | None = None
     idempotency_key: str = Field(min_length=12, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
+
+    @model_validator(mode="after")
+    def validate_action_targets(self) -> "CoauthoredDraft":
+        if self.action_type == "draft_post":
+            if self.target_content_id is not None or self.target_comment_id is not None or self.content_type == "story":
+                raise ValueError("draft_post cannot target another item and cannot use story content_type")
+        elif self.action_type == "draft_comment":
+            if self.target_content_id is None or self.target_comment_id is not None or self.content_type != "text":
+                raise ValueError("draft_comment requires a content target and text content_type")
+        elif self.action_type == "draft_reply":
+            if self.target_content_id is None or self.target_comment_id is None or self.content_type != "text":
+                raise ValueError("draft_reply requires content and comment targets and text content_type")
+        elif self.action_type == "suggest_repost":
+            if self.target_content_id is None or self.target_comment_id is not None or self.content_type != "text":
+                raise ValueError("suggest_repost requires a content target and text content_type")
+        elif self.action_type == "draft_story":
+            if self.target_content_id is None or self.target_comment_id is not None or self.content_type != "story":
+                raise ValueError("draft_story requires a Story target and story content_type")
+        return self
 
 
 class ApprovalDecision(BaseModel):
@@ -211,7 +231,7 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
 @router.get("/approvals")
 async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await _server_db("GET", "agent_social_action_approvals", params={
-        "select": "id,agent_id,content_id,action_type,content_version,status,disclosure_snapshot,requested_at,decided_at,decision_reason",
+        "select": "id,agent_id,content_id,target_content_id,target_comment_id,action_type,content_version,status,disclosure_snapshot,requested_at,decided_at,decision_reason,execution_result",
         "owner_user_id": f"eq.{user['id']}", "order": "requested_at.desc", "limit": "100",
     })
     return {"items": rows or []}
@@ -225,6 +245,21 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
     Approval state, comment/Story DM side effects, audit and ENG-P20 inbox
     notifications are committed or rolled back together by this RPC.
     """
+    approval_rows = await _server_db("GET", "agent_social_action_approvals", params={
+        "select": "id,action_type,status",
+        "id": f"eq.{approval_id}", "owner_user_id": f"eq.{user['id']}", "limit": "1",
+    })
+    if not approval_rows:
+        raise HTTPException(404, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_FOUND",
+                                         "message": "Permintaan persetujuan tidak ditemukan."})
+    action_type = str(approval_rows[0].get("action_type") or "")
+    dispatch_actions = {"draft_post", "draft_comment", "draft_reply", "suggest_repost"}
+    if (payload.decision == "approve" and action_type in dispatch_actions
+            and os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() != "true"):
+        raise HTTPException(503, detail={
+            "code": "AGENT_SOCIAL_ACTION_SCHEMA_NOT_ACTIVE",
+            "message": "Eksekusi aksi sosial Agent menunggu migration atribusi dan dispatch WP-06 serta aktivasi backend. Approval belum diproses.",
+        })
     result = await _server_db("POST", "rpc/decide_agent_social_approval", body={
         "p_approval_id": str(approval_id),
         "p_owner_user_id": str(user["id"]),
@@ -240,7 +275,9 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
         "outcome": result["outcome"],
         "approval": approval,
         "execution": execution,
-        "publishable": result["outcome"] in ("approved", "replayed") and approval.get("status") == "approved",
+        "publishable": False,
+        "approval_complete": result["outcome"] in ("approved", "replayed") and approval.get("status") == "approved",
+        "submitted_for_moderation": execution.get("kind") == "post_moderation",
         "next_action": execution.get("next_action") or (
             "open_story_dm" if execution.get("kind") == "story_dm" else
             "open_comment_thread" if execution.get("kind") == "comment" else
