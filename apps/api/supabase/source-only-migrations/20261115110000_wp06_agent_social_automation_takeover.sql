@@ -157,6 +157,10 @@ begin
   values(p_owner_user_id,p_agent_id,v_policy.id,'automation_policy_saved',p_owner_user_id,
     jsonb_build_object('automation_version',v_policy.automation_version,'channels',v_policy.auto_reply_channels,
       'auto_reply_enabled',false,'reason','runtime_consumer_not_yet_wired'));
+  insert into public.agent_social_audit_events(owner_user_id,agent_id,actor_user_id,event_type,outcome,metadata)
+  values(p_owner_user_id,p_agent_id,p_owner_user_id,'automation_policy_saved','allowed',
+    jsonb_build_object('automation_version',v_policy.automation_version,'channels',v_policy.auto_reply_channels,
+      'daily_credit_budget',v_policy.daily_credit_budget,'auto_reply_enabled',false));
   return jsonb_build_object('outcome','saved','policy',to_jsonb(v_policy),
     'auto_reply_runtime_enabled',false,'reason','AUTO_REPLY_RUNTIME_NOT_CONNECTED');
 end;
@@ -236,6 +240,11 @@ begin
   values(p_owner_user_id,p_agent_id,v_policy.id,
     case when p_takeover_active then 'takeover_activated' else 'takeover_released' end,
     p_owner_user_id,jsonb_build_object('revoked_pending_approvals',v_count,'automation_grants_revoked',v_grants_revoked,'tasks_cancelled',v_tasks_cancelled,'tasks_signalled',v_tasks_signalled,'reason',left(coalesce(p_reason,''),500)));
+  insert into public.agent_social_audit_events(owner_user_id,agent_id,actor_user_id,event_type,outcome,metadata)
+  values(p_owner_user_id,p_agent_id,p_owner_user_id,
+    case when p_takeover_active then 'takeover_activated' else 'takeover_released' end,
+    'allowed',jsonb_build_object('revoked_pending_approvals',v_count,'automation_grants_revoked',v_grants_revoked,
+      'tasks_cancelled',v_tasks_cancelled,'tasks_signalled',v_tasks_signalled,'reason',left(coalesce(p_reason,''),500)));
   return jsonb_build_object('outcome','saved','policy',to_jsonb(v_policy),
     'revoked_pending_approvals',v_count,'automation_grants_revoked',v_grants_revoked,'tasks_cancelled',v_tasks_cancelled,'tasks_signalled',v_tasks_signalled,'auto_reply_enabled',false);
 end;
