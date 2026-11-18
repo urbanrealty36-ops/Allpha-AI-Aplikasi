@@ -271,7 +271,7 @@ async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthor
     url, key = _database()
     headers = {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}
     policy_params = {
-        "select": "agent_id,policy_version,policy_document,policy_digest,approved_tool_keys,required_permission_scopes,status",
+        "select": "id,agent_id,policy_version,policy_document,policy_digest,approved_tool_keys,required_permission_scopes,status",
         "agent_id": f"eq.{job.get('agent_id')}",
         "policy_version": f"eq.{job.get('runtime_policy_version')}",
         "status": "eq.approved",
@@ -296,12 +296,21 @@ async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthor
             }, headers=headers)
             capability_response.raise_for_status()
             capability_rows = capability_response.json()
+            tool_capability_response = await client.get(f"{url}/rest/v1/agent_capabilities", params={
+                "select": "capability_key,status,required_permission_scopes,runtime_policy_id,policy_version",
+                "agent_id": f"eq.{job.get('agent_id')}",
+                "capability_key": "in.(" + ",".join(dependencies) + ")",
+                "status": "eq.approved", "limit": "5",
+            }, headers=headers)
+            tool_capability_response.raise_for_status()
+            tool_capability_rows = tool_capability_response.json()
     except (httpx.HTTPError, ValueError) as exc:
         raise RuntimeError("runtime tool authorization could not be revalidated") from exc
     if (not isinstance(policy_rows, list) or len(policy_rows) != 1
             or not isinstance(live_skill_rows, list) or len(live_skill_rows) != 1
-            or not isinstance(capability_rows, list) or len(capability_rows) != 1):
-        raise RuntimeError("approved runtime policy, Skill or Capability is unavailable")
+            or not isinstance(capability_rows, list) or len(capability_rows) != 1
+            or not isinstance(tool_capability_rows, list) or len(tool_capability_rows) != len(dependencies)):
+        raise RuntimeError("approved runtime policy, Skill or tool Capabilities are unavailable")
     row, live_skill, capability = policy_rows[0], live_skill_rows[0], capability_rows[0]
     document = row.get("policy_document")
     if not isinstance(document, dict):
@@ -315,6 +324,10 @@ async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthor
     live_skill_scopes = live_skill.get("required_permission_scopes") if isinstance(live_skill.get("required_permission_scopes"), list) else []
     live_dependencies = live_skill.get("tool_dependencies") if isinstance(live_skill.get("tool_dependencies"), list) else []
     capability_scopes = capability.get("required_permission_scopes") if isinstance(capability.get("required_permission_scopes"), list) else []
+    tool_capability_map = {
+        item.get("capability_key"): item for item in tool_capability_rows
+        if isinstance(item, dict) and item.get("capability_key")
+    }
     if (str(row.get("policy_version")) != str(job.get("runtime_policy_version"))
             or int(live_skill.get("version") or 0) != int(job.get("source_version") or 0)
             or live_dependencies != dependencies
@@ -322,8 +335,19 @@ async def _load_runtime_tool_authorization(job: dict[str, Any]) -> RuntimeAuthor
             or not set(dependencies).issubset(set(approved))
             or not set(skill_scopes).issubset(set(scopes))
             or not set(capability_scopes).issubset(set(scopes))
-            or capability.get("capability_key") != job.get("capability_id")):
+            or capability.get("capability_key") != job.get("capability_id")
+            or set(tool_capability_map) != set(dependencies)):
         raise RuntimeError("runtime policy does not authorize the current pinned Skill and Capability")
+    for tool_key in dependencies:
+        tool_capability = tool_capability_map[tool_key]
+        tool_scopes = set(get_tool(tool_key).required_permission_scopes)
+        granted_tool_scopes = set(tool_capability.get("required_permission_scopes") or [])
+        if (tool_capability.get("status") != "approved"
+                or tool_capability.get("runtime_policy_id") != row.get("id")
+                or str(tool_capability.get("policy_version")) != str(row.get("policy_version"))
+                or not tool_scopes.issubset(granted_tool_scopes)
+                or not granted_tool_scopes.issubset(set(scopes))):
+            raise RuntimeError("runtime tool capability was revoked or is not bound to the approved policy")
     return RuntimeAuthorization(
         authenticated_owner_id=str(job.get("agent_owner_user_id") or job.get("owner_user_id")),
         owned_agent_id=str(job.get("agent_id")),
