@@ -21,7 +21,8 @@ declare
   v_required_tables text[] := array[
     'agent_runtime_sessions','agent_runtime_tasks','agent_runtime_checkpoints',
     'agent_runtime_tool_plans','ai_agents','agent_skills',
-    'agent_capabilities','agent_runtime_policies'
+    'agent_capabilities','agent_runtime_policies',
+    'agent_memory_policies','agent_memory_items','agent_memory_events'
   ];
   v_required_columns text[][] := array[
     array['agent_runtime_tasks','id'],
@@ -49,7 +50,22 @@ declare
     array['agent_runtime_checkpoints','result_payload'],
     array['agent_runtime_tool_plans','owner_user_id'],
     array['agent_runtime_tool_plans','idempotency_key'],
-    array['agent_runtime_tool_plans','request_fingerprint']
+    array['agent_runtime_tool_plans','request_fingerprint'],
+    array['agent_memory_policies','owner_user_id'],
+    array['agent_memory_policies','consent_version'],
+    array['agent_memory_policies','enabled'],
+    array['agent_memory_items','owner_user_id'],
+    array['agent_memory_items','agent_id'],
+    array['agent_memory_items','memory_type'],
+    array['agent_memory_items','purpose'],
+    array['agent_memory_items','classification'],
+    array['agent_memory_items','content'],
+    array['agent_memory_items','content_sha256'],
+    array['agent_memory_items','policy_version'],
+    array['agent_memory_items','retention_expires_at'],
+    array['agent_memory_items','search_vector'],
+    array['agent_memory_events','owner_user_id'],
+    array['agent_memory_events','event_type']
   ];
   v_required_functions text[] := array[
     'public.claim_agent_runtime_task(uuid,uuid,uuid,integer)',
@@ -59,7 +75,9 @@ declare
     'public.mark_agent_runtime_effect_unknown(uuid,uuid)',
     'public.schedule_agent_runtime_retry(uuid,uuid,uuid,integer,text,integer,jsonb,jsonb)',
     'public.reap_agent_runtime_retry_exhaustion()',
-    'public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid)'
+    'public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid)',
+    'public.agent_memory_transition(text,uuid,uuid,uuid,jsonb)',
+    'public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)'
   ];
 begin
   if (select auth.role()) <> 'service_role' then
