@@ -138,9 +138,9 @@ begin
     end if;
     if v_enabled and (v_consent<>'allpha.memory.v1'
        or cardinality(v_purposes)=0
-       or v_purposes - array['agent_generation_context','agent_runtime_context','workflow_context','personalization_context'] <> '{}'
+       or not (v_purposes <@ array['agent_generation_context','agent_runtime_context','workflow_context','personalization_context'])
        or cardinality(v_sensitivities)=0
-       or v_sensitivities - array['public','internal','confidential','restricted'] <> '{}') then
+       or not (v_sensitivities <@ array['public','internal','confidential','restricted'])) then
       raise exception 'explicit current consent and valid scopes are required' using errcode='42501';
     end if;
     insert into public.agent_memory_policies(
@@ -261,7 +261,7 @@ begin
 
   if p_action='delete' then
     if item_row.status='deleted' then return to_jsonb(item_row); end if;
-    update public.agent_memory_items set status='deleted',content='',content_sha256=encode(digest('','sha256'),'hex'),
+    update public.agent_memory_items set status='deleted',content='',content_sha256='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       source_ref='{}'::jsonb,provenance='{}'::jsonb,deleted_at=v_now,updated_at=v_now
     where id=p_item_id returning * into result_row;
     insert into public.agent_memory_events(owner_user_id,agent_id,policy_id,item_id,actor_user_id,event_type,details)
