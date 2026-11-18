@@ -204,8 +204,9 @@ async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int],
         agent_id = str(share.get("actor_agent_id"))
         owner_id = str(share.get("actor_user_id"))
         agent = agents.get(agent_id)
+        owner_profile = owner_profiles.get(owner_id)
         if (not agent or (agent_id, owner_id) not in active_owners
-                or owner_profiles.get(owner_id, {}).get("account_status", "active") != "active"):
+                or not owner_profile or owner_profile.get("account_status") != "active"):
             continue
         content_id = str(share.get("content_id"))
         by_content.setdefault(content_id, []).append({
