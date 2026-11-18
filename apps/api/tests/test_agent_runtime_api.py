@@ -701,3 +701,21 @@ def test_tool_planner_repairs_one_invalid_structured_response(monkeypatch):
         assert "PRIOR INVALID JSON" in router.requests[1].prompt
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+
+def test_cancelled_task_is_finalized_before_any_tool_execution(monkeypatch):
+    c = client(monkeypatch)
+    try:
+        sid = create_session(c)
+        task = create_task(c, sid).json()["task"]
+        FakeRuntimeStore.tasks[task["id"]]["cancel_requested"] = True
+
+        response = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
+
+        assert response.status_code == 200
+        assert response.json()["task"]["state"] == "cancelled"
+        assert response.json()["task"]["error_code"] == "cancelled_by_requester"
+        assert FakeRuntimeStore.checkpoints.get(task["id"], []) == []
+    finally:
+        app.dependency_overrides.pop(current_user, None)
