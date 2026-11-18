@@ -5,6 +5,7 @@ requires a live, owner-scoped grant and an exact permission scope.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -350,6 +351,62 @@ async def get_agent_social_audit(
                 "order": "created_at.desc", "limit": str(min(max(1, limit), 100))},
     )
     return {"items": rows or [], "limit": min(max(1, limit), 100)}
+
+
+@router.get("/operator/agent-social/governance", name="get_agent_social_governance")
+async def get_agent_social_governance(
+    limit: int = 100,
+    operator: dict[str, Any] = Depends(require_operator_scope("platform:security.audit.read")),
+) -> dict[str, Any]:
+    """Read-only governance snapshot; draft bodies and private message content are never exposed."""
+    bounded_limit = min(max(1, limit), 100)
+    automation_active = os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() == "true"
+    policy_fields = (
+        "id,owner_user_id,agent_id,allowed_actions,approval_mode,disclosure_text,is_enabled,version,updated_at,"
+        "auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,"
+        "max_replies_per_minute,daily_credit_budget,quiet_hours,escalation_rules,"
+        "owner_approval_required,output_moderation_required,takeover_active,automation_version"
+        if automation_active else
+        "id,owner_user_id,agent_id,allowed_actions,approval_mode,disclosure_text,is_enabled,version,updated_at"
+    )
+    policies = await privileged_rest_request(
+        "GET", "agent_social_presence_policies",
+        params={"select": policy_fields, "order": "updated_at.desc", "limit": str(bounded_limit)},
+    )
+    approvals = await privileged_rest_request(
+        "GET", "agent_social_action_approvals",
+        params={"select": "id,owner_user_id,agent_id,action_type,status,content_id,target_content_id,target_comment_id,requested_at,decided_at,decided_by,execution_result",
+                "order": "requested_at.desc", "limit": str(bounded_limit)},
+    )
+    result: dict[str, Any] = {
+        "policies": policies or [], "approvals": approvals or [],
+        "automation_schema_active": automation_active,
+        "control_events": [], "automation_grants": [], "automation_runs": [],
+    }
+    if automation_active:
+        control_events, grants, runs = await asyncio.gather(
+            privileged_rest_request(
+                "GET", "agent_social_control_events",
+                params={"select": "id,owner_user_id,agent_id,policy_id,event_type,actor_user_id,metadata,created_at",
+                        "order": "created_at.desc", "limit": str(bounded_limit)},
+            ),
+            privileged_rest_request(
+                "GET", "agent_social_automation_grants",
+                params={"select": "id,owner_user_id,agent_id,granted_scopes,policy_version,status,expires_at,granted_by,granted_at,revoked_at,revoke_reason",
+                        "order": "granted_at.desc", "limit": str(bounded_limit)},
+            ),
+            privileged_rest_request(
+                "GET", "agent_social_automation_runs",
+                params={"select": "id,owner_user_id,agent_id,runtime_task_id,source_event_id,channel,status,created_at,updated_at",
+                        "order": "created_at.desc", "limit": str(bounded_limit)},
+            ),
+        )
+        result.update({
+            "control_events": control_events or [],
+            "automation_grants": grants or [],
+            "automation_runs": runs or [],
+        })
+    return result
 
 
 @router.get("/operator/audit", name="get_operator_audit")
