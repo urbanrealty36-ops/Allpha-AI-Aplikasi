@@ -1,3 +1,11 @@
+**WP-07 Memory readiness and planner fail-closed completion — 2026-11-18:**
+- Extended the canonical worker readiness predicate to include the three Memory Coordinator tables (policies, items, events), required consent/retention/search columns, and exact Memory lifecycle/search RPC signatures. It now verifies service_role SELECT and EXECUTE privileges for the complete runtime + Memory dependency set. This ensures the planner/worker cannot be declared ready while owner-consented Memory retrieval is missing. Files: source-only migration 20261118195500_wp07_runtime_worker_schema_readiness.sql; test_agent_runtime_retry_migration_contract.py. Commits a8491c2d9a934b5b5bfdaa2508c19f7c99001818, c31fc11cbc62024dd6fe1eb74a7de3fddb4e2ff0.
+- Planner status and plan creation now share this schema readiness gate; a missing Memory/runtime schema returns a fail-closed status before Model Router invocation. Test coverage for planner schema gating was added in test_agent_runtime_api.py; CI for the latest changes is pending/not yet inspected.
+- This readiness gate intentionally requires the canonical Memory full-text retrieval path. It does not claim vector/hybrid semantic retrieval; ADR-0004 provider/index choice remains unresolved. The Memory source migrations are not applied to Supabase.
+- WP-07 remains in_progress / source_partial / acceptance_not_verified. No WP-06, WP-11, WP-12 or Live phase is promoted.
+
+---
+
 **WP-07 planner activation guard — 2026-11-18:**
 - The Model Router planner status and POST /tasks/plan now require the same canonical runtime schema-readiness predicate as the worker. Missing task/checkpoint/tool-plan schema, retry/lease RPCs or service-role grants causes a fail-closed response before a Model Router call or planner reservation is created. This prevents creating plans that cannot be executed/recovered by the canonical worker. Files: agent_runtime_api.py, test_agent_runtime_api.py. Commits 40a5d7c4fe207f554b8c49e960bd269f33b8191d and 4f61ae71306e4fbf73e4d227854d3e9f3c23d7bd.
 - Added a focused API contract test asserting the Model Router is not called while runtime schema readiness is false (commit b3a27a36e619dee1431cb78fef1bd9037c10f6ff). CI for this commit is queued at the time of this update; no test result is claimed.
