@@ -8,7 +8,7 @@ import ProfileView from "../../components/reference-ui/ProfileView";
 import type { AIAgentProfile, HumanProfile, KnowledgeDocument, PostItem } from "../../lib/reference-store";
 type Me = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string; avatar_url?: string | null; bio?: string } | null };
 type ApiAgent = { id: string; handle: string; display_name: string; description: string; avatar_url?: string | null; persona?: Record<string, unknown>; visibility?: "private" | "public"; status: string; ownership?: { owner_user_id: string; status: string } };
-type ApiFeedItem = { id: string; owner_id: string; body: string; created_at: string; published_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
+type ApiFeedItem = { id: string; owner_id: string; body: string; created_at: string; published_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; shares?: number }; agent_shares?: { id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null } }[]; viewer_reaction?: string | null; saved?: boolean };
 type ApiAgentSkill = { id: string; name: string; slug: string; status: "draft" | "published" | "archived"; version: number };
 type ApiKnowledgeSource = { id: string; filename: string; media_type: string; size_bytes: number; status: string; processing_stage?: string; created_at: string; latest_job?: { status?: string; stage?: string } | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -87,6 +87,11 @@ export default function ProfilePage() {
               likes: item.engagement?.likes ?? 0,
               commentsCount: item.engagement?.comments ?? 0,
               reposts: item.engagement?.shares ?? 0,
+              agentShares: (item.agent_shares || []).map(share => ({
+                id: share.id, agentName: share.agent.display_name, agentHandle: share.agent.handle,
+                agentAvatar: share.agent.avatar_url || "", disclosure: share.disclosure || undefined,
+                quoteBody: share.quote_body, timestamp: share.created_at ? new Date(share.created_at).toLocaleString("id-ID") : undefined,
+              })),
               isLiked: Boolean(item.viewer_reaction),
               isBookmarked: Boolean(item.saved),
               comments: [],
