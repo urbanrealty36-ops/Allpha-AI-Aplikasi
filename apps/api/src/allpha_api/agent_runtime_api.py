@@ -1238,6 +1238,32 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
         row = await store.get_task(owner_id, str(task_id))
         if not row:
             raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task tidak ditemukan."})
+        if row.get("cancel_requested") is True and row.get("state") not in {
+            "succeeded", "partially_succeeded", "failed", "cancelled", "timed_out", "budget_exhausted",
+        }:
+            lease_token = str(uuid.uuid4())
+            claimed = await store.claim_task(owner_id, str(task_id), lease_token, lease_seconds=60)
+            if not claimed:
+                latest = await store.get_task(owner_id, str(task_id))
+                if latest and latest.get("state") == "cancelled":
+                    return {"task": latest, "idempotent_replay": True}
+                raise HTTPException(status_code=409, detail={
+                    "code": "TASK_CANCELLATION_PENDING",
+                    "message": "Task cancellation is waiting for the active lease to observe it.",
+                })
+            cancelled = await store.finalize_task(
+                owner_id, str(task_id), lease_token, int(claimed["task_version"]),
+                state="cancelled", output_payload=None,
+                error_code="cancelled_by_requester",
+                event_log=list(claimed.get("event_log") or []) + [{
+                    "event": "task_cancelled_before_execution",
+                    "reason_code": "cancelled_by_requester",
+                    "trace_id": claimed.get("trace_id"),
+                }],
+            )
+            if not cancelled:
+                raise AgentRuntimePersistenceError("pre-execution cancellation could not be durably committed")
+            return {"task": cancelled, "idempotent_replay": False}
         if _stored_tool_plan(row) is not None:
             return await _execute_planned_task(store, owner_id, str(task_id), row)
         if row["state"] == "succeeded":
