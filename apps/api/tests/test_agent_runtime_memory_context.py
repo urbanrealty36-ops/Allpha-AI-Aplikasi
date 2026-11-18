@@ -42,7 +42,7 @@ def test_memory_snapshot_contains_only_consent_scoped_prompt_data_and_provenance
 
 
 def test_memory_snapshot_fails_closed_when_content_digest_or_version_is_invalid():
-    invalid_digest = {**memory_item(), "content_sha256": "0" * 64}
+    invalid_digest = {**memory_item(), "retrieved_content_sha256": "0" * 64}
     with pytest.raises(MemoryUnavailable):
         _memory_context_snapshot([invalid_digest])
 
