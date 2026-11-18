@@ -330,6 +330,20 @@ async def _execute_planned_task(
             return {"task": latest, "idempotent_replay": True}
         raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task sedang diproses atau lease tidak tersedia."})
     row = claimed
+    if row.get("cancel_requested") is True:
+        cancelled = await store.finalize_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            state="cancelled", output_payload=None,
+            error_code="cancelled_by_requester",
+            event_log=list(row.get("event_log") or []) + [{
+                "event": "task_cancelled_before_execution",
+                "reason_code": "cancelled_by_requester",
+                "trace_id": row.get("trace_id"),
+            }],
+        )
+        if not cancelled:
+            raise AgentRuntimePersistenceError("pre-execution cancellation could not be durably committed")
+        return {"task": cancelled, "idempotent_replay": False}
     auth = RuntimeAuthorization(
         authenticated_owner_id=owner_id, owned_agent_id=str(row["agent_id"]),
         agent_version=int(agent["version"]), skill_id=str(row["skill_id"]),
