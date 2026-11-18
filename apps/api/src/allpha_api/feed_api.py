@@ -921,6 +921,7 @@ async def list_comments(
     limit: int = Query(default=30, ge=1, le=100),
     user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
+    agent_attribution_enabled = os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true"
     if user:
         await _visible_content(content_id, str(user["id"]))
         select_fields = "id,content_id,actor_user_id,body,status,created_at,updated_at"
@@ -941,9 +942,49 @@ async def list_comments(
             raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten publik tidak ditemukan atau tidak dapat diakses."})
         select_fields = "id,content_id,body,status,created_at,updated_at"
     select_fields += ",parent_comment_id"
+    if agent_attribution_enabled:
+        select_fields += ",actor_agent_id,agent_disclosure_snapshot"
     rows = await _server_db("GET", "content_comments", params={"select": select_fields,
         "content_id": f"eq.{content_id}", "status": "eq.visible", "order": "created_at.asc", "limit": str(limit)})
     items = rows or []
+    if agent_attribution_enabled and items:
+        agent_ids = sorted({str(item.get("actor_agent_id")) for item in items if item.get("actor_agent_id")})
+        agent_by_id: dict[str, dict[str, Any]] = {}
+        owner_by_agent: dict[str, str] = {}
+        if agent_ids:
+            agent_filter = "in.(" + ",".join(agent_ids) + ")"
+            agents = await _server_db("GET", "ai_agents", params={
+                "select": "id,handle,display_name,avatar_url,description,disclosure",
+                "id": agent_filter, "status": "eq.active", "visibility": "eq.public",
+                "limit": str(min(500, len(agent_ids))),
+            })
+            ownerships = await _server_db("GET", "agent_ownerships", params={
+                "select": "agent_id,owner_user_id", "agent_id": agent_filter,
+                "ownership_role": "eq.owner", "status": "eq.active",
+                "limit": str(min(500, len(agent_ids))),
+            })
+            agent_by_id = {str(row["id"]): row for row in (agents or []) if row.get("id")}
+            owner_by_agent = {str(row["agent_id"]): str(row["owner_user_id"])
+                              for row in (ownerships or []) if row.get("agent_id") and row.get("owner_user_id")}
+        attributed = []
+        for item in items:
+            raw_agent_id = str(item.get("actor_agent_id") or "")
+            owner_id = owner_by_agent.get(raw_agent_id)
+            agent = agent_by_id.get(raw_agent_id)
+            owner_matches = not user or str(item.get("actor_user_id") or "") == owner_id
+            public_agent = agent if agent and owner_id and owner_matches else None
+            attributed.append({
+                **item,
+                "author_type": "agent" if raw_agent_id else "human",
+                "actor_agent_id": raw_agent_id if public_agent else None,
+                "agent_author": ({
+                    "id": public_agent.get("id"),
+                    "handle": public_agent.get("handle"),
+                    "display_name": public_agent.get("display_name"),
+                    "avatar_url": public_agent.get("avatar_url"),
+                } if public_agent else None),
+            })
+        items = attributed
     if user and items:
         mention_rows = await _server_db("GET", "content_mentions", params={
             "select": "comment_id,mentioned_user_id", "comment_id": f"in.({','.join(str(x['id']) for x in items)})", "limit": str(min(500, len(items) * 20)),
