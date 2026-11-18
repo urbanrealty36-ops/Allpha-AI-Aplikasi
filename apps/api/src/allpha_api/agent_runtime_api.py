@@ -736,6 +736,8 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
             "output_tokens": evidence.output_tokens, "cost_microunits": evidence.cost_microunits,
             "cost_unit": evidence.cost_unit, "pricing_version": evidence.pricing_version,
             "latency_ms": evidence.latency_ms, "evidence_sha256": evidence.evidence_sha256,
+            "memory_context_sha256": memory_context_sha256,
+            "memory_context_refs": memory_context_refs,
             "trace_id": trace_id,
         }
         try:
