@@ -122,4 +122,4 @@ def test_agent_social_dispatch_migration_preserves_notification_preferences_and_
     assert "agent_social_notification_state(p_owner_user_id)" in sql
     assert "agent_social_notification_state(v_recipient)" in sql
     assert "insert into public.agent_social_audit_events" in sql
-    assert "status='review',moderation_status='pending'" in sql
+    assert "set status = 'review', moderation_status = 'pending'" in sql
