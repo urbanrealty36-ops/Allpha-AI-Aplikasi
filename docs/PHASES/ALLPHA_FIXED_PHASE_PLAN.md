@@ -1,3 +1,10 @@
+**WP-07 planner activation guard — 2026-11-18:**
+- The Model Router planner status and POST /tasks/plan now require the same canonical runtime schema-readiness predicate as the worker. Missing task/checkpoint/tool-plan schema, retry/lease RPCs or service-role grants causes a fail-closed response before a Model Router call or planner reservation is created. This prevents creating plans that cannot be executed/recovered by the canonical worker. Files: agent_runtime_api.py, test_agent_runtime_api.py. Commits 40a5d7c4fe207f554b8c49e960bd269f33b8191d and 4f61ae71306e4fbf73e4d227854d3e9f3c23d7bd.
+- Added a focused API contract test asserting the Model Router is not called while runtime schema readiness is false (commit b3a27a36e619dee1431cb78fef1bd9037c10f6ff). CI for this commit is queued at the time of this update; no test result is claimed.
+- WP-07 remains in_progress / source_partial / acceptance_not_verified. Live Supabase still lacks the new retry columns and readiness/heartbeat/retry RPCs; migrations are source-only and the runtime worker/planner flags remain disabled. No downstream phase is promoted.
+
+---
+
 **WP-07 cancellation regression verification — 2026-11-18:**
 - The first Allpha Smoke run after adding the pre-cancellation test reported that test failing because the test exercised the legacy single-tool execute route, while the cancellation guard had initially been added only to planned-task execution. Corrected the canonical /tasks/{task_id}/execute route to honor cancel_requested before either the planned-task or single-tool path, then retained the planned-task guard as defense in depth. Commit d1b38476c15a1e72f248a5e2a092a22727a2e387.
 - Allpha Smoke run 44319735258 on d1b3847 completed API tests with **756 passed / 13 failed**. The new pre-cancelled-task test is no longer among failures. Remaining failures are existing API contract drift across Auth Identity, Content/AI Cinema, ENG-P04 settings isolation, ENG-P14 Feed, ENG-P16 Stories, Messaging and Social Feed. Do not report the full API suite green. Web and Native checks were still in progress at the last run-job inspection.
