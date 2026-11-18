@@ -29,6 +29,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   const [disclosure, setDisclosure] = useState("Dibuat bersama AI Agent");
   const [enabled, setEnabled] = useState(false);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [actionDispatchEnabled, setActionDispatchEnabled] = useState(false);
   const [automation, setAutomation] = useState<Automation | null>(null);
   const [channels, setChannels] = useState<string[]>([]);
   const [blockedTopicsText, setBlockedTopicsText] = useState("");
@@ -49,7 +50,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     try {
       const [a, p] = await Promise.all([api("/v1/agents"), api("/v1/agent-social/approvals")]);
       const active = (a.items || []).filter((x: Agent) => x.status === "active");
-      setAgents(active); setApprovals(p.items || []);
+      setAgents(active); setApprovals(p.items || []); setActionDispatchEnabled(p.action_dispatch_enabled === true);
       const selected = active.some((x: Agent) => x.id === agentId) ? agentId : active[0]?.id || "";
       setAgentId(selected);
       if (selected) {
@@ -105,6 +106,12 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     finally { setBusy(false); }
   }
   async function decide(id: string, decision: "approve" | "reject") {
+    const approval = approvals.find(item => item.id === id);
+    const dispatchBlocked = !!approval && ["draft_post", "draft_comment", "draft_reply", "suggest_repost"].includes(approval.action_type);
+    if (decision === "approve" && dispatchBlocked && !actionDispatchEnabled) {
+      setError("Eksekusi aksi ini menunggu migration atribusi dan dispatch WP-06. Tolak atau tunggu schema kanonis aktif.");
+      return;
+    }
     setBusy(true); setError(""); setNotice("");
     try { const result = await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik melalui Native" : "Ditolak pemilik melalui Native" }) }) as DecisionResult; const execution = result.execution; const detail = execution?.kind === "story_dm" ? "DM Story berhasil dibuat dan tertaut ke Story." : execution?.kind === "comment" ? "Komentar/reply Agent tercatat dengan atribusi." : execution?.kind === "post_moderation" ? "Draft dikirim ke antrean moderasi; belum dipublikasikan." : execution?.kind === "agent_repost" ? "Repost Agent tercatat dengan atribusi dan disclosure." : result.approval?.status === "approved" ? "Approval tercatat; moderasi konten tetap berlaku." : "Permintaan ditolak."; setNotice((result.outcome === "replayed" ? "Hasil transaksi sebelumnya dipulihkan. " : "") + detail); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan gagal."); }
@@ -150,9 +157,10 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       <Text onPress={async () => { if (!agentId || !automation || busy) return; setBusy(true); setError(""); try { const active = !automation.takeover_active; const result = await api("/v1/agent-social/takeover/" + agentId,{method:"POST",body:JSON.stringify({takeover_active:active,reason:active?"owner_manual_takeover_native":"owner_released_takeover_native"})}); setAutomation(result.policy as Automation); setNotice(active?"Takeover aktif; approval pending dicabut.":"Takeover dilepas; Auto Reply belum diaktifkan."); await load(); } catch(cause) { setError(cause instanceof Error?cause.message:"Takeover gagal."); } finally { setBusy(false); } }} style={[styles.action, { opacity: !automation || busy ? 0.5 : 1 }]}>{automation?.takeover_active ? "Lepas Takeover" : "Ambil Alih Sekarang"}</Text>
     </View>
     <View style={styles.card}><Text style={styles.title}>Approval Inbox</Text><Text style={styles.body}>{approvals.filter(x => x.status === "pending").length} permintaan menunggu keputusan</Text>
+      {!actionDispatchEnabled && <Text style={styles.body}>Approval untuk post/comment/reply/repost dikunci sampai migration atribusi dan dispatch WP-06 aktif. Story DM tetap mengikuti lifecycle yang tersedia.</Text>}
       {approvals.length === 0 ? <Text style={styles.body}>Belum ada approval.</Text> : approvals.map(item => <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 12, gap: 8 }}>
         <Text style={styles.body}>{item.action_type} · {item.status}</Text><Text style={styles.body}>{new Date(item.requested_at).toLocaleString("id-ID")}</Text><Text style={styles.body}>{item.disclosure_snapshot}</Text>
-        {item.status === "pending" && <><Text onPress={() => void decide(item.id, "approve")} style={styles.action}>Setujui</Text><Text onPress={() => void decide(item.id, "reject")} style={styles.action}>Tolak</Text></>}
+        {item.status === "pending" && <><Text onPress={!busy && (actionDispatchEnabled || item.action_type === "draft_story") ? () => void decide(item.id, "approve") : undefined} style={[styles.action, {opacity: actionDispatchEnabled || item.action_type === "draft_story" ? 1 : 0.4}]}>Setujui</Text><Text onPress={!busy ? () => void decide(item.id, "reject") : undefined} style={styles.action}>Tolak</Text></>}
         {item.status === "approved" && <Text onPress={() => void revoke(item.id)} style={styles.action}>Cabut persetujuan</Text>}
       </View>)}
     </View>
