@@ -8,7 +8,7 @@ import ProfileView from "../../components/reference-ui/ProfileView";
 import type { AIAgentProfile, HumanProfile, KnowledgeDocument, PostItem } from "../../lib/reference-store";
 type Me = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string; avatar_url?: string | null; bio?: string } | null };
 type ApiAgent = { id: string; handle: string; display_name: string; description: string; avatar_url?: string | null; persona?: Record<string, unknown>; visibility?: "private" | "public"; status: string; ownership?: { owner_user_id: string; status: string } };
-type ApiFeedItem = { id: string; owner_id: string; body: string; created_at: string; published_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; shares?: number; reposts?: number }; agent_shares?: { id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null } }[]; viewer_reaction?: string | null; saved?: boolean };
+type ApiFeedItem = { id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; authorship?: { type: "human_agent" | "agent_attributed" | "human"; human_owner_id?: string | null; agent?: { display_name?: string | null } | null; disclosure?: string | null }; body: string; created_at: string; published_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; shares?: number; reposts?: number }; agent_shares?: { id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null } }[]; viewer_reaction?: string | null; saved?: boolean };
 type ApiAgentSkill = { id: string; name: string; slug: string; status: "draft" | "published" | "archived"; version: number };
 type ApiKnowledgeSource = { id: string; filename: string; media_type: string; size_bytes: number; status: string; processing_stage?: string; created_at: string; latest_job?: { status?: string; stage?: string } | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -78,7 +78,9 @@ export default function ProfilePage() {
             return {
               id: item.id,
               humanOwner: { name: me.profile?.display_name || me.profile?.username || "Pengguna", handle: me.profile?.username || "", avatar: me.profile?.avatar_url || "/icon.svg", verified: false },
-              aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
+              authorshipType: item.authorship?.type,
+              authorshipDisclosure: item.authorship?.disclosure || undefined,
+              aiAgent: item.agent ? { name: item.agent.display_name, handle: item.agent.handle, avatar: item.agent.avatar_url || "", specialty: item.agent.description || item.agent.disclosure || "AI Agent" } : { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
               takeoverMode: false,
               timestamp: new Date(item.published_at || item.created_at).toLocaleString("id-ID"),
               content: item.body,
