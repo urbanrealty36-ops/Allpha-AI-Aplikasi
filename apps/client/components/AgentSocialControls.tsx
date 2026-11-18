@@ -134,7 +134,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     <View style={styles.card}>
       <Text style={styles.kicker}>AUTO REPLY · TAKEOVER</Text>
       <Text style={styles.title}>Kontrol Otomatisasi</Text>
-      <Text style={styles.body}>Takeover menghentikan Auto Reply dan mencabut approval yang masih pending. Auto Reply tetap nonaktif sampai runtime event consumer tersambung.</Text>
+      <Text style={styles.body}>Eksekusi tetap membutuhkan policy runtime yang disetujui. Takeover menghentikan Auto Reply dan mencabut approval yang masih pending. Auto Reply tetap nonaktif sampai runtime event consumer tersambung.</Text>
       <Text style={styles.body}>Status: {automation?.takeover_active ? "Takeover Human aktif" : automation ? "Takeover dilepas · Auto Reply masih nonaktif" : "Policy automation belum tersedia"}</Text>
       {automation ? <>
         <Text style={styles.kicker}>CHANNEL AUTO REPLY</Text>
