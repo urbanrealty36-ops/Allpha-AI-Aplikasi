@@ -9,7 +9,8 @@ alter table public.agent_social_audit_events
   check (event_type in (
     'policy_created','policy_updated','policy_disabled','draft_requested',
     'approval_approved','approval_rejected','approval_revoked',
-    'automation_policy_saved','takeover_activated','takeover_released'
+    'automation_policy_saved','takeover_activated','takeover_released',
+    'automation_grant_created','automation_grant_revoked'
   ));
 
 alter table public.agent_social_presence_policies
@@ -63,7 +64,7 @@ create table if not exists public.agent_social_control_events (
   owner_user_id uuid not null references auth.users(id) on delete cascade,
   agent_id uuid not null references public.ai_agents(id) on delete cascade,
   policy_id uuid references public.agent_social_presence_policies(id) on delete set null,
-  event_type text not null check (event_type in ('automation_policy_saved','takeover_activated','takeover_released')),
+  event_type text not null check (event_type in ('automation_policy_saved','takeover_activated','takeover_released','automation_grant_created','automation_grant_revoked')),
   actor_user_id uuid not null references auth.users(id) on delete restrict,
   metadata jsonb not null default '{}'::jsonb check (jsonb_typeof(metadata)='object'),
   created_at timestamptz not null default now()
@@ -126,7 +127,7 @@ create or replace function public.save_agent_social_automation_policy(
 ) returns jsonb
 language plpgsql security definer set search_path=public,pg_temp
 as $$
-declare v_policy public.agent_social_presence_policies%rowtype;
+declare v_policy public.agent_social_presence_policies%rowtype; v_grants_revoked integer:=0;
 begin
   if not exists (
     select 1 from public.ai_agents a join public.agent_ownerships o on o.agent_id=a.id
@@ -163,18 +164,117 @@ begin
     owner_approval_required=true,output_moderation_required=true,
     automation_version=automation_version+1,version=version+1,updated_at=now()
   where id=v_policy.id returning * into v_policy;
+  update public.agent_social_automation_grants
+    set status='revoked',revoked_by=p_owner_user_id,revoked_at=now(),revoke_reason='automation_policy_updated'
+  where owner_user_id=p_owner_user_id and agent_id=p_agent_id and status='active'
+    and policy_version<>v_policy.version;
+  get diagnostics v_grants_revoked=row_count;
   insert into public.agent_social_control_events(owner_user_id,agent_id,policy_id,event_type,actor_user_id,metadata)
   values(p_owner_user_id,p_agent_id,v_policy.id,'automation_policy_saved',p_owner_user_id,
     jsonb_build_object('automation_version',v_policy.automation_version,'channels',v_policy.auto_reply_channels,
-      'auto_reply_enabled',false,'reason','runtime_consumer_not_yet_wired'));
+      'auto_reply_enabled',false,'automation_grants_revoked',v_grants_revoked,'reason','runtime_consumer_not_yet_wired'));
   insert into public.agent_social_audit_events(owner_user_id,agent_id,actor_user_id,event_type,outcome,metadata)
   values(p_owner_user_id,p_agent_id,p_owner_user_id,'automation_policy_saved','allowed',
     jsonb_build_object('automation_version',v_policy.automation_version,'channels',v_policy.auto_reply_channels,
-      'daily_credit_budget',v_policy.daily_credit_budget,'auto_reply_enabled',false));
+      'daily_credit_budget',v_policy.daily_credit_budget,'automation_grants_revoked',v_grants_revoked,'auto_reply_enabled',false));
   return jsonb_build_object('outcome','saved','policy',to_jsonb(v_policy),
+    'automation_grants_revoked',v_grants_revoked,
     'auto_reply_runtime_enabled',false,'reason','AUTO_REPLY_RUNTIME_NOT_CONNECTED');
 end;
 $$;
+
+create or replace function public.grant_agent_social_automation_scopes(
+  p_owner_user_id uuid,p_agent_id uuid,p_granted_scopes text[],
+  p_idempotency_key text,p_expires_at timestamptz
+) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp
+as $
+declare v_policy public.agent_social_presence_policies%rowtype;
+  v_grant public.agent_social_automation_grants%rowtype;
+  v_existing public.agent_social_automation_grants%rowtype;
+begin
+  if not exists (
+    select 1 from public.ai_agents a join public.agent_ownerships o on o.agent_id=a.id
+    where a.id=p_agent_id and a.status='active' and o.owner_user_id=p_owner_user_id
+      and o.ownership_role='owner' and o.status='active'
+  ) then raise exception 'AGENT_SOCIAL_OWNERSHIP_REQUIRED' using errcode='42501'; end if;
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160
+     or p_expires_at is null or p_expires_at<=now()
+     or cardinality(coalesce(p_granted_scopes,'{}'::text[])) not between 1 and 4
+     or not (coalesce(p_granted_scopes,'{}'::text[]) <@ array['comments','mentions','dm','live_chat']::text[]) then
+    raise exception 'AGENT_SOCIAL_AUTOMATION_GRANT_INVALID' using errcode='22023';
+  end if;
+  select * into v_policy from public.agent_social_presence_policies
+    where owner_user_id=p_owner_user_id and agent_id=p_agent_id for update;
+  if not found then raise exception 'AGENT_SOCIAL_POLICY_REQUIRED' using errcode='P0002'; end if;
+  if v_policy.takeover_active then
+    raise exception 'AGENT_SOCIAL_TAKEOVER_ACTIVE' using errcode='42501';
+  end if;
+  if not (p_granted_scopes <@ v_policy.auto_reply_channels) then
+    raise exception 'AGENT_SOCIAL_AUTOMATION_SCOPE_NOT_ALLOWED' using errcode='42501';
+  end if;
+  select * into v_existing from public.agent_social_automation_grants
+    where owner_user_id=p_owner_user_id and idempotency_key=p_idempotency_key for update;
+  if found then
+    if v_existing.agent_id<>p_agent_id or v_existing.granted_scopes<>p_granted_scopes
+       or v_existing.policy_version<>v_policy.version or v_existing.expires_at<>p_expires_at then
+      raise exception 'AGENT_SOCIAL_AUTOMATION_GRANT_IDEMPOTENCY_CONFLICT' using errcode='23505';
+    end if;
+    return jsonb_build_object('outcome','replayed','grant',to_jsonb(v_existing),
+      'auto_reply_runtime_enabled',false);
+  end if;
+  insert into public.agent_social_automation_grants(
+    owner_user_id,agent_id,granted_scopes,policy_version,idempotency_key,expires_at,granted_by
+  ) values (
+    p_owner_user_id,p_agent_id,p_granted_scopes,v_policy.version,p_idempotency_key,p_expires_at,p_owner_user_id
+  ) returning * into v_grant;
+  insert into public.agent_social_control_events(owner_user_id,agent_id,policy_id,event_type,actor_user_id,metadata)
+  values(p_owner_user_id,p_agent_id,v_policy.id,'automation_grant_created',p_owner_user_id,
+    jsonb_build_object('grant_id',v_grant.id,'granted_scopes',v_grant.granted_scopes,
+      'policy_version',v_grant.policy_version,'expires_at',v_grant.expires_at));
+  insert into public.agent_social_audit_events(owner_user_id,agent_id,actor_user_id,event_type,outcome,metadata)
+  values(p_owner_user_id,p_agent_id,p_owner_user_id,'automation_grant_created','allowed',
+    jsonb_build_object('grant_id',v_grant.id,'granted_scopes',v_grant.granted_scopes,
+      'policy_version',v_grant.policy_version,'expires_at',v_grant.expires_at));
+  return jsonb_build_object('outcome','created','grant',to_jsonb(v_grant),
+    'auto_reply_runtime_enabled',false,'reason','AUTO_REPLY_RUNTIME_NOT_CONNECTED');
+end;
+$;
+
+create or replace function public.revoke_agent_social_automation_grant(
+  p_owner_user_id uuid,p_agent_id uuid,p_grant_id uuid,p_reason text default 'owner_revoked'
+) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp
+as $
+declare v_policy public.agent_social_presence_policies%rowtype;
+  v_grant public.agent_social_automation_grants%rowtype;
+begin
+  if not exists (
+    select 1 from public.ai_agents a join public.agent_ownerships o on o.agent_id=a.id
+    where a.id=p_agent_id and a.status='active' and o.owner_user_id=p_owner_user_id
+      and o.ownership_role='owner' and o.status='active'
+  ) then raise exception 'AGENT_SOCIAL_OWNERSHIP_REQUIRED' using errcode='42501'; end if;
+  select * into v_grant from public.agent_social_automation_grants
+    where id=p_grant_id and owner_user_id=p_owner_user_id and agent_id=p_agent_id for update;
+  if not found then raise exception 'AGENT_SOCIAL_AUTOMATION_GRANT_NOT_FOUND' using errcode='P0002'; end if;
+  if v_grant.status in ('revoked','expired') then
+    return jsonb_build_object('outcome','replayed','grant',to_jsonb(v_grant),'auto_reply_runtime_enabled',false);
+  end if;
+  update public.agent_social_automation_grants set
+    status='revoked',revoked_by=p_owner_user_id,revoked_at=now(),
+    revoke_reason=left(coalesce(p_reason,'owner_revoked'),500)
+    where id=v_grant.id returning * into v_grant;
+  select * into v_policy from public.agent_social_presence_policies
+    where owner_user_id=p_owner_user_id and agent_id=p_agent_id;
+  insert into public.agent_social_control_events(owner_user_id,agent_id,policy_id,event_type,actor_user_id,metadata)
+  values(p_owner_user_id,p_agent_id,v_policy.id,'automation_grant_revoked',p_owner_user_id,
+    jsonb_build_object('grant_id',v_grant.id,'granted_scopes',v_grant.granted_scopes,'reason',v_grant.revoke_reason));
+  insert into public.agent_social_audit_events(owner_user_id,agent_id,actor_user_id,event_type,outcome,metadata)
+  values(p_owner_user_id,p_agent_id,p_owner_user_id,'automation_grant_revoked','allowed',
+    jsonb_build_object('grant_id',v_grant.id,'granted_scopes',v_grant.granted_scopes,'reason',v_grant.revoke_reason));
+  return jsonb_build_object('outcome','revoked','grant',to_jsonb(v_grant),'auto_reply_runtime_enabled',false);
+end;
+$;
 
 create or replace function public.set_agent_social_takeover(
   p_owner_user_id uuid,p_agent_id uuid,p_takeover_active boolean,p_reason text default null
@@ -261,8 +361,12 @@ end;
 $$;
 
 revoke all on function public.save_agent_social_automation_policy(uuid,uuid,text[],text[],text,text[],integer,bigint,jsonb,jsonb,integer) from public,anon,authenticated;
+revoke all on function public.grant_agent_social_automation_scopes(uuid,uuid,text[],text,timestamptz) from public,anon,authenticated;
+revoke all on function public.revoke_agent_social_automation_grant(uuid,uuid,uuid,text) from public,anon,authenticated;
 revoke all on function public.set_agent_social_takeover(uuid,uuid,boolean,text) from public,anon,authenticated;
 grant execute on function public.save_agent_social_automation_policy(uuid,uuid,text[],text[],text,text[],integer,bigint,jsonb,jsonb,integer) to service_role;
+grant execute on function public.grant_agent_social_automation_scopes(uuid,uuid,text[],text,timestamptz) to service_role;
+grant execute on function public.revoke_agent_social_automation_grant(uuid,uuid,uuid,text) to service_role;
 grant execute on function public.set_agent_social_takeover(uuid,uuid,boolean,text) to service_role;
 
 commit;
