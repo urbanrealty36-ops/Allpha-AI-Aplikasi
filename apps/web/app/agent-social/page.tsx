@@ -70,7 +70,7 @@ export default function AgentSocialPage() {
         const p = policyData.policy as Policy | null;
         const a = automationData.policy as Automation | null;
         setPolicy(p); setActions(p?.allowed_actions || ["draft_post"]);
-        setMode(p?.approval_mode || "every_post"); setDisclosure(p?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(p?.is_enabled ?? true);
+        setMode(p?.approval_mode === "disabled" ? "disabled" : "every_post"); setDisclosure(p?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(p?.is_enabled ?? true);
         setAutomation(a); setAutoReplyRuntimeEnabled(automationData.auto_reply_runtime_enabled === true); setChannels(a?.auto_reply_channels || []);
         setBlockedTopicsText((a?.blocked_topics || []).join(", "));
         setReplyTone(a?.reply_tone || "friendly_concise");
