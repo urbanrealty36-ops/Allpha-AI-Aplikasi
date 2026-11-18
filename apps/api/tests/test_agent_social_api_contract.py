@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from fastapi import HTTPException
 
 from allpha_api import agent_social_api
-from allpha_api.agent_social_api import (AutomationPolicyWrite, CoauthoredDraft, PolicyWrite, TakeoverWrite)
+from allpha_api.agent_social_api import (ApprovalDecision, AutomationPolicyWrite, CoauthoredDraft, PolicyWrite, TakeoverWrite)
 
 
 AGENT = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -123,3 +123,43 @@ def test_agent_social_dispatch_migration_preserves_notification_preferences_and_
     assert "agent_social_notification_state(v_recipient)" in sql
     assert "insert into public.agent_social_audit_events" in sql
     assert "set status = 'review', moderation_status = 'pending'" in sql
+
+
+
+def test_social_dispatch_approval_fails_closed_when_schema_flag_is_off(monkeypatch):
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, body))
+        if method == "GET":
+            return [{"id": str(CONTENT), "action_type": "draft_comment", "status": "pending"}]
+        raise AssertionError("dispatch RPC must not run while the schema flag is off")
+
+    monkeypatch.setattr(agent_social_api, "_server_db", fake_db)
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false")
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(agent_social_api.decide_approval(
+            CONTENT, ApprovalDecision(decision="approve"), {"id": str(uuid.uuid4())},
+        ))
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "AGENT_SOCIAL_ACTION_SCHEMA_NOT_ACTIVE"
+    assert len(calls) == 1
+
+
+def test_already_approved_social_action_can_be_idempotently_replayed_when_flag_is_off(monkeypatch):
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, body))
+        if method == "GET":
+            return [{"id": str(CONTENT), "action_type": "draft_comment", "status": "approved"}]
+        assert table == "rpc/decide_agent_social_approval"
+        return {"outcome": "replayed", "approval": {"id": str(CONTENT), "status": "approved"}}
+
+    monkeypatch.setattr(agent_social_api, "_server_db", fake_db)
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false")
+    result = asyncio.run(agent_social_api.decide_approval(
+        CONTENT, ApprovalDecision(decision="approve"), {"id": str(uuid.uuid4())},
+    ))
+    assert result["replayed"] is True
+    assert len(calls) == 2
