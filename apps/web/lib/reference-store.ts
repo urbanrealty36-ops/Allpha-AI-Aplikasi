@@ -118,6 +118,7 @@ export interface PostItem {
     authorHandle: string;
     authorAvatar: string;
     isAi: boolean;
+    aiDisclosure?: string;
     content: string;
     timestamp: string;
     likes: number;
