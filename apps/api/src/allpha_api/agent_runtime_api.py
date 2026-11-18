@@ -147,12 +147,15 @@ def _memory_context_snapshot(items: list[dict[str, Any]]) -> tuple[list[dict[str
             raise MemoryUnavailable("Memory retrieval returned a malformed item")
         content = item.get("content")
         content_sha256 = item.get("content_sha256")
+        retrieved_content_sha256 = item.get("retrieved_content_sha256")
         item_id = item.get("id")
         version = item.get("version")
         policy_version = item.get("policy_version")
         if (not isinstance(content, str) or not content
-                or not isinstance(content_sha256, str)
-                or hashlib.sha256(content.encode("utf-8")).hexdigest() != content_sha256
+                or not isinstance(content_sha256, str) or len(content_sha256) != 64
+                or any(char not in "0123456789abcdef" for char in content_sha256)
+                or not isinstance(retrieved_content_sha256, str)
+                or hashlib.sha256(content.encode("utf-8")).hexdigest() != retrieved_content_sha256
                 or not isinstance(item_id, str) or not item_id
                 or not isinstance(version, int) or isinstance(version, bool) or version < 1
                 or not isinstance(policy_version, int) or isinstance(policy_version, bool) or policy_version < 1):
@@ -164,6 +167,7 @@ def _memory_context_snapshot(items: list[dict[str, Any]]) -> tuple[list[dict[str
         })
         references.append({
             "id": item_id, "content_sha256": content_sha256,
+            "retrieved_content_sha256": retrieved_content_sha256,
             "version": version, "policy_version": policy_version,
         })
     encoded = json.dumps(context, ensure_ascii=False, sort_keys=True,
