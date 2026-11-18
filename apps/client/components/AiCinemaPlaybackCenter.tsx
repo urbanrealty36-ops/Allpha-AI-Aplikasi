@@ -228,7 +228,7 @@ export function AiCinemaPlaybackCenter({ getAccessToken }: { getAccessToken?: ()
       <Text style={{ color: "#F7F8FF", fontSize: 22, fontWeight: "800" }}>Film & episode</Text>
       <Text style={{ color: "#A5ADC3", fontSize: 13 }}>Sesi pemutaran, entitlement, dan progres tontonan dikendalikan oleh FastAPI.</Text>
       {error ? <Text accessibilityRole="alert" style={{ color: "#FCA5A5", fontSize: 13 }}>{error}</Text> : null}
-      {notice ? <Text accessibilityRole="status" style={{ color: "#86EFAC", fontSize: 12 }}>{notice}</Text> : null}
+      {notice ? <Text accessibilityLiveRegion="polite" style={{ color: "#86EFAC", fontSize: 12 }}>{notice}</Text> : null}
       {loading ? <ActivityIndicator color="#A5B4FC" /> : titles.length ? titles.map(title => (
         <Pressable
           key={title.id}
