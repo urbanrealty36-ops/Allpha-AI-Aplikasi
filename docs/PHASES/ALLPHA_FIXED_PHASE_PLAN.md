@@ -1,3 +1,10 @@
+**WP-07 latest focused CI evidence — 2026-11-18:**
+- Allpha Smoke run 44320461886 (commit c31fc11) completed API tests: **758 passed / 13 failed**. The WP-07 cancellation, heartbeat, retry, Memory provenance, migration-contract and planner readiness tests are not among the failures. The 13 remaining failures are Auth Identity, Content (including AI Cinema catalog/creator contract), ENG-P04 identity/settings isolation, ENG-P14 Feed lifecycle, ENG-P16 Story media, Messaging idempotency and Social Feed contracts. API suite is not green.
+- Native client and Web build jobs for that run were still in progress at the last inspection. ENG-P01/ENG-P22 for the latest phase-plan commit 3a9ef26 were pending. No result is claimed for unfinished jobs.
+- No change to phase state: WP-07 remains in_progress / source_partial / acceptance_not_verified; no migration is applied; no worker/planner feature flag is enabled; WP-06/WP-11/WP-12/Live remain unpromoted.
+
+---
+
 **WP-07 Memory readiness and planner fail-closed completion — 2026-11-18:**
 - Extended the canonical worker readiness predicate to include the three Memory Coordinator tables (policies, items, events), required consent/retention/search columns, and exact Memory lifecycle/search RPC signatures. It now verifies service_role SELECT and EXECUTE privileges for the complete runtime + Memory dependency set. This ensures the planner/worker cannot be declared ready while owner-consented Memory retrieval is missing. Files: source-only migration 20261118195500_wp07_runtime_worker_schema_readiness.sql; test_agent_runtime_retry_migration_contract.py. Commits a8491c2d9a934b5b5bfdaa2508c19f7c99001818, c31fc11cbc62024dd6fe1eb74a7de3fddb4e2ff0.
 - Planner status and plan creation now share this schema readiness gate; a missing Memory/runtime schema returns a fail-closed status before Model Router invocation. Test coverage for planner schema gating was added in test_agent_runtime_api.py; CI for the latest changes is pending/not yet inspected.
