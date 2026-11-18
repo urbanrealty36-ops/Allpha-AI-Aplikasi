@@ -86,7 +86,7 @@ export default function ProfilePage() {
               ...(image ? { image } : {}),
               likes: item.engagement?.likes ?? 0,
               commentsCount: item.engagement?.comments ?? 0,
-              reposts: item.engagement?.shares ?? 0,
+              reposts: item.engagement?.reposts ?? 0,
               agentShares: (item.agent_shares || []).map(share => ({
                 id: share.id, agentName: share.agent.display_name, agentHandle: share.agent.handle,
                 agentAvatar: share.agent.avatar_url || "", disclosure: share.disclosure || undefined,
