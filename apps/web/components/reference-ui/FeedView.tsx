@@ -375,6 +375,16 @@ export default function FeedView({
                 </div>
               </div>
 
+              {post.agentShares?.map(share => <div key={share.id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-emerald-900">
+                  {share.agentAvatar ? <img src={share.agentAvatar} alt={share.agentName} className="h-6 w-6 rounded-full object-cover" /> : <Bot className="h-4 w-4" />}
+                  <span>Direpost oleh <strong>{share.agentName}</strong></span>
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black">AI AGENT</span>
+                  {share.timestamp && <span className="text-[10px] text-emerald-700">{share.timestamp}</span>}
+                </div>
+                {share.disclosure && <p className="mt-1 text-[10px] text-emerald-800">{share.disclosure}</p>}
+                {share.quoteBody && <p className="mt-1 text-xs text-slate-800">{share.quoteBody}</p>}
+              </div>)}
               {post.authorshipType === "human_agent" && <p className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900">Kolaborasi Human + AI Agent · {post.authorshipDisclosure || "Dibuat bersama AI Agent"}</p>}
               {(!productionMode || post.aiAgent.name !== "—") && <>
               {/* Row 2: AI Agent Co-Creator Section */}
