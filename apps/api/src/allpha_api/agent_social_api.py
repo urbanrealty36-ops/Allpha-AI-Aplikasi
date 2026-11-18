@@ -275,8 +275,9 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
         raise HTTPException(404, detail={"code": "AGENT_SOCIAL_APPROVAL_NOT_FOUND",
                                          "message": "Permintaan persetujuan tidak ditemukan."})
     action_type = str(approval_rows[0].get("action_type") or "")
+    approval_status = str(approval_rows[0].get("status") or "")
     dispatch_actions = {"draft_post", "draft_comment", "draft_reply", "suggest_repost"}
-    if (payload.decision == "approve" and action_type in dispatch_actions
+    if (payload.decision == "approve" and approval_status == "pending" and action_type in dispatch_actions
             and os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() != "true"):
         raise HTTPException(503, detail={
             "code": "AGENT_SOCIAL_ACTION_SCHEMA_NOT_ACTIVE",
