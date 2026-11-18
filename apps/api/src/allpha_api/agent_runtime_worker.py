@@ -41,10 +41,11 @@ async def run_once(store: AgentRuntimeStore) -> int:
     readiness = await store.runtime_schema_readiness()
     if readiness.get("ready") is not True:
         logger.error(
-            "Agent Runtime worker remains idle; missing_tables=%s missing_columns=%s missing_functions=%s",
+            "Agent Runtime worker remains idle; missing_tables=%s missing_columns=%s missing_functions=%s missing_privileges=%s",
             readiness.get("missing_tables") or [],
             readiness.get("missing_columns") or [],
             readiness.get("missing_functions") or [],
+            readiness.get("missing_privileges") or [],
         )
         return 0
     await store.reap_retry_exhaustion()
