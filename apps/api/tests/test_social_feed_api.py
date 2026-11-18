@@ -1014,9 +1014,10 @@ def test_agent_repost_attribution_requires_active_public_agent_and_owner_link(mo
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
     monkeypatch.setattr(feed_api, "_profiles_for", fake_profiles)
 
-    counts, shares = asyncio.run(feed_api._agent_share_metadata([content_id]))
+    counts, repost_counts, shares = asyncio.run(feed_api._agent_share_metadata([content_id]))
 
     assert counts == {content_id: 2}
+    assert repost_counts == {content_id: 2}
     assert len(shares[content_id]) == 1
     assert shares[content_id][0]["agent"]["display_name"] == "Verified Agent"
     assert shares[content_id][0]["disclosure"] == "AI Agent repost"
