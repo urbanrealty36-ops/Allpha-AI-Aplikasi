@@ -213,21 +213,27 @@ async def create_consumer_grant(agent_id: uuid.UUID, payload: ConsumerGrantCreat
             validate_tool_dependencies(allowed_tool_keys)
         except (UnknownToolError, ValueError) as exc:
             raise HTTPException(422, detail={"code":"TOOL_ALLOWLIST_INVALID","message":"Allowlist berisi tool yang tidak terdaftar."}) from exc
-        # The current public Generation adapter supports only the text.normalize
-        # text-to-text contract. Other tools remain owner-only until their
-        # input binding and output contracts are implemented for Generation.
+        # Generation executes registered pure tools through the canonical AgentRuntime.
+        # Typed inputs are validated against each tool's exact schema before credit reservation;
+        # tool outputs are either applied as text transforms or appended as bounded JSON context.
         for tool_key in allowed_tool_keys:
             definition = get_tool(tool_key)
-            properties = definition.input_schema.get("properties") if isinstance(definition.input_schema, dict) else None
-            required = definition.input_schema.get("required") if isinstance(definition.input_schema, dict) else None
-            output_properties = definition.output_schema.get("properties") if isinstance(definition.output_schema, dict) else None
+            input_schema = definition.input_schema if isinstance(definition.input_schema, dict) else {}
+            output_schema = definition.output_schema if isinstance(definition.output_schema, dict) else {}
+            input_properties = input_schema.get("properties")
+            input_required = input_schema.get("required")
+            output_properties = output_schema.get("properties")
+            output_required = output_schema.get("required")
             if (getattr(definition, "execution_class", "side_effecting") != "pure"
-                    or not isinstance(properties, dict) or set(properties) != {"text"}
-                    or required != ["text"] or not isinstance(output_properties, dict)
-                    or set(output_properties) != {"text"}
-                    or not isinstance(output_properties.get("text"), dict)
-                    or output_properties["text"].get("type") != "string"):
-                raise HTTPException(409, detail={"code":"CONSUMER_TOOL_ADAPTER_UNAVAILABLE","message":"Tool belum memiliki adapter Generation yang aman untuk External Consumer."})
+                    or input_schema.get("type") != "object"
+                    or not isinstance(input_properties, dict)
+                    or not isinstance(input_required, list)
+                    or input_schema.get("additionalProperties") is not False
+                    or output_schema.get("type") != "object"
+                    or not isinstance(output_properties, dict)
+                    or not isinstance(output_required, list)
+                    or output_schema.get("additionalProperties") is not False):
+                raise HTTPException(409, detail={"code":"CONSUMER_TOOL_ADAPTER_UNAVAILABLE","message":"Tool belum memiliki kontrak input/output terstruktur yang aman untuk External Consumer."})
     if not has_tool_scope and (payload.max_tool_calls != 0 or payload.max_tool_runtime_seconds != 0):
         raise HTTPException(422, detail={"code":"CONSUMER_TOOL_BUDGET_WITHOUT_SCOPE","message":"Budget tool hanya dapat diberikan bersama scope tool_invoke."})
     text_router = getattr(request.app.state,"text_generation_router",None)
