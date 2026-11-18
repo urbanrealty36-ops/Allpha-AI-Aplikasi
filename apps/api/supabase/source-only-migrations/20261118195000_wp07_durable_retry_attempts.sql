@@ -205,7 +205,7 @@ revoke all on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,intege
 grant execute on function public.claim_agent_runtime_task(uuid,uuid,uuid,integer) to service_role;
 grant execute on function public.schedule_agent_runtime_retry(uuid,uuid,uuid,integer,text,integer,jsonb,jsonb) to service_role;
 grant execute on function public.reap_agent_runtime_retry_exhaustion() to service_role;
-grant execute on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text) to service_role;
+grant execute on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid) to service_role;
 
 comment on column public.agent_runtime_tasks.execution_attempts is
   'Durable claim count. Incremented atomically by claim_agent_runtime_task.';
