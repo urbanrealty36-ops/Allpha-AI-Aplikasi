@@ -448,6 +448,7 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
             raise ValueError("memory_context_item_invalid")
         content = item.get("content")
         content_digest = item.get("content_sha256")
+        retrieved_digest = item.get("retrieved_content_sha256")
         item_id = item.get("id")
         memory_type = item.get("memory_type")
         version = item.get("version")
@@ -455,6 +456,8 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
         classification = item.get("classification")
         if (not isinstance(content, str) or not content
                 or not isinstance(content_digest, str) or len(content_digest) != 64
+                or not isinstance(retrieved_digest, str) or len(retrieved_digest) != 64
+                or hashlib.sha256(content.encode("utf-8")).hexdigest() != retrieved_digest
                 or not isinstance(item_id, str) or not item_id
                 or not isinstance(memory_type, str) or not isinstance(version, int)
                 or not isinstance(policy_version, int) or not isinstance(classification, str)):
@@ -468,7 +471,7 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
             "policy_version": policy_version,
             "classification": classification,
             "content_sha256": content_digest,
-            "retrieved_text_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "retrieved_text_sha256": retrieved_digest,
         }
         retrieval_method = item.get("retrieval_method")
         if isinstance(retrieval_method, str):
