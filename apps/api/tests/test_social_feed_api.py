@@ -993,6 +993,10 @@ def test_agent_repost_attribution_requires_active_public_agent_and_owner_link(mo
                  "actor_agent_id": "agent-2", "agent_disclosure_snapshot": "Should not display",
                  "created_at": "2026-11-18T00:00:00Z", "quote_body": None,
                  "share_target": "repost"},
+                {"id": "share-3", "content_id": content_id, "actor_user_id": "owner-3",
+                 "actor_agent_id": None, "agent_disclosure_snapshot": None,
+                 "created_at": "2026-11-18T00:00:00Z", "quote_body": None,
+                 "share_target": "copy_link"},
             ]
         if table == "ai_agents":
             return [{
@@ -1016,7 +1020,7 @@ def test_agent_repost_attribution_requires_active_public_agent_and_owner_link(mo
 
     counts, repost_counts, shares = asyncio.run(feed_api._agent_share_metadata([content_id]))
 
-    assert counts == {content_id: 2}
+    assert counts == {content_id: 3}
     assert repost_counts == {content_id: 2}
     assert len(shares[content_id]) == 1
     assert shares[content_id][0]["agent"]["display_name"] == "Verified Agent"
