@@ -150,7 +150,7 @@ begin
        'Draft kolaborasi Agent ditolak.',
        jsonb_build_object('type','agent_social_approval','approval_id',p_approval_id,
                           'content_id',v_approval.content_id,'status','rejected'),
-       'queued')
+       public.agent_social_notification_state(p_owner_user_id))
     on conflict (user_id,event_key) do nothing;
 
     return jsonb_build_object('outcome','rejected','approval',to_jsonb(v_approval),
@@ -269,7 +269,7 @@ begin
     end if;
 
     insert into public.conversations(kind,title,created_by)
-    values('human','Balasan Story',p_owner_user_id)
+    values('agent','Balasan Story',p_owner_user_id)
     returning id into v_conversation_id;
 
     insert into public.conversation_participants(conversation_id,user_id,participant_type)
@@ -409,7 +409,7 @@ begin
      'Draft kolaborasi Agent disetujui.',
      jsonb_build_object('type','agent_social_approval','approval_id',p_approval_id,
                         'content_id',v_approval.content_id,'status','approved','execution',v_result),
-     'queued')
+     public.agent_social_notification_state(p_owner_user_id))
   on conflict (user_id,event_key) do nothing;
 
   if v_recipient is not null and v_recipient <> p_owner_user_id then
@@ -434,7 +434,7 @@ begin
          else 'comment_reply' end,
                           'approval_id',p_approval_id,'agent_id',v_approval.agent_id,
                           'execution',v_result),
-       'queued')
+       public.agent_social_notification_state(v_recipient))
     on conflict (user_id,event_key) do nothing;
   end if;
 
