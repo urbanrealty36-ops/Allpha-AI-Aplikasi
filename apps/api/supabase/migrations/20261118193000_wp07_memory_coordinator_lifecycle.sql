@@ -94,7 +94,7 @@ alter table public.agent_memory_policies enable row level security;
 alter table public.agent_memory_items enable row level security;
 alter table public.agent_memory_events enable row level security;
 revoke all on public.agent_memory_policies, public.agent_memory_items, public.agent_memory_events from public, anon, authenticated;
-grant select, insert, update, delete on public.agent_memory_policies, public.agent_memory_items, public.agent_memory_events to service_role;
+grant select on public.agent_memory_policies, public.agent_memory_items, public.agent_memory_events to service_role;
 
 create or replace function public.agent_memory_transition(
   p_action text,
