@@ -4,6 +4,7 @@ import pytest
 
 import asyncio
 import httpx
+from dataclasses import replace
 
 from allpha_api.model_router import (
     CanonicalTextGenerationRouter,
@@ -223,3 +224,24 @@ def test_approved_runtime_policy_verifier_fails_closed_when_policy_not_approved(
     )
     with pytest.raises(RuntimeError, match="exactly one matching approved runtime policy"):
         asyncio.run(verifier.verify())
+
+
+def test_openai_compatible_adapter_requests_json_object_mode():
+    observed = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        observed.update(__import__("json").loads(req.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"steps":[]}'}}],
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3},
+        })
+
+    adapter = OpenAICompatibleTextGenerationAdapter(
+        base_url="https://provider.invalid/v1", api_key="test-secret",
+        provider_id="provider-test", model_version="model-version-1",
+        pricing_version="price-v1", cost_unit="USD",
+        input_cost_microunits_per_token=1, output_cost_microunits_per_token=1,
+        transport=httpx.MockTransport(handler),
+    )
+    asyncio.run(adapter.generate(replace(request(), response_format="json_object"), model_id="model-test"))
+    assert observed["response_format"] == {"type": "json_object"}
