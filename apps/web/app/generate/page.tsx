@@ -9,7 +9,8 @@ import GenerateModal, { type GenerateRequest } from "../../components/reference-
 type Agent = { id: string; display_name: string; description?: string; status: string };
 type Skill = { id: string; name?: string; display_name?: string; status: string; version: number };
 type Capability = { capability_key: string; status: string };
-type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[] };
+type ToolContract = { key: string; description: string; input_schema: { properties?: Record<string, { type?: string }>; required?: string[] } };
+type ExternalAgent = { agent: Agent; owner_user_id: string; skill: Skill; capabilities: Capability[]; consumer_grant_id: string; granted_scopes: string[]; tool_contracts?: ToolContract[] };
 type Job = { status: string; moderation_status?: string | null; artifact_available?: boolean; artifact_deletion_status?: "available" | "pending" | "deleted" | "dead" | "unavailable"; error_code?: string | null; owner_reward_status?: string | null; dm_conversation_id?: string | null };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -18,6 +19,22 @@ async function errorMessage(response: Response) {
   catch { return `Permintaan gagal (HTTP ${response.status}).`; }
 }
 const wait = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+function makeToolInputsTemplate(contracts: ToolContract[]): string {
+  const defaultValue = (type?: string): unknown => {
+    if (type === "string") return "";
+    if (type === "integer" || type === "number") return 1;
+    if (type === "boolean") return false;
+    if (type === "array") return [];
+    if (type === "object") return {};
+    return null;
+  };
+  return JSON.stringify(Object.fromEntries(contracts.map(contract => [
+    contract.key,
+    Object.fromEntries((contract.input_schema?.required || []).map(key => [
+      key, defaultValue(contract.input_schema?.properties?.[key]?.type),
+    ])),
+  ])), null, 2);
+}
 
 export default function GeneratePage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
@@ -32,6 +49,7 @@ export default function GeneratePage() {
   const [capabilityId, setCapabilityId] = useState("");
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
+  const [toolInputsJson, setToolInputsJson] = useState("{}");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [canCancelGeneration, setCanCancelGeneration] = useState(false);
@@ -167,11 +185,18 @@ export default function GeneratePage() {
     ].join("\n");
     setBusy(true); setCanCancelGeneration(false); setError(""); setNotice(""); setResult(""); setJobId(""); setDmConversationId("");
     const headers = { Authorization: "Bearer " + session.access_token, Accept: "application/json", "Content-Type": "application/json" };
-    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: promptText, max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
+    let toolInputs: Record<string, Record<string, unknown>> = {};
+    if (consumerGrantId && (selectedExternalAgent?.tool_contracts || []).length) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(toolInputsJson); } catch { throw new Error("Typed tool inputs harus berupa JSON object yang valid."); }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Typed tool inputs harus berupa JSON object keyed by tool key.");
+      toolInputs = parsed as Record<string, Record<string, unknown>>;
+    }
+    const body = { agent_id: agentId, skill_id: skillId, capability_id: capabilityId, prompt: promptText, max_output_tokens: 1800, ...(consumerGrantId ? { consumer_grant_id: consumerGrantId } : {}), ...(Object.keys(toolInputs).length ? { tool_inputs: toolInputs } : {}), ...((!consumerGrantId || externalAgents.find(item => item.consumer_grant_id === consumerGrantId)?.granted_scopes.includes("knowledge_public_read")) && knowledgeQuery.trim() ? { knowledge_query: knowledgeQuery.trim() } : {}) };
     try {
       const quoteResponse = await fetch(apiBase + "/v1/generation/quote", { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
       if (!quoteResponse.ok) throw new Error(await errorMessage(quoteResponse));
-      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; knowledge_context_sha256?: string | null; knowledge_source_count?: number; payer_role?: string; consumer_grant_id?: string; agent_snapshot_sha256: string; skill_snapshot_sha256: string };
+      const quote = await quoteResponse.json() as { quote_id: string; expires_at: string; estimated_credits: number; model_id: string; policy_version: string; tariff_version: string; knowledge_context_sha256?: string | null; knowledge_source_count?: number; payer_role?: string; consumer_grant_id?: string; agent_snapshot_sha256: string; skill_snapshot_sha256: string; tool_inputs_sha256?: string | null };
       if (!quote.quote_id || Date.parse(quote.expires_at) <= Date.now() || !Number.isSafeInteger(quote.estimated_credits) || quote.estimated_credits <= 0) {
         throw new Error("Quote generation tidak valid atau sudah kedaluwarsa.");
       }
@@ -181,7 +206,7 @@ export default function GeneratePage() {
       }
       const createResponse = await fetch(apiBase + "/v1/generation/jobs", {
         method: "POST", headers: { ...headers, "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ ...body, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id, quoted_agent_snapshot_sha256: quote.agent_snapshot_sha256, quoted_skill_snapshot_sha256: quote.skill_snapshot_sha256, ...(quote.knowledge_context_sha256 ? { quoted_knowledge_context_sha256: quote.knowledge_context_sha256 } : {}) }), cache: "no-store",
+        body: JSON.stringify({ ...body, quoted_credits: quote.estimated_credits, quoted_policy_version: quote.policy_version, quoted_tariff_version: quote.tariff_version, quoted_model_id: quote.model_id, quoted_agent_snapshot_sha256: quote.agent_snapshot_sha256, quoted_skill_snapshot_sha256: quote.skill_snapshot_sha256, ...(quote.knowledge_context_sha256 ? { quoted_knowledge_context_sha256: quote.knowledge_context_sha256 } : {}), ...(quote.tool_inputs_sha256 ? { quoted_tool_inputs_sha256: quote.tool_inputs_sha256 } : {}) }), cache: "no-store",
       });
       if (!createResponse.ok) throw new Error(await errorMessage(createResponse));
       const created = await createResponse.json() as { job_id: string };
@@ -284,7 +309,7 @@ export default function GeneratePage() {
     <section className="rounded-3xl border-2 border-slate-900 bg-white p-5 shadow-[4px_4px_0px_#0f172a] dark:bg-slate-900 dark:text-white">
       {loading ? <p role="status" className="text-sm">Memuat Agent kanonis…</p> : <>
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-bold">AI Agent<select value={agentId + "::" + consumerGrantId} onChange={event => { const [id, grant] = event.target.value.split("::"); setAgentId(id); setConsumerGrantId(grant || ""); if (grant) setKnowledgeQuery(""); }} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="::">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id + "::"}>{agent.display_name} · Milik saya</option>)}{externalAgents.map(item => <option key={item.consumer_grant_id} value={item.agent.id + "::" + item.consumer_grant_id}>{item.agent.display_name} · Grant pemilik</option>)}</select></label>
+          <label className="text-sm font-bold">AI Agent<select value={agentId + "::" + consumerGrantId} onChange={event => { const [id, grant] = event.target.value.split("::"); setAgentId(id); setConsumerGrantId(grant || ""); if (grant) { setKnowledgeQuery(""); const selected = externalAgents.find(item => item.consumer_grant_id === grant); setToolInputsJson(makeToolInputsTemplate(selected?.tool_contracts || [])); } }} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="::">Pilih Agent</option>{agents.map(agent => <option key={agent.id} value={agent.id + "::"}>{agent.display_name} · Milik saya</option>)}{externalAgents.map(item => <option key={item.consumer_grant_id} value={item.agent.id + "::" + item.consumer_grant_id}>{item.agent.display_name} · Grant pemilik</option>)}</select></label>
           <label className="text-sm font-bold">Skill published<select value={skillId} onChange={event => setSkillId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih Skill</option>{skills.map(skill => <option key={skill.id} value={skill.id}>{skill.display_name || skill.name || `Skill v${skill.version}`}</option>)}</select></label>
         </div>
         <label className="mt-4 block text-sm font-bold">Capability approved<select value={capabilityId} onChange={event => setCapabilityId(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 dark:border-slate-700"><option value="">Pilih capability</option>{capabilities.map(item => <option key={item.capability_key} value={item.capability_key}>{item.capability_key}</option>)}</select></label>
@@ -293,6 +318,11 @@ export default function GeneratePage() {
           <p className="mt-1 text-xs font-medium text-slate-600">Gunakan komponen GenerateModal dari repository referensi. Brief, brand, dan format konten akan dikirim ke Generation Job melalui quote dan Model Router kanonis.</p>
           <button type="button" onClick={() => setGeneratorOpen(true)} disabled={busy || loading || !agentId || !skillId || !capabilityId} className="mt-3 rounded-xl border-2 border-slate-900 bg-purple-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-50">Buka AI Content & Reels Studio</button>
         </div>
+        {!!selectedExternalAgent?.tool_contracts?.length && <label className="mt-4 block text-sm font-bold">Typed tool inputs · JSON
+          <span className="mt-1 block text-xs font-normal text-slate-500">Isi object sesuai kontrak setiap tool. API memvalidasi schema, required fields, permission, dan grant sebelum reservasi kredit.</span>
+          <span className="mt-2 block space-y-1">{selectedExternalAgent.tool_contracts.map(contract => <span key={contract.key} className="block text-xs font-semibold text-slate-600">{contract.key}: {contract.description} · required {JSON.stringify(contract.input_schema.required || [])}</span>)}</span>
+          <textarea value={toolInputsJson} onChange={event => setToolInputsJson(event.target.value)} rows={8} spellCheck={false} autoCapitalize="off" placeholder='{"text.normalize":{"text":"..."}}' className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 font-mono text-xs font-normal dark:border-slate-700" />
+        </label>}
         <label className="mt-4 block text-sm font-bold">Knowledge context (opsional)<textarea value={knowledgeQuery} onChange={event => setKnowledgeQuery(event.target.value)} disabled={!!consumerGrantId && !externalKnowledgeAllowed} rows={3} maxLength={4000} placeholder={consumerGrantId && !externalKnowledgeAllowed ? "Owner belum memberikan scope Knowledge publik." : "Cari sumber Knowledge yang boleh digunakan…"} className="mt-2 w-full rounded-xl border border-slate-300 bg-transparent p-3 text-sm font-normal disabled:opacity-50 dark:border-slate-700" /><span className="mt-1 block text-xs font-normal text-slate-500">Agent sendiri: retrieval mengikuti consent dan ACL pemilik. Agent eksternal: hanya chunk ber-sensitivity public, ready, version-matched, dan grant knowledge_public_read; data privat tidak pernah diambil.</span></label>
         <p className="mt-4 text-xs text-slate-500">Quote dan tarif selalu berasal dari policy aktif. Tidak ada harga default atau kredit buatan.</p>
       </>}
