@@ -13,6 +13,10 @@ class FakeStore:
         self.fail_unknown = False
         self.reaped = 0
         self.failed_unclaimed = []
+        self.readiness = {"ready": True, "missing_tables": [], "missing_columns": [], "missing_functions": []}
+
+    async def runtime_schema_readiness(self):
+        return self.readiness
 
     async def reap_retry_exhaustion(self):
         self.reaped += 1
@@ -90,3 +94,27 @@ def test_worker_terminalizes_unclaimed_preflight_failures(monkeypatch):
     assert store.failed_unclaimed == [
         ("owner-1", "task-denied", 4, "RUNTIME_POLICY_SCOPE_DENIED", None)
     ]
+
+
+
+def test_worker_does_not_claim_tasks_when_canonical_schema_is_incomplete(monkeypatch):
+    store = FakeStore([
+        {"id": "task-1", "owner_user_id": "owner-1", "state": "created"},
+    ])
+    store.readiness = {
+        "ready": False,
+        "missing_tables": ["agent_runtime_tool_plans"],
+        "missing_columns": ["agent_runtime_tasks.execution_attempts"],
+        "missing_functions": ["public.heartbeat_agent_runtime_task(uuid,uuid,uuid,integer,integer)"],
+    }
+    executed = []
+
+    async def must_not_execute(received_store, owner_id, task_id, row):
+        executed.append(task_id)
+
+    monkeypatch.setattr(worker, "_execute_planned_task", must_not_execute)
+    processed = asyncio.run(worker.run_once(store))
+
+    assert processed == 0
+    assert store.reaped == 0
+    assert executed == []
