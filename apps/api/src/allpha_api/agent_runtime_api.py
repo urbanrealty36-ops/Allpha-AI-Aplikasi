@@ -885,7 +885,10 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
             invalid_output = ""
             validation_error = ""
             validated_plan: list[dict[str, Any]] | None = None
-            for attempt in range(1, 3):
+            # A bounded three-pass validation/replanning loop. Provider transport failures remain
+            # outcome_unknown and are never retried automatically; only locally rejected JSON
+            # responses may be repaired using the exact approved tool contracts.
+            for attempt in range(1, 4):
                 prompt = base_prompt
                 if invalid_output:
                     prompt += (
@@ -973,7 +976,7 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
                 })
                 raise HTTPException(status_code=422, detail={
                     "code": "TOOL_PLAN_OUTPUT_INVALID",
-                    "message": "Model Router gagal menghasilkan rencana yang sesuai kontrak setelah satu perbaikan terikat schema.",
+                    "message": "Model Router gagal menghasilkan rencana yang sesuai kontrak setelah tiga percobaan perencanaan terikat schema.",
                 })
         except HTTPException:
             raise
