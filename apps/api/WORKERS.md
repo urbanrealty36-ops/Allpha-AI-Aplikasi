@@ -193,3 +193,13 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - Runtime configuration: `ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=false` by default; bounded `ALLPHA_AGENT_RUNTIME_WORKER_POLL_SECONDS` (0.5–30s) and `ALLPHA_AGENT_RUNTIME_WORKER_BATCH_SIZE` (1–25). The container runs as non-root UID 10001.
 - Schema dependency: `agent_runtime_tool_plans` plus `agent_runtime_tool_plans.memory_context_refs/memory_context_sha256` source migrations; the canonical WP-07 Memory Coordinator base, ranked-search and proposal-idempotency migrations are separate source-only files. These migrations are not applied to the connected database.
 - **Activation remains disabled.** Do not set `ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=true`, create a persistent worker service, or deploy this image until the source-only migrations are reviewed/applied through the approved migration path, worker hosting/secrets/resource limits are approved, and the relevant runtime verification is authorized. No worker invocation or task execution was performed by this source change.
+
+
+### Bounded retry and recovery contract
+
+- Source migration `20261118195000_wp07_durable_retry_attempts.sql` adds durable `execution_attempts`, `max_execution_attempts` (default 3, maximum 5), and `next_attempt_at`. The claim RPC increments attempts atomically and only claims due work.
+- Only deterministic, registered pure-tool timeout is classified retryable in the current runtime. Retry delay is bounded exponential backoff (5s, 10s, then 20s; maximum 60s). The retry RPC preserves completed step checkpoints and rejects any task whose effect outcome is `started` or `unknown`.
+- Worker crashes/persistence interruptions recover from the last verified checkpoint only when the lease expires and the effect outcome is known safe. Unknown effects are terminalized as `EXECUTION_OUTCOME_UNKNOWN` and are never replayed.
+- Exhausted attempts are terminalized as `RUNTIME_RETRY_EXHAUSTED`. Preflight policy/contract failures are also terminalized through an owner/task-version/lease-fenced RPC so the worker does not poll a permanently invalid task forever.
+- Lease heartbeat is fenced by owner, task, lease token and task version. A cancellation request is returned to the worker without extending the lease; the worker checkpoints any completed pure step and finalizes the task as cancelled.
+- All new database changes are source-only and not present in the connected Supabase migration ledger. Worker activation remains disabled until canonical migrations are applied and runtime verification is authorized.
