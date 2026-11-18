@@ -12,7 +12,7 @@ begin
   if not exists (select 1 from pg_constraint where conname='agent_runtime_tasks_execution_attempts_check'
                  and conrelid='public.agent_runtime_tasks'::regclass) then
     alter table public.agent_runtime_tasks add constraint agent_runtime_tasks_execution_attempts_check
-      check (execution_attempts >= 0 and max_execution_attempts between 1 and 5);
+      check (execution_attempts >= 0 and max_execution_attempts between 1 and 5 and execution_attempts <= max_execution_attempts);
   end if;
 end
 $$;
@@ -35,7 +35,7 @@ begin
   if (select auth.role()) <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  if p_lease_seconds < 5 or p_lease_seconds > 300 then
+  if p_lease_seconds is null or p_lease_seconds < 5 or p_lease_seconds > 300 then
     raise exception 'lease_duration_out_of_bounds' using errcode='22023';
   end if;
   return query
@@ -84,8 +84,8 @@ begin
   if (select auth.role()) <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  if p_error_code not in ('TOOL_TIMEOUT','RUNTIME_TRANSIENT_FAILURE')
-     or p_retry_after_seconds not between 1 and 60
+  if p_error_code is null or p_error_code not in ('TOOL_TIMEOUT','RUNTIME_TRANSIENT_FAILURE')
+     or p_retry_after_seconds is null or p_retry_after_seconds not between 1 and 60
      or (p_output_payload is not null and jsonb_typeof(p_output_payload)<>'object')
      or jsonb_typeof(coalesce(p_event_log,'[]'::jsonb))<>'array' then
     raise exception 'runtime_retry_command_invalid' using errcode='22023';
@@ -172,7 +172,50 @@ begin
   if (select auth.role()) <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  if p_error_code !~ '^[A-Z0-9_]{1,80}$' then
+  if p_error_code is null or p_error_code !~ '^[A-Z0-9_]{1,80}
+    raise exception 'runtime_failure_code_invalid' using errcode='22023';
+  end if;
+  return query
+  update public.agent_runtime_tasks t
+     set state='failed',error_code=p_error_code,completed_at=now(),updated_at=now(),
+         execution_lease_token=null,lease_expires_at=null,next_attempt_at=null,task_version=t.task_version+1,
+         event_log=t.event_log||jsonb_build_array(jsonb_build_object(
+           'state','failed','at',now(),'trace_id',t.trace_id,'reason_code',p_error_code))
+   where t.id=p_task_id and t.owner_user_id=p_owner_user_id
+     and t.task_version=p_task_version
+     and (
+       (t.state in ('created','queued','retrying') and t.execution_lease_token is null)
+       or
+       (t.state='executing' and t.lease_expires_at<=now()
+         and t.execution_lease_token is not distinct from p_lease_token
+         and coalesce(t.effect_outcome,'none') not in ('started','unknown'))
+     )
+  returning t.*;
+end;
+$$;
+
+revoke all on function public.claim_agent_runtime_task(uuid,uuid,uuid,integer)
+  from public,anon,authenticated;
+revoke all on function public.schedule_agent_runtime_retry(uuid,uuid,uuid,integer,text,integer,jsonb,jsonb)
+  from public,anon,authenticated;
+revoke all on function public.reap_agent_runtime_retry_exhaustion()
+  from public,anon,authenticated;
+revoke all on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid)
+  from public,anon,authenticated;
+grant execute on function public.claim_agent_runtime_task(uuid,uuid,uuid,integer) to service_role;
+grant execute on function public.schedule_agent_runtime_retry(uuid,uuid,uuid,integer,text,integer,jsonb,jsonb) to service_role;
+grant execute on function public.reap_agent_runtime_retry_exhaustion() to service_role;
+grant execute on function public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid) to service_role;
+
+comment on column public.agent_runtime_tasks.execution_attempts is
+  'Durable claim count. Incremented atomically by claim_agent_runtime_task.';
+comment on column public.agent_runtime_tasks.max_execution_attempts is
+  'Bounded maximum claims before safe retry exhaustion; defaults to three.';
+comment on column public.agent_runtime_tasks.next_attempt_at is
+  'Durable not-before time for a retrying task.';
+
+commit;
+ then
     raise exception 'runtime_failure_code_invalid' using errcode='22023';
   end if;
   return query
