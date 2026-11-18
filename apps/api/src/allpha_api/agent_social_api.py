@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -53,6 +54,26 @@ class TakeoverWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     takeover_active: bool
     reason: str = Field(default="owner_manual_takeover", min_length=3, max_length=500)
+
+
+class AutomationGrantWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    granted_scopes: list[Literal["comments", "mentions", "dm", "live_chat"]] = Field(min_length=1, max_length=4)
+    idempotency_key: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
+    expires_at: datetime
+
+    @model_validator(mode="after")
+    def validate_grant(self) -> "AutomationGrantWrite":
+        if len(set(self.granted_scopes)) != len(self.granted_scopes):
+            raise ValueError("granted_scopes must not contain duplicates")
+        if self.expires_at.tzinfo is None or self.expires_at <= datetime.now(timezone.utc):
+            raise ValueError("expires_at must be a future timezone-aware timestamp")
+        return self
+
+
+class AutomationGrantRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(default="owner_revoked", min_length=3, max_length=500)
 
 
 @router.get("/automation")
@@ -113,6 +134,62 @@ async def set_takeover(agent_id: uuid.UUID, payload: TakeoverWrite,
             "tasks_cancelled": result.get("tasks_cancelled", 0),
             "tasks_signalled": result.get("tasks_signalled", 0),
             "auto_reply_enabled": False, "outcome": "saved"}
+
+
+@router.get("/automation/grants")
+async def list_automation_grants(agent_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    if not _automation_schema_enabled():
+        return {"items": [], "schema_active": False, "auto_reply_runtime_enabled": False}
+    rows = await _server_db("GET", "agent_social_automation_grants", params={
+        "select": "id,agent_id,granted_scopes,policy_version,status,expires_at,granted_at,revoked_at,revoke_reason",
+        "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}",
+        "order": "granted_at.desc", "limit": "100",
+    })
+    return {"items": rows or [], "schema_active": True, "auto_reply_runtime_enabled": False}
+
+
+@router.post("/automation/grants")
+async def create_automation_grant(agent_id: uuid.UUID, payload: AutomationGrantWrite,
+                                  user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
+    result = await _server_db("POST", "rpc/grant_agent_social_automation_scopes", body={
+        "p_owner_user_id": owner_id, "p_agent_id": str(agent_id),
+        "p_granted_scopes": payload.granted_scopes,
+        "p_idempotency_key": payload.idempotency_key,
+        "p_expires_at": payload.expires_at.astimezone(timezone.utc).isoformat(),
+    })
+    if not isinstance(result, dict) or result.get("outcome") not in ("created", "replayed"):
+        raise HTTPException(503, detail={
+            "code": "AGENT_SOCIAL_AUTOMATION_GRANT_UNCONFIRMED",
+            "message": "Permission automation belum dapat dikonfirmasi.",
+        })
+    return {"outcome": result["outcome"], "grant": result.get("grant"),
+            "auto_reply_runtime_enabled": False,
+            "runtime_reason": result.get("reason", "AUTO_REPLY_RUNTIME_NOT_CONNECTED")}
+
+
+@router.post("/automation/grants/{grant_id}/revoke")
+async def revoke_automation_grant(agent_id: uuid.UUID, grant_id: uuid.UUID,
+                                  payload: AutomationGrantRevoke,
+                                  user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
+    result = await _server_db("POST", "rpc/revoke_agent_social_automation_grant", body={
+        "p_owner_user_id": owner_id, "p_agent_id": str(agent_id),
+        "p_grant_id": str(grant_id), "p_reason": payload.reason,
+    })
+    if not isinstance(result, dict) or result.get("outcome") not in ("revoked", "replayed"):
+        raise HTTPException(503, detail={
+            "code": "AGENT_SOCIAL_AUTOMATION_REVOKE_UNCONFIRMED",
+            "message": "Pencabutan permission automation belum dapat dikonfirmasi.",
+        })
+    return {"outcome": result["outcome"], "grant": result.get("grant"),
+            "auto_reply_runtime_enabled": False}
 
 
 class CoauthoredDraft(BaseModel):
