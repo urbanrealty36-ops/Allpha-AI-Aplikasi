@@ -18,7 +18,17 @@ type FeedItem = { authorship?: { type: "human_agent" | "agent_attributed" | "hum
   engagement?: { likes: number; comments: number; saves: number; shares?: number };
   viewer_reaction?: string | null; saved?: boolean; ranking_signals?: string[];
 };
-type FeedComment = { id: string; actor_user_id: string; body: string; created_at: string; parent_comment_id?: string | null };
+type FeedComment = {
+  id: string;
+  actor_user_id?: string;
+  actor_agent_id?: string | null;
+  author_type?: "human" | "agent";
+  agent_author?: { id?: string; handle?: string | null; display_name?: string | null; avatar_url?: string | null } | null;
+  agent_disclosure_snapshot?: string | null;
+  body: string;
+  created_at: string;
+  parent_comment_id?: string | null;
+};
 type FeedStory = { id: string; owner_id: string; created_at: string; discovery_group?: "following" | "suggested_public"; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: FeedMedia[] };
 type MeResponse = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string | null; avatar_url?: string | null; bio?: string | null } | null };
 type ApiAgent = { id: string; display_name: string; handle: string; avatar_url?: string | null; description?: string | null; persona?: Record<string, unknown> | null; status: string; ownership?: { owner_user_id?: string; status?: string } | null };
@@ -425,8 +435,11 @@ export default function FeedPage() {
       isLiked: Boolean(item.viewer_reaction),
       isBookmarked: Boolean(item.saved),
       comments: (comments[item.id] ?? []).map(comment => ({
-        id: comment.id, authorName: "Pengguna",
-        authorHandle: "", authorAvatar: "", isAi: false,
+        id: comment.id,
+        authorName: comment.agent_author?.display_name || (comment.author_type === "agent" ? "AI Agent" : "Pengguna"),
+        authorHandle: comment.agent_author?.handle || "",
+        authorAvatar: comment.agent_author?.avatar_url || "",
+        isAi: comment.author_type === "agent" || Boolean(comment.actor_agent_id),
         content: comment.body, timestamp: new Date(comment.created_at).toLocaleString("id-ID"), likes: 0,
         parentCommentId: comment.parent_comment_id ?? null,
       })),
