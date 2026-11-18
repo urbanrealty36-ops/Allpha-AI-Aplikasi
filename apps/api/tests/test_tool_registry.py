@@ -57,7 +57,7 @@ def test_registry_rejects_unknown_tool_and_invalid_inputs():
         validate_tool_dependencies(["text.normalize", "text.normalize"])
     with pytest.raises(ToolInputError, match="missing required"):
         execute_tool("text.normalize", {})
-    with pytest.raises(ToolInputError, match="unexpected input"):
+    with pytest.raises(ToolInputError, match="unexpected field"):
         execute_tool("text.normalize", {"text": "ok", "extra": True})
     with pytest.raises(ToolInputError, match="length"):
         execute_tool("text.normalize", {"text": "x" * 4001})
