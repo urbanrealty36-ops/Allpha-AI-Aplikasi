@@ -276,6 +276,14 @@ def _generation_tool_context_bytes(tool_inputs: dict[str, dict[str, Any]]) -> in
     return len(serialized.encode("utf-8")) + 16_384
 
 
+def _generation_memory_context_reserve_bytes(*, external: bool) -> int:
+    if external or os.getenv("ALLPHA_MEMORY_COORDINATOR_ENABLED", "false").lower() != "true":
+        return 0
+    # MemoryCoordinator retrieves at most 6,000 characters plus bounded per-item provenance.
+    # Reserve the worst-case UTF-8 context so Generation quotes do not undercount owner Memory.
+    return 32_768
+
+
 async def _retrieve_generation_knowledge(
     request: Request, user: dict[str, Any], agent_id: uuid.UUID, query: str | None
 ) -> dict[str, Any]:
@@ -654,6 +662,7 @@ async def quote_generation_job(
             "agent_snapshot_sha256": external["agent_snapshot_sha256"],
             "skill_snapshot_sha256": external["skill_snapshot_sha256"],
             "tool_inputs_sha256": tool_inputs_sha256,
+            "memory_context_reserve_bytes": 0,
         }
     if router_instance is None:
         raise HTTPException(503, detail={"code": "MODEL_ROUTE_UNAVAILABLE", "message": "AI Model Router belum siap."})
@@ -681,7 +690,7 @@ async def quote_generation_job(
     prompt_bytes = generation_prompt_size_bytes(
         prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
         skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
-    ) + _generation_tool_context_bytes(tool_inputs)
+    ) + _generation_tool_context_bytes(tool_inputs) + _generation_memory_context_reserve_bytes(external=False)
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code": "PROMPT_EXCEEDS_APPROVED_BOUND", "message": "Prompt, Agent, Skill, dan Knowledge context melebihi batas byte yang disetujui."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={
@@ -734,6 +743,7 @@ async def quote_generation_job(
         "agent_snapshot_sha256": snapshots["agent_snapshot_sha256"],
         "skill_snapshot_sha256": snapshots["skill_snapshot_sha256"],
         "tool_inputs_sha256": tool_inputs_sha256,
+        "memory_context_reserve_bytes": _generation_memory_context_reserve_bytes(external=False),
     }
 
 
@@ -872,7 +882,7 @@ async def create_generation_job(
     prompt_bytes = generation_prompt_size_bytes(
         prompt=payload.prompt, agent_snapshot=snapshots["agent_snapshot"],
         skill_snapshot=snapshots["skill_snapshot"], knowledge_snapshot=knowledge_snapshot,
-    ) + _generation_tool_context_bytes(tool_inputs)
+    ) + _generation_tool_context_bytes(tool_inputs) + _generation_memory_context_reserve_bytes(external=False)
     if prompt_bytes > int(route["max_prompt_bytes"]):
         raise HTTPException(422, detail={"code":"PROMPT_EXCEEDS_APPROVED_BOUND","message":"Prompt, Agent, Skill, dan Knowledge context melebihi batas byte model."})
     capability_rows = await user_db_request("GET", "agent_capabilities", token, params={

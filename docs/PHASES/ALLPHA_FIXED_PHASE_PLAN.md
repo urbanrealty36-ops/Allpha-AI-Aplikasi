@@ -3331,3 +3331,9 @@ WP-07 implementation commit index — 2026-11-18:
 - 7f14ebbb44f64fcaf967802d31d229fb15d82109 — preserve full-item vs retrieved-excerpt Memory digests.
 - afa837009ec7633972d6915e689790b14320af05 — Native Agent Runtime multi-tool plan composer and Model Router planner status.
 - These commits are source changes only. No test, build, CI, migration application, provider execution, staging or deployment evidence is claimed.
+
+
+WP-07 Generation Memory budget reservation — 2026-11-18:
+- Owner Generation quote and job creation now reserve up to 32 KiB of prompt budget when ALLPHA_MEMORY_COORDINATOR_ENABLED is explicitly enabled. External Consumer jobs reserve zero private Memory bytes because they never receive owner Memory.
+- The reserve is a worst-case budget for the MemoryCoordinator's 6,000-character retrieval ceiling plus bounded item metadata. This prevents an enabled Memory context from silently exceeding the quoted Model Router prompt budget. No Memory content is included in the quote response or persisted as quote metadata.
+- The reserve is inactive while the Memory feature flag remains false. It does not activate the Memory schema or retrieval RPC.
