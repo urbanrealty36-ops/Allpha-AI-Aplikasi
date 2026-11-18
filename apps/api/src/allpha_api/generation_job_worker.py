@@ -431,7 +431,6 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
         classification = item.get("classification")
         if (not isinstance(content, str) or not content
                 or not isinstance(content_digest, str) or len(content_digest) != 64
-                or hashlib.sha256(content.encode("utf-8")).hexdigest() != content_digest
                 or not isinstance(item_id, str) or not item_id
                 or not isinstance(memory_type, str) or not isinstance(version, int)
                 or not isinstance(policy_version, int) or not isinstance(classification, str)):
@@ -445,6 +444,7 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
             "policy_version": policy_version,
             "classification": classification,
             "content_sha256": content_digest,
+            "retrieved_text_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
         }
         retrieval_method = item.get("retrieval_method")
         if isinstance(retrieval_method, str):
@@ -455,7 +455,7 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
         item_evidence.append(evidence_item)
     context_text = "\n".join(lines)
     context_bytes = context_text.encode("utf-8")
-    if len(context_bytes) > 6_000:
+    if len(context_bytes) > 32_768:
         raise ValueError("memory_context_byte_limit_exceeded")
     normalized_query = str(query or "").strip()[:300]
     evidence = {
@@ -463,6 +463,7 @@ def _build_memory_context_evidence(memory_items: list[dict[str, Any]], query: st
         "query_sha256": hashlib.sha256(normalized_query.encode("utf-8")).hexdigest(),
         "context_sha256": hashlib.sha256(context_bytes).hexdigest(),
         "context_bytes": len(context_bytes),
+        "context_characters": len(context_text),
         "policy_versions": sorted(policy_versions),
         "items": item_evidence,
     }

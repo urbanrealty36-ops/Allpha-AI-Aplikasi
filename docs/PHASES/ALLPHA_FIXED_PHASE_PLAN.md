@@ -3309,3 +3309,8 @@ No unit/integration/e2e tests, build, lint, typecheck, CI run, worker invocation
 - Added bounded validation and non-content provenance for Memory context used by Generation: context digest, query digest, item IDs, content digests, memory type/version, policy version, classification and retrieval method/score. The Generation Job result stores only this evidence; retrieved text and raw query are not copied into durable job metadata or audit details.
 - Memory text remains runtime-only in the Model Router request and is treated as untrusted context. The artifact output remains subject to existing moderation and private artifact controls.
 - ALLPHA_MEMORY_COORDINATOR_ENABLED remains false by default and the Memory schema/search migrations are not applied to the connected Supabase project. This source path is therefore not active or runtime-verified. Semantic/vector retrieval and automatic model-generated proposals remain open; explicit owner remember-intent proposals retain manual approval.
+
+
+**WP-07 Memory context evidence correction — 2026-11-18:**
+- Generation provenance distinguishes the full persisted Memory item digest from the digest of the bounded retrieved excerpt. The MemoryCoordinator verifies the full source digest before truncation; the worker must not incorrectly compare a truncated excerpt to the full-item digest.
+- Runtime context remains bounded to the MemoryCoordinator's 6,000-character retrieval budget and a 32 KiB UTF-8 serialized-context ceiling. Only hashes and metadata are persisted; no Memory text is stored in the Generation Job result.
