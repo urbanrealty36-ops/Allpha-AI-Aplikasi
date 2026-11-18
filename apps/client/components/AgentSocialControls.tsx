@@ -7,6 +7,7 @@ type Agent = { id: string; display_name: string; handle: string; status: string 
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version: number };
 type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
 type Automation = { version: number; auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; allowed_tool_scopes: string[]; max_replies_per_minute: number; daily_credit_budget: number; quiet_hours: Record<string, unknown>; escalation_rules: Record<string, unknown>; takeover_active: boolean };
+type AutomationGrant = { id: string; granted_scopes: string[]; policy_version: number; status: string; expires_at: string | null; granted_at: string };
 type DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
 const styles = {
@@ -31,6 +32,9 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [actionDispatchEnabled, setActionDispatchEnabled] = useState(false);
   const [automation, setAutomation] = useState<Automation | null>(null);
+  const [automationGrants, setAutomationGrants] = useState<AutomationGrant[]>([]);
+  const [grantScopes, setGrantScopes] = useState<string[]>([]);
+  const [grantExpiryHours, setGrantExpiryHours] = useState("24");
   const [channels, setChannels] = useState<string[]>([]);
   const [blockedTopicsText, setBlockedTopicsText] = useState("");
   const [replyTone, setReplyTone] = useState("friendly_concise");
@@ -54,12 +58,14 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       const selected = active.some((x: Agent) => x.id === agentId) ? agentId : active[0]?.id || "";
       setAgentId(selected);
       if (selected) {
-        const [result, automationResult] = await Promise.all([
+        const [result, automationResult, grantsResult] = await Promise.all([
           api("/v1/agent-social/policy?agent_id=" + encodeURIComponent(selected)),
           api("/v1/agent-social/automation?agent_id=" + encodeURIComponent(selected)),
+          api("/v1/agent-social/automation/grants?agent_id=" + encodeURIComponent(selected)),
         ]);
         const current = result.policy as Policy | null;
         const currentAutomation = automationResult.policy as Automation | null;
+        setAutomationGrants(grantsResult.items || []);
         setAutomation(currentAutomation);
         setChannels(currentAutomation?.auto_reply_channels || []);
         setBlockedTopicsText((currentAutomation?.blocked_topics || []).join(", "));
@@ -68,8 +74,8 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         setPolicy(current);
         setActions(current?.allowed_actions || ["draft_post"]); setMode(current?.approval_mode === "disabled" ? "disabled" : "every_post");
         setDisclosure(current?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(current?.is_enabled ?? false);
-      } else { setPolicy(null); setAutomation(null); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); }
-    } catch (cause) { setPolicy(null); setAutomation(null); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
+      } else { setPolicy(null); setAutomation(null); setAutomationGrants([]); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); }
+    } catch (cause) { setPolicy(null); setAutomation(null); setAutomationGrants([]); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, [api, agentId]);
   useEffect(() => { void load(); }, [load]);
@@ -103,6 +109,37 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       setNotice("Konfigurasi Auto Reply tersimpan; eksekusi tetap nonaktif sampai runtime tersedia.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Konfigurasi gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function grantAutomationScopes() {
+    if (!agentId || !automation || !grantScopes.length || automation.takeover_active || busy) return;
+    const hours = Math.max(1, Math.min(720, Math.floor(Number(grantExpiryHours) || 24)));
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/v1/agent-social/automation/grants?agent_id=" + encodeURIComponent(agentId), {
+        method: "POST",
+        body: JSON.stringify({
+          granted_scopes: grantScopes,
+          idempotency_key: "native-social-grant-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10),
+          expires_at: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString(),
+        }),
+      });
+      setNotice("Permission automation tersimpan. Runtime Auto Reply tetap nonaktif.");
+      setGrantScopes([]);
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Permission automation gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+  async function revokeAutomationGrant(id: string) {
+    if (!agentId || busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/v1/agent-social/automation/grants/" + id + "/revoke?agent_id=" + encodeURIComponent(agentId), {
+        method: "POST", body: JSON.stringify({ reason: "owner_revoked_native" }),
+      });
+      setNotice(result.outcome === "replayed" ? "Pencabutan permission sudah tercatat." : "Permission automation dicabut.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pencabutan permission gagal."); }
     finally { setBusy(false); }
   }
   async function decide(id: string, decision: "approve" | "reject") {
@@ -153,6 +190,17 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         <Text style={styles.kicker}>BATAS BUDGET HARIAN (AI CREDITS)</Text>
         <TextInput value={dailyBudget} onChangeText={setDailyBudget} keyboardType="number-pad" style={styles.field}/>
         <Text onPress={() => void saveAutomation()} style={[styles.action, { backgroundColor: busy ? "#303A58" : "#A5B4FC", color: "#10152A", fontWeight: "800" }]}>{busy ? "Menyimpan…" : "Simpan Pengaturan Auto Reply"}</Text>
+        <Text style={styles.kicker}>PERMISSION GRANTS · RUNTIME TETAP NONAKTIF</Text>
+        <Text style={styles.body}>Grant hanya mencatat channel yang diizinkan pemilik. Tidak ada Auto Reply yang dijalankan sampai event consumer, budget reservation dan moderation runtime terhubung.</Text>
+        {automation.auto_reply_channels.map(channel => <Text key={channel} onPress={() => setGrantScopes(old => old.includes(channel) ? old.filter(item => item !== channel) : [...old, channel])} style={styles.action}>{grantScopes.includes(channel) ? "☑ " : "□ "}{channel}</Text>)}
+        <Text style={styles.body}>Masa berlaku grant (jam)</Text>
+        <TextInput value={grantExpiryHours} onChangeText={setGrantExpiryHours} keyboardType="number-pad" style={styles.field}/>
+        <Text onPress={() => void grantAutomationScopes()} style={[styles.action, { opacity: busy || automation.takeover_active || !grantScopes.length ? 0.4 : 1 }]}>Buat Permission Grant</Text>
+        {automationGrants.map(grant => <View key={grant.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 8, gap: 6 }}>
+          <Text style={styles.body}>{grant.granted_scopes.join(", ")} · {grant.status} · policy v{grant.policy_version}</Text>
+          <Text style={styles.body}>Berlaku sampai: {grant.expires_at ? new Date(grant.expires_at).toLocaleString("id-ID") : "tanpa batas"}</Text>
+          {grant.status === "active" && <Text onPress={() => void revokeAutomationGrant(grant.id)} style={styles.action}>Cabut Permission</Text>}
+        </View>)}
       </> : <Text style={styles.body}>Policy automation belum dibuat untuk Agent ini. Kontrol dinonaktifkan sampai backend menyediakan record kanonis.</Text>}
       <Text onPress={async () => { if (!agentId || !automation || busy) return; setBusy(true); setError(""); try { const active = !automation.takeover_active; const result = await api("/v1/agent-social/takeover/" + agentId,{method:"POST",body:JSON.stringify({takeover_active:active,reason:active?"owner_manual_takeover_native":"owner_released_takeover_native"})}); setAutomation(result.policy as Automation); setNotice(active?"Takeover aktif; approval pending dicabut.":"Takeover dilepas; Auto Reply belum diaktifkan."); await load(); } catch(cause) { setError(cause instanceof Error?cause.message:"Takeover gagal."); } finally { setBusy(false); } }} style={[styles.action, { opacity: !automation || busy ? 0.5 : 1 }]}>{automation?.takeover_active ? "Lepas Takeover" : "Ambil Alih Sekarang"}</Text>
     </View>
