@@ -152,26 +152,29 @@ async def _agent_for_attributed_content(item: dict[str, Any]) -> dict[str, Any] 
     return {key: agent.get(key) for key in ("id", "handle", "display_name", "avatar_url", "description", "disclosure")}
 
 
-async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int], dict[str, list[dict[str, Any]]]]:
+async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int], dict[str, int], dict[str, list[dict[str, Any]]]]:
     """Return observed share counts and verified public Agent repost attribution."""
     ids = sorted(set(content_ids))
     if not ids:
-        return {}, {}
+        return {}, {}, {}
     attribution_enabled = os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true"
-    fields = "content_id" if not attribution_enabled else (
+    fields = "content_id,share_target" if not attribution_enabled else (
         "id,content_id,actor_user_id,actor_agent_id,agent_disclosure_snapshot,created_at,quote_body,share_target"
     )
     shares = await _server_db("GET", "content_shares", params={
         "select": fields, "content_id": f"in.({','.join(ids)})",
-        "limit": "5000",
+        "order": "created_at.desc", "limit": "5000",
     })
     counts: dict[str, int] = {}
+    repost_counts: dict[str, int] = {}
     for share in shares or []:
         content_id = str(share.get("content_id") or "")
         if content_id:
             counts[content_id] = counts.get(content_id, 0) + 1
+            if share.get("share_target") in {"repost", "quote"}:
+                repost_counts[content_id] = repost_counts.get(content_id, 0) + 1
     if not attribution_enabled:
-        return counts, {}
+        return counts, repost_counts, {}
 
     candidates = [
         share for share in (shares or [])
@@ -180,7 +183,7 @@ async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int],
     agent_ids = sorted({str(share["actor_agent_id"]) for share in candidates})
     owner_ids = {str(share.get("actor_user_id")) for share in candidates if share.get("actor_user_id")}
     if not agent_ids or not owner_ids:
-        return counts, {}
+        return counts, repost_counts, {}
     agent_rows, ownership_rows, owner_profiles = await asyncio.gather(
         _server_db("GET", "ai_agents", params={
             "select": "id,handle,display_name,avatar_url,description,disclosure,status,visibility",
@@ -216,7 +219,7 @@ async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int],
                       ("id", "handle", "display_name", "avatar_url", "description", "disclosure")},
             "disclosure": share.get("agent_disclosure_snapshot") or agent.get("disclosure"),
         })
-    return counts, by_content
+    return counts, repost_counts, by_content
 
 
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
@@ -420,7 +423,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000"})
     saves = await _server_db("GET", "content_saves", params={"select": "content_id,actor_user_id", "content_id": in_ids, "limit": "5000"})
-    share_counts, agent_shares_by_content = await _agent_share_metadata(ids)
+    share_counts, repost_counts, agent_shares_by_content = await _agent_share_metadata(ids)
     likes: dict[str, int] = {}; comment_counts: dict[str, int] = {}; save_counts: dict[str, int] = {}
     viewer_reactions: dict[str, str] = {}; viewer_saves: set[str] = set()
     for row in reactions or []:
@@ -452,7 +455,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         # Version 1 is lexicographic, not a fabricated weighted score: followed creator,
         # explicit user-interest match count, observed engagement, then publish time.
         rank_key = (int(followed_creator), interest_matches, engagement_total, _published(row), str(row["id"]))
-        ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count, "shares": share_count},
+        ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count, "shares": share_count, "reposts": repost_counts.get(cid, 0)},
                        "viewer_reaction": viewer_reactions.get(cid), "saved": cid in viewer_saves,
                        "ranking_signals": signals, "_rank": rank_key})
     ranked.sort(key=(lambda r: r["_rank"]) if effective_mode == "for_you"
@@ -563,7 +566,7 @@ async def get_my_profile_feed(
     saves = await _server_db("GET", "content_saves", params={
         "select": "content_id,actor_user_id", "content_id": in_ids, "limit": "5000",
     })
-    shares_by_id, agent_shares_by_content = await _agent_share_metadata(ids)
+    shares_by_id, reposts_by_id, agent_shares_by_content = await _agent_share_metadata(ids)
     likes_by_id: dict[str, int] = {}
     comments_by_id: dict[str, int] = {}
     viewer_reactions: dict[str, str] = {}
@@ -610,6 +613,7 @@ async def get_my_profile_feed(
                 "comments": comments_by_id.get(content_id, 0),
                 "saves": sum(1 for saved in saves or [] if str(saved.get("content_id")) == content_id),
                 "shares": shares_by_id.get(content_id, 0),
+                "reposts": reposts_by_id.get(content_id, 0),
             },
             "viewer_reaction": viewer_reactions.get(content_id),
             "saved": content_id in viewer_saves,
