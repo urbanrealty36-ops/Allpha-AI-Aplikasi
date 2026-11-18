@@ -252,7 +252,11 @@ async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[s
         "select": "id,agent_id,content_id,target_content_id,target_comment_id,action_type,content_version,status,disclosure_snapshot,requested_at,decided_at,decision_reason,execution_result",
         "owner_user_id": f"eq.{user['id']}", "order": "requested_at.desc", "limit": "100",
     })
-    return {"items": rows or []}
+    return {
+        "items": rows or [],
+        "action_dispatch_enabled": os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true",
+        "dispatch_blocked_actions": ["draft_post", "draft_comment", "draft_reply", "suggest_repost"],
+    }
 
 
 @router.post("/approvals/{approval_id}/decision")
