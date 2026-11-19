@@ -179,6 +179,8 @@ class TextGenerationRequest:
     billing_account_id: str | None = None
     system_prompt: str = ""
     response_format: Literal["json_object"] | None = None
+    tool_definitions: tuple[dict[str, Any], ...] = ()
+    max_tool_calls: int = 5
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
@@ -199,6 +201,33 @@ class TextGenerationRequest:
             raise ValueError("source_version must be positive")
         if self.billing_account_id is not None and not self.billing_account_id.strip():
             raise ValueError("billing_account_id must be non-empty when supplied")
+        if not 1 <= self.max_tool_calls <= 5:
+            raise ValueError("max_tool_calls must be between 1 and 5")
+        names: set[str] = set()
+        for definition in self.tool_definitions:
+            if not isinstance(definition, dict) or definition.get("type") != "function":
+                raise ValueError("tool definitions must use the function contract")
+            function = definition.get("function")
+            if not isinstance(function, dict):
+                raise ValueError("tool definition function must be an object")
+            name = function.get("name")
+            parameters = function.get("parameters")
+            if not isinstance(name, str) or not name or len(name) > 100 or name in names:
+                raise ValueError("tool names must be unique non-empty identifiers")
+            if not isinstance(parameters, dict) or parameters.get("type") != "object":
+                raise ValueError("tool parameters must declare an object JSON schema")
+            names.add(name)
+
+
+@dataclass(frozen=True)
+class TextGenerationToolCall:
+    call_id: str
+    name: str
+    arguments: dict[str, Any]
+
+    def __post_init__(self) -> None:
+        if not self.call_id.strip() or not self.name.strip() or not isinstance(self.arguments, dict):
+            raise ValueError("tool call identity and object arguments are required")
 
 
 @dataclass(frozen=True)
@@ -214,12 +243,15 @@ class TextGenerationResponse:
     cost_microunits: int
     cost_unit: str
     pricing_version: str
+    tool_calls: tuple[TextGenerationToolCall, ...] = ()
 
     def __post_init__(self) -> None:
         if not all(value.strip() for value in (self.task_id, self.trace_id, self.provider_id, self.model_id, self.model_version, self.cost_unit, self.pricing_version)):
             raise ValueError("generation response identity and cost fields are required")
-        if not self.output_text.strip():
-            raise ValueError("generation response output must not be empty")
+        if not self.output_text.strip() and not self.tool_calls:
+            raise ValueError("generation response requires text or tool calls")
+        if len(self.tool_calls) > 5 or len({call.call_id for call in self.tool_calls}) != len(self.tool_calls):
+            raise ValueError("tool call count and identifiers must be bounded and unique")
         if min(self.input_tokens, self.output_tokens, self.cost_microunits) < 0:
             raise ValueError("generation usage and cost must be non-negative")
 
@@ -439,13 +471,24 @@ class CanonicalTextGenerationRouter:
                     raise TextGenerationRouterRejected("provider response identity does not match the approved route")
                 if response.output_tokens > request.max_output_tokens:
                     raise TextGenerationRouterRejected("provider output exceeded requested token limit")
+                if response.tool_calls and not request.tool_definitions:
+                    raise TextGenerationRouterRejected("provider returned tool calls when no tools were authorized for this request")
+                if len(response.tool_calls) > request.max_tool_calls:
+                    raise TextGenerationRouterRejected("provider returned more tool calls than the request limit")
+                allowed_tool_names = {item["function"]["name"] for item in request.tool_definitions}
+                if any(call.name not in allowed_tool_names for call in response.tool_calls):
+                    raise TextGenerationRouterRejected("provider returned a tool name outside the request allowlist")
                 if response.cost_unit != policy.cost_unit or response.pricing_version != policy.pricing_version:
                     raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
                 if response.cost_microunits > policy.max_cost_microunits:
                     raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
                 prompt_material = (request.system_prompt.strip() + "\n\n" + request.prompt) if request.system_prompt.strip() else request.prompt
                 prompt_hash = hashlib.sha256(prompt_material.encode("utf-8")).hexdigest()
-                output_hash = hashlib.sha256(response.output_text.encode("utf-8")).hexdigest()
+                output_material = response.output_text if response.output_text.strip() else json.dumps(
+                    [{"id": call.call_id, "name": call.name, "arguments": call.arguments} for call in response.tool_calls],
+                    sort_keys=True, separators=(",", ":"), allow_nan=False,
+                )
+                output_hash = hashlib.sha256(output_material.encode("utf-8")).hexdigest()
                 evidence_payload = {
                     "task_id": request.task_id, "trace_id": request.trace_id,
                     "idempotency_key": request.idempotency_key, "policy_id": policy.policy_id,
