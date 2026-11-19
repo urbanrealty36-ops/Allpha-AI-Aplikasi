@@ -246,3 +246,54 @@ def test_openai_compatible_adapter_requests_json_object_mode():
     )
     asyncio.run(adapter.generate(replace(request(), response_format="json_object"), model_id="model-test"))
     assert observed["response_format"] == {"type": "json_object"}
+
+
+def test_openai_compatible_adapter_submits_and_parses_authorized_tool_calls():
+    from allpha_api.model_router import TextGenerationToolCall
+    observed = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        observed.update(__import__("json").loads(req.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": None, "tool_calls": [{
+                "id": "call-1", "type": "function",
+                "function": {"name": "text.normalize", "arguments": '{"text":"hello"}'},
+            }]}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        })
+
+    tools = ({"type": "function", "function": {
+        "name": "text.normalize", "description": "Normalize text",
+        "parameters": {"type": "object", "properties": {"text": {"type": "string"}},
+                      "required": ["text"], "additionalProperties": False},
+    }},)
+    adapter = OpenAICompatibleTextGenerationAdapter(
+        base_url="https://provider.invalid/v1", api_key="test-secret",
+        provider_id="provider-test", model_version="model-version-1",
+        pricing_version="price-v1", cost_unit="USD",
+        input_cost_microunits_per_token=1, output_cost_microunits_per_token=1,
+        transport=httpx.MockTransport(handler),
+    )
+    result = asyncio.run(adapter.generate(replace(request(), tool_definitions=tools), model_id="model-test"))
+    assert observed["tool_choice"] == "auto"
+    assert observed["tools"] == list(tools)
+    assert result.output_text == ""
+    assert result.tool_calls == (TextGenerationToolCall("call-1", "text.normalize", {"text": "hello"}),)
+
+
+def test_openai_compatible_adapter_rejects_tool_call_outside_request_allowlist():
+    tools = ({"type": "function", "function": {"name": "text.normalize", "parameters": {"type": "object"}}},)
+    adapter = OpenAICompatibleTextGenerationAdapter(
+        base_url="https://provider.invalid/v1", api_key="test-secret",
+        provider_id="provider-test", model_version="model-version-1",
+        pricing_version="price-v1", cost_unit="USD",
+        input_cost_microunits_per_token=1, output_cost_microunits_per_token=1,
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={
+            "choices": [{"message": {"content": None, "tool_calls": [{
+                "id": "call-1", "type": "function",
+                "function": {"name": "admin.delete", "arguments": "{}"},
+            }]}}], "usage": {"prompt_tokens": 2, "completion_tokens": 2},
+        })),
+    )
+    with pytest.raises(Exception, match="outside the authorized request contract"):
+        asyncio.run(adapter.generate(replace(request(), tool_definitions=tools), model_id="model-test"))
