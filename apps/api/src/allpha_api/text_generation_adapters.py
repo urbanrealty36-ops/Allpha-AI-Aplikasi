@@ -79,6 +79,7 @@ class OpenAICompatibleTextGenerationAdapter:
             "max_tokens": request.max_output_tokens,
             "stream": False,
             **({"response_format": {"type": request.response_format}} if request.response_format else {}),
+            **({"tools": list(request.tool_definitions), "tool_choice": "auto"} if request.tool_definitions else {}),
         }
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(request.timeout_ms / 1000, connect=min(5.0, request.timeout_ms / 1000)), transport=self._transport) as client:
@@ -92,14 +93,36 @@ class OpenAICompatibleTextGenerationAdapter:
         try:
             choices = payload["choices"]
             message = choices[0]["message"]
-            text = message["content"]
+            text = message.get("content") or ""
+            raw_tool_calls = message.get("tool_calls") or []
             usage = payload["usage"]
             input_tokens = int(usage["prompt_tokens"])
             output_tokens = int(usage["completion_tokens"])
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise TextGenerationProviderError("provider response is missing content or usage accounting") from exc
-        if not isinstance(text, str) or not text.strip():
-            raise TextGenerationProviderError("provider returned empty or unsupported structured content")
+        if not isinstance(text, str) or (not text.strip() and not raw_tool_calls):
+            raise TextGenerationProviderError("provider returned neither text nor tool calls")
+        if not isinstance(raw_tool_calls, list) or len(raw_tool_calls) > request.max_tool_calls:
+            raise TextGenerationProviderError("provider returned an invalid or excessive tool-call list")
+        from allpha_api.model_router import TextGenerationToolCall
+        allowed_names = {item["function"]["name"] for item in request.tool_definitions}
+        parsed_calls = []
+        seen_ids: set[str] = set()
+        for raw_call in raw_tool_calls:
+            try:
+                call_id = raw_call["id"]
+                function = raw_call["function"]
+                name = function["name"]
+                raw_arguments = function["arguments"]
+                arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TextGenerationProviderError("provider returned a malformed tool call") from exc
+            if (not isinstance(call_id, str) or not call_id or call_id in seen_ids
+                    or not isinstance(name, str) or name not in allowed_names
+                    or not isinstance(arguments, dict)):
+                raise TextGenerationProviderError("provider tool call is outside the authorized request contract")
+            seen_ids.add(call_id)
+            parsed_calls.append(TextGenerationToolCall(call_id=call_id, name=name, arguments=arguments))
         if input_tokens < 0 or output_tokens < 0 or output_tokens > request.max_output_tokens:
             raise TextGenerationProviderError("provider returned invalid token usage")
         cost = input_tokens * self._input_rate + output_tokens * self._output_rate
@@ -115,6 +138,7 @@ class OpenAICompatibleTextGenerationAdapter:
             cost_microunits=cost,
             cost_unit=self._cost_unit,
             pricing_version=self._pricing_version,
+            tool_calls=tuple(parsed_calls),
         )
 
 
