@@ -1,6 +1,10 @@
 from pathlib import Path
+import sys
 
 import pytest
+
+# The API package is installed editable in CI; expose its scripts directory for tests.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.check_wp07_migration_chain import migration_versions, parse_ledger, reconcile
 
