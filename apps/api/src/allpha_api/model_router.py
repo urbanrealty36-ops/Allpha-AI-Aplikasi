@@ -181,15 +181,42 @@ class TextGenerationRequest:
     response_format: Literal["json_object"] | None = None
     tool_definitions: tuple[dict[str, Any], ...] = ()
     max_tool_calls: int = 5
+    conversation_messages: tuple[dict[str, Any], ...] = ()
+
+    def prompt_material(self) -> str:
+        return json.dumps({
+            "system_prompt": self.system_prompt,
+            "prompt": self.prompt,
+            "conversation_messages": list(self.conversation_messages),
+        }, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.trace_id.strip() or not self.idempotency_key.strip():
             raise ValueError("text generation task, trace and idempotency identifiers are required")
         if not self.sensitivity.strip():
             raise ValueError("text generation sensitivity is required")
-        combined_prompt = (self.system_prompt.strip() + "\n\n" + self.prompt) if self.system_prompt.strip() else self.prompt
-        if not self.prompt.strip() or len(combined_prompt.encode("utf-8")) > 32_768:
-            raise ValueError("combined system and user generation prompt must be non-empty and at most 32 KiB")
+        if not self.prompt.strip() and not self.conversation_messages:
+            raise ValueError("text generation requires a prompt or conversation messages")
+        if not isinstance(self.conversation_messages, tuple) or len(self.conversation_messages) > 32:
+            raise ValueError("conversation messages must be a tuple of at most 32 entries")
+        for message in self.conversation_messages:
+            if not isinstance(message, dict) or message.get("role") not in {"system", "user", "assistant", "tool"}:
+                raise ValueError("conversation message role is invalid")
+            if set(message) - {"role", "content", "tool_calls", "tool_call_id", "name"}:
+                raise ValueError("conversation message contains unsupported fields")
+            content = message.get("content")
+            if content is not None and not isinstance(content, str):
+                raise ValueError("conversation message content must be text or null")
+            if message["role"] == "tool" and not isinstance(message.get("tool_call_id"), str):
+                raise ValueError("tool result messages require a tool_call_id")
+            if message["role"] != "assistant" and "tool_calls" in message:
+                raise ValueError("only assistant messages may contain tool_calls")
+        try:
+            combined_prompt = self.prompt_material()
+        except (TypeError, ValueError) as exc:
+            raise ValueError("conversation messages must be valid JSON values") from exc
+        if len(combined_prompt.encode("utf-8")) > 32_768:
+            raise ValueError("combined system, user and conversation context must be at most 32 KiB")
         if not 1 <= self.max_output_tokens <= 16_384:
             raise ValueError("max_output_tokens must be between 1 and 16384")
         if not 100 <= self.timeout_ms <= 120_000:
@@ -450,7 +477,7 @@ class CanonicalTextGenerationRouter:
                 raise TextGenerationRouterUnavailable(
                     "active model-cost configuration could not be verified; provider execution is blocked"
                 ) from exc
-        combined_prompt = (request.system_prompt.strip() + "\n\n" + request.prompt) if request.system_prompt.strip() else request.prompt
+        combined_prompt = request.prompt_material()
         if len(combined_prompt.encode("utf-8")) > policy.max_prompt_bytes:
             raise TextGenerationRouterRejected("combined system and user prompt exceeds approved policy bound")
         if request.max_output_tokens > policy.max_output_tokens:
@@ -482,8 +509,7 @@ class CanonicalTextGenerationRouter:
                     raise TextGenerationRouterRejected("provider usage does not match approved pricing contract")
                 if response.cost_microunits > policy.max_cost_microunits:
                     raise TextGenerationRouterRejected("provider cost exceeded approved policy budget")
-                prompt_material = (request.system_prompt.strip() + "\n\n" + request.prompt) if request.system_prompt.strip() else request.prompt
-                prompt_hash = hashlib.sha256(prompt_material.encode("utf-8")).hexdigest()
+                prompt_hash = hashlib.sha256(request.prompt_material().encode("utf-8")).hexdigest()
                 output_material = response.output_text if response.output_text.strip() else json.dumps(
                     [{"id": call.call_id, "name": call.name, "arguments": call.arguments} for call in response.tool_calls],
                     sort_keys=True, separators=(",", ":"), allow_nan=False,
