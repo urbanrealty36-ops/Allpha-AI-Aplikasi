@@ -814,7 +814,7 @@ def test_tool_planner_persists_provider_native_function_calls_as_durable_task_pl
             "intent": "Normalize this short text",
             "idempotency_key": "native-planner-001",
         })
-        assert response.status_code == 201
+        assert response.status_code == 201, response.text
         payload = response.json()
         assert payload["tool_plan"] == [{
             "step_id": "native_call_1",
