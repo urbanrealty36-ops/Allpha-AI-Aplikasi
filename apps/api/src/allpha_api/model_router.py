@@ -240,7 +240,7 @@ class TextGenerationRequest:
             elif message["role"] == "tool":
                 call_id = message.get("tool_call_id")
                 if not isinstance(call_id, str) or call_id not in pending_tool_call_ids:
-                    raise ValueError("tool result messages must match a preceding assistant tool_call; tool result messages require a tool_call_id")
+                    raise ValueError("tool result messages require a tool_call_id matching a preceding assistant tool_call")
                 if not isinstance(message.get("name"), str) or not message["name"].strip():
                     raise ValueError("tool result messages require the registered tool name")
                 pending_tool_call_ids.remove(call_id)
