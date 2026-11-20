@@ -61,7 +61,7 @@ create table if not exists public.live_stage_events (
   session_id uuid not null references public.live_sessions(id) on delete cascade,
   actor_user_id uuid references auth.users(id) on delete set null,
   event_type text not null check (event_type in (
-    'session_created','participant_invited','participant_joined','participant_left',
+    'session_created','participant_invited','participant_joined','participant_left','participant_removed',
     'session_preparing','session_live','session_paused','session_reconnecting',
     'session_ended','session_cancelled','session_failed','moderation_stopped',
     'recording_consent_updated','stage_slide_changed','stage_annotation_added',
@@ -209,6 +209,15 @@ begin
     update public.live_participants set status='joined',joined_at=coalesce(joined_at,now()),
       left_at=null,updated_at=now() where id=v_participant.id returning * into v_participant;
   else
+    if v_session.visibility='private' then
+      raise exception 'LIVE_SESSION_INVITE_REQUIRED' using errcode='42501';
+    elsif v_session.visibility='followers' and not exists (
+      select 1 from public.social_edges e
+      where e.actor_user_id=p_user_id and e.target_user_id=v_session.host_user_id
+        and e.edge_type='follow' and e.status='active'
+    ) then
+      raise exception 'LIVE_SESSION_FOLLOW_REQUIRED' using errcode='42501';
+    end if;
     insert into public.live_participants(session_id,user_id,participant_role,status,joined_at)
       values(p_session_id,p_user_id,'viewer','joined',now()) returning * into v_participant;
     insert into public.conversation_participants(conversation_id,user_id,participant_type)
@@ -289,6 +298,34 @@ begin
 end;
 $$;
 
+create or replace function public.remove_live_participant(
+  p_session_id uuid,p_host_user_id uuid,p_user_id uuid,p_reason text,p_idempotency_key text
+) returns jsonb
+language plpgsql security definer set search_path=public,pg_temp
+as $
+declare v_session public.live_sessions%rowtype; v_participant public.live_participants%rowtype;
+begin
+  select * into v_session from public.live_sessions
+    where id=p_session_id and host_user_id=p_host_user_id for update;
+  if not found then raise exception 'LIVE_SESSION_HOST_REQUIRED' using errcode='42501'; end if;
+  select * into v_participant from public.live_participants
+    where session_id=p_session_id and user_id=p_user_id for update;
+  if not found then raise exception 'LIVE_PARTICIPANT_NOT_FOUND' using errcode='P0002'; end if;
+  if v_participant.participant_role='host' then raise exception 'LIVE_HOST_CANNOT_BE_REMOVED' using errcode='42501'; end if;
+  if v_participant.status<>'removed' then
+    update public.live_participants set status='removed',left_at=now(),updated_at=now()
+      where id=v_participant.id returning * into v_participant;
+    delete from public.conversation_participants
+      where conversation_id=v_session.conversation_id and user_id=p_user_id;
+    insert into public.live_stage_events(session_id,actor_user_id,event_type,payload,idempotency_key)
+      values(p_session_id,p_host_user_id,'participant_removed',
+        jsonb_build_object('participant_id',v_participant.id,'user_id',p_user_id,
+                           'reason',left(coalesce(p_reason,''),500)),p_idempotency_key);
+  end if;
+  return jsonb_build_object('outcome','removed','participant',to_jsonb(v_participant));
+end;
+$;
+
 create or replace function public.set_live_recording_consent(
   p_session_id uuid,p_user_id uuid,p_consent boolean,p_idempotency_key text
 ) returns jsonb
@@ -342,6 +379,7 @@ revoke all on function public.invite_live_participant(uuid,uuid,uuid,text,text) 
 revoke all on function public.join_live_session(uuid,uuid,text) from public,anon,authenticated;
 revoke all on function public.leave_live_session(uuid,uuid,text) from public,anon,authenticated;
 revoke all on function public.transition_live_session(uuid,uuid,integer,text,text) from public,anon,authenticated;
+revoke all on function public.remove_live_participant(uuid,uuid,uuid,text,text) from public,anon,authenticated;
 revoke all on function public.set_live_recording_consent(uuid,uuid,boolean,text) from public,anon,authenticated;
 revoke all on function public.append_live_stage_event(uuid,uuid,text,jsonb,text) from public,anon,authenticated;
 grant execute on function public.create_live_session(uuid,text,text,text,timestamptz,text) to service_role;
@@ -349,6 +387,7 @@ grant execute on function public.invite_live_participant(uuid,uuid,uuid,text,tex
 grant execute on function public.join_live_session(uuid,uuid,text) to service_role;
 grant execute on function public.leave_live_session(uuid,uuid,text) to service_role;
 grant execute on function public.transition_live_session(uuid,uuid,integer,text,text) to service_role;
+grant execute on function public.remove_live_participant(uuid,uuid,uuid,text,text) to service_role;
 grant execute on function public.set_live_recording_consent(uuid,uuid,boolean,text) to service_role;
 grant execute on function public.append_live_stage_event(uuid,uuid,text,jsonb,text) to service_role;
 
