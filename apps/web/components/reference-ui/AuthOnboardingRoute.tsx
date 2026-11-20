@@ -52,7 +52,9 @@ const emptyAgent: AIAgentProfile = {
   tasks: [],
 };
 
-export default function AuthOnboardingRoute() {
+type AuthOnboardingRouteProps = { isOpen?: boolean; onClose?: () => void; initialAuthMode?: "REGISTER" | "LOGIN" };
+
+export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAuthMode: requestedAuthMode }: AuthOnboardingRouteProps) {
   const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const returnTo = useMemo(() => {
@@ -60,7 +62,7 @@ export default function AuthOnboardingRoute() {
     const requested = new URLSearchParams(window.location.search).get("next");
     return requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/feed";
   }, []);
-  const initialAuthMode = useMemo(() => {
+  const routeAuthMode = useMemo(() => {
     if (typeof window === "undefined") return undefined;
     const mode = new URLSearchParams(window.location.search).get("mode");
     if (mode === "login") return "LOGIN" as const;
@@ -71,6 +73,8 @@ export default function AuthOnboardingRoute() {
       ? "LOGIN" as const
       : "REGISTER" as const;
   }, []);
+  const initialAuthMode = requestedAuthMode ?? routeAuthMode;
+  const finishAuthentication = () => { if (onClose) onClose(); else router.replace(returnTo); };
 
   async function googleSignIn() {
     if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
@@ -118,7 +122,7 @@ export default function AuthOnboardingRoute() {
     const existing = await existingResponse.json() as AgentList;
     if (existing.items?.length) {
       // Return to the public context that prompted authentication; the original action is not replayed.
-      router.replace(returnTo);
+      finishAuthentication();
       return;
     }
     if (payload.authMode === "LOGIN") {
@@ -194,14 +198,14 @@ export default function AuthOnboardingRoute() {
       cache: "no-store",
     });
     if (!agentResponse.ok) throw new Error(await responseError(agentResponse));
-    router.replace(returnTo);
+    finishAuthentication();
   }
 
   return (
     <>
       <AuthOnboardingFlow
-        isOpen
-        onClose={() => router.replace(returnTo)}
+        isOpen={isOpen}
+        onClose={() => { if (onClose) onClose(); else router.replace(returnTo); }}
         onComplete={complete}
         onGoogleSignIn={googleSignIn}
         currentUser={emptyHuman}
