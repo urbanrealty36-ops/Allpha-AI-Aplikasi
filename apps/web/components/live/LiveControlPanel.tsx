@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -60,6 +60,21 @@ export default function LiveControlPanel() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  // Retain an operation key until the server confirms the write. If the
+  // response is lost, retrying the same action replays the same DB transaction
+  // instead of creating a second session/invitation/removal.
+  const pendingIdempotencyKeys = useRef(new Map<string, string>());
+  const operationKey = (scope: string) => {
+    const existing = pendingIdempotencyKeys.current.get(scope);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    pendingIdempotencyKeys.current.set(scope, created);
+    return created;
+  };
+  const confirmOperation = (scope: string) => {
+    pendingIdempotencyKeys.current.delete(scope);
+  };
+
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
@@ -93,8 +108,9 @@ export default function LiveControlPanel() {
     try {
       const result = await liveRequest<{ session: LiveSession }>("/v1/live/sessions", {
         method: "POST",
-        body: JSON.stringify({ title: title.trim(), description, visibility, idempotency_key: crypto.randomUUID() }),
+        body: JSON.stringify({ title: title.trim(), description, visibility, idempotency_key: operationKey("create-session") }),
       });
+      confirmOperation("create-session");
       setTitle(""); setDescription("");
       setNotice("Sesi Live dibuat pada control plane. Status tetap planned sampai host menyiapkan sesi dan provider media mendapat persetujuan.");
       await load();
@@ -124,8 +140,9 @@ export default function LiveControlPanel() {
     try {
       await liveRequest(`/v1/live/sessions/${encodeURIComponent(details.id)}/participants`, {
         method: "POST",
-        body: JSON.stringify({ user_id: inviteUserId.trim(), role: inviteRole, idempotency_key: crypto.randomUUID() }),
+        body: JSON.stringify({ user_id: inviteUserId.trim(), role: inviteRole, idempotency_key: operationKey(`invite:${details.id}:${inviteUserId.trim()}`) }),
       });
+      confirmOperation(`invite:${details.id}:${inviteUserId.trim()}`);
       setInviteUserId(""); setNotice("Undangan peserta tersimpan pada control plane.");
       await loadDetails(details.id);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Undangan peserta gagal."); }
@@ -138,8 +155,9 @@ export default function LiveControlPanel() {
     try {
       await liveRequest(`/v1/live/sessions/${encodeURIComponent(details.id)}/participants/${encodeURIComponent(userId)}/remove`, {
         method: "POST",
-        body: JSON.stringify({ reason: "host_removed_participant", idempotency_key: crypto.randomUUID() }),
+        body: JSON.stringify({ reason: "host_removed_participant", idempotency_key: operationKey(`remove:${details.id}:${userId}`) }),
       });
+      confirmOperation(`remove:${details.id}:${userId}`);
       setNotice("Akses peserta dicabut dari sesi dan percakapan Live.");
       await loadDetails(details.id);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Pencabutan peserta gagal."); }
