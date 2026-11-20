@@ -148,11 +148,12 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
-    async def list_checkpoints(self, task_id: str, *, limit: int = 5) -> list[dict[str, Any]]:
+    async def list_checkpoints(self, task_id: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        """Read at most ten checkpoints (request + result for each of five native tool calls)."""
         return await self.request("GET", "agent_runtime_checkpoints", params={
             "select": "task_id,task_version,sequence,step_key,input_fingerprint,checkpoint_hash,result_payload,created_at",
             "task_id": f"eq.{task_id}", "order": "sequence.asc",
-            "limit": str(max(1, min(limit, 5))),
+            "limit": str(max(1, min(limit, 10))),
         }) or []
 
     async def begin_effect(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
