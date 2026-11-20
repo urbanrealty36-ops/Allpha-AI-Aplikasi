@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -45,8 +46,7 @@ def test_social_adapter_requires_owner_as_actor_and_approval_id_as_idempotency_k
         adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER._rpc_payload(command)
 
 
-@pytest.mark.asyncio
-async def test_social_adapter_executes_only_through_atomic_canonical_rpc(monkeypatch):
+def test_social_adapter_executes_only_through_atomic_canonical_rpc(monkeypatch):
     command = _command()
     command = SideEffectCommand(**{**command.__dict__, "actor_user_id": command.owner_user_id})
     captured = {}
@@ -65,7 +65,7 @@ async def test_social_adapter_executes_only_through_atomic_canonical_rpc(monkeyp
         }
 
     monkeypatch.setattr(adapter_module, "_server_db", rpc)
-    outcome = await adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.execute(command)
+    outcome = asyncio.run(adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.execute(command))
     assert captured["method"] == "POST"
     assert captured["path"] == "rpc/execute_agent_social_approval_effect"
     assert captured["body"]["p_lease_token"] == command.lease_token
@@ -74,8 +74,7 @@ async def test_social_adapter_executes_only_through_atomic_canonical_rpc(monkeyp
     validate_side_effect_outcome(outcome, expected_provider_key="allpha.social")
 
 
-@pytest.mark.asyncio
-async def test_social_adapter_reconciliation_rejects_receipt_identity_mismatch(monkeypatch):
+def test_social_adapter_reconciliation_rejects_receipt_identity_mismatch(monkeypatch):
     command = _command()
     command = SideEffectCommand(**{**command.__dict__, "actor_user_id": command.owner_user_id})
     async def read(*args, **kwargs):
@@ -97,7 +96,7 @@ async def test_social_adapter_reconciliation_rejects_receipt_identity_mismatch(m
         }]
     monkeypatch.setattr(adapter_module, "_server_db", read)
     with pytest.raises(SideEffectAdapterContractError):
-        await adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.reconcile(command, {})
+        asyncio.run(adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.reconcile(command, {}))
 
 
 def test_wp07_social_effect_migration_fences_lease_and_persists_full_evidence():
