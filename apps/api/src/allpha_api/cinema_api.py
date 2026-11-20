@@ -91,6 +91,108 @@ class EpisodeCreate(BaseModel):
     duration_seconds: int | None = Field(default=None,gt=0,le=86400)
     is_free_preview: bool = False
 
+class CinemaScreenplay(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    logline: str = Field(default="", max_length=1000)
+    synopsis: str = Field(default="", max_length=5000)
+    draft: str = Field(default="", max_length=60000)
+
+
+class CinemaDialogueLine(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    character: str = Field(min_length=1, max_length=100)
+    line: str = Field(min_length=1, max_length=2000)
+
+
+class CinemaScene(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scene_id: uuid.UUID
+    scene_number: int = Field(ge=1, le=1000)
+    slugline: str = Field(min_length=1, max_length=250)
+    location: str = Field(default="", max_length=160)
+    time_of_day: Literal["day", "night", "dawn", "dusk", "continuous", "unspecified"] = "unspecified"
+    action: str = Field(default="", max_length=5000)
+    dialogue: list[CinemaDialogueLine] = Field(default_factory=list, max_length=100)
+
+
+class CinemaStoryboardShot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scene_number: int = Field(ge=1, le=1000)
+    shot_number: int = Field(ge=1, le=1000)
+    framing: str = Field(default="", max_length=100)
+    camera_movement: str = Field(default="", max_length=100)
+    description: str = Field(min_length=1, max_length=2000)
+    visual_prompt: str = Field(default="", max_length=2000)
+    image_media_id: uuid.UUID | None = None
+    duration_ms: int = Field(default=3000, ge=100, le=120000)
+
+
+class CinemaTimelineClip(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    clip_id: uuid.UUID
+    media_id: uuid.UUID
+    start_ms: int = Field(ge=0, le=86_400_000)
+    duration_ms: int = Field(gt=0, le=86_400_000)
+    trim_start_ms: int = Field(default=0, ge=0, le=86_400_000)
+    trim_end_ms: int | None = Field(default=None, ge=1, le=86_400_000)
+    volume: float = Field(default=1.0, ge=0, le=2)
+
+
+class CinemaTimelineTrack(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    track_id: uuid.UUID
+    kind: Literal["video", "audio", "subtitle"]
+    label: str = Field(min_length=1, max_length=120)
+    clips: list[CinemaTimelineClip] = Field(default_factory=list, max_length=200)
+
+
+class CinemaTimeline(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tracks: list[CinemaTimelineTrack] = Field(default_factory=list, max_length=30)
+
+
+class CinemaAudioTrack(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    track_id: uuid.UUID
+    media_id: uuid.UUID
+    label: str = Field(min_length=1, max_length=120)
+    start_ms: int = Field(default=0, ge=0, le=86_400_000)
+    duration_ms: int = Field(gt=0, le=86_400_000)
+    volume: float = Field(default=1.0, ge=0, le=2)
+
+
+class CinemaExportProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    container: Literal["mp4"] = "mp4"
+    resolution: Literal["720p", "1080p", "4k"] = "1080p"
+    frame_rate: Literal[24, 25, 30, 50, 60] = 24
+    aspect_ratio: Literal["16:9", "9:16", "1:1", "4:3", "21:9"] = "16:9"
+
+
+class CinemaProductionDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal[1] = 1
+    screenplay: CinemaScreenplay = Field(default_factory=CinemaScreenplay)
+    storyboard: list[CinemaStoryboardShot] = Field(default_factory=list, max_length=500)
+    scenes: list[CinemaScene] = Field(default_factory=list, max_length=1000)
+    timeline: CinemaTimeline = Field(default_factory=CinemaTimeline)
+    audio_tracks: list[CinemaAudioTrack] = Field(default_factory=list, max_length=100)
+    export_profile: CinemaExportProfile = Field(default_factory=CinemaExportProfile)
+
+
+class CinemaProductionWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    document: CinemaProductionDocument
+
+
+class CinemaAssetAttach(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    media_id: uuid.UUID
+    asset_role: Literal["reference", "storyboard", "source_video", "source_audio", "music",
+                        "subtitle", "generated_image", "generated_video", "cover", "trailer"]
+    display_name: str = Field(min_length=1, max_length=160)
+
 
 @router.get("/catalog")
 async def public_catalog(limit: int = Query(default=24,ge=1,le=50), genre: str | None = None) -> dict[str,Any]:
@@ -239,6 +341,149 @@ async def _title_media_owner_ids(title: dict[str,Any]) -> set[str]:
         if "upload_episodes" in (grant.get("permissions") or []) and grant.get("collaborator_user_id"):
             owners.add(str(grant["collaborator_user_id"]))
     return owners
+
+def _production_document_media_ids(document: CinemaProductionDocument) -> set[str]:
+    ids = {
+        str(shot.image_media_id) for shot in document.storyboard
+        if shot.image_media_id is not None
+    }
+    for track in document.timeline.tracks:
+        ids.update(str(clip.media_id) for clip in track.clips)
+    ids.update(str(track.media_id) for track in document.audio_tracks)
+    return ids
+
+
+@router.get("/creator/titles/{title_id}/production")
+async def get_cinema_production(title_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    title = await _title_access(title_id, str(user["id"]), {"edit_metadata", "upload_episodes"})
+    rows = await _db("GET", "cinema_titles", params={
+        "select": "id,owner_id,status,version,production_document",
+        "id": "eq." + str(title_id), "owner_id": "eq." + str(title["owner_id"]), "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(404, detail={"code": "CINEMA_TITLE_NOT_FOUND", "message": "Judul Cinema tidak ditemukan."})
+    document = CinemaProductionDocument.model_validate(rows[0].get("production_document") or {})
+    return {
+        "title_id": str(title_id), "version": int(rows[0].get("version") or 1),
+        "status": rows[0].get("status"), "document": document.model_dump(mode="json"),
+    }
+
+
+@router.put("/creator/titles/{title_id}/production")
+async def save_cinema_production(
+    title_id: uuid.UUID, payload: CinemaProductionWrite,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    title = await _title_access(title_id, str(user["id"]), {"edit_metadata"})
+    if title.get("status") not in {"draft", "rejected"}:
+        raise HTTPException(409, detail={"code": "CINEMA_PRODUCTION_LOCKED", "message": "Production document hanya dapat diubah pada draft atau judul yang dikembalikan."})
+    document = payload.document
+    encoded = document.model_dump(mode="json")
+    if len(json.dumps(encoded, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 262144:
+        raise HTTPException(422, detail={"code": "CINEMA_PRODUCTION_DOCUMENT_TOO_LARGE", "message": "Production document melebihi batas 256 KiB."})
+    media_ids = _production_document_media_ids(document)
+    if media_ids:
+        assets = await _db("GET", "cinema_assets", params={
+            "select": "media_id", "title_id": "eq." + str(title_id),
+            "owner_id": "eq." + str(title["owner_id"]),
+            "media_id": "in.(" + ",".join(sorted(media_ids)) + ")", "limit": "1000",
+        })
+        linked_ids = {str(item.get("media_id")) for item in assets or []}
+        if linked_ids != media_ids:
+            raise HTTPException(422, detail={
+                "code": "CINEMA_PRODUCTION_ASSET_NOT_LINKED",
+                "message": "Semua media pada storyboard, timeline, dan audio harus lebih dahulu ditautkan ke Asset Library film.",
+                "unlinked_media_ids": sorted(media_ids - linked_ids),
+            })
+    rows = await _db("PATCH", "cinema_titles", params={
+        "id": "eq." + str(title_id), "owner_id": "eq." + str(title["owner_id"]),
+        "status": "in.(draft,rejected)", "version": "eq." + str(payload.expected_version),
+        "select": "id,version,status,production_document,updated_at",
+    }, payload={
+        "production_document": encoded,
+        "version": payload.expected_version + 1,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(409, detail={"code": "CINEMA_PRODUCTION_VERSION_CONFLICT", "message": "Versi production berubah atau akses edit telah dicabut."})
+    return {"item": rows[0]}
+
+
+@router.get("/creator/titles/{title_id}/assets")
+async def list_cinema_assets(title_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    title = await _title_access(title_id, str(user["id"]), {"edit_metadata", "upload_episodes"})
+    rows = await _db("GET", "cinema_assets", params={
+        "select": "id,title_id,media_id,asset_role,display_name,metadata,created_at",
+        "title_id": "eq." + str(title_id), "owner_id": "eq." + str(title["owner_id"]),
+        "order": "created_at.desc", "limit": "500",
+    })
+    items = rows or []
+    media_ids = sorted({str(item.get("media_id")) for item in items if item.get("media_id")})
+    if not media_ids:
+        return {"items": []}
+    owners = await _title_media_owner_ids(title)
+    media_rows = await _db("GET", "content_media", params={
+        "select": "id,owner_id,filename,media_type,size_bytes,status,scan_status,processed_at,derivatives,storage_path",
+        "id": "in.(" + ",".join(media_ids) + ")",
+        "owner_id": "in.(" + ",".join(sorted(owners)) + ")", "limit": "1000",
+    })
+    media_by_id = {str(item.get("id")): item for item in media_rows or []}
+    result = []
+    for item in items:
+        media = media_by_id.get(str(item.get("media_id")))
+        if not media:
+            continue
+        projected = {key: value for key, value in media.items() if key not in {"storage_path", "derivatives"}}
+        if media.get("status") == "ready" and media.get("scan_status") == "clean" and media.get("processed_at"):
+            projected["preview_url"] = await _signed_media_preview_url(str(media["storage_path"]), expires_in=300)
+        result.append({**item, "media": projected})
+    return {"items": result}
+
+
+@router.post("/creator/titles/{title_id}/assets", status_code=201)
+async def attach_cinema_asset(
+    title_id: uuid.UUID, payload: CinemaAssetAttach,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    title = await _title_access(title_id, str(user["id"]), {"upload_episodes"})
+    owners = await _title_media_owner_ids(title)
+    media_rows = await _db("GET", "content_media", params={
+        "select": "id,owner_id,filename,media_type,size_bytes,status,scan_status,processed_at,derivatives",
+        "id": "eq." + str(payload.media_id),
+        "owner_id": "in.(" + ",".join(sorted(owners)) + ")", "limit": "1",
+    })
+    if not media_rows:
+        raise HTTPException(404, detail={"code": "CINEMA_ASSET_NOT_FOUND", "message": "Media tidak ditemukan atau bukan milik pemilik/collaborator yang berhak."})
+    media = media_rows[0]
+    if (media.get("status") != "ready" or media.get("scan_status") != "clean"
+            or not media.get("processed_at") or not isinstance(media.get("derivatives"), list)
+            or not media.get("derivatives")):
+        raise HTTPException(409, detail={"code": "CINEMA_ASSET_NOT_READY", "message": "Media harus selesai diproses, lolos scan, dan memiliki derivative sebelum ditautkan."})
+    rows = await _db("POST", "cinema_assets", payload={
+        "title_id": str(title_id), "owner_id": str(title["owner_id"]),
+        "media_id": str(payload.media_id), "asset_role": payload.asset_role,
+        "display_name": payload.display_name.strip(), "created_by": str(user["id"]),
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(503, detail={"code": "CINEMA_ASSET_LINK_UNCONFIRMED", "message": "Tautan asset belum dapat dikonfirmasi."})
+    return {"item": rows[0], "media": {key: value for key, value in media.items() if key not in {"derivatives"}}}
+
+
+@router.delete("/creator/titles/{title_id}/assets/{asset_id}")
+async def remove_cinema_asset(
+    title_id: uuid.UUID, asset_id: uuid.UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    title = await _title_access(title_id, str(user["id"]), {"upload_episodes"})
+    rows = await _db("DELETE", "cinema_assets", params={
+        "id": "eq." + str(asset_id), "title_id": "eq." + str(title_id),
+        "owner_id": "eq." + str(title["owner_id"]), "select": "id,media_id",
+    }, prefer="return=representation")
+    if not rows:
+        raise HTTPException(404, detail={"code": "CINEMA_ASSET_LINK_NOT_FOUND", "message": "Tautan asset tidak ditemukan."})
+    return {"removed": True, "asset_id": str(asset_id), "media_id": rows[0].get("media_id")}
+
+
 
 
 @router.get("/creator/titles")
