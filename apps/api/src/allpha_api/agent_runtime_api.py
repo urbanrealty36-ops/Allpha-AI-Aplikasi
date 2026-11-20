@@ -537,11 +537,11 @@ async def _execute_planned_task(
         partial = {
             "state": "partially_succeeded" if completed_steps else "retrying",
             "tool_plan_version": 1, "steps": completed_steps,
-            "trace_id": row["trace_id"], "error_code": str(exc),
+            "trace_id": row["trace_id"], "error_code": retry_code,
         } if completed_steps else None
         retried = await store.schedule_retry_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
-            error_code=str(exc), retry_after_seconds=retry_after,
+            error_code=retry_code, retry_after_seconds=retry_after,
             output_payload=partial,
             event_log=list(row.get("event_log") or []) + trace_events,
         )
@@ -1047,6 +1047,7 @@ async def _execute_native_orchestration_task(
     except AgentRuntimeRetryable as exc:
         attempts = max(1, int(row.get("execution_attempts") or 1))
         retry_after = min(60, 5 * (2 ** max(0, attempts - 1)))
+        retry_code = "TOOL_TIMEOUT" if "timeout" in str(exc).lower() else "RUNTIME_TRANSIENT_FAILURE"
         partial = {
             "state": "partially_succeeded" if completed_steps else "retrying",
             "orchestration_version": 1, "tool_calls": completed_steps,
