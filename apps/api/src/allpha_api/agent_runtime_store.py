@@ -268,9 +268,9 @@ class AgentRuntimeStore:
         result["effect_receipt_guard"] = receipt_guard
         if receipt_guard["ready"] is not True:
             result["ready"] = False
-            result.setdefault("missing_functions", []).append(
-                "public.agent_runtime_effect_receipt_guard_readiness()"
-            )
+            missing_guard_functions = receipt_guard.get("missing_functions") or []
+            if missing_guard_functions:
+                result.setdefault("missing_functions", []).extend(missing_guard_functions)
             result["missing_triggers"] = receipt_guard.get("missing_triggers") or [
                 "agent_runtime_task_success_receipt_guard"
             ]
