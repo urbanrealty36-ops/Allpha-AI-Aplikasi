@@ -88,3 +88,18 @@
 - **AI Cinema / WP-11:** no changes in this checkpoint. Production workspace remains source-only; generation/render/export provider integration and full distribution lifecycle remain open.
 - **Live / ENG-P25–P27:** no changes in this checkpoint. Provider-neutral source is partial; canonical Live tables are absent from Supabase. ADR-WP10-001 remains PROPOSED — NOT APPROVED; media transport/recording activation remains blocked.
 - **Next execution:** continue WP-07 real adapter contract + effect receipt lifecycle and durable worker reconciliation while continuing independent ENG-P04/WP-06 Social and WP-11 Cinema implementation. Continue ENG-P25 provider-neutral Stage/native parity without selecting or activating an unapproved provider. Maintain `in_progress` / `blocked` statuses until actual test, migration, provider and device evidence exists.
+
+
+## CI failure triage addendum — WP-11 Cinema / ENG-P04 / Feed (2026-11-20)
+
+- Retrieved the actual API job log for Allpha Smoke run `44699771404`, checked out commit `34c14dd264a85befd282f2b20c665f1ecd18ed83`: **780 passed, 6 failed**. Web tests/build passed; Native tests/typecheck/Android export passed. This run predates the Social migration-path correction commit `0d5e3b0`, so it does not validate that correction.
+- Confirmed failures from the log:
+  1. `test_cinema_production_document_saves_only_linked_ready_assets`
+  2. `test_cinema_production_document_rejects_unlinked_asset_reference`
+  3. `test_cinema_asset_link_requires_processed_clean_media`
+  All three raise `TypeError: object NoneType can't be used in 'await' expression` at the Cinema production endpoint's `await _title_access(...)` call. This is a real source/test integration failure and remains unresolved; do not suppress or weaken the authorization check.
+  4. `test_auth_identity.py::test_social_graph_reads_are_scoped_to_authenticated_identity` expects the block-edge lookup but observes a follow-edge lookup.
+  5. `test_content_api.py::test_ai_cinema_catalog_and_creator_contracts_are_registered_and_fail_closed` has a stale source assertion expecting `Depends(current_user)` in the Cinema module text.
+  6. `test_eng_p14_isolated_lifecycle.py::test_client_api_data_adapter_feed_interaction_lifecycle` test adapter treats a list POST body as a dict and raises `ValueError`.
+- The Social migration test-path correction is committed, but no newer API CI run has been observed for it. The Cinema `_title_access` issue needs further root-cause tracing across module/router import and test monkeypatch boundaries before changing implementation. The other three failures belong to their owning Social Graph, Cinema contract-test and Feed test-fixture workstreams.
+- No failure was hidden, no authorization guard was removed, and no test was marked passed without a new run. WP-07 remains the primary dependency workstream; independent Social and Cinema fixes continue in parallel.
