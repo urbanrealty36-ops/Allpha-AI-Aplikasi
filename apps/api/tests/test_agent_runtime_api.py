@@ -778,3 +778,51 @@ def test_model_planner_refuses_provider_call_when_runtime_schema_is_incomplete(m
             "missing_functions": [], "missing_privileges": [],
         }
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_tool_planner_persists_provider_native_function_calls_as_durable_task_plan(monkeypatch):
+    class FakeRouter:
+        async def preflight(self, sensitivity):
+            assert sensitivity == "private"
+            return {"ready": True}
+
+        def max_output_tokens_for(self, sensitivity):
+            return 768
+
+        async def generate(self, generation_request):
+            assert generation_request.tool_definitions[0]["function"]["name"] == "text.normalize"
+            assert generation_request.max_tool_calls == 1
+            evidence = SimpleNamespace(
+                provider_id="provider-test", model_id="model-test", model_version="model-v1",
+                policy_id="private-policy", policy_version="private-v1",
+                input_tokens=10, output_tokens=4, cost_microunits=40,
+                cost_unit="USD", pricing_version="price-v1", latency_ms=15,
+                evidence_sha256="b" * 64,
+            )
+            call = SimpleNamespace(
+                call_id="native-call-1", name="text.normalize", arguments={"text": "hello"},
+            )
+            return SimpleNamespace(output_text="", tool_calls=(call,)), evidence
+
+    c = client(monkeypatch)
+    monkeypatch.setattr(app.state, "text_generation_router", FakeRouter(), raising=False)
+    monkeypatch.setenv("ALLPHA_AGENT_TOOL_PLANNER_ENABLED", "true")
+    try:
+        session_id = create_session(c)
+        response = c.post("/v1/agent-runtime/tasks/plan", json={
+            "session_id": session_id, "skill_id": SKILL,
+            "intent": "Normalize this short text",
+            "idempotency_key": "native-planner-001",
+        })
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["tool_plan"] == [{
+            "step_id": "native_call_1",
+            "tool_key": "text.normalize",
+            "inputs": {"text": "hello"},
+            "bindings": {},
+        }]
+        assert payload["planner_evidence"]["planning_mode"] == "native_tool_calls_with_json_fallback"
+        assert payload["planner_evidence"]["native_tool_calls"] == 1
+    finally:
+        app.dependency_overrides.pop(current_user, None)
