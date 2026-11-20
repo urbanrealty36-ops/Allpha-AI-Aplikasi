@@ -140,4 +140,5 @@ def test_live_stage_migration_persists_hand_raise_and_reaction_with_role_policy(
     assert "'stage_hand_raised','stage_reaction_added'" in migration
     assert "LIVE_HAND_RAISE_PAYLOAD_INVALID" in migration
     assert "LIVE_REACTION_PAYLOAD_INVALID" in migration
+    assert "p_payload->>'reaction' is null" in migration
     assert "p_event_type not in ('stage_qa_submitted','stage_hand_raised','stage_reaction_added')" in migration
