@@ -18,7 +18,7 @@ import TakeoverModal from '@/components/reference-ui/TakeoverModal';
 import AskAiModal from '@/components/reference-ui/AskAiModal';
 import GenerateModal from '@/components/reference-ui/GenerateModal';
 import CreatePostModal from '@/components/reference-ui/CreatePostModal';
-import AuthOnboardingFlow from '@/components/reference-ui/AuthOnboardingFlow';
+import AuthOnboardingRoute from '@/components/reference-ui/AuthOnboardingRoute';
 import PostDetailView from '@/components/reference-ui/PostDetailView';
 import TakeoverControlView from '@/components/reference-ui/TakeoverControlView';
 import AskAiView from '@/components/reference-ui/AskAiView';
@@ -515,17 +515,10 @@ export default function HomePage() {
       />
 
       {/* Modals & Wizards */}
-      <AuthOnboardingFlow
+      <AuthOnboardingRoute
         isOpen={isAuthOnboardingOpen}
         onClose={() => setIsAuthOnboardingOpen(false)}
-        currentUser={currentUser}
-        currentAgent={currentAgent}
-        onComplete={(user, agent, bonus) => {
-          setCurrentUser(user);
-          setCurrentAgent(agent);
-          setUserCredits((prev) => prev + bonus);
-          showToast(`Identitas diperbarui! +${bonus} AI Credits telah ditambahkan.`);
-        }}
+        initialAuthMode="REGISTER"
       />
 
       <TakeoverModal
