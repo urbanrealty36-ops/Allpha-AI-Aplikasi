@@ -102,6 +102,22 @@ class LiveMediaProvider(Protocol):
     ) -> LiveMediaWebhook: ...
 
 
+def validate_media_approval(approval: LiveMediaApproval, *, region: str | None = None) -> None:
+    if approval.adr_id != ADR_WP10_001 or approval.status != "approved":
+        raise LiveMediaActivationBlocked("ADR_WP10_001_NOT_APPROVED")
+    if (
+        len(approval.decision_digest) != 64
+        or any(ch not in "0123456789abcdef" for ch in approval.decision_digest.lower())
+        or not approval.provider_key.strip()
+        or not approval.allowed_regions
+        or approval.max_token_ttl_seconds < 1
+        or approval.max_token_ttl_seconds > MAX_TOKEN_TTL_SECONDS
+    ):
+        raise LiveMediaActivationBlocked("LIVE_MEDIA_APPROVAL_CONTRACT_INVALID")
+    if region is not None and region not in approval.allowed_regions:
+        raise LiveMediaActivationBlocked("LIVE_MEDIA_REGION_NOT_APPROVED")
+
+
 class LiveMediaProviderRegistry:
     """Explicitly injected registry. It does not discover or auto-enable providers."""
 
@@ -119,19 +135,7 @@ class LiveMediaProviderRegistry:
     ) -> LiveMediaProvider:
         if approval is None:
             raise LiveMediaActivationBlocked("ADR_WP10_001_APPROVAL_REQUIRED")
-        if approval.adr_id != ADR_WP10_001 or approval.status != "approved":
-            raise LiveMediaActivationBlocked("ADR_WP10_001_NOT_APPROVED")
-        if (
-            len(approval.decision_digest) != 64
-            or any(ch not in "0123456789abcdef" for ch in approval.decision_digest.lower())
-            or not approval.provider_key.strip()
-            or not approval.allowed_regions
-            or approval.max_token_ttl_seconds < 1
-            or approval.max_token_ttl_seconds > MAX_TOKEN_TTL_SECONDS
-        ):
-            raise LiveMediaActivationBlocked("LIVE_MEDIA_APPROVAL_CONTRACT_INVALID")
-        if region not in approval.allowed_regions:
-            raise LiveMediaActivationBlocked("LIVE_MEDIA_REGION_NOT_APPROVED")
+        validate_media_approval(approval, region=region)
         provider = self._providers.get(approval.provider_key)
         if provider is None:
             raise LiveMediaActivationBlocked("LIVE_MEDIA_PROVIDER_ADAPTER_NOT_REGISTERED")
@@ -141,10 +145,9 @@ class LiveMediaProviderRegistry:
 def validate_room_request(
     request: LiveMediaRoomRequest, approval: LiveMediaApproval
 ) -> None:
+    validate_media_approval(approval, region=request.region)
     if request.session_version < 1 or not 2 <= request.max_participants <= 10_000:
         raise LiveMediaActivationBlocked("LIVE_MEDIA_ROOM_REQUEST_INVALID")
-    if request.region not in approval.allowed_regions:
-        raise LiveMediaActivationBlocked("LIVE_MEDIA_REGION_NOT_APPROVED")
     if request.recording_requested and not approval.recording_approved:
         raise LiveMediaActivationBlocked("LIVE_RECORDING_NOT_APPROVED")
 
@@ -152,15 +155,11 @@ def validate_room_request(
 def validate_participant_grant(
     grant: LiveMediaParticipantGrant, approval: LiveMediaApproval
 ) -> None:
+    validate_media_approval(approval)
     if grant.ttl_seconds < 1 or grant.ttl_seconds > approval.max_token_ttl_seconds:
         raise LiveMediaActivationBlocked("LIVE_MEDIA_TOKEN_TTL_OUT_OF_POLICY")
-    if grant.role == "viewer" and grant.can_publish:
-        raise LiveMediaActivationBlocked("LIVE_VIEWER_PUBLISH_FORBIDDEN")
-    if grant.role in {"guest", "viewer"} and grant.can_publish:
+    if grant.can_publish and grant.role not in {"host", "cohost", "speaker"}:
         raise LiveMediaActivationBlocked("LIVE_NON_SPEAKER_PUBLISH_FORBIDDEN")
-    if grant.recording_consent is False and approval.recording_approved:
-        # Consent is per participant; approval of the recording product is not consent.
-        return
 
 
 def validate_issued_token(
@@ -170,6 +169,8 @@ def validate_issued_token(
     *,
     now: datetime | None = None,
 ) -> None:
+    validate_media_approval(approval)
+    validate_participant_grant(grant, approval)
     current = now or datetime.now(timezone.utc)
     expires = token.expires_at
     if expires.tzinfo is None:
