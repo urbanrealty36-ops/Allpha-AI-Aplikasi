@@ -26,7 +26,7 @@ def auth_as(user_id="owner-a"):
 
 def test_registry_contains_only_concrete_executable_handlers():
     tools = list_tools()
-    assert [tool["key"] for tool in tools] == ["json.merge", "json.pick", "text.normalize", "text.split", "text.truncate"]
+    assert [tool["key"] for tool in tools] == ["json.merge", "json.pick", "social.comment", "social.reply", "social.story_reply", "text.normalize", "text.split", "text.truncate"]
     assert all(tool["executable"] is True for tool in tools)
     assert execute_tool("text.normalize", {"text": "  hello\n  allpha  "}) == {"text": "hello allpha"}
 

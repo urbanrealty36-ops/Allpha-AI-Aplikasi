@@ -58,7 +58,7 @@ def test_worker_routes_planned_unknown_effects_to_reconciliation_executor(monkey
 
 def test_worker_stops_batch_when_unknown_effect_cannot_be_terminalized(monkeypatch):
     store = FakeStore([
-        {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "started"},
+        {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "started", "input_payload": {"_native_orchestration_version": 1}},
         {"id": "task-created", "owner_user_id": "owner-1", "state": "created", "effect_outcome": None},
     ])
     store.fail_unknown = True
