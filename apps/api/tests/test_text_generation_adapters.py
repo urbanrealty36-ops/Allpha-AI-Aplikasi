@@ -344,7 +344,7 @@ def test_openai_compatible_adapter_preserves_assistant_tool_call_and_tool_result
 def test_text_generation_request_rejects_unmatched_or_unbounded_conversation_messages():
     from allpha_api.model_router import TextGenerationRequest
 
-    with pytest.raises(ValueError, match="tool result messages require a tool_call_id"):
+    with pytest.raises(ValueError, match="tool result messages must match a preceding assistant tool_call"):
         replace(request(), prompt="", conversation_messages=({"role": "tool", "content": "orphan"},))
     with pytest.raises(ValueError, match="at most 32 entries"):
         replace(request(), conversation_messages=tuple({"role": "user", "content": "x"} for _ in range(33)))
