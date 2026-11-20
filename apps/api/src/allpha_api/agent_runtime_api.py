@@ -865,7 +865,9 @@ async def _execute_native_orchestration_task(
             input_classification="user_input", allowed_memory_scope=(),
             allowed_tool_keys=tuple(sorted(definitions)),
             capability_scopes=tuple(policy_scopes),
-            idempotency_key=f"{row['idempotency_key']}:native:{step_number}",
+            idempotency_key="native-tool:" + uuid.uuid5(
+                uuid.UUID(task_id), f"native-tool:{step_number}:{tool_key}",
+            ).hex,
             trace_id=str(row["trace_id"]), deadline_monotonic=deadline,
             max_tool_calls=1, max_runtime_seconds=max_runtime,
         )
