@@ -92,7 +92,7 @@ def test_live_stage_mutation_migration_enforces_speaker_roles_and_allows_viewer_
     ).read_text()
     role_guard = "p.participant_role in ('host','cohost','speaker')"
     assert role_guard in migration
-    assert "if p_event_type<>'stage_qa_submitted' and not exists" in migration
+    assert "if p_event_type not in ('stage_qa_submitted','stage_hand_raised','stage_reaction_added') and not exists" in migration
     assert "LIVE_STAGE_ROLE_REQUIRED" in migration
     # Q&A remains available to joined viewers; all other stage mutations are role-gated.
     assert "if p_event_type<>'stage_qa_submitted'" in migration
