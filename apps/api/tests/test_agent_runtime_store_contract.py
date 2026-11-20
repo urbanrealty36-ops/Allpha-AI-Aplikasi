@@ -52,7 +52,7 @@ def test_effect_receipt_rpc_preserves_stable_idempotency_key_and_fingerprint():
     assert requests[1].url.path.endswith("/rpc/complete_agent_runtime_effect")
 
 
-def test_worker_readiness_requires_success_receipt_guard(monkeypatch=None):
+def test_worker_readiness_requires_success_receipt_guard():
     calls = []
 
     async def handler(request):
