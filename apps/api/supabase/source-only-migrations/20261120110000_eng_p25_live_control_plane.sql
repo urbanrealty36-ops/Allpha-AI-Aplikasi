@@ -160,6 +160,9 @@ language plpgsql security definer set search_path=public,pg_temp
 as $$
 declare v_session public.live_sessions%rowtype; v_participant public.live_participants%rowtype;
 begin
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
+    raise exception 'LIVE_IDEMPOTENCY_KEY_INVALID' using errcode='22023';
+  end if;
   select * into v_session from public.live_sessions
     where id=p_session_id and host_user_id=p_host_user_id for update;
   if not found then raise exception 'LIVE_SESSION_HOST_REQUIRED' using errcode='42501'; end if;
@@ -195,6 +198,9 @@ language plpgsql security definer set search_path=public,pg_temp
 as $$
 declare v_session public.live_sessions%rowtype; v_participant public.live_participants%rowtype;
 begin
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
+    raise exception 'LIVE_IDEMPOTENCY_KEY_INVALID' using errcode='22023';
+  end if;
   select * into v_session from public.live_sessions where id=p_session_id for share;
   if not found or v_session.status not in ('planned','preparing','live','paused','reconnecting') then
     raise exception 'LIVE_SESSION_NOT_JOINABLE' using errcode='P0002';
@@ -238,6 +244,9 @@ language plpgsql security definer set search_path=public,pg_temp
 as $$
 declare v_participant public.live_participants%rowtype;
 begin
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
+    raise exception 'LIVE_IDEMPOTENCY_KEY_INVALID' using errcode='22023';
+  end if;
   select * into v_participant from public.live_participants
     where session_id=p_session_id and user_id=p_user_id for update;
   if not found then raise exception 'LIVE_PARTICIPANT_NOT_FOUND' using errcode='P0002'; end if;
@@ -331,8 +340,27 @@ create or replace function public.set_live_recording_consent(
 ) returns jsonb
 language plpgsql security definer set search_path=public,pg_temp
 as $$
-declare v_participant public.live_participants%rowtype;
+declare v_participant public.live_participants%rowtype; v_session public.live_sessions%rowtype;
+  v_existing public.live_stage_events%rowtype;
 begin
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
+    raise exception 'LIVE_IDEMPOTENCY_KEY_INVALID' using errcode='22023';
+  end if;
+  select * into v_session from public.live_sessions
+    where id=p_session_id and status in ('preparing','live','paused','reconnecting') for share;
+  if not found then raise exception 'LIVE_RECORDING_CONSENT_WINDOW_CLOSED' using errcode='40900'; end if;
+  select * into v_existing from public.live_stage_events
+    where session_id=p_session_id and idempotency_key=p_idempotency_key for update;
+  if found then
+    if v_existing.event_type<>'recording_consent_updated'
+       or v_existing.payload->>'consent'<>p_consent::text then
+      raise exception 'LIVE_IDEMPOTENCY_CONFLICT' using errcode='23505';
+    end if;
+    select * into v_participant from public.live_participants
+      where session_id=p_session_id and user_id=p_user_id;
+    return jsonb_build_object('outcome','replayed','participant',to_jsonb(v_participant),
+      'recording_provider_enabled',false);
+  end if;
   select * into v_participant from public.live_participants
     where session_id=p_session_id and user_id=p_user_id and status in ('invited','joined') for update;
   if not found then raise exception 'LIVE_PARTICIPANT_NOT_FOUND' using errcode='P0002'; end if;
@@ -366,9 +394,16 @@ begin
     where s.id=p_session_id and s.status in ('preparing','live','paused','reconnecting')
       and p.user_id=p_actor_user_id and p.status='joined'
   ) then raise exception 'LIVE_STAGE_PARTICIPANT_REQUIRED' using errcode='42501'; end if;
+  select * into v_event from public.live_stage_events
+    where session_id=p_session_id and idempotency_key=p_idempotency_key for update;
+  if found then
+    if v_event.event_type<>p_event_type or v_event.payload<>p_payload then
+      raise exception 'LIVE_IDEMPOTENCY_CONFLICT' using errcode='23505';
+    end if;
+    return jsonb_build_object('outcome','replayed','event',to_jsonb(v_event));
+  end if;
   insert into public.live_stage_events(session_id,actor_user_id,event_type,payload,idempotency_key)
     values(p_session_id,p_actor_user_id,p_event_type,p_payload,p_idempotency_key)
-    on conflict(session_id,idempotency_key) do update set idempotency_key=excluded.idempotency_key
     returning * into v_event;
   return jsonb_build_object('outcome','recorded','event',to_jsonb(v_event));
 end;
