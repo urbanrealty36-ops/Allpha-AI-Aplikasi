@@ -107,8 +107,13 @@ export default function LiveControlPanel() {
       const result = await liveRequest<{ items: LiveStageEvent[] }>(`/v1/live/sessions/${encodeURIComponent(sessionId)}/stage-events?limit=50`);
       const rows = Array.isArray(result.items) ? result.items : [];
       setStageEvents(rows);
-      const latestRaise = [...rows].reverse().find(item => item.event_type === "stage_hand_raised");
-      if (latestRaise) setHandRaised(latestRaise.payload?.raised === true);
+      const supabase = getBrowserSupabase();
+      const { data: sessionData } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      const currentUserId = sessionData.session?.user.id;
+      const latestRaise = [...rows].reverse().find(item =>
+        item.event_type === "stage_hand_raised" && item.actor_user_id === currentUserId
+      );
+      setHandRaised(latestRaise?.payload?.raised === true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Riwayat Stage tidak dapat dimuat.");
     }
