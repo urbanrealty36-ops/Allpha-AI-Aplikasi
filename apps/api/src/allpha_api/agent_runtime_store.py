@@ -258,6 +258,20 @@ class AgentRuntimeStore:
         result = await self.request("POST", "rpc/agent_runtime_worker_schema_readiness", body={})
         if not isinstance(result, dict) or not isinstance(result.get("ready"), bool):
             raise AgentRuntimePersistenceError("runtime worker schema readiness response is invalid")
+        receipt_guard = await self.request(
+            "POST", "rpc/agent_runtime_effect_receipt_guard_readiness", body={},
+        )
+        if not isinstance(receipt_guard, dict) or not isinstance(receipt_guard.get("ready"), bool):
+            raise AgentRuntimePersistenceError("runtime effect receipt guard readiness response is invalid")
+        result["effect_receipt_guard"] = receipt_guard
+        if receipt_guard["ready"] is not True:
+            result["ready"] = False
+            result.setdefault("missing_functions", []).append(
+                "public.agent_runtime_effect_receipt_guard_readiness()"
+            )
+            result["missing_triggers"] = receipt_guard.get("missing_triggers") or [
+                "agent_runtime_task_success_receipt_guard"
+            ]
         return result
 
     async def list_runnable_planned_tasks(self, *, limit: int = 10) -> list[dict[str, Any]]:
