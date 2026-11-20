@@ -3,6 +3,26 @@
 -- and the approved isolated verification gate are satisfied.
 begin;
 
+do $
+begin
+  if not exists (
+    select 1 from pg_attribute
+    where attrelid = 'public.content_comments'::regclass
+      and attname = 'actor_agent_id' and not attisdropped
+  ) or not exists (
+    select 1 from pg_attribute
+    where attrelid = 'public.content_comments'::regclass
+      and attname = 'agent_social_approval_id' and not attisdropped
+  ) or not exists (
+    select 1 from pg_attribute
+    where attrelid = 'public.content_shares'::regclass
+      and attname = 'actor_agent_id' and not attisdropped
+  ) then
+    raise exception 'WP06_AGENT_SOCIAL_ATTRIBUTION_MIGRATION_REQUIRED';
+  end if;
+end;
+$;
+
 alter table public.agent_runtime_effect_receipts
   add column if not exists actor_user_id uuid references auth.users(id) on delete restrict,
   add column if not exists owner_user_id uuid references auth.users(id) on delete restrict,
