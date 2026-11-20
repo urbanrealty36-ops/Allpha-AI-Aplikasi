@@ -141,7 +141,7 @@ export function LiveControlCenter({ session, apiBase }: { session: Session; apiB
       <Text style={{ color: "#FDE68A", fontSize: 12, lineHeight: 18 }}>WebRTC/SFU/TURN, token publish/subscribe, dan recording tetap terkunci sampai ADR-WP10-001 disetujui.</Text>
     </View>
     {!!error && <Text accessibilityRole="alert" style={{ color: "#FCA5A5", backgroundColor: "#321D2B", padding: 10, borderRadius: 10 }}>{error}</Text>}
-    {!!notice && <Text accessibilityRole="status" style={{ color: "#86EFAC", backgroundColor: "#12302C", padding: 10, borderRadius: 10 }}>{notice}</Text>}
+    {!!notice && <Text accessibilityRole="text" style={{ color: "#86EFAC", backgroundColor: "#12302C", padding: 10, borderRadius: 10 }}>{notice}</Text>}
     <View style={{ backgroundColor: "#141B31", borderColor: "#29314B", borderWidth: 1, borderRadius: 18, padding: 14, gap: 10 }}>
       <Text style={{ color: "#F7F8FF", fontWeight: "900" }}>Buat sesi</Text>
       <TextInput value={title} onChangeText={setTitle} placeholder="Judul sesi" placeholderTextColor="#747E9A" maxLength={160} style={{ color: "#F7F8FF", backgroundColor: "#0D1326", padding: 12, borderRadius: 10 }} />
