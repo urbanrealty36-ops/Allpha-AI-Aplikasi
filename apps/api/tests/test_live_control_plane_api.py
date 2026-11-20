@@ -80,3 +80,19 @@ def test_live_transition_to_live_fails_closed_without_approved_media_provider(mo
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "LIVE_MEDIA_PROVIDER_NOT_APPROVED"
+
+def test_live_stage_mutation_migration_enforces_speaker_roles_and_allows_viewer_qa():
+    from pathlib import Path
+
+    migration = (
+        Path(__file__).parents[1]
+        / "supabase"
+        / "source-only-migrations"
+        / "20261120110000_eng_p25_live_control_plane.sql"
+    ).read_text()
+    role_guard = "p.participant_role in ('host','cohost','speaker')"
+    assert role_guard in migration
+    assert "if p_event_type<>'stage_qa_submitted' and not exists" in migration
+    assert "LIVE_STAGE_ROLE_REQUIRED" in migration
+    # Q&A remains available to joined viewers; all other stage mutations are role-gated.
+    assert "if p_event_type<>'stage_qa_submitted'" in migration
