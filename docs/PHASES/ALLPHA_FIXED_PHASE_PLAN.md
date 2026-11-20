@@ -3807,3 +3807,11 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - Readiness migration `20261118195500_wp07_runtime_worker_schema_readiness.sql` now explicitly requires all Social receipt identity/evidence columns and the exact atomic `execute_agent_social_approval_effect` RPC signature. This is a fail-closed dependency check; it does not bypass the source-only migration policy.
 - Latest source head at this checkpoint: `4a4b7d0343c35e9ca6adabd23734027e375bdfa5` before this documentation-only update.
 - No database migration was applied and no worker flag, staging, or production deployment was enabled. WP-07 remains `in_progress`; real DB readiness, approval/RLS/privilege review, and isolated transaction/lease/crash-recovery verification are still required before integration verification or activation.
+
+
+## WP-07 focused dispatch regression coverage — 2026-11-20
+
+- Added `apps/api/tests/test_agent_social_runtime_execution.py` to exercise the real planned-task Social dispatch helper at its API boundary.
+- The tests assert owner/Agent-scoped approval lookup, receipt reconciliation before any side effect, execution only after a reconciliation miss, immutable approval/action matching, owner-as-actor, approval-ID idempotency, lease-token propagation, and fail-closed behavior for an unknown provider outcome.
+- These are focused contract/regression tests around the actual runtime helper, not a substitute for PostgreSQL transaction/lease/crash-recovery integration. No live database migration, worker activation, provider traffic, staging, or production deployment occurred.
+- WP-07 remains `in_progress / acceptance_not_verified` pending real canonical database schema activation and isolated transaction/lease/recovery verification. WP-06 Auto Reply consumer, WP-11 provider-backed Cinema lifecycle, full Auth session restoration, and cross-surface parity remain independent open work.
