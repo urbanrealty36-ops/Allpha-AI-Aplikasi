@@ -702,9 +702,13 @@ def test_tool_planner_replans_twice_after_invalid_structured_responses(monkeypat
         assert payload["tool_plan"][0]["tool_key"] == "text.normalize"
         assert payload["planner_evidence"]["replan_count"] == 2
         assert len(payload["planner_evidence"]["planning_attempts"]) == 3
-        assert router.requests[0].response_format == "json_object"
-        assert router.requests[1].response_format == "json_object"
-        assert router.requests[2].response_format == "json_object"
+        assert all(item.response_format is None for item in router.requests)
+        assert all(item.tool_definitions for item in router.requests)
+        assert all(
+            item.tool_definitions[0]["function"]["name"] == "text.normalize"
+            for item in router.requests
+        )
+        assert all(item.max_tool_calls == 1 for item in router.requests)
         assert len({item.task_id for item in router.requests}) == 3
         assert len({item.idempotency_key for item in router.requests}) == 3
         assert "PRIOR INVALID JSON" in router.requests[1].prompt
