@@ -43,6 +43,9 @@ def test_live_session_create_is_provider_neutral_and_idempotent(monkeypatch):
     payload = response.json()
     assert payload["session"]["status"] == "planned"
     assert payload["media_plane"]["status"] == "not_configured"
+    assert payload["media_plane"]["contract_version"] == "1"
+    assert payload["media_plane"]["activation_allowed"] is False
+    assert payload["media_plane"]["provider_approved"] is False
     assert payload["media_plane"]["publish_subscribe_tokens_available"] is False
     assert payload["recording_provider_enabled"] is False
     assert captured["name"] == "create_live_session"
@@ -142,3 +145,16 @@ def test_live_stage_migration_persists_hand_raise_and_reaction_with_role_policy(
     assert "LIVE_REACTION_PAYLOAD_INVALID" in migration
     assert "p_payload->>'reaction' is null" in migration
     assert "p_event_type not in ('stage_qa_submitted','stage_hand_raised','stage_reaction_added')" in migration
+
+
+def test_persisted_provider_metadata_never_implies_adr_approval():
+    media_plane = live_api._media_plane({
+        "provider_key": "legacy-provider-key",
+        "provider_session_ref": "legacy-session-ref",
+    })
+    assert media_plane["status"] == "not_configured"
+    assert media_plane["provider_approved"] is False
+    assert media_plane["activation_allowed"] is False
+    assert media_plane["publish_subscribe_tokens_available"] is False
+    assert media_plane["recording_provider_enabled"] is False
+    assert media_plane["reason"] == "ADR_WP10_001_PROVIDER_APPROVAL_REQUIRED"
