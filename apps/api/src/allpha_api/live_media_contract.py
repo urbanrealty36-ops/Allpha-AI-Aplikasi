@@ -158,6 +158,8 @@ def validate_participant_grant(
     validate_media_approval(approval)
     if grant.ttl_seconds < 1 or grant.ttl_seconds > approval.max_token_ttl_seconds:
         raise LiveMediaActivationBlocked("LIVE_MEDIA_TOKEN_TTL_OUT_OF_POLICY")
+    if grant.can_publish and grant.role == "viewer":
+        raise LiveMediaActivationBlocked("LIVE_VIEWER_PUBLISH_FORBIDDEN")
     if grant.can_publish and grant.role not in {"host", "cohost", "speaker"}:
         raise LiveMediaActivationBlocked("LIVE_NON_SPEAKER_PUBLISH_FORBIDDEN")
 
