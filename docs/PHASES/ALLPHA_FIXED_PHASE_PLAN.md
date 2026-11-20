@@ -3741,3 +3741,11 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - No database writes, DDL, migration application, provider calls, worker activation, feature-flag activation, staging, or production deployment occurred. No source code was changed in this checkpoint.
 - Status remains conservative: WP-07 `in_progress` (real side-effect adapter and complete receipt metadata/lifecycle are not wired; readiness/retry/lease migration chain not reconciled live); WP-06 `in_progress` (Agent Social event consumer/autonomous execution and cross-client acceptance remain open); WP-11 `in_progress` (production workspace migration absent from live DB; generation/render/export/distribution remain open); WP-12 `blocked` (approved policy and upstream Cinema completion required); ENG-P25 `in_progress` (control-plane source only, migration absent); ENG-P26/27 not promoted and media plane remains blocked by ADR-WP10-001.
 - Next executable dependency: reconcile WP-07 source-only migrations and RPC signatures against live schema, add durable receipt metadata and an approved real adapter integration without enabling it until the required isolated verification/authorization gate is met. Independent Auth, Social, Cinema and provider-neutral Live source work must continue; do not promote any package based on CI alone.
+
+
+**Authentication route parity source update — 2026-11-20:**
+- Fixed the direct `/login` entry point: when no explicit ?mode= override is present, it now initializes the shared AuthOnboardingFlow in LOGIN mode. Explicit ?mode=login|register remains authoritative.
+- Added `apps/web/app/register/page.tsx`, which reuses the same `AuthOnboardingRoute` and therefore the same Supabase Auth session/sign-in/sign-up and FastAPI profile/Agent provisioning path. No second authentication implementation was introduced.
+- Source commits: `87e44a39745bccffaac503520d96284fd2feab7b` (route mode resolution), `f954db6329ef7fc0fe2d9344606e9e3ef54c78aa` (register route).
+- Allpha Smoke run `44723503438` for commit `f954db6329ef7fc0fe2d9344606e9e3ef54c78aa` was `in_progress` at the time of this checkpoint; no CI result is claimed yet. Browser/device session recovery and modal-vs-route interaction evidence remain outstanding.
+- No changes to Supabase Auth configuration, schema, roles, or sessions were made; no deployment occurred.
