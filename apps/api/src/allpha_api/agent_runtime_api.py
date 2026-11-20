@@ -309,7 +309,9 @@ async def _execute_social_approval_step(
             "Social effect outcome is not confirmed; the task must not advance or replay blindly"
         )
     return outcome.result_payload
-\n\nasync def _execute_planned_task(
+
+
+async def _execute_planned_task(
     store: AgentRuntimeStore, owner_id: str, task_id: str, initial_row: dict[str, Any]
 ) -> dict[str, Any]:
     row = initial_row

@@ -236,7 +236,9 @@ _SOCIAL_STORY_REPLY = ToolDefinition(
     input_schema=_SOCIAL_COMMENT.input_schema, output_schema={"type":"object"},
     handler=_social_approval_handler,
 )
-\n\n# This immutable mapping is the single in-process source of tool metadata and handlers.
+
+
+# This immutable mapping is the single in-process source of tool metadata and handlers.
 _TOOL_REGISTRY: dict[str, ToolDefinition] = {tool.key: tool for tool in (_TEXT_NORMALIZE, _TEXT_TRUNCATE, _TEXT_SPLIT, _JSON_PICK, _JSON_MERGE, _SOCIAL_COMMENT, _SOCIAL_REPLY, _SOCIAL_STORY_REPLY)}
 
 
