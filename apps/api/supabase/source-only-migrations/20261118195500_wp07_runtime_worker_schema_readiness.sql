@@ -75,7 +75,20 @@ declare
     array['agent_memory_items','retention_expires_at'],
     array['agent_memory_items','search_vector'],
     array['agent_memory_events','owner_user_id'],
-    array['agent_memory_events','event_type']
+    array['agent_memory_events','event_type'],
+    array['agent_runtime_effect_receipts','actor_user_id'],
+    array['agent_runtime_effect_receipts','owner_user_id'],
+    array['agent_runtime_effect_receipts','agent_id'],
+    array['agent_runtime_effect_receipts','target_reference'],
+    array['agent_runtime_effect_receipts','action_key'],
+    array['agent_runtime_effect_receipts','approval_id'],
+    array['agent_runtime_effect_receipts','correlation_id'],
+    array['agent_runtime_effect_receipts','provider_key'],
+    array['agent_runtime_effect_receipts','external_reference'],
+    array['agent_runtime_effect_receipts','evidence_reference'],
+    array['agent_runtime_effect_receipts','policy_id'],
+    array['agent_runtime_effect_receipts','policy_version'],
+    array['agent_runtime_effect_receipts','policy_digest']
   ];
   v_required_functions text[] := array[
     'public.claim_agent_runtime_task(uuid,uuid,uuid,integer)',
@@ -88,7 +101,8 @@ declare
     'public.reap_agent_runtime_retry_exhaustion()',
     'public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid)',
     'public.agent_memory_transition(text,uuid,uuid,uuid,jsonb)',
-    'public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)',\n    'public.execute_agent_social_approval_effect(uuid,uuid,uuid,integer,text,text,text,uuid,uuid,text,text,uuid,text,uuid,text,text,text)'
+    'public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)',
+    'public.execute_agent_social_approval_effect(uuid,uuid,uuid,integer,text,text,text,uuid,uuid,text,text,uuid,text,uuid,text,text,text)'
   ];
 begin
   if (select auth.role()) <> 'service_role' then
