@@ -3,6 +3,7 @@
 import { useState } from "react";
 import LiveExperienceStage, { type StageSlideItem } from "../../components/reference-ui/LiveExperienceStage";
 import LiveStageAgentPrepPanel from "../../components/live/LiveStageAgentPrepPanel";
+import LiveControlPanel from "../../components/live/LiveControlPanel";
 
 export default function LivePage() {
   const [revision, setRevision] = useState(0);
@@ -18,6 +19,7 @@ export default function LivePage() {
   return (
     <>
       <LiveExperienceStage key={revision} onBackToFeed={() => { window.location.assign("/feed"); }} userCredits={null} agentCredits={null} liveStateAvailable={false} initialTopic={stageTopic} initialSlides={stageSlides} />
+      <LiveControlPanel />
       <LiveStageAgentPrepPanel onApply={applyOutline} />
     </>
   );
