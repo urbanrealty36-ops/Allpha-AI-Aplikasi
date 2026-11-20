@@ -10,7 +10,7 @@ import logging
 import os
 from fastapi import HTTPException
 
-from allpha_api.agent_runtime_api import _execute_planned_task
+from allpha_api.agent_runtime_api import _execute_native_orchestration_task, _execute_planned_task, _is_native_orchestration_task
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 
 logger = logging.getLogger("allpha.agent_runtime_worker")
@@ -65,7 +65,10 @@ async def run_once(store: AgentRuntimeStore) -> int:
             processed += 1
             continue
         try:
-            await _execute_planned_task(store, owner_id, task_id, row)
+            if _is_native_orchestration_task(row):
+                await _execute_native_orchestration_task(store, owner_id, task_id, row)
+            else:
+                await _execute_planned_task(store, owner_id, task_id, row)
             processed += 1
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
