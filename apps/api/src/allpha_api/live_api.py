@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from allpha_api.auth import current_user
 
@@ -55,6 +55,16 @@ class LiveStageEventCreate(BaseModel):
     event_type: Literal["stage_slide_changed", "stage_annotation_added", "stage_poll_created", "stage_qa_submitted", "stage_hand_raised", "stage_reaction_added"]
     payload: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str = Field(min_length=8, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_interaction_payload(self) -> "LiveStageEventCreate":
+        if self.event_type == "stage_hand_raised":
+            if set(self.payload) != {"raised"} or not isinstance(self.payload.get("raised"), bool):
+                raise ValueError("stage_hand_raised requires exactly one boolean 'raised' field")
+        elif self.event_type == "stage_reaction_added":
+            if set(self.payload) != {"reaction"} or self.payload.get("reaction") not in {"like", "clap", "heart", "laugh", "wow"}:
+                raise ValueError("stage_reaction_added requires one supported reaction")
+        return self
 
 
 class LiveParticipantRemoval(BaseModel):
