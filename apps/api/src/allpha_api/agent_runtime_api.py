@@ -844,13 +844,81 @@ async def _execute_native_orchestration_task(
             raise AgentRuntimePersistenceError("native cancellation could not be durably committed")
         return {"task": cancelled, "idempotent_replay": False}
 
+    async def execute_pending_tool_call(requested: dict[str, Any]) -> None:
+        step_number = len(completed_steps) + 1
+        step_id = f"native_call_{step_number}"
+        tool_key = requested.get("tool_key")
+        if (requested.get("step_id") != step_id or tool_key not in definitions
+                or not isinstance(requested.get("arguments"), dict)):
+            raise AgentRuntimeBlocked("pending native tool-call checkpoint is invalid")
+        try:
+            validate_tool_input(tool_key, requested["arguments"])
+        except ToolInputError as exc:
+            raise AgentRuntimeBlocked("pending native tool-call arguments no longer match the registered schema") from exc
+        envelope = AgentTaskEnvelope(
+            task_id=task_id, task_version=int(row["task_version"]),
+            requester_id=owner_id, agent_id=str(row["agent_id"]),
+            agent_version=int(row["agent_version"]), owner_id=owner_id,
+            skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
+            input_classification="user_input", allowed_memory_scope=(),
+            allowed_tool_keys=tuple(sorted(definitions)),
+            capability_scopes=tuple(policy_scopes),
+            idempotency_key=f"{row['idempotency_key']}:native:{step_number}",
+            trace_id=str(row["trace_id"]), deadline_monotonic=deadline,
+            max_tool_calls=1, max_runtime_seconds=max_runtime,
+        )
+        tool_task = AgentTask(envelope)
+        event_sink = None
+        if trace_enabled:
+            event_sink = lambda event, key=f"native:{step_number}": persist_runtime_event(event, key)
+        tool_result = await _runtime.execute_tool(
+            tool_task, auth, tool_key=tool_key, inputs=requested["arguments"],
+            event_sink=event_sink, step_key=f"native:{step_number}",
+        )
+        tool_message = {
+            "role": "tool", "tool_call_id": requested["call_id"], "name": tool_key,
+            "content": json.dumps(tool_result["result"], ensure_ascii=False,
+                                   sort_keys=True, separators=(",", ":"), allow_nan=False),
+        }
+        result_payload = {
+            "state": "succeeded", "step_id": step_id, "tool_key": tool_key,
+            "call_id": requested["call_id"], "result": tool_result["result"],
+            "assistant_message": requested["assistant_message"],
+            "tool_message": tool_message, "model_evidence": requested["model_evidence"],
+        }
+        checkpoint_bytes = json.dumps(result_payload, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":"), allow_nan=False).encode("utf-8")
+        if len(checkpoint_bytes) > 16_384:
+            raise AgentRuntimeBlocked("native tool-result checkpoint exceeded the 16 KiB limit")
+        checkpoint = await store.append_checkpoint(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            step_number * 2, f"native:{step_id}:result",
+            str(row["request_fingerprint"]), hashlib.sha256(checkpoint_bytes).hexdigest(),
+            result_payload,
+        )
+        if not checkpoint:
+            raise AgentRuntimePersistenceError("native tool-result checkpoint was not durably committed")
+        messages.extend([requested["assistant_message"], tool_message])
+        completed_steps.append({
+            "step_id": step_id, "tool_key": tool_key,
+            "result": tool_result["result"], "resumed": bool(requested.get("resumed")),
+        })
+        model_usage.append(requested["model_evidence"])
+
     try:
-        for turn in range(len(completed_steps) + 1, max_calls + 2):
+        while True:
             cancelled = await finish_cancelled()
             if cancelled:
                 return cancelled
             if lease_lost.is_set():
                 raise AgentRuntimePersistenceError("native runtime lease heartbeat was lost")
+
+            if pending_call is not None:
+                await execute_pending_tool_call(pending_call)
+                pending_call = None
+                continue
+
+            turn = len(completed_steps) + 1
             step_key = f"model_turn:{turn}"
             started = await store.append_execution_event(
                 owner_id, task_id, lease_token, int(row["task_version"]),
@@ -920,26 +988,8 @@ async def _execute_native_orchestration_task(
                     validate_tool_input(call.name, call.arguments)
                 except ToolInputError as exc:
                     raise AgentRuntimeBlocked("native tool arguments violate the registered schema") from exc
-                envelope = AgentTaskEnvelope(
-                    task_id=task_id, task_version=int(row["task_version"]),
-                    requester_id=owner_id, agent_id=str(row["agent_id"]),
-                    agent_version=int(row["agent_version"]), owner_id=owner_id,
-                    skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
-                    input_classification="user_input", allowed_memory_scope=(),
-                    allowed_tool_keys=tuple(sorted(definitions)),
-                    capability_scopes=tuple(policy_scopes),
-                    idempotency_key=f"{row['idempotency_key']}:native:{len(completed_steps) + 1}",
-                    trace_id=str(row["trace_id"]), deadline_monotonic=deadline,
-                    max_tool_calls=1, max_runtime_seconds=max_runtime,
-                )
-                tool_task = AgentTask(envelope)
-                event_sink = None
-                if trace_enabled:
-                    event_sink = lambda event, key=f"native:{len(completed_steps) + 1}": persist_runtime_event(event, key)
-                tool_result = await _runtime.execute_tool(
-                    tool_task, auth, tool_key=call.name, inputs=call.arguments,
-                    event_sink=event_sink, step_key=f"native:{len(completed_steps) + 1}",
-                )
+                step_number = len(completed_steps) + 1
+                step_id = f"native_call_{step_number}"
                 assistant_message = {
                     "role": "assistant", "content": response.output_text or None,
                     "tool_calls": [{
@@ -951,36 +1001,24 @@ async def _execute_native_orchestration_task(
                         },
                     }],
                 }
-                tool_message = {
-                    "role": "tool", "tool_call_id": call.call_id, "name": call.name,
-                    "content": json.dumps(tool_result["result"], ensure_ascii=False,
-                                           sort_keys=True, separators=(",", ":"), allow_nan=False),
+                request_payload = {
+                    "state": "requested", "step_id": step_id, "tool_key": call.name,
+                    "call_id": call.call_id, "arguments": call.arguments,
+                    "assistant_message": assistant_message, "model_evidence": usage_evidence,
                 }
-                result_payload = {
-                    "state": "succeeded", "step_id": f"native_call_{len(completed_steps) + 1}",
-                    "tool_key": call.name, "result": tool_result["result"],
-                    "assistant_message": assistant_message, "tool_message": tool_message,
-                    "model_evidence": usage_evidence,
-                }
-                checkpoint_bytes = json.dumps(result_payload, ensure_ascii=False, sort_keys=True,
-                                              separators=(",", ":"), allow_nan=False).encode("utf-8")
-                if len(checkpoint_bytes) > 16_384:
-                    raise AgentRuntimeBlocked("native tool-result checkpoint exceeded the 16 KiB limit")
-                sequence = len(completed_steps) + 1
-                checkpoint = await store.append_checkpoint(
+                request_bytes = json.dumps(request_payload, ensure_ascii=False, sort_keys=True,
+                                           separators=(",", ":"), allow_nan=False).encode("utf-8")
+                if len(request_bytes) > 16_384:
+                    raise AgentRuntimeBlocked("native tool-call request checkpoint exceeded the 16 KiB limit")
+                request_checkpoint = await store.append_checkpoint(
                     owner_id, task_id, lease_token, int(row["task_version"]),
-                    sequence, "native:" + result_payload["step_id"],
-                    str(row["request_fingerprint"]), hashlib.sha256(checkpoint_bytes).hexdigest(),
-                    result_payload,
+                    step_number * 2 - 1, f"native:{step_id}:requested",
+                    str(row["request_fingerprint"]), hashlib.sha256(request_bytes).hexdigest(),
+                    request_payload,
                 )
-                if not checkpoint:
-                    raise AgentRuntimePersistenceError("native tool-result checkpoint was not durably committed")
-                messages.extend([assistant_message, tool_message])
-                completed_steps.append({
-                    "step_id": result_payload["step_id"], "tool_key": call.name,
-                    "result": tool_result["result"], "resumed": False,
-                })
-                model_usage.append(usage_evidence)
+                if not request_checkpoint:
+                    raise AgentRuntimePersistenceError("native tool-call request was not durably checkpointed")
+                pending_call = request_payload
                 continue
 
             if not isinstance(response.output_text, str) or not response.output_text.strip():
@@ -1004,7 +1042,6 @@ async def _execute_native_orchestration_task(
             if not completed:
                 raise AgentRuntimePersistenceError("native orchestration result could not be durably committed")
             return {"task": completed, "idempotent_replay": False}
-        raise AgentRuntimeBlocked("native orchestration exhausted its bounded model-turn budget")
     except (AgentRuntimeBlocked, ToolInputError, UnknownToolError) as exc:
         failed = await store.finalize_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
