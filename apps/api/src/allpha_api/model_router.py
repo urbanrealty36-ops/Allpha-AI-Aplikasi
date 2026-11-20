@@ -199,6 +199,7 @@ class TextGenerationRequest:
             raise ValueError("text generation requires a prompt or conversation messages")
         if not isinstance(self.conversation_messages, tuple) or len(self.conversation_messages) > 32:
             raise ValueError("conversation messages must be a tuple of at most 32 entries")
+        pending_tool_call_ids: set[str] = set()
         for message in self.conversation_messages:
             if not isinstance(message, dict) or message.get("role") not in {"system", "user", "assistant", "tool"}:
                 raise ValueError("conversation message role is invalid")
@@ -207,10 +208,46 @@ class TextGenerationRequest:
             content = message.get("content")
             if content is not None and not isinstance(content, str):
                 raise ValueError("conversation message content must be text or null")
-            if message["role"] == "tool" and not isinstance(message.get("tool_call_id"), str):
-                raise ValueError("tool result messages require a tool_call_id")
-            if message["role"] != "assistant" and "tool_calls" in message:
-                raise ValueError("only assistant messages may contain tool_calls")
+            if isinstance(content, str) and len(content.encode("utf-8")) > 16_384:
+                raise ValueError("conversation message content exceeds 16 KiB")
+            if message["role"] == "assistant" and "tool_calls" in message:
+                calls = message.get("tool_calls")
+                if not isinstance(calls, list) or not 1 <= len(calls) <= self.max_tool_calls:
+                    raise ValueError("assistant tool_calls must be a bounded non-empty list")
+                for call in calls:
+                    if (not isinstance(call, dict) or set(call) != {"id", "type", "function"}
+                            or call.get("type") != "function"
+                            or not isinstance(call.get("id"), str) or not call["id"].strip()
+                            or call["id"] in pending_tool_call_ids
+                            or not isinstance(call.get("function"), dict)
+                            or set(call["function"]) != {"name", "arguments"}
+                            or not isinstance(call["function"].get("name"), str)
+                            or not call["function"]["name"].strip()):
+                        raise ValueError("assistant tool_call structure is invalid")
+                    arguments = call["function"]["arguments"]
+                    if not isinstance(arguments, (str, dict)):
+                        raise ValueError("assistant tool_call arguments must be JSON text or an object")
+                    if isinstance(arguments, str):
+                        try:
+                            parsed_arguments = json.loads(arguments)
+                        except (TypeError, ValueError) as exc:
+                            raise ValueError("assistant tool_call arguments must be valid JSON") from exc
+                        if not isinstance(parsed_arguments, dict):
+                            raise ValueError("assistant tool_call arguments must decode to an object")
+                    elif not isinstance(arguments, dict):
+                        raise ValueError("assistant tool_call arguments must be an object")
+                    pending_tool_call_ids.add(call["id"])
+            elif message["role"] == "tool":
+                call_id = message.get("tool_call_id")
+                if not isinstance(call_id, str) or call_id not in pending_tool_call_ids:
+                    raise ValueError("tool result messages must match a preceding assistant tool_call")
+                if not isinstance(message.get("name"), str) or not message["name"].strip():
+                    raise ValueError("tool result messages require the registered tool name")
+                pending_tool_call_ids.remove(call_id)
+            elif "tool_call_id" in message or "name" in message:
+                raise ValueError("tool result metadata is valid only on tool messages")
+        if pending_tool_call_ids:
+            raise ValueError("conversation contains assistant tool_calls without matching tool results")
         try:
             combined_prompt = self.prompt_material()
         except (TypeError, ValueError) as exc:
