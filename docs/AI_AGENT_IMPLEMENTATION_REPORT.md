@@ -1,3 +1,10 @@
+## Focused-test correction — Social adapter (2026-11-20)
+
+- First Allpha Smoke run for the new adapter source (`44725633636`) completed API tests with `798 passed / 2 failed`. Log evidence showed both failures were test-runner configuration only: `pytest-asyncio` is not installed, so `async def` tests with `@pytest.mark.asyncio` are unsupported. No application assertion failure was reported in those two cases.
+- Fixed the tests to use `asyncio.run` from the Python standard library; no new dependency added. Commit: `20f9484105da2377b02aa65696e1e81269f120d8`.
+- Follow-up Allpha Smoke run `44725805401` for `20f9484` was queued/in progress at the time of recording. Do not claim the API suite green until completion.
+
+---
 ## Execution checkpoint — real Allpha Social effect adapter and atomic receipt source (2026-11-20)
 
 - Repository `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`; source head at checkpoint: `fbc1b611d47c294dd0bab05048d3f088a852f423`.
