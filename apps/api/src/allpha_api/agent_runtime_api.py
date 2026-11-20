@@ -280,7 +280,9 @@ async def _execute_social_approval_step(
         raise AgentRuntimeBlocked("approved runtime policy identity is incomplete")
     step_key = "step:" + str(step["step_id"])
     fingerprint_input = {
-        "task_id": str(row["id"]), "task_version": int(row["task_version"]),
+        "task_id": str(row["id"]),
+        # The task version fences the current lease, but changes on reclaim. Keep
+        # the effect fingerprint stable so a prior committed receipt can reconcile.
         "step_key": step_key, "tool_key": tool_key, "approval_id": approval_id,
         "target_reference": "content:" + target_id, "inputs": inputs,
         "policy_id": policy_id, "policy_version": policy_version, "policy_digest": policy_digest,
