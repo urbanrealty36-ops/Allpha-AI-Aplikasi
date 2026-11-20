@@ -77,7 +77,8 @@ async def run_once(store: AgentRuntimeStore) -> int:
                 logger.info("Runtime task cancellation remains pending; task_id=%s code=%s", task_id, code)
                 processed += 1
                 continue
-            latest = await store.get_task(owner_id, task_id)
+            latest_getter = getattr(store, "get_task", None)
+            latest = await latest_getter(owner_id, task_id) if callable(latest_getter) else None
             if latest and latest.get("state") in {"succeeded", "partially_succeeded", "failed", "cancelled", "timed_out", "budget_exhausted"}:
                 processed += 1
                 continue
