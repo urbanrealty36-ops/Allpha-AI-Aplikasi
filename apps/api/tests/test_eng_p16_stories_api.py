@@ -179,7 +179,7 @@ def test_story_media_upload_preserves_story_content_type(monkeypatch):
             return [{"id": STORY_ID, "content_type": body["content_type"], "version": body["version"]}]
         raise AssertionError((method, table, params, body))
 
-    async def fake_storage(method, path, *, data=None, media_type=None):
+    async def fake_storage(method, path, *, data=None, media_type=None, upsert=False):
         assert method == "POST"
         assert path.startswith("content-media/" + OWNER + "/" + STORY_ID + "/")
         assert media_type == "image/png"
