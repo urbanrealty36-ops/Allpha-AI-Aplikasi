@@ -94,4 +94,4 @@ def test_social_graph_reads_are_scoped_to_each_authenticated_identity_and_forwar
     assert response_a.json()["outgoing"][0]["id"] == "edge-token-social-a"
     assert response_b.json()["outgoing"][0]["id"] == "edge-token-social-b"
     assert response_a.json()["outgoing"][0]["id"] != response_b.json()["outgoing"][0]["id"]
-    assert [call[2] for call in calls] == ["token-social-a"] * 4 + ["token-social-b"] * 4
+    assert [call[2] for call in calls] == ["token-social-a"] * 5 + ["token-social-b"] * 5
