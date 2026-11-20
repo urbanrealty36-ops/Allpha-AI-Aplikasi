@@ -186,3 +186,11 @@
 - WP-12 remains `blocked`: approved revenue/qualified-watch policy and completed Cinema prerequisites are required; no payout/withdrawal activation.
 - ENG-P25 remains `in_progress` for provider-neutral control-plane source; its migration is absent from live DB. ENG-P26/27 remain open; ADR-WP10-001 is still PROPOSED — NOT APPROVED, so no provider, media tokens, WebRTC or recording activation.
 - Authentication: active Web login route renders the existing `AuthOnboardingFlow` modal and performs Supabase Auth sign-up/sign-in before FastAPI profile/Agent provisioning. The standalone `AuthOnboardingPage` component is not referenced by the current app route tree; do not maintain a second auth implementation. A full modal/route parity check still needs focused browser/device evidence.
+
+
+**Authentication route parity source update — 2026-11-20:**
+- Fixed the direct `/login` entry point: when no explicit ?mode= override is present, it now initializes the shared AuthOnboardingFlow in LOGIN mode. Explicit ?mode=login|register remains authoritative.
+- Added `apps/web/app/register/page.tsx`, which reuses the same `AuthOnboardingRoute` and therefore the same Supabase Auth session/sign-in/sign-up and FastAPI profile/Agent provisioning path. No second authentication implementation was introduced.
+- Source commits: `87e44a39745bccffaac503520d96284fd2feab7b` (route mode resolution), `f954db6329ef7fc0fe2d9344606e9e3ef54c78aa` (register route).
+- Allpha Smoke run `44723503438` for commit `f954db6329ef7fc0fe2d9344606e9e3ef54c78aa` was `in_progress` at the time of this checkpoint; no CI result is claimed yet. Browser/device session recovery and modal-vs-route interaction evidence remain outstanding.
+- No changes to Supabase Auth configuration, schema, roles, or sessions were made; no deployment occurred.
