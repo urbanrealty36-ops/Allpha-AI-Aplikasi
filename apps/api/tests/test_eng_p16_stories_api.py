@@ -169,8 +169,12 @@ def test_story_media_upload_preserves_story_content_type(monkeypatch):
         }
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "content_media":
+            return []
         if method == "POST" and table == "content_media":
             return [{**body, "id": body["id"]}]
+        if method == "PATCH" and table == "content_media":
+            return [{"id": params["id"].removeprefix("eq."), **(body or {})}]
         if method == "PATCH" and table == "content_items":
             return [{"id": STORY_ID, "content_type": body["content_type"], "version": body["version"]}]
         raise AssertionError((method, table, params, body))
