@@ -368,17 +368,19 @@ def test_social_graph_reads_are_scoped_to_authenticated_identity(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert len(calls) == 4
+    assert len(calls) == 5
     assert all(call[2] == "social-scope-token" for call in calls)
     assert calls[0][1] == "social_edges"
     assert calls[0][3]["params"]["actor_user_id"] == "eq.authenticated-social-user"
     assert calls[1][3]["params"]["target_user_id"] == "eq.authenticated-social-user"
     assert calls[1][3]["params"]["edge_type"] == "eq.block"
     assert calls[2][3]["params"]["target_user_id"] == "eq.authenticated-social-user"
-    assert calls[2][3]["params"]["edge_type"] == "eq.follow"
-    assert calls[2][3]["params"]["status"] == "eq.requested"
-    assert calls[3][1] == "user_interests"
-    assert calls[3][3]["params"]["user_id"] == "eq.authenticated-social-user"
+    assert calls[2][3]["params"]["edge_type"] == "eq.block"
+    assert calls[3][3]["params"]["target_user_id"] == "eq.authenticated-social-user"
+    assert calls[3][3]["params"]["edge_type"] == "eq.follow"
+    assert calls[3][3]["params"]["status"] == "eq.requested"
+    assert calls[4][1] == "user_interests"
+    assert calls[4][3]["params"]["user_id"] == "eq.authenticated-social-user"
 
 
 def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(monkeypatch):
