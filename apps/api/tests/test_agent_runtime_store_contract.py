@@ -50,3 +50,35 @@ def test_effect_receipt_rpc_preserves_stable_idempotency_key_and_fingerprint():
     assert begin_body["p_input_fingerprint"] == complete_body["p_input_fingerprint"] == "a" * 64
     assert requests[0].url.path.endswith("/rpc/begin_agent_runtime_effect")
     assert requests[1].url.path.endswith("/rpc/complete_agent_runtime_effect")
+
+
+def test_worker_readiness_requires_success_receipt_guard(monkeypatch=None):
+    calls = []
+
+    async def handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith("/agent_runtime_worker_schema_readiness"):
+            return httpx.Response(200, json={
+                "ready": True, "missing_tables": [], "missing_columns": [],
+                "missing_functions": [], "missing_privileges": [],
+            })
+        if request.url.path.endswith("/agent_runtime_effect_receipt_guard_readiness"):
+            return httpx.Response(200, json={
+                "ready": False,
+                "missing_triggers": ["agent_runtime_task_success_receipt_guard"],
+                "missing_functions": [],
+            })
+        return httpx.Response(404)
+
+    store = AgentRuntimeStore(
+        supabase_url="https://example.supabase.co",
+        service_key="test-service-role-key",
+        transport=httpx.MockTransport(handler),
+    )
+    result = asyncio.run(store.runtime_schema_readiness())
+    assert result["ready"] is False
+    assert result["missing_triggers"] == ["agent_runtime_task_success_receipt_guard"]
+    assert calls == [
+        "https://example.supabase.co/rest/v1/rpc/agent_runtime_worker_schema_readiness",
+        "https://example.supabase.co/rest/v1/rpc/agent_runtime_effect_receipt_guard_readiness",
+    ]
