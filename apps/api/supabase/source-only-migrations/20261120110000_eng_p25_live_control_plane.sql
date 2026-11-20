@@ -27,7 +27,7 @@ create table if not exists public.live_sessions (
   updated_at timestamptz not null default now(),
   unique(host_user_id,idempotency_key),
   check ((status in ('live','paused','reconnecting') and started_at is not null) or status not in ('live','paused','reconnecting')),
-  check (ended_at is null or started_at is not null)
+  check (ended_at is null or status in ('ended','cancelled','failed','moderation_stopped'))
 );
 create index if not exists live_sessions_public_status_idx
   on public.live_sessions(status,scheduled_at desc,created_at desc) where visibility='public';
@@ -314,6 +314,9 @@ language plpgsql security definer set search_path=public,pg_temp
 as $
 declare v_session public.live_sessions%rowtype; v_participant public.live_participants%rowtype;
 begin
+  if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
+    raise exception 'LIVE_IDEMPOTENCY_KEY_INVALID' using errcode='22023';
+  end if;
   select * into v_session from public.live_sessions
     where id=p_session_id and host_user_id=p_host_user_id for update;
   if not found then raise exception 'LIVE_SESSION_HOST_REQUIRED' using errcode='42501'; end if;
@@ -349,21 +352,20 @@ begin
   select * into v_session from public.live_sessions
     where id=p_session_id and status in ('preparing','live','paused','reconnecting') for share;
   if not found then raise exception 'LIVE_RECORDING_CONSENT_WINDOW_CLOSED' using errcode='40900'; end if;
+  select * into v_participant from public.live_participants
+    where session_id=p_session_id and user_id=p_user_id and status in ('invited','joined') for update;
+  if not found then raise exception 'LIVE_PARTICIPANT_NOT_FOUND' using errcode='P0002'; end if;
   select * into v_existing from public.live_stage_events
     where session_id=p_session_id and idempotency_key=p_idempotency_key for update;
   if found then
     if v_existing.event_type<>'recording_consent_updated'
-       or v_existing.payload->>'consent'<>p_consent::text then
+       or v_existing.payload->>'consent'<>p_consent::text
+       or v_existing.payload->>'participant_id'<>v_participant.id::text then
       raise exception 'LIVE_IDEMPOTENCY_CONFLICT' using errcode='23505';
     end if;
-    select * into v_participant from public.live_participants
-      where session_id=p_session_id and user_id=p_user_id;
     return jsonb_build_object('outcome','replayed','participant',to_jsonb(v_participant),
       'recording_provider_enabled',false);
   end if;
-  select * into v_participant from public.live_participants
-    where session_id=p_session_id and user_id=p_user_id and status in ('invited','joined') for update;
-  if not found then raise exception 'LIVE_PARTICIPANT_NOT_FOUND' using errcode='P0002'; end if;
   update public.live_participants set recording_consent=p_consent,
     recording_consent_at=case when p_consent then now() else null end,updated_at=now()
     where id=v_participant.id returning * into v_participant;
