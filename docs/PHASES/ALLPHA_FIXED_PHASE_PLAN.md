@@ -3852,3 +3852,12 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - **ENG-P37 / database:** production Supabase remains unchanged at 135 applied migrations through `20261115185633`. No source-only migration was applied and no worker was activated. There is no development branch. A Supabase branch quote of 0.01344/hour requires explicit cost confirmation; no isolated PostgreSQL verification has run.
 - **Acceptance:** lease fencing, heartbeat, transaction rollback/commit, concurrency, failure-injection and crash-recovery remain unverified against real PostgreSQL. Do not promote WP-07, mark it `integration_verified`, or advance its dependent phase yet.
 - **Next:** complete the owner-approval/task-bound receipt transaction path, then run the isolated ENG-P37 PostgreSQL verification matrix after the branch cost is confirmed.
+
+
+### Allpha Smoke final result — 2026-11-21
+
+- Run [44782129415](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44782129415) on source commit `9f6ba17ba517d544d818658096be2ae57b34b49b` completed successfully.
+- API `pytest apps/api/tests`: **822 passed, 1 warning**.
+- Web `npm test` and `npm run build`: passed; existing lint warnings remain.
+- Native `npm test`, `npm run typecheck`, and Android Expo export: passed; export produced `dist`.
+- CI success is source/build evidence only. It does not verify PostgreSQL transaction boundaries, lease fencing under concurrent workers, crash recovery, real worker activation, or ENG-P37 acceptance. WP-07 remains `in_progress`.
