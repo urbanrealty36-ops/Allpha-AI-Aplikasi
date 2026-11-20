@@ -3665,3 +3665,12 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - Supabase applied migration head remains `20261115185633`; this was not changed. No migration, SQL mutation, schema activation, staging, or deployment was performed.
 - Native Agent Runtime remains source-implemented but not fully integrated for external side effects: current tool registry exposes only pure tools; native orchestration explicitly blocks side-effecting tools. Existing effect-receipt persistence methods/RPCs do not by themselves prove adapter-level idempotency, human approval, or real side-effect recovery. Keep this fail-closed behavior until the adapter and approval contract are implemented and verified.
 - WP-07 remains `in_progress`, not `integration_verified`: database runtime contract/migration reconciliation, worker lease/retry/checkpoint/concurrency/crash recovery evidence, Memory Privacy/Security and Data Platform activation approvals, embedding profile approval, and the ADR-0007 verification gate remain outstanding. WP-06, WP-11, WP-12 and ENG-P25–P27 remain unpromoted.
+
+## ENG-P25 — Live client retry-idempotency checkpoint (2026-11-20)
+
+- Updated `apps/web/components/live/LiveControlPanel.tsx` so create-session, invite-participant, and remove-participant operations retain their idempotency key until the API confirms success. A timeout or lost response followed by a user retry therefore reuses the original key instead of creating a new logical write.
+- Keys are scoped by operation and participant/session identity; they are cleared only after a successful server response. The server remains the authority for persistence and authorization.
+- Commit: `17a4931cbf20c4e6376b73e06e8d7f85ee331bf2`.
+- This is a narrow client correctness improvement, not completion of ENG-P25/P26/P27. No native client parity, media transport, stage collaboration breadth, recording, or real-time recovery proof is claimed. ADR-WP10-001 remains the provider-activation gate.
+- Automated checks were not run in this execution. No Supabase migration, database write, staging action, or deployment was performed.
+- ENG-P25 remains partial; ENG-P26/P27 remain open. WP-07 remains the hard dependency gate for downstream promotion.
