@@ -103,3 +103,45 @@
   6. `test_eng_p14_isolated_lifecycle.py::test_client_api_data_adapter_feed_interaction_lifecycle` test adapter treats a list POST body as a dict and raises `ValueError`.
 - The Social migration test-path correction is committed, but no newer API CI run has been observed for it. The Cinema `_title_access` issue needs further root-cause tracing across module/router import and test monkeypatch boundaries before changing implementation. The other three failures belong to their owning Social Graph, Cinema contract-test and Feed test-fixture workstreams.
 - No failure was hidden, no authorization guard was removed, and no test was marked passed without a new run. WP-07 remains the primary dependency workstream; independent Social and Cinema fixes continue in parallel.
+
+
+## Parallel blocker-closure checkpoint — Native Live fixes and WP-07 adapter contract (2026-11-20)
+
+### Repository and commits
+- Repository `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`. Baseline `749a9ebad3e369d672e9684be4d1bfac051d1fe6`; latest source commit before documentation updates `f67dc8d849eaeeb248d6ec6c419bdf5dc7c83997`.
+- `c7d0fa329a9d55bbc9d5223072295fe75581d1a6` — fixed malformed trailing-slash regex in `apps/client/components/LiveControlCenter.tsx` (`apiBase.replace(/\\/$/, "")`).
+- `5010c2f5c8f99d2a155e5dbbdf5a04fa27272c3c` and `5edc0142e0e7951efcf4a336e49d96968ef4b158` — aligned Live migration contract assertions in `apps/api/tests/test_live_control_plane_api.py` with current joined-viewer Q&A/hand-raise/reaction allowlist and removed obsolete QA-only predicate.
+- `c1f14cea978da8b12135163033a6643826084b2d` — changed Native Live notice from unsupported `accessibilityRole="status"` to supported `accessibilityRole="text"`.
+- `15a55073763d7aea29f751f6a80a17d10139b0d9` — added formal adapter interface/command/outcome validation in `apps/api/src/allpha_api/side_effect_adapter_contract.py`.
+- `f67dc8d849eaeeb248d6ec6c419bdf5dc7c83997` — added focused tests in `apps/api/tests/test_side_effect_adapter_contract.py` for required identity/approval/policy/lease metadata, provider identity, evidence-bound completion and ambiguous outcome rules.
+- Documentation commit for fixed phase plan: `ca5328543fa70e80512e9741e09a723a5eebe1bc`.
+
+### Implemented contract and remaining WP-07 gap
+- The adapter contract is typed and evidence-bound: task/version/step, owner, actor, Agent, action, target, approval, correlation/idempotency key, SHA-256 input fingerprint, current lease, immutable runtime policy reference and payload are required. A `completed` provider outcome requires a matching provider identity, external/evidence reference and completion timestamp; `unknown` cannot claim a completion timestamp.
+- **No provider adapter is registered or invoked.** The canonical Tool Registry currently contains only pure tools; no approved side-effect destination with verified credentials, scopes and reconciliation contract was found. The contract module is not a simulated adapter and does not make external calls. Native orchestration and worker side-effect execution remain fail-closed.
+- Current receipt store/RPC contract still lacks full actor/owner/target/action/approval/correlation/provider/external-evidence fields in the receipt record. No new receipt migration was applied or promoted. `begin_effect`/`complete_effect` persistence helpers alone do not satisfy the end-to-end effect lifecycle. No exactly-once provider effect or crash recovery is claimed.
+- Durable worker remains disabled; runtime schema readiness and lease/checkpoint/retry SQL migrations remain unverified against an isolated PostgreSQL target. ADR-0007 explicitly reserves actual transaction, RLS/privilege, concurrency, lease and crash recovery verification for ENG-P37. No isolated Supabase branch was created.
+
+### Live and Native integration fixes
+- `apps/client/components/LiveControlCenter.tsx`: fixed malformed URL regex and unsupported accessibility role. The same Native UI continues to use the canonical FastAPI session/stage endpoints; no media provider, WebRTC or recording activation was added.
+- `apps/api/tests/test_live_control_plane_api.py`: updated stale SQL contract assertions for current stage event policy. Joined participants can submit Q&A, hand raise and reactions; privileged slide/annotation/poll actions remain host/cohost/speaker-gated.
+- `apps/api` = CHANGE (adapter contract/tests + Live SQL contract test); `apps/client` = CHANGE (Native Live compile fixes); `apps/web` = NOT AFFECTED (no Web code changed); `apps/super-admin` = NOT AFFECTED (no Super Admin surface changed).
+
+### Actual checks
+- Allpha Smoke run `44720835629` on `c1f14ce`: all three jobs completed successfully. API test job: **791 passed, 1 warning**. Web job: production build compiled successfully. Native job: typecheck completed and Android bundle completed successfully. This run occurred before the adapter-contract test file was committed.
+- Allpha Smoke run `44720958958` on `f67dc8d`: still running at the time of this report update; no result is asserted for the new contract tests.
+- The previous run on `5edc014` had API tests green but Native failed only on `accessibilityRole="status"`; that source defect was fixed in `c1f14ce` and confirmed by the green Native job in run `44720835629`.
+- Earlier three Cinema production tests, Auth social graph scope test and ENG-P14 feed fixture failures are absent from the 791-passing API suite on `c1f14ce`. Their route/source tests now pass in that suite. This does not establish full Cinema provider/render/export or Social runtime acceptance.
+
+### Database and provider state
+- Supabase `dvdziauyvuhcnqhrrvww`: `ACTIVE_HEALTHY`, PostgreSQL 17.6.1.171, 135 applied migrations; latest `20261115185633`. Read-only migration inspection only. No DB writes, DDL or migration application.
+- Cinema production workspace migration `20261120100000_wp11_cinema_production_workspace.sql`, Live control-plane migration `20261120110000_eng_p25_live_control_plane.sql`, Social dispatch migration `20261118190000_wp06_agent_social_action_attribution_and_dispatch.sql`, and WP-07 readiness migration remain source-only where designated. No claim of canonical DB schema activation.
+- Memory remains gated by ADR-0022 Privacy/Security and Data Platform approvals. Embedding provider/model/dimension/index decision remains unresolved under ADR-0004. Live media provider remains blocked by ADR-WP10-001 (`PROPOSED — NOT APPROVED`). No provider, Memory, embedding, worker or recording activation.
+- No staging, production deployment or device-runtime session was run. No deploy was requested.
+
+### Workstream status and next phase
+- WP-07 `in_progress / acceptance_not_verified`; adapter interface contract added, real adapter and full receipt/worker/database proof still missing.
+- ENG-P04/WP-06 Social `in_progress`; existing API tests are green on the cited CI commit, but graph privacy/realtime, Agent dispatch consumer, takeover and full Native/Super Admin parity remain open.
+- WP-11 Cinema `in_progress`; three previously failing API tests pass on the cited CI commit, but generation, rendering, export, distribution and canonical migration activation remain open.
+- ENG-P25 `partial`; Native Live compile fixed. ENG-P26 `blocked` by ADR-WP10-001. ENG-P27 `partial`; no migration applied or media transport enabled.
+- WP-12 remains `blocked` pending WP-11 and approved economy policy. No phase promotion. Continue WP-07 as the canonical dependency while independently implementing Social/Cinema/Live slices.
