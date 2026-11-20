@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 
-const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? "http://localhost:8000" : "https://api.allpha.web.id")).replace(/\\/$/, "");
-
 type LiveSession = {
   id: string; host_user_id: string; conversation_id: string; title: string;
   description: string; visibility: "public" | "followers" | "private";
@@ -20,7 +18,7 @@ function uuid() {
   });
 }
 
-export function LiveControlCenter({ session }: { session: Session }) {
+export function LiveControlCenter({ session, apiBase }: { session: Session; apiBase: string }) {
   const [items, setItems] = useState<LiveSession[]>([]);
   const [selected, setSelected] = useState<LiveSession | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -45,7 +43,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
   const confirmed = (scope: string) => pending.current.delete(scope);
 
   const request = useCallback(async <T,>(path: string, method = "GET", body?: unknown): Promise<T> => {
-    const response = await fetch(API_BASE + path, {
+    const response = await fetch(apiBase.replace(/\\/$/, "") + path, {
       method, headers: { Accept: "application/json", Authorization: "Bearer " + session.access_token,
         ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -53,7 +51,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload?.error?.message || payload?.detail?.message || "Operasi Live belum dapat dikonfirmasi.");
     return payload as T;
-  }, [session.access_token]);
+  }, [apiBase, session.access_token]);
 
   const refresh = useCallback(async (selectedId?: string) => {
     setLoading(true); setError("");
@@ -78,7 +76,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  async function run(scope: string, action: () => Promise<void>, success: string) {
+  async function run(action: () => Promise<void>, success: string) {
     setBusy(true); setError(""); setNotice("");
     try { await action(); setNotice(success); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi Live gagal."); }
@@ -87,7 +85,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
 
   async function createSession() {
     if (!title.trim()) return;
-    await run("create", async () => {
+    await run(async () => {
       const result = await request<{ session: LiveSession }>("/v1/live/sessions", "POST", {
         title: title.trim(), description, visibility, idempotency_key: keyFor("create"),
       });
@@ -98,7 +96,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
 
   async function transition(next: "preparing" | "ended") {
     if (!selected) return;
-    await run("transition:" + next, async () => {
+    await run(async () => {
       await request(`/v1/live/sessions/${selected.id}/transition`, "POST", {
         expected_version: selected.version, next_status: next, reason: "native_host_action",
       });
@@ -109,7 +107,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
   async function joinOrLeave(join: boolean) {
     if (!selected) return;
     const scope = (join ? "join:" : "leave:") + selected.id;
-    await run(scope, async () => {
+    await run(async () => {
       await request(`/v1/live/sessions/${selected.id}/${join ? "join" : "leave"}`, "POST", { idempotency_key: keyFor(scope) });
       confirmed(scope); await refresh(selected.id);
     }, join ? "Berhasil bergabung ke sesi." : "Keluar dari sesi.");
@@ -165,7 +163,7 @@ export function LiveControlCenter({ session }: { session: Session }) {
       {host && selected.status === "planned" && <Text onPress={() => !busy && void transition("preparing")} style={{ color: "#11162B", backgroundColor: "#86EFAC", padding: 12, borderRadius: 10, textAlign: "center", fontWeight: "900" }}>Siapkan Stage</Text>}
       {host && active && <Text onPress={() => !busy && void transition("ended")} style={{ color: "#FCA5A5", borderColor: "#FCA5A5", borderWidth: 1, padding: 12, borderRadius: 10, textAlign: "center", fontWeight: "900" }}>Akhiri sesi</Text>}
       {!host && !joined && <Text onPress={() => !busy && void joinOrLeave(true)} style={{ color: "#11162B", backgroundColor: "#A5B4FC", padding: 12, borderRadius: 10, textAlign: "center", fontWeight: "900" }}>Gabung sesi</Text>}
-      {joined && <Text onPress={() => !busy && void joinOrLeave(false)} style={{ color: "#E1E6F8", borderColor: "#3A4566", borderWidth: 1, padding: 12, borderRadius: 10, textAlign: "center", fontWeight: "800" }}>Keluar sesi</Text>}
+      {joined && !host && <Text onPress={() => !busy && void joinOrLeave(false)} style={{ color: "#E1E6F8", borderColor: "#3A4566", borderWidth: 1, padding: 12, borderRadius: 10, textAlign: "center", fontWeight: "800" }}>Keluar sesi</Text>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         <Text onPress={() => active && !busy && void stageEvent("stage_hand_raised", { raised: !handRaised }, "hand-raise:" + selected.id)} style={{ color: "#11162B", backgroundColor: "#FCD34D", padding: 10, borderRadius: 9, overflow: "hidden", opacity: active ? 1 : 0.4 }}>{handRaised ? "Turunkan tangan" : "Angkat tangan"}</Text>
         {(["like", "clap", "heart", "laugh", "wow"] as const).map(reaction => <Text key={reaction} onPress={() => active && !busy && void stageEvent("stage_reaction_added", { reaction }, "reaction:" + selected.id + ":" + reaction)} style={{ color: "#E1E6F8", backgroundColor: "#29314B", padding: 10, borderRadius: 9, overflow: "hidden", opacity: active ? 1 : 0.4 }}>{({like:"👍",clap:"👏",heart:"❤️",laugh:"😂",wow:"😮"} as const)[reaction]}</Text>)}
