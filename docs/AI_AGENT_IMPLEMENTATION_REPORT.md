@@ -156,3 +156,33 @@
 - This is the first CI run that includes the new WP-07 adapter contract module and its tests. It proves the interface contract source and current app source compile/test; it does not prove a production provider adapter, external side-effect execution, effect receipt reconciliation, database migration activation, lease/crash recovery, or runtime/device acceptance.
 - The preceding source commit `c1f14ce` had also passed API (791 passed / 1 warning), Web build and Native checks; `f67dc8d` adds four API contract tests and retains the green result.
 - Phase plan update commit `23af5daf906cb62344dc605eb1f105cbea87119b`; this report update follows as a documentation-only commit. No deployment was requested or invoked.
+
+
+## Execution reconciliation — 2026-11-20
+
+### Repository and CI
+- Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`.
+- HEAD at start of reconciliation: `77360e981e0706d8c0fd664955173218fa2386a1`.
+- Allpha Smoke run `44721189570` for that HEAD: API tests, Web build and Native client checks all completed successfully. This is CI evidence, not live integration acceptance.
+- Railway status contexts for Web/API/Super Admin were success. Vercel status contexts for Web/API/Admin were `build-rate-limit` failures. No deployment was requested or invoked.
+
+### Live Supabase facts (read-only)
+- Project: `dvdziauyvuhcnqhrrvww`.
+- Latest applied migration: `20261115185633`; the latest 20 ledger entries were inspected.
+- Present: `agent_runtime_effect_receipts`, `social_edges`, `content_items`, `content_comments`, `content_reactions`, `agent_social_action_approvals`, `agent_social_presence_policies`, `agent_social_audit_events`, `cinema_titles`, `cinema_episodes`.
+- Absent: `agent_runtime_tool_plans`, `cinema_assets`, `live_sessions`, `live_participants`, `live_stage_events`.
+- Existing public RPC signatures: `begin_agent_runtime_effect(p_task_id uuid,p_owner_user_id uuid,p_lease_token uuid,p_task_version integer,p_step_key text,p_idempotency_key text,p_input_fingerprint text)`; `complete_agent_runtime_effect(p_task_id uuid,p_owner_user_id uuid,p_lease_token uuid,p_task_version integer,p_step_key text,p_idempotency_key text,p_input_fingerprint text,p_result_payload jsonb)`; `mark_agent_runtime_effect_unknown(p_task_id uuid,p_owner_user_id uuid)`; `decide_agent_social_approval(p_approval_id uuid,p_owner_user_id uuid,p_decision text,p_reason text)`.
+- `agent_runtime_worker_schema_readiness()` is absent from the live database. The effect receipt table currently stores task/version/step/idempotency/fingerprint/status/result/timestamps only; actor, owner, target, action, approval, correlation and external provider evidence are not first-class columns.
+
+### Work performed in this checkpoint
+- No application source code or migration was changed. This was a read-only reconciliation because the requested real side-effect adapter cannot be truthfully wired to a production destination without an approved target/provider contract and because the live DB is missing required runtime/Cinema/Live schema. A generic arbitrary-URL adapter would introduce SSRF and unauthorized side-effect risk, so it was not added.
+- Updated `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md` with these verified facts and retained all conservative statuses. Documentation commit: `b22ff76b8720e6057230b4b16e37bcc047ae8f54`.
+- No Supabase writes, DDL, migration application, worker activation, feature-flag activation, external provider calls, staging or production deployment occurred.
+
+### Current status and next work
+- WP-07 remains `in_progress`: reconcile source-only migration chain with exact live RPC signatures; add receipt identity/approval/target/provider evidence atomically; wire one approved real adapter; verify lease fencing, ambiguity reconciliation and recovery in the isolated verification window required by ADR-0007.
+- WP-06 remains `in_progress`: event consumer, Auto Reply/Takeover runtime and cross-client Social integration remain open.
+- WP-11 remains `in_progress`: production workspace schema is not live; generation, render/export and distribution are not complete. The three focused Cinema production contract tests in the latest CI run are covered by the successful API test job; no separate live database acceptance is claimed.
+- WP-12 remains `blocked`: approved revenue/qualified-watch policy and completed Cinema prerequisites are required; no payout/withdrawal activation.
+- ENG-P25 remains `in_progress` for provider-neutral control-plane source; its migration is absent from live DB. ENG-P26/27 remain open; ADR-WP10-001 is still PROPOSED — NOT APPROVED, so no provider, media tokens, WebRTC or recording activation.
+- Authentication: active Web login route renders the existing `AuthOnboardingFlow` modal and performs Supabase Auth sign-up/sign-in before FastAPI profile/Agent provisioning. The standalone `AuthOnboardingPage` component is not referenced by the current app route tree; do not maintain a second auth implementation. A full modal/route parity check still needs focused browser/device evidence.
