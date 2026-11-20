@@ -115,7 +115,6 @@ class AllphaSocialApprovalAdapter:
             return None
         row = rows[0]
         expected = {
-            "task_version": command.task_version,
             "input_fingerprint": command.input_fingerprint,
             "actor_user_id": command.actor_user_id,
             "owner_user_id": command.owner_user_id,
@@ -129,6 +128,13 @@ class AllphaSocialApprovalAdapter:
             "policy_version": command.policy_version,
             "policy_digest": command.policy_digest,
         }
+        # A reclaim increments the task's fencing version. A completed receipt
+        # from an earlier lease generation is valid for reconciliation as long as
+        # it belongs to this same task/effect identity and is not from the future.
+        stored_task_version = row.get("task_version")
+        if (not isinstance(stored_task_version, int) or isinstance(stored_task_version, bool)
+                or stored_task_version < 1 or stored_task_version > command.task_version):
+            raise SideEffectAdapterContractError("stored Social receipt has an invalid task generation")
         if any(str(row.get(key)) != str(value) for key, value in expected.items()):
             raise SideEffectAdapterContractError("stored Social receipt does not match the requested effect identity")
         return self._outcome(row, replayed=True)
