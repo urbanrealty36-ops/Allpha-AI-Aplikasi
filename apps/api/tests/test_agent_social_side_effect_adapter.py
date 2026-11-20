@@ -117,3 +117,68 @@ def test_wp07_social_effect_migration_fences_lease_and_persists_full_evidence():
     assert "agent_runtime_effect_idempotency_conflict" in migration
     assert "agent_runtime_effect_outcome_unknown_no_replay" in migration
     assert "grant execute on function public.execute_agent_social_approval_effect" in migration
+
+
+def test_social_adapter_reconciles_completed_receipt_from_prior_lease_generation(monkeypatch):
+    command = _command()
+    command = SideEffectCommand(**{**command.__dict__, "actor_user_id": command.owner_user_id})
+    row = {
+        "task_version": command.task_version - 1,
+        "input_fingerprint": command.input_fingerprint,
+        "actor_user_id": command.actor_user_id,
+        "owner_user_id": command.owner_user_id,
+        "agent_id": command.agent_id,
+        "target_reference": command.target_reference,
+        "action_key": command.action_key,
+        "approval_id": command.approval_id,
+        "correlation_id": command.correlation_id,
+        "provider_key": "allpha.social",
+        "policy_id": command.policy_id,
+        "policy_version": command.policy_version,
+        "policy_digest": command.policy_digest,
+        "status": "completed",
+        "result_payload": {"kind": "comment", "comment_id": str(uuid4())},
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "external_reference": str(uuid4()),
+        "evidence_reference": "agent_social_action_approvals:" + command.approval_id,
+    }
+
+    async def read(*args, **kwargs):
+        return [row]
+
+    monkeypatch.setattr(adapter_module, "_server_db", read)
+    outcome = asyncio.run(adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.reconcile(command, {}))
+    assert outcome is not None
+    assert outcome.status == "completed"
+
+
+def test_social_adapter_rejects_receipt_from_future_lease_generation(monkeypatch):
+    command = _command()
+    command = SideEffectCommand(**{**command.__dict__, "actor_user_id": command.owner_user_id})
+    row = {
+        "task_version": command.task_version + 1,
+        "input_fingerprint": command.input_fingerprint,
+        "actor_user_id": command.actor_user_id,
+        "owner_user_id": command.owner_user_id,
+        "agent_id": command.agent_id,
+        "target_reference": command.target_reference,
+        "action_key": command.action_key,
+        "approval_id": command.approval_id,
+        "correlation_id": command.correlation_id,
+        "provider_key": "allpha.social",
+        "policy_id": command.policy_id,
+        "policy_version": command.policy_version,
+        "policy_digest": command.policy_digest,
+        "status": "completed",
+        "result_payload": {"kind": "comment", "comment_id": str(uuid4())},
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "external_reference": str(uuid4()),
+        "evidence_reference": "agent_social_action_approvals:" + command.approval_id,
+    }
+
+    async def read(*args, **kwargs):
+        return [row]
+
+    monkeypatch.setattr(adapter_module, "_server_db", read)
+    with pytest.raises(SideEffectAdapterContractError):
+        asyncio.run(adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.reconcile(command, {}))
