@@ -1,3 +1,17 @@
+## Execution checkpoint — canonical Authentication route and modal convergence (2026-11-20)
+
+- Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`.
+- Re-read `AGENTS.md` (323 lines), the complete consolidated Master PRD v3.1.0 (3,690 lines), the fixed phase plan (3,758 lines), ADR-0013, ADR-0019, ADR-0021, ADR-0022, ADR-0023 and ADR-WP10-001. The current ADR directory does not contain the older ADR-0004/ADR-0007 files referenced by historical phase notes; current ADR-0022/0023 explicitly gate Memory activation and must not be bypassed. ADR-WP10-001 remains PROPOSED — NOT APPROVED.
+- Updated `apps/web/components/reference-ui/AuthOnboardingRoute.tsx` to accept modal presentation props (`isOpen`, `onClose`, optional initial mode) while retaining route-derived login/register mode. Both presentation modes now use the same Supabase Auth + FastAPI profile/interest/Agent provisioning handler and shared error handling.
+- Updated `apps/web/components/reference-ui/ReferenceApp.tsx` so the in-app authentication modal no longer mounts `AuthOnboardingFlow` directly with a legacy local-state completion callback. It now mounts `AuthOnboardingRoute`, the same canonical wrapper used by `/login` and `/register`.
+- Commits: `a1a7d16d934806b4202219f1408e27e2b8ad89a2` (canonical wrapper supports modal and route) and `ed55ee485181c8a6119627cabceb4879505cef5a` (ReferenceApp modal uses canonical wrapper).
+- Focused source verification: fetched the committed route, register/login page entries, Auth flow and ReferenceApp; confirmed both pages import the same route wrapper, ReferenceApp no longer imports/mounts AuthOnboardingFlow directly, and the flow invokes the shared `onComplete` payload. This is a source inspection, not browser/device integration evidence.
+- CI at the time of inspection for `ed55ee4`: Allpha Smoke run `44724740288` was in progress with API tests, Web tests/build and Native tests/typecheck/Android export. Reference UI Validation was also in progress. Railway contexts reported success. Vercel Web/API/Admin status contexts reported failure with `build-rate-limit`. No pending job is reported as passed, and no Vercel deployment was requested.
+- No database migration or Supabase write was performed. No staging, media-provider activation or production deployment was performed.
+- Remaining Auth gaps: verify actual browser/device behavior in route and modal; unify/verify OAuth callback, session refresh, logout, protected-route/session restoration and role/ownership refresh. No Auth package completion claim.
+- Overall status unchanged: WP-07, WP-06, WP-11 and ENG-P25 remain in progress; WP-12 remains blocked; ENG-P26/P27 remain unpromoted. Next priority remains WP-07 durable effect/worker and schema/governance gates, with independent Social/Cinema/provider-neutral Live source work continuing. WP-12 follows WP-11 plus approved monetization policy; media-plane work remains blocked by ADR-WP10-001.
+
+---
 # Allpha AI Agent Implementation Report
 
 ## Execution checkpoint — 2026-11-20
