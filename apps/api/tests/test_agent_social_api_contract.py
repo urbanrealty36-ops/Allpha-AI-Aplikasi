@@ -114,7 +114,9 @@ def test_automation_mutations_fail_closed_until_schema_is_active(monkeypatch):
 
 
 def test_agent_social_dispatch_migration_preserves_notification_preferences_and_agent_dm_kind():
-    migration = Path(__file__).parents[1] / "supabase" / "migrations" / "20261118190000_wp06_agent_social_action_attribution_and_dispatch.sql"
+    migration = Path(__file__).parents[1] / "supabase" / "source-only-migrations" / "20261118190000_wp06_agent_social_action_attribution_and_dispatch.sql"
+    assert migration.is_file(), "WP-06 dispatch migration must remain in the source-only quarantine until its activation gate is met"
+    assert not (Path(__file__).parents[1] / "supabase" / "migrations" / migration.name).exists()
     sql = migration.read_text(encoding="utf-8")
 
     assert "actor_agent_id" in sql
