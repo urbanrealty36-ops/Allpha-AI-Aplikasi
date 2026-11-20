@@ -883,7 +883,7 @@ def test_native_orchestration_executes_tool_and_feeds_result_back_to_model(monke
         assert result["state"] == "succeeded"
         assert result["output_payload"]["result_text"] == "Teks berhasil dinormalisasi: hello"
         assert result["output_payload"]["tool_calls"][0]["tool_key"] == "text.normalize"
-        assert len(FakeRuntimeStore.checkpoints[task["id"]]) == 1
+        assert len(FakeRuntimeStore.checkpoints[task["id"]]) == 2
         assert len(router.requests) == 2
         assert router.requests[0].tool_definitions
         assert router.requests[1].tool_definitions
