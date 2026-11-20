@@ -41,6 +41,7 @@ declare
     array['agent_runtime_tasks','request_fingerprint'],
     array['agent_runtime_tasks','trace_id'],
     array['agent_runtime_tasks','event_log'],
+    array['agent_runtime_tasks','execution_event_seq'],
     array['agent_runtime_checkpoints','task_id'],
     array['agent_runtime_checkpoints','task_version'],
     array['agent_runtime_checkpoints','sequence'],
