@@ -568,8 +568,18 @@ async def snapshot_cinema_version(title_id: uuid.UUID,user: dict[str,Any]=Depend
         "select":"id,collaborator_user_id,collaborator_agent_id,role,permissions,status,accepted_at",
         "title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"order":"created_at.asc","limit":"200",
     })
+    production_rows=await _db("GET","cinema_titles",params={
+        "select":"production_document","id":"eq."+str(title_id),"owner_id":"eq."+owner_id,"limit":"1",
+    })
+    asset_rows=await _db("GET","cinema_assets",params={
+        "select":"id,media_id,asset_role,display_name,metadata,created_at",
+        "title_id":"eq."+str(title_id),"owner_id":"eq."+owner_id,
+        "order":"created_at.asc","limit":"1000",
+    })
     snapshot={"title":title,"episodes":episodes or [],"credits":credits or [],
-              "collaborators":collaborators or [],"snapshot_schema":"cinema-film-v1"}
+              "collaborators":collaborators or [],
+              "production_document":(production_rows[0].get("production_document") if production_rows else None),
+              "assets":asset_rows or [],"snapshot_schema":"cinema-film-v2"}
     version=int(title.get("version") or 1)
     existing=await _db("GET","cinema_film_versions",params={
         "select":"id,title_id,version,created_at","title_id":"eq."+str(title_id),"version":"eq."+str(version),"limit":"1",
