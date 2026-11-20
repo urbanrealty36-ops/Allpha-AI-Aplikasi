@@ -423,6 +423,7 @@ begin
   end if;
   if p_event_type='stage_reaction_added'
      and (jsonb_object_length(coalesce(p_payload,'{}'::jsonb))<>1
+          or p_payload->>'reaction' is null
           or p_payload->>'reaction' not in ('like','clap','heart','laugh','wow')) then
     raise exception 'LIVE_REACTION_PAYLOAD_INVALID' using errcode='22023';
   end if;
