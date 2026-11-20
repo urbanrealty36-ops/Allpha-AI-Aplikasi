@@ -63,6 +63,11 @@ class LiveParticipantRemoval(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=160)
 
 
+class LiveIdempotency(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=8, max_length=160)
+
+
 def _credentials() -> tuple[str, str]:
     base = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SECRET_KEY", "")
@@ -231,11 +236,9 @@ async def remove_live_participant(session_id: uuid.UUID, participant_user_id: uu
 
 
 @router.post("/sessions/{session_id}/join")
-async def join_live_session(session_id: uuid.UUID, payload: dict[str, str],
+async def join_live_session(session_id: uuid.UUID, payload: LiveIdempotency,
                             user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    key = payload.get("idempotency_key", "")
-    if not 8 <= len(key) <= 160:
-        raise HTTPException(422, detail={"code": "LIVE_IDEMPOTENCY_KEY_INVALID", "message": "Idempotency key wajib 8–160 karakter."})
+    key = payload.idempotency_key
     result = await _rpc("join_live_session", {
         "p_session_id": str(session_id), "p_user_id": str(user["id"]),
         "p_idempotency_key": key,
@@ -245,7 +248,7 @@ async def join_live_session(session_id: uuid.UUID, payload: dict[str, str],
 
 
 @router.post("/sessions/{session_id}/leave")
-async def leave_live_session(session_id: uuid.UUID, payload: dict[str, str],
+async def leave_live_session(session_id: uuid.UUID, payload: LiveIdempotency,
                              user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     key = payload.get("idempotency_key", "")
     if not 8 <= len(key) <= 160:
