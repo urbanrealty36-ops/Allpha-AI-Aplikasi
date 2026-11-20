@@ -6,6 +6,7 @@ is fabricated here; publication remains gated until those canonical owners act.
 """
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import datetime, timezone
