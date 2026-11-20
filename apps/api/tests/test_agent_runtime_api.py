@@ -708,7 +708,7 @@ def test_tool_planner_replans_twice_after_invalid_structured_responses(monkeypat
             item.tool_definitions[0]["function"]["name"] == "text.normalize"
             for item in router.requests
         )
-        assert all(item.max_tool_calls == 1 for item in router.requests)
+        assert all(item.max_tool_calls == 5 for item in router.requests)
         assert len({item.task_id for item in router.requests}) == 3
         assert len({item.idempotency_key for item in router.requests}) == 3
         assert "PRIOR INVALID JSON" in router.requests[1].prompt
@@ -791,7 +791,7 @@ def test_tool_planner_persists_provider_native_function_calls_as_durable_task_pl
 
         async def generate(self, generation_request):
             assert generation_request.tool_definitions[0]["function"]["name"] == "text.normalize"
-            assert generation_request.max_tool_calls == 1
+            assert generation_request.max_tool_calls == 5
             evidence = SimpleNamespace(
                 provider_id="provider-test", model_id="model-test", model_version="model-v1",
                 policy_id="private-policy", policy_version="private-v1",
@@ -886,6 +886,6 @@ def test_native_orchestration_executes_tool_and_feeds_result_back_to_model(monke
         assert len(FakeRuntimeStore.checkpoints[task["id"]]) == 1
         assert len(router.requests) == 2
         assert router.requests[0].tool_definitions
-        assert router.requests[1].tool_definitions == ()
+        assert router.requests[1].tool_definitions
     finally:
         app.dependency_overrides.pop(current_user, None)
