@@ -44,6 +44,11 @@ def test_client_api_data_adapter_feed_interaction_lifecycle(monkeypatch):
         "content_shares": [],
         "content_reports": [],
         "feed_preferences": [],
+        "feed_feedback": [],
+        "feed_snapshots": [],
+        "feed_snapshot_items": [],
+        "user_settings": [],
+        "notifications": [],
     }
     writes = []
 
@@ -52,7 +57,8 @@ def test_client_api_data_adapter_feed_interaction_lifecycle(monkeypatch):
         assert table in {
             "content_items", "profiles", "social_edges", "user_interests", "content_reactions",
             "content_saves", "content_comments", "content_shares", "content_reports",
-            "feed_preferences", "content_mentions", "content_media",
+            "feed_preferences", "feed_feedback", "feed_snapshots", "feed_snapshot_items",
+            "user_settings", "notifications", "content_mentions", "content_media",
         }, f"unexpected data access: {method} {table}"
 
         if table == "content_items":
