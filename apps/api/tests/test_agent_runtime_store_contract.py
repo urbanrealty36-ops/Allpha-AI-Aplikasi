@@ -79,6 +79,6 @@ def test_worker_readiness_requires_success_receipt_guard():
     assert result["ready"] is False
     assert result["missing_triggers"] == ["agent_runtime_task_success_receipt_guard"]
     assert calls == [
-        "https://example.supabase.co/rest/v1/rpc/agent_runtime_worker_schema_readiness",
-        "https://example.supabase.co/rest/v1/rpc/agent_runtime_effect_receipt_guard_readiness",
+        "/rest/v1/rpc/agent_runtime_worker_schema_readiness",
+        "/rest/v1/rpc/agent_runtime_effect_receipt_guard_readiness",
     ]
