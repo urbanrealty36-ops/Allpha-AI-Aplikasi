@@ -707,14 +707,15 @@ async def _execute_native_orchestration_task(
         granted_scopes=tuple(policy_scopes),
     )
 
-    checkpoints = await store.list_checkpoints(task_id, limit=5)
+    checkpoints = await store.list_checkpoints(task_id, limit=10)
     execution_events = await store.list_execution_events(owner_id, task_id, limit=200)
     model_turns_started = [
         event for event in execution_events
         if isinstance(event.get("details"), dict)
         and event["details"].get("reason_code") == "model_call_started"
     ]
-    if len(model_turns_started) > len(checkpoints):
+    requested_checkpoint_count = (len(checkpoints) + 1) // 2
+    if len(model_turns_started) > requested_checkpoint_count:
         failed = await store.finalize_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
             state="failed", output_payload=None, error_code="MODEL_CALL_OUTCOME_UNKNOWN",
@@ -724,9 +725,10 @@ async def _execute_native_orchestration_task(
             raise AgentRuntimePersistenceError("unknown native model-call outcome could not be terminalized")
         raise HTTPException(status_code=409, detail={
             "code": "MODEL_CALL_OUTCOME_UNKNOWN",
-            "message": "Ada model turn yang dimulai tanpa tool-result checkpoint. Provider tidak dipanggil ulang untuk menghindari biaya ganda.",
+            "message": "Ada model turn yang dimulai tanpa request checkpoint. Provider tidak dipanggil ulang untuk menghindari biaya ganda.",
         })
-    if len(model_turns_started) != len(checkpoints) or len(checkpoints) > max_calls:
+    if (len(model_turns_started) != requested_checkpoint_count
+            or len(checkpoints) > max_calls * 2):
         failed = await store.finalize_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
             state="failed", output_payload=None, error_code="NATIVE_CHECKPOINT_INVALID",
@@ -739,27 +741,15 @@ async def _execute_native_orchestration_task(
     messages: list[dict[str, Any]] = []
     completed_steps: list[dict[str, Any]] = []
     model_usage: list[dict[str, Any]] = []
-    for index, checkpoint in enumerate(checkpoints):
+    pending_call: dict[str, Any] | None = None
+
+    def validate_native_checkpoint(checkpoint: dict[str, Any], sequence: int, step_key: str) -> dict[str, Any]:
         result_payload = checkpoint.get("result_payload")
-        expected_step_id = f"native_call_{index + 1}"
-        if (int(checkpoint.get("sequence") or 0) != index + 1
-                or checkpoint.get("step_key") != "native:" + expected_step_id
+        if (int(checkpoint.get("sequence") or 0) != sequence
+                or checkpoint.get("step_key") != step_key
                 or checkpoint.get("input_fingerprint") != row.get("request_fingerprint")
-                or not isinstance(result_payload, dict)
-                or result_payload.get("state") != "succeeded"
-                or result_payload.get("step_id") != expected_step_id
-                or result_payload.get("tool_key") not in definitions
-                or not isinstance(result_payload.get("result"), dict)
-                or not isinstance(result_payload.get("assistant_message"), dict)
-                or not isinstance(result_payload.get("tool_message"), dict)):
-            failed = await store.finalize_task(
-                owner_id, task_id, lease_token, int(row["task_version"]),
-                state="failed", output_payload=None, error_code="NATIVE_CHECKPOINT_INVALID",
-                event_log=list(row.get("event_log") or []),
-            )
-            if not failed:
-                raise AgentRuntimePersistenceError("invalid native checkpoint could not be terminalized")
-            raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Payload checkpoint native tidak valid."})
+                or not isinstance(result_payload, dict)):
+            raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Metadata checkpoint native tidak valid."})
         try:
             checkpoint_bytes = json.dumps(result_payload, ensure_ascii=False, sort_keys=True,
                                           separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -767,19 +757,55 @@ async def _execute_native_orchestration_task(
             raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Payload checkpoint native bukan JSON valid."}) from exc
         if hashlib.sha256(checkpoint_bytes).hexdigest() != checkpoint.get("checkpoint_hash"):
             raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_DIGEST_MISMATCH", "message": "Digest checkpoint native tidak cocok."})
-        assistant_message = result_payload["assistant_message"]
-        tool_message = result_payload["tool_message"]
-        if (assistant_message.get("role") != "assistant" or tool_message.get("role") != "tool"
-                or not isinstance(tool_message.get("content"), str)
-                or tool_message.get("name") != result_payload.get("tool_key")):
-            raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Conversation checkpoint tidak cocok dengan tool yang selesai."})
-        messages.extend([assistant_message, tool_message])
+        return result_payload
+
+    index = 0
+    call_number = 1
+    while index < len(checkpoints):
+        requested = validate_native_checkpoint(
+            checkpoints[index], call_number * 2 - 1,
+            f"native:native_call_{call_number}:requested",
+        )
+        step_id = f"native_call_{call_number}"
+        if (requested.get("state") != "requested" or requested.get("step_id") != step_id
+                or requested.get("tool_key") not in definitions
+                or not isinstance(requested.get("call_id"), str)
+                or not isinstance(requested.get("arguments"), dict)
+                or not isinstance(requested.get("assistant_message"), dict)
+                or not isinstance(requested.get("model_evidence"), dict)):
+            raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Native tool request checkpoint tidak valid."})
+        assistant_message = requested["assistant_message"]
+        if (assistant_message.get("role") != "assistant"
+                or not isinstance(assistant_message.get("tool_calls"), list)
+                or len(assistant_message["tool_calls"]) != 1
+                or assistant_message["tool_calls"][0].get("id") != requested["call_id"]):
+            raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Assistant tool-call checkpoint tidak cocok."})
+        if index + 1 >= len(checkpoints):
+            pending_call = requested
+            index += 1
+            break
+        completed = validate_native_checkpoint(
+            checkpoints[index + 1], call_number * 2,
+            f"native:{step_id}:result",
+        )
+        if (completed.get("state") != "succeeded" or completed.get("step_id") != step_id
+                or completed.get("tool_key") != requested.get("tool_key")
+                or completed.get("call_id") != requested.get("call_id")
+                or completed.get("assistant_message") != assistant_message
+                or not isinstance(completed.get("result"), dict)
+                or not isinstance(completed.get("tool_message"), dict)
+                or completed["tool_message"].get("role") != "tool"
+                or completed["tool_message"].get("tool_call_id") != requested.get("call_id")
+                or completed["tool_message"].get("name") != requested.get("tool_key")):
+            raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Native tool-result checkpoint tidak cocok dengan request."})
+        messages.extend([assistant_message, completed["tool_message"]])
         completed_steps.append({
-            "step_id": expected_step_id, "tool_key": result_payload["tool_key"],
-            "result": result_payload["result"], "resumed": True,
+            "step_id": step_id, "tool_key": requested["tool_key"],
+            "result": completed["result"], "resumed": True,
         })
-        if isinstance(result_payload.get("model_evidence"), dict):
-            model_usage.append(result_payload["model_evidence"])
+        model_usage.append(requested["model_evidence"])
+        index += 2
+        call_number += 1
 
     trace_enabled = _execution_trace_enabled()
     deadline = time.monotonic() + max_runtime
