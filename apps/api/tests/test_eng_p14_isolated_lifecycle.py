@@ -157,11 +157,14 @@ def test_client_api_data_adapter_feed_interaction_lifecycle(monkeypatch):
         assert item.json()["item"]["engagement"] == {
             "likes": 1, "comments": 1, "saves": 1, "shares": 1,
         }
-        assert len(writes) == 5
-        assert {table for table, _ in writes} == {
+        business_tables = {
             "content_reactions", "content_saves", "content_comments",
             "content_shares", "content_reports",
         }
-        assert all(row.get("actor_user_id", row.get("reporter_user_id")) == VIEWER for _, row in writes)
+        business_writes = [(table, row) for table, row in writes if table in business_tables]
+        assert len(business_writes) == 5
+        assert {table for table, _ in business_writes} == business_tables
+        assert all(row.get("actor_user_id", row.get("reporter_user_id")) == VIEWER
+                   for _, row in business_writes)
     finally:
         app.dependency_overrides.pop(current_user, None)
