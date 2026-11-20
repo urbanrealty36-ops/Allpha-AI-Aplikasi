@@ -20,7 +20,7 @@ declare
   v_missing_privileges text[] := '{}'::text[];
   v_required_tables text[] := array[
     'agent_runtime_sessions','agent_runtime_tasks','agent_runtime_checkpoints',
-    'agent_runtime_tool_plans','ai_agents','agent_skills',
+    'agent_runtime_tool_plans','agent_runtime_execution_events','ai_agents','agent_skills',
     'agent_capabilities','agent_runtime_policies',
     'agent_memory_policies','agent_memory_items','agent_memory_events'
   ];
@@ -51,6 +51,15 @@ declare
     array['agent_runtime_tool_plans','owner_user_id'],
     array['agent_runtime_tool_plans','idempotency_key'],
     array['agent_runtime_tool_plans','request_fingerprint'],
+    array['agent_runtime_execution_events','task_id'],
+    array['agent_runtime_execution_events','owner_user_id'],
+    array['agent_runtime_execution_events','sequence'],
+    array['agent_runtime_execution_events','task_version'],
+    array['agent_runtime_execution_events','trace_id'],
+    array['agent_runtime_execution_events','event_type'],
+    array['agent_runtime_execution_events','state'],
+    array['agent_runtime_execution_events','step_key'],
+    array['agent_runtime_execution_events','details'],
     array['agent_memory_policies','owner_user_id'],
     array['agent_memory_policies','consent_version'],
     array['agent_memory_policies','enabled'],
@@ -71,6 +80,7 @@ declare
     'public.claim_agent_runtime_task(uuid,uuid,uuid,integer)',
     'public.heartbeat_agent_runtime_task(uuid,uuid,uuid,integer,integer)',
     'public.append_agent_runtime_checkpoint(uuid,uuid,uuid,integer,bigint,text,text,text,jsonb)',
+    'public.append_agent_runtime_execution_event(uuid,uuid,uuid,integer,text,text,text,jsonb)',
     'public.finalize_agent_runtime_task(uuid,uuid,uuid,integer,text,jsonb,text,jsonb)',
     'public.mark_agent_runtime_effect_unknown(uuid,uuid)',
     'public.schedule_agent_runtime_retry(uuid,uuid,uuid,integer,text,integer,jsonb,jsonb)',
