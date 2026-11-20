@@ -79,7 +79,7 @@ create index if not exists live_stage_events_session_seq_idx
 create or replace function public.is_live_session_member(p_session_id uuid,p_user_id uuid)
 returns boolean
 language sql stable security definer set search_path=public,pg_temp
-as $
+as $$
   select exists (
     select 1 from public.live_sessions s
     where s.id=p_session_id and (
@@ -89,7 +89,7 @@ as $
       )
     )
   );
-$;
+$$;
 revoke all on function public.is_live_session_member(uuid,uuid) from public,anon;
 grant execute on function public.is_live_session_member(uuid,uuid) to authenticated,service_role;
 
@@ -311,7 +311,7 @@ create or replace function public.remove_live_participant(
   p_session_id uuid,p_host_user_id uuid,p_user_id uuid,p_reason text,p_idempotency_key text
 ) returns jsonb
 language plpgsql security definer set search_path=public,pg_temp
-as $
+as $$
 declare v_session public.live_sessions%rowtype; v_participant public.live_participants%rowtype;
 begin
   if p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
@@ -336,7 +336,7 @@ begin
   end if;
   return jsonb_build_object('outcome','removed','participant',to_jsonb(v_participant));
 end;
-$;
+$$;
 
 create or replace function public.set_live_recording_consent(
   p_session_id uuid,p_user_id uuid,p_consent boolean,p_idempotency_key text
