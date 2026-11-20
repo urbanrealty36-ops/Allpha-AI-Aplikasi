@@ -67,7 +67,7 @@ export default function AuthOnboardingRoute() {
     if (mode === "register") return "REGISTER" as const;
     // Keep the direct route entry points semantically correct while both
     // routes continue to share this single Supabase Auth + FastAPI flow.
-    return window.location.pathname.replace(/\\/+$/, "") === "/login"
+    return window.location.pathname.replace(/\/+$/, "") === "/login"
       ? "LOGIN" as const
       : "REGISTER" as const;
   }, []);
