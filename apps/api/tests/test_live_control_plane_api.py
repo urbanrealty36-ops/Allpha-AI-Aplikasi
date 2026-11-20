@@ -95,7 +95,7 @@ def test_live_stage_mutation_migration_enforces_speaker_roles_and_allows_viewer_
     assert "if p_event_type not in ('stage_qa_submitted','stage_hand_raised','stage_reaction_added') and not exists" in migration
     assert "LIVE_STAGE_ROLE_REQUIRED" in migration
     # Q&A remains available to joined viewers; all other stage mutations are role-gated.
-    assert "if p_event_type<>'stage_qa_submitted'" in migration
+    assert "stage_qa_submitted','stage_hand_raised','stage_reaction_added" in migration
 
 def test_live_stage_event_contract_supports_hand_raise_and_reaction():
     from pydantic import ValidationError
