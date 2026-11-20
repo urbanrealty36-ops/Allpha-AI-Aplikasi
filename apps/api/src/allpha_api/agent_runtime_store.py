@@ -258,6 +258,8 @@ class AgentRuntimeStore:
         result = await self.request("POST", "rpc/agent_runtime_worker_schema_readiness", body={})
         if not isinstance(result, dict) or not isinstance(result.get("ready"), bool):
             raise AgentRuntimePersistenceError("runtime worker schema readiness response is invalid")
+        if result["ready"] is not True:
+            return result
         receipt_guard = await self.request(
             "POST", "rpc/agent_runtime_effect_receipt_guard_readiness", body={},
         )
