@@ -12,6 +12,7 @@ type LiveParticipant = {
   status: "invited" | "joined" | "left" | "removed";
   recording_consent?: boolean;
 };
+type LiveStageEvent = { id: string; event_seq: number; actor_user_id: string | null; event_type: string; payload: Record<string, unknown>; created_at: string };
 type LiveSession = {
   id: string;
   host_user_id: string;
@@ -59,6 +60,8 @@ export default function LiveControlPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [stageEvents, setStageEvents] = useState<LiveStageEvent[]>([]);
+  const [handRaised, setHandRaised] = useState(false);
 
   // Retain an operation key until the server confirms the write. If the
   // response is lost, retrying the same action replays the same DB transaction
@@ -98,8 +101,38 @@ export default function LiveControlPanel() {
     }
   }, []);
 
+  const loadStageEvents = useCallback(async (sessionId: string) => {
+    if (!sessionId) { setStageEvents([]); setHandRaised(false); return; }
+    try {
+      const result = await liveRequest<{ items: LiveStageEvent[] }>(`/v1/live/sessions/${encodeURIComponent(sessionId)}/stage-events?limit=50`);
+      const rows = Array.isArray(result.items) ? result.items : [];
+      setStageEvents(rows);
+      const latestRaise = [...rows].reverse().find(item => item.event_type === "stage_hand_raised");
+      if (latestRaise) setHandRaised(latestRaise.payload?.raised === true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Riwayat Stage tidak dapat dimuat.");
+    }
+  }, []);
+
+  async function appendStageEvent(eventType: "stage_hand_raised" | "stage_reaction_added", payload: Record<string, unknown>, scope: string) {
+    if (!details) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await liveRequest(`/v1/live/sessions/${encodeURIComponent(details.id)}/stage-events`, {
+        method: "POST",
+        body: JSON.stringify({ event_type: eventType, payload, idempotency_key: operationKey(scope) }),
+      });
+      confirmOperation(scope);
+      if (eventType === "stage_hand_raised") setHandRaised(payload.raised === true);
+      setNotice(eventType === "stage_hand_raised" ? (payload.raised ? "Tangan diangkat." : "Tangan diturunkan.") : "Reaksi dikirim ke Stage.");
+      await loadStageEvents(details.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Interaksi Stage belum dapat dikonfirmasi.");
+    } finally { setBusy(false); }
+  }
+
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { void loadDetails(selectedId); }, [loadDetails, selectedId]);
+  useEffect(() => { void loadDetails(selectedId); void loadStageEvents(selectedId); }, [loadDetails, loadStageEvents, selectedId]);
 
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -201,6 +234,20 @@ export default function LiveControlPanel() {
               </form>
               <div className="mt-4 space-y-2 border-t border-slate-300 pt-3"><h4 className="text-xs font-black">Peserta</h4>
                 {(details.participants || []).map(participant => <div key={participant.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white p-2 text-xs"><span className="min-w-0"><strong>{participant.participant_role}</strong> · {participant.status}<span className="block truncate text-slate-500">{participant.user_id}</span></span>{details.host_user_id && participant.participant_role !== "host" && <button type="button" onClick={() => void removeParticipant(participant.user_id)} disabled={busy || participant.status === "removed"} className="rounded-md border border-slate-900 px-2 py-1 font-bold text-rose-800 disabled:opacity-40">Cabut</button>}</div>)}
+              </div>
+              <div className="mt-4 space-y-3 border-t border-slate-300 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-xs font-black">Interaksi Stage</h4>
+                  <span className="text-[10px] text-slate-500">Disimpan melalui FastAPI · idempotent</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void appendStageEvent("stage_hand_raised", { raised: !handRaised }, `hand-raise:${details.id}`)} disabled={busy || !["preparing","live","paused","reconnecting"].includes(details.status)} className="rounded-lg border-2 border-slate-900 bg-amber-100 px-3 py-2 text-xs font-black disabled:opacity-40">{handRaised ? "Turunkan tangan" : "Angkat tangan"}</button>
+                  {(["like","clap","heart","laugh","wow"] as const).map(reaction => <button key={reaction} type="button" onClick={() => void appendStageEvent("stage_reaction_added", { reaction }, `reaction:${details.id}:${reaction}`)} disabled={busy || !["preparing","live","paused","reconnecting"].includes(details.status)} className="rounded-lg border border-slate-900 bg-white px-3 py-2 text-xs font-bold disabled:opacity-40">{({like:"👍",clap:"👏",heart:"❤️",laugh:"😂",wow:"😮"} as const)[reaction]}</button>)}
+                </div>
+                <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-300 bg-slate-50 p-2">
+                  {stageEvents.slice(-12).reverse().map(item => <p key={item.id} className="text-[11px] text-slate-700"><strong>{item.event_type.replaceAll("_"," ")}</strong>{item.event_type === "stage_reaction_added" ? ` · ${String(item.payload.reaction || "")}` : item.event_type === "stage_hand_raised" ? (item.payload.raised ? " · raised" : " · lowered") : ""}<span className="ml-2 text-slate-400">#{item.event_seq}</span></p>)}
+                  {stageEvents.length === 0 && <p className="text-[11px] text-slate-500">Belum ada interaksi Stage.</p>}
+                </div>
               </div>
               <p className="mt-3 text-[11px] text-slate-600">Chat memakai conversation dan Messaging API kanonis: {details.conversation_id}</p>
             </> : <p className="text-xs text-slate-500">Pilih sesi untuk melihat lifecycle dan peserta.</p>}
