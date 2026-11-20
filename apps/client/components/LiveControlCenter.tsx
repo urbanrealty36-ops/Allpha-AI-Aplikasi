@@ -43,7 +43,7 @@ export function LiveControlCenter({ session, apiBase }: { session: Session; apiB
   const confirmed = (scope: string) => pending.current.delete(scope);
 
   const request = useCallback(async <T,>(path: string, method = "GET", body?: unknown): Promise<T> => {
-    const response = await fetch(apiBase.replace(/\\/$/, "") + path, {
+    const response = await fetch(apiBase.replace(/\/$/, "") + path, {
       method, headers: { Accept: "application/json", Authorization: "Bearer " + session.access_token,
         ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
