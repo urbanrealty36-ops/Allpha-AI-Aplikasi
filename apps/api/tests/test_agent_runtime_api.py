@@ -167,6 +167,22 @@ class FakeRuntimeStore:
                     "execution_lease_token": None, "lease_expires_at": None, "task_version": row["task_version"] + 1})
         return copy.deepcopy(row)
 
+    async def schedule_retry_task(self, owner_id, task_id, lease_token, task_version, *,
+                                  error_code, retry_after_seconds, output_payload, event_log):
+        row = self.tasks.get(task_id)
+        if (not row or row["owner_user_id"] != owner_id
+                or row.get("execution_lease_token") != lease_token
+                or row.get("task_version") != task_version):
+            return None
+        row.update({
+            "state": "retrying", "execution_attempts": int(row.get("execution_attempts") or 1) + 1,
+            "next_attempt_at": "now", "error_code": error_code,
+            "output_payload": copy.deepcopy(output_payload), "event_log": copy.deepcopy(event_log),
+            "execution_lease_token": None, "lease_expires_at": None,
+            "task_version": row["task_version"] + 1,
+        })
+        return copy.deepcopy(row)
+
     async def create_session(self, body):
         row = {"id": SESSION, **body, "status": "active", "created_at": "now", "updated_at": "now"}
         self.sessions[SESSION] = row
@@ -888,4 +904,75 @@ def test_native_orchestration_executes_tool_and_feeds_result_back_to_model(monke
         assert router.requests[0].tool_definitions
         assert router.requests[1].tool_definitions
     finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_native_orchestration_retries_persisted_pure_tool_call_without_recalling_model(monkeypatch):
+    from allpha_api.agent_runtime import AgentRuntimeRetryable
+    original_execute = runtime_execute = __import__("allpha_api.agent_runtime_api", fromlist=["_runtime"])._runtime.execute_tool
+    executions = {"count": 0}
+
+    async def fail_once(*args, **kwargs):
+        executions["count"] += 1
+        if executions["count"] == 1:
+            raise AgentRuntimeRetryable("PURE_TOOL_TEMPORARY_FAILURE")
+        return await original_execute(*args, **kwargs)
+
+    class FakeRouter:
+        def __init__(self):
+            self.requests = []
+
+        async def preflight(self, sensitivity):
+            return {"ready": True}
+
+        def max_output_tokens_for(self, sensitivity):
+            return 768
+
+        async def generate(self, generation_request):
+            self.requests.append(generation_request)
+            evidence = SimpleNamespace(
+                task_id=generation_request.task_id, provider_id="provider-test",
+                model_id="model-test", model_version="model-v1",
+                policy_id="private-policy", policy_version="private-v1",
+                input_tokens=10, output_tokens=4, cost_microunits=40,
+                cost_unit="USD", pricing_version="price-v1", latency_ms=10,
+                evidence_sha256=("e" if len(self.requests) == 1 else "f") * 64,
+            )
+            if len(self.requests) == 1:
+                call = SimpleNamespace(
+                    call_id="retry-call-1", name="text.normalize", arguments={"text": "hello"},
+                )
+                return SimpleNamespace(output_text="", tool_calls=(call,)), evidence
+            assert generation_request.conversation_messages[-1]["role"] == "tool"
+            return SimpleNamespace(output_text="Retry completed", tool_calls=()), evidence
+
+    c = client(monkeypatch)
+    router = FakeRouter()
+    monkeypatch.setattr(app.state, "text_generation_router", router, raising=False)
+    monkeypatch.setattr("allpha_api.agent_runtime_api._runtime.execute_tool", fail_once)
+    try:
+        session_id = create_session(c)
+        created = c.post("/v1/agent-runtime/tasks", json={
+            "session_id": session_id, "skill_id": SKILL,
+            "native_orchestration": True, "prompt": "Normalize hello",
+            "idempotency_key": "native-retry-001",
+        })
+        assert created.status_code == 201
+        task_id = created.json()["task"]["id"]
+
+        first = c.post(f"/v1/agent-runtime/tasks/{task_id}/execute")
+        assert first.status_code == 200
+        assert first.json()["task"]["state"] == "retrying"
+        assert len(FakeRuntimeStore.checkpoints[task_id]) == 1
+        assert executions["count"] == 1
+
+        second = c.post(f"/v1/agent-runtime/tasks/{task_id}/execute")
+        assert second.status_code == 200
+        assert second.json()["task"]["state"] == "succeeded"
+        assert second.json()["task"]["output_payload"]["result_text"] == "Retry completed"
+        assert len(router.requests) == 2
+        assert executions["count"] == 2
+        assert len(FakeRuntimeStore.checkpoints[task_id]) == 2
+    finally:
+        monkeypatch.setattr("allpha_api.agent_runtime_api._runtime.execute_tool", runtime_execute)
         app.dependency_overrides.pop(current_user, None)
