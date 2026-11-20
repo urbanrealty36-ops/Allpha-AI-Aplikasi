@@ -963,6 +963,7 @@ def test_native_orchestration_retries_persisted_pure_tool_call_without_recalling
         first = c.post(f"/v1/agent-runtime/tasks/{task_id}/execute")
         assert first.status_code == 200
         assert first.json()["task"]["state"] == "retrying"
+        assert first.json()["task"]["error_code"] == "RUNTIME_TRANSIENT_FAILURE"
         assert len(FakeRuntimeStore.checkpoints[task_id]) == 1
         assert executions["count"] == 1
 
