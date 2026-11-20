@@ -156,6 +156,15 @@ class AgentRuntimeStore:
             "limit": str(max(1, min(limit, 10))),
         }) or []
 
+    async def get_effect_receipt(self, task_id: str, step_key: str,
+                                 idempotency_key: str) -> dict[str, Any] | None:
+        rows = await self.request("GET", "agent_runtime_effect_receipts", params={
+            "select": "task_id,task_version,step_key,idempotency_key,input_fingerprint,status,result_payload,started_at,completed_at,updated_at",
+            "task_id": f"eq.{task_id}", "step_key": f"eq.{step_key}",
+            "idempotency_key": f"eq.{idempotency_key}", "limit": "1",
+        })
+        return rows[0] if rows else None
+
     async def begin_effect(self, owner_id: str, task_id: str, lease_token: str, task_version: int,
                           step_key: str, idempotency_key: str, input_fingerprint: str) -> dict[str, Any] | None:
         rows = await self.request("POST", "rpc/begin_agent_runtime_effect", body={
