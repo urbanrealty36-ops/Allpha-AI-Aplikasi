@@ -297,3 +297,54 @@ def test_openai_compatible_adapter_rejects_tool_call_outside_request_allowlist()
     )
     with pytest.raises(Exception, match="outside the authorized request contract"):
         asyncio.run(adapter.generate(replace(request(), tool_definitions=tools), model_id="model-test"))
+
+
+def test_openai_compatible_adapter_preserves_assistant_tool_call_and_tool_result_turns():
+    observed = {}
+    tools = ({"type": "function", "function": {
+        "name": "text.normalize", "description": "Normalize text",
+        "parameters": {"type": "object", "properties": {"text": {"type": "string"}},
+                       "required": ["text"], "additionalProperties": False},
+    }},)
+    conversation = (
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call-1", "type": "function",
+            "function": {"name": "text.normalize", "arguments": '{"text":"hello"}'},
+        }]},
+        {"role": "tool", "tool_call_id": "call-1", "name": "text.normalize",
+         "content": '{"normalized":"hello"}'},
+    )
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        observed.update(__import__("json").loads(req.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "The normalized result is hello."}}],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 5},
+        })
+
+    adapter = OpenAICompatibleTextGenerationAdapter(
+        base_url="https://provider.invalid/v1", api_key="test-secret",
+        provider_id="provider-test", model_version="model-version-1",
+        pricing_version="price-v1", cost_unit="USD",
+        input_cost_microunits_per_token=1, output_cost_microunits_per_token=1,
+        transport=httpx.MockTransport(handler),
+    )
+    result = asyncio.run(adapter.generate(
+        replace(request(), prompt="", tool_definitions=tools, conversation_messages=conversation),
+        model_id="model-test",
+    ))
+    assert observed["messages"] == [
+        {"role": "system", "content": request().system_prompt},
+        *conversation,
+    ]
+    assert result.output_text == "The normalized result is hello."
+    assert result.tool_calls == ()
+
+
+def test_text_generation_request_rejects_unmatched_or_unbounded_conversation_messages():
+    from allpha_api.model_router import TextGenerationRequest
+
+    with pytest.raises(ValueError, match="tool result messages require a tool_call_id"):
+        replace(request(), prompt="", conversation_messages=({"role": "tool", "content": "orphan"},))
+    with pytest.raises(ValueError, match="at most 32 entries"):
+        replace(request(), conversation_messages=tuple({"role": "user", "content": "x"} for _ in range(33)))
