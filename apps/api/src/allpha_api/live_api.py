@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from allpha_api.auth import current_user
+from allpha_api.live_media_contract import MEDIA_CONTRACT_VERSION
 
 router = APIRouter(prefix="/v1/live", tags=["live-experience"])
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -159,11 +160,16 @@ async def _session_access(session_id: uuid.UUID, user_id: str) -> tuple[dict[str
 
 
 def _media_plane(session: dict[str, Any]) -> dict[str, Any]:
-    configured = bool(session.get("provider_key") and session.get("provider_session_ref"))
+    # Persisted provider metadata is not approval. Until ADR-WP10-001 is
+    # approved and an adapter is explicitly injected, the API must not report
+    # a configured media plane or issue any media credentials.
     return {
-        "status": "configured" if configured else "not_configured",
+        "status": "not_configured",
+        "contract_version": MEDIA_CONTRACT_VERSION,
         "provider_approved": False,
+        "activation_allowed": False,
         "publish_subscribe_tokens_available": False,
+        "recording_provider_enabled": False,
         "reason": "ADR_WP10_001_PROVIDER_APPROVAL_REQUIRED",
     }
 
