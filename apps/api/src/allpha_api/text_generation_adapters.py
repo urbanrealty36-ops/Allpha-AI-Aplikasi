@@ -72,7 +72,15 @@ class OpenAICompatibleTextGenerationAdapter:
         messages = []
         if request.system_prompt.strip():
             messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
+        if request.conversation_messages:
+            # The canonical request validates role and message shape. Copy the
+            # immutable conversation in order so assistant tool calls and their
+            # matching tool results survive the next Model Router turn.
+            messages.extend(json.loads(json.dumps(
+                list(request.conversation_messages), ensure_ascii=False, allow_nan=False,
+            )))
+        if request.prompt.strip():
+            messages.append({"role": "user", "content": request.prompt})
         body = {
             "model": model_id,
             "messages": messages,
