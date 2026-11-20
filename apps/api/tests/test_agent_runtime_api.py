@@ -826,3 +826,66 @@ def test_tool_planner_persists_provider_native_function_calls_as_durable_task_pl
         assert payload["planner_evidence"]["native_tool_calls"] == 1
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_native_orchestration_executes_tool_and_feeds_result_back_to_model(monkeypatch):
+    class FakeRouter:
+        def __init__(self):
+            self.requests = []
+
+        async def preflight(self, sensitivity):
+            assert sensitivity == "private"
+            return {"ready": True}
+
+        def max_output_tokens_for(self, sensitivity):
+            return 768
+
+        async def generate(self, generation_request):
+            self.requests.append(generation_request)
+            evidence = SimpleNamespace(
+                task_id=generation_request.task_id,
+                provider_id="provider-test", model_id="model-test", model_version="model-v1",
+                policy_id="private-policy", policy_version="private-v1",
+                input_tokens=10, output_tokens=5, cost_microunits=50,
+                cost_unit="USD", pricing_version="price-v1", latency_ms=15,
+                evidence_sha256=("c" if len(self.requests) == 1 else "d") * 64,
+            )
+            if len(self.requests) == 1:
+                call = SimpleNamespace(
+                    call_id="native-call-1", name="text.normalize", arguments={"text": "  hello  "},
+                )
+                return SimpleNamespace(output_text="", tool_calls=(call,)), evidence
+            assert generation_request.prompt == ""
+            assert generation_request.conversation_messages[-1]["role"] == "tool"
+            assert generation_request.conversation_messages[-1]["tool_call_id"] == "native-call-1"
+            assert "hello" in generation_request.conversation_messages[-1]["content"]
+            return SimpleNamespace(output_text="Teks berhasil dinormalisasi: hello", tool_calls=()), evidence
+
+    c = client(monkeypatch)
+    router = FakeRouter()
+    monkeypatch.setattr(app.state, "text_generation_router", router, raising=False)
+    try:
+        session_id = create_session(c)
+        created = c.post("/v1/agent-runtime/tasks", json={
+            "session_id": session_id, "skill_id": SKILL,
+            "native_orchestration": True,
+            "prompt": "Normalize the text and report the result.",
+            "idempotency_key": "native-loop-001",
+        })
+        assert created.status_code == 201
+        task = created.json()["task"]
+        assert task["input_payload"]["_native_orchestration_version"] == 1
+        assert task["tool_key"] == "__native_orchestration__"
+
+        executed = c.post(f"/v1/agent-runtime/tasks/{task['id']}/execute")
+        assert executed.status_code == 200
+        result = executed.json()["task"]
+        assert result["state"] == "succeeded"
+        assert result["output_payload"]["result_text"] == "Teks berhasil dinormalisasi: hello"
+        assert result["output_payload"]["tool_calls"][0]["tool_key"] == "text.normalize"
+        assert len(FakeRuntimeStore.checkpoints[task["id"]]) == 1
+        assert len(router.requests) == 2
+        assert router.requests[0].tool_definitions
+        assert router.requests[1].tool_definitions == ()
+    finally:
+        app.dependency_overrides.pop(current_user, None)
