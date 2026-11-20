@@ -29,3 +29,18 @@ def test_runtime_migration_is_source_only_and_does_not_seed_or_apply_runtime_dat
     assert "insert into public.agent_runtime_tasks" not in sql
     assert "update public.agent_runtime_tasks" not in sql
     assert "drop table" not in sql
+
+
+def test_worker_readiness_includes_social_effect_receipt_contract():
+    migration = (
+        Path(__file__).parents[1] / "supabase" / "source-only-migrations"
+        / "20261118195500_wp07_runtime_worker_schema_readiness.sql"
+    ).read_text()
+    for column in (
+        "actor_user_id", "owner_user_id", "agent_id", "target_reference",
+        "action_key", "approval_id", "correlation_id", "provider_key",
+        "external_reference", "evidence_reference", "policy_id",
+        "policy_version", "policy_digest",
+    ):
+        assert f"array['agent_runtime_effect_receipts','{column}']" in migration
+    assert "execute_agent_social_approval_effect(uuid,uuid,uuid,integer,text,text,text,uuid,uuid,text,text,uuid,text,uuid,text,text,text)" in migration

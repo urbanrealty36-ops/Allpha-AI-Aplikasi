@@ -88,7 +88,7 @@ declare
     'public.reap_agent_runtime_retry_exhaustion()',
     'public.fail_unclaimed_agent_runtime_task(uuid,uuid,integer,text,uuid)',
     'public.agent_memory_transition(text,uuid,uuid,uuid,jsonb)',
-    'public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)'
+    'public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)',\n    'public.execute_agent_social_approval_effect(uuid,uuid,uuid,integer,text,text,text,uuid,uuid,text,text,uuid,text,uuid,text,text,text)'
   ];
 begin
   if (select auth.role()) <> 'service_role' then
