@@ -26,3 +26,18 @@ def test_receipt_guard_migration_is_transactional_and_non_destructive():
     assert "begin;" in sql and sql.strip().endswith("commit;")
     assert "drop table" not in sql
     assert "truncate " not in sql
+
+
+def test_worker_receipt_rpc_requires_prior_owner_approval_and_never_approves_itself():
+    migration = (
+        Path(__file__).parents[1] / "supabase" / "source-only-migrations"
+        / "20261121110000_wp07_require_owner_approved_social_result.sql"
+    )
+    sql = migration.read_text().lower()
+    function = sql.split(
+        "create or replace function public.execute_agent_social_approval_effect(", 1
+    )[1]
+    assert "v_approval.status <> 'approved'" in function
+    assert "v_execution := v_approval.execution_result" in function
+    assert "public.decide_agent_social_approval(" not in function
+    assert "agent_social_approved_execution_result_invalid" in function
