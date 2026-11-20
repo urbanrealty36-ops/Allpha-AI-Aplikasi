@@ -89,17 +89,21 @@ def test_client_api_data_adapter_feed_interaction_lifecycle(monkeypatch):
             return [dict(row) for row in result]
 
         if method == "POST":
-            row = dict(body or {})
-            row.setdefault("id", f"isolated-{table}-{len(rows) + 1}")
-            row.setdefault("created_at", now)
-            row.setdefault("updated_at", now)
-            if table == "content_reports":
-                row.setdefault("status", "pending")
-            if table == "content_comments":
-                row.setdefault("status", "visible")
-            rows.append(row)
-            writes.append((table, dict(row)))
-            return [dict(row)]
+            incoming = body if isinstance(body, list) else [body or {}]
+            inserted = []
+            for value in incoming:
+                row = dict(value)
+                row.setdefault("id", f"isolated-{table}-{len(rows) + 1}")
+                row.setdefault("created_at", now)
+                row.setdefault("updated_at", now)
+                if table == "content_reports":
+                    row.setdefault("status", "pending")
+                if table == "content_comments":
+                    row.setdefault("status", "visible")
+                rows.append(row)
+                writes.append((table, dict(row)))
+                inserted.append(dict(row))
+            return inserted
 
         if method == "DELETE":
             removed = []
