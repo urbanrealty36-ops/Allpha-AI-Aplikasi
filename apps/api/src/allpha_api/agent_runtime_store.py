@@ -251,18 +251,19 @@ class AgentRuntimeStore:
         return result
 
     async def list_runnable_planned_tasks(self, *, limit: int = 10) -> list[dict[str, Any]]:
-        """Return due created/queued/retrying or lease-expired planned tasks."""
+        """Return due planned/native-orchestration tasks and lease-expired executions."""
         bounded_limit = max(1, min(limit, 25))
-        plan_filter = {"input_payload->>_runtime_plan_version": "eq.1"}
+        task_kind_filter = "or(input_payload->>_runtime_plan_version.eq.1,input_payload->>_native_orchestration_version.eq.1)"
         now = datetime.now(timezone.utc).isoformat()
         due = await self.request("GET", "agent_runtime_tasks", params={
             "select": "*", "state": "in.(created,queued,retrying)",
-            "or": f"(next_attempt_at.is.null,next_attempt_at.lte.{now})",
-            **plan_filter, "order": "created_at.asc", "limit": str(bounded_limit),
+            "and": f"(or(next_attempt_at.is.null,next_attempt_at.lte.{now}),{task_kind_filter})",
+            "order": "created_at.asc", "limit": str(bounded_limit),
         }) or []
         expired = await self.request("GET", "agent_runtime_tasks", params={
             "select": "*", "state": "eq.executing", "lease_expires_at": f"lte.{now}",
-            **plan_filter, "order": "created_at.asc", "limit": str(bounded_limit),
+            "or": f"(input_payload->>_runtime_plan_version.eq.1,input_payload->>_native_orchestration_version.eq.1)",
+            "order": "created_at.asc", "limit": str(bounded_limit),
         }) or []
         by_id = {str(row.get("id")): row for row in [*due, *expired] if row.get("id")}
         return sorted(by_id.values(), key=lambda row: str(row.get("created_at") or ""))[:bounded_limit]
