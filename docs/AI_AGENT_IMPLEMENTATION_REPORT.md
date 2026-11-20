@@ -1,3 +1,17 @@
+## Execution checkpoint — real Allpha Social effect adapter and atomic receipt source (2026-11-20)
+
+- Repository `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`; source head at checkpoint: `fbc1b611d47c294dd0bab05048d3f088a852f423`.
+- Re-read `AGENTS.md`, complete consolidated Master PRD v3.1.0, `ALLPHA_FIXED_PHASE_PLAN.md`, and current ADR-0013/0019/0021/0022/0023 plus ADR-WP10-001. FastAPI and Supabase remain the canonical authority; ADR-WP10-001 remains PROPOSED — NOT APPROVED.
+- Added source-only SQL migration `20261120200000_wp07_wp06_atomic_social_effect_receipts.sql`: receipt metadata now has fields for actor, owner, Agent, target, action, approval, correlation, provider, external/evidence references and policy identity. The RPC holds the task lease row lock, checks current task version/lease and approved policy, locks the owner approval, invokes the transactional Social approval RPC, rechecks lease expiry before commit and writes the receipt in the same transaction. Existing started/unknown effects are rejected rather than replayed. Migration precondition requires the WP-06 Social attribution migration.
+- Added `agent_social_side_effect_adapter.py`, a real server-side adapter invoking the canonical Postgres RPC; only Social comment/reply/Story reply actions are in its allowlist. It binds actor to owner, approval ID to idempotency key, and validates exact receipt identity during reconciliation. The adapter is registered as `allpha.social`.
+- Added `test_agent_social_side_effect_adapter.py` for adapter registry, owner/actor guard, stable approval idempotency, canonical RPC request, receipt mismatch rejection and lease/evidence SQL contract.
+- Commits: `8d964c60a3311f2f2fc5235dc3112497351c095b`, `8efe4b2a206f865d4201f4562d516294d135427a`, `bd766d786912ec64e9f72ae0b874edf19b3a7e1f`, `3a31e3b37bad9383101a8ad5694dbeee84fa8ffc`, `fbc1b611d47c294dd0bab05048d3f088a852f423`.
+- No migration was applied and no live DB write occurred. The WP-06 attribution migration prerequisite is source-only, so the new RPC is not active in the live database. The adapter is not yet invoked by the durable runtime worker; worker-side approved-action dispatch, actual receipt reconciliation and crash/lease verification remain open. No feature flag, staging or production deployment was enabled.
+- CI: Allpha Smoke run `44725633636` for `fbc1b61` was in progress when recorded; API/Web/Native results are therefore NOT YET VERIFIED. Prior run `44724740288` for `ed55ee4` completed with all three jobs successful.
+- Workstream status remains unchanged: WP-07 in progress/source partial; WP-06 in progress; WP-11 in progress; WP-12 blocked; ENG-P25 in progress; ENG-P26/P27 not promoted; Authentication source convergence is implemented but browser/device and session/logout acceptance remain open.
+- Next: complete the canonical migration dependency and isolated schema gate, connect this adapter to the lease-owning durable worker, and verify transaction rollback when a lease expires before commit plus reconciliation after an uncertain client response. In parallel, continue Auto Reply consumer, Cinema media lifecycle, provider-neutral Live scheduling/Native parity, and Auth session/protected-route parity.
+
+---
 ## Execution checkpoint — canonical Authentication route and modal convergence (2026-11-20)
 
 - Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`.
