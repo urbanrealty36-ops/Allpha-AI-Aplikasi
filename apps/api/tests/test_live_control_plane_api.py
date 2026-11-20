@@ -112,18 +112,20 @@ def test_live_stage_event_contract_supports_hand_raise_and_reaction():
     )
     assert hand_raise.event_type == "stage_hand_raised"
     assert reaction.payload == {"reaction": "clap"}
-    try:
+    import pytest
+
+    with pytest.raises(ValidationError):
         live_api.LiveStageEventCreate(
             event_type="stage_hand_raised",
             payload={"raised": "yes"},
             idempotency_key="live-handraise-02",
         )
-    except ValidationError:
-        pass
-    else:
-        # Pydantic accepts a generic payload dict; SQL RPC validates the exact
-        # event payload type before persistence.
-        assert hand_raise.payload == {"raised": True}
+    with pytest.raises(ValidationError):
+        live_api.LiveStageEventCreate(
+            event_type="stage_reaction_added",
+            payload={"reaction": "explosion"},
+            idempotency_key="live-reaction-02",
+        )
 
 
 def test_live_stage_migration_persists_hand_raise_and_reaction_with_role_policy():
