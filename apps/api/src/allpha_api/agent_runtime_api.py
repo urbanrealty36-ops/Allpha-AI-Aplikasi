@@ -1042,6 +1042,23 @@ async def _execute_native_orchestration_task(
             if not completed:
                 raise AgentRuntimePersistenceError("native orchestration result could not be durably committed")
             return {"task": completed, "idempotent_replay": False}
+    except AgentRuntimeRetryable as exc:
+        attempts = max(1, int(row.get("execution_attempts") or 1))
+        retry_after = min(60, 5 * (2 ** max(0, attempts - 1)))
+        partial = {
+            "state": "partially_succeeded" if completed_steps else "retrying",
+            "orchestration_version": 1, "tool_calls": completed_steps,
+            "pending_tool_step": pending_call.get("step_id") if pending_call else None,
+            "trace_id": row["trace_id"], "error_code": str(exc),
+        }
+        retried = await store.schedule_retry_task(
+            owner_id, task_id, lease_token, int(row["task_version"]),
+            error_code=str(exc), retry_after_seconds=retry_after,
+            output_payload=partial, event_log=list(row.get("event_log") or []),
+        )
+        if not retried:
+            raise AgentRuntimePersistenceError("native pure-tool retry was not durably scheduled") from exc
+        return {"task": retried, "retry_scheduled": retried.get("state") == "retrying"}
     except (AgentRuntimeBlocked, ToolInputError, UnknownToolError) as exc:
         failed = await store.finalize_task(
             owner_id, task_id, lease_token, int(row["task_version"]),
