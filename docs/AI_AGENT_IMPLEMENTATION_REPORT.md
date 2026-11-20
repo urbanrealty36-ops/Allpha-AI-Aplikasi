@@ -322,3 +322,12 @@
 - **Worker activation:** `apps/api/Dockerfile.agent-runtime-worker` and `allpha-agent-runtime-worker` entrypoint already exist. The worker remains disabled by default and the source-only readiness migrations are not active in the connected database. No persistent worker service or runtime invocation was created.
 - **Status:** WP-07 remains `in_progress`, not `integration_verified` or `acceptance_passed`. API source/contract checks passed; PostgreSQL atomicity, stale-lease commit rejection, heartbeat, crash recovery, concurrency and retry/cancellation invariants remain unverified in real PostgreSQL. The owner-approval-to-runtime-receipt transaction unification and ENG-P37 environment are still required for the full Definition of Done.
 - **Next action:** finish task-bound owner approval dispatch so the Social mutation and runtime receipt share one transaction; then apply the ordered source migrations only in the explicitly confirmed isolated ENG-P37 branch and run the critical PostgreSQL verification matrix. Do not promote WP-07 or advance to its dependent phase before that evidence exists.
+
+
+### Allpha Smoke final result — 2026-11-21
+
+- Run [44782129415](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44782129415), commit `9f6ba17ba517d544d818658096be2ae57b34b49b`, completed with conclusion **success**.
+- API: `pytest apps/api/tests` — **822 passed, 1 warning**.
+- Web: `npm test` and `npm run build` completed successfully. Build emitted existing lint warnings (unused imports/variables, hook dependency, `img` optimization and explicit `any`).
+- Native: `npm test`, `npm run typecheck`, and `npx expo export --platform android` completed successfully; export produced `dist`.
+- This is repository CI/source verification only. It does not constitute PostgreSQL transaction/concurrency verification, actual worker activation, production integration, or ENG-P37 acceptance.
