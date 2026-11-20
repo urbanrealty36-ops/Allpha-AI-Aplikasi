@@ -36,15 +36,15 @@ class FakeStore:
         return {"id": task_id, "state": "failed"}
 
 
-def test_worker_terminalizes_unknown_effect_and_executes_only_replay_safe_tasks(monkeypatch):
+def test_worker_routes_planned_unknown_effects_to_reconciliation_executor(monkeypatch):
     store = FakeStore([
-        {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "unknown"},
+        {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "unknown", "input_payload": {"_runtime_plan_version": 1}},
         {"id": "task-created", "owner_user_id": "owner-1", "state": "created", "effect_outcome": None},
     ])
     executed = []
 
     async def fake_execute(received_store, owner_id, task_id, row):
-        executed.append((owner_id, task_id))
+        executed.append((owner_id, task_id, row.get("effect_outcome")))
         return {"task": {"id": task_id, "state": "succeeded"}}
 
     monkeypatch.setattr(worker, "_execute_planned_task", fake_execute)
@@ -52,8 +52,8 @@ def test_worker_terminalizes_unknown_effect_and_executes_only_replay_safe_tasks(
 
     assert processed == 2
     assert store.reaped == 1
-    assert store.unknown == [("owner-1", "task-unknown")]
-    assert executed == [("owner-1", "task-created")]
+    assert store.unknown == []
+    assert executed == [("owner-1", "task-unknown", "unknown"), ("owner-1", "task-created", None)]
 
 
 def test_worker_stops_batch_when_unknown_effect_cannot_be_terminalized(monkeypatch):
@@ -118,3 +118,22 @@ def test_worker_does_not_claim_tasks_when_canonical_schema_is_incomplete(monkeyp
     assert processed == 0
     assert store.reaped == 0
     assert executed == []
+
+
+def test_worker_still_terminalizes_unknown_native_effects(monkeypatch):
+    store = FakeStore([
+        {"id": "native-unknown", "owner_user_id": "owner-1", "state": "executing",
+         "effect_outcome": "unknown", "input_payload": {"_native_orchestration_version": 1}},
+        {"id": "planned", "owner_user_id": "owner-1", "state": "created",
+         "input_payload": {"_runtime_plan_version": 1}},
+    ])
+    executed = []
+
+    async def fake_execute(received_store, owner_id, task_id, row):
+        executed.append(task_id)
+
+    monkeypatch.setattr(worker, "_execute_planned_task", fake_execute)
+    processed = asyncio.run(worker.run_once(store))
+    assert processed == 2
+    assert store.unknown == [("owner-1", "native-unknown")]
+    assert executed == ["planned"]
