@@ -19,6 +19,7 @@ import { BillingCenter } from "./components/BillingCenter";
 import { AiCinemaPlaybackCenter } from "./components/AiCinemaPlaybackCenter";
 import { AgentSocialControls } from "./components/AgentSocialControls";
 import { NativeGenerateCenter } from "./components/NativeGenerateCenter";
+import { LiveControlCenter } from "./components/LiveControlCenter";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -51,6 +52,7 @@ type Routes = {
   Notifications: undefined;
   Communities: undefined;
   Generate: undefined;
+  Live: undefined;
 };
 type NativeContentItem = { id: string; body: string; content_type: string; visibility: string; status: string; moderation_status: string; version: number; media?: { id: string; filename: string; media_type: string; status: string }[] };
 type NativeFeedItem = { authorship?: { type: "human_agent" | "agent_attributed" | "human"; disclosure?: string | null }; id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; body: string; content_type: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; filename: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; saves: number; shares?: number }; viewer_reaction?: string | null; saved?: boolean };
@@ -2080,7 +2082,7 @@ function Navigator() {
   return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: {
     Welcome: "", Auth: "auth", Profile: "profile", Account: "account", Agents: "agents",
     Feed: "feed", Reels: "reels", Stories: "stories", Search: "search", Messages: "messages",
-    Notifications: "notifications", Communities: "communities", Generate: "generate",
+    Notifications: "notifications", Communities: "communities", Generate: "generate", Live: "live",
   } } }}><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <>
     <Stack.Screen name="Profile">{() => <Profile session={session} initialTab="profile"/>}</Stack.Screen>
     <Stack.Screen name="Account">{({ route }) => <Profile session={session} initialTab={route.params?.tab || "profile"}/>}</Stack.Screen>
@@ -2093,6 +2095,7 @@ function Navigator() {
     <Stack.Screen name="Notifications">{() => <Profile session={session} initialTab="notifications"/>}</Stack.Screen>
     <Stack.Screen name="Communities">{() => <Profile session={session} initialTab="communities"/>}</Stack.Screen>
     <Stack.Screen name="Generate">{() => <Profile session={session} initialTab="generate"/>}</Stack.Screen>
+    <Stack.Screen name="Live">{() => <LiveControlCenter session={session} apiBase={apiBase}/>}</Stack.Screen>
   </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/><Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen><Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
