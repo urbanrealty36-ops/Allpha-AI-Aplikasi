@@ -3674,3 +3674,10 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - This is a narrow client correctness improvement, not completion of ENG-P25/P26/P27. No native client parity, media transport, stage collaboration breadth, recording, or real-time recovery proof is claimed. ADR-WP10-001 remains the provider-activation gate.
 - Automated checks were not run in this execution. No Supabase migration, database write, staging action, or deployment was performed.
 - ENG-P25 remains partial; ENG-P26/P27 remain open. WP-07 remains the hard dependency gate for downstream promotion.
+
+**ENG-P25 security continuation — role-gated Stage mutations (2026-11-20):**
+- Tightened source-only migration `20261120110000_eng_p25_live_control_plane.sql`: joined viewers may submit Q&A, but slide changes, annotations and poll creation now require an active joined `host`, `cohost`, or `speaker` participant role. The check is inside the canonical security-definer RPC, not merely in UI visibility.
+- Added a migration-contract test in `apps/api/tests/test_live_control_plane_api.py` asserting the role guard and viewer Q&A exception.
+- Commits: migration `0ed1edee25fb2bb1919b5d7d6e2d9eb5b8aa03d4`; test `cdad578e526059c42606e6d8238f93f7213bd770`.
+- The migration remains source-only and unapplied. The test was added but not executed in this checkpoint. No runtime authorization result is claimed.
+- ENG-P25 remains partial; ENG-P26/P27 remain open. Provider activation remains blocked by ADR-WP10-001. WP-07 remains in progress and is not promoted.
