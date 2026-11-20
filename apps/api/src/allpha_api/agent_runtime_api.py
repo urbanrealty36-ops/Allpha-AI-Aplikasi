@@ -781,6 +781,7 @@ async def _execute_native_orchestration_task(
                 or assistant_message["tool_calls"][0].get("id") != requested["call_id"]):
             raise HTTPException(status_code=409, detail={"code": "NATIVE_CHECKPOINT_INVALID", "message": "Assistant tool-call checkpoint tidak cocok."})
         if index + 1 >= len(checkpoints):
+            requested["resumed"] = True
             pending_call = requested
             index += 1
             break
