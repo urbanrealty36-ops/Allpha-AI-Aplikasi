@@ -29,6 +29,18 @@ type CinemaCollaborator = { id:string; collaborator_user_id?:string|null; collab
 type CinemaInvitation = { id:string; title?:{title:string}|null; role:string; status:string };
 type CinemaCredit = { id:string; contributor_type:string; role:string; attribution_label:string };
 type CinemaVersion = { id:string; version:number; created_at:string };
+type CinemaAsset = { id:string; media_id:string; asset_role:string; display_name:string; media?:{filename?:string;media_type?:string} };
+type CinemaProductionResponse = { version:number; document:Record<string,unknown> };
+const EMPTY_CINEMA_PRODUCTION = {
+  schema_version: 1,
+  screenplay: { logline: "", synopsis: "", draft: "" },
+  storyboard: [],
+  scenes: [],
+  timeline: { tracks: [] },
+  audio_tracks: [],
+  export_profile: { container: "mp4", resolution: "1080p", frame_rate: 24, aspect_ratio: "16:9" },
+};
+
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__
   ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000")
@@ -102,6 +114,11 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
   const [creditRole,setCreditRole]=useState("Creator");
   const [creditLabel,setCreditLabel]=useState("Kontribusi kreator");
   const [versions,setVersions]=useState<CinemaVersion[]>([]);
+  const [productionVersion,setProductionVersion]=useState(1);
+  const [productionJson,setProductionJson]=useState(JSON.stringify(EMPTY_CINEMA_PRODUCTION,null,2));
+  const [productionAssets,setProductionAssets]=useState<CinemaAsset[]>([]);
+  const [assetRole,setAssetRole]=useState("reference");
+
 
   const loadTitles = useCallback(async () => {
     setLoading(true); setError("");
@@ -132,6 +149,69 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
       setError(cause instanceof Error ? cause.message : "Episode tidak dapat dimuat.");
     }
   }, [getAccessToken]);
+
+
+  const loadCinemaProduction = useCallback(async (titleId: string) => {
+    if (!titleId) {
+      setProductionVersion(1); setProductionJson(JSON.stringify(EMPTY_CINEMA_PRODUCTION,null,2)); setProductionAssets([]);
+      return;
+    }
+    try {
+      const [production, assets] = await Promise.all([
+        request<CinemaProductionResponse>(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(titleId)+"/production"),
+        request<{items:CinemaAsset[]}>(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(titleId)+"/assets"),
+      ]);
+      setProductionVersion(production.version);
+      setProductionJson(JSON.stringify(production.document,null,2));
+      setProductionAssets(Array.isArray(assets.items)?assets.items:[]);
+    } catch (cause) {
+      setProductionAssets([]);
+      setError(cause instanceof Error?cause.message:"Production workspace belum dapat dimuat.");
+    }
+  },[getAccessToken]);
+
+  useEffect(() => { void loadCinemaProduction(selectedTitleId); }, [loadCinemaProduction,selectedTitleId]);
+
+  async function saveCinemaProduction() {
+    if(!selectedTitleId)return;
+    setSaving(true);setError("");setNotice("");
+    try {
+      const document=JSON.parse(productionJson) as Record<string,unknown>;
+      const result=await request<{item:{version:number}}>(getAccessToken,
+        "/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/production",
+        {method:"PUT",body:JSON.stringify({expected_version:productionVersion,document})});
+      setProductionVersion(result.item.version);
+      setNotice("Production document tersimpan pada versi baru.");
+      await loadCinemaProduction(selectedTitleId);
+    } catch(cause) { setError(cause instanceof Error?cause.message:"Production document gagal disimpan."); }
+    finally { setSaving(false); }
+  }
+
+  async function attachCinemaAsset() {
+    if(!selectedTitleId||!selectedMediaId)return;
+    const media=readyMedia.find(item=>item.id===selectedMediaId);
+    if(!media)return;
+    setSaving(true);setError("");setNotice("");
+    try {
+      await request(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/assets",{
+        method:"POST",body:JSON.stringify({media_id:selectedMediaId,asset_role:assetRole,display_name:media.filename}),
+      });
+      setNotice("Media ditautkan ke Asset Library film.");
+      await loadCinemaProduction(selectedTitleId);
+    } catch(cause) { setError(cause instanceof Error?cause.message:"Asset gagal ditautkan."); }
+    finally { setSaving(false); }
+  }
+
+  async function removeCinemaAsset(assetId:string) {
+    if(!selectedTitleId)return;
+    setSaving(true);setError("");setNotice("");
+    try {
+      await request(getAccessToken,"/v1/cinema/creator/titles/"+encodeURIComponent(selectedTitleId)+"/assets/"+encodeURIComponent(assetId),{method:"DELETE"});
+      setNotice("Tautan asset dilepas; file asli tetap di Content Media.");
+      await loadCinemaProduction(selectedTitleId);
+    } catch(cause) { setError(cause instanceof Error?cause.message:"Tautan asset gagal dilepas."); }
+    finally { setSaving(false); }
+  }
 
   useEffect(() => { void loadTitles(); }, [loadTitles]);
   useEffect(() => { void loadEpisodes(selectedTitleId); }, [loadEpisodes, selectedTitleId]);
@@ -369,6 +449,26 @@ export function AiCinemaCreatorWorkspace({ getAccessToken }: Props) {
           <Text style={{ color: "#F8FAFC", fontWeight: "800" }}>Episode {item.episode_number} · {item.title}</Text>
           <Text style={{ color: "#CBD5E1", fontSize: 12 }}>{item.status}{item.media_id ? " · media terhubung" : " · belum ada media"}</Text>
         </View>)}
+      </View>
+
+      <View style={{gap:10,padding:14,borderRadius:16,backgroundColor:"#1E293B"}}>
+        <Text style={{color:"#67E8F9",fontWeight:"900",fontSize:11,letterSpacing:1.5}}>PRODUCTION WORKSPACE · v{productionVersion}</Text>
+        <Text style={{color:"#F8FAFC",fontWeight:"900",fontSize:16}}>Screenplay · Storyboard · Timeline</Text>
+        <Text style={{color:"#CBD5E1",fontSize:12}}>Dokumen terstruktur tersimpan melalui FastAPI dengan optimistic versioning. Referensi media pada storyboard, timeline, dan audio harus berasal dari Asset Library film.</Text>
+        <TextInput accessibilityLabel="Cinema production document JSON" value={productionJson} onChangeText={setProductionJson} multiline autoCapitalize="none" spellCheck={false} style={[field,{minHeight:260,textAlignVertical:"top",fontFamily:Platform.OS==="ios"?"Menlo":"monospace",fontSize:11}]} />
+        <Action title={saving?"Menyimpan…":"Simpan versi produksi"} disabled={saving||!selectedTitleId} onPress={()=>void saveCinemaProduction()}/>
+        <Text style={{color:"#CBD5E1",fontSize:12,fontWeight:"700"}}>Asset Library · media ready & scan clean</Text>
+        {readyMedia.map(media=><Pressable key={media.id} accessibilityRole="button" accessibilityState={{selected:selectedMediaId===media.id}} onPress={()=>setSelectedMediaId(media.id)} style={{padding:9,borderRadius:10,backgroundColor:selectedMediaId===media.id?"#164E63":"#0F172A",borderWidth:1,borderColor:selectedMediaId===media.id?"#67E8F9":"#334155"}}>
+          <Text style={{color:"#F8FAFC",fontWeight:"700"}}>{media.filename}</Text><Text style={{color:"#94A3B8",fontSize:11}}>{media.media_type}</Text>
+        </Pressable>)}
+        <TextInput accessibilityLabel="Cinema asset role" value={assetRole} onChangeText={setAssetRole} style={field} placeholder="Asset role (reference, storyboard, source_video…)" placeholderTextColor="#94A3B8"/>
+        <Action title="Tautkan media terpilih" disabled={saving||!selectedTitleId||!selectedMediaId} onPress={()=>void attachCinemaAsset()}/>
+        {productionAssets.map(asset=><View key={asset.id} style={{padding:9,borderRadius:10,backgroundColor:"#0F172A",flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:8}}>
+          <View style={{flex:1}}><Text style={{color:"#F8FAFC",fontWeight:"700"}}>{asset.display_name}</Text><Text style={{color:"#94A3B8",fontSize:11}}>{asset.asset_role} · {asset.media?.media_type||"media"}</Text></View>
+          <Action title="Lepas" secondary disabled={saving} onPress={()=>void removeCinemaAsset(asset.id)}/>
+        </View>)}
+        {!productionAssets.length&&<Text style={{color:"#94A3B8",fontSize:11}}>Belum ada asset film yang ditautkan.</Text>}
+        <Text style={{color:"#94A3B8",fontSize:11}}>AI image/video generation, rendering, dan export belum dipanggil di sini; hanya provider yang disetujui dan job lifecycle kanonis yang boleh diaktifkan.</Text>
       </View>
       <View style={{gap:14,padding:14,borderRadius:16,backgroundColor:"#1E293B"}}>
         <Text style={{color:"#F8FAFC",fontWeight:"900",fontSize:16}}>Kolaborator & Creator Credits</Text>
