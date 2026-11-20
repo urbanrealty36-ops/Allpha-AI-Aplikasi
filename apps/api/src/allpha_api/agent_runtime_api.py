@@ -916,6 +916,8 @@ async def _execute_native_orchestration_task(
                 return cancelled
             if lease_lost.is_set():
                 raise AgentRuntimePersistenceError("native runtime lease heartbeat was lost")
+            if time.monotonic() >= deadline:
+                raise AgentRuntimeRetryable("RUNTIME_TIMEOUT")
 
             if pending_call is not None:
                 await execute_pending_tool_call(pending_call)
