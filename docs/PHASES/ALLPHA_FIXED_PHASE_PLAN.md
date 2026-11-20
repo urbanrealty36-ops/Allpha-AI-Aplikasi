@@ -1,3 +1,15 @@
+**Authentication modal/route unification checkpoint — 2026-11-20 (source change; no phase promotion):**
+
+- Canonical source remains the consolidated Master PRD v3.1.0, `AGENTS.md`, this fixed plan and applicable ADRs. Main base before this checkpoint: `ed55ee485181c8a6119627cabceb4879505cef5a`.
+- The active Web route entry points `/login` and `/register` already share `AuthOnboardingRoute`. The in-app modal previously mounted `AuthOnboardingFlow` directly with a legacy local-state completion callback, creating a second path that did not use the route's Supabase Auth + FastAPI provisioning handler.
+- Updated `AuthOnboardingRoute` to support both full-page and modal presentation through `isOpen`, `onClose`, and an optional initial mode. Route mode still resolves from `mode=login|register` or the route pathname. Successful completion returns by route navigation for page use and closes the modal for modal use.
+- Replaced the direct `AuthOnboardingFlow` mount in `ReferenceApp` with `AuthOnboardingRoute`; modal and route now use the same canonical completion handler, Supabase Auth operations, FastAPI profile/interest/Agent provisioning, and error path. Existing visual flow component is retained.
+- Commits: route/modal-capable canonical wrapper `a1a7d16d934806b4202219f1408e27e2b8ad89a2`; ReferenceApp modal reroute `ed55ee485181c8a6119627cabceb4879505cef5a`.
+- CI on the latest source commit at checkpoint time: Allpha Smoke `44724740288` was in progress (API tests, Web build/tests, Native tests/typecheck/Android export); Reference UI Validation was in progress. Railway status contexts were success; Vercel `allpha-universe`, `api-allpha`, `admin-allpha` contexts remained failed with `build-rate-limit`. No result is claimed for unfinished CI jobs.
+- This is source-level convergence only, not full Auth acceptance: modal-vs-route browser/device parity, OAuth callback/session refresh, logout, protected-route recovery, and real account lifecycle were not exercised in this checkpoint. No Supabase migration/write, staging or deployment occurred.
+- Work-package statuses remain unchanged: WP-07/WP-06/WP-11/ENG-P25 in progress; WP-12 blocked; ENG-P26/P27 not promoted. The next Auth work is to complete shared session/refresh/logout/protected-route handling and verify the same lifecycle in both presentation modes. Continue WP-07 as the primary dependency while independent WP-06, WP-11 and provider-neutral ENG-P25 source work proceeds; WP-12 follows WP-11 and policy prerequisites. Live media transport remains blocked by ADR-WP10-001.
+
+---
 **Parallel implementation checkpoint — WP-07 / WP-06 / WP-11 / ENG-P25 source progress (2026-11-20; no phase promotion):**
 
 - Re-read the canonical repository AGENTS.md, consolidated Master PRD v3.1.0, this fixed phase plan, ADR-0007, ADR-0004, ADR-0022/0023 and ADR-WP10-001 before implementation. Current main base immediately before this plan update: `d96e63862046bcc40f0cca97799c30b5ddf3cc1d`. The required package order remains WP-07 → WP-06 → WP-11 → WP-12 → ENG-P25–P27; independent source work below does not promote a downstream package.
