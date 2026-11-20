@@ -3749,3 +3749,9 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - Source commits: `87e44a39745bccffaac503520d96284fd2feab7b` (route mode resolution), `f954db6329ef7fc0fe2d9344606e9e3ef54c78aa` (register route).
 - Allpha Smoke run `44723503438` for commit `f954db6329ef7fc0fe2d9344606e9e3ef54c78aa` was `in_progress` at the time of this checkpoint; no CI result is claimed yet. Browser/device session recovery and modal-vs-route interaction evidence remain outstanding.
 - No changes to Supabase Auth configuration, schema, roles, or sessions were made; no deployment occurred.
+
+
+**Authentication build correction — 2026-11-20:**
+- The first route-mode patch introduced an over-escaped pathname regex. Allpha Smoke run `44723503438` exposed the Web production-build syntax failure; its Web smoke test and API tests passed, but `next build` failed at AuthOnboardingRoute.tsx:70. This failure is attributed to the auth patch, not hidden.
+- Corrected the regex in commit `f05937e5c0f36cf445f59a22cd3d0e1dc352669a` (`replace(/\\/+$/, "")` in source). The follow-up Allpha Smoke run `44723611630` for this commit was queued at the time of this update; no passing build is claimed until it completes.
+- Authentication source remains partial pending the follow-up CI result and browser/device verification. No session or Auth backend settings were modified.
