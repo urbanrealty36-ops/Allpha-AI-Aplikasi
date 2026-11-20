@@ -151,8 +151,8 @@ begin
   end if;
 
   -- Recheck the lease at commit time. The task row lock prevents a competing
-  -- worker from taking over while this transaction executes. If the lease expired
-  -- during the operation, raising rolls back the social mutation and the receipt.
+  -- worker from taking over while this transaction persists the reconciliation
+  -- receipt and task effect state. A stale lease rolls both updates back.
   select * into v_task
   from public.agent_runtime_tasks
   where id = p_task_id and owner_user_id = p_owner_user_id
