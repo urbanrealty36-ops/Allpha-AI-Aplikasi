@@ -56,14 +56,15 @@ async def run_once(store: AgentRuntimeStore) -> int:
         if not isinstance(owner_id, str) or not isinstance(task_id, str):
             logger.error("Skipping malformed runtime task envelope")
             continue
-        if row.get("effect_outcome") in {"started", "unknown"}:
+        if row.get("effect_outcome") in {"started", "unknown"} and _is_native_orchestration_task(row):
             try:
                 await store.mark_unknown_effect(owner_id, task_id)
             except AgentRuntimePersistenceError:
-                logger.exception("Could not terminalize task with unknown effect; task_id=%s", task_id)
+                logger.exception("Could not terminalize native task with unknown non-reconcilable effect; task_id=%s", task_id)
                 break
             processed += 1
             continue
+        # Planned Social effects are reconciled by the lease-owning executor before retry.
         try:
             if _is_native_orchestration_task(row):
                 await _execute_native_orchestration_task(store, owner_id, task_id, row)

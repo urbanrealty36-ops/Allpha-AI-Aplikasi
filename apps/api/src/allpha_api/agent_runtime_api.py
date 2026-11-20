@@ -24,6 +24,10 @@ from allpha_api.model_router import TextGenerationRequest
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
 from allpha_api.tool_planner import ToolPlanValidationError, build_tool_plan_prompt, parse_native_tool_calls, parse_tool_plan
 from allpha_api.memory_coordinator import MemoryCoordinator, MemoryDenied, MemoryUnavailable
+from allpha_api.content_api import _server_db
+from allpha_api.agent_social_side_effect_adapter import get_side_effect_adapter
+from allpha_api.side_effect_adapter_contract import SideEffectCommand
+
 
 router = APIRouter(prefix="/v1/agent-runtime", tags=["agent-runtime"])
 _runtime = AgentRuntime()
@@ -232,7 +236,80 @@ async def _runtime_lease_heartbeat(
             return
 
 
-async def _execute_planned_task(
+
+
+_SOCIAL_ACTION_BY_TOOL = {
+    "social.comment": "social.comment",
+    "social.reply": "social.reply",
+    "social.story_reply": "social.story_reply",
+}
+
+
+async def _execute_social_approval_step(
+    *, owner_id: str, row: dict[str, Any], step: dict[str, Any],
+    inputs: dict[str, Any], lease_token: str, policy: dict[str, Any],
+) -> dict[str, Any]:
+    """Execute/reconcile one immutable owner approval through the lease-fenced DB RPC."""
+    tool_key = str(step.get("tool_key") or "")
+    action_key = _SOCIAL_ACTION_BY_TOOL.get(tool_key)
+    approval_id = inputs.get("approval_id")
+    if not action_key or not isinstance(approval_id, str):
+        raise AgentRuntimeBlocked("social side effect requires a registered action and approval_id")
+    approvals = await _server_db("GET", "agent_social_action_approvals", params={
+        "select": "*", "id": "eq." + approval_id,
+        "owner_user_id": "eq." + owner_id,
+        "agent_id": "eq." + str(row["agent_id"]), "limit": "1",
+    })
+    if not approvals:
+        raise AgentRuntimeBlocked("owner approval does not belong to this task owner and Agent")
+    approval = approvals[0]
+    expected_action_type = {
+        "social.comment": "draft_comment",
+        "social.reply": "draft_reply",
+        "social.story_reply": "draft_story",
+    }[action_key]
+    if approval.get("action_type") != expected_action_type:
+        raise AgentRuntimeBlocked("owner approval action does not match the pinned tool")
+    target_id = approval.get("target_content_id") or approval.get("content_id")
+    if not isinstance(target_id, str) or not target_id:
+        raise AgentRuntimeBlocked("owner approval has no canonical target")
+    policy_id = str(policy.get("id") or "")
+    policy_version = str(policy.get("policy_version") or "")
+    policy_digest = str(policy.get("policy_digest") or "")
+    if not policy_id or not policy_version or len(policy_digest) != 64:
+        raise AgentRuntimeBlocked("approved runtime policy identity is incomplete")
+    step_key = "step:" + str(step["step_id"])
+    fingerprint_input = {
+        "task_id": str(row["id"]), "task_version": int(row["task_version"]),
+        "step_key": step_key, "tool_key": tool_key, "approval_id": approval_id,
+        "target_reference": "content:" + target_id, "inputs": inputs,
+        "policy_id": policy_id, "policy_version": policy_version, "policy_digest": policy_digest,
+    }
+    fingerprint = hashlib.sha256(json.dumps(
+        fingerprint_input, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+    command = SideEffectCommand(
+        task_id=str(row["id"]), task_version=int(row["task_version"]),
+        step_key=step_key, owner_user_id=owner_id, actor_user_id=owner_id,
+        agent_id=str(row["agent_id"]), action_key=action_key,
+        target_reference="content:" + target_id, approval_id=approval_id,
+        correlation_id=str(row.get("trace_id") or row["id"]),
+        idempotency_key=approval_id, input_fingerprint=fingerprint,
+        lease_token=lease_token, policy_id=policy_id,
+        policy_version=policy_version, policy_digest=policy_digest,
+        payload={"reason": str(inputs.get("reason") or "")[:500]},
+    )
+    adapter = get_side_effect_adapter("allpha.social")
+    outcome = await adapter.reconcile(command, {})
+    if outcome is None:
+        outcome = await adapter.execute(command)
+    if outcome.status != "completed":
+        raise AgentRuntimePersistenceError(
+            "Social effect outcome is not confirmed; the task must not advance or replay blindly"
+        )
+    return outcome.result_payload
+\n\nasync def _execute_planned_task(
     store: AgentRuntimeStore, owner_id: str, task_id: str, initial_row: dict[str, Any]
 ) -> dict[str, Any]:
     row = initial_row
@@ -274,8 +351,8 @@ async def _execute_planned_task(
             raise HTTPException(status_code=409, detail={"code": "TASK_LEASE_UNKNOWN", "message": "Lease task tidak dapat diverifikasi; replay tidak dilakukan."})
         if lease_expiry.tzinfo is None or lease_expiry > datetime.now(timezone.utc):
             raise HTTPException(status_code=409, detail={"code": "TASK_ALREADY_CLAIMED", "message": "Task masih memiliki lease aktif."})
-        if row.get("effect_outcome") in {"started", "unknown"}:
-            raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Outcome efek tidak diketahui; replay otomatis dilarang."})
+        if row.get("effect_outcome") in {"started", "unknown"} and not row.get("current_step_key"):
+            raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Outcome efek tidak diketahui dan tidak memiliki langkah untuk direkonsiliasi."})
 
     plan = _stored_tool_plan(row)
     if plan is None:
@@ -306,8 +383,8 @@ async def _execute_planned_task(
             definition = get_tool(step["tool_key"])
         except UnknownToolError as exc:
             raise HTTPException(status_code=422, detail={"code": "UNKNOWN_TOOL", "message": "Tool pada rencana tidak terdaftar."}) from exc
-        if getattr(definition, "execution_class", "side_effecting") != "pure":
-            raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_SIDE_EFFECT_BLOCKED", "message": "Tool dengan efek samping memerlukan kontrak receipt dan approval khusus."})
+        if getattr(definition, "execution_class", "side_effecting") != "pure" and step["tool_key"] not in _SOCIAL_ACTION_BY_TOOL:
+            raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_SIDE_EFFECT_BLOCKED", "message": "Side effect hanya tersedia melalui adapter Social yang terikat approval."})
 
     capabilities: dict[str, dict[str, Any]] = {}
     for tool_key in sorted(set(tool_keys)):
@@ -482,10 +559,17 @@ async def _execute_planned_task(
                 if not saved:
                     raise AgentRuntimePersistenceError("runtime execution event was not durably committed")
 
-            result = await _runtime.execute_tool(
-                task, auth, tool_key=str(step["tool_key"]), inputs=inputs,
-                event_sink=persist_runtime_event if trace_enabled else None, step_key=step_key,
-            )
+            if getattr(get_tool(str(step["tool_key"])), "execution_class", "pure") == "side_effecting":
+                social_result = await _execute_social_approval_step(
+                    owner_id=owner_id, row=row, step=step, inputs=inputs,
+                    lease_token=lease_token, policy=policy,
+                )
+                result = {"result": social_result, "events": []}
+            else:
+                result = await _runtime.execute_tool(
+                    task, auth, tool_key=str(step["tool_key"]), inputs=inputs,
+                    event_sink=persist_runtime_event if trace_enabled else None, step_key=step_key,
+                )
             result_payload = {
                 "state": "succeeded", "step_id": step["step_id"],
                 "tool_key": step["tool_key"], "result": result["result"],

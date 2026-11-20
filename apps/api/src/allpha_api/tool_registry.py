@@ -206,8 +206,38 @@ def _validate_schema(value: Any, schema: dict[str, Any], path: str = "value", *,
             raise ToolInputError(f"{path} is outside the allowed range")
 
 
-# This immutable mapping is the single in-process source of tool metadata and handlers.
-_TOOL_REGISTRY: dict[str, ToolDefinition] = {tool.key: tool for tool in (_TEXT_NORMALIZE, _TEXT_TRUNCATE, _TEXT_SPLIT, _JSON_PICK, _JSON_MERGE)}
+
+
+def _social_approval_handler(_: dict[str, Any]) -> dict[str, Any]:
+    raise ToolInputError("Social approvals execute only inside the lease-owning Agent Runtime worker")
+
+
+_SOCIAL_COMMENT = ToolDefinition(
+    key="social.comment", version="1.0.0", name="Publish approved Social comment",
+    description="Execute an existing owner-approved comment against its pinned content target.",
+    risk_level="high", execution_class="side_effecting", required_permission_scopes=(),
+    input_schema={"type":"object","properties":{
+        "approval_id":{"type":"string","minLength":36,"maxLength":36},
+        "reason":{"type":"string","maxLength":500}},
+        "required":["approval_id"],"additionalProperties":False},
+    output_schema={"type":"object"}, handler=_social_approval_handler,
+)
+_SOCIAL_REPLY = ToolDefinition(
+    key="social.reply", version="1.0.0", name="Publish approved Social reply",
+    description="Execute an existing owner-approved reply against its pinned content and comment target.",
+    risk_level="high", execution_class="side_effecting", required_permission_scopes=(),
+    input_schema=_SOCIAL_COMMENT.input_schema, output_schema={"type":"object"},
+    handler=_social_approval_handler,
+)
+_SOCIAL_STORY_REPLY = ToolDefinition(
+    key="social.story_reply", version="1.0.0", name="Send approved Story reply",
+    description="Execute an existing owner-approved Story reply through the canonical conversation lifecycle.",
+    risk_level="high", execution_class="side_effecting", required_permission_scopes=(),
+    input_schema=_SOCIAL_COMMENT.input_schema, output_schema={"type":"object"},
+    handler=_social_approval_handler,
+)
+\n\n# This immutable mapping is the single in-process source of tool metadata and handlers.
+_TOOL_REGISTRY: dict[str, ToolDefinition] = {tool.key: tool for tool in (_TEXT_NORMALIZE, _TEXT_TRUNCATE, _TEXT_SPLIT, _JSON_PICK, _JSON_MERGE, _SOCIAL_COMMENT, _SOCIAL_REPLY, _SOCIAL_STORY_REPLY)}
 
 
 class UnknownToolError(ValueError):
