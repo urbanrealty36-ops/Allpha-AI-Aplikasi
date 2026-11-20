@@ -181,6 +181,8 @@ begin
   end if;
   insert into public.live_participants(session_id,user_id,participant_role,status,invited_by)
     values(p_session_id,p_user_id,p_role,'invited',p_host_user_id) returning * into v_participant;
+  update public.live_sessions set recording_state='consent_pending',updated_at=now()
+    where id=p_session_id and recording_state='consent_granted';
   insert into public.conversation_participants(conversation_id,user_id,participant_type)
     values(v_session.conversation_id,p_user_id,'human') on conflict do nothing;
   insert into public.live_stage_events(session_id,actor_user_id,event_type,payload,idempotency_key)
@@ -226,6 +228,8 @@ begin
     end if;
     insert into public.live_participants(session_id,user_id,participant_role,status,joined_at)
       values(p_session_id,p_user_id,'viewer','joined',now()) returning * into v_participant;
+    update public.live_sessions set recording_state='consent_pending',updated_at=now()
+      where id=p_session_id and recording_state='consent_granted';
     insert into public.conversation_participants(conversation_id,user_id,participant_type)
       values(v_session.conversation_id,p_user_id,'human') on conflict do nothing;
   end if;
@@ -369,6 +373,12 @@ begin
   update public.live_participants set recording_consent=p_consent,
     recording_consent_at=case when p_consent then now() else null end,updated_at=now()
     where id=v_participant.id returning * into v_participant;
+  update public.live_sessions s set recording_state=case
+      when exists (select 1 from public.live_participants p
+                   where p.session_id=p_session_id and p.status in ('invited','joined')
+                     and not p.recording_consent) then 'consent_pending'
+      else 'consent_granted' end,updated_at=now()
+    where s.id=p_session_id;
   insert into public.live_stage_events(session_id,actor_user_id,event_type,payload,idempotency_key)
     values(p_session_id,p_user_id,'recording_consent_updated',
       jsonb_build_object('participant_id',v_participant.id,'consent',p_consent),
@@ -391,6 +401,12 @@ begin
      or p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
     raise exception 'LIVE_STAGE_EVENT_INVALID' using errcode='22023';
   end if;
+  for v_key in select jsonb_object_keys(coalesce(p_payload,'{}'::jsonb)) loop
+    if v_key not in ('slide_number','document_id','annotation_id','page_number',
+                     'poll_id','question_id','correlation_id','asset_id') then
+      raise exception 'LIVE_STAGE_EVENT_DETAIL_KEY_DENIED' using errcode='22023';
+    end if;
+  end loop;
   if not exists (
     select 1 from public.live_sessions s join public.live_participants p on p.session_id=s.id
     where s.id=p_session_id and s.status in ('preparing','live','paused','reconnecting')
