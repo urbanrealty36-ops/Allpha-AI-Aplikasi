@@ -115,7 +115,7 @@ export function LiveControlCenter({ session, apiBase }: { session: Session; apiB
 
   async function stageEvent(type: "stage_hand_raised" | "stage_reaction_added", payload: Record<string, unknown>, scope: string) {
     if (!selected) return;
-    await run(scope, async () => {
+    await run(async () => {
       await request(`/v1/live/sessions/${selected.id}/stage-events`, "POST", {
         event_type: type, payload, idempotency_key: keyFor(scope),
       });
