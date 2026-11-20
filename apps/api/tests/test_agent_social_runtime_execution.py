@@ -139,3 +139,33 @@ def test_social_dispatch_never_advances_on_unknown_provider_outcome(monkeypatch)
         asyncio.run(runtime._execute_social_approval_step(**command_inputs()))
     assert len(adapter.reconcile_calls) == 1
     assert len(adapter.execute_calls) == 1
+
+
+def test_social_effect_fingerprint_is_stable_across_lease_reclaim(monkeypatch):
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        return [{
+            "id": APPROVAL, "owner_user_id": OWNER, "agent_id": AGENT,
+            "action_type": "draft_comment", "content_id": TARGET,
+        }]
+
+    adapter = FakeAdapter(reconciled=None)
+    monkeypatch.setattr(runtime, "_server_db", fake_db)
+    monkeypatch.setattr(runtime, "get_side_effect_adapter", lambda key: adapter)
+
+    first = command_inputs()
+    asyncio.run(runtime._execute_social_approval_step(**first))
+    first_command = adapter.execute_calls[0]
+
+    adapter.reconciled = SideEffectOutcome(
+        provider_key="allpha.social", status="completed",
+        result_payload={"social_item_id": TARGET},
+        external_reference=TARGET, evidence_reference="receipt:existing",
+    )
+    reclaimed = command_inputs()
+    reclaimed["row"]["task_version"] = first_command.task_version + 1
+    asyncio.run(runtime._execute_social_approval_step(**reclaimed))
+    reconciled_command = adapter.reconcile_calls[-1][0]
+
+    assert reconciled_command.task_version == first_command.task_version + 1
+    assert reconciled_command.input_fingerprint == first_command.input_fingerprint
+    assert len(adapter.execute_calls) == 1
