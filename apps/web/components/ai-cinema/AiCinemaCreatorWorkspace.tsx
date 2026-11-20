@@ -34,6 +34,18 @@ type CinemaCollaborator = { id: string; collaborator_user_id?: string | null; co
 type CinemaInvitation = { id: string; title?: { title: string; status: string } | null; role: string; permissions: string[]; status: string };
 type CinemaCredit = { id: string; contributor_type: string; role: string; attribution_label: string };
 type CinemaVersion = { id: string; version: number; created_at: string };
+type CinemaAsset = { id: string; media_id: string; asset_role: string; display_name: string; media?: { filename?: string; media_type?: string; status?: string; preview_url?: string } };
+type CinemaProductionResponse = { title_id: string; version: number; status: string; document: Record<string, unknown> };
+const EMPTY_CINEMA_PRODUCTION = {
+  schema_version: 1,
+  screenplay: { logline: "", synopsis: "", draft: "" },
+  storyboard: [],
+  scenes: [],
+  timeline: { tracks: [] },
+  audio_tracks: [],
+  export_profile: { container: "mp4", resolution: "1080p", frame_rate: 24, aspect_ratio: "16:9" },
+};
+
 
 async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const supabase = getBrowserSupabase();
@@ -92,6 +104,12 @@ export default function AiCinemaCreatorWorkspace() {
   const [creditRole, setCreditRole] = useState("Creator");
   const [creditLabel, setCreditLabel] = useState("Kontribusi kreator");
   const [versions, setVersions] = useState<CinemaVersion[]>([]);
+  const [productionVersion, setProductionVersion] = useState(1);
+  const [productionJson, setProductionJson] = useState(JSON.stringify(EMPTY_CINEMA_PRODUCTION, null, 2));
+  const [productionAssets, setProductionAssets] = useState<CinemaAsset[]>([]);
+  const [assetRole, setAssetRole] = useState("reference");
+  const [productionLoading, setProductionLoading] = useState(false);
+
   const [runtimeAgents, setRuntimeAgents] = useState<RuntimeAgentChoice[]>([]);
   const [runtimeAgentsState, setRuntimeAgentsState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [generationAgentId, setGenerationAgentId] = useState("");
@@ -259,6 +277,84 @@ export default function AiCinemaCreatorWorkspace() {
   }
 
 
+
+
+  const loadCinemaProduction = useCallback(async (titleId: string) => {
+    if (!titleId) {
+      setProductionVersion(1);
+      setProductionJson(JSON.stringify(EMPTY_CINEMA_PRODUCTION, null, 2));
+      setProductionAssets([]);
+      return;
+    }
+    setProductionLoading(true);
+    try {
+      const [production, assets] = await Promise.all([
+        authorizedRequest<CinemaProductionResponse>(`/v1/cinema/creator/titles/${encodeURIComponent(titleId)}/production`),
+        authorizedRequest<{ items: CinemaAsset[] }>(`/v1/cinema/creator/titles/${encodeURIComponent(titleId)}/assets`),
+      ]);
+      setProductionVersion(production.version);
+      setProductionJson(JSON.stringify(production.document, null, 2));
+      setProductionAssets(Array.isArray(assets.items) ? assets.items : []);
+    } catch (cause) {
+      setProductionAssets([]);
+      setError(cause instanceof Error ? cause.message : "Production workspace belum dapat dimuat.");
+    } finally {
+      setProductionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadCinemaProduction(selectedTitleId); }, [loadCinemaProduction, selectedTitleId]);
+
+  async function saveCinemaProduction() {
+    if (!selectedTitleId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const document = JSON.parse(productionJson) as Record<string, unknown>;
+      const result = await authorizedRequest<{ item: { version: number } }>(
+        `/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/production`,
+        { method: "PUT", body: JSON.stringify({ expected_version: productionVersion, document }) },
+      );
+      setProductionVersion(result.item.version);
+      setNotice("Screenplay, storyboard, scene, timeline, audio, dan export profile tersimpan pada versi produksi baru.");
+      await loadCinemaProduction(selectedTitleId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Production document gagal disimpan.");
+    } finally { setSaving(false); }
+  }
+
+  async function attachCinemaAsset() {
+    if (!selectedTitleId || !selectedMediaId) return;
+    const media = readyMedia.find(item => item.id === selectedMediaId);
+    if (!media) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await authorizedRequest(
+        `/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/assets`,
+        { method: "POST", body: JSON.stringify({
+          media_id: selectedMediaId, asset_role: assetRole, display_name: media.filename,
+        }) },
+      );
+      setNotice("Media siap pakai ditautkan ke Asset Library film.");
+      await loadCinemaProduction(selectedTitleId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Asset gagal ditautkan ke film.");
+    } finally { setSaving(false); }
+  }
+
+  async function removeCinemaAsset(assetId: string) {
+    if (!selectedTitleId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await authorizedRequest(
+        `/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/assets/${encodeURIComponent(assetId)}`,
+        { method: "DELETE" },
+      );
+      setNotice("Tautan asset dilepas dari film; file asli tetap berada di Content Media.");
+      await loadCinemaProduction(selectedTitleId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Tautan asset gagal dilepas.");
+    } finally { setSaving(false); }
+  }
 
   const selectedRuntimeAgent = runtimeAgents.find(item => item.agent.id === generationAgentId);
   const selectedRuntimeSkill = selectedRuntimeAgent?.skills.find(item => item.id === generationSkillId && item.generation_compatible);
@@ -495,6 +591,55 @@ export default function AiCinemaCreatorWorkspace() {
             {runtimeAgentsState === "ready" && runtimeAgents.length === 0 && <p className="text-xs text-slate-600">Belum ada Agent aktif dengan ownership Anda.</p>}
             {runtimeAgentsState === "ready" && selectedRuntimeAgent && !selectedRuntimeSkill && <p className="text-xs text-amber-800">Agent ini belum memiliki Published Skill dengan tool adapter Generation yang tersedia.</p>}
             {runtimeAgentsState === "unavailable" && <p className="text-xs text-rose-800">Katalog Agent Runtime tidak dapat dimuat. Periksa koneksi FastAPI dan ownership policy.</p>}
+          </>
+        )}
+      </section>
+
+      <section className="mb-6 space-y-4 rounded-2xl border-2 border-slate-900 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[.18em] text-sky-800">Production Workspace · v{productionVersion}</p>
+            <h3 className="mt-1 text-lg font-black text-slate-950">Screenplay, Storyboard & Editing Timeline</h3>
+            <p className="mt-1 text-xs text-slate-700">Dokumen produksi disimpan melalui FastAPI dengan optimistic versioning. Media timeline dan audio wajib berasal dari Asset Library film yang sudah diproses dan lolos scan.</p>
+          </div>
+          <button type="button" onClick={() => void loadCinemaProduction(selectedTitleId)} disabled={!selectedTitleId || productionLoading} className="rounded-xl border-2 border-slate-900 bg-white px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-40">{productionLoading ? "Memuat…" : "Muat production"}</button>
+        </div>
+        {!selectedTitleId ? (
+          <p className="rounded-xl border border-slate-900 bg-amber-50 p-3 text-xs text-amber-900">Pilih atau buat draft film untuk membuka Production Workspace.</p>
+        ) : (
+          <>
+            <label className="block text-xs font-semibold text-slate-700">Production document · JSON terstruktur
+              <textarea value={productionJson} onChange={event => setProductionJson(event.target.value)} rows={15} spellCheck={false} className="mt-1 w-full rounded-xl border-2 border-slate-900 bg-white p-3 font-mono text-xs leading-relaxed text-slate-950" />
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="max-w-2xl text-xs text-slate-600">Kontrak mencakup screenplay, scene & dialogue, storyboard shots, video/audio/subtitle timeline tracks, audio beds, dan export profile. Provider rendering belum dipanggil dari editor ini.</p>
+              <button type="button" onClick={() => void saveCinemaProduction()} disabled={saving || productionLoading} className="rounded-xl border-2 border-slate-900 bg-sky-200 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] disabled:opacity-40">{saving ? "Menyimpan…" : "Simpan versi produksi"}</button>
+            </div>
+            <div className="rounded-xl border-2 border-slate-900 bg-white p-3">
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <label className="min-w-[180px] flex-1 text-xs font-semibold text-slate-700">Media siap pakai
+                  <select value={selectedMediaId} onChange={event => setSelectedMediaId(event.target.value)} className="mt-1 w-full rounded-lg border-2 border-slate-900 bg-white p-2 text-sm text-slate-950">
+                    <option value="">Pilih media</option>
+                    {readyMedia.map(item => <option key={item.id} value={item.id}>{item.filename} · {item.media_type}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-700">Peran asset
+                  <select value={assetRole} onChange={event => setAssetRole(event.target.value)} className="mt-1 rounded-lg border-2 border-slate-900 bg-white p-2 text-sm text-slate-950">
+                    {["reference","storyboard","source_video","source_audio","music","subtitle","generated_image","generated_video","cover","trailer"].map(role => <option key={role} value={role}>{role}</option>)}
+                  </select>
+                </label>
+                <button type="button" onClick={() => void attachCinemaAsset()} disabled={saving || !selectedMediaId} className="rounded-lg border-2 border-slate-900 bg-violet-100 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-40">Tautkan asset</button>
+              </div>
+              <div className="space-y-2">
+                {productionAssets.map(asset => (
+                  <div key={asset.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-300 p-2 text-xs">
+                    <div><strong>{asset.display_name}</strong><span className="ml-2 text-slate-600">{asset.asset_role} · {asset.media?.media_type || "media"}</span></div>
+                    <button type="button" onClick={() => void removeCinemaAsset(asset.id)} disabled={saving} className="rounded-md border border-slate-900 px-2 py-1 font-bold text-rose-800 disabled:opacity-40">Lepas</button>
+                  </div>
+                ))}
+                {productionAssets.length === 0 && <p className="text-xs text-slate-500">Belum ada asset yang ditautkan ke film ini.</p>}
+              </div>
+            </div>
           </>
         )}
       </section>
