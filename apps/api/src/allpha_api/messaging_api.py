@@ -405,10 +405,12 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
     conv = await _db("GET","conversations",params={"select":"id,kind","id":f"eq.{conversation_id}","limit":"1"})
     if not conv:
         raise HTTPException(404,detail={"code":"CONVERSATION_NOT_FOUND","message":"Percakapan tidak ditemukan."})
-    participants = await _db("GET","conversation_participants",params={
-        "select":"agent_id","conversation_id":f"eq.{conversation_id}",
-        "participant_type":"eq.agent","limit":"1"})
-    agent_id = str(participants[0]["agent_id"]) if participants and participants[0].get("agent_id") else ""
+    agent_id = ""
+    if conv[0].get("kind") == "agent":
+        participants = await _db("GET","conversation_participants",params={
+            "select":"agent_id","conversation_id":f"eq.{conversation_id}",
+            "participant_type":"eq.agent","limit":"1"})
+        agent_id = str(participants[0]["agent_id"]) if participants and participants[0].get("agent_id") else ""
     existing=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,generation_job_id,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","sender_user_id":f"eq.{uid}","client_message_id":f"eq.{payload.client_message_id}","limit":"1"})
     replayed = bool(existing)
     conversation_context = ""
