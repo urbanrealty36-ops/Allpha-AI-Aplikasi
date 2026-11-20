@@ -54,6 +54,7 @@ from allpha_api.stories_api import router as stories_router
 from allpha_api.messaging_api import router as messaging_router
 from allpha_api.community_api import router as community_router
 from allpha_api.notification_api import router as notification_router
+from allpha_api.live_api import router as live_router
 from allpha_api.stripe_billing_api import router as stripe_billing_router
 from allpha_api.generation_jobs_api import router as generation_jobs_router
 from allpha_api.memory_api import router as memory_router
@@ -1397,6 +1398,7 @@ app.include_router(stories_router)
 app.include_router(messaging_router)
 app.include_router(community_router)
 app.include_router(notification_router)
+app.include_router(live_router)
 app.include_router(stripe_billing_router)
 app.include_router(generation_jobs_router)
 app.include_router(memory_router)
