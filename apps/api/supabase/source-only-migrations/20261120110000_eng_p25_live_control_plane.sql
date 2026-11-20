@@ -65,7 +65,7 @@ create table if not exists public.live_stage_events (
     'session_preparing','session_live','session_paused','session_reconnecting',
     'session_ended','session_cancelled','session_failed','moderation_stopped',
     'recording_consent_updated','stage_slide_changed','stage_annotation_added',
-    'stage_poll_created','stage_qa_submitted'
+    'stage_poll_created','stage_qa_submitted','stage_hand_raised','stage_reaction_added'
   )),
   payload jsonb not null default '{}'::jsonb check (jsonb_typeof(payload)='object'),
   idempotency_key text not null check (char_length(idempotency_key) between 8 and 160),
@@ -395,7 +395,8 @@ language plpgsql security definer set search_path=public,pg_temp
 as $$
 declare v_event public.live_stage_events%rowtype; v_key text;
 begin
-  if p_event_type not in ('stage_slide_changed','stage_annotation_added','stage_poll_created','stage_qa_submitted')
+  if p_event_type not in ('stage_slide_changed','stage_annotation_added','stage_poll_created',
+                          'stage_qa_submitted','stage_hand_raised','stage_reaction_added')
      or jsonb_typeof(coalesce(p_payload,'{}'::jsonb))<>'object'
      or octet_length(coalesce(p_payload,'{}'::jsonb)::text)>16384
      or p_idempotency_key is null or char_length(p_idempotency_key) not between 8 and 160 then
@@ -403,7 +404,7 @@ begin
   end if;
   for v_key in select jsonb_object_keys(coalesce(p_payload,'{}'::jsonb)) loop
     if v_key not in ('slide_number','document_id','annotation_id','page_number',
-                     'poll_id','question_id','correlation_id','asset_id') then
+                     'poll_id','question_id','correlation_id','asset_id','raised','reaction') then
       raise exception 'LIVE_STAGE_EVENT_DETAIL_KEY_DENIED' using errcode='22023';
     end if;
   end loop;
@@ -415,7 +416,17 @@ begin
   -- A joined viewer may submit Q&A, but cannot mutate shared Stage state.
   -- Host/cohost/speaker are the only roles allowed to change slides,
   -- annotate, or create polls. Authorization is enforced in the canonical RPC.
-  if p_event_type<>'stage_qa_submitted' and not exists (
+  if p_event_type='stage_hand_raised'
+     and (jsonb_object_length(coalesce(p_payload,'{}'::jsonb))<>1
+          or jsonb_typeof(p_payload->'raised')<>'boolean') then
+    raise exception 'LIVE_HAND_RAISE_PAYLOAD_INVALID' using errcode='22023';
+  end if;
+  if p_event_type='stage_reaction_added'
+     and (jsonb_object_length(coalesce(p_payload,'{}'::jsonb))<>1
+          or p_payload->>'reaction' not in ('like','clap','heart','laugh','wow')) then
+    raise exception 'LIVE_REACTION_PAYLOAD_INVALID' using errcode='22023';
+  end if;
+  if p_event_type not in ('stage_qa_submitted','stage_hand_raised','stage_reaction_added') and not exists (
     select 1 from public.live_participants p
     where p.session_id=p_session_id and p.user_id=p_actor_user_id
       and p.status='joined' and p.participant_role in ('host','cohost','speaker')
