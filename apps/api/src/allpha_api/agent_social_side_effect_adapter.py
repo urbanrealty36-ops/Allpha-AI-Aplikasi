@@ -135,3 +135,14 @@ class AllphaSocialApprovalAdapter:
 
 
 ALLPHA_SOCIAL_APPROVAL_ADAPTER = AllphaSocialApprovalAdapter()
+
+SIDE_EFFECT_ADAPTERS = {
+    SOCIAL_PROVIDER_KEY: ALLPHA_SOCIAL_APPROVAL_ADAPTER,
+}
+
+
+def get_side_effect_adapter(provider_key: str) -> AllphaSocialApprovalAdapter:
+    adapter = SIDE_EFFECT_ADAPTERS.get(provider_key)
+    if adapter is None:
+        raise SideEffectAdapterContractError("No real adapter is registered for the requested provider")
+    return adapter
