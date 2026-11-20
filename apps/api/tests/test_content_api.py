@@ -364,7 +364,7 @@ def test_ai_cinema_catalog_and_creator_contracts_are_registered_and_fail_closed(
     assert 'app.include_router(cinema_router)' in main
     for endpoint in ('/catalog', '/creator/titles', '/creator/titles/{title_id}/episodes'):
         assert endpoint in api
-    assert 'depends(current_user)' in api
+    assert 'depends(current_user)' in api.lower()
     assert '"moderation_status":"eq.approved"' in api
     assert '"rights_status":"eq.cleared"' in api
     assert 'enable row level security' in sql
