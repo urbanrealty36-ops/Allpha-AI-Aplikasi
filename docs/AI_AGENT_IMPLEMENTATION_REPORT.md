@@ -145,3 +145,14 @@
 - WP-11 Cinema `in_progress`; three previously failing API tests pass on the cited CI commit, but generation, rendering, export, distribution and canonical migration activation remain open.
 - ENG-P25 `partial`; Native Live compile fixed. ENG-P26 `blocked` by ADR-WP10-001. ENG-P27 `partial`; no migration applied or media transport enabled.
 - WP-12 remains `blocked` pending WP-11 and approved economy policy. No phase promotion. Continue WP-07 as the canonical dependency while independently implementing Social/Cinema/Live slices.
+
+
+## CI verification addendum — WP-07 adapter contract and Live Native fixes (2026-11-20)
+
+- Allpha Smoke run `44720958958` on source commit `f67dc8d849eaeeb248d6ec6c419bdf5dc7c83997` completed **all three jobs successfully**:
+  - API: **795 passed, 1 warning**. This includes the new `test_side_effect_adapter_contract.py` checks.
+  - Native: typecheck and Android bundle completed successfully.
+  - Web: production build compiled successfully.
+- This is the first CI run that includes the new WP-07 adapter contract module and its tests. It proves the interface contract source and current app source compile/test; it does not prove a production provider adapter, external side-effect execution, effect receipt reconciliation, database migration activation, lease/crash recovery, or runtime/device acceptance.
+- The preceding source commit `c1f14ce` had also passed API (791 passed / 1 warning), Web build and Native checks; `f67dc8d` adds four API contract tests and retains the green result.
+- Phase plan update commit `23af5daf906cb62344dc605eb1f105cbea87119b`; this report update follows as a documentation-only commit. No deployment was requested or invoked.
