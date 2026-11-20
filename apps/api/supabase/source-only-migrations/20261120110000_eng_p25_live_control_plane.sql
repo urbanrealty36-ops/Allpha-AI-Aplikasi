@@ -393,7 +393,7 @@ create or replace function public.append_live_stage_event(
 ) returns jsonb
 language plpgsql security definer set search_path=public,pg_temp
 as $$
-declare v_event public.live_stage_events%rowtype;
+declare v_event public.live_stage_events%rowtype; v_key text;
 begin
   if p_event_type not in ('stage_slide_changed','stage_annotation_added','stage_poll_created','stage_qa_submitted')
      or jsonb_typeof(coalesce(p_payload,'{}'::jsonb))<>'object'
