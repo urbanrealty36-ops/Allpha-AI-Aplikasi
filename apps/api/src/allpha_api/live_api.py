@@ -52,7 +52,7 @@ class LiveRecordingConsent(BaseModel):
 
 class LiveStageEventCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    event_type: Literal["stage_slide_changed", "stage_annotation_added", "stage_poll_created", "stage_qa_submitted"]
+    event_type: Literal["stage_slide_changed", "stage_annotation_added", "stage_poll_created", "stage_qa_submitted", "stage_hand_raised", "stage_reaction_added"]
     payload: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str = Field(min_length=8, max_length=160)
 
@@ -103,6 +103,9 @@ async def _db(method: str, path: str, *, params: dict[str, str] | None = None,
             "LIVE_SESSION_TRANSITION_INVALID": (409, "LIVE_SESSION_TRANSITION_INVALID", "Transisi status sesi tidak diizinkan."),
             "LIVE_PARTICIPANT_REMOVED": (403, "LIVE_PARTICIPANT_REMOVED", "Akses ke sesi telah dicabut host."),
             "LIVE_STAGE_PARTICIPANT_REQUIRED": (403, "LIVE_STAGE_PARTICIPANT_REQUIRED", "Hanya peserta aktif yang dapat mengubah stage."),
+            "LIVE_STAGE_ROLE_REQUIRED": (403, "LIVE_STAGE_ROLE_REQUIRED", "Role peserta tidak memiliki izin untuk aksi Stage ini."),
+            "LIVE_HAND_RAISE_PAYLOAD_INVALID": (422, "LIVE_HAND_RAISE_PAYLOAD_INVALID", "Payload hand raise tidak valid."),
+            "LIVE_REACTION_PAYLOAD_INVALID": (422, "LIVE_REACTION_PAYLOAD_INVALID", "Jenis reaksi tidak didukung."),
             "LIVE_PARTICIPANT_NOT_FOUND": (404, "LIVE_PARTICIPANT_NOT_FOUND", "Peserta tidak ditemukan."),
         }
         for marker, (status, code, message) in known.items():
