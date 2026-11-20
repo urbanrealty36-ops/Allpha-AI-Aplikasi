@@ -931,6 +931,7 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
                 )
                 try:
                     response, evidence = await router.generate(generation_request)
+                    native_calls = getattr(response, "tool_calls", ()) or ()
                 except Exception as exc:
                     unknown_evidence = {
                         "planning_attempts": planning_attempts,
@@ -956,12 +957,12 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
                     "output_tokens": evidence.output_tokens, "cost_microunits": evidence.cost_microunits,
                     "cost_unit": evidence.cost_unit, "pricing_version": evidence.pricing_version,
                     "latency_ms": evidence.latency_ms, "evidence_sha256": evidence.evidence_sha256,
-                    "native_tool_calls": len(response.tool_calls),
+                    "native_tool_calls": len(native_calls),
                 })
                 try:
-                    if response.tool_calls:
+                    if native_calls:
                         normalized_plan = parse_native_tool_calls(
-                            response.tool_calls, allowed_tools=allowed_tools, max_steps=max_steps,
+                            native_calls, allowed_tools=allowed_tools, max_steps=max_steps,
                         )
                     else:
                         normalized_plan = parse_tool_plan(
@@ -976,7 +977,7 @@ async def create_tool_plan(payload: ToolPlanRequest, request: Request,
                     validation_error = str(exc)
                     invalid_output = response.output_text or json.dumps([
                         {"name": call.name, "arguments": call.arguments}
-                        for call in response.tool_calls
+                        for call in native_calls
                     ], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
             planner_evidence = {
                 **planning_attempts[-1],
