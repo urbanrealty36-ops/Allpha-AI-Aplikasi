@@ -76,6 +76,23 @@ create table if not exists public.live_stage_events (
 create index if not exists live_stage_events_session_seq_idx
   on public.live_stage_events(session_id,event_seq);
 
+create or replace function public.is_live_session_member(p_session_id uuid,p_user_id uuid)
+returns boolean
+language sql stable security definer set search_path=public,pg_temp
+as $
+  select exists (
+    select 1 from public.live_sessions s
+    where s.id=p_session_id and (
+      s.host_user_id=p_user_id or exists (
+        select 1 from public.live_participants p
+        where p.session_id=s.id and p.user_id=p_user_id and p.status in ('invited','joined')
+      )
+    )
+  );
+$;
+revoke all on function public.is_live_session_member(uuid,uuid) from public,anon;
+grant execute on function public.is_live_session_member(uuid,uuid) to authenticated,service_role;
+
 alter table public.live_sessions enable row level security;
 alter table public.live_participants enable row level security;
 alter table public.live_stage_events enable row level security;
@@ -86,35 +103,13 @@ grant select,insert,update,delete on public.live_sessions,public.live_participan
 
 drop policy if exists live_sessions_participant_read on public.live_sessions;
 create policy live_sessions_participant_read on public.live_sessions for select to authenticated
-using (
-  host_user_id=auth.uid() or exists (
-    select 1 from public.live_participants p
-    where p.session_id=live_sessions.id and p.user_id=auth.uid() and p.status in ('invited','joined')
-  )
-);
+using (public.is_live_session_member(id,auth.uid()));
 drop policy if exists live_participants_session_read on public.live_participants;
 create policy live_participants_session_read on public.live_participants for select to authenticated
-using (
-  user_id=auth.uid() or exists (
-    select 1 from public.live_sessions s where s.id=live_participants.session_id and s.host_user_id=auth.uid()
-  ) or exists (
-    select 1 from public.live_participants p
-    where p.session_id=live_participants.session_id and p.user_id=auth.uid() and p.status='joined'
-  )
-);
+using (public.is_live_session_member(session_id,auth.uid()));
 drop policy if exists live_stage_events_participant_read on public.live_stage_events;
 create policy live_stage_events_participant_read on public.live_stage_events for select to authenticated
-using (
-  exists (
-    select 1 from public.live_sessions s
-    where s.id=live_stage_events.session_id and (
-      s.host_user_id=auth.uid() or exists (
-        select 1 from public.live_participants p
-        where p.session_id=s.id and p.user_id=auth.uid() and p.status='joined'
-      )
-    )
-  )
-);
+using (public.is_live_session_member(session_id,auth.uid()));
 
 create or replace function public.create_live_session(
   p_host_user_id uuid,p_title text,p_description text,p_visibility text,
@@ -153,7 +148,7 @@ begin
   insert into public.live_stage_events(session_id,actor_user_id,event_type,payload,idempotency_key)
     values(v_session.id,p_host_user_id,'session_created',
       jsonb_build_object('status',v_session.status,'visibility',v_session.visibility),
-      p_idempotency_key||':created');
+      p_idempotency_key);
   return jsonb_build_object('outcome','created','session',to_jsonb(v_session));
 end;
 $$;
