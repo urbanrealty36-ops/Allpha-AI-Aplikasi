@@ -63,7 +63,13 @@ export default function AuthOnboardingRoute() {
   const initialAuthMode = useMemo(() => {
     if (typeof window === "undefined") return undefined;
     const mode = new URLSearchParams(window.location.search).get("mode");
-    return mode === "login" ? "LOGIN" as const : mode === "register" ? "REGISTER" as const : undefined;
+    if (mode === "login") return "LOGIN" as const;
+    if (mode === "register") return "REGISTER" as const;
+    // Keep the direct route entry points semantically correct while both
+    // routes continue to share this single Supabase Auth + FastAPI flow.
+    return window.location.pathname.replace(/\\/+$/, "") === "/login"
+      ? "LOGIN" as const
+      : "REGISTER" as const;
   }, []);
 
   async function googleSignIn() {
