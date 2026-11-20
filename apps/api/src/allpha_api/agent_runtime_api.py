@@ -66,6 +66,8 @@ class TaskCreate(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     tool_plan: list[ToolPlanStep] | None = Field(default=None, max_length=5)
     tool_plan_id: uuid.UUID | None = None
+    native_orchestration: bool = False
+    prompt: str | None = Field(default=None, min_length=1, max_length=12_000)
     idempotency_key: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
     budget_limits: dict[str, int] = Field(default_factory=dict)
 
@@ -1040,6 +1042,18 @@ async def create_task(payload: TaskCreate, request: Request,
         plan_row: dict[str, Any] | None = None
         planner_evidence: dict[str, Any] | None = None
         plan_steps = payload.tool_plan
+        if payload.native_orchestration:
+            if (payload.prompt is None or payload.tool_plan or payload.tool_plan_id
+                    or payload.tool_key or payload.inputs):
+                raise HTTPException(status_code=422, detail={
+                    "code": "NATIVE_ORCHESTRATION_INPUT_CONFLICT",
+                    "message": "Native orchestration requires prompt and cannot be combined with manual tool inputs or a prebuilt plan.",
+                })
+        elif payload.prompt is not None:
+            raise HTTPException(status_code=422, detail={
+                "code": "NATIVE_PROMPT_REQUIRES_ORCHESTRATION",
+                "message": "Prompt is accepted only when native_orchestration=true.",
+            })
         if payload.tool_plan_id:
             if payload.tool_plan or payload.tool_key or payload.inputs:
                 raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_INPUT_CONFLICT", "message": "Gunakan tool_plan_id tanpa tool_plan/tool_key/inputs manual."})
@@ -1068,7 +1082,49 @@ async def create_task(payload: TaskCreate, request: Request,
         normalized_plan: list[dict[str, Any]] = []
         if plan_steps and payload.inputs:
             raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_INPUT_CONFLICT", "message": "Gunakan input pada setiap langkah rencana, bukan field inputs terpisah."})
-        if plan_steps:
+        if payload.native_orchestration:
+            native_tool_keys: list[str] = []
+            for dependency in dependencies:
+                if not isinstance(dependency, str):
+                    continue
+                try:
+                    definition = get_tool(dependency)
+                except UnknownToolError:
+                    continue
+                if getattr(definition, "execution_class", "side_effecting") != "pure":
+                    continue
+                capability = await store.get_approved_capability(agent_id, dependency)
+                if not capability or not capability.get("runtime_policy_id"):
+                    continue
+                policy = await store.get_approved_runtime_policy(agent_id, str(capability["runtime_policy_id"]))
+                if (not policy or capability.get("policy_version") != policy.get("policy_version")
+                        or dependency not in (policy.get("approved_tool_keys") or [])):
+                    continue
+                required_scopes = set(getattr(definition, "required_permission_scopes", ()) or ())
+                if (not required_scopes.issubset(set(capability.get("required_permission_scopes") or []))
+                        or not required_scopes.issubset(set(policy.get("required_permission_scopes") or []))):
+                    continue
+                native_tool_keys.append(dependency)
+            native_tool_keys = sorted(set(native_tool_keys))
+            if not native_tool_keys:
+                raise HTTPException(status_code=403, detail={
+                    "code": "NO_APPROVED_NATIVE_TOOLS",
+                    "message": "Tidak ada pure tool yang memiliki capability dan runtime policy approved untuk native orchestration.",
+                })
+            skill_max_calls = (skill.get("budget_limits") or {}).get("max_tool_calls", 1)
+            if not isinstance(skill_max_calls, int) or isinstance(skill_max_calls, bool) or not 1 <= skill_max_calls <= 5:
+                raise HTTPException(status_code=403, detail={
+                    "code": "SKILL_TOOL_BUDGET_INVALID",
+                    "message": "Budget native tool orchestration harus 1–5 calls.",
+                })
+            tool_key = "__native_orchestration__"
+            input_payload = {
+                "_native_orchestration_version": 1,
+                "prompt": payload.prompt,
+                "allowed_tool_keys": native_tool_keys,
+            }
+            required_calls = 1
+        elif plan_steps:
             if payload.tool_key and payload.tool_key != plan_steps[0].tool_key:
                 raise HTTPException(status_code=422, detail={"code": "TASK_PLAN_PRIMARY_TOOL_MISMATCH", "message": "Tool utama harus sama dengan langkah pertama dalam rencana."})
             prior_steps: set[str] = set()
@@ -1122,7 +1178,10 @@ async def create_task(payload: TaskCreate, request: Request,
             raise HTTPException(status_code=403, detail={"code": "TASK_PLAN_EXCEEDS_SKILL_BUDGET", "message": "Jumlah langkah melampaui batas pemanggilan tool pada Skill."})
         requested_budget = dict(payload.budget_limits)
         if "max_tool_calls" not in requested_budget:
-            requested_budget["max_tool_calls"] = required_calls
+            requested_budget["max_tool_calls"] = (
+                int((skill.get("budget_limits") or {}).get("max_tool_calls", required_calls))
+                if payload.native_orchestration else required_calls
+            )
         if set(requested_budget) - {"max_runtime_seconds", "max_tool_calls"} or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in requested_budget.values()):
             raise HTTPException(status_code=422, detail={"code": "INVALID_TASK_BUDGET", "message": "Budget task tidak valid."})
         for key, value in requested_budget.items():
