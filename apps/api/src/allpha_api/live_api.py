@@ -250,9 +250,7 @@ async def join_live_session(session_id: uuid.UUID, payload: LiveIdempotency,
 @router.post("/sessions/{session_id}/leave")
 async def leave_live_session(session_id: uuid.UUID, payload: LiveIdempotency,
                              user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    key = payload.get("idempotency_key", "")
-    if not 8 <= len(key) <= 160:
-        raise HTTPException(422, detail={"code": "LIVE_IDEMPOTENCY_KEY_INVALID", "message": "Idempotency key wajib 8–160 karakter."})
+    key = payload.idempotency_key
     result = await _rpc("leave_live_session", {
         "p_session_id": str(session_id), "p_user_id": str(user["id"]),
         "p_idempotency_key": key,
