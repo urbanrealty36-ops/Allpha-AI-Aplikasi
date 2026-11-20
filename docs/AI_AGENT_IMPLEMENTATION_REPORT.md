@@ -263,3 +263,34 @@
 - The tests assert owner/Agent-scoped approval lookup, receipt reconciliation before any side effect, execution only after a reconciliation miss, immutable approval/action matching, owner-as-actor, approval-ID idempotency, lease-token propagation, and fail-closed behavior for an unknown provider outcome.
 - These are focused contract/regression tests around the actual runtime helper, not a substitute for PostgreSQL transaction/lease/crash-recovery integration. No live database migration, worker activation, provider traffic, staging, or production deployment occurred.
 - WP-07 remains `in_progress / acceptance_not_verified` pending real canonical database schema activation and isolated transaction/lease/recovery verification. WP-06 Auto Reply consumer, WP-11 provider-backed Cinema lifecycle, full Auth session restoration, and cross-surface parity remain independent open work.
+
+
+## Execution checkpoint — WP-07 / WP-06 / WP-11 / ENG-P26 (2026-11-20)
+
+### Repository and commits
+- Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`.
+- Baseline before continuation: `b53725ba24935fe7cad2fb6ed7798ce8eb9923dd`.
+- Commits: `9d16febb4fa5c2c180ab7df4760a52a8c9378c64` (Live media contract); `6e466d80cd1931ec9ed4773f2e22a1ee0f1c3f8c` (contract tests); `55cfef4f6ec493c7952253efca8f004f0147eed4` (strict approval checks).
+
+### Code changes
+- Added `apps/api/src/allpha_api/live_media_contract.py`: typed provider-neutral async contract for create room, issue participant token, reconcile room state, idempotently end room and verify webhook; explicit adapter registry; ADR- and region-gated resolution; recording approval checks; publish role restrictions; TTL and token scope validation. No provider is registered or activated.
+- Added `apps/api/tests/test_live_media_contract.py`: focused tests for fail-closed ADR behavior, provider/region mismatch, duplicate registration, recording approval, participant role, token TTL and token scope. Tests were **not executed** in this environment.
+
+### Existing integration reconciled
+- WP-07 Social adapter is connected in source to the planned-task execution path; durable worker calls the planned-task executor after schema readiness. Existing helper tests cover approval lookup, reconciliation-before-execution, owner-as-actor, idempotency and unknown outcome. Real PostgreSQL atomicity, lease fencing, heartbeat, crash/recovery and reconciliation were not exercised.
+- WP-06 owner automation policy/grant/takeover APIs exist, but Auto Reply is explicitly disabled and reports `AUTO_REPLY_RUNTIME_NOT_CONNECTED`. No event consumer, budget reservation, ACL-filtered context, moderation/publish chain or real Auto Reply task execution is present/verified.
+- WP-11 Cinema production workspace APIs and source-only migration exist. Cinema generation readiness still depends on the canonical generation-job schema, approved moderation policy and configured Model Router. ADR-0021 has no approved production provider/model/tariff; no actual render/export artifact or Cinema E2E was produced.
+- ENG-P26 now has a source-level provider-neutral media adapter contract. The actual Live control-plane migration is still unapplied, no live session tables are present, and event delivery/reconnect/recovery acceptance remains open. ADR-WP10-001 is still PROPOSED — NOT APPROVED; provider, production media token, recording and media traffic remain disabled.
+
+### Database and deployment boundaries
+- Supabase project `dvdziauyvuhcnqhrrvww` was read-only inspected: PostgreSQL 17.6.1.171; applied migration count 135; latest applied version `20261115185633`. `cinema_assets`, `cinema_titles.production_document`, Live control-plane tables and WP-07 runtime tool-plan/readiness schema remain absent.
+- No Supabase DDL/data write, migration apply, branch creation, worker activation, staging, provider call, recording, or production deployment was initiated.
+- GitHub combined status for commit `6e466d80cd1931ec9ed4773f2e22a1ee0f1c3f8c` showed Railway and Vercel status contexts as success. This is not evidence that the new pytest module executed or that a production deployment is READY. The GitHub connector returned no PR-triggered workflow run for that commit.
+
+### Status and next work
+- WP-07: `in_progress / acceptance_not_verified`.
+- WP-06: `in_progress`; Auto Reply consumer still open.
+- WP-11: `in_progress`; provider-backed generation/render/export still open.
+- WP-12: `blocked`.
+- ENG-P26: provider-neutral adapter contract implemented in source; media activation blocked by ADR-WP10-001 and integration acceptance not verified.
+- Next: complete WP-07/WP-06 source integration and WP-11 Model Router generation-job wiring; continue Live provider-neutral event/recovery work. PostgreSQL crash/concurrency evidence must wait for the approved isolated ENG-P37 verification window under ADR-0007. Do not promote any phase based on source commits or status contexts alone.
