@@ -294,3 +294,10 @@
 - WP-12: `blocked`.
 - ENG-P26: provider-neutral adapter contract implemented in source; media activation blocked by ADR-WP10-001 and integration acceptance not verified.
 - Next: complete WP-07/WP-06 source integration and WP-11 Model Router generation-job wiring; continue Live provider-neutral event/recovery work. PostgreSQL crash/concurrency evidence must wait for the approved isolated ENG-P37 verification window under ADR-0007. Do not promote any phase based on source commits or status contexts alone.
+
+
+**ENG-P26 API gate integration follow-up — 2026-11-20:**
+- Connected the provider-neutral media contract version to `apps/api/src/allpha_api/live_api.py`. The Live API now always reports `status=not_configured`, `provider_approved=false`, `activation_allowed=false`, no publish/subscribe tokens and no recording provider until ADR-WP10-001 is approved; persisted legacy provider/session metadata can no longer imply a configured media plane.
+- Updated `apps/api/tests/test_live_control_plane_api.py` to assert the ADR gate, contract version and fail-closed behavior even when provider metadata exists. Commits: `768bf1f899ff7fe833dc9e608358409f881b2bd7` (API) and `a2c5caa7e9afa21fdfaff1c1a17c1e35c9148f58` (focused regression test). Tests remain NOT RUN in this environment.
+- Vercel deployment records associated with the preceding media-contract source commit `55cfef4` were inspected read-only: all three production-target records (Web, API and Admin) were `CANCELED`; no production deployment became READY. No manual deployment was initiated.
+- ENG-P26 remains blocked for media activation and not yet integration-verified. No provider, token, recording or production media traffic is enabled.
