@@ -3839,3 +3839,16 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - Updated `apps/api/tests/test_live_control_plane_api.py` to assert the ADR gate, contract version and fail-closed behavior even when provider metadata exists. Commits: `768bf1f899ff7fe833dc9e608358409f881b2bd7` (API) and `a2c5caa7e9afa21fdfaff1c1a17c1e35c9148f58` (focused regression test). Tests remain NOT RUN in this environment.
 - Vercel deployment records associated with the preceding media-contract source commit `55cfef4` were inspected read-only: all three production-target records (Web, API and Admin) were `CANCELED`; no production deployment became READY. No manual deployment was initiated.
 - ENG-P26 remains blocked for media activation and not yet integration-verified. No provider, token, recording or production media traffic is enabled.
+
+
+---
+
+### WP-07 durable worker continuation — 2026-11-21
+
+- **Source status:** `in_progress`. The Social effect fingerprint is stable across task lease generations; adapter reconciliation accepts a matching completed receipt from an earlier generation and rejects future generations. Worker readiness now includes the receipt-finalization guard.
+- **Source-only migrations:** `20261121100000_wp07_success_receipt_finalization_guard.sql` prevents terminal success while effects/receipts are unresolved and requires completed owner-bound receipts for each planned Social step. `20261121110000_wp07_require_owner_approved_social_result.sql` prevents the worker from self-approving a pending Social approval.
+- **API evidence:** Allpha Smoke run [44782129415](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44782129415) API job completed with 822 passed and 1 warning. Web build and Native Android export were still running when this checkpoint was written.
+- **Unresolved transaction boundary:** owner approval currently performs the Social mutation and persists its execution result in the owner decision transaction; the WP-07 worker then persists the task-bound receipt and effect state in a separate transaction. The adapter reconciles safely, but these are not yet one transaction spanning both. Task-bound approval dispatch must be unified before claiming the strict atomic Social mutation + receipt invariant.
+- **ENG-P37 / database:** production Supabase remains unchanged at 135 applied migrations through `20261115185633`. No source-only migration was applied and no worker was activated. There is no development branch. A Supabase branch quote of 0.01344/hour requires explicit cost confirmation; no isolated PostgreSQL verification has run.
+- **Acceptance:** lease fencing, heartbeat, transaction rollback/commit, concurrency, failure-injection and crash-recovery remain unverified against real PostgreSQL. Do not promote WP-07, mark it `integration_verified`, or advance its dependent phase yet.
+- **Next:** complete the owner-approval/task-bound receipt transaction path, then run the isolated ENG-P37 PostgreSQL verification matrix after the branch cost is confirmed.
