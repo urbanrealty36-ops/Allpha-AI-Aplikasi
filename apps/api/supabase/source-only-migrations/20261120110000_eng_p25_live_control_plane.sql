@@ -412,6 +412,16 @@ begin
     where s.id=p_session_id and s.status in ('preparing','live','paused','reconnecting')
       and p.user_id=p_actor_user_id and p.status='joined'
   ) then raise exception 'LIVE_STAGE_PARTICIPANT_REQUIRED' using errcode='42501'; end if;
+  -- A joined viewer may submit Q&A, but cannot mutate shared Stage state.
+  -- Host/cohost/speaker are the only roles allowed to change slides,
+  -- annotate, or create polls. Authorization is enforced in the canonical RPC.
+  if p_event_type<>'stage_qa_submitted' and not exists (
+    select 1 from public.live_participants p
+    where p.session_id=p_session_id and p.user_id=p_actor_user_id
+      and p.status='joined' and p.participant_role in ('host','cohost','speaker')
+  ) then
+    raise exception 'LIVE_STAGE_ROLE_REQUIRED' using errcode='42501';
+  end if;
   select * into v_event from public.live_stage_events
     where session_id=p_session_id and idempotency_key=p_idempotency_key for update;
   if found then
