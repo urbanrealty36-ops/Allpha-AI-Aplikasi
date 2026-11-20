@@ -330,11 +330,11 @@ def test_openai_compatible_adapter_preserves_assistant_tool_call_and_tool_result
         transport=httpx.MockTransport(handler),
     )
     result = asyncio.run(adapter.generate(
-        replace(request(), prompt="", tool_definitions=tools, conversation_messages=conversation),
+        replace(request(), prompt="", system_prompt="system", tool_definitions=tools, conversation_messages=conversation),
         model_id="model-test",
     ))
     assert observed["messages"] == [
-        {"role": "system", "content": request().system_prompt},
+        {"role": "system", "content": "system"},
         *conversation,
     ]
     assert result.output_text == "The normalized result is hello."
