@@ -37,11 +37,12 @@ begin
   end if;
 
   if new.input_payload->>'_runtime_plan_version' = '1' then
-    v_steps := case
-      when jsonb_typeof(new.input_payload->'steps') = 'array'
-        then new.input_payload->'steps'
-      else '[]'::jsonb
-    end;
+    if jsonb_typeof(new.input_payload->'steps') <> 'array'
+       or jsonb_array_length(new.input_payload->'steps') not between 1 and 5 then
+      raise exception 'AGENT_RUNTIME_SUCCESS_HAS_INVALID_TOOL_PLAN'
+        using errcode = '23514';
+    end if;
+    v_steps := new.input_payload->'steps';
 
     for v_step in
       select item.value
