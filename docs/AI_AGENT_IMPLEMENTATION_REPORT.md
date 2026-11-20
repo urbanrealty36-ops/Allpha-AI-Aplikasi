@@ -46,3 +46,15 @@
 - Live: complete provider-neutral stage roles/events and Web/Native Client parity; keep media provider, recording, and live broadcast disabled until formal ADR approval.
 - The next priority remains WP-07 durable side-effect/effect-receipt integration and database-contract reconciliation, while independent Social, Cinema, and Live source work continues in parallel.
 
+## Execution checkpoint — Live Stage authorization hardening (2026-11-20)
+
+- Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`.
+- Latest HEAD observed before report update: `4984a418aca6194eacf1b12f04d00b1f78335f44`.
+- Read the repository `AGENTS.md`, the consolidated Master PRD v3.1.0 opening contract, fixed phase plan, and `ADR-WP10-001`. ADR-WP10-001 is still PROPOSED / NOT APPROVED; no live media provider or recording provider was activated.
+- Changed `apps/api/supabase/source-only-migrations/20261120110000_eng_p25_live_control_plane.sql`: canonical `append_live_stage_event` RPC now permits joined viewers to submit Q&A, while slide changes, annotations and poll creation require a joined host/cohost/speaker. This closes a role-boundary gap at the database RPC layer, not only in the client.
+- Changed `apps/api/tests/test_live_control_plane_api.py`: added a migration-contract assertion for the role guard and viewer-Q&A exception.
+- Changed `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md`: recorded the security checkpoint and preserved ENG-P25 partial / ENG-P26–P27 open / WP-07 in-progress statuses.
+- Commits: `0ed1edee25fb2bb1919b5d7d6e2d9eb5b8aa03d4` (source migration), `cdad578e526059c42606e6d8238f93f7213bd770` (test), `4984a418aca6194eacf1b12f04d00b1f78335f44` (phase plan).
+- Migration is source-only and was not applied. Test was added but not executed. No SQL/runtime evidence, staging, deployment, or provider activation occurred.
+- Status: ENG-P25 partial; ENG-P26/P27 open; WP-07 remains the dependency gate and is not complete.
+- Next work: continue WP-07 effect-receipt and durable side-effect integration only when a concrete approved side-effect adapter exists; meanwhile continue independent Social/Cinema/Live source integration without claiming downstream acceptance.
