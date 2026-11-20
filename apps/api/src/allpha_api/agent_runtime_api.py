@@ -1761,7 +1761,8 @@ async def recover_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
 
 
 @router.post("/tasks/{task_id}/execute")
-async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+async def execute_task(task_id: uuid.UUID, request: Request,
+                       user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     store, owner_id = _store(), str(user["id"])
     try:
         row = await store.get_task(owner_id, str(task_id))
@@ -1793,6 +1794,10 @@ async def execute_task(task_id: uuid.UUID, user: dict[str, Any] = Depends(curren
             if not cancelled:
                 raise AgentRuntimePersistenceError("pre-execution cancellation could not be durably committed")
             return {"task": cancelled, "idempotent_replay": False}
+        if _is_native_orchestration_task(row):
+            return await _execute_native_orchestration_task(
+                store, owner_id, str(task_id), row, router=_text_router(request),
+            )
         if _stored_tool_plan(row) is not None:
             return await _execute_planned_task(store, owner_id, str(task_id), row)
         if row["state"] == "succeeded":
