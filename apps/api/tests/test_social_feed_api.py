@@ -174,6 +174,10 @@ def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatc
             return []
         if method == "POST" and table == "content_reactions":
             return [{"content_id": content_id, "actor_user_id": "eng-p14-viewer", "reaction": "like"}]
+        if table == "user_settings":
+            return []
+        if method == "POST" and table == "notifications":
+            return []
         raise AssertionError(f"unexpected {method} {table}")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
@@ -319,6 +323,12 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
         params = params or {}
         if table == "feed_preferences":
             return []
+        if table == "feed_feedback":
+            return []
+        if method == "POST" and table == "feed_snapshots":
+            return [{"id": "00000000-0000-0000-0000-000000000778"}]
+        if method == "POST" and table == "feed_snapshot_items":
+            return []
         if table == "content_items":
             return content_rows
         if table == "profiles":
@@ -376,6 +386,10 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
         if table == "profiles":
             return [{"id": "public-author", "username": "public_author", "display_name": "Public Author",
                      "avatar_url": None, "bio": "", "visibility": "public"}]
+        if method == "POST" and table == "feed_snapshots":
+            return [{"id": "00000000-0000-0000-0000-000000000779"}]
+        if method == "POST" and table == "feed_snapshot_items":
+            return []
         if table in {"content_reactions", "content_comments", "content_saves", "content_shares", "content_media"}:
             return []
         raise AssertionError(f"guest feed must not query {table}")
@@ -528,9 +542,9 @@ def test_anonymous_can_read_comments_only_on_public_published_content(monkeypatc
             return [{"id": "public-author", "username": "public_author", "display_name": "Public Author",
                      "avatar_url": None, "bio": "", "visibility": "public"}]
         if table == "content_comments":
-            assert params.get("select") == "id,content_id,body,status,created_at,updated_at"
+            assert params.get("select") == "id,content_id,body,status,created_at,updated_at,parent_comment_id"
             return [{"id": "comment-1", "content_id": content_id, "body": "Public comment",
-                     "status": "visible", "created_at": now, "updated_at": now}]
+                     "status": "visible", "created_at": now, "updated_at": now, "parent_comment_id": None}]
         raise AssertionError(f"anonymous comment read must not query {table}")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
@@ -894,6 +908,12 @@ def test_following_feed_returns_only_active_followed_creators(monkeypatch):
         params = params or {}
         if table == "feed_preferences":
             return []
+        if table == "feed_feedback":
+            return []
+        if method == "POST" and table == "feed_snapshots":
+            return [{"id": "00000000-0000-0000-0000-000000000780"}]
+        if method == "POST" and table == "feed_snapshot_items":
+            return []
         if table == "content_items":
             return content_rows
         if table == "profiles":
@@ -968,7 +988,7 @@ def test_two_principal_social_graph_reads_are_owner_scoped(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
-    assert len(calls) == 8
+    assert len(calls) == 10
     for token, table, params in calls:
         user_id = next(uid for uid, principal_token in principals if principal_token == token)
         assert (
