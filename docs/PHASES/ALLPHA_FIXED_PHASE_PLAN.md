@@ -1,3 +1,10 @@
+**WP-07 Social adapter focused-test correction — 2026-11-20:**
+
+- Allpha Smoke run `44725633636` reported `798 passed / 2 failed`. Both failures were only because the repository test environment does not install `pytest-asyncio`; the new adapter tests had incorrectly used `@pytest.mark.asyncio`. The API suite reached 800 tests and no product assertion failed in this run.
+- Corrected `apps/api/tests/test_agent_social_side_effect_adapter.py` to run the adapter coroutines with Python's built-in `asyncio.run`, without adding a test dependency. Fix commit: `20f9484105da2377b02aa65696e1e81269f120d8`.
+- Follow-up Allpha Smoke run `44725805401` on `20f9484` was queued/in progress when checked. API/Web/Native results remain pending; no green claim is made until that run completes.
+
+---
 **WP-07/WP-06 real Allpha Social side-effect adapter source checkpoint — 2026-11-20 (not activated; no phase promotion):**
 
 - Base source head before tracking update: `fbc1b611d47c294dd0bab05048d3f088a852f423`. Re-read the current `AGENTS.md`, consolidated Master PRD v3.1.0, fixed phase plan, ADR-0013/0019/0021/0022/0023 and ADR-WP10-001. The canonical architecture remains FastAPI + Supabase Postgres; client-side business writes and alternate runtime/database are prohibited.
