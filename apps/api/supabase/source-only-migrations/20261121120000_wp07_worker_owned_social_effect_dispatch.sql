@@ -191,7 +191,8 @@ begin
         )),
         updated_at = now()
     where t.id = new.dispatch_task_id
-      and t.state not in ('succeeded','failed','cancelled','timed_out','budget_exhausted');
+      and t.state not in ('succeeded','failed','cancelled','timed_out','budget_exhausted')
+      and not (t.state = 'executing' and coalesce(t.effect_outcome,'none') = 'completed');
   end if;
   return new;
 end;

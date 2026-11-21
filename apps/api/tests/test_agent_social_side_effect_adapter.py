@@ -141,6 +141,7 @@ def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_exec
     assert "agent_runtime_effect_outcome_unknown_no_replay" in migration
     assert "grant execute on function public.execute_agent_social_approval_effect" in migration
     assert "create trigger agent_social_runtime_dispatch_cancel_after_decision" in migration
+    assert "not (t.state = 'executing' and coalesce(t.effect_outcome,'none') = 'completed')" in migration
 
 
 def test_social_adapter_reconciles_completed_receipt_from_prior_lease_generation(monkeypatch):
