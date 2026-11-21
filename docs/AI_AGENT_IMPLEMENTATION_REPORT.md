@@ -331,3 +331,49 @@
 - Web: `npm test` and `npm run build` completed successfully. Build emitted existing lint warnings (unused imports/variables, hook dependency, `img` optimization and explicit `any`).
 - Native: `npm test`, `npm run typecheck`, and `npx expo export --platform android` completed successfully; export produced `dist`.
 - This is repository CI/source verification only. It does not constitute PostgreSQL transaction/concurrency verification, actual worker activation, production integration, or ENG-P37 acceptance.
+
+
+## WP-07 full source implementation — 2026-11-21
+
+**Source status:** implementation path completed on `main`; phase remains `in_progress / acceptance_not_verified` because PostgreSQL verification was explicitly skipped.
+
+### Implementation delivered
+
+- Reused the canonical `allpha.social` adapter, Tool Registry, `agent_runtime_tasks` queue, `agent_runtime_worker.py` poller and planned-task executor. No duplicate worker, database, queue or receipt engine was introduced.
+- Routed all five owner-approved Agent Social actions through WP-07: post submission to moderation, comment, reply, repost and Story reply. The post action enters moderation; it is not an automatic public publish.
+- Approval insertion now creates a linked dispatch task in `waiting_for_approval`. The owner approval RPC authorizes and enqueues that task as `queued` transactionally. The existing worker then claims it under the canonical lease.
+- Worker execution validates owner/actor/Agent, pinned Skill/tool dependency, approved capability/runtime policy, approval identity and target. The `allpha.social` SQL RPC performs the canonical Social mutation and writes the task-bound effect receipt, approval execution result, task effect state, audit and recipient notification in the same database transaction.
+- Receipt evidence covers actor, owner, Agent, target, action, approval, correlation ID, provider, policy identity, idempotency key, status, result, external reference and evidence reference.
+- Adapter reconciliation runs before execute. Completed receipts from earlier lease generations reconcile; mismatched/future receipts fail closed; unknown/started outcomes are not replayed. Stable effect fingerprinting and current lease token/task-version fencing remain in force.
+- Approval revocation/policy disable cancels unstarted dispatch tasks or signals cancellation to executing tasks. A completed effect receipt is not invalidated by a later approval revoke.
+- The existing worker/store lifecycle supplies heartbeat, lease acquisition/renewal, retry/backoff, timeout, cancellation, checkpoint, resume and expired-lease recovery. Worker activation remains disabled by the existing readiness/environment gate.
+
+### Files changed
+
+- `apps/api/src/allpha_api/agent_social_api.py`
+- `apps/api/src/allpha_api/agent_runtime_api.py`
+- `apps/api/src/allpha_api/agent_social_side_effect_adapter.py`
+- `apps/api/src/allpha_api/tool_registry.py`
+- `apps/api/supabase/source-only-migrations/20261121100000_wp07_success_receipt_finalization_guard.sql`
+- `apps/api/supabase/source-only-migrations/20261121120000_wp07_worker_owned_social_effect_dispatch.sql`
+- Tests: `test_agent_social_api_contract.py`, `test_agent_social_runtime_dispatch.py`, `test_agent_social_side_effect_adapter.py`, `test_tool_registry.py`
+- Documentation updated only in `docs/PHASES/ALLPHA_FIXED_PHASE_PLAN.md` and this report.
+
+### Commits and CI
+
+- Source implementation HEAD before this documentation update: `ffc1134d253c5b0478a9ac67400f94ed9324635e`.
+- Key source commits: `91708a2a0aa1a4cc4d3a3ef67f01775e0811e393` (five-action WP-07 routing), `040a9a0ad6456d7a3c7b6de3e60be13c0f06f098` (policy/approval/task lock order), `8ccc833a8ffe1fef9da7181709b6f685f142a385` (schema prerequisites), `ffc1134d253c5b0478a9ac67400f94ed9324635e` (source-level test correction).
+- Allpha Smoke [44863501883](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44863501883): API **824 passed, 1 warning**; Web tests/build passed; Native tests/typecheck/Android export passed.
+
+### Transaction and verification limits
+
+- Owner approval + dispatch enqueue share one transaction. The later asynchronous worker Social mutation + effect receipt + task effect state + audit/notification share a separate transaction. A human approval request and a later worker invocation cannot be one cross-time transaction.
+- The source migration is not applied. PostgreSQL verification status is exactly `skipped_by_instruction`.
+- No ENG-P37 branch, Supabase staging, new database, production DB write/DDL, migration application, worker activation or production deployment occurred.
+- CI validates source contracts/builds only. PostgreSQL SQL compilation, RLS/privilege behavior, transaction rollback/commit, concurrency/locking, lease fencing and crash recovery remain unproven at runtime. No PostgreSQL atomicity or exactly-once guarantee is claimed.
+
+### Workstream status and next dependency
+
+- WP-07: `in_progress / acceptance_not_verified`; Social adapter, dispatch and receipt source implementation delivered, PostgreSQL proof skipped by instruction.
+- WP-06: `in_progress`; next canonical work is Auto Reply event consumer, durable event claim, event-to-runtime dispatch, budget/ACL context, moderation and publish lifecycle. The explicit owner-approved Social actions now use WP-07.
+- WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Auth remain independent parallel workstreams. WP-12 remains blocked by its canonical WP-11/economy dependencies. No phase promotion is claimed.
