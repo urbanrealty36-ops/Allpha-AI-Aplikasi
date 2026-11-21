@@ -112,6 +112,9 @@ def test_wp07_social_effect_migration_fences_lease_and_persists_full_evidence():
     ):
         assert "add column if not exists " + field in migration
     assert "v_task.execution_lease_token is distinct from p_lease_token" in migration
+    assert "Lock Social policy -> approval -> task" in migration
+    assert "v_share_id uuid" in migration
+    assert "not (t.state = 'executing' and coalesce(t.effect_outcome,'none') = 'completed')" in migration
     assert "v_task.lease_expires_at <= now()" in migration
     assert "public.decide_agent_social_approval(" in migration
     assert "agent_runtime_effect_idempotency_conflict" in migration

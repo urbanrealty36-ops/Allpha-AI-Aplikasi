@@ -222,6 +222,7 @@ declare
   v_policy public.agent_social_presence_policies%rowtype;
   v_draft public.content_items%rowtype;
   v_dispatch public.agent_runtime_tasks%rowtype;
+  v_agent_id uuid;
 begin
   if (select auth.role()) <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
@@ -230,12 +231,30 @@ begin
     raise exception 'AGENT_SOCIAL_DECISION_INVALID' using errcode = '22023';
   end if;
 
+  -- Lock order is Social policy -> approval -> dispatch task, matching policy
+  -- updates and the worker effect RPC to avoid policy/approval deadlocks.
+  select agent_id into v_agent_id
+  from public.agent_social_action_approvals
+  where id = p_approval_id and owner_user_id = p_owner_user_id
+    and action_type in ('draft_post','draft_comment','draft_reply','suggest_repost','draft_story');
+  if not found then
+    raise exception 'AGENT_SOCIAL_APPROVAL_NOT_FOUND' using errcode = 'P0002';
+  end if;
+
+  select * into v_policy
+  from public.agent_social_presence_policies
+  where owner_user_id = p_owner_user_id and agent_id = v_agent_id
+  for share;
+  if not found or not v_policy.is_enabled or v_policy.revoked_at is not null then
+    raise exception 'AGENT_SOCIAL_POLICY_REVOKED' using errcode = '42501';
+  end if;
+
   select * into v_approval
   from public.agent_social_action_approvals
   where id = p_approval_id and owner_user_id = p_owner_user_id
-    and action_type in ('draft_post','draft_comment','draft_reply','suggest_repost','draft_story')
   for update;
-  if not found then
+  if not found or v_approval.agent_id is distinct from v_agent_id
+     or v_approval.action_type not in ('draft_post','draft_comment','draft_reply','suggest_repost','draft_story') then
     raise exception 'AGENT_SOCIAL_APPROVAL_NOT_FOUND' using errcode = 'P0002';
   end if;
 
@@ -256,12 +275,7 @@ begin
     raise exception 'AGENT_SOCIAL_APPROVAL_ALREADY_DECIDED' using errcode = 'P0001';
   end if;
 
-  select * into v_policy
-  from public.agent_social_presence_policies
-  where owner_user_id = p_owner_user_id and agent_id = v_approval.agent_id
-  for share;
-  if not found or not v_policy.is_enabled or v_policy.revoked_at is not null
-     or not (v_approval.action_type = any(v_policy.allowed_actions)) then
+  if not (v_approval.action_type = any(v_policy.allowed_actions)) then
     raise exception 'AGENT_SOCIAL_POLICY_REVOKED' using errcode = '42501';
   end if;
 
@@ -442,14 +456,23 @@ begin
     raise exception 'AGENT_SOCIAL_EFFECT_COMMAND_INVALID' using errcode = '22023';
   end if;
 
-  -- Lock approval first, matching owner decision/revocation lock order.
+  -- Lock Social policy -> approval -> task. Policy updates use the same order.
+  select * into v_social_policy
+  from public.agent_social_presence_policies
+  where owner_user_id = p_owner_user_id and agent_id = p_agent_id
+  for share;
+  if not found or not v_social_policy.is_enabled or v_social_policy.revoked_at is not null then
+    raise exception 'AGENT_SOCIAL_POLICY_REVOKED' using errcode = '42501';
+  end if;
+
   select * into v_approval
   from public.agent_social_action_approvals
   where id = p_approval_id and owner_user_id = p_owner_user_id
     and agent_id = p_agent_id
   for update;
   if not found or v_approval.status <> 'approved'
-     or v_approval.dispatch_task_id is distinct from p_task_id then
+     or v_approval.dispatch_task_id is distinct from p_task_id
+     or not (v_approval.action_type = any(v_social_policy.allowed_actions)) then
     raise exception 'AGENT_SOCIAL_APPROVAL_NOT_AUTHORIZED' using errcode = '42501';
   end if;
 
@@ -474,16 +497,6 @@ begin
   for share;
   if not found then
     raise exception 'AGENT_RUNTIME_EFFECT_POLICY_NOT_APPROVED' using errcode = '42501';
-  end if;
-
-  select * into v_social_policy
-  from public.agent_social_presence_policies
-  where owner_user_id = p_owner_user_id and agent_id = p_agent_id
-  for share;
-  if not found or not v_social_policy.is_enabled
-     or v_social_policy.revoked_at is not null
-     or not (v_approval.action_type = any(v_social_policy.allowed_actions)) then
-    raise exception 'AGENT_SOCIAL_POLICY_REVOKED' using errcode = '42501';
   end if;
 
   if not exists (
