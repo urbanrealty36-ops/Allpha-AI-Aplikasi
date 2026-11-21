@@ -3889,3 +3889,18 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - Allpha Smoke run [44863773729](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44863773729) on source HEAD `d10d2b5c5e792048b452121a74d52026902947e1` completed successfully: API **824 passed, 1 warning**; Web tests/build passed; Native tests/typecheck/Android export passed.
 - This does not change the verification boundary: PostgreSQL verification remains exactly `skipped_by_instruction`. No Supabase branch/staging, production DB change, migration application, worker activation or deployment occurred. The earlier hourly branch quote/cost-confirmation note is superseded by the instruction to skip ENG-P37 staging; no cost confirmation is requested.
 - WP-07 remains `in_progress / acceptance_not_verified`. The next canonical dependency remains WP-06 Auto Reply event consumer and event-to-runtime integration; WP-11, ENG-P25–P27 and Auth remain independent parallel workstreams.
+
+
+## WP-06 — Agent Social Automation / Auto Reply Runtime (implementation checkpoint 2026-11-21)
+
+**Status: `in_progress` — do not promote.**
+
+Source implementation checkpoint:
+- Canonical WP-06 event inbox is consumed by the existing Agent Runtime worker; event leases, heartbeat, retry/defer, idempotent task dispatch, source ACL, ownership, grant, policy, Skill and approved capability snapshots are implemented for public comments and mentions.
+- Canonical AgentRuntime + Text Generation Model Router execution is implemented with a durable provider effect receipt, pinned context/route/policy snapshots and canonical Credit Ledger reservation/settlement. Per-Agent daily budget reservation is serialized in a source-only RPC that delegates to the existing `credit_ledger_reserve` ledger function.
+- Provider usage settlement references the same idempotent metering record written by the canonical Model Router. Unknown provider outcomes remain pending reconciliation; no blind provider retry or guessed tariff is permitted.
+- Output is held for manual moderation and routed into the existing `request_agent_social_draft` owner-approval lifecycle. Added owner-scoped events/runs/budget API projections.
+
+**Still incomplete / fail-closed:** DM and Live Chat approval/effect-receipt adapter; Messaging context ACL and publishing; Social Knowledge ACL provider; complete Web/Native/Super Admin integration; database migration application and runtime verification. DM/Live Chat event execution is explicitly blocked until the WP-07 Messaging approval/receipt contract is implemented. The daily-credit guard migration remains source-only and requires an approved Credit Policy capability, entitlement and tariff configuration. Do not enable the Social worker or claim production readiness.
+
+**No phase status changes:** WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Authentication remain parallel workstreams.

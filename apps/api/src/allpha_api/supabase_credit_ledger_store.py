@@ -157,6 +157,33 @@ class SupabaseCreditLedgerStore(CreditLedgerTransactionPort):
         })
         return self._receipt(result)
 
+    async def reserve_agent_social_auto_reply(
+        self, command: CreditReservationCommand, *, agent_id: str, daily_budget: int,
+    ) -> ReservationReceipt:
+        """Reserve through the canonical ledger with an atomic per-Agent daily-budget guard."""
+        if not agent_id.strip() or isinstance(daily_budget, bool) or daily_budget <= 0:
+            raise CreditLedgerError("Social auto-reply requires an Agent identity and positive owner daily budget")
+        payload = {
+            "owner_user_id": command.account_id,
+            "agent_id": agent_id,
+            "daily_credit_budget": daily_budget,
+            "idempotency_key": command.idempotency_key,
+            "task_id": command.task_id,
+            "capability_id": command.capability_id,
+            "credits_to_reserve": command.credits_to_reserve,
+            "estimated_usage_units": command.estimated_usage_units,
+            "usage_unit": command.usage_unit,
+            "estimated_cost_microunits": command.estimated_cost_microunits,
+            "cost_unit": command.cost_unit,
+            "credit_scheme_version": command.credit_scheme_version,
+            "tariff_version": command.tariff_version,
+            "entitlement_version": command.entitlement_version,
+            "policy_version": command.policy_version,
+            "policy_approval_reference": command.policy_approval_reference,
+        }
+        result = await self._rpc("credit_ledger_reserve_agent_social_auto_reply", payload)
+        return self._receipt(result)
+
     async def settle(self, command: SettlementCommand) -> ReservationReceipt:
         result = await self._rpc("credit_ledger_settle", {
             "reservation_id": command.reservation_id,

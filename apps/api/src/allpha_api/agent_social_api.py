@@ -1,9 +1,10 @@
 """WP-06 owner-governed Human + AI Agent social presence contracts."""
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,12 +12,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from allpha_api.auth import current_user
 from allpha_api.content_api import _server_db
+from allpha_api.supabase_credit_ledger_store import SupabaseCreditLedgerStore
 
 router = APIRouter(prefix="/v1/agent-social", tags=["agent-social-presence"])
 
 
 def _automation_schema_enabled() -> bool:
     return os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() == "true"
+
+
+def _automation_runtime_enabled() -> bool:
+    return (
+        _automation_schema_enabled()
+        and os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() == "true"
+        and os.getenv("ALLPHA_AGENT_RUNTIME_WORKER_ENABLED", "false").lower() == "true"
+    )
 
 
 def _require_automation_schema() -> None:
@@ -90,8 +100,8 @@ async def get_automation(agent_id: uuid.UUID, user: dict[str, Any] = Depends(cur
     })
     return {"policy": rows[0] if rows else None,
             "event_intake_enabled": bool(rows and rows[0].get("auto_reply_enabled")),
-            "auto_reply_runtime_enabled": False,
-            "runtime_reason": "AGENT_SOCIAL_RUNTIME_DISPATCH_NOT_CONNECTED"}
+            "auto_reply_runtime_enabled": _automation_runtime_enabled(),
+            "runtime_reason": None if _automation_runtime_enabled() else "WP06_SOCIAL_WORKER_OR_RUNTIME_NOT_ACTIVATED"}
 
 
 @router.put("/automation/{agent_id}")
@@ -118,7 +128,124 @@ async def put_automation(agent_id: uuid.UUID, payload: AutomationPolicyWrite,
     if not isinstance(result, dict) or result.get("outcome") != "saved":
         raise HTTPException(503, detail={"code": "AGENT_SOCIAL_AUTOMATION_UNCONFIRMED", "message": "Pengaturan belum dapat dikonfirmasi."})
     return {"policy": result.get("policy"), "event_intake_enabled": result.get("event_intake_enabled") is True,
-            "auto_reply_runtime_enabled": False, "reason": result.get("reason")}
+            "auto_reply_runtime_enabled": _automation_runtime_enabled(), "reason": result.get("reason")}
+
+
+@router.get("/automation/{agent_id}/events")
+async def list_automation_events(agent_id: uuid.UUID, limit: int = 50,
+                                 user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
+    rows = await _server_db("GET", "agent_social_automation_events", params={
+        "select": "id,channel,source_table,source_record_id,source_actor_user_id,status,attempt_count,max_attempts,available_at,runtime_task_id,reason_code,created_at,updated_at",
+        "owner_user_id": "eq." + owner_id, "agent_id": "eq." + str(agent_id),
+        "order": "created_at.desc", "limit": str(max(1, min(limit, 100))),
+    })
+    return {"items": rows or [], "schema_active": True,
+            "runtime_enabled": _automation_runtime_enabled()}
+
+
+@router.get("/automation/{agent_id}/runs")
+async def list_automation_runs(agent_id: uuid.UUID, limit: int = 50,
+                               user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
+    runs = await _server_db("GET", "agent_social_automation_runs", params={
+        "select": "id,owner_user_id,agent_id,runtime_task_id,source_event_id,channel,status,created_at,updated_at",
+        "owner_user_id": "eq." + owner_id, "agent_id": "eq." + str(agent_id),
+        "order": "created_at.desc", "limit": str(max(1, min(limit, 100))),
+    }) or []
+    async def enrich(run: dict[str, Any]) -> dict[str, Any]:
+        task_id = str(run["runtime_task_id"])
+        async def query(table: str, params: dict[str, str]) -> list[dict[str, Any]]:
+            value = await _server_db("GET", table, params=params)
+            return value if isinstance(value, list) else []
+        task_rows, approval_rows, reservation_rows = await asyncio.gather(
+            query("agent_runtime_tasks", {
+                "select": "id,state,error_code,output_payload,trace_id,created_at,completed_at",
+                "id": "eq." + task_id, "owner_user_id": "eq." + owner_id, "limit": "1",
+            }),
+            query("agent_social_action_approvals", {
+                "select": "id,action_type,status,content_id,target_content_id,target_comment_id,requested_at,decided_at",
+                "runtime_task_id": "eq." + task_id, "owner_user_id": "eq." + owner_id, "limit": "5",
+            }),
+            query("credit_reservations", {
+                "select": "id,task_id,capability_id,reserved_credits,settled_credits,state,policy_version,tariff_version,entitlement_version,created_at,updated_at",
+                "task_id": "eq." + task_id, "owner_user_id": "eq." + owner_id, "limit": "5",
+            }),
+        )
+        receipt_rows: list[dict[str, Any]] = []
+        receipt_schema_active = True
+        try:
+            receipt_rows = await query("agent_runtime_effect_receipts", {
+                "select": "id,task_id,step_key,idempotency_key,status,provider_key,action_key,approval_id,external_reference,evidence_reference,started_at,completed_at",
+                "task_id": "eq." + task_id, "owner_user_id": "eq." + owner_id, "limit": "10",
+            })
+        except Exception:
+            receipt_schema_active = False
+        task = task_rows[0] if task_rows else None
+        output = task.get("output_payload") if isinstance(task, dict) and isinstance(task.get("output_payload"), dict) else {}
+        return {
+            "run": run, "task": task,
+            "moderation": output.get("moderation"),
+            "context_snapshot_sha256": output.get("context_snapshot_sha256"),
+            "memory_context_sha256": output.get("memory_context_sha256"),
+            "approvals": approval_rows or [], "credit_reservations": reservation_rows or [],
+            "effect_receipts": receipt_rows, "effect_receipts_schema_active": receipt_schema_active,
+        }
+    items = await asyncio.gather(*(enrich(run) for run in runs if isinstance(run, dict)))
+    return {"items": items, "schema_active": True,
+            "runtime_enabled": _automation_runtime_enabled(),
+            "action_dispatch_enabled": os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true"}
+
+
+@router.get("/automation/{agent_id}/budget")
+async def get_automation_budget(agent_id: uuid.UUID,
+                                user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    owner_id = str(user["id"])
+    await _active_owned_agent(owner_id, str(agent_id))
+    _require_automation_schema()
+    policies = await _server_db("GET", "agent_social_presence_policies", params={
+        "select": "daily_credit_budget,takeover_active,auto_reply_enabled",
+        "owner_user_id": "eq." + owner_id, "agent_id": "eq." + str(agent_id), "limit": "1",
+    })
+    if not policies:
+        raise HTTPException(404, detail={"code": "AGENT_SOCIAL_POLICY_NOT_FOUND"})
+    policy = policies[0]
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    runs = await _server_db("GET", "agent_social_automation_runs", params={
+        "select": "runtime_task_id", "owner_user_id": "eq." + owner_id,
+        "agent_id": "eq." + str(agent_id), "created_at": "gte." + day_start,
+        "limit": "500",
+    }) or []
+    task_ids = list(dict.fromkeys(str(row["runtime_task_id"]) for row in runs if row.get("runtime_task_id")))
+    reservations: list[dict[str, Any]] = []
+    if task_ids:
+        reservations = await _server_db("GET", "credit_reservations", params={
+            "select": "task_id,reserved_credits,settled_credits,state,created_at",
+            "owner_user_id": "eq." + owner_id, "task_id": "in.(" + ",".join(task_ids) + ")",
+            "created_at": "gte." + day_start, "limit": "500",
+        }) or []
+    used = sum(
+        int(row.get("settled_credits") or 0) if row.get("state") == "settled"
+        else int(row.get("reserved_credits") or 0)
+        for row in reservations if row.get("state") in {"reserved", "pending_reconciliation", "settled"}
+    )
+    balance = await SupabaseCreditLedgerStore.from_environment().get_balance(owner_user_id=owner_id)
+    daily_budget = int(policy.get("daily_credit_budget") or 0)
+    return {
+        "daily_budget": daily_budget, "daily_used_or_reserved": used,
+        "daily_remaining": max(0, daily_budget - used),
+        "available_credits": balance["available_credits"],
+        "reserved_credits": balance["reserved_credits"],
+        "takeover_active": bool(policy.get("takeover_active")),
+        "auto_reply_enabled": bool(policy.get("auto_reply_enabled")),
+        "runtime_enabled": _automation_runtime_enabled(),
+        "as_of": balance["as_of"],
+    }
 
 
 @router.post("/takeover/{agent_id}")

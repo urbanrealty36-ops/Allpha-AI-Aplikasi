@@ -11,6 +11,11 @@ import os
 from fastapi import HTTPException
 
 from allpha_api.agent_runtime_api import _execute_native_orchestration_task, _execute_planned_task, _is_native_orchestration_task
+from allpha_api.agent_social_automation_runtime import (
+    execute_agent_social_reply_task, is_agent_social_reply_task,
+    reconcile_social_reply_approvals, run_social_events_once,
+)
+from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
 from allpha_api.agent_runtime_store import AgentRuntimePersistenceError, AgentRuntimeStore
 
 logger = logging.getLogger("allpha.agent_runtime_worker")
@@ -49,6 +54,11 @@ async def run_once(store: AgentRuntimeStore) -> int:
         )
         return 0
     await store.reap_retry_exhaustion()
+    try:
+        await run_social_events_once(store, limit=_batch_size())
+        await reconcile_social_reply_approvals(store, limit=_batch_size())
+    except AgentRuntimePersistenceError:
+        logger.exception("WP-06 Social intake or approval reconciliation unavailable")
     rows = await store.list_runnable_planned_tasks(limit=_batch_size())
     processed = 0
     for row in rows:
@@ -66,7 +76,12 @@ async def run_once(store: AgentRuntimeStore) -> int:
             continue
         # Planned Social effects are reconciled by the lease-owning executor before retry.
         try:
-            if _is_native_orchestration_task(row):
+            if is_agent_social_reply_task(row):
+                await execute_agent_social_reply_task(
+                    store, owner_id, task_id, row,
+                    build_text_generation_router_from_environment(),
+                )
+            elif _is_native_orchestration_task(row):
                 await _execute_native_orchestration_task(store, owner_id, task_id, row)
             else:
                 await _execute_planned_task(store, owner_id, task_id, row)
@@ -76,6 +91,10 @@ async def run_once(store: AgentRuntimeStore) -> int:
             code = str(detail.get("code") or "RUNTIME_TASK_REJECTED")
             if row.get("cancel_requested") is True:
                 logger.info("Runtime task cancellation remains pending; task_id=%s code=%s", task_id, code)
+                processed += 1
+                continue
+            if is_agent_social_reply_task(row) and code == "SOCIAL_PROVIDER_OUTCOME_UNKNOWN":
+                logger.warning("WP-06 provider outcome is unknown; reservation is held for reconciliation; task_id=%s", task_id)
                 processed += 1
                 continue
             latest_getter = getattr(store, "get_task", None)
@@ -102,6 +121,10 @@ async def run_once(store: AgentRuntimeStore) -> int:
         except Exception:
             logger.exception("Unexpected runtime worker failure; task_id=%s", task_id)
             break
+    try:
+        await reconcile_social_reply_approvals(store, limit=_batch_size())
+    except AgentRuntimePersistenceError:
+        logger.exception("WP-06 post-batch approval reconciliation unavailable")
     return processed
 
 
