@@ -125,7 +125,7 @@ def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_exec
         Path(__file__).parents[1] / "supabase" / "source-only-migrations"
         / "20261121120000_wp07_worker_owned_social_effect_dispatch.sql"
     ).read_text().lower()
-    assert "after insert on public.agent_social_action_approvals" in migration
+    assert "before insert on public.agent_social_action_approvals" in migration
     assert "'waiting_for_approval'" in migration
     assert "approve_agent_social_action_for_runtime" in migration
     assert "set state = 'queued'" in migration

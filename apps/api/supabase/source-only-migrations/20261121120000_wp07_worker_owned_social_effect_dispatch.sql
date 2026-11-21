@@ -118,20 +118,23 @@ begin
   returning id into v_dispatch_id;
 
   if v_dispatch_id is null then
-    select id into v_dispatch_id
+    select * into v_source
     from public.agent_runtime_tasks
     where owner_user_id = new.owner_user_id
-      and idempotency_key = 'agent-social-dispatch:' || new.id::text;
+      and idempotency_key = 'agent-social-dispatch:' || new.id::text
+    for update;
+    if not found or v_source.request_fingerprint <> v_fingerprint
+       or v_source.input_payload <> v_plan then
+      raise exception 'AGENT_SOCIAL_DISPATCH_IDEMPOTENCY_CONFLICT' using errcode = '23505';
+    end if;
+    v_dispatch_id := v_source.id;
   end if;
 
   if v_dispatch_id is null then
     raise exception 'AGENT_SOCIAL_DISPATCH_TASK_UNCONFIRMED' using errcode = '40001';
   end if;
 
-  update public.agent_social_action_approvals
-  set dispatch_task_id = v_dispatch_id
-  where id = new.id;
-
+  new.dispatch_task_id := v_dispatch_id;
   return new;
 end;
 $$;
@@ -141,8 +144,10 @@ revoke all on function public.enqueue_agent_social_runtime_dispatch()
 
 drop trigger if exists agent_social_runtime_dispatch_after_insert
   on public.agent_social_action_approvals;
-create trigger agent_social_runtime_dispatch_after_insert
-after insert on public.agent_social_action_approvals
+drop trigger if exists agent_social_runtime_dispatch_before_insert
+  on public.agent_social_action_approvals;
+create trigger agent_social_runtime_dispatch_before_insert
+before insert on public.agent_social_action_approvals
 for each row execute function public.enqueue_agent_social_runtime_dispatch();
 
 create or replace function public.cancel_agent_social_runtime_dispatch()
@@ -218,7 +223,7 @@ begin
   if (select auth.role()) <> 'service_role' then
     raise exception 'service_role_required' using errcode = '42501';
   end if;
-  if p_decision not in ('approve','reject') then
+  if p_decision is null or p_decision not in ('approve','reject') then
     raise exception 'AGENT_SOCIAL_DECISION_INVALID' using errcode = '22023';
   end if;
 
@@ -425,10 +430,11 @@ begin
      or p_step_key is null or p_step_key = ''
      or p_idempotency_key is distinct from p_approval_id::text
      or p_correlation_id is null or p_correlation_id = ''
-     or p_action_key not in ('social.comment','social.reply','social.story_reply')
-     or p_target_reference is null or p_policy_version is null
-     or p_policy_digest !~ '^[a-f0-9]{64}$'
-     or p_input_fingerprint !~ '^[a-f0-9]{64}$' then
+     or p_action_key is null or p_action_key not in ('social.comment','social.reply','social.story_reply')
+     or p_target_reference is null or p_policy_id is null
+     or coalesce(p_policy_version,'') = ''
+     or p_policy_digest is null or p_policy_digest !~ '^[a-f0-9]{64}$'
+     or p_input_fingerprint is null or p_input_fingerprint !~ '^[a-f0-9]{64}$' then
     raise exception 'AGENT_SOCIAL_EFFECT_COMMAND_INVALID' using errcode = '22023';
   end if;
 
