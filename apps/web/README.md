@@ -28,3 +28,8 @@ Railway builds use the service root directory `/apps/web` and the existing Docke
 - The pinned reference UI PRD copies under `assets/aistudio/` are intentionally mirrored by the reference-asset capture workflow and are included in the public asset manifest. The manifest generator allowlists only those exact reference files; other Markdown documents are rejected so private docs cannot be added to `public/` accidentally.
 - No GLB binaries are tracked in this Web public tree. Spatial GLB delivery remains through the canonical Spatial manifest/API and authorized Supabase Storage references; do not copy private or unpublished GLBs into `public/`.
 - There is no custom `basePath` or `assetPrefix`; production public paths resolve from the `https://allpha.web.id` origin.
+
+
+### Runtime asset health
+
+Railway's Web health check uses `/asset_health`. This route performs HEAD requests through the running Next.js HTTP server for the generated asset manifest, icon, and representative Welcome/Cinema/Live/District/Citadel files. It returns 200 only when all required static URLs respond with the expected MIME type; otherwise it returns 503. The Docker build separately verifies the same files exist in the final non-root runner image.

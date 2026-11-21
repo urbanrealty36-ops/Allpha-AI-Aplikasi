@@ -710,3 +710,19 @@ assert.ok(webNextConfig.includes('output: "standalone"'));
 assert.ok(webNextConfig.includes('source: "/assets/:path*"') && webNextConfig.includes("Cache-Control"));
 const assetLayoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 assert.ok(assetLayoutSource.includes('url: "/icon.svg"'), "browser and PWA icon metadata must point at the packaged public icon");
+
+
+// Runtime asset probe is part of the Railway health contract and checks the
+// same public paths through the running Next.js static-file handler.
+const assetHealthRoute = readFileSync(new URL("../app/asset_health/route.ts", import.meta.url), "utf8");
+for (const requiredPath of [
+  "/asset-manifest.json",
+  "/icon.svg",
+  "/assets/slides/slide_welcome_3d_1793022854882.jpg",
+  "/assets/slides/slide_cinema_3d_1793023017033.jpg",
+  "/assets/slides/slide_livestage_3d_1793023043430.jpg",
+  "/assets/menggu3d/district_spatial.jpg",
+  "/assets/menggu3d/landmark_citadel.jpg",
+]) {
+  assert.ok(assetHealthRoute.includes(requiredPath), `runtime asset health probe is missing ${requiredPath}`);
+}
