@@ -717,17 +717,43 @@ async def _settle_social_reservation(
     )
 
 
-async def _task_heartbeat(store: AgentRuntimeStore, owner_id: str, task_id: str,
-                          lease_token: str, task_version: int, stop: asyncio.Event) -> None:
+async def _task_heartbeat(
+    store: AgentRuntimeStore,
+    owner_id: str,
+    task_id: str,
+    lease_token: str,
+    task_version: int,
+    stop: asyncio.Event,
+    lease_lost: asyncio.Event,
+    cancellation_requested: asyncio.Event,
+    *,
+    interval_seconds: float = 15,
+) -> None:
+    """Renew the canonical task lease and surface lease loss/cancellation fail-closed."""
     while not stop.is_set():
         try:
-            await asyncio.wait_for(stop.wait(), timeout=20)
+            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
             return
         except asyncio.TimeoutError:
-            row = await store.heartbeat_task(owner_id, task_id, lease_token, task_version, lease_seconds=_LEASE_SECONDS)
-            if not row:
-                stop.set()
-                return
+            pass
+        if stop.is_set():
+            return
+        try:
+            row = await store.heartbeat_task(
+                owner_id, task_id, lease_token, task_version, lease_seconds=_LEASE_SECONDS,
+            )
+        except asyncio.CancelledError:
+            raise
+        except AgentRuntimePersistenceError:
+            lease_lost.set()
+            logger.exception("WP-06 Agent Runtime task heartbeat failed; execution must stop")
+            return
+        if not row:
+            lease_lost.set()
+            return
+        if row.get("cancel_requested") is True:
+            cancellation_requested.set()
+            return
 
 
 async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: str, task_id: str,
@@ -765,12 +791,57 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
         "owner_user_id": "eq." + owner_id, "runtime_task_id": "eq." + task_id,
     }, body={"status": "running", "updated_at": datetime.now(timezone.utc).isoformat()})
     stop = asyncio.Event()
-    heartbeat = asyncio.create_task(_task_heartbeat(store, owner_id, task_id, lease_token, task_version, stop))
+    lease_lost = asyncio.Event()
+    cancellation_requested = asyncio.Event()
+    heartbeat = asyncio.create_task(_task_heartbeat(
+        store, owner_id, task_id, lease_token, task_version, stop,
+        lease_lost, cancellation_requested,
+    ))
     reservation = None
     lifecycle = None
     approved_policy = None
     provider_started = False
+
+    async def refresh_cancellation_state() -> None:
+        latest = await store.get_task(owner_id, task_id)
+        if latest and latest.get("cancel_requested") is True:
+            cancellation_requested.set()
+
+    async def finish_cancelled(*, provider_usage: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        if lease_lost.is_set():
+            raise AgentRuntimePersistenceError("WP-06 task lease heartbeat was lost; cancellation cannot be committed")
+        await refresh_cancellation_state()
+        if not cancellation_requested.is_set() and claimed.get("cancel_requested") is not True:
+            return None
+        if reservation and lifecycle and approved_policy and not provider_started:
+            await lifecycle.complete(
+                reservation=reservation, outcome=OperationOutcome.FAILED_DEFINITIVE,
+                policy=approved_policy, idempotency_key="social-credit-release:" + task_id,
+                source_event_id="social-generation:" + task_id,
+            )
+        final = await store.finalize_task(
+            owner_id, task_id, lease_token, task_version, state="cancelled",
+            output_payload=({"reason_code": "cancelled_after_generation",
+                             "provider_usage": provider_usage} if provider_usage else None),
+            error_code="cancelled_by_requester",
+            event_log=list(claimed.get("event_log") or []) + [{
+                "state": "cancelled", "at": datetime.now(timezone.utc).isoformat(),
+                "trace_id": snapshot.get("correlation_id"), "reason_code": "cancelled_by_requester",
+            }],
+        )
+        if not final:
+            raise AgentRuntimePersistenceError("WP-06 cancellation could not be durably committed")
+        await store.request("PATCH", "agent_social_automation_runs", params={
+            "owner_user_id": "eq." + owner_id, "runtime_task_id": "eq." + task_id,
+        }, body={"status": "cancelled", "updated_at": datetime.now(timezone.utc).isoformat()})
+        return {"task": final, "idempotent_replay": False}
+
     try:
+        if lease_lost.is_set():
+            raise AgentRuntimePersistenceError("WP-06 task lease was lost before social execution")
+        cancelled = await finish_cancelled()
+        if cancelled:
+            return cancelled
         policy, grant = await _current_policy_and_grant(store, snapshot, owner_id, str(claimed["agent_id"]))
         agent = await store.get_agent(owner_id, str(claimed["agent_id"]))
         skill = await store.get_skill(owner_id, str(claimed["agent_id"]), str(claimed["skill_id"]))
@@ -784,6 +855,11 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
         reservation, lifecycle, approved_policy = await _reserve_social_credits(
             store, snapshot, owner_id, task_id,
         )
+        if lease_lost.is_set():
+            raise AgentRuntimePersistenceError("WP-06 task lease was lost after credit reservation")
+        cancelled = await finish_cancelled()
+        if cancelled:
+            return cancelled
         effect_key = "social-generation:" + task_id
         effect_fingerprint = _sha({
             "task_id": task_id, "event_id": snapshot["correlation_id"],
@@ -847,6 +923,16 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
                 skill_published=True, policy_version=router.policy_version_for("internal"),
                 router=router, request=request, skill_tool_dependencies=(),
             )
+            if lease_lost.is_set():
+                await lifecycle.complete(
+                    reservation=reservation, outcome=OperationOutcome.UNKNOWN, policy=approved_policy,
+                    idempotency_key="social-credit-settle:" + task_id,
+                    source_event_id="social-generation:" + task_id,
+                )
+                await store.mark_unknown_effect(owner_id, task_id)
+                raise AgentRuntimePersistenceError(
+                    "WP-06 task lease was lost during model execution; provider usage requires reconciliation"
+                )
             output_text = response.output_text.strip()
             if not output_text or len(output_text) > int(snapshot["max_message_chars"]):
                 raise AgentSocialEventBlocked("SOCIAL_GENERATED_OUTPUT_INVALID")
@@ -899,6 +985,11 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
             evidence_payload=evidence_payload, actual_credits=actual_credits,
             actual_usage_units=usage_units, usage_unit=str(terms["usage_unit"]),
         )
+        if lease_lost.is_set():
+            raise AgentRuntimePersistenceError("WP-06 task lease was lost after provider metering settlement")
+        cancelled = await finish_cancelled(provider_usage=evidence_payload)
+        if cancelled:
+            return cancelled
         moderator = load_generation_output_moderator()
         if moderator is None:
             raise AgentSocialEventBlocked("SOCIAL_OUTPUT_MODERATOR_UNAVAILABLE")
@@ -920,6 +1011,11 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
             "correlation_id": snapshot["correlation_id"],
             "idempotency_key": snapshot["idempotency_key"],
         }
+        if lease_lost.is_set():
+            raise AgentRuntimePersistenceError("WP-06 task lease was lost before draft finalization")
+        cancelled = await finish_cancelled(provider_usage=evidence_payload)
+        if cancelled:
+            return cancelled
         final = await store.finalize_task(
             owner_id, task_id, lease_token, task_version, state="succeeded",
             output_payload=output_payload, error_code=None,

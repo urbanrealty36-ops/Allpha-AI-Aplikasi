@@ -119,3 +119,41 @@ def test_wp06_event_heartbeat_fails_closed_when_lease_renewal_is_uncertain():
         interval_seconds=0,
     ))
     assert lease_lost.is_set()
+
+
+
+def test_wp06_task_heartbeat_fails_closed_when_lease_renewal_is_uncertain():
+    from allpha_api.agent_social_automation_runtime import _task_heartbeat
+    from allpha_api.agent_runtime_store import AgentRuntimePersistenceError
+
+    class FailingTaskHeartbeatStore:
+        async def heartbeat_task(self, *args, **kwargs):
+            raise AgentRuntimePersistenceError("heartbeat transport unavailable")
+
+    stop = asyncio.Event()
+    lease_lost = asyncio.Event()
+    cancellation_requested = asyncio.Event()
+    asyncio.run(_task_heartbeat(
+        FailingTaskHeartbeatStore(), "owner-1", "task-1", "lease-1", 1,
+        stop, lease_lost, cancellation_requested, interval_seconds=0,
+    ))
+    assert lease_lost.is_set()
+    assert not cancellation_requested.is_set()
+
+
+def test_wp06_task_heartbeat_surfaces_canonical_cancellation_request():
+    from allpha_api.agent_social_automation_runtime import _task_heartbeat
+
+    class CancelledTaskHeartbeatStore:
+        async def heartbeat_task(self, *args, **kwargs):
+            return {"id": "task-1", "cancel_requested": True}
+
+    stop = asyncio.Event()
+    lease_lost = asyncio.Event()
+    cancellation_requested = asyncio.Event()
+    asyncio.run(_task_heartbeat(
+        CancelledTaskHeartbeatStore(), "owner-1", "task-1", "lease-1", 1,
+        stop, lease_lost, cancellation_requested, interval_seconds=0,
+    ))
+    assert cancellation_requested.is_set()
+    assert not lease_lost.is_set()
