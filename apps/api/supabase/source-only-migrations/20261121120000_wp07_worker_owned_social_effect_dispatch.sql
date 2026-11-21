@@ -2,6 +2,40 @@
 -- Source-only: no database changes are applied by this migration file.
 begin;
 
+-- Fail closed if the canonical WP-06 attribution or WP-07 receipt schema is absent.
+do $$
+begin
+  if to_regclass('public.content_comments') is null
+     or to_regclass('public.content_shares') is null
+     or to_regclass('public.agent_runtime_tasks') is null
+     or to_regclass('public.agent_runtime_effect_receipts') is null
+     or to_regclass('public.agent_social_action_approvals') is null then
+    raise exception 'WP07_SOCIAL_DISPATCH_SCHEMA_PREREQUISITE_MISSING';
+  end if;
+
+  if not exists (select 1 from pg_attribute where attrelid='public.content_comments'::regclass and attname='actor_agent_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.content_comments'::regclass and attname='agent_social_approval_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.content_comments'::regclass and attname='agent_disclosure_snapshot' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.content_shares'::regclass and attname='actor_agent_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.content_shares'::regclass and attname='agent_social_approval_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.content_shares'::regclass and attname='agent_disclosure_snapshot' and not attisdropped) then
+    raise exception 'WP06_AGENT_SOCIAL_ATTRIBUTION_MIGRATION_REQUIRED';
+  end if;
+
+  if not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='actor_user_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='owner_user_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='agent_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='target_reference' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='action_key' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='approval_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='correlation_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='provider_key' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid='public.agent_runtime_effect_receipts'::regclass and attname='evidence_reference' and not attisdropped) then
+    raise exception 'WP07_EFFECT_RECEIPT_SCHEMA_PREREQUISITE_MISSING';
+  end if;
+end;
+$$;
+
 alter table public.agent_social_action_approvals
   add column if not exists dispatch_task_id uuid
     references public.agent_runtime_tasks(id) on delete restrict;

@@ -141,6 +141,8 @@ def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_exec
     assert "insert into public.messages" in migration
     assert "effect_completed" in migration
     assert "automation_grant_revoked" in migration
+    assert "WP06_AGENT_SOCIAL_ATTRIBUTION_MIGRATION_REQUIRED" in migration
+    assert "WP07_EFFECT_RECEIPT_SCHEMA_PREREQUISITE_MISSING" in migration
     assert "v_task.execution_lease_token is distinct from p_lease_token" in migration
     assert "agent_runtime_effect_outcome_unknown_no_replay" in migration
     assert "grant execute on function public.execute_agent_social_approval_effect" in migration
