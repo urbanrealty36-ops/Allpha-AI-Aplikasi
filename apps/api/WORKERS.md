@@ -15,7 +15,7 @@ The canonical production target is a dedicated Railway worker service in the exi
 - Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`, root directory `/apps/api`.
 - Build: existing `apps/api/Dockerfile`; start command: `allpha-social-graph-outbox-worker`.
 - Required server-only environment: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or the already-supported `SUPABASE_SECRET_KEY` alias). Optional bounded controls: `SOCIAL_OUTBOX_BATCH_SIZE`, `SOCIAL_OUTBOX_LEASE_SECONDS`, `SOCIAL_OUTBOX_POLL_SECONDS`, `SOCIAL_OUTBOX_MAX_ATTEMPTS`.
-- The inspected Railway API service does not currently expose either service-role key variable name, and no Social Graph worker service exists yet. Therefore this worker is **NOT ACTIVATED**; do not create a non-functional deployment or claim event processing.
+- The inspected Railway API service currently exposes `SUPABASE_ROLE_KEY`, but not `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`. The worker code does not recognize `SUPABASE_ROLE_KEY`, and its actual privilege type is unverified. Do not alias or use it until its service-role/secret scope is confirmed. No Social Graph worker service exists yet. Therefore this worker is **NOT ACTIVATED**; do not create a non-functional deployment or claim event processing.
 - Do not attach a Cron schedule to this polling worker. Postgres lease expiry, bounded retries and dead-letter state provide recovery.
 
 ### Retry, lease and idempotency contract
