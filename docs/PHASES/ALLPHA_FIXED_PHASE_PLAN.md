@@ -3948,6 +3948,17 @@ Source implementation checkpoint:
 - Hardened `_event_heartbeat` in `apps/api/src/allpha_api/agent_social_automation_runtime.py`: heartbeat transport exceptions and an empty/fenced heartbeat response now set an explicit lease-lost signal instead of leaving a failed background task unobserved.
 - `run_social_events_once` now checks that signal before treating dispatch as successful and refuses to issue retry/block transitions after lease ownership becomes uncertain. It stops the current batch and leaves the durable inbox/Agent Runtime idempotency path to reconcile any task created before the lease-loss observation; it does not blindly re-dispatch or mutate a possibly reclaimed event.
 - Added a focused async regression using a failing heartbeat store and zero-delay interval. No provider, DB, queue, ledger or runtime was added.
-- Knowledge retrieval remains fail-closed: the current code requires a server-configured `KnowledgePolicySnapshotProvider`; no approved canonical consent/grant provider or ADR approval was found in the current source. The environment sensitivity allowlist is not used as consent.
+- Knowledge retrieval remains fail-closed: `KnowledgePolicySnapshotProvider` is only an interface and no canonical database implementation is present. ADR-0005 approves the direction to pursue Option C only; its physical schema/provider/migration remains NOT APPROVED pending object-level reconciliation and Privacy/Security + Data Platform review. The environment sensitivity allowlist is not consent.
 - Live Chat remains fail-closed: current ENG-P25 `live_participants` only models `user_id` and human roles. No Agent participant/session grant is available to WP-06. No parallel permission model was added.
 - No database mutation, migration application, worker activation, staging or production deployment. PostgreSQL lease fencing/recovery remains deferred to ENG-P37. WP-06 remains `in_progress`; WP-11, ENG-P25–P27 and Authentication statuses are unchanged.
+
+
+
+## WP-06 source and CI follow-up — 2026-11-22
+
+- Fixed the Web contract mismatch in `apps/web/components/social/AgentSocialPresencePanel.tsx`: the typed `/v1/agent-social/automation` response now includes the backend's `dm_runtime_enabled` and `dm_approval_schema_active` fields. The earlier smoke run failed only at this TypeScript property check; the corrected commit is `914a6f01cab8105eb47418f5eb34907409901a8c`.
+- Allpha Smoke run [44930282634](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44930282634) on `914a6f01cab8105eb47418f5eb34907409901a8c` completed successfully: API `pytest apps/api/tests` **839 passed, 1 warning**; Web `npm test` and `npm run build` passed; Native `npm test`, `npm run typecheck`, and Android `npx expo export --platform android` passed.
+- Read-only Supabase check: `AllphaAiAplikasi-db` is `ACTIVE_HEALTHY`; the applied migration ledger currently ends at `20261115185633`. The WP-06 event-intake/claim, rate-serialization and DM approval forward migrations remain source-only and were not applied.
+- Vercel created production-target deployment records for the two source commits, but all three project deployments for each commit were `CANCELED`; no Vercel production deployment reached READY. No deployment action was invoked.
+- CI validates source/client contracts only. It does not prove PostgreSQL migration compilation, RLS/privilege behavior, concurrent locking, worker execution, lease fencing/recovery or end-to-end runtime behavior.
+- **WP-06 remains `in_progress`; no phase promotion.** Knowledge consent/grant physical provider and ENG-P25 Agent participant authority remain external approval/schema dependencies. WP-11, ENG-P25–P27 and Authentication remain parallel and unchanged.
