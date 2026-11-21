@@ -3,7 +3,7 @@ React Native + Expo prebuild; native application, not a PWA.
 
 ## Configuration
 Set local, uncommitted values:
-- `EXPO_PUBLIC_API_BASE_URL`: canonical FastAPI origin. Android emulator default: `http://10.0.2.2:8000`; iOS simulator default: `http://localhost:8000`. Physical devices need a reachable LAN/HTTPS origin.
+- `EXPO_PUBLIC_API_BASE_URL`: canonical FastAPI origin. Production/EAS builds must use `https://api.allpha.web.id`. Android emulator default for local development: `http://10.0.2.2:8000`; iOS simulator default: `http://localhost:8000`. Physical devices need a reachable LAN/HTTPS origin. The production app falls back to the canonical API domain when this variable is unset.
 - `EXPO_PUBLIC_SUPABASE_URL`
 - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (publishable key only).
 
