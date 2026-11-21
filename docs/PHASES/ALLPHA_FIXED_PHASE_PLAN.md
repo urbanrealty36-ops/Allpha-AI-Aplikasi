@@ -3940,3 +3940,14 @@ Source implementation checkpoint:
 - **Outstanding hard blockers:** (1) Social Knowledge retrieval cannot be activated because ADR-0005 has not approved a physical consent/grant provider and no canonical provider implementation is evidenced; do not bypass it with a sensitivity allowlist. (2) Live Chat remains fail-closed because ENG-P25 currently models Human participants only and exposes no explicit Agent session-participation grant/role; do not create a WP-06-specific participant authority. (3) Cross-domain PostgreSQL/runtime recovery proof and enabled worker remain intentionally deferred by instruction.
 - Web, Native and Super Admin DM/automation projections are present in source; this checkpoint does not claim end-to-end client acceptance. WP-11, ENG-P25–P27 and Authentication remain parallel workstreams.
 - **Next:** obtain the canonical ENG-P25 Agent participant permission contract and ADR-0005 Privacy/Security + Data Platform decision; then extend the existing WP-06 adapters to those approved contracts. Keep all affected runtime/schema feature gates disabled until ordered migrations are applied through the approved release path.
+
+
+
+## WP-06 event lease-loss handling — 2026-11-22
+
+- Hardened `_event_heartbeat` in `apps/api/src/allpha_api/agent_social_automation_runtime.py`: heartbeat transport exceptions and an empty/fenced heartbeat response now set an explicit lease-lost signal instead of leaving a failed background task unobserved.
+- `run_social_events_once` now checks that signal before treating dispatch as successful and refuses to issue retry/block transitions after lease ownership becomes uncertain. It stops the current batch and leaves the durable inbox/Agent Runtime idempotency path to reconcile any task created before the lease-loss observation; it does not blindly re-dispatch or mutate a possibly reclaimed event.
+- Added a focused async regression using a failing heartbeat store and zero-delay interval. No provider, DB, queue, ledger or runtime was added.
+- Knowledge retrieval remains fail-closed: the current code requires a server-configured `KnowledgePolicySnapshotProvider`; no approved canonical consent/grant provider or ADR approval was found in the current source. The environment sensitivity allowlist is not used as consent.
+- Live Chat remains fail-closed: current ENG-P25 `live_participants` only models `user_id` and human roles. No Agent participant/session grant is available to WP-06. No parallel permission model was added.
+- No database mutation, migration application, worker activation, staging or production deployment. PostgreSQL lease fencing/recovery remains deferred to ENG-P37. WP-06 remains `in_progress`; WP-11, ENG-P25–P27 and Authentication statuses are unchanged.

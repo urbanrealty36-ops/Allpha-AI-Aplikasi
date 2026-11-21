@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 
@@ -101,3 +102,20 @@ def test_wp06_event_intake_serializes_rate_limit_count_and_insert():
     assert "p_channel='mentions' and p_source_table<>'content_mentions'" in sql
     assert "p_channel in ('dm','live_chat') and p_source_table<>'messages'" in sql
     assert "on conflict(owner_user_id,agent_id,channel,source_table,source_record_id) do nothing" in sql
+
+
+
+def test_wp06_event_heartbeat_fails_closed_when_lease_renewal_is_uncertain():
+    from allpha_api.agent_social_automation_runtime import _event_heartbeat
+
+    class FailingHeartbeatStore:
+        async def request(self, method, path, *, body):
+            raise RuntimeError("heartbeat transport unavailable")
+
+    stop = asyncio.Event()
+    lease_lost = asyncio.Event()
+    asyncio.run(_event_heartbeat(
+        FailingHeartbeatStore(), "event-1", "claim-1", stop, lease_lost,
+        interval_seconds=0,
+    ))
+    assert lease_lost.is_set()

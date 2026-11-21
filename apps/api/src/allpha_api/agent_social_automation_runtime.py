@@ -78,18 +78,33 @@ async def _one(store: AgentRuntimeStore, table: str, params: dict[str, str]) -> 
     return rows[0] if rows else None
 
 
-async def _event_heartbeat(store: AgentRuntimeStore, event_id: str, claim_token: str,
-                           stop: asyncio.Event) -> None:
+async def _event_heartbeat(
+    store: AgentRuntimeStore,
+    event_id: str,
+    claim_token: str,
+    stop: asyncio.Event,
+    lease_lost: asyncio.Event,
+    *,
+    interval_seconds: float = 15,
+) -> None:
+    """Renew an event lease; an uncertain heartbeat must stop dispatch fail-closed."""
     while not stop.is_set():
         try:
-            await asyncio.wait_for(stop.wait(), timeout=15)
+            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
             return
         except asyncio.TimeoutError:
-            rows = await store.request("POST", "rpc/heartbeat_agent_social_automation_event", body={
-                "p_event_id": event_id, "p_claim_token": claim_token, "p_lease_seconds": 90,
-            })
+            try:
+                rows = await store.request("POST", "rpc/heartbeat_agent_social_automation_event", body={
+                    "p_event_id": event_id, "p_claim_token": claim_token, "p_lease_seconds": 90,
+                })
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                lease_lost.set()
+                logger.exception("WP-06 event lease heartbeat failed; dispatch must stop")
+                return
             if not rows:
-                stop.set()
+                lease_lost.set()
                 return
 
 
@@ -572,20 +587,43 @@ async def run_social_events_once(store: AgentRuntimeStore, *, limit: int = 5) ->
         if not isinstance(event, dict) or not event.get("id"):
             continue
         stop = asyncio.Event()
-        heartbeat = asyncio.create_task(_event_heartbeat(store, str(event["id"]), claim_token, stop))
+        lease_lost = asyncio.Event()
+        heartbeat = asyncio.create_task(
+            _event_heartbeat(store, str(event["id"]), claim_token, stop, lease_lost)
+        )
         try:
             await _dispatch_event(store, event, claim_token, router)
+            if lease_lost.is_set():
+                raise AgentRuntimePersistenceError(
+                    "WP-06 event lease heartbeat was lost during dispatch; event outcome requires reconciliation"
+                )
             dispatched += 1
         except AgentSocialEventDeferred as exc:
+            if lease_lost.is_set():
+                raise AgentRuntimePersistenceError(
+                    "WP-06 event lease was lost; retry transition cannot be trusted"
+                ) from exc
             await _fail_event(store, event, claim_token, exc.reason_code, exc.retry_after_seconds)
         except AgentSocialEventBlocked as exc:
+            if lease_lost.is_set():
+                raise AgentRuntimePersistenceError(
+                    "WP-06 event lease was lost; block transition cannot be trusted"
+                ) from exc
             await _block_event(store, event, claim_token, exc.reason_code)
         except AgentRuntimePersistenceError:
             logger.exception("WP-06 event persistence uncertain; stopping current batch")
             raise
-        except TextGenerationRouterUnavailable:
+        except TextGenerationRouterUnavailable as exc:
+            if lease_lost.is_set():
+                raise AgentRuntimePersistenceError(
+                    "WP-06 event lease was lost; retry transition cannot be trusted"
+                ) from exc
             await _fail_event(store, event, claim_token, "SOCIAL_MODEL_ROUTER_TEMPORARILY_UNAVAILABLE", 120)
-        except Exception:
+        except Exception as exc:
+            if lease_lost.is_set():
+                raise AgentRuntimePersistenceError(
+                    "WP-06 event lease was lost; dispatch outcome requires reconciliation"
+                ) from exc
             logger.exception("WP-06 event dispatch failed; event_id=%s", event.get("id"))
             await _fail_event(store, event, claim_token, "SOCIAL_EVENT_DISPATCH_FAILED", 120)
         finally:
