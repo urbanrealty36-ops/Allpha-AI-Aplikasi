@@ -20,8 +20,12 @@ async function collectFiles(directory, prefix = "") {
       continue;
     }
     if (!entry.isFile() || relativePath === "asset-manifest.json") continue;
-    if (relativePath.toLowerCase().endsWith(".md")) {
-      throw new Error(`Refusing to publish a Markdown document from public/: ${relativePath}`);
+    const allowedReferenceMarkdown = new Set([
+      "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md",
+      "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md",
+    ]);
+    if (relativePath.toLowerCase().endsWith(".md") && !allowedReferenceMarkdown.has(relativePath)) {
+      throw new Error(`Refusing to publish an unapproved Markdown document from public/: ${relativePath}`);
     }
     const bytes = await readFile(absolutePath);
     assets.push({

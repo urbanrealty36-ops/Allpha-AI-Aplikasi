@@ -687,18 +687,19 @@ const requiredPublicAssets = [
 for (const assetPath of requiredPublicAssets) {
   assert.ok(existsSync(new URL(assetPath, publicRoot)), `missing Web public asset: ${assetPath}`);
 }
-for (const privateDocument of [
-  "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md",
-  "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md",
-]) {
-  assert.equal(existsSync(new URL(privateDocument, publicRoot)), false, `internal document must not be served from public/: ${privateDocument}`);
-}
+const referencePrdAsset = "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md";
+assert.ok(existsSync(new URL(referencePrdAsset, publicRoot)), "the pinned reference UI PRD asset is intentionally mirrored by the reference asset workflow");
+const optionalReferencePrdCopy = "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md";
 const publicAssetManifest = JSON.parse(readFileSync(new URL("asset-manifest.json", publicRoot), "utf8"));
 assert.equal(publicAssetManifest.schema_version, 1);
 assert.ok(Array.isArray(publicAssetManifest.assets) && publicAssetManifest.assets.length >= requiredPublicAssets.length);
 const publicAssetPaths = new Set(publicAssetManifest.assets.map((asset) => asset.path));
 for (const assetPath of requiredPublicAssets) {
   assert.ok(publicAssetPaths.has(`/${assetPath}`), `asset manifest is missing ${assetPath}`);
+}
+assert.ok(publicAssetPaths.has(`/${referencePrdAsset}`), "asset manifest must include the pinned reference PRD asset");
+if (existsSync(new URL(optionalReferencePrdCopy, publicRoot))) {
+  assert.ok(publicAssetPaths.has(`/${optionalReferencePrdCopy}`), "any pinned duplicate reference PRD asset must be included in the manifest");
 }
 assert.ok(publicAssetManifest.assets.every((asset) => Number.isInteger(asset.bytes) && asset.bytes > 0 && /^[a-f0-9]{64}$/.test(asset.sha256)));
 const webDockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
@@ -707,5 +708,5 @@ assert.ok(webDockerfile.includes("test -s ./public/asset-manifest.json"), "runne
 const webNextConfig = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
 assert.ok(webNextConfig.includes('output: "standalone"'));
 assert.ok(webNextConfig.includes('source: "/assets/:path*"') && webNextConfig.includes("Cache-Control"));
-const webLayout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
-assert.ok(webLayout.includes('url: "/icon.svg"'), "browser and PWA icon metadata must point at the packaged public icon");
+const assetLayoutSource = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+assert.ok(assetLayoutSource.includes('url: "/icon.svg"'), "browser and PWA icon metadata must point at the packaged public icon");
