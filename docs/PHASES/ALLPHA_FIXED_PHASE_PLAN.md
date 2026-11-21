@@ -3997,5 +3997,7 @@ Source implementation checkpoint:
 
 - Added `apps/web/app/asset_health/route.ts`. The route performs loopback HTTP HEAD requests through the running Next.js server for `/asset-manifest.json`, `/icon.svg`, Welcome/Cinema/Live slide images, and District/Citadel images; it verifies 200 responses and expected MIME types and returns 503 if any asset cannot be served.
 - The smoke test asserts every required path is represented in the runtime probe. Docker build still verifies the files exist in the final image.
-- Railway Web healthcheck is to be moved from `/login` to `/asset_health` after the new deployment, so a green healthcheck now proves the static asset serving path rather than only a rendered login route.
+- Railway Web healthcheck is configured as `/asset_health`; deployment `aafc6037-c478-4944-8a4f-03581e50cabf` completed `SUCCESS` on source commit `6da6dce87248f46033206f67d89efc505d02de32`. The route returns 200 only after seven HEAD probes (asset manifest, icon, Welcome/Cinema/Live slides, District and Citadel images) return 200 with their expected MIME types through the running Next.js server. This verifies runtime static asset serving inside the Railway container; it does not claim external CDN/cache or real-device behavior.
 - This runtime probe verifies local Next.js static delivery; it does not claim external CDN/browser cache or public DNS behavior beyond the Railway service.
+
+- Latest Web build generated the public asset manifest for 49 files; the asset packaging smoke tests, Next.js compile/type validation and final Docker image file-presence checks passed. Existing lint warnings in unrelated application components remain non-blocking.
