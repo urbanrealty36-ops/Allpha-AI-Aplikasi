@@ -332,7 +332,7 @@ async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[s
     return {
         "items": rows or [],
         "action_dispatch_enabled": os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true",
-        "dispatch_blocked_actions": ["draft_post", "draft_comment", "draft_reply", "suggest_repost"],
+        "dispatch_blocked_actions": ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"],
     }
 
 
@@ -353,7 +353,7 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
                                          "message": "Permintaan persetujuan tidak ditemukan."})
     action_type = str(approval_rows[0].get("action_type") or "")
     approval_status = str(approval_rows[0].get("status") or "")
-    dispatch_actions = {"draft_post", "draft_comment", "draft_reply", "suggest_repost"}
+    dispatch_actions = {"draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"}
     if (payload.decision == "approve" and approval_status == "pending" and action_type in dispatch_actions
             and os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() != "true"):
         raise HTTPException(503, detail={

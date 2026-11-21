@@ -564,6 +564,7 @@ async def _execute_planned_task(
                     raise AgentRuntimePersistenceError("runtime execution event was not durably committed")
 
             if getattr(get_tool(str(step["tool_key"])), "execution_class", "pure") == "side_effecting":
+                validate_tool_input(str(step["tool_key"]), inputs)
                 social_result = await _execute_social_approval_step(
                     owner_id=owner_id, row=row, step=step, inputs=inputs,
                     lease_token=lease_token, policy=policy,

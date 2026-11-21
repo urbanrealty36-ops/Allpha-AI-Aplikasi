@@ -15,6 +15,7 @@ from allpha_api.side_effect_adapter_contract import (
     SideEffectCommand,
     SideEffectOutcome,
     validate_side_effect_command,
+    validate_side_effect_outcome,
 )
 
 SOCIAL_PROVIDER_KEY = "allpha.social"
@@ -70,16 +71,18 @@ class AllphaSocialApprovalAdapter:
 
     def _outcome(self, row: dict[str, Any], *, replayed: bool = False) -> SideEffectOutcome:
         if row.get("status") != "completed":
-            return SideEffectOutcome(
+            outcome = SideEffectOutcome(
                 provider_key=self.provider_key,
                 status="unknown",
                 result_payload={"receipt_status": row.get("status"), "replayed": replayed},
             )
+            validate_side_effect_outcome(outcome, expected_provider_key=self.provider_key)
+            return outcome
         completed_at = _timestamp(row.get("completed_at"))
         result = row.get("result_payload")
         if not isinstance(result, dict) or completed_at is None:
             raise SideEffectAdapterContractError("completed Social receipt is missing result or completion timestamp")
-        return SideEffectOutcome(
+        outcome = SideEffectOutcome(
             provider_key=self.provider_key,
             status="completed",
             result_payload={**result, "receipt_id": row.get("id"), "replayed": replayed},
@@ -87,6 +90,8 @@ class AllphaSocialApprovalAdapter:
             evidence_reference=row.get("evidence_reference"),
             completed_at=completed_at,
         )
+        validate_side_effect_outcome(outcome, expected_provider_key=self.provider_key)
+        return outcome
 
     async def execute(self, command: SideEffectCommand) -> SideEffectOutcome:
         result = await _server_db(

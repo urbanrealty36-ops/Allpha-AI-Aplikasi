@@ -156,8 +156,10 @@ def test_already_approved_social_action_can_be_idempotently_replayed_when_flag_i
         calls.append((method, table, body))
         if method == "GET":
             return [{"id": str(CONTENT), "action_type": "draft_comment", "status": "approved"}]
-        assert table == "rpc/decide_agent_social_approval"
-        return {"outcome": "replayed", "approval": {"id": str(CONTENT), "status": "approved"}}
+        assert table == "rpc/approve_agent_social_action_for_runtime"
+        return {"outcome": "replayed", "approval": {"id": str(CONTENT), "status": "approved",
+                "dispatch_task_id": str(TASK)},
+                "execution": {"kind": "pending_agent_runtime", "dispatch_task_id": str(TASK)}}
 
     monkeypatch.setattr(agent_social_api, "_server_db", fake_db)
     monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false")
@@ -166,9 +168,35 @@ def test_already_approved_social_action_can_be_idempotently_replayed_when_flag_i
     ))
     assert result["outcome"] == "replayed"
     assert result["approval_complete"] is True
+    assert result["execution_pending"] is True
+    assert result["dispatch_task_id"] == str(TASK)
     assert len(calls) == 2
 
 
+
+
+def test_social_approval_dispatch_uses_runtime_rpc_for_comment_reply_and_story(monkeypatch):
+    for action in ("draft_comment", "draft_reply", "draft_story"):
+        calls = []
+        async def fake_db(method, table, *, params=None, body=None, prefer=None):
+            calls.append((method, table, body))
+            if method == "GET":
+                return [{"id": str(CONTENT), "action_type": action, "status": "pending"}]
+            return {"outcome": "approved",
+                    "approval": {"id": str(CONTENT), "status": "approved",
+                                 "dispatch_task_id": str(TASK)},
+                    "execution": {"kind": "pending_agent_runtime",
+                                  "dispatch_task_id": str(TASK),
+                                  "next_action": "agent_runtime_worker"},
+                    "dispatch_task": {"id": str(TASK), "state": "queued"}}
+        monkeypatch.setattr(agent_social_api, "_server_db", fake_db)
+        monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "true")
+        result = asyncio.run(agent_social_api.decide_approval(
+            CONTENT, ApprovalDecision(decision="approve"), {"id": str(uuid.uuid4())},
+        ))
+        assert calls[1][1] == "rpc/approve_agent_social_action_for_runtime"
+        assert result["execution_pending"] is True
+        assert result["dispatch_task_id"] == str(TASK)
 
 def test_automation_grant_contract_rejects_duplicate_or_expired_scopes():
     future = datetime.now(timezone.utc) + timedelta(hours=1)

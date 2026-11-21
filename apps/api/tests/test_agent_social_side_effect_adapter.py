@@ -119,6 +119,27 @@ def test_wp07_social_effect_migration_fences_lease_and_persists_full_evidence():
     assert "grant execute on function public.execute_agent_social_approval_effect" in migration
 
 
+
+def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_executes_with_receipt_atomically():
+    migration = (
+        Path(__file__).parents[1] / "supabase" / "source-only-migrations"
+        / "20261121120000_wp07_worker_owned_social_effect_dispatch.sql"
+    ).read_text().lower()
+    assert "after insert on public.agent_social_action_approvals" in migration
+    assert "'waiting_for_approval'" in migration
+    assert "approve_agent_social_action_for_runtime" in migration
+    assert "set state = 'queued'" in migration
+    assert "for update" in migration
+    assert "insert into public.agent_runtime_effect_receipts" in migration
+    assert "insert into public.content_comments" in migration
+    assert "insert into public.messages" in migration
+    assert "effect_completed" in migration
+    assert "v_task.execution_lease_token is distinct from p_lease_token" in migration
+    assert "agent_runtime_effect_outcome_unknown_no_replay" in migration
+    assert "grant execute on function public.execute_agent_social_approval_effect" in migration
+    assert "create trigger agent_social_runtime_dispatch_cancel_after_decision" in migration
+
+
 def test_social_adapter_reconciles_completed_receipt_from_prior_lease_generation(monkeypatch):
     command = _command()
     command = SideEffectCommand(**{**command.__dict__, "actor_user_id": command.owner_user_id})
