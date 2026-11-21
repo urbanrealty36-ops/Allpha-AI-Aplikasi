@@ -913,15 +913,15 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
 
 async def reconcile_social_reply_approvals(store: AgentRuntimeStore, *, limit: int = 10) -> int:
     """Create/replay the canonical owner approval only after a persisted successful Agent Run."""
+    if (os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() != "true"
+            or os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() != "true"
+            or not callable(getattr(store, "request", None))):
+        return 0
     runs = await _rows(store, "agent_social_automation_runs", {
         "select": "id,owner_user_id,agent_id,runtime_task_id,source_event_id,channel,status",
         "status": "in.(queued,running,awaiting_approval)", "order": "created_at.asc",
         "limit": str(max(1, min(limit, 50))),
     })
-    if (os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() != "true"
-            or os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() != "true"
-            or not callable(getattr(store, "request", None))):
-        return 0
     reconciled = 0
     for run in runs:
         if run.get("channel") not in {"comments", "mentions"}:

@@ -409,3 +409,11 @@
 - Tests: authored only; not run in this connector session. No CI result is claimed.
 - Security/operations: no database writes, migration application, worker activation, staging or production deployment. DM/Live Chat message approval is still explicitly blocked until the WP-07 message-specific approval/effect contract is implemented and integrated.
 - Status: WP-06 remains `in_progress`; this fix is not a phase completion claim.
+
+
+## WP-06 worker disabled-schema guard correction — 2026-11-21
+
+- Initial CI for commit `99ceca9a6967f256e547930639432b77e419096e`: API regression tests reported **828 passed, 4 failed**. The four failures were worker contract tests using a FakeStore without the WP-06 REST request method; root cause was approval reconciliation querying WP-06 runs before checking the WP-06 schema/worker feature gates.
+- Corrected `reconcile_social_reply_approvals` to check both feature gates and the store request capability before issuing any WP-06 query. This preserves normal canonical Agent Runtime worker operation when WP-06 remains disabled.
+- The credit-policy regression tests added in the preceding checkpoint were included in the run and did not appear among failures. Follow-up CI is pending.
+- No live database changes, migration application, worker activation, staging or deployment. WP-06 remains `in_progress`.
