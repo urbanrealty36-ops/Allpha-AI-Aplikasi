@@ -513,3 +513,17 @@
 
 **Status:** WP-06 **in_progress**; not complete. WP-11, ENG-P25–P27, and Authentication statuses unchanged.  
 **Next exact work:** obtain approved ADR-0005 physical object reconciliation/provider decision and canonical ENG-P25 Agent participant/session contract; provision the required server-only Supabase secret through Railway's secure variable manager; then perform narrowly scoped DB/worker/approval/publishing verification without duplicate authority or unsafe migration.
+
+
+### 2026-11-22 — Live Supabase object-level blocker evidence (read-only follow-up)
+
+Read-only catalog queries against canonical project `dvdziauyvuhcnqhrrvww` confirmed the concrete gaps below; no SQL mutation was issued.
+
+- `user_consents.consent_type` is constrained to `terms_of_service`, `privacy_policy`, and `product_updates`. There is no knowledge-specific consent type or per-Agent/document purpose scope in this canonical table.
+- `agent_resource_grants.resource_type` is constrained to `community` or `workspace`; its scopes are limited to published content, workspace documents, Agent posts, and comments. It is not a Knowledge object-level grant source.
+- `agent_consumer_grants` includes a `knowledge_public_read` scope, but the row binds requester/owner/Agent version/skill version/runtime policy and is not a per-source/document ACL or owner consent record. Its existence cannot be treated as blanket Knowledge retrieval permission.
+- `agent_knowledge_sources` and `agent_knowledge_chunks` carry owner/Agent/source-version/sensitivity/provenance data and owner-scoped RLS, but the observed schema does not link them to a knowledge-specific consent record or a per-object grant/revocation record. Therefore an ACL-complete `KnowledgePolicySnapshotProvider` cannot safely be derived from the currently observed objects.
+- The live public schema query for tables matching `%live%`, `%participant%`, or `%session%` returned only `agent_runtime_sessions`, `conversation_participants`, and `notification_push_deliveries`; no canonical `live_participants` / Agent Live participant-session authority table is present in the current applied schema.
+- Applied migration history still ends at `20261115185633`; WP-06 source-only event intake/claim/rate/DM approval migrations and the later ENG-P25 participant authority are not represented in the live migration ledger.
+
+**Decision:** keep Knowledge retrieval and Live Chat Agent execution fail-closed. These are concrete schema/contract dependencies, not missing Python adapters that can be filled with inferred columns. ADR-0005 Option C needs the required object-level governance decision and approved migration contract; ENG-P25 must publish its Agent participant/session identity, role/host authority, grant/revocation and lifecycle contract before WP-06 can bind to it.
