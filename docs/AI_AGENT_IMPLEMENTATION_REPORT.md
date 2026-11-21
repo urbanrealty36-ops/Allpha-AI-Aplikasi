@@ -551,3 +551,39 @@ Read-only catalog queries against canonical project `dvdziauyvuhcnqhrrvww` confi
 - API service configuration now uses `/readyz` as its Railway health-check path (timeout 60 seconds). This endpoint probes Supabase Auth health and a zero-row PostgREST request using only the publishable key; the live schema confirms the `anon` role has SELECT privilege on the probed `agent_ownerships` relation, while RLS remains enabled.
 - Redeployment `34e8c555-9eda-487e-b6f3-4d07784b08f5` completed **SUCCESS** after the health-check configuration update. The deployment log includes Uvicorn startup and an observed `GET /healthz` → **200 OK**. The Railway service configuration reports `healthcheckPath=/readyz`; however, the available application log does not independently show a `/readyz` request, so do not claim a separately observed Auth+PostgREST readiness response from that log alone.
 - Both API and Super Admin services remain `SUCCESS` in Railway production; no production Supabase migration or data mutation was performed.
+
+
+---
+
+# 2026-11-22 — Monorepo application-to-Railway service reconciliation
+
+**Repository:** `urbanrealty36-ops/Allpha-AI-Aplikasi` / `main`  
+**Railway project:** `49dccd43-0ebe-4128-8010-164a273d8cad`  
+**Environment:** `production` (`1ae6e7f7-2583-4505-b1b8-a5bdd2eb598a`)
+
+## Canonical app count from AGENTS.md §11–12
+
+There are three client applications and one backend application area:
+- `apps/web` — Web PWA / Next.js.
+- `apps/client` — Native Android/iOS / Expo; EAS distribution, not a persistent Railway service.
+- `apps/super-admin` — Super Admin / Next.js.
+- `apps/api` — the one canonical FastAPI backend.
+
+Master PRD §15 says to begin with a modular backend and separate worker processes only where isolation, scaling, resource profile or operational needs justify them. It does not require one Railway service per domain module or per Dockerfile.
+
+## Railway service map
+
+- `Allpha-AI-Aplikasi` (service ID `65c6c05e-3a72-46cf-a745-745a0187066f`) is the **FastAPI API service**, not a generic app container: source repo/branch `urbanrealty36-ops/Allpha-AI-Aplikasi:main`, root `/apps/api`, Dockerfile `apps/api/Dockerfile`, watch path `/apps/api/**`, port `8080`, health check `/readyz`. Deployment `28a0213c-09b4-42ee-a5ff-c275e88ec3a6` succeeded and Railway observed `GET /readyz` → HTTP 200. The service display name is generic; its root directory and Dockerfile identify its API role.
+- `Allpha-Super-Admin` (service ID `887a3faf-6d6f-40ce-abc5-98f2407a607e`) maps to `apps/super-admin`, Dockerfile `Dockerfile`, port `8080`. Deployment `b0c00927-1f99-463f-b3b5-76b3c32459ff` succeeded and Next.js reported ready.
+- `Allpha-Web` (service ID `014297db-c780-4193-a60f-74581570ccc7`) maps to `apps/web`, Dockerfile `Dockerfile`, watch path `/apps/web/**`, API base URL points to the canonical FastAPI service, and public Supabase URL/publishable key are configured. Deployment is being rebuilt with health check `/login`; `/` redirects (HTTP 307), so it is not a valid Railway health-check path. Build reached successful Next.js compile, lint/type validation and 32 static page generation; final deployment health has not yet passed.
+- `apps/client` is intentionally not a Railway service: it is React Native + Expo, with `build:android`, `build:ios`, and EAS profiles in `apps/client/package.json` / `apps/client/eas.json`.
+
+## Worker images are not missing application services
+
+The API folder contains dedicated worker Dockerfiles for Agent Runtime, Generation, Generation artifact deletion, content scheduler, image media, transcode, provider callback, provider cleanup and retention. These are separate process images, not additional client applications. `apps/api/WORKERS.md` marks these workers as source implemented / activation pending or assigns the bounded Social Graph / lifecycle recovery to the existing Vercel runtime. They are not provisioned as always-on Railway services because their documented schema, server-only secret, scanner/provider, approval and/or runtime-activation prerequisites are not all satisfied. Agent Runtime and Generation worker flags remain disabled. Do not create always-on worker services merely because a Dockerfile exists.
+
+## Hosting-contract contradiction requiring reconciliation
+
+`apps/api/WORKERS.md` and accepted `docs/ADR/ADR-WP04-004-vercel-native-lifecycle-execution.md` still state that the existing Vercel `api-allpha` project (root `apps/api`) is the sole FastAPI/Cron runtime and explicitly say no Railway API/persistent daemon is introduced. The current Product Owner instruction has requested Railway service deployment, and the FastAPI service is now live on Railway as an additional runtime. This is a documented hosting-authority conflict; it must be resolved by updating the ADR/worker deployment contract before enabling duplicate Cron or persistent worker execution. No worker or cron was activated by this service reconciliation.
+
+**Status:** application-to-service mapping: API and Super Admin deployed; Web service created and build underway; Native is EAS, not Railway. This does not change WP-06, WP-11, ENG-P25–P27 or Authentication workstream status.
