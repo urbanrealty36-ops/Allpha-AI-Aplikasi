@@ -41,3 +41,12 @@
 - Resolve WP-04 scheduler ownership before creating any Railway Cron or starting a second scheduler.
 - Configure and verify worker services one by one against their existing entrypoints and dependency gates.
 - Attach the actual production custom domains to Railway and verify traffic before disabling residual Vercel integrations.
+
+
+## Railway routing changes after initial checkpoint
+- Set `NEXT_PUBLIC_API_BASE_URL` on Web and Super Admin to the canonical Railway FastAPI service URL.
+- Set the FastAPI CORS allowlist to include the two expected custom domains and Railway service domains.
+- Added Railway custom domains and received these DNS instructions:
+  - `allpha.web.id`: CNAME `allpha.web.id` → `l8pb0wos.up.railway.app`; TXT `_railway-verify.allpha.web.id` → `railway-verify=61623232d173e516702258706cdd5972a173ac9f0e75e8ae838a94c833ce0d89`.
+  - `adm.allpha.web.id`: CNAME `adm.allpha.web.id` → `lsfgdohu.up.railway.app`; TXT `_railway-verify.adm.allpha.web.id` → `railway-verify=1c17fa6a891adcd14a56e3ab7980781ac8825b96dec3c233c52b0553ea2625f3`.
+- DNS records are not yet changed. Railway reported the Admin CNAME currently points to `1c29ded5c1993149.vercel-dns-017.com`.
