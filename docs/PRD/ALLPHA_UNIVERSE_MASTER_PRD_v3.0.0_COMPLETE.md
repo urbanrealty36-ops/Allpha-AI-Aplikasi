@@ -3687,3 +3687,19 @@ Acceptance requires evidence for:
 9. Actual test, integration and device evidence is recorded. If real user accounts/content are not yet available, source/contract work may proceed and data-dependent checks remain explicitly NOT VERIFIED; no fake users or posts may be seeded into a real environment to manufacture evidence.
 
 **Implementation note:** This addendum specifies intended behavior; it does not claim these endpoints, Story viewer contracts, recommendation inputs or runtime gates are already implemented. Inspect existing APIs and schemas and implement missing behavior under the owning phase. Do not weaken privacy or invent data to close a UI gap.
+
+
+---
+
+# PRODUCT OWNER ARCHITECTURE ADDENDUM — RAILWAY CANONICAL DEPLOYMENT (2026-11-22)
+
+This addendum is an explicit, narrow amendment to the deployment-provider clauses of this consolidated Master PRD. It does not change product scope, domain ownership, database authority, client architecture, security/privacy requirements, or phase numbering.
+
+1. **Railway is the sole Allpha deployment and runtime platform** for `apps/web`, `apps/super-admin`, `apps/api`, background workers, Cron, scheduling and orchestration. Vercel is no longer an authorized deployment or runtime dependency for Allpha.
+2. Existing Railway services are canonical: `Allpha-Web` (`apps/web`), `Allpha-Super-Admin` (`apps/super-admin`), and `Allpha-AI-Aplikasi` (`apps/api`). Native Android/iOS remains Expo/EAS and consumes the Railway FastAPI API.
+3. Supabase `AllphaAiAplikasi-db` remains the only canonical database/Auth/Storage/Realtime platform. FastAPI remains the only business API. No second backend, database, queue, ledger or domain engine may be introduced.
+4. Existing worker entrypoints and Dockerfiles are reused as isolated Railway services. A worker is not activated until its canonical schema/RPC, credentials, policy, provider dependencies, health/readiness and recovery contract are verified.
+5. Cron and event-consumer ownership must be singular. No Vercel Cron/consumer and Railway worker/Cron may process the same lifecycle concurrently.
+6. Vercel configuration, project bindings, domains and integrations are retired only after Railway services, workers, custom domains and traffic cutover are verified. This is a migration sequence, not permission to keep two production runtimes indefinitely.
+7. The accepted architecture record is `docs/ADR/ADR-RAILWAY-001-canonical-runtime-platform.md`; the historical WP-04 Vercel decision is superseded by the updated `docs/ADR/ADR-WP04-004-vercel-native-lifecycle-execution.md`.
+
