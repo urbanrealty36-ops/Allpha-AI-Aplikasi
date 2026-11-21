@@ -48,6 +48,7 @@ class AutomationPolicyWrite(BaseModel):
     quiet_hours: dict[str, Any] = Field(default_factory=dict)
     escalation_rules: dict[str, Any] = Field(default_factory=dict)
     expected_version: int = Field(ge=1)
+    auto_reply_skill_id: uuid.UUID | None = None
 
 
 class TakeoverWrite(BaseModel):
@@ -101,7 +102,7 @@ async def put_automation(agent_id: uuid.UUID, payload: AutomationPolicyWrite,
         raise HTTPException(422, detail={"code": "AGENT_SOCIAL_BLOCKED_TOPIC_INVALID", "message": "Topik yang diblokir harus berisi 1–120 karakter."})
     if any(not scope.strip() or len(scope.strip()) > 120 for scope in payload.allowed_tool_scopes):
         raise HTTPException(422, detail={"code": "AGENT_SOCIAL_TOOL_SCOPE_INVALID", "message": "Tool scope harus berisi 1–120 karakter."})
-    result = await _server_db("POST", "rpc/save_agent_social_automation_policy", body={
+    result = await _server_db("POST", "rpc/save_agent_social_automation_policy_v2", body={
         "p_owner_user_id": owner_id, "p_agent_id": str(agent_id),
         "p_auto_reply_channels": payload.auto_reply_channels,
         "p_blocked_topics": [item.strip() for item in payload.blocked_topics],
@@ -110,11 +111,12 @@ async def put_automation(agent_id: uuid.UUID, payload: AutomationPolicyWrite,
         "p_daily_credit_budget": payload.daily_credit_budget,
         "p_quiet_hours": payload.quiet_hours, "p_escalation_rules": payload.escalation_rules,
         "p_expected_version": payload.expected_version,
+        "p_auto_reply_skill_id": str(payload.auto_reply_skill_id) if payload.auto_reply_skill_id else None,
     })
     if not isinstance(result, dict) or result.get("outcome") != "saved":
         raise HTTPException(503, detail={"code": "AGENT_SOCIAL_AUTOMATION_UNCONFIRMED", "message": "Pengaturan belum dapat dikonfirmasi."})
-    return {"policy": result.get("policy"), "auto_reply_runtime_enabled": False,
-            "reason": result.get("reason")}
+    return {"policy": result.get("policy"), "event_intake_enabled": result.get("event_intake_enabled") is True,
+            "auto_reply_runtime_enabled": False, "reason": result.get("reason")}
 
 
 @router.post("/takeover/{agent_id}")

@@ -3889,3 +3889,14 @@ WP-07 Generation Memory budget reservation — 2026-11-18:
 - Allpha Smoke run [44863773729](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44863773729) on source HEAD `d10d2b5c5e792048b452121a74d52026902947e1` completed successfully: API **824 passed, 1 warning**; Web tests/build passed; Native tests/typecheck/Android export passed.
 - This does not change the verification boundary: PostgreSQL verification remains exactly `skipped_by_instruction`. No Supabase branch/staging, production DB change, migration application, worker activation or deployment occurred. The earlier hourly branch quote/cost-confirmation note is superseded by the instruction to skip ENG-P37 staging; no cost confirmation is requested.
 - WP-07 remains `in_progress / acceptance_not_verified`. The next canonical dependency remains WP-06 Auto Reply event consumer and event-to-runtime integration; WP-11, ENG-P25–P27 and Auth remain independent parallel workstreams.
+
+
+**WP-06 durable Social event intake source checkpoint — 2026-11-21:**
+
+- Added source-only event inbox/claim lifecycle for comments, mentions, DM and Live Chat messages. Live Chat events are derived only from canonical `messages` in an existing ENG-P25 live session conversation with a joined participant; no competing Live Chat domain or event engine was introduced.
+- Added server-side event capture with owner/Agent/grant/policy checks, block-edge exclusion, idempotent source identity, per-channel pacing, durable lease claim, heartbeat, retry/dead-letter, dispatch linkage and cancellation RPCs. Runtime tasks remain owned by `agent_runtime_tasks`; the event inbox is an intake ledger only.
+- Added `AgentSocialEventStore` over canonical `AgentRuntimeStore`, and extended the owner automation policy API to pin a published Skill.
+- **WP-06 remains `in_progress`**. Event-to-runtime task construction, immutable model/policy/permission snapshots, AI Credit Ledger reservation/settlement/release integration, DM/Live Chat owner-approved WP-07 effect receipts, ACL-filtered context, moderation and publish completion are not yet implemented or verified. No tariff is inferred.
+- Source-only migration has not been applied; worker remains disabled; no database mutation, staging, PostgreSQL verification or deployment occurred.
+- WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Authentication continue independently; none is promoted by this checkpoint.
+
