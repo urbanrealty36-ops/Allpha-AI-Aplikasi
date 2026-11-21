@@ -30,7 +30,7 @@ def _command():
 def test_social_adapter_is_a_real_registered_destination_adapter():
     adapter = adapter_module.get_side_effect_adapter("allpha.social")
     assert adapter is adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER
-    assert adapter.supported_actions == {"social.comment", "social.reply", "social.story_reply"}
+    assert adapter.supported_actions == {"social.post_submit", "social.comment", "social.reply", "social.repost", "social.story_reply"}
 
 
 def test_social_adapter_requires_owner_as_actor_and_approval_id_as_idempotency_key():
@@ -132,6 +132,9 @@ def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_exec
     assert "for update" in migration
     assert "insert into public.agent_runtime_effect_receipts" in migration
     assert "insert into public.content_comments" in migration
+    assert "insert into public.content_shares" in migration
+    assert "social.post_submit" in migration
+    assert "social.repost" in migration
     assert "insert into public.messages" in migration
     assert "effect_completed" in migration
     assert "v_task.execution_lease_token is distinct from p_lease_token" in migration

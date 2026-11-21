@@ -47,7 +47,7 @@ begin
     for v_step in
       select item.value
       from jsonb_array_elements(v_steps) as item(value)
-      where item.value->>'tool_key' in ('social.comment','social.reply','social.story_reply')
+      where item.value->>'tool_key' in ('social.post_submit','social.comment','social.reply','social.repost','social.story_reply')
     loop
       v_tool_key := v_step->>'tool_key';
       v_step_key := 'step:' || coalesce(v_step->>'step_id','');

@@ -19,7 +19,7 @@ from allpha_api.side_effect_adapter_contract import (
 )
 
 SOCIAL_PROVIDER_KEY = "allpha.social"
-SOCIAL_ACTION_KEYS = frozenset({"social.comment", "social.reply", "social.story_reply"})
+SOCIAL_ACTION_KEYS = frozenset({"social.post_submit", "social.comment", "social.reply", "social.repost", "social.story_reply"})
 
 
 def _timestamp(value: Any) -> datetime | None:

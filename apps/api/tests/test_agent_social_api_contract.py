@@ -176,7 +176,7 @@ def test_already_approved_social_action_can_be_idempotently_replayed_when_flag_i
 
 
 def test_social_approval_dispatch_uses_runtime_rpc_for_comment_reply_and_story(monkeypatch):
-    for action in ("draft_comment", "draft_reply", "draft_story"):
+    for action in ("draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"):
         calls = []
         async def fake_db(method, table, *, params=None, body=None, prefer=None):
             calls.append((method, table, body))

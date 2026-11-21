@@ -344,9 +344,9 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
                           user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """The canonical database functions are the sole source of truth.
 
-    Comment/reply/Story approval atomically authorizes and queues a lease-fenced
-    WP-07 task; the existing durable worker commits the Social mutation and its
-    effect receipt together. Post/repost keeps its canonical WP-06 workflow.
+    Owner approval atomically authorizes and queues a lease-fenced WP-07 task
+    for post, comment, reply, repost and Story actions. The existing durable
+    worker commits each Social mutation and its effect receipt together.
     """
     approval_rows = await _server_db("GET", "agent_social_action_approvals", params={
         "select": "id,action_type,status",
@@ -364,7 +364,7 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
             "code": "AGENT_SOCIAL_ACTION_SCHEMA_NOT_ACTIVE",
             "message": "Eksekusi aksi sosial Agent menunggu migration dispatch WP-06/WP-07 dan aktivasi backend. Approval belum diproses.",
         })
-    runtime_dispatch_actions = {"draft_comment", "draft_reply", "draft_story"}
+    runtime_dispatch_actions = {"draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"}
     decision_rpc = (
         "rpc/approve_agent_social_action_for_runtime"
         if action_type in runtime_dispatch_actions

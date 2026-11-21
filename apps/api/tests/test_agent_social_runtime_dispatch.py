@@ -3,8 +3,10 @@ from allpha_api.tool_registry import get_tool, validate_tool_input
 
 def test_social_tools_are_registered_as_approval_bound_side_effects():
     expected = {
+        "social.post_submit": "Submit approved Social post for moderation",
         "social.comment": "Publish approved Social comment",
         "social.reply": "Publish approved Social reply",
+        "social.repost": "Publish approved Social repost",
         "social.story_reply": "Send approved Story reply",
     }
     for key, name in expected.items():

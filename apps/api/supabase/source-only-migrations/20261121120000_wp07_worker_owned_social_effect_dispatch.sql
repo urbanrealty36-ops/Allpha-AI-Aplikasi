@@ -34,8 +34,10 @@ declare
   v_trace_id text;
 begin
   v_tool_key := case new.action_type
+    when 'draft_post' then 'social.post_submit'
     when 'draft_comment' then 'social.comment'
     when 'draft_reply' then 'social.reply'
+    when 'suggest_repost' then 'social.repost'
     when 'draft_story' then 'social.story_reply'
     else null
   end;
@@ -230,7 +232,7 @@ begin
   select * into v_approval
   from public.agent_social_action_approvals
   where id = p_approval_id and owner_user_id = p_owner_user_id
-    and action_type in ('draft_comment','draft_reply','draft_story')
+    and action_type in ('draft_post','draft_comment','draft_reply','suggest_repost','draft_story')
   for update;
   if not found then
     raise exception 'AGENT_SOCIAL_APPROVAL_NOT_FOUND' using errcode = 'P0002';
@@ -417,6 +419,7 @@ declare
   v_conversation_id uuid;
   v_message_id uuid;
   v_inserted_id uuid;
+  v_share_id uuid;
   v_target_id uuid;
   v_action_key text;
   v_body text;
@@ -430,7 +433,7 @@ begin
      or p_step_key is null or p_step_key = ''
      or p_idempotency_key is distinct from p_approval_id::text
      or p_correlation_id is null or p_correlation_id = ''
-     or p_action_key is null or p_action_key not in ('social.comment','social.reply','social.story_reply')
+     or p_action_key is null or p_action_key not in ('social.post_submit','social.comment','social.reply','social.repost','social.story_reply')
      or p_target_reference is null or p_policy_id is null
      or coalesce(p_policy_version,'') = ''
      or p_policy_digest is null or p_policy_digest !~ '^[a-f0-9]{64}$'
@@ -493,8 +496,10 @@ begin
   end if;
 
   v_action_key := case v_approval.action_type
+    when 'draft_post' then 'social.post_submit'
     when 'draft_comment' then 'social.comment'
     when 'draft_reply' then 'social.reply'
+    when 'suggest_repost' then 'social.repost'
     when 'draft_story' then 'social.story_reply'
     else null
   end;
@@ -631,7 +636,7 @@ begin
       'parent_comment_id',v_comment.parent_comment_id,
       'agent_id',p_agent_id,'disclosure',v_approval.disclosure_snapshot
     );
-  else
+  elsif p_action_key = 'social.story_reply' then
     if v_approval.target_content_id is null then
       raise exception 'AGENT_SOCIAL_STORY_TARGET_REQUIRED' using errcode = '22023';
     end if;
@@ -690,6 +695,94 @@ begin
       'recipient_user_id',v_story_owner,'agent_id',p_agent_id,
       'disclosure',v_approval.disclosure_snapshot
     );
+  elsif p_action_key = 'social.post_submit' then
+    if v_draft.content_type = 'story'
+       or v_draft.moderation_status not in ('not_submitted','rejected') then
+      raise exception 'AGENT_SOCIAL_POST_CONTENT_TYPE_OR_STATE_INVALID' using errcode = '22023';
+    end if;
+    if btrim(coalesce(v_draft.body,'')) = '' and not exists (
+      select 1 from public.content_media m
+      where m.content_id = v_draft.id and m.owner_id = p_owner_user_id
+    ) then
+      raise exception 'AGENT_SOCIAL_POST_EMPTY' using errcode = '22023';
+    end if;
+    if v_draft.content_type in ('image','video') and not exists (
+      select 1 from public.content_media m
+      where m.content_id = v_draft.id and m.owner_id = p_owner_user_id
+        and m.status = 'ready' and m.scan_status = 'clean'
+        and m.processed_at is not null and jsonb_typeof(m.derivatives) = 'array'
+        and jsonb_array_length(case when jsonb_typeof(m.derivatives) = 'array' then m.derivatives else '[]'::jsonb end) > 0
+    ) then
+      raise exception 'AGENT_SOCIAL_POST_MEDIA_NOT_READY' using errcode = '40001';
+    end if;
+    if exists (
+      select 1 from public.content_media m
+      where m.content_id = v_draft.id and m.owner_id = p_owner_user_id
+        and (m.status <> 'ready' or m.scan_status <> 'clean' or m.processed_at is null
+          or jsonb_typeof(m.derivatives) is distinct from 'array'
+          or jsonb_array_length(case when jsonb_typeof(m.derivatives) = 'array' then m.derivatives else '[]'::jsonb end) = 0)
+    ) then
+      raise exception 'AGENT_SOCIAL_POST_MEDIA_NOT_READY' using errcode = '40001';
+    end if;
+    update public.content_items
+    set status = 'review', moderation_status = 'pending',
+        version = version + 1, updated_at = now()
+    where id = v_draft.id and owner_id = p_owner_user_id
+      and status = 'draft' and version = v_approval.content_version
+    returning * into v_target;
+    if not found then
+      raise exception 'AGENT_SOCIAL_POST_SUBMIT_CONFLICT' using errcode = '40001';
+    end if;
+    v_execution := jsonb_build_object(
+      'kind','post_moderation','content_id',v_target.id,
+      'content_version',v_target.version,'moderation_status',v_target.moderation_status,
+      'next_action','wait_for_moderation'
+    );
+  elsif p_action_key = 'social.repost' then
+    if v_approval.target_content_id is null then
+      raise exception 'AGENT_SOCIAL_REPOST_TARGET_REQUIRED' using errcode = '22023';
+    end if;
+    select * into v_target from public.content_items
+    where id = v_approval.target_content_id and content_type <> 'story'
+      and status = 'published' and moderation_status = 'approved'
+      and deleted_at is null
+    for share;
+    if not found then
+      raise exception 'AGENT_SOCIAL_REPOST_TARGET_NOT_AVAILABLE' using errcode = 'P0002';
+    end if;
+    if v_target.visibility not in ('public','followers') then
+      raise exception 'AGENT_SOCIAL_REPOST_TARGET_NOT_VISIBLE' using errcode = '42501';
+    end if;
+    if exists (
+      select 1 from public.social_edges e
+      where e.status = 'active' and e.edge_type = 'block'
+        and ((e.actor_user_id = p_owner_user_id and e.target_user_id = v_target.owner_id)
+          or (e.actor_user_id = v_target.owner_id and e.target_user_id = p_owner_user_id))
+    ) then
+      raise exception 'AGENT_SOCIAL_REPOST_BLOCKED' using errcode = '42501';
+    end if;
+    if v_target.visibility = 'followers' and not exists (
+      select 1 from public.social_edges e
+      where e.actor_user_id = p_owner_user_id and e.target_user_id = v_target.owner_id
+        and e.edge_type = 'follow' and e.status = 'active'
+    ) then
+      raise exception 'AGENT_SOCIAL_REPOST_TARGET_NOT_VISIBLE' using errcode = '42501';
+    end if;
+    insert into public.content_shares(
+      content_id,actor_user_id,share_target,quote_body,
+      actor_agent_id,agent_social_approval_id,agent_disclosure_snapshot
+    ) values (
+      v_approval.target_content_id,p_owner_user_id,'repost',null,
+      p_agent_id,p_approval_id,v_approval.disclosure_snapshot
+    ) returning id into v_share_id;
+    v_recipient := v_target.owner_id;
+    v_execution := jsonb_build_object(
+      'kind','agent_repost','share_id',v_share_id,
+      'content_id',v_approval.target_content_id,'agent_id',p_agent_id,
+      'disclosure',v_approval.disclosure_snapshot,'next_action','open_repost'
+    );
+  else
+    raise exception 'AGENT_SOCIAL_ACTION_UNSUPPORTED' using errcode = '22023';
   end if;
 
   update public.agent_social_action_approvals
@@ -698,7 +791,7 @@ begin
 
   update public.agent_runtime_effect_receipts
   set status = 'completed', result_payload = v_execution,
-      external_reference = coalesce(v_execution->>'comment_id',v_execution->>'message_id'),
+      external_reference = coalesce(v_execution->>'comment_id',v_execution->>'message_id',v_execution->>'share_id',v_execution->>'content_id'),
       evidence_reference = 'agent_social_action_approvals:' || p_approval_id::text,
       completed_at = now(), updated_at = now()
   where id = v_inserted_id
@@ -728,9 +821,9 @@ begin
       (user_id,category,event_key,title,body,payload,delivery_state)
     values (
       v_recipient,'social_activity','agent-social-action:'||p_approval_id::text,
-      case when p_action_key = 'social.story_reply' then 'Balasan Story baru' else 'Balasan komentar baru' end,
-      case when p_action_key = 'social.story_reply' then 'AI Agent membalas Story Anda melalui pesan.' else 'AI Agent membalas komentar Anda.' end,
-      jsonb_build_object('type',case when p_action_key = 'social.story_reply' then 'story_dm' else 'comment_reply' end,
+      case when p_action_key = 'social.story_reply' then 'Balasan Story baru' when p_action_key = 'social.repost' then 'Konten Anda di-repost oleh AI Agent' else 'Balasan komentar baru' end,
+      case when p_action_key = 'social.story_reply' then 'AI Agent membalas Story Anda melalui pesan.' when p_action_key = 'social.repost' then 'AI Agent membagikan ulang konten Anda dengan atribusi.' else 'AI Agent membalas komentar Anda.' end,
+      jsonb_build_object('type',case when p_action_key = 'social.story_reply' then 'story_dm' when p_action_key = 'social.repost' then 'agent_repost' else 'comment_reply' end,
                          'approval_id',p_approval_id,'agent_id',p_agent_id,
                          'execution',v_execution,'receipt_id',v_receipt.id),
       public.agent_social_notification_state(v_recipient)

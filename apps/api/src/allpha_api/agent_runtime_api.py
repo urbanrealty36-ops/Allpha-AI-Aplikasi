@@ -239,9 +239,11 @@ async def _runtime_lease_heartbeat(
 
 
 _SOCIAL_ACTION_BY_TOOL = {
+    "social.post_submit": "social.post_submit",
     "social.comment": "social.comment",
     "social.reply": "social.reply",
     "social.story_reply": "social.story_reply",
+    "social.repost": "social.repost",
 }
 
 
@@ -264,9 +266,11 @@ async def _execute_social_approval_step(
         raise AgentRuntimeBlocked("owner approval does not belong to this task owner and Agent")
     approval = approvals[0]
     expected_action_type = {
+        "social.post_submit": "draft_post",
         "social.comment": "draft_comment",
         "social.reply": "draft_reply",
         "social.story_reply": "draft_story",
+        "social.repost": "suggest_repost",
     }[action_key]
     if approval.get("action_type") != expected_action_type:
         raise AgentRuntimeBlocked("owner approval action does not match the pinned tool")

@@ -238,8 +238,23 @@ _SOCIAL_STORY_REPLY = ToolDefinition(
 )
 
 
+_SOCIAL_POST_SUBMIT = ToolDefinition(
+    key="social.post_submit", version="1.0.0", name="Submit approved Social post for moderation",
+    description="Submit an existing owner-approved post draft to the canonical moderation workflow.",
+    risk_level="high", execution_class="side_effecting", required_permission_scopes=(),
+    input_schema=_SOCIAL_COMMENT.input_schema, output_schema={"type":"object"},
+    handler=_social_approval_handler,
+)
+_SOCIAL_REPOST = ToolDefinition(
+    key="social.repost", version="1.0.0", name="Publish approved Social repost",
+    description="Create an attributed repost of an existing owner-approved target.",
+    risk_level="high", execution_class="side_effecting", required_permission_scopes=(),
+    input_schema=_SOCIAL_COMMENT.input_schema, output_schema={"type":"object"},
+    handler=_social_approval_handler,
+)
+
 # This immutable mapping is the single in-process source of tool metadata and handlers.
-_TOOL_REGISTRY: dict[str, ToolDefinition] = {tool.key: tool for tool in (_TEXT_NORMALIZE, _TEXT_TRUNCATE, _TEXT_SPLIT, _JSON_PICK, _JSON_MERGE, _SOCIAL_COMMENT, _SOCIAL_REPLY, _SOCIAL_STORY_REPLY)}
+_TOOL_REGISTRY: dict[str, ToolDefinition] = {tool.key: tool for tool in (_TEXT_NORMALIZE, _TEXT_TRUNCATE, _TEXT_SPLIT, _JSON_PICK, _JSON_MERGE, _SOCIAL_POST_SUBMIT, _SOCIAL_COMMENT, _SOCIAL_REPLY, _SOCIAL_REPOST, _SOCIAL_STORY_REPLY)}
 
 
 class UnknownToolError(ValueError):
