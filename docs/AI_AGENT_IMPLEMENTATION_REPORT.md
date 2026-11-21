@@ -587,3 +587,14 @@ The API folder contains dedicated worker Dockerfiles for Agent Runtime, Generati
 `apps/api/WORKERS.md` and accepted `docs/ADR/ADR-WP04-004-vercel-native-lifecycle-execution.md` still state that the existing Vercel `api-allpha` project (root `apps/api`) is the sole FastAPI/Cron runtime and explicitly say no Railway API/persistent daemon is introduced. The current Product Owner instruction has requested Railway service deployment, and the FastAPI service is now live on Railway as an additional runtime. This is a documented hosting-authority conflict; it must be resolved by updating the ADR/worker deployment contract before enabling duplicate Cron or persistent worker execution. No worker or cron was activated by this service reconciliation.
 
 **Status:** application-to-service mapping: API and Super Admin deployed; Web service created and build underway; Native is EAS, not Railway. This does not change WP-06, WP-11, ENG-P25–P27 or Authentication workstream status.
+
+
+### Web PWA Railway deployment — final verified result
+
+- `Allpha-Web` deployment `9b7d1086-ff1b-40ca-8bf7-0cfe364cfec1` from commit `056920a9f37ee8a43451c05488545fdb830f252e` completed **SUCCESS**.
+- Docker build ran the Web package smoke assertions successfully, Next.js 15.5.27 compiled, lint/type validation completed with existing warnings (no build errors), and all 32 static pages were generated.
+- Runtime started successfully: Next.js reported ready in 103 ms on port `8080`.
+- Railway health check `GET /login` succeeded. The root route `/` redirects with HTTP 307, so it was replaced as the health-check target with the direct login route.
+- Public Railway domain: `https://allpha-web-production.up.railway.app`, target port `8080`.
+- The initial Web attempts failed because the first auto-created deployment used Railpack/root context and returned 404, and later Docker deployments used a root redirect as health target (307). Correct Dockerfile/root configuration plus a source commit under `apps/web` caused a fresh build with the corrected health path; the final deployment is successful.
+- Current Railway production service inventory now has three successful application deployments: API `28a0213c-09b4-42ee-a5ff-c275e88ec3a6`, Super Admin `b0c00927-1f99-463f-b3b5-76b3c32459ff`, Web `9b7d1086-ff1b-40ca-8bf7-0cfe364cfec1`. Native remains EAS, not a Railway service.
