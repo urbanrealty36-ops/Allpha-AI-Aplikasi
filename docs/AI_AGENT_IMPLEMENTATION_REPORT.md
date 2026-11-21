@@ -377,3 +377,13 @@
 - WP-07: `in_progress / acceptance_not_verified`; Social adapter, dispatch and receipt source implementation delivered, PostgreSQL proof skipped by instruction.
 - WP-06: `in_progress`; next canonical work is Auto Reply event consumer, durable event claim, event-to-runtime dispatch, budget/ACL context, moderation and publish lifecycle. The explicit owner-approved Social actions now use WP-07.
 - WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Auth remain independent parallel workstreams. WP-12 remains blocked by its canonical WP-11/economy dependencies. No phase promotion is claimed.
+
+
+## WP-07 pending-approval backfill addendum — 2026-11-21
+
+- Source HEAD: `d10d2b5c5e792048b452121a74d52026902947e1`.
+- Added a BEFORE UPDATE hook and a fail-closed backfill for eligible pre-existing pending Agent Social approvals to `20261121120000_wp07_worker_owned_social_effect_dispatch.sql`. Only approvals whose original runtime task is succeeded and whose published Skill and approved Capability contain the mapped action receive a linked waiting-for-approval dispatch task. Unsupported legacy approvals remain pending without a dispatch task; they cannot be approved through the new worker path.
+- New approval inserts and eligible legacy pending approvals now converge on the same canonical task queue, durable worker and receipt transaction. No duplicate queue or worker was added.
+- Allpha Smoke [44863773729](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44863773729) on this source HEAD passed: API **824 passed, 1 warning**; Web tests/build passed; Native tests/typecheck/Android export passed.
+- PostgreSQL verification remains `skipped_by_instruction`; no branch, staging, new database, production DB mutation, migration application, worker activation or deployment was performed. The previous branch-cost confirmation note is superseded; no cost approval is being requested.
+- WP-07 remains `in_progress / acceptance_not_verified`. Next canonical dependency: WP-06 Auto Reply event consumer and event-to-runtime dispatch. WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Auth remain independent parallel workstreams.
