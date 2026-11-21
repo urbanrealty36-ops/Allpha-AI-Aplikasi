@@ -71,8 +71,8 @@ Do not create duplicate worker services for the same entrypoint or add a second 
 ## Current evidence and blockers at acceptance of this ADR
 
 - Railway project `noble-wonder` exists with three production services connected to repository `main`; their latest application deployments were SUCCESS and services were online at inspection.
-- The three service descriptions had no custom domains configured. No custom-domain traffic cutover is evidenced.
-- The Railway API service variable-name inventory did not contain `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `CRON_SECRET`, `CLAMAV_HOST`, or Cloudinary credentials. OAuth values were redacted; no secret values were read. Worker services therefore cannot be truthfully marked activated.
+- Railway now has custom domains attached: `allpha.web.id` → `Allpha-Web` and `adm.allpha.web.id` → `Allpha-Super-Admin`. DNS verification/cutover is still pending; Railway reported the Admin CNAME currently points to `1c29ded5c1993149.vercel-dns-017.com`.
+- The Railway API service variable-name inventory contains `SUPABASE_ROLE_KEY` but not `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`; the code does not recognize `SUPABASE_ROLE_KEY`, and its privilege type is unverified. `CRON_SECRET`, `CLAMAV_HOST` and Cloudinary credentials are also absent. OAuth values were redacted; no secret values were read. Worker services therefore cannot be truthfully marked activated.
 - No worker service exists in the Railway production environment at this checkpoint; only the three application services exist.
 - Supabase migration history ends at `20261115185633`. WP-06 event-intake/claim, DM approval and event-rate serialization migrations are source-only and not applied. Do not activate the WP-06 consumer before canonical schema readiness.
 - ADR-0005 approves the Option C direction only. It does not approve physical knowledge-consent/grant schema or provider. Knowledge retrieval remains fail-closed.
@@ -83,3 +83,11 @@ Do not create duplicate worker services for the same entrypoint or add a second 
 ## Consequences
 
 Railway is the only target for new and migrated Allpha runtime workloads. Source implementations remain reusable, but runtime activation is individually gated. The previous Vercel-specific WP-04 decision is historical and superseded only for deployment/runtime hosting; its security, media scanning, retention and lifecycle invariants remain in force.
+
+
+## Operational update — Railway routing configuration (2026-11-22)
+
+- Set `NEXT_PUBLIC_API_BASE_URL=https://allpha-ai-aplikasi-production.up.railway.app` on both `Allpha-Web` and `Allpha-Super-Admin` Railway services.
+- Set the FastAPI `ALLPHA_CORS_ORIGINS` allowlist to the known production custom origins plus the two Railway Web/Admin service domains.
+- Attached `allpha.web.id` to `Allpha-Web` and `adm.allpha.web.id` to `Allpha-Super-Admin`. Railway requires CNAME + TXT ownership records; DNS has not been changed by this action.
+- The API environment update deployed successfully and its latest deployment is SUCCESS. Web and Super Admin rebuilds are pending at this report update; do not claim their compiled API URL has been verified until those deployments reach SUCCESS.
