@@ -51,3 +51,12 @@
   - `allpha.web.id`: CNAME `allpha.web.id` → `l8pb0wos.up.railway.app`; TXT `_railway-verify.allpha.web.id` → `railway-verify=61623232d173e516702258706cdd5972a173ac9f0e75e8ae838a94c833ce0d89`.
   - `adm.allpha.web.id`: CNAME `adm.allpha.web.id` → `lsfgdohu.up.railway.app`; TXT `_railway-verify.adm.allpha.web.id` → `railway-verify=1c17fa6a891adcd14a56e3ab7980781ac8825b96dec3c233c52b0553ea2625f3`.
 - DNS records are not yet changed. Railway reported the Admin CNAME currently points to `1c29ded5c1993149.vercel-dns-017.com`.
+
+
+## Additional read-only Supabase schema evidence (2026-11-22)
+
+- Applied migration ledger remains at `20261115185633`.
+- Existing objects include `generation_jobs` and `content_schedules`; the canonical Social Graph RPCs `claim_social_graph_events`, `apply_social_graph_event_effect`, and `fail_social_graph_event` are present.
+- Missing from the inspected `public` schema: `agent_social_automation_events`, `agent_social_automation_grants`, `agent_runtime_tool_plans`, `agent_runtime_worker_schema_readiness()`, `agent_task_schedules`, `live_sessions`, `live_participants`, `live_stage_events`, `production_document`, and `cinema_assets`.
+- These findings explain why the WP-06 event consumer, full Agent Runtime worker readiness, Agent schedule worker, Live Chat Agent participation, and parts of the Cinema production workspace cannot be activated. They are not reasons to create parallel tables or bypass the existing migration/release controls.
+- No production DDL, data write, migration application or worker activation was performed.
