@@ -3991,3 +3991,14 @@ Source implementation checkpoint:
 
 
 - **Build correction — 2026-11-22:** the first Railway build exposed a duplicate top-level `webLayout` binding in the appended smoke-test block; renamed the new binding to `assetLayoutSource`. The reference-asset capture workflow also restored the pinned PRD reference file by design, so the public asset manifest now permits only the two exact reference PRD filenames rather than rejecting all Markdown files. The next Railway build is the authoritative result; no completion status is promoted.
+
+
+## Spatial GLB publication and signed-manifest dependency snapshot — 2026-11-22
+
+- Read-only Supabase inventory confirms private Storage bucket `allpha-spatial-assets` exists with 927 objects. `public.spatial_asset_versions` contains 921 GLB records; all 921 referenced objects were found in Storage by bucket/path join.
+- Asset lifecycle distribution: 919 assets are `test_only / pending / unverified`; 1 is `test_only / rejected / unverified`; 1 is `published / approved / verified`. The only published record is category `navigation-fx`.
+- `public.spatial_scene_versions` contains 921 scenes and every scene is `test_only`; there are zero published scenes. The public manifest correctly returns only published scenes with published+approved assets and non-empty license evidence. The separate test manifest requires the dedicated test secret and remains non-public.
+- Railway FastAPI service environment was updated with the verified non-secret `ALLPHA_SPATIAL_ASSET_BUCKET=allpha-spatial-assets`; `apps/api/.env.example` now documents the same value.
+- The Railway API environment still has `SUPABASE_ROLE_KEY` but does not expose `SUPABASE_SERVICE_ROLE_KEY`; the spatial manifest code requires the exact `SUPABASE_SERVICE_ROLE_KEY` name. The privilege type of `SUPABASE_ROLE_KEY` is not verified. Do not alias it, print it, or use it for signing until its role is verified through an approved secret-management path.
+- **No production GLB was promoted.** The 920 test-only assets/scenes remain unavailable to the public renderer until independent rights evidence, moderation review, scene publication and service-role signed URL configuration are completed. This is a real governance gate, not a static-file packaging issue.
+- No migration or production data mutation was performed; phase statuses remain unchanged.
