@@ -3,6 +3,21 @@
 -- execution remains exclusively in agent_runtime_tasks / AgentRuntimeStore.
 begin;
 
+do $
+begin
+  if to_regclass('public.agent_social_automation_grants') is null
+     or to_regclass('public.agent_social_automation_runs') is null
+     or to_regclass('public.agent_social_control_events') is null then
+    raise exception 'WP06_AUTOMATION_TAKEOVER_MIGRATION_REQUIRED';
+  end if;
+  if to_regclass('public.content_comments') is null
+     or to_regclass('public.content_mentions') is null
+     or to_regclass('public.messages') is null
+     or to_regclass('public.agent_runtime_tasks') is null then
+    raise exception 'WP06_SOCIAL_RUNTIME_DOMAIN_PREREQUISITE_MISSING';
+  end if;
+end $;
+
 alter table public.agent_social_presence_policies
   add column if not exists auto_reply_skill_id uuid;
 
@@ -242,13 +257,21 @@ begin
   if not exists(select 1 from public.conversation_participants cp
     where cp.conversation_id=new.conversation_id and cp.user_id=new.sender_user_id
       and cp.participant_type='human') then return new; end if;
-  select exists(select 1 from public.live_sessions s
-    where s.conversation_id=new.conversation_id and s.status='live') into v_live;
+  v_live := false;
+  if to_regclass('public.live_sessions') is not null
+     and to_regclass('public.live_participants') is not null then
+    execute 'select exists(select 1 from public.live_sessions s where s.conversation_id=$1 and s.status=''live'')'
+      into v_live using new.conversation_id;
+  end if;
   if v_live then
-    if not exists(select 1 from public.live_participants p
-      where p.session_id=(select s.id from public.live_sessions s
-        where s.conversation_id=new.conversation_id and s.status='live' limit 1)
-        and p.user_id=new.sender_user_id and p.status='joined') then return new; end if;
+    if not exists(select 1 from public.conversation_participants cp
+      where cp.conversation_id=new.conversation_id and cp.user_id=new.sender_user_id
+        and cp.participant_type='human') then return new; end if;
+    if to_regclass('public.live_participants') is not null then
+      execute 'select exists(select 1 from public.live_participants p join public.live_sessions s on s.id=p.session_id where s.conversation_id=$1 and s.status=''live'' and p.user_id=$2 and p.status=''joined'')'
+        into v_live using new.conversation_id,new.sender_user_id;
+      if not v_live then return new; end if;
+    end if;
     v_channel := 'live_chat';
   else
     if not exists(select 1 from public.conversations c
