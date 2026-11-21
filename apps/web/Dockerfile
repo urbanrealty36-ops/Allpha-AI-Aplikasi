@@ -1,7 +1,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -20,9 +20,18 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nextjs /app/public ./public
+RUN test -s ./public/icon.svg \
+    && test -s ./public/asset-manifest.json \
+    && test -s ./public/assets/slides/slide_welcome_3d_1793022854882.jpg \
+    && test -s ./public/assets/slides/slide_cinema_3d_1793023017033.jpg \
+    && test -s ./public/assets/slides/slide_livestage_3d_1793023043430.jpg \
+    && test -s ./public/assets/menggu3d/district_spatial.jpg \
+    && test -s ./public/assets/menggu3d/landmark_citadel.jpg
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]

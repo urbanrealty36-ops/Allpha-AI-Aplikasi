@@ -19,3 +19,12 @@ npm run test && npm run build
 ```
 
 Railway builds use the service root directory `/apps/web` and the existing Dockerfile. The public API base URL is a build-time Next.js setting; rebuild the Web service after changing it.
+
+
+## Static asset delivery
+
+- The production Docker runner copies the complete sanitized `public/` directory beside the Next.js standalone server. Public image/icon paths remain same-origin under `/assets/*` and `/icon.svg`; `/_next/static/*` is copied from the generated Next build and uses Next's immutable hashed-asset cache behavior.
+- `npm run test` generates `public/asset-manifest.json` with sorted public paths, byte sizes and SHA-256 digests, then verifies the required slide/district assets and the Docker runtime copy contract.
+- Internal Master PRD markdown copies are not public assets and are excluded from `public/`.
+- No GLB binaries are tracked in this Web public tree. Spatial GLB delivery remains through the canonical Spatial manifest/API and authorized Supabase Storage references; do not copy private or unpublished GLBs into `public/`.
+- There is no custom `basePath` or `assetPrefix`; production public paths resolve from the `https://allpha.web.id` origin.

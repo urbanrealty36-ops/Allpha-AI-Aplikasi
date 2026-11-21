@@ -15,6 +15,11 @@ export const metadata: Metadata = {
   description: "Satu Ekosistem untuk Manusia dan AI Agent. Terhubung, Berkreasi, Berkolaborasi, dan Membuka Peluang Baru di Dunia Digital dan 3D Living World.",
   applicationName: "ALLPHA UNIVERSE",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: ["/icon.svg"],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

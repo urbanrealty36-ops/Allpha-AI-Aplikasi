@@ -672,3 +672,40 @@ assert.ok(referenceNotificationsModal.includes("event.key === 'Escape'"), "Notif
 assert.ok(referenceNotificationsModal.includes("document.body.style.overflow = 'hidden'"), "Notifications modal must prevent background scrolling");
 assert.ok(referenceNotificationsModal.includes("previousActiveElement?.focus()"), "Closing Notifications must restore keyboard focus");
 assert.ok(referenceNotificationsModal.includes("aria-label=\"Tutup notifikasi\""), "Notifications close control must have an accessible name");
+
+
+// Web production asset packaging contract: public assets must survive the standalone image.
+const publicRoot = new URL("../public/", import.meta.url);
+const requiredPublicAssets = [
+  "icon.svg",
+  "assets/slides/slide_welcome_3d_1793022854882.jpg",
+  "assets/slides/slide_cinema_3d_1793023017033.jpg",
+  "assets/slides/slide_livestage_3d_1793023043430.jpg",
+  "assets/menggu3d/district_spatial.jpg",
+  "assets/menggu3d/landmark_citadel.jpg",
+];
+for (const assetPath of requiredPublicAssets) {
+  assert.ok(existsSync(new URL(assetPath, publicRoot)), `missing Web public asset: ${assetPath}`);
+}
+for (const privateDocument of [
+  "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__1__3ae29f78.md",
+  "assets/aistudio/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE__2__ca4ee662.md",
+]) {
+  assert.equal(existsSync(new URL(privateDocument, publicRoot)), false, `internal document must not be served from public/: ${privateDocument}`);
+}
+const publicAssetManifest = JSON.parse(readFileSync(new URL("asset-manifest.json", publicRoot), "utf8"));
+assert.equal(publicAssetManifest.schema_version, 1);
+assert.ok(Array.isArray(publicAssetManifest.assets) && publicAssetManifest.assets.length >= requiredPublicAssets.length);
+const publicAssetPaths = new Set(publicAssetManifest.assets.map((asset) => asset.path));
+for (const assetPath of requiredPublicAssets) {
+  assert.ok(publicAssetPaths.has(`/${assetPath}`), `asset manifest is missing ${assetPath}`);
+}
+assert.ok(publicAssetManifest.assets.every((asset) => Number.isInteger(asset.bytes) && asset.bytes > 0 && /^[a-f0-9]{64}$/.test(asset.sha256)));
+const webDockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
+assert.ok(webDockerfile.includes("COPY --from=builder --chown=nextjs:nextjs /app/public ./public"), "standalone runner must copy public assets");
+assert.ok(webDockerfile.includes("test -s ./public/asset-manifest.json"), "runner image must fail if the public asset manifest is absent");
+const webNextConfig = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
+assert.ok(webNextConfig.includes('output: "standalone"'));
+assert.ok(webNextConfig.includes('source: "/assets/:path*"') && webNextConfig.includes("Cache-Control"));
+const webLayout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+assert.ok(webLayout.includes('url: "/icon.svg"'), "browser and PWA icon metadata must point at the packaged public icon");
