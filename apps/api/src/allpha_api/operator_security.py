@@ -358,9 +358,11 @@ async def get_agent_social_governance(
     limit: int = 100,
     operator: dict[str, Any] = Depends(require_operator_scope("platform:security.audit.read")),
 ) -> dict[str, Any]:
-    """Read-only governance snapshot; draft bodies and private message content are never exposed."""
+    """Read-only, privacy-redacted Social governance projection across canonical domains."""
     bounded_limit = min(max(1, limit), 100)
     automation_active = os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() == "true"
+    dm_approval_active = os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() == "true"
+    dispatch_active = os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true"
     policy_fields = (
         "id,owner_user_id,agent_id,allowed_actions,approval_mode,disclosure_text,is_enabled,version,updated_at,"
         "auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,"
@@ -369,45 +371,148 @@ async def get_agent_social_governance(
         if automation_active else
         "id,owner_user_id,agent_id,allowed_actions,approval_mode,disclosure_text,is_enabled,version,updated_at"
     )
-    policies = await privileged_rest_request(
-        "GET", "agent_social_presence_policies",
-        params={"select": policy_fields, "order": "updated_at.desc", "limit": str(bounded_limit)},
-    )
-    approvals = await privileged_rest_request(
-        "GET", "agent_social_action_approvals",
-        params={"select": "id,owner_user_id,agent_id,action_type,status,content_id,target_content_id,target_comment_id,requested_at,decided_at,decided_by,execution_result",
-                "order": "requested_at.desc", "limit": str(bounded_limit)},
+    approval_fields = "id,owner_user_id,agent_id,action_type,status,content_id,target_content_id,target_comment_id,requested_at,decided_at,decided_by,execution_result"
+    if dm_approval_active:
+        approval_fields += ",target_conversation_id,target_message_id"
+    if dispatch_active:
+        approval_fields += ",dispatch_task_id"
+    policies, approvals = await asyncio.gather(
+        privileged_rest_request(
+            "GET", "agent_social_presence_policies",
+            params={"select": policy_fields, "order": "updated_at.desc", "limit": str(bounded_limit)},
+        ),
+        privileged_rest_request(
+            "GET", "agent_social_action_approvals",
+            params={"select": approval_fields, "order": "requested_at.desc", "limit": str(bounded_limit)},
+        ),
     )
     result: dict[str, Any] = {
         "policies": policies or [], "approvals": approvals or [],
         "automation_schema_active": automation_active,
+        "dm_approval_schema_active": dm_approval_active,
+        "dispatch_schema_active": dispatch_active,
+        "runtime_enabled": (
+            automation_active
+            and os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() == "true"
+            and os.getenv("ALLPHA_AGENT_RUNTIME_WORKER_ENABLED", "false").lower() == "true"
+            and dispatch_active
+        ),
         "control_events": [], "automation_grants": [], "automation_runs": [],
+        "automation_events": [], "runtime_tasks": [], "credit_reservations": [],
+        "effect_receipts": [], "effect_receipts_schema_active": False,
+        "automation_budgets": [],
     }
-    if automation_active:
-        control_events, grants, runs = await asyncio.gather(
+    if not automation_active:
+        return result
+
+    control_events, grants, runs, events = await asyncio.gather(
+        privileged_rest_request(
+            "GET", "agent_social_control_events",
+            params={"select": "id,owner_user_id,agent_id,policy_id,event_type,actor_user_id,metadata,created_at",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+        privileged_rest_request(
+            "GET", "agent_social_automation_grants",
+            params={"select": "id,owner_user_id,agent_id,granted_scopes,policy_version,status,expires_at,granted_by,granted_at,revoked_at,revoke_reason",
+                    "order": "granted_at.desc", "limit": str(bounded_limit)},
+        ),
+        privileged_rest_request(
+            "GET", "agent_social_automation_runs",
+            params={"select": "id,owner_user_id,agent_id,runtime_task_id,source_event_id,channel,status,created_at,updated_at",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+        privileged_rest_request(
+            "GET", "agent_social_automation_events",
+            params={"select": "id,owner_user_id,agent_id,channel,source_table,source_record_id,status,attempt_count,max_attempts,available_at,runtime_task_id,reason_code,created_at,updated_at",
+                    "order": "created_at.desc", "limit": str(bounded_limit)},
+        ),
+    )
+    result.update({
+        "control_events": control_events or [], "automation_grants": grants or [],
+        "automation_runs": runs or [], "automation_events": events or [],
+    })
+
+    task_ids = list(dict.fromkeys(
+        str(row["runtime_task_id"]) for row in (runs or []) if row.get("runtime_task_id")
+    ))
+    task_rows: list[dict[str, Any]] = []
+    reservation_rows: list[dict[str, Any]] = []
+    if task_ids:
+        task_filter = "in.(" + ",".join(task_ids) + ")"
+        task_rows, reservation_rows = await asyncio.gather(
             privileged_rest_request(
-                "GET", "agent_social_control_events",
-                params={"select": "id,owner_user_id,agent_id,policy_id,event_type,actor_user_id,metadata,created_at",
-                        "order": "created_at.desc", "limit": str(bounded_limit)},
+                "GET", "agent_runtime_tasks",
+                params={"select": "id,owner_user_id,agent_id,state,trace_id,error_code,created_at,updated_at,completed_at,output_payload",
+                        "id": task_filter, "limit": str(min(500, bounded_limit * 5))},
             ),
             privileged_rest_request(
-                "GET", "agent_social_automation_grants",
-                params={"select": "id,owner_user_id,agent_id,granted_scopes,policy_version,status,expires_at,granted_by,granted_at,revoked_at,revoke_reason",
-                        "order": "granted_at.desc", "limit": str(bounded_limit)},
-            ),
-            privileged_rest_request(
-                "GET", "agent_social_automation_runs",
-                params={"select": "id,owner_user_id,agent_id,runtime_task_id,source_event_id,channel,status,created_at,updated_at",
-                        "order": "created_at.desc", "limit": str(bounded_limit)},
+                "GET", "credit_reservations",
+                params={"select": "id,owner_user_id,task_id,capability_id,reserved_credits,settled_credits,state,policy_version,tariff_version,entitlement_version,created_at,updated_at",
+                        "task_id": task_filter, "limit": str(min(500, bounded_limit * 5))},
             ),
         )
-        result.update({
-            "control_events": control_events or [],
-            "automation_grants": grants or [],
-            "automation_runs": runs or [],
-        })
-    return result
+    result["runtime_tasks"] = [
+        {
+            "id": row.get("id"), "owner_user_id": row.get("owner_user_id"),
+            "agent_id": row.get("agent_id"), "state": row.get("state"),
+            "trace_id": row.get("trace_id"), "error_code": row.get("error_code"),
+            "created_at": row.get("created_at"), "updated_at": row.get("updated_at"),
+            "completed_at": row.get("completed_at"),
+            "moderation": (row.get("output_payload") or {}).get("moderation")
+                if isinstance(row.get("output_payload"), dict) else None,
+            "context_snapshot_sha256": (row.get("output_payload") or {}).get("context_snapshot_sha256")
+                if isinstance(row.get("output_payload"), dict) else None,
+            "memory_context_sha256": (row.get("output_payload") or {}).get("memory_context_sha256")
+                if isinstance(row.get("output_payload"), dict) else None,
+        }
+        for row in (task_rows or []) if isinstance(row, dict)
+    ]
+    result["credit_reservations"] = reservation_rows or []
 
+    if dispatch_active:
+        dispatch_ids = list(dict.fromkeys(
+            str(row["dispatch_task_id"]) for row in (approvals or []) if row.get("dispatch_task_id")
+        ))
+        if dispatch_ids:
+            try:
+                receipts = await privileged_rest_request(
+                    "GET", "agent_runtime_effect_receipts",
+                    params={"select": "id,task_id,step_key,idempotency_key,status,owner_user_id,agent_id,approval_id,provider_key,action_key,external_reference,evidence_reference,started_at,completed_at,updated_at",
+                            "task_id": "in.(" + ",".join(dispatch_ids) + ")",
+                            "order": "started_at.desc", "limit": str(min(500, bounded_limit * 5))},
+                )
+                result["effect_receipts"] = receipts or []
+                result["effect_receipts_schema_active"] = True
+            except Exception:
+                logger.exception("WP-06 governance effect receipt projection unavailable")
+
+    utc_day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    agent_for_task = {str(row["runtime_task_id"]): str(row["agent_id"])
+                      for row in (runs or []) if row.get("runtime_task_id") and row.get("agent_id")}
+    used_by_agent: dict[str, int] = {}
+    for row in reservation_rows or []:
+        agent_id = agent_for_task.get(str(row.get("task_id") or ""))
+        if not agent_id or not row.get("created_at"):
+            continue
+        try:
+            created = datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if created < utc_day_start or row.get("state") not in {"reserved", "pending_reconciliation", "settled"}:
+            continue
+        amount = int(row.get("settled_credits") or 0) if row.get("state") == "settled" else int(row.get("reserved_credits") or 0)
+        used_by_agent[agent_id] = used_by_agent.get(agent_id, 0) + amount
+    result["automation_budgets"] = [
+        {
+            "owner_user_id": policy.get("owner_user_id"), "agent_id": policy.get("agent_id"),
+            "daily_budget": int(policy.get("daily_credit_budget") or 0),
+            "daily_used_or_reserved": used_by_agent.get(str(policy.get("agent_id")), 0),
+            "daily_remaining": max(0, int(policy.get("daily_credit_budget") or 0) - used_by_agent.get(str(policy.get("agent_id")), 0)),
+            "takeover_active": bool(policy.get("takeover_active")),
+        }
+        for policy in (policies or []) if isinstance(policy, dict) and policy.get("auto_reply_enabled")
+    ]
+    return result
 
 @router.get("/operator/audit", name="get_operator_audit")
 async def get_operator_audit(

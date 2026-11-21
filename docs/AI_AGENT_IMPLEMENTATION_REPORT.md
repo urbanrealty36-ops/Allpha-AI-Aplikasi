@@ -417,3 +417,22 @@
 - Corrected `reconcile_social_reply_approvals` to check both feature gates and the store request capability before issuing any WP-06 query. This preserves normal canonical Agent Runtime worker operation when WP-06 remains disabled.
 - The credit-policy regression tests added in the preceding checkpoint were included in the run and did not appear among failures. Follow-up CI is pending.
 - No live database changes, migration application, worker activation, staging or deployment. WP-06 remains `in_progress`.
+
+
+## WP-06 DM owner-approval vertical slice — 2026-11-21
+
+### Source implementation added
+- `apps/api/src/allpha_api/agent_social_automation_runtime.py`: DM event-to-Agent Runtime path, bounded participant-only conversation history, current-message freshness check, DM approval-schema feature gate, canonical message-draft RPC, and DM channel mapping to the approved `social.reply` capability. The earlier approved credit-policy ceiling preflight defect remains fixed.
+- `apps/api/src/allpha_api/agent_runtime_api.py` and `agent_social_side_effect_adapter.py`: owner-approved DM target is represented as `conversation:<uuid>`; the canonical Social adapter routes it to the DM effect RPC while retaining the same WP-07 lease/receipt contract.
+- `apps/api/src/allpha_api/messaging_api.py`: owner-enabled DM Auto Reply uses the durable WP-06 inbox and does not also execute the legacy inline Consumer generation path. This prevents duplicate model calls and double billing. If the DM approval schema/event is unavailable, the path returns an explicit unavailable state rather than falling back to inline generation.
+- `apps/api/src/allpha_api/agent_social_api.py`: DM target fields are returned only behind the DM migration feature gate; run projection is sanitized to expose state/moderation/credit/receipt metadata rather than raw generated output.
+- `apps/api/src/allpha_api/operator_security.py`: Super Admin read-only governance projection now includes event inbox, Runtime state, moderation metadata, Credit Ledger reservations, WP-07 effect receipts and per-Agent daily budget without exposing private message bodies.
+- `apps/api/supabase/source-only-migrations/20261121160000_wp06_dm_message_approval_adapter.sql`: extends existing approvals and messages, binds actor/conversation/source-message, enforces DM ACL and freshness, creates a private draft awaiting owner approval, executes the approved message under a fenced Runtime lease, persists disclosure attribution and a canonical WP-07 effect receipt, and makes the effect idempotent. No new queue, ledger, conversation or approval domain is introduced.
+- Web: Agent Social panel and Messages UI now show DM approval target, runtime/event/run/budget/receipt state and Agent disclosure attribution.
+- Native: Agent Social controls now show event/run/budget/receipt state, DM target and DM runtime/schema status; Live Chat is disabled pending ENG-P25 session permission.
+- Super Admin: Agent Social audit view now shows durable events, Runtime/moderation, credit reservations, effect receipts and budgets.
+
+### Verification and remaining gaps
+- Focused tests were authored for DM context/approval contract, DM effect RPC routing, canonical Messaging disclosure projection and the earlier credit-policy loader fix. **They have not been run here; no CI pass is claimed for this uncommitted source batch.**
+- Migration remains source-only and unapplied; DM feature gate must remain off until the migration is applied through the canonical release process. No database mutation, worker activation, staging or production deployment.
+- Live Chat remains fail-closed pending explicit Agent session-participation authorization in ENG-P25. WP-06 remains `in_progress`; no phase promotion. WP-11, ENG-P25–P27 and Authentication remain parallel workstreams.

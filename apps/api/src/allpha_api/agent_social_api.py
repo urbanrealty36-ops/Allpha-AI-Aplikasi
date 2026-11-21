@@ -93,15 +93,20 @@ async def get_automation(agent_id: uuid.UUID, user: dict[str, Any] = Depends(cur
     await _active_owned_agent(owner_id, str(agent_id))
     if not _automation_schema_enabled():
         return {"policy": None, "auto_reply_runtime_enabled": False,
+                "dm_approval_schema_active": False,
                 "runtime_reason": "AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE"}
     rows = await _server_db("GET", "agent_social_presence_policies", params={
         "select": "id,agent_id,version,auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,max_replies_per_minute,daily_credit_budget,quiet_hours,escalation_rules,owner_approval_required,output_moderation_required,takeover_active,takeover_started_at,automation_version,auto_reply_skill_id",
         "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
     })
+    dm_schema_active = os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() == "true"
+    runtime_enabled = _automation_runtime_enabled()
     return {"policy": rows[0] if rows else None,
             "event_intake_enabled": bool(rows and rows[0].get("auto_reply_enabled")),
-            "auto_reply_runtime_enabled": _automation_runtime_enabled(),
-            "runtime_reason": None if _automation_runtime_enabled() else "WP06_SOCIAL_WORKER_OR_RUNTIME_NOT_ACTIVATED"}
+            "auto_reply_runtime_enabled": runtime_enabled,
+            "dm_approval_schema_active": dm_schema_active,
+            "dm_runtime_enabled": runtime_enabled and dm_schema_active,
+            "runtime_reason": None if runtime_enabled else "WP06_SOCIAL_WORKER_OR_RUNTIME_NOT_ACTIVATED"}
 
 
 @router.put("/automation/{agent_id}")
@@ -162,13 +167,16 @@ async def list_automation_runs(agent_id: uuid.UUID, limit: int = 50,
         async def query(table: str, params: dict[str, str]) -> list[dict[str, Any]]:
             value = await _server_db("GET", table, params=params)
             return value if isinstance(value, list) else []
+        approval_select = "id,action_type,status,content_id,target_content_id,target_comment_id,requested_at,decided_at"
+        if os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() == "true":
+            approval_select += ",target_conversation_id,target_message_id"
         task_rows, approval_rows, reservation_rows = await asyncio.gather(
             query("agent_runtime_tasks", {
                 "select": "id,state,error_code,output_payload,trace_id,created_at,completed_at",
                 "id": "eq." + task_id, "owner_user_id": "eq." + owner_id, "limit": "1",
             }),
             query("agent_social_action_approvals", {
-                "select": "id,action_type,status,content_id,target_content_id,target_comment_id,requested_at,decided_at",
+                "select": approval_select,
                 "runtime_task_id": "eq." + task_id, "owner_user_id": "eq." + owner_id, "limit": "5",
             }),
             query("credit_reservations", {
@@ -187,8 +195,13 @@ async def list_automation_runs(agent_id: uuid.UUID, limit: int = 50,
             receipt_schema_active = False
         task = task_rows[0] if task_rows else None
         output = task.get("output_payload") if isinstance(task, dict) and isinstance(task.get("output_payload"), dict) else {}
+        task_projection = ({
+            "id": task.get("id"), "state": task.get("state"),
+            "error_code": task.get("error_code"), "trace_id": task.get("trace_id"),
+            "created_at": task.get("created_at"), "completed_at": task.get("completed_at"),
+        } if isinstance(task, dict) else None)
         return {
-            "run": run, "task": task,
+            "run": run, "task": task_projection,
             "moderation": output.get("moderation"),
             "context_snapshot_sha256": output.get("context_snapshot_sha256"),
             "memory_context_sha256": output.get("memory_context_sha256"),
@@ -456,8 +469,11 @@ async def create_coauthored_draft(payload: CoauthoredDraft,
 
 @router.get("/approvals")
 async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    approval_select = "id,agent_id,content_id,target_content_id,target_comment_id,action_type,content_version,status,disclosure_snapshot,requested_at,decided_at,decision_reason,execution_result"
+    if os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() == "true":
+        approval_select += ",target_conversation_id,target_message_id"
     rows = await _server_db("GET", "agent_social_action_approvals", params={
-        "select": "id,agent_id,content_id,target_content_id,target_comment_id,action_type,content_version,status,disclosure_snapshot,requested_at,decided_at,decision_reason,execution_result",
+        "select": approval_select,
         "owner_user_id": f"eq.{user['id']}", "order": "requested_at.desc", "limit": "100",
     })
     dispatch_enabled = os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() == "true"

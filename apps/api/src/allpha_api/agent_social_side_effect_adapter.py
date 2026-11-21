@@ -94,8 +94,13 @@ class AllphaSocialApprovalAdapter:
         return outcome
 
     async def execute(self, command: SideEffectCommand) -> SideEffectOutcome:
+        rpc_name = (
+            "execute_agent_social_message_approval_effect"
+            if command.target_reference.startswith("conversation:")
+            else "execute_agent_social_approval_effect"
+        )
         result = await _server_db(
-            "POST", "rpc/execute_agent_social_approval_effect",
+            "POST", "rpc/" + rpc_name,
             body=self._rpc_payload(command),
         )
         if not isinstance(result, dict) or result.get("outcome") not in {"completed", "replayed"}:

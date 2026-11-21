@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from fastapi import Request
 from fastapi.testclient import TestClient
 from allpha_api.auth import current_user
@@ -163,3 +164,38 @@ def test_agent_reply_retry_reuses_persisted_user_message(monkeypatch):
         app.dependency_overrides.clear()
         if hasattr(app.state, "text_generation_router"):
             delattr(app.state, "text_generation_router")
+
+
+def test_owner_enabled_dm_auto_reply_routes_to_durable_wp06_event_instead_of_inline_consumer(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "true")
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}))
+        if table == "agent_ownerships":
+            return [{"owner_user_id": "agent-owner"}]
+        if table == "agent_social_presence_policies":
+            return [{"id": "policy-1", "version": 4,
+                     "owner_approval_required": True, "output_moderation_required": True}]
+        if table == "agent_social_automation_events":
+            return [{"id": "event-1", "status": "received", "runtime_task_id": None}]
+        raise AssertionError("unexpected table " + table)
+
+    monkeypatch.setattr(messaging_api, "_db", fake_db)
+    result = asyncio.run(messaging_api._maybe_queue_social_dm_auto_reply(
+        agent_id="agent-1", actor_user_id="dm-sender",
+        conversation_id=__import__("uuid").uuid4(), message_id="message-1",
+    ))
+    assert result == {"status": "queued_for_owner_approval", "event_id": "event-1",
+                      "runtime_task_id": None, "channel": "dm"}
+    assert [item[1] for item in calls] == [
+        "agent_ownerships", "agent_social_presence_policies", "agent_social_automation_events"
+    ]
+
+
+def test_dm_auto_reply_routing_precedes_legacy_inline_agent_generation():
+    source = (messaging_api.__file__)
+    code = open(source, encoding="utf-8").read()
+    route = code.index("auto_reply = await _maybe_queue_social_dm_auto_reply(")
+    inline = code.index("generated, evidence = await AgentRuntime().execute_skill_generation")
+    assert route < inline

@@ -5,8 +5,11 @@ import type { Session } from "@supabase/supabase-js";
 type Props = { session: Session; apiBase: string };
 type Agent = { id: string; display_name: string; handle: string; status: string };
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version: number };
-type Approval = { id: string; agent_id: string; content_id: string; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
-type Automation = { version: number; auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; allowed_tool_scopes: string[]; max_replies_per_minute: number; daily_credit_budget: number; quiet_hours: Record<string, unknown>; escalation_rules: Record<string, unknown>; takeover_active: boolean };
+type Approval = { id: string; agent_id: string; content_id: string; target_conversation_id?: string | null; target_message_id?: string | null; action_type: string; status: string; disclosure_snapshot: string; requested_at: string; decided_at?: string | null };
+type AutomationEvent = { id: string; channel: string; source_table: string; source_record_id: string; status: string; attempt_count: number; max_attempts: number; reason_code?: string | null; created_at: string };
+type AutomationRun = { run: { id: string; runtime_task_id: string; channel: string; status: string; updated_at: string }; task?: { state: string; error_code?: string | null; completed_at?: string | null }; moderation?: Record<string, unknown> | null; approvals: Array<{id: string; status: string; action_type: string; target_conversation_id?: string | null}>; credit_reservations: Array<{id: string; state: string; reserved_credits: number; settled_credits: number}>; effect_receipts: Array<{id: string; status: string; action_key: string; approval_id: string}> };
+type AutomationBudget = { daily_budget: number; daily_used_or_reserved: number; daily_remaining: number; available_credits: number; reserved_credits: number; takeover_active: boolean; runtime_enabled: boolean };
+type Automation = { version: number; auto_reply_enabled?: boolean; auto_reply_channels: string[]; blocked_topics: string[]; reply_tone: string; allowed_tool_scopes: string[]; max_replies_per_minute: number; daily_credit_budget: number; quiet_hours: Record<string, unknown>; escalation_rules: Record<string, unknown>; takeover_active: boolean; event_intake_enabled?: boolean; auto_reply_runtime_enabled?: boolean; runtime_reason?: string | null };
 type AutomationGrant = { id: string; granted_scopes: string[]; policy_version: number; status: string; expires_at: string | null; granted_at: string };
 type DecisionResult = { outcome: string; execution?: { kind?: string; message_id?: string; conversation_id?: string; story_id?: string; comment_id?: string }; approval?: { status?: string } };
 const choices = ["draft_post", "draft_comment", "draft_reply", "suggest_repost", "draft_story"];
@@ -33,6 +36,12 @@ export function AgentSocialControls({ session, apiBase }: Props) {
   const [actionDispatchEnabled, setActionDispatchEnabled] = useState(false);
   const [automation, setAutomation] = useState<Automation | null>(null);
   const [automationGrants, setAutomationGrants] = useState<AutomationGrant[]>([]);
+  const [automationEvents, setAutomationEvents] = useState<AutomationEvent[]>([]);
+  const [automationRuns, setAutomationRuns] = useState<AutomationRun[]>([]);
+  const [automationBudget, setAutomationBudget] = useState<AutomationBudget | null>(null);
+  const [automationRuntimeEnabled, setAutomationRuntimeEnabled] = useState(false);
+  const [dmRuntimeEnabled, setDmRuntimeEnabled] = useState(false);
+  const [monitorError, setMonitorError] = useState("");
   const [grantScopes, setGrantScopes] = useState<string[]>([]);
   const [grantExpiryHours, setGrantExpiryHours] = useState("24");
   const [channels, setChannels] = useState<string[]>([]);
@@ -65,7 +74,24 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         ]);
         const current = result.policy as Policy | null;
         const currentAutomation = automationResult.policy as Automation | null;
+        setAutomationRuntimeEnabled(automationResult.auto_reply_runtime_enabled === true);
+        setDmRuntimeEnabled(automationResult.dm_runtime_enabled === true);
         setAutomationGrants(grantsResult.items || []);
+        setAutomationEvents([]); setAutomationRuns([]); setAutomationBudget(null); setMonitorError("");
+        if (automationResult.runtime_reason !== "AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE") {
+          try {
+            const [eventsResult, runsResult, budgetResult] = await Promise.all([
+              api("/v1/agent-social/automation/" + encodeURIComponent(selected) + "/events?limit=50"),
+              api("/v1/agent-social/automation/" + encodeURIComponent(selected) + "/runs?limit=50"),
+              api("/v1/agent-social/automation/" + encodeURIComponent(selected) + "/budget"),
+            ]);
+            setAutomationEvents(eventsResult.items || []);
+            setAutomationRuns(runsResult.items || []);
+            setAutomationBudget(budgetResult);
+          } catch (monitorCause) {
+            setMonitorError(monitorCause instanceof Error ? monitorCause.message : "Status runtime belum tersedia.");
+          }
+        }
         setAutomation(currentAutomation);
         setGrantScopes([]);
         setChannels(currentAutomation?.auto_reply_channels || []);
@@ -75,8 +101,8 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         setPolicy(current);
         setActions(current?.allowed_actions || ["draft_post"]); setMode(current?.approval_mode === "disabled" ? "disabled" : "every_post");
         setDisclosure(current?.disclosure_text || "Dibuat bersama AI Agent"); setEnabled(current?.is_enabled ?? false);
-      } else { setPolicy(null); setAutomation(null); setAutomationGrants([]); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); }
-    } catch (cause) { setPolicy(null); setAutomation(null); setAutomationGrants([]); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
+      } else { setPolicy(null); setAutomation(null); setAutomationGrants([]); setAutomationEvents([]); setAutomationRuns([]); setAutomationBudget(null); setAutomationRuntimeEnabled(false); setDmRuntimeEnabled(false); setChannels([]); setBlockedTopicsText(""); setReplyTone("friendly_concise"); setDailyBudget("0"); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); }
+    } catch (cause) { setPolicy(null); setAutomation(null); setAutomationGrants([]); setAutomationEvents([]); setAutomationRuns([]); setAutomationBudget(null); setAutomationRuntimeEnabled(false); setDmRuntimeEnabled(false); setEnabled(false); setActions(["draft_post"]); setMode("every_post"); setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat."); }
     finally { setLoading(false); }
   }, [api, agentId]);
   useEffect(() => { void load(); }, [load]);
@@ -151,7 +177,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
       return;
     }
     setBusy(true); setError(""); setNotice("");
-    try { const result = await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik melalui Native" : "Ditolak pemilik melalui Native" }) }) as DecisionResult; const execution = result.execution; const detail = execution?.kind === "story_dm" ? "DM Story berhasil dibuat dan tertaut ke Story." : execution?.kind === "comment" ? "Komentar/reply Agent tercatat dengan atribusi." : execution?.kind === "post_moderation" ? "Draft dikirim ke antrean moderasi; belum dipublikasikan." : execution?.kind === "agent_repost" ? "Repost Agent tercatat dengan atribusi dan disclosure." : result.approval?.status === "approved" ? "Approval tercatat; moderasi konten tetap berlaku." : "Permintaan ditolak."; setNotice((result.outcome === "replayed" ? "Hasil transaksi sebelumnya dipulihkan. " : "") + detail); await load(); }
+    try { const result = await api("/v1/agent-social/approvals/" + id + "/decision", { method: "POST", body: JSON.stringify({ decision, reason: decision === "approve" ? "Disetujui pemilik melalui Native" : "Ditolak pemilik melalui Native" }) }) as DecisionResult; const execution = result.execution; const detail = execution?.kind === "direct_message" ? "Balasan DM dikirim melalui Messaging setelah approval pemilik; disclosure Agent tersimpan." : execution?.kind === "story_dm" ? "DM Story berhasil dibuat dan tertaut ke Story." : execution?.kind === "comment" ? "Komentar/reply Agent tercatat dengan atribusi." : execution?.kind === "post_moderation" ? "Draft dikirim ke antrean moderasi; belum dipublikasikan." : execution?.kind === "agent_repost" ? "Repost Agent tercatat dengan atribusi dan disclosure." : result.approval?.status === "approved" ? "Approval tercatat; moderasi konten tetap berlaku." : "Permintaan ditolak."; setNotice((result.outcome === "replayed" ? "Hasil transaksi sebelumnya dipulihkan. " : "") + detail); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Keputusan gagal."); }
     finally { setBusy(false); }
   }
@@ -179,11 +205,11 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     <View style={styles.card}>
       <Text style={styles.kicker}>AUTO REPLY · TAKEOVER</Text>
       <Text style={styles.title}>Kontrol Otomatisasi</Text>
-      <Text style={styles.body}>Eksekusi tetap membutuhkan policy runtime yang disetujui. Takeover menghentikan Auto Reply dan mencabut approval yang masih pending. Auto Reply tetap nonaktif sampai runtime event consumer tersambung.</Text>
+      <Text style={styles.body}>Eksekusi membutuhkan policy, grant, budget, moderasi, dan approval pemilik. Status runtime: {automationRuntimeEnabled ? "aktif pada konfigurasi backend" : "belum diaktifkan"} · DM: {dmRuntimeEnabled ? "enabled" : "schema/worker gated"}.</Text>
       <Text style={styles.body}>Status: {automation?.takeover_active ? "Takeover Human aktif" : automation ? "Takeover dilepas · Auto Reply masih nonaktif" : "Policy automation belum tersedia"}</Text>
       {automation ? <>
         <Text style={styles.kicker}>CHANNEL AUTO REPLY</Text>
-        {["comments", "mentions", "dm", "live_chat"].map(channel => <Text key={channel} onPress={() => setChannels(old => old.includes(channel) ? old.filter(item => item !== channel) : [...old, channel])} style={styles.action}>{channels.includes(channel) ? "☑ " : "□ "}{channel.replace("_", " ")}</Text>)}
+        {["comments", "mentions", "dm", "live_chat"].map(channel => <Text key={channel} onPress={channel === "live_chat" ? undefined : () => setChannels(old => old.includes(channel) ? old.filter(item => item !== channel) : [...old, channel])} style={[styles.action, { opacity: channel === "live_chat" ? 0.45 : 1 }]}>{channels.includes(channel) ? "☑ " : "□ "}{channel.replace("_", " ")}{channel === "live_chat" ? " · menunggu izin Agent ENG-P25" : ""}</Text>)}
         <Text style={styles.kicker}>TOPIK YANG DIBLOKIR</Text>
         <TextInput value={blockedTopicsText} onChangeText={setBlockedTopicsText} placeholder="Pisahkan dengan koma" placeholderTextColor="#94A3B8" style={styles.field}/>
         <Text style={styles.kicker}>GAYA KOMUNIKASI</Text>
@@ -192,8 +218,8 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         <TextInput value={dailyBudget} onChangeText={setDailyBudget} keyboardType="number-pad" style={styles.field}/>
         <Text onPress={() => void saveAutomation()} style={[styles.action, { backgroundColor: busy ? "#303A58" : "#A5B4FC", color: "#10152A", fontWeight: "800" }]}>{busy ? "Menyimpan…" : "Simpan Pengaturan Auto Reply"}</Text>
         <Text style={styles.kicker}>PERMISSION GRANTS · RUNTIME TETAP NONAKTIF</Text>
-        <Text style={styles.body}>Grant hanya mencatat channel yang diizinkan pemilik. Tidak ada Auto Reply yang dijalankan sampai event consumer, budget reservation dan moderation runtime terhubung.</Text>
-        {automation.auto_reply_channels.map(channel => <Text key={channel} onPress={() => setGrantScopes(old => old.includes(channel) ? old.filter(item => item !== channel) : [...old, channel])} style={styles.action}>{grantScopes.includes(channel) ? "☑ " : "□ "}{channel}</Text>)}
+        <Text style={styles.body}>Grant dicatat untuk scope yang dipilih. Live Chat tetap terkunci sampai kontrak session-permission Agent pada ENG-P25 tersedia.</Text>
+        {automation.auto_reply_channels.filter(channel => channel !== "live_chat").map(channel => <Text key={channel} onPress={() => setGrantScopes(old => old.includes(channel) ? old.filter(item => item !== channel) : [...old, channel])} style={styles.action}>{grantScopes.includes(channel) ? "☑ " : "□ "}{channel}</Text>)}
         <Text style={styles.body}>Masa berlaku grant (jam)</Text>
         <TextInput value={grantExpiryHours} onChangeText={setGrantExpiryHours} keyboardType="number-pad" style={styles.field}/>
         <Text onPress={() => void grantAutomationScopes()} style={[styles.action, { opacity: busy || automation.takeover_active || !grantScopes.length ? 0.4 : 1 }]}>Buat Permission Grant</Text>
@@ -208,9 +234,24 @@ export function AgentSocialControls({ session, apiBase }: Props) {
     <View style={styles.card}><Text style={styles.title}>Approval Inbox</Text><Text style={styles.body}>{approvals.filter(x => x.status === "pending").length} permintaan menunggu keputusan</Text>
       {!actionDispatchEnabled && <Text style={styles.body}>Approval untuk post/comment/reply/repost dikunci sampai migration atribusi dan dispatch WP-06 aktif. Story DM tetap mengikuti lifecycle yang tersedia.</Text>}
       {approvals.length === 0 ? <Text style={styles.body}>Belum ada approval.</Text> : approvals.map(item => <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 12, gap: 8 }}>
-        <Text style={styles.body}>{item.action_type} · {item.status}</Text><Text style={styles.body}>{new Date(item.requested_at).toLocaleString("id-ID")}</Text><Text style={styles.body}>{item.disclosure_snapshot}</Text>
+        <Text style={styles.body}>{item.action_type}{item.target_conversation_id ? " · DM" : ""} · {item.status}</Text>{item.target_conversation_id && <Text style={styles.body}>Conversation: {item.target_conversation_id} · Message: {item.target_message_id || "—"}</Text>}<Text style={styles.body}>{new Date(item.requested_at).toLocaleString("id-ID")}</Text><Text style={styles.body}>{item.disclosure_snapshot}</Text>
         {item.status === "pending" && <><Text onPress={!busy && (actionDispatchEnabled || item.action_type === "draft_story") ? () => void decide(item.id, "approve") : undefined} style={[styles.action, {opacity: actionDispatchEnabled || item.action_type === "draft_story" ? 1 : 0.4}]}>Setujui</Text><Text onPress={!busy ? () => void decide(item.id, "reject") : undefined} style={styles.action}>Tolak</Text></>}
         {item.status === "approved" && <Text onPress={() => void revoke(item.id)} style={styles.action}>Cabut persetujuan</Text>}
+      </View>)}
+    </View>
+    <View style={styles.card}>
+      <Text style={styles.kicker}>CANONICAL BACKEND · WP-06 / WP-07</Text>
+      <Text style={styles.title}>Event, Run, Budget & Receipt Monitor</Text>
+      {automationBudget && <Text style={styles.body}>Budget hari ini: {automationBudget.daily_used_or_reserved}/{automationBudget.daily_budget} credits · tersisa {automationBudget.daily_remaining} · saldo tersedia {automationBudget.available_credits} · reserved {automationBudget.reserved_credits}</Text>}
+      {monitorError ? <Text style={styles.body}>{monitorError}</Text> : null}
+      <Text style={styles.body}>Events: {automationEvents.length} · Runs: {automationRuns.length} · Runtime: {automationRuntimeEnabled ? "enabled" : "not activated"}</Text>
+      {automationEvents.slice(0, 8).map(item => <Text key={item.id} style={styles.body}>Event {item.channel} · {item.status} · {item.attempt_count}/{item.max_attempts}{item.reason_code ? " · " + item.reason_code : ""}</Text>)}
+      {automationRuns.slice(0, 8).map(item => <View key={item.run.id} style={{ borderTopWidth: 1, borderTopColor: "#29314B", paddingTop: 8, gap: 4 }}>
+        <Text style={styles.body}>Run {item.run.channel} · {item.run.status} · Task {item.task?.state || "not available"}</Text>
+        {item.task?.error_code ? <Text style={styles.body}>Error: {item.task.error_code}</Text> : null}
+        <Text style={styles.body}>Moderation: {JSON.stringify(item.moderation || {})}</Text>
+        <Text style={styles.body}>Credits: {item.credit_reservations.map(x => x.state + " " + x.reserved_credits + "/" + x.settled_credits).join(", ") || "—"}</Text>
+        <Text style={styles.body}>Receipts: {item.effect_receipts.map(x => x.action_key + " · " + x.status).join(", ") || "—"}</Text>
       </View>)}
     </View>
     {!!error && <Text style={styles.error}>{error}</Text>}{!!notice && <Text style={styles.ok}>{notice}</Text>}

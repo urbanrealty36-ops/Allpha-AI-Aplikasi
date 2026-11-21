@@ -35,7 +35,8 @@ logger = logging.getLogger("allpha.agent_social_automation")
 SOCIAL_TASK_MARKER = "_agent_social_reply_version"
 SOCIAL_TASK_VERSION = 1
 _ACTION_BY_CHANNEL = {"comments": ("social.reply", "draft_reply"),
-                      "mentions": ("social.comment", "draft_comment")}
+                      "mentions": ("social.comment", "draft_comment"),
+                      "dm": ("social.reply", "draft_reply")}
 _LEASE_SECONDS = 90
 
 
@@ -211,8 +212,11 @@ async def _load_social_snapshot(store: AgentRuntimeStore, event: dict[str, Any],
     channel = str(event.get("channel") or "")
     if channel not in {"comments", "mentions", "dm", "live_chat"}:
         raise AgentSocialEventBlocked("SOCIAL_EVENT_CHANNEL_INVALID")
-    if channel in {"dm", "live_chat"}:
-        raise AgentSocialEventBlocked("WP07_MESSAGE_APPROVAL_ADAPTER_NOT_IMPLEMENTED")
+    if channel == "live_chat":
+        raise AgentSocialEventBlocked("ENG_P25_LIVE_AGENT_PARTICIPANT_AUTHORITY_NOT_AVAILABLE")
+    if (channel == "dm"
+            and os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() != "true"):
+        raise AgentSocialEventBlocked("WP06_DM_APPROVAL_SCHEMA_NOT_ACTIVE")
     actor_id = str(event.get("source_actor_user_id") or "")
     if not actor_id or actor_id == owner_id:
         raise AgentSocialEventBlocked("SOCIAL_EVENT_ACTOR_INVALID")
@@ -292,24 +296,80 @@ async def _load_social_snapshot(store: AgentRuntimeStore, event: dict[str, Any],
     })
     if not source:
         raise AgentSocialEventBlocked("SOCIAL_EVENT_SOURCE_NOT_FOUND")
-    if channel == "comments":
-        if str(source.get("actor_user_id")) != actor_id or source.get("status") != "visible":
-            raise AgentSocialEventBlocked("SOCIAL_COMMENT_SOURCE_ACL_FAILED")
+    conversation_history: list[dict[str, str]] = []
+    target_conversation_id: str | None = None
+    target_message_id: str | None = None
+    recipient_user_id: str | None = None
+    if channel == "dm":
+        target_conversation_id = str(event.get("conversation_id") or source.get("conversation_id") or "")
+        target_message_id = str(source.get("id") or "")
+        if (str(event.get("source_table")) != "messages"
+                or not target_conversation_id or target_message_id != str(event.get("source_record_id"))
+                or str(source.get("conversation_id")) != target_conversation_id
+                or source.get("sender_type") != "human"
+                or str(source.get("sender_user_id")) != actor_id):
+            raise AgentSocialEventBlocked("SOCIAL_DM_SOURCE_MESSAGE_ACL_FAILED")
+        conversations = await _rows(store, "conversations", {
+            "select": "id,kind", "id": "eq." + target_conversation_id, "limit": "1",
+        })
+        if not conversations or conversations[0].get("kind") != "agent":
+            raise AgentSocialEventBlocked("SOCIAL_DM_CONVERSATION_KIND_INVALID")
+        participants = await _rows(store, "conversation_participants", {
+            "select": "user_id,agent_id,participant_type,joined_at",
+            "conversation_id": "eq." + target_conversation_id,
+        })
+        humans = [p for p in participants if p.get("participant_type") == "human" and p.get("joined_at")]
+        agents = [p for p in participants if p.get("participant_type") == "agent" and p.get("joined_at")]
+        if (len(participants) != 2 or len(humans) != 1 or len(agents) != 1
+                or str(humans[0].get("user_id")) != actor_id
+                or str(agents[0].get("agent_id")) != agent_id):
+            raise AgentSocialEventBlocked("SOCIAL_DM_PARTICIPANT_ACL_FAILED")
+        recipient_user_id = actor_id
+        latest_human = await _rows(store, "messages", {
+            "select": "id", "conversation_id": "eq." + target_conversation_id,
+            "sender_type": "eq.human", "order": "created_at.desc,id.desc", "limit": "1",
+        })
+        if not latest_human or str(latest_human[0].get("id")) != target_message_id:
+            raise AgentSocialEventBlocked("SOCIAL_DM_SOURCE_MESSAGE_STALE")
+        history_rows = await _rows(store, "messages", {
+            "select": "id,sender_type,sender_user_id,sender_agent_id,body,created_at",
+            "conversation_id": "eq." + target_conversation_id,
+            "order": "created_at.desc", "limit": "12",
+        })
+        for item in reversed(history_rows):
+            if item.get("sender_type") == "human" and str(item.get("sender_user_id")) == actor_id:
+                role = "human"
+            elif item.get("sender_type") == "agent" and str(item.get("sender_agent_id")) == agent_id:
+                role = "agent"
+            else:
+                raise AgentSocialEventBlocked("SOCIAL_DM_HISTORY_PARTICIPANT_ACL_FAILED")
+            body = str(item.get("body") or "")
+            if not body or len(body) > 10000:
+                raise AgentSocialEventBlocked("SOCIAL_DM_HISTORY_CONTENT_INVALID")
+            conversation_history.append({"role": role, "body": body})
+        if not any(item.get("id") == target_message_id for item in history_rows):
+            raise AgentSocialEventBlocked("SOCIAL_DM_SOURCE_MESSAGE_NOT_IN_CONTEXT")
+        content_id = ""
+        content = None
     else:
-        if str(source.get("mentioner_user_id")) != actor_id:
-            raise AgentSocialEventBlocked("SOCIAL_MENTION_SOURCE_ACL_FAILED")
-    content_id = str(event.get("content_id") or source.get("content_id") or "")
-    content = await _one(store, "content_items", {
-        "select": "id,owner_id,ai_agent_id,body,visibility,status,deleted_at",
-        "id": "eq." + content_id,
-    }) if content_id else None
-    if (not content or content.get("status") != "published" or content.get("deleted_at")
-            or content.get("visibility") != "public"):
-        raise AgentSocialEventBlocked("SOCIAL_CONTENT_PRIVACY_OR_LIFECYCLE_DENIED")
-    if channel == "comments" and str(content.get("owner_id")) != owner_id:
-        raise AgentSocialEventBlocked("SOCIAL_COMMENT_CONTENT_OWNER_MISMATCH")
-    if channel == "mentions" and str(event.get("owner_user_id")) != owner_id:
-        raise AgentSocialEventBlocked("SOCIAL_MENTION_OWNER_MISMATCH")
+        if channel == "comments":
+            if str(source.get("actor_user_id")) != actor_id or source.get("status") != "visible":
+                raise AgentSocialEventBlocked("SOCIAL_COMMENT_SOURCE_ACL_FAILED")
+        else:
+            if str(source.get("mentioner_user_id")) != actor_id:
+                raise AgentSocialEventBlocked("SOCIAL_MENTION_SOURCE_ACL_FAILED")
+        content_id = str(event.get("content_id") or source.get("content_id") or "")
+        content = await _one(store, "content_items", {
+            "select": "id,owner_id,ai_agent_id,body,visibility,status,deleted_at",
+            "id": "eq." + content_id,
+        }) if content_id else None
+        if (not content or content.get("status") != "published" or content.get("deleted_at")
+                or content.get("visibility") != "public"):
+            raise AgentSocialEventBlocked("SOCIAL_CONTENT_PRIVACY_OR_LIFECYCLE_DENIED")
+        if channel == "comments" and str(content.get("owner_id")) != owner_id:
+            raise AgentSocialEventBlocked("SOCIAL_COMMENT_CONTENT_OWNER_MISMATCH")
+        if channel == "mentions" and str(event.get("owner_user_id")) != owner_id:
+            raise AgentSocialEventBlocked("SOCIAL_MENTION_OWNER_MISMATCH")
 
     blocked = await _rows(store, "social_edges", {
         "select": "id", "edge_type": "eq.block", "status": "eq.active",
@@ -328,11 +388,11 @@ async def _load_social_snapshot(store: AgentRuntimeStore, event: dict[str, Any],
         raise AgentSocialEventDeferred("SOCIAL_RATE_LIMIT_EXCEEDED", 60)
 
     source_body = str(source.get("body") or "")
-    content_body = str(content.get("body") or "")
+    content_body = str(content.get("body") or "") if isinstance(content, dict) else ""
     if not source_body and channel == "comments":
         raise AgentSocialEventBlocked("SOCIAL_COMMENT_BODY_EMPTY")
     policy_topics = [str(item).casefold() for item in (policy.get("blocked_topics") or [])]
-    combined = (source_body + "\n" + content_body).casefold()
+    combined = (source_body + "\n" + content_body + "\n" + "\n".join(item["body"] for item in conversation_history)).casefold()
     if any(topic and topic in combined for topic in policy_topics):
         raise AgentSocialEventBlocked("SOCIAL_BLOCKED_TOPIC_MATCH")
     escalation = policy.get("escalation_rules") or {}
@@ -390,6 +450,8 @@ async def _load_social_snapshot(store: AgentRuntimeStore, event: dict[str, Any],
         "channel": channel, "actor_id": actor_id, "source_table": event["source_table"],
         "source_record_id": event["source_record_id"], "content_id": content_id,
         "source_body": source_body, "content_body": content_body,
+        "conversation_id": target_conversation_id, "target_message_id": target_message_id,
+        "recipient_user_id": recipient_user_id, "conversation_history": conversation_history,
         "memory_context": memory_context, "memory_context_refs": memory_refs,
     }
     snapshot = {
@@ -721,6 +783,7 @@ async def execute_agent_social_reply_task(store: AgentRuntimeStore, owner_id: st
                 "Kanal: " + str(context["channel"]) + "\n"
                 "Konteks konten pemilik: " + str(context["content_body"]) + "\n"
                 "Pesan pengguna: " + str(context["source_body"]) + "\n"
+                "Riwayat percakapan berizin: " + json.dumps(context.get("conversation_history") or [], ensure_ascii=False) + "\n"
                 "Memory berizin: " + json.dumps(context.get("memory_context") or [], ensure_ascii=False)
             )
             system_prompt = (
@@ -919,12 +982,12 @@ async def reconcile_social_reply_approvals(store: AgentRuntimeStore, *, limit: i
         return 0
     runs = await _rows(store, "agent_social_automation_runs", {
         "select": "id,owner_user_id,agent_id,runtime_task_id,source_event_id,channel,status",
-        "status": "in.(queued,running,awaiting_approval)", "order": "created_at.asc",
+        "status": "in.(queued,running)", "order": "created_at.asc",
         "limit": str(max(1, min(limit, 50))),
     })
     reconciled = 0
     for run in runs:
-        if run.get("channel") not in {"comments", "mentions"}:
+        if run.get("channel") not in {"comments", "mentions", "dm"}:
             continue
         task = await store.get_task(str(run["owner_user_id"]), str(run["runtime_task_id"]))
         if not task or task.get("state") != "succeeded":
@@ -938,18 +1001,31 @@ async def reconcile_social_reply_approvals(store: AgentRuntimeStore, *, limit: i
         })
         if not event:
             raise AgentRuntimePersistenceError("WP-06 successful run source event is missing")
-        action_type = "draft_reply" if run["channel"] == "comments" else "draft_comment"
-        result = await store.request("POST", "rpc/request_agent_social_draft", body={
-            "p_owner_user_id": str(run["owner_user_id"]),
-            "p_agent_id": str(run["agent_id"]),
-            "p_runtime_task_id": str(run["runtime_task_id"]),
-            "p_action_type": action_type,
-            "p_content_type": "text", "p_visibility": "public",
-            "p_body": str(output.get("content") or ""),
-            "p_target_content_id": str(event["content_id"]) if event.get("content_id") else None,
-            "p_target_comment_id": str(event["source_record_id"]) if run["channel"] == "comments" else None,
-            "p_idempotency_key": "social-auto-reply:" + str(event["id"]),
-        })
+        if run["channel"] == "dm":
+            if not event.get("conversation_id") or not event.get("source_record_id"):
+                raise AgentRuntimePersistenceError("WP-06 DM event is missing its canonical conversation/message target")
+            result = await store.request("POST", "rpc/request_agent_social_message_draft", body={
+                "p_owner_user_id": str(run["owner_user_id"]),
+                "p_agent_id": str(run["agent_id"]),
+                "p_runtime_task_id": str(run["runtime_task_id"]),
+                "p_target_conversation_id": str(event["conversation_id"]),
+                "p_target_message_id": str(event["source_record_id"]),
+                "p_body": str(output.get("content") or ""),
+                "p_idempotency_key": "social-auto-reply:" + str(event["id"]),
+            })
+        else:
+            action_type = "draft_reply" if run["channel"] == "comments" else "draft_comment"
+            result = await store.request("POST", "rpc/request_agent_social_draft", body={
+                "p_owner_user_id": str(run["owner_user_id"]),
+                "p_agent_id": str(run["agent_id"]),
+                "p_runtime_task_id": str(run["runtime_task_id"]),
+                "p_action_type": action_type,
+                "p_content_type": "text", "p_visibility": "public",
+                "p_body": str(output.get("content") or ""),
+                "p_target_content_id": str(event["content_id"]) if event.get("content_id") else None,
+                "p_target_comment_id": str(event["source_record_id"]) if run["channel"] == "comments" else None,
+                "p_idempotency_key": "social-auto-reply:" + str(event["id"]),
+            })
         if not isinstance(result, dict) or result.get("outcome") not in {"created", "replayed"}:
             raise AgentRuntimePersistenceError("WP-06 owner approval draft was not confirmed")
         await store.request("PATCH", "agent_social_automation_runs", params={

@@ -63,10 +63,23 @@ def test_wp06_social_outputs_are_moderated_and_require_canonical_owner_approval(
     assert '"status": "awaiting_approval"' in source
 
 
-def test_wp06_message_channels_fail_closed_until_wp07_messaging_receipt_adapter_exists():
+def test_wp06_dm_uses_canonical_message_approval_and_receipt_adapter():
     source = (SRC / "agent_social_automation_runtime.py").read_text()
-    assert "WP07_MESSAGE_APPROVAL_ADAPTER_NOT_IMPLEMENTED" in source
-    assert "live_chat" in source and "dm" in source
+    runtime_api = (SRC / "agent_runtime_api.py").read_text()
+    adapter = (SRC / "agent_social_side_effect_adapter.py").read_text()
+    assert '"dm": ("social.reply", "draft_reply")' in source
+    assert "request_agent_social_message_draft" in source
+    assert "target_conversation_id" in source and "target_message_id" in source
+    assert 'target_reference = "conversation:"' in runtime_api
+    assert "execute_agent_social_message_approval_effect" in adapter
+    assert "SOCIAL_DM_PARTICIPANT_ACL_FAILED" in source
+    assert "SOCIAL_DM_SOURCE_MESSAGE_STALE" in source
+
+
+def test_wp06_live_chat_fails_closed_until_eng_p25_agent_session_permission_exists():
+    source = (SRC / "agent_social_automation_runtime.py").read_text()
+    assert "ENG_P25_LIVE_AGENT_PARTICIPANT_AUTHORITY_NOT_AVAILABLE" in source
+    assert "live_chat" in source
 
 
 def test_wp06_owner_api_exposes_events_runs_and_ledger_budget():

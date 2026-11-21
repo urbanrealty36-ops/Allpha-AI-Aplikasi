@@ -216,3 +216,49 @@ def test_social_adapter_rejects_receipt_from_future_lease_generation(monkeypatch
     monkeypatch.setattr(adapter_module, "_server_db", read)
     with pytest.raises(SideEffectAdapterContractError):
         asyncio.run(adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.reconcile(command, {}))
+
+
+def test_social_adapter_routes_dm_reply_through_the_canonical_message_effect_rpc(monkeypatch):
+    command = _command()
+    command = SideEffectCommand(**{
+        **command.__dict__,
+        "actor_user_id": command.owner_user_id,
+        "action_key": "social.reply",
+        "target_reference": "conversation:" + str(uuid4()),
+    })
+    captured = {}
+
+    async def rpc(method, path, *, params=None, body=None, prefer=None):
+        captured.update({"method": method, "path": path, "body": body})
+        return {
+            "outcome": "completed",
+            "receipt": {
+                "id": str(uuid4()), "status": "completed",
+                "result_payload": {"kind": "direct_message", "message_id": str(uuid4())},
+                "external_reference": str(uuid4()),
+                "evidence_reference": "messages:" + command.approval_id,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            },
+        }
+
+    monkeypatch.setattr(adapter_module, "_server_db", rpc)
+    outcome = asyncio.run(adapter_module.ALLPHA_SOCIAL_APPROVAL_ADAPTER.execute(command))
+    assert captured["path"] == "rpc/execute_agent_social_message_approval_effect"
+    assert captured["body"]["p_target_reference"] == command.target_reference
+    assert outcome.result_payload["kind"] == "direct_message"
+
+
+def test_wp06_dm_approval_migration_extends_canonical_messaging_and_receipts():
+    migration = (
+        Path(__file__).parents[1] / "supabase" / "source-only-migrations"
+        / "20261121160000_wp06_dm_message_approval_adapter.sql"
+    ).read_text().lower()
+    assert "target_conversation_id" in migration and "target_message_id" in migration
+    assert "target_user_id" in migration
+    assert "agent_social_approval_id" in migration and "agent_disclosure_snapshot" in migration
+    assert "messages_agent_client_message_id_unique" in migration
+    assert "request_agent_social_message_draft" in migration
+    assert "execute_agent_social_message_approval_effect" in migration
+    assert "v_task.execution_lease_token is distinct from p_lease_token" in migration
+    assert "agent_runtime_effect_outcome_unknown_no_replay" in migration
+    assert "grant execute on function public.execute_agent_social_message_approval_effect" in migration

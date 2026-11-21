@@ -44,6 +44,58 @@ async def _db(method: str, table: str, *, params: dict[str, str] | None = None, 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def _message_projection() -> str:
+    projection = "id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,generation_job_id,client_message_id,created_at,delivery_status,delivered_at,read_at"
+    if os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() == "true":
+        projection += ",agent_social_approval_id,agent_disclosure_snapshot"
+    return projection
+
+
+async def _maybe_queue_social_dm_auto_reply(
+    *, agent_id: str, actor_user_id: str, conversation_id: uuid.UUID, message_id: str
+) -> dict[str, Any] | None:
+    """Route owner-enabled DM automation into WP-06's durable inbox, never the inline Consumer reply."""
+    if actor_user_id == "":
+        return None
+    owners = await _db("GET", "agent_ownerships", params={
+        "select": "owner_user_id", "agent_id": f"eq.{agent_id}",
+        "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+    })
+    if not owners:
+        return None
+    owner_id = str(owners[0].get("owner_user_id") or "")
+    if not owner_id or owner_id == actor_user_id:
+        return None
+    policies = await _db("GET", "agent_social_presence_policies", params={
+        "select": "id,version,owner_approval_required,output_moderation_required", "owner_user_id": f"eq.{owner_id}",
+        "agent_id": f"eq.{agent_id}", "is_enabled": "eq.true",
+        "revoked_at": "is.null", "takeover_active": "eq.false",
+        "auto_reply_enabled": "eq.true", "auto_reply_channels": "cs.{dm}",
+        "limit": "1",
+    })
+    if not policies:
+        return None
+    if policies[0].get("owner_approval_required") is not True or policies[0].get("output_moderation_required") is not True:
+        return {"status": "unavailable", "error_code": "WP06_DM_APPROVAL_AND_MODERATION_REQUIRED"}
+    if os.getenv("ALLPHA_AGENT_SOCIAL_DM_APPROVAL_SCHEMA_ENABLED", "false").lower() != "true":
+        return {"status": "unavailable", "error_code": "WP06_DM_APPROVAL_SCHEMA_NOT_ACTIVE"}
+    events = await _db("GET", "agent_social_automation_events", params={
+        "select": "id,status,reason_code,runtime_task_id", "owner_user_id": f"eq.{owner_id}",
+        "agent_id": f"eq.{agent_id}", "channel": "eq.dm", "source_table": "eq.messages",
+        "source_record_id": f"eq.{message_id}", "conversation_id": f"eq.{conversation_id}",
+        "limit": "1",
+    })
+    if not events:
+        return {"status": "unavailable", "error_code": "WP06_DM_EVENT_NOT_ENQUEUED"}
+    event = events[0]
+    if event.get("status") in {"received", "claimed", "retry_wait", "dispatched"}:
+        return {"status": "queued_for_owner_approval", "event_id": event.get("id"),
+                "runtime_task_id": event.get("runtime_task_id"), "channel": "dm"}
+    return {"status": "unavailable",
+            "error_code": str(event.get("reason_code") or event.get("status") or "WP06_DM_EVENT_NOT_RUN")}
+
+
+
 async def _membership(conversation_id: uuid.UUID, user_id: str):
     rows = await _db("GET","conversation_participants",params={"select":"conversation_id,user_id,agent_id,last_read_at","conversation_id":f"eq.{conversation_id}","user_id":f"eq.{user_id}","limit":"1"})
     if not rows:
@@ -330,7 +382,7 @@ async def list_conversations(request: Request, user: dict[str,Any] = Depends(cur
     ids=[row["conversation_id"] for row in memberships]
     convs=await _db("GET","conversations",params={"select":"id,title,kind,created_by,created_at,updated_at,last_message_at","id":"in.("+",".join(ids)+")","order":"last_message_at.desc.nullslast","limit":str(limit)})
     people=await _db("GET","conversation_participants",params={"select":"conversation_id,user_id,agent_id,participant_type","conversation_id":"in.("+",".join(ids)+")","limit":str(limit*10)})
-    latest=await _db("GET","messages",params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,created_at,delivery_status","conversation_id":"in.("+",".join(ids)+")","order":"created_at.desc","limit":str(limit*10)})
+    latest=await _db("GET","messages",params={"select":_message_projection(),"conversation_id":"in.("+",".join(ids)+")","order":"created_at.desc","limit":str(limit*10)})
     by_id={c["id"]:c for c in convs}
     for row in people:
         if row.get("user_id")==uid: continue
@@ -384,7 +436,7 @@ async def create_conversation(payload: ConversationCreate, request: Request, use
 @router.get("/conversations/{conversation_id}/messages")
 async def list_messages(conversation_id: uuid.UUID, request: Request, user: dict[str,Any] = Depends(current_user), limit: int = Query(50,ge=1,le=100), before: datetime | None = None):
     uid=str(user["id"]); await _membership(conversation_id,uid); await _assert_not_blocked(conversation_id,uid)
-    params={"select":"id,conversation_id,sender_type,sender_user_id,sender_agent_id,body,story_id,generation_job_id,client_message_id,created_at,delivery_status,delivered_at,read_at","conversation_id":f"eq.{conversation_id}","order":"created_at.desc","limit":str(limit)}
+    params={"select":_message_projection(),"conversation_id":f"eq.{conversation_id}","order":"created_at.desc","limit":str(limit)}
     if before: params["created_at"]=f"lt.{before.astimezone(timezone.utc).isoformat()}"
     rows=await _db("GET","messages",params=params)
     incoming=[row for row in rows if row.get("sender_user_id") != uid and row.get("delivery_status")=="sent"]
@@ -439,6 +491,13 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, reque
     if not replayed:
         await _db("PATCH","conversations",params={"id":f"eq.{conversation_id}"},body={"updated_at":_now(),"last_message_at":created[0]["created_at"]},prefer="return=minimal")
     agent_reply = None
+    if conv[0].get("kind") == "agent" and agent_id and created:
+        auto_reply = await _maybe_queue_social_dm_auto_reply(
+            agent_id=agent_id, actor_user_id=uid, conversation_id=conversation_id,
+            message_id=str(created[0]["id"]),
+        )
+        if auto_reply is not None:
+            return {"message": created[0], "replayed": replayed, "agent_reply": auto_reply}
     if replayed and conv[0].get("kind") == "agent":
         # A replay must recover an already-persisted reply, never start another
         # potentially billable model invocation. Missing reply is ambiguous: the

@@ -2,12 +2,16 @@
 import { useCallback, useEffect, useState } from "react";
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 type Policy = { allowed_actions: string[]; approval_mode: "every_post" | "high_risk_only" | "disabled"; disclosure_text: string; is_enabled: boolean; version?: number | null; revoked_at?: string | null };
-type Automation = { auto_reply_enabled?: boolean; auto_reply_channels?: string[]; automation_version?: number; takeover_active?: boolean };
-type Approval = { id: string; agent_id: string; content_id: string; action_type: string; content_version: number; status: string; disclosure_snapshot?: string; requested_at: string };
+type Automation = { auto_reply_enabled?: boolean; auto_reply_channels?: string[]; automation_version?: number; takeover_active?: boolean; daily_credit_budget?: number };
+type AutomationEvent = { id: string; channel: string; source_table: string; source_record_id: string; status: string; attempt_count: number; max_attempts: number; reason_code?: string | null; created_at: string };
+type AutomationRun = { run: { id: string; runtime_task_id: string; channel: string; status: string; updated_at: string }; task?: { state: string; error_code?: string | null; completed_at?: string | null }; moderation?: Record<string, unknown> | null; approvals: Array<{id: string; status: string; action_type: string; target_conversation_id?: string | null}>; credit_reservations: Array<{id: string; state: string; reserved_credits: number; settled_credits: number}>; effect_receipts: Array<{id: string; status: string; action_key: string; approval_id: string}> };
+type AutomationBudget = { daily_budget: number; daily_used_or_reserved: number; daily_remaining: number; available_credits: number; reserved_credits: number; takeover_active: boolean; runtime_enabled: boolean };
+type Approval = { id: string; agent_id: string; content_id: string; target_conversation_id?: string | null; target_message_id?: string | null; action_type: string; content_version: number; status: string; disclosure_snapshot?: string; requested_at: string };
 export default function AgentSocialPresencePanel({agentId,agentName,accessToken}:{agentId:string;agentName:string;accessToken:string}) {
  const [policy,setPolicy]=useState<Policy|null>(null),[automation,setAutomation]=useState<Automation|null>(null),[approvals,setApprovals]=useState<Approval[]>([]),[actionDispatchEnabled,setActionDispatchEnabled]=useState(false);
  const [actions,setActions]=useState<string[]>(["draft_post"]),[mode,setMode]=useState<Policy["approval_mode"]>("every_post"),[disclosure,setDisclosure]=useState("Dibuat bersama AI Agent"),[enabled,setEnabled]=useState(false);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const [events,setEvents]=useState<AutomationEvent[]>([]),[runs,setRuns]=useState<AutomationRun[]>([]),[budget,setBudget]=useState<AutomationBudget|null>(null),[runtimeEnabled,setRuntimeEnabled]=useState(false),[dmRuntimeEnabled,setDmRuntimeEnabled]=useState(false),[monitorError,setMonitorError]=useState("");
  const api=useCallback(async <T,>(path:string,init:RequestInit={}):Promise<T>=>{
   const headers=new Headers(init.headers);headers.set("Authorization","Bearer "+accessToken);headers.set("Accept","application/json");if(init.body)headers.set("Content-Type","application/json");
   const response=await fetch(apiBase+path,{...init,headers,cache:"no-store"});const body=await response.json().catch(()=>({}));
@@ -18,10 +22,21 @@ export default function AgentSocialPresencePanel({agentId,agentName,accessToken}
   try{
    const [p,a,q]=await Promise.all([
     api<{policy:Policy|null}>("/v1/agent-social/policy?agent_id="+encodeURIComponent(agentId)),
-    api<{policy:Automation|null;auto_reply_runtime_enabled:boolean}>("/v1/agent-social/automation?agent_id="+encodeURIComponent(agentId)),
+    api<{policy:Automation|null;auto_reply_runtime_enabled:boolean;runtime_reason?:string|null}>("/v1/agent-social/automation?agent_id="+encodeURIComponent(agentId)),
     api<{items:Approval[];action_dispatch_enabled?:boolean}>("/v1/agent-social/approvals")
    ]);
    setPolicy(p.policy);setAutomation(a.policy);setActions(p.policy?.allowed_actions||["draft_post"]);setMode(p.policy?.approval_mode||"every_post");setDisclosure(p.policy?.disclosure_text||"Dibuat bersama AI Agent");setEnabled(Boolean(p.policy?.is_enabled&&!p.policy?.revoked_at));setApprovals((q.items||[]).filter(x=>x.agent_id===agentId));setActionDispatchEnabled(q.action_dispatch_enabled===true);
+   setRuntimeEnabled(a.auto_reply_runtime_enabled===true);setDmRuntimeEnabled(a.dm_runtime_enabled===true);setEvents([]);setRuns([]);setBudget(null);setMonitorError("");
+   if(a.runtime_reason!=="AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE"){
+    try{
+     const [eventResult,runResult,budgetResult]=await Promise.all([
+      api<{items:AutomationEvent[]}>("/v1/agent-social/automation/"+encodeURIComponent(agentId)+"/events?limit=50"),
+      api<{items:AutomationRun[]}>("/v1/agent-social/automation/"+encodeURIComponent(agentId)+"/runs?limit=50"),
+      api<AutomationBudget>("/v1/agent-social/automation/"+encodeURIComponent(agentId)+"/budget")
+     ]);
+     setEvents(eventResult.items||[]);setRuns(runResult.items||[]);setBudget(budgetResult);
+    }catch(monitorCause){setMonitorError(monitorCause instanceof Error?monitorCause.message:"Status runtime belum tersedia.");}
+   }
   }catch(e){setError(e instanceof Error?e.message:"Kebijakan Agent Social tidak dapat dimuat.");}finally{setLoading(false);}
  },[agentId,api]);
  useEffect(()=>{void load();},[load]);
@@ -63,16 +78,23 @@ export default function AgentSocialPresencePanel({agentId,agentName,accessToken}
      <button type="button" onClick={()=>void savePolicy()} disabled={saving||!disclosure.trim()||(enabled && mode !== "disabled" && actions.length===0)} className="rounded-lg border-2 border-slate-900 bg-violet-200 px-3 py-2 text-xs font-black disabled:opacity-40">Simpan policy</button>
     </div>
     <div className="space-y-3 rounded-xl border border-slate-300 bg-sky-50 p-3"><strong className="text-xs text-slate-900">Automation & Takeover</strong>
-     <p className="text-xs text-slate-700">Auto Reply runtime: <strong>disabled</strong>. Pengaturan tidak mengeksekusi Agent secara otomatis sampai runtime diaktifkan.</p>
+     <p className="text-xs text-slate-700">Auto Reply runtime: <strong>{runtimeEnabled?"enabled":"not activated"}</strong> · DM channel: <strong>{dmRuntimeEnabled?"enabled":"schema/worker gated"}</strong>. Status aktual berasal dari API canonical.</p>
      <p className="text-xs text-slate-700">Channels: {(automation?.auto_reply_channels||[]).join(", ")||"belum ada"} · Auto reply policy: {automation?.auto_reply_enabled?"tersimpan":"nonaktif"}</p>
      <p className="text-xs text-slate-700">Takeover: <strong>{automation?.takeover_active?"AKTIF":"tidak aktif"}</strong></p>
      <button type="button" onClick={()=>void takeover()} disabled={saving} className="rounded-lg border-2 border-slate-900 bg-amber-200 px-3 py-2 text-xs font-black disabled:opacity-40">{automation?.takeover_active?"Resume Agent":"Human Takeover"}</button>
-     <p className="text-[10px] leading-4 text-slate-600">Takeover dan resume mengikuti transaksi backend; resume tidak mengaktifkan capability yang belum disetujui.</p>
+     <p className="text-[10px] leading-4 text-slate-600">Takeover dan resume mengikuti transaksi backend; resume tidak mengaktifkan capability yang belum disetujui. Live Chat tetap fail-closed sampai ENG-P25 menyediakan izin partisipasi Agent pada sesi.</p>
     </div>
    </div>
    <div className="mt-3 rounded-xl border border-slate-300 bg-white p-3"><div className="flex items-center justify-between"><strong className="text-xs text-slate-900">Approval Queue</strong><span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">{pending.length} menunggu</span></div>
     {!actionDispatchEnabled&&<p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900">Approval post/comment/reply/repost dikunci sampai migration atribusi dan dispatch WP-06 aktif. Story DM tetap tersedia sesuai lifecycle.</p>}
-    {pending.length===0?<p className="mt-2 text-xs text-slate-600">Belum ada draft yang menunggu persetujuan.</p>:<div className="mt-2 space-y-2">{pending.map(item=>{const dispatchBlocked=["draft_post","draft_comment","draft_reply","suggest_repost"].includes(item.action_type);return <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-2"><div className="min-w-0"><p className="text-xs font-bold text-slate-900">{item.action_type} · v{item.content_version}</p><p className="truncate text-[10px] text-slate-600">Content {item.content_id} · {new Date(item.requested_at).toLocaleString("id-ID")}</p><p className="text-[10px] text-slate-500">{item.disclosure_snapshot||"AI Agent contribution"}</p></div><div className="flex gap-1"><button type="button" onClick={()=>void decide(item.id,"approve")} disabled={saving||(dispatchBlocked&&!actionDispatchEnabled)} className="rounded-lg border border-slate-900 bg-emerald-200 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Approve</button><button type="button" onClick={()=>void decide(item.id,"reject")} disabled={saving} className="rounded-lg border border-slate-900 bg-rose-100 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Reject</button></div></div>})}</div>}
+    {pending.length===0?<p className="mt-2 text-xs text-slate-600">Belum ada draft yang menunggu persetujuan.</p>:<div className="mt-2 space-y-2">{pending.map(item=>{const dispatchBlocked=["draft_post","draft_comment","draft_reply","suggest_repost"].includes(item.action_type);return <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-2"><div className="min-w-0"><p className="text-xs font-bold text-slate-900">{item.action_type} · v{item.content_version}</p><p className="truncate text-[10px] text-slate-600">{item.target_conversation_id?"Conversation "+item.target_conversation_id+" · Message "+(item.target_message_id||"—"):"Content "+item.content_id} · {new Date(item.requested_at).toLocaleString("id-ID")}</p><p className="text-[10px] text-slate-500">{item.disclosure_snapshot||"AI Agent contribution"}</p></div><div className="flex gap-1"><button type="button" onClick={()=>void decide(item.id,"approve")} disabled={saving||(dispatchBlocked&&!actionDispatchEnabled)} className="rounded-lg border border-slate-900 bg-emerald-200 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Approve</button><button type="button" onClick={()=>void decide(item.id,"reject")} disabled={saving} className="rounded-lg border border-slate-900 bg-rose-100 px-2 py-1 text-[10px] font-bold disabled:opacity-40">Reject</button></div></div>})}</div>}
+   </div>
+   <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50 p-3"><strong className="text-xs text-slate-900">Backend runtime monitor</strong>
+    {budget&&<p className="mt-2 text-xs text-slate-700">Budget: {budget.daily_used_or_reserved}/{budget.daily_budget} credits · remaining {budget.daily_remaining} · available {budget.available_credits} · reserved {budget.reserved_credits}</p>}
+    {monitorError&&<p className="mt-2 text-xs text-amber-800">{monitorError}</p>}
+    <p className="mt-1 text-xs text-slate-600">Events {events.length} · Runs {runs.length} · Runtime {runtimeEnabled?"enabled":"not activated"}</p>
+    {events.slice(0,6).map(item=><p key={item.id} className="mt-1 text-[10px] text-slate-700">Event {item.channel} · {item.status} · {item.attempt_count}/{item.max_attempts}{item.reason_code?" · "+item.reason_code:""}</p>)}
+    {runs.slice(0,6).map(item=><div key={item.run.id} className="mt-2 border-t border-slate-200 pt-2 text-[10px] text-slate-700"><p>Run {item.run.channel} · {item.run.status} · task {item.task?.state||"unavailable"}</p><p>Moderation: {JSON.stringify(item.moderation||{})}</p><p>Credits: {item.credit_reservations.map(x=>x.state+" "+x.reserved_credits+"/"+x.settled_credits).join(", ")||"—"}</p><p>Receipts: {item.effect_receipts.map(x=>x.action_key+" · "+x.status).join(", ")||"—"}</p></div>)}
    </div>
    {approvals.filter(x=>x.status==="approved").length>0&&<div className="mt-2 flex flex-wrap gap-2">{approvals.filter(x=>x.status==="approved").slice(0,5).map(item=><button key={item.id} type="button" onClick={()=>void revoke(item.id)} disabled={saving} className="rounded-lg border border-slate-900 bg-white px-2 py-1 text-[10px] font-semibold disabled:opacity-40">Cabut approval {item.action_type}</button>)}</div>}
   </>}

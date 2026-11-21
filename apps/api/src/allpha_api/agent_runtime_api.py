@@ -274,9 +274,15 @@ async def _execute_social_approval_step(
     }[action_key]
     if approval.get("action_type") != expected_action_type:
         raise AgentRuntimeBlocked("owner approval action does not match the pinned tool")
-    target_id = approval.get("target_content_id") or approval.get("content_id")
-    if not isinstance(target_id, str) or not target_id:
-        raise AgentRuntimeBlocked("owner approval has no canonical target")
+    if approval.get("target_conversation_id"):
+        if action_key != "social.reply" or not approval.get("target_message_id"):
+            raise AgentRuntimeBlocked("DM approval target is not valid for the pinned reply tool")
+        target_reference = "conversation:" + str(approval["target_conversation_id"])
+    else:
+        target_id = approval.get("target_content_id") or approval.get("content_id")
+        if not isinstance(target_id, str) or not target_id:
+            raise AgentRuntimeBlocked("owner approval has no canonical target")
+        target_reference = "content:" + target_id
     policy_id = str(policy.get("id") or "")
     policy_version = str(policy.get("policy_version") or "")
     policy_digest = str(policy.get("policy_digest") or "")
@@ -288,7 +294,7 @@ async def _execute_social_approval_step(
         # The task version fences the current lease, but changes on reclaim. Keep
         # the effect fingerprint stable so a prior committed receipt can reconcile.
         "step_key": step_key, "tool_key": tool_key, "approval_id": approval_id,
-        "target_reference": "content:" + target_id, "inputs": inputs,
+        "target_reference": target_reference, "inputs": inputs,
         "policy_id": policy_id, "policy_version": policy_version, "policy_digest": policy_digest,
     }
     fingerprint = hashlib.sha256(json.dumps(
@@ -299,7 +305,7 @@ async def _execute_social_approval_step(
         task_id=str(row["id"]), task_version=int(row["task_version"]),
         step_key=step_key, owner_user_id=owner_id, actor_user_id=owner_id,
         agent_id=str(row["agent_id"]), action_key=action_key,
-        target_reference="content:" + target_id, approval_id=approval_id,
+        target_reference=target_reference, approval_id=approval_id,
         correlation_id=str(row.get("trace_id") or row["id"]),
         idempotency_key=approval_id, input_fingerprint=fingerprint,
         lease_token=lease_token, policy_id=policy_id,
