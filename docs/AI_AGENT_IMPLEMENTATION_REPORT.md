@@ -502,7 +502,7 @@
 - Railway build deployment `34d273e5-047c-4479-a230-e990e52d7034` completed with status **SUCCESS** from branch `main` and source commit above. Docker build installed `allpha-api` successfully; Uvicorn started on `0.0.0.0:8080`; Railway health check recorded `GET /healthz` → **200 OK**.
 - Generated Railway service domain: `https://allpha-ai-aplikasi-production.up.railway.app`, target port `8080`. Domain is Railway-managed; no custom DNS change was made.
 - Railway request metrics showed no external traffic samples at the time of verification. Direct public URL probe was not available from this execution environment; therefore only the Railway health-check request is confirmed, not a full public/authenticated API journey.
-- No separate Railway service was created for Web, Native Client, or Super Admin. Web and Super Admin remain independently deployed client surfaces; Native is a distributable mobile client, not a persistent Railway runtime. Their production deployment state was not changed in this increment.
+- Web remains on the PRD-canonical Vercel deployment path; Native Client remains an Expo/EAS distributable, not a persistent Railway runtime. A separate Railway service was created and built for the actual `apps/super-admin` application because its Dockerfile and independent Next.js runtime exist in the repository.
 
 **WP-06 implementation/dependency state**
 - Existing code-level hardening remains in place: serialized event rate intake, event/task heartbeat lease-loss handling, cancellation/ledger reconciliation boundaries, DM approval contract gate, and Live Chat fail-closed ENG-P25 gate.
@@ -527,3 +527,20 @@ Read-only catalog queries against canonical project `dvdziauyvuhcnqhrrvww` confi
 - Applied migration history still ends at `20261115185633`; WP-06 source-only event intake/claim/rate/DM approval migrations and the later ENG-P25 participant authority are not represented in the live migration ledger.
 
 **Decision:** keep Knowledge retrieval and Live Chat Agent execution fail-closed. These are concrete schema/contract dependencies, not missing Python adapters that can be filled with inferred columns. ADR-0005 Option C needs the required object-level governance decision and approved migration contract; ENG-P25 must publish its Agent participant/session identity, role/host authority, grant/revocation and lifecycle contract before WP-06 can bind to it.
+
+
+### Railway service matrix — final result for this increment
+
+| Application | Railway disposition | Build/runtime evidence |
+|---|---|---|
+| FastAPI `apps/api` | Configured and deployed in existing `Allpha-AI-Aplikasi` service | Deployment `18de8665-050c-4322-b705-6263c9aecc2a` **SUCCESS**; Dockerfile build succeeded; Uvicorn listening on `0.0.0.0:8080`; Railway `/healthz` returned **200 OK** |
+| Super Admin `apps/super-admin` | Created separate `Allpha-Super-Admin` service | Deployment `b0c00927-1f99-463f-b3b5-76b3c32459ff` **SUCCESS**; Next.js 15.5.27 optimized build compiled, lint/type validation completed with two `<img>` performance warnings, all 18 static pages generated, and `next start` reported ready in 556 ms |
+| Web PWA `apps/web` | Not duplicated on Railway | Master PRD v3.1 addendum specifies Vercel Web deployment; keep the canonical hosting path rather than introduce a second competing Web deployment |
+| Native `apps/client` | Not deployed as a Railway service | React Native + Expo client; use EAS Android/iOS build/distribution lifecycle |
+
+- API domain: `https://allpha-ai-aplikasi-production.up.railway.app` → port `8080`.
+- Super Admin domain: `https://allpha-super-admin-production.up.railway.app` → port `8080`. The port was corrected after observing Next.js bind to Railway's injected `PORT=8080`; routing to the Dockerfile's nominal `EXPOSE 3000` would have been incorrect.
+- The first Super Admin deployment attempt failed because the initial service build used the wrong root/build context and returned 404 at the health path. The service was corrected to root `/apps/super-admin`, Dockerfile `Dockerfile`, watch path `/apps/super-admin/**`; the subsequent deployment above succeeded.
+- Both services are connected to repository branch `main`; API and Super Admin use canonical Supabase URL/publishable key. The Super Admin frontend points at the deployed API domain. API CORS includes the canonical Web/Admin origins and the Railway Super Admin origin.
+- The service list shows both Railway services live with successful latest deployments. Domain status confirms Railway-managed domains and correct target ports. Public authenticated end-to-end requests and the full Super Admin privileged workflows are not claimed as verified; no external traffic samples were present in Railway metrics during this check.
+- No worker service was activated. Agent Runtime and Generation worker flags remain explicitly false. No `SUPABASE_SERVICE_ROLE_KEY` is configured on the API service, so privileged audit/governance operations continue to fail closed rather than running without their server-only authority.
