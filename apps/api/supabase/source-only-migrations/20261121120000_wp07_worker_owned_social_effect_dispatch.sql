@@ -69,6 +69,10 @@ declare
   v_fingerprint text;
   v_trace_id text;
 begin
+  if new.status <> 'pending' or new.dispatch_task_id is not null then
+    return new;
+  end if;
+
   v_tool_key := case new.action_type
     when 'draft_post' then 'social.post_submit'
     when 'draft_comment' then 'social.comment'
@@ -187,6 +191,46 @@ drop trigger if exists agent_social_runtime_dispatch_before_insert
 create trigger agent_social_runtime_dispatch_before_insert
 before insert on public.agent_social_action_approvals
 for each row execute function public.enqueue_agent_social_runtime_dispatch();
+
+drop trigger if exists agent_social_runtime_dispatch_before_update
+  on public.agent_social_action_approvals;
+create trigger agent_social_runtime_dispatch_before_update
+before update of dispatch_task_id on public.agent_social_action_approvals
+for each row
+when (new.dispatch_task_id is null and old.dispatch_task_id is null and new.status = 'pending')
+execute function public.enqueue_agent_social_runtime_dispatch();
+
+-- Backfill eligible pending approvals created before this migration. Unsupported
+-- legacy approvals stay pending and fail closed rather than being silently approved.
+update public.agent_social_action_approvals a
+set dispatch_task_id = null
+where a.status = 'pending'
+  and a.dispatch_task_id is null
+  and a.action_type in ('draft_post','draft_comment','draft_reply','suggest_repost','draft_story')
+  and exists (
+    select 1
+    from public.agent_runtime_tasks t
+    join public.agent_skills s on s.id = t.skill_id and s.agent_id = a.agent_id
+    join public.agent_capabilities c on c.agent_id = a.agent_id
+      and c.capability_key = case a.action_type
+        when 'draft_post' then 'social.post_submit'
+        when 'draft_comment' then 'social.comment'
+        when 'draft_reply' then 'social.reply'
+        when 'suggest_repost' then 'social.repost'
+        when 'draft_story' then 'social.story_reply'
+      end
+    where t.id = a.runtime_task_id and t.owner_user_id = a.owner_user_id
+      and t.agent_id = a.agent_id and t.state = 'succeeded'
+      and s.status = 'published'
+      and (case a.action_type
+        when 'draft_post' then 'social.post_submit'
+        when 'draft_comment' then 'social.comment'
+        when 'draft_reply' then 'social.reply'
+        when 'suggest_repost' then 'social.repost'
+        when 'draft_story' then 'social.story_reply'
+      end) = any(s.tool_dependencies)
+      and c.status = 'approved' and c.runtime_policy_id is not null
+  );
 
 create or replace function public.cancel_agent_social_runtime_dispatch()
 returns trigger

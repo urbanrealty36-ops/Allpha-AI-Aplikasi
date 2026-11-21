@@ -126,6 +126,10 @@ def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_exec
         / "20261121120000_wp07_worker_owned_social_effect_dispatch.sql"
     ).read_text().lower()
     assert "before insert on public.agent_social_action_approvals" in migration
+    assert "before update of dispatch_task_id on public.agent_social_action_approvals" in migration
+    assert "backfill eligible pending approvals" in migration
+    assert "set dispatch_task_id = null" in migration
+    assert "new.status <> 'pending'" in migration
     assert "'waiting_for_approval'" in migration
     assert "approve_agent_social_action_for_runtime" in migration
     assert "set state = 'queued'" in migration
