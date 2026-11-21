@@ -342,10 +342,11 @@ async def list_approvals(user: dict[str, Any] = Depends(current_user)) -> dict[s
 @router.post("/approvals/{approval_id}/decision")
 async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
                           user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    """The transactional database function is the sole source of truth.
+    """The canonical database functions are the sole source of truth.
 
-    Approval state, comment/Story DM side effects, audit and ENG-P20 inbox
-    notifications are committed or rolled back together by this RPC.
+    Comment/reply/Story approval atomically authorizes and queues a lease-fenced
+    WP-07 task; the existing durable worker commits the Social mutation and its
+    effect receipt together. Post/repost keeps its canonical WP-06 workflow.
     """
     approval_rows = await _server_db("GET", "agent_social_action_approvals", params={
         "select": "id,action_type,status",
@@ -361,7 +362,7 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
             and os.getenv("ALLPHA_AGENT_SOCIAL_ACTION_DISPATCH_ENABLED", "false").lower() != "true"):
         raise HTTPException(503, detail={
             "code": "AGENT_SOCIAL_ACTION_SCHEMA_NOT_ACTIVE",
-            "message": "Eksekusi aksi sosial Agent menunggu migration atribusi dan dispatch WP-06 serta aktivasi backend. Approval belum diproses.",
+            "message": "Eksekusi aksi sosial Agent menunggu migration dispatch WP-06/WP-07 dan aktivasi backend. Approval belum diproses.",
         })
     runtime_dispatch_actions = {"draft_comment", "draft_reply", "draft_story"}
     decision_rpc = (
