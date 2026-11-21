@@ -31,6 +31,7 @@
 
 ## Verification boundary
 - Railway service inventory, configuration, deployment status and bounded logs were inspected.
+- The Web and Super Admin `NEXT_PUBLIC_API_BASE_URL` variables were set to the canonical Railway FastAPI service URL; FastAPI CORS was updated for the known production and Railway Web/Admin origins.
 - Supabase migration history and object existence were inspected read-only.
 - No production migration, data mutation, worker activation, Cron activation, provider call, domain cutover, Vercel shutdown, build or integration test was executed in this checkpoint.
 - This report does not claim full backend completion, production readiness, or successful Vercel retirement.
