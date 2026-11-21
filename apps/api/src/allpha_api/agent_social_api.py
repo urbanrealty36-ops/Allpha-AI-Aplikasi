@@ -360,7 +360,13 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
             "code": "AGENT_SOCIAL_ACTION_SCHEMA_NOT_ACTIVE",
             "message": "Eksekusi aksi sosial Agent menunggu migration atribusi dan dispatch WP-06 serta aktivasi backend. Approval belum diproses.",
         })
-    result = await _server_db("POST", "rpc/decide_agent_social_approval", body={
+    runtime_dispatch_actions = {"draft_comment", "draft_reply", "draft_story"}
+    decision_rpc = (
+        "rpc/approve_agent_social_action_for_runtime"
+        if action_type in runtime_dispatch_actions
+        else "rpc/decide_agent_social_approval"
+    )
+    result = await _server_db("POST", decision_rpc, body={
         "p_approval_id": str(approval_id),
         "p_owner_user_id": str(user["id"]),
         "p_decision": payload.decision,
@@ -378,7 +384,10 @@ async def decide_approval(approval_id: uuid.UUID, payload: ApprovalDecision,
         "publishable": False,
         "approval_complete": result["outcome"] in ("approved", "replayed") and approval.get("status") == "approved",
         "submitted_for_moderation": execution.get("kind") == "post_moderation",
+        "execution_pending": execution.get("kind") == "pending_agent_runtime",
+        "dispatch_task_id": execution.get("dispatch_task_id") or approval.get("dispatch_task_id"),
         "next_action": execution.get("next_action") or (
+            "wait_for_agent_runtime" if execution.get("kind") == "pending_agent_runtime" else
             "open_story_dm" if execution.get("kind") == "story_dm" else
             "open_comment_thread" if execution.get("kind") == "comment" else
             "submit_draft_for_moderation" if approval.get("status") == "approved" else "revise_or_discard"
