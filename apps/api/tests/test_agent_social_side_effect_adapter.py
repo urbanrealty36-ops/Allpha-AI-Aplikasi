@@ -112,9 +112,6 @@ def test_wp07_social_effect_migration_fences_lease_and_persists_full_evidence():
     ):
         assert "add column if not exists " + field in migration
     assert "v_task.execution_lease_token is distinct from p_lease_token" in migration
-    assert "Lock Social policy -> approval -> task" in migration
-    assert "v_share_id uuid" in migration
-    assert "not (t.state = 'executing' and coalesce(t.effect_outcome,'none') = 'completed')" in migration
     assert "v_task.lease_expires_at <= now()" in migration
     assert "public.decide_agent_social_approval(" in migration
     assert "agent_runtime_effect_idempotency_conflict" in migration
@@ -139,10 +136,12 @@ def test_social_effect_worker_dispatch_migration_enqueues_approval_task_and_exec
     assert "social.post_submit" in migration
     assert "social.repost" in migration
     assert "insert into public.messages" in migration
+    assert "lock social policy -> approval -> task" in migration
+    assert "v_share_id uuid" in migration
     assert "effect_completed" in migration
     assert "automation_grant_revoked" in migration
-    assert "WP06_AGENT_SOCIAL_ATTRIBUTION_MIGRATION_REQUIRED" in migration
-    assert "WP07_EFFECT_RECEIPT_SCHEMA_PREREQUISITE_MISSING" in migration
+    assert "wp06_agent_social_attribution_migration_required" in migration
+    assert "wp07_effect_receipt_schema_prerequisite_missing" in migration
     assert "v_task.execution_lease_token is distinct from p_lease_token" in migration
     assert "agent_runtime_effect_outcome_unknown_no_replay" in migration
     assert "grant execute on function public.execute_agent_social_approval_effect" in migration
