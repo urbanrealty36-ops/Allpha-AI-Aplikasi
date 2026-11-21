@@ -544,3 +544,10 @@ Read-only catalog queries against canonical project `dvdziauyvuhcnqhrrvww` confi
 - Both services are connected to repository branch `main`; API and Super Admin use canonical Supabase URL/publishable key. The Super Admin frontend points at the deployed API domain. API CORS includes the canonical Web/Admin origins and the Railway Super Admin origin.
 - The service list shows both Railway services live with successful latest deployments. Domain status confirms Railway-managed domains and correct target ports. Public authenticated end-to-end requests and the full Super Admin privileged workflows are not claimed as verified; no external traffic samples were present in Railway metrics during this check.
 - No worker service was activated. Agent Runtime and Generation worker flags remain explicitly false. No `SUPABASE_SERVICE_ROLE_KEY` is configured on the API service, so privileged audit/governance operations continue to fail closed rather than running without their server-only authority.
+
+
+### API readiness probe configuration — final Railway checkpoint
+
+- API service configuration now uses `/readyz` as its Railway health-check path (timeout 60 seconds). This endpoint probes Supabase Auth health and a zero-row PostgREST request using only the publishable key; the live schema confirms the `anon` role has SELECT privilege on the probed `agent_ownerships` relation, while RLS remains enabled.
+- Redeployment `34e8c555-9eda-487e-b6f3-4d07784b08f5` completed **SUCCESS** after the health-check configuration update. The deployment log includes Uvicorn startup and an observed `GET /healthz` → **200 OK**. The Railway service configuration reports `healthcheckPath=/readyz`; however, the available application log does not independently show a `/readyz` request, so do not claim a separately observed Auth+PostgREST readiness response from that log alone.
+- Both API and Super Admin services remain `SUCCESS` in Railway production; no production Supabase migration or data mutation was performed.
