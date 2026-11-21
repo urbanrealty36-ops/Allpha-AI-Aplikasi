@@ -88,3 +88,16 @@ def test_wp06_owner_api_exposes_events_runs_and_ledger_budget():
     assert '"/automation/{agent_id}/runs"' in source
     assert '"/automation/{agent_id}/budget"' in source
     assert "SupabaseCreditLedgerStore.from_environment().get_balance" in source
+
+
+def test_wp06_event_intake_serializes_rate_limit_count_and_insert():
+    migration = ROOT / "supabase/source-only-migrations/20261122100000_wp06_social_event_intake_rate_serialization.sql"
+    sql = migration.read_text().lower()
+    lock = sql.index("pg_advisory_xact_lock")
+    count = sql.index("select greatest(0,count(*)::integer-v_policy.max_replies_per_minute+1)")
+    insert = sql.index("insert into public.agent_social_automation_events")
+    assert lock < count < insert
+    assert "p_channel='comments' and p_source_table<>'content_comments'" in sql
+    assert "p_channel='mentions' and p_source_table<>'content_mentions'" in sql
+    assert "p_channel in ('dm','live_chat') and p_source_table<>'messages'" in sql
+    assert "on conflict(owner_user_id,agent_id,channel,source_table,source_record_id) do nothing" in sql
