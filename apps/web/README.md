@@ -4,8 +4,8 @@ Next.js Web/PWA application. The production deployment is the Railway service `A
 
 ## Production API contract
 
-- Set `NEXT_PUBLIC_API_BASE_URL` in the Railway `Allpha-Web` service to the canonical Railway FastAPI service URL.
-- Current API service URL: `https://allpha-ai-aplikasi-production.up.railway.app`.
+- Set `NEXT_PUBLIC_API_BASE_URL` in the Railway `Allpha-Web` service to the canonical FastAPI origin `https://api.allpha.web.id`.
+- Current API service URL: `https://api.allpha.web.id`.
 - Browser requests must use the canonical FastAPI API. Do not use Vercel API/runtime URLs or add business logic to this client.
 - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are public client configuration only. Never expose a Supabase service-role/secret key, provider secret, or worker credential to the browser.
 - The API service's CORS allowlist must include the approved production Web and Super Admin origins.
