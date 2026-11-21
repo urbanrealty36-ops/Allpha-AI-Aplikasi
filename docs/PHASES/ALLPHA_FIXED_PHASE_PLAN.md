@@ -3904,3 +3904,12 @@ Source implementation checkpoint:
 **Still incomplete / fail-closed:** DM and Live Chat approval/effect-receipt adapter; Messaging context ACL and publishing; Social Knowledge ACL provider; complete Web/Native/Super Admin integration; database migration application and runtime verification. DM/Live Chat event execution is explicitly blocked until the WP-07 Messaging approval/receipt contract is implemented. The daily-credit guard migration remains source-only and requires an approved Credit Policy capability, entitlement and tariff configuration. Do not enable the Social worker or claim production readiness.
 
 **No phase status changes:** WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Authentication remain parallel workstreams.
+
+
+---
+**WP-06 credit-policy loader correctness fix — 2026-11-21 (source-only; no phase promotion):**
+
+- Rebased work on the then-current `main` head `39d21f72d3e19f2bb9ae8289170bc513f99f5408` after rereading `AGENTS.md`, the consolidated Master PRD v3.1.0, the fixed phase plan, and the current WP-06 runtime/WP-07 adapter source.
+- Corrected a real execution-path defect in `agent_social_automation_runtime._load_credit_terms`: the approved capability's `maximum_cost` was compared with the Model Router ceiling before being parsed, causing an unbound local variable on matching policy candidates. Parse and validate the approved policy limits first, then compare pricing version, cost unit and cost ceiling before allowing a reservation.
+- Added focused regression coverage for a matching approved capability/entitlement and for a route whose cost ceiling is below the approved capability maximum. The test file is source-added; it has not been executed in this environment.
+- This does not activate the worker or change live database state. DM and Live Chat still fail closed pending a compatible WP-07 message-approval/effect contract; no unsupported message action is enabled. WP-06 remains `in_progress`.

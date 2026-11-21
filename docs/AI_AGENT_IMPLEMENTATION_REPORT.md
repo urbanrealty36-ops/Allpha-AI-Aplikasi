@@ -398,3 +398,14 @@
 - Added source-contract tests. WP-06 remains `in_progress`; the new source migration is not applied, the Social worker is not activated, and no database mutation, PostgreSQL verification, staging or production deployment occurred.
 - Remaining WP-06 scope: DM and Live Chat owner-approval/effect-receipt adapter; message-context ACL and canonical Messaging publication; Social Knowledge ACL provider; full Web/Native/Super Admin UI consumption; and end-to-end PostgreSQL/runtime recovery verification. DM and Live Chat events are currently rejected fail-closed by the new consumer rather than silently treated as public comments.
 - WP-11 AI Cinema, ENG-P25–P27 Live/Stage and Authentication remain independent parallel workstreams and are not promoted.
+
+
+---
+## WP-06 credit-policy loader correctness fix — 2026-11-21
+
+- Repository baseline: `main` at `39d21f72d3e19f2bb9ae8289170bc513f99f5408`.
+- Corrected `apps/api/src/allpha_api/agent_social_automation_runtime.py`: approved credit capability cost ceiling is now parsed before comparison to the canonical Model Router route ceiling, eliminating the uninitialized-variable path and retaining fail-closed tariff/route matching.
+- Added `apps/api/tests/test_agent_social_credit_policy.py` covering a valid approved capability/entitlement reservation ceiling and a route cost ceiling mismatch.
+- Tests: authored only; not run in this connector session. No CI result is claimed.
+- Security/operations: no database writes, migration application, worker activation, staging or production deployment. DM/Live Chat message approval is still explicitly blocked until the WP-07 message-specific approval/effect contract is implemented and integrated.
+- Status: WP-06 remains `in_progress`; this fix is not a phase completion claim.

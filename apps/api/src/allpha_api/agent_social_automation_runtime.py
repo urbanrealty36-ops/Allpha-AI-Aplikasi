@@ -165,10 +165,6 @@ async def _load_credit_terms(store: AgentRuntimeStore, action_tool: str,
                         "max_usage_units_per_request")
         if any(key not in cap for key in required_cap) or cap.get("action_tool_key") != action_tool:
             continue
-        if (route_snapshot.get("pricing_version") != cap.get("cost_pricing_version")
-                or route_snapshot.get("cost_unit") != cap.get("cost_unit")
-                or maximum_cost > int(route_snapshot.get("max_cost_microunits") or 0)):
-            continue
         try:
             units = int(cap["max_usage_units_per_request"])
             rate = int(cap["credits_per_usage_unit"])
@@ -176,6 +172,10 @@ async def _load_credit_terms(store: AgentRuntimeStore, action_tool: str,
             max_request = int(entitlement["max_credits_per_request"])
             max_concurrent = int(entitlement["max_concurrent_reservations"])
         except (TypeError, ValueError):
+            continue
+        if (route_snapshot.get("pricing_version") != cap.get("cost_pricing_version")
+                or route_snapshot.get("cost_unit") != cap.get("cost_unit")
+                or maximum_cost > int(route_snapshot.get("max_cost_microunits") or 0)):
             continue
         if min(units, rate, maximum_cost, max_request, max_concurrent) <= 0:
             continue
