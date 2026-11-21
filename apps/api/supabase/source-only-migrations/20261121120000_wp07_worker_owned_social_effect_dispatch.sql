@@ -16,7 +16,9 @@ alter table public.agent_social_audit_events
   add constraint agent_social_audit_events_event_type_check
   check (event_type in (
     'policy_created','policy_updated','policy_disabled','draft_requested',
-    'approval_approved','approval_rejected','approval_revoked','effect_completed'
+    'approval_approved','approval_rejected','approval_revoked','effect_completed',
+    'automation_policy_saved','takeover_activated','takeover_released',
+    'automation_grant_created','automation_grant_revoked'
   )) not valid;
 
 create or replace function public.enqueue_agent_social_runtime_dispatch()
