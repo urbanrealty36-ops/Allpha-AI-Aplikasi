@@ -1,39 +1,31 @@
 # API background workers
 
-## Social Graph Outbox — Vercel deployment
+## Social Graph Outbox — Railway persistent consumer
 
-The production consumer is hosted by the existing **Vercel `api-allpha` project**. No Railway service, second database, or separate queue is created.
+The canonical production target is a dedicated Railway worker service in the existing Allpha Railway project. The existing FastAPI mutation path remains a bounded best-effort inline drain; it is not a substitute for the durable consumer.
 
 ### Primary delivery path
-- Social graph mutations (follow, follow-request accept/reject, unfollow/block/mute removal, and interest preference changes) commit to canonical Supabase first.
-- After a successful mutation, FastAPI performs a bounded best-effort inline drain of one durable outbox event.
-- A drain failure does not reverse or misreport the already committed mutation. The event remains pending and lease/retry policy remains owned by Postgres.
-- The effect is idempotent: `apply_social_graph_event_effect` verifies the live lease, inserts the unique event effect, invalidates actor/target feed snapshots, and marks the event processed atomically.
+- Social graph mutations commit to canonical Supabase first.
+- The dedicated worker runs the existing `allpha-social-graph-outbox-worker` entrypoint from `apps/api/src/allpha_api/social_graph_outbox_worker.py`.
+- The worker claims events through the existing Postgres claim RPC, uses expiring lease tokens, and applies each effect through the existing atomic/idempotent effect RPC.
+- Do not create a second queue, event table, consumer implementation or feed invalidation engine.
 
-### Recovery schedule
-- `apps/api/vercel.json` registers `GET /internal/cron/social-graph-outbox` as a daily Vercel Cron recovery sweep.
-- The API route requires `Authorization: Bearer <CRON_SECRET>`, uses constant-time comparison, and fails closed when the secret is absent.
-- The current Vercel team is on the Hobby plan. Vercel Hobby permits at most one cron execution per day, so this is a **recovery sweep only**, not the primary low-latency delivery mechanism. Social mutation requests trigger the normal inline drain. If a higher-frequency scheduled sweep is required, the Vercel plan must support per-minute cron execution.
-- Vercel Cron does not guarantee retries. The durable outbox lease expiry and bounded Postgres retry/dead-letter policy provide recovery; the next cron or graph mutation can reclaim eligible events.
-- The cron endpoint is deliberately a single bounded batch so it remains within serverless execution limits.
-
-### Vercel project configuration
-- Project: `api-allpha` (existing Vercel project linked to this monorepo; project root is `apps/api`).
-- Required production environment variables: existing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or the already-supported `SUPABASE_SECRET_KEY` alias), and `CRON_SECRET`.
-- `CRON_SECRET` is stored as a sensitive Vercel Production environment variable. Never commit or expose its value to clients.
-- Cron registration occurs only after a successful production deployment containing `apps/api/vercel.json`. Verify it in Vercel Project → Settings → Cron Jobs and inspect runtime logs for `/internal/cron/social-graph-outbox`.
-- The legacy `allpha-social-graph-outbox-worker` CLI remains available for controlled local/standalone operations, but is **not** the Vercel production runtime and must not be configured as a Railway service.
+### Railway service contract
+- Target service name: `Allpha-Social-Graph-Outbox-Worker` in Railway project `noble-wonder`, production environment.
+- Repository: `urbanrealty36-ops/Allpha-AI-Aplikasi`, branch `main`, root directory `/apps/api`.
+- Build: existing `apps/api/Dockerfile`; start command: `allpha-social-graph-outbox-worker`.
+- Required server-only environment: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or the already-supported `SUPABASE_SECRET_KEY` alias). Optional bounded controls: `SOCIAL_OUTBOX_BATCH_SIZE`, `SOCIAL_OUTBOX_LEASE_SECONDS`, `SOCIAL_OUTBOX_POLL_SECONDS`, `SOCIAL_OUTBOX_MAX_ATTEMPTS`.
+- The inspected Railway API service does not currently expose either service-role key variable name, and no Social Graph worker service exists yet. Therefore this worker is **NOT ACTIVATED**; do not create a non-functional deployment or claim event processing.
+- Do not attach a Cron schedule to this polling worker. Postgres lease expiry, bounded retries and dead-letter state provide recovery.
 
 ### Retry, lease and idempotency contract
-- Claims use `FOR UPDATE SKIP LOCKED`, expiring lease tokens and bounded batch/lease configuration.
-- The event effect ledger is unique by event ID. Effect insertion, invalidation and event completion are one Postgres transaction.
-- Failures return to pending with bounded exponential backoff; the configured maximum attempt count transitions the event to dead. Expired processing leases can be reclaimed.
-- Never mark an event processed manually; use only the claim/apply/fail RPCs.
+- Claims use `FOR UPDATE SKIP LOCKED`, expiring lease tokens and bounded batches.
+- Event effect insertion, participant feed-snapshot invalidation and event completion remain one Postgres transaction.
+- Failures return to pending with bounded backoff; exhausted attempts become dead-lettered. Expired processing leases may be reclaimed.
+- Never mark an event processed manually; use only the canonical claim/apply/fail RPCs.
 
-### Activation and evidence
-- The source endpoint, daily Vercel Cron declaration and production `CRON_SECRET` variable are configured in the existing Vercel project.
-- Runtime activation is verified only after the deployment containing the cron declaration reaches READY, Vercel lists the cron job, and an authorized invocation is visible in runtime logs with corresponding outbox effect/processed-state evidence.
-- No synthetic production event is to be injected for this verification. Do not claim a worker event was processed merely because deployment or cron registration succeeded.
+### Activation evidence
+A successful image build or running container is not processing evidence. Activation requires the canonical worker service, server-only credentials, successful schema/RPC readiness, a real naturally occurring event, a persisted unique effect receipt/processed state, and lease/retry recovery evidence. Do not inject synthetic production events.
 
 
 ## WP-04 Content Image Worker — isolated runtime (source implemented, not activated)
@@ -115,15 +107,17 @@ The production consumer is hosted by the existing **Vercel `api-allpha` project*
 - This workflow has been committed but has NOT yet been run. No WP-04 migration has been applied to production through this path.
 
 
-## WP-04 lifecycle — Vercel-native bounded execution (2026-11-04)
+## WP-04 lifecycle — Railway runtime migration (supersedes Vercel hosting decision)
 
-- Existing Vercel project api-allpha (root apps/api) is the sole runtime for FastAPI and Cron. No Railway or persistent worker service is used.
-- apps/api/vercel.json registers one daily Cron at 17 3 * * * to GET /internal/cron/platform-lifecycle. The endpoint requires server-only CRON_SECRET, uses constant-time bearer comparison and fails closed when absent.
-- The orchestrator runs at most one leased batch each for scheduled publication and Cloudinary provider cleanup. It enqueues up to 100 due retention candidates through the existing Postgres RPC; this enqueue is non-destructive.
-- Vercel Hobby permits one Cron run per day. This is a recovery/scheduling sweep, not near-real-time publication. A scheduled post may be delayed until the next daily run (up to roughly 24 hours). Higher-frequency SLA requires a Vercel plan with more frequent Cron or an approved Vercel-native event trigger.
-- Image processing, transcode dispatch and callback derivative ingestion remain deferred while the approved malware scanner adapter is unavailable. Cloudinary callback verifies signature and durably enqueues only; it does not download derivatives or mark media ready. Unscanned media remains private and non-publishable.
-- Retention purge requires all five server-only gates: CONTENT_RETENTION_PURGE_ENABLED, CONTENT_RETENTION_BACKUP_VERIFIED, CONTENT_RETENTION_RESTORE_DRILL_VERIFIED, CONTENT_RETENTION_LEGAL_HOLD_VERIFIED, CONTENT_RETENTION_APPROVAL_VERIFIED. Every gate defaults false and is enforced by both Cron status and the retention worker.
-- Vercel Cron does not guarantee retries. Durable Postgres leases, idempotency, bounded retry/backoff and dead-letter state remain authoritative. Runtime activation still requires deployment, env configuration, Cron registration and invocation logs.
+- Railway is the canonical platform for WP-04 API, persistent workers and scheduled execution under `docs/ADR/ADR-RAILWAY-001-canonical-runtime-platform.md`.
+- The previous `apps/api/vercel.json` declaration for `GET /internal/cron/platform-lifecycle` is a legacy migration artifact. Do not create or activate a Vercel Cron or a second Railway scheduler while the lifecycle owner is being reconciled.
+- Existing worker entrypoints remain canonical: `allpha-content-media-worker`, `allpha-content-transcode-worker`, `allpha-content-scheduler`, `allpha-content-retention-worker`, `allpha-content-provider-cleanup`, and `allpha-content-provider-callback`. Use their existing Dockerfiles and Postgres lifecycle contracts; do not introduce duplicate engines.
+- **Scheduler ownership conflict must be resolved before activation:** `allpha-content-scheduler` claims scheduled publication jobs, while the legacy `platform-lifecycle` endpoint also orchestrates scheduled publication/provider cleanup. Exactly one active consumer may own scheduled publication. Keep both inactive until the canonical ownership split is implemented and verified; provider cleanup and retention may be separated only with explicit queue ownership.
+- If a bounded periodic lifecycle sweep is still required after the ownership split, run it as one Railway Cron target with server-only `CRON_SECRET`, constant-time bearer validation, a bounded batch and durable Postgres leases. Preserve the existing daily cadence until a documented operational decision changes it. Railway Cron minimum interval is five minutes; this does not imply a need to increase frequency.
+- Image processing and derivative ingestion remain blocked until the approved ClamAV adapter is reachable and all related source-only migrations are reconciled/applied through the approved path. No no-op scanner, synthetic clean response or readiness bypass.
+- Cloudinary transcode/callback/cleanup workers require the approved account, server-only Cloudinary credentials, exact callback verification and ClamAV. Missing provider/scanner configuration keeps media private and non-publishable.
+- Retention purge remains disabled unless all five existing server-side gates are true: `CONTENT_RETENTION_PURGE_ENABLED`, `CONTENT_RETENTION_BACKUP_VERIFIED`, `CONTENT_RETENTION_RESTORE_DRILL_VERIFIED`, `CONTENT_RETENTION_LEGAL_HOLD_VERIFIED`, and `CONTENT_RETENTION_APPROVAL_VERIFIED`. Do not change these gates during migration.
+- Railway worker/Cron activation is verified only through actual deployment status, authenticated invocation, durable lifecycle receipt/state, retry/recovery evidence and absence of a duplicate consumer. Source presence, build success or HTTP health alone is insufficient.
 
 
 ## ENG-P09 durable generation worker (source implemented, not activated)
