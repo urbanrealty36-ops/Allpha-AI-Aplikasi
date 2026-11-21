@@ -85,11 +85,13 @@ async def get_automation(agent_id: uuid.UUID, user: dict[str, Any] = Depends(cur
         return {"policy": None, "auto_reply_runtime_enabled": False,
                 "runtime_reason": "AGENT_SOCIAL_AUTOMATION_SCHEMA_NOT_ACTIVE"}
     rows = await _server_db("GET", "agent_social_presence_policies", params={
-        "select": "id,agent_id,version,auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,max_replies_per_minute,daily_credit_budget,quiet_hours,escalation_rules,owner_approval_required,output_moderation_required,takeover_active,takeover_started_at,automation_version",
+        "select": "id,agent_id,version,auto_reply_enabled,auto_reply_channels,blocked_topics,reply_tone,allowed_tool_scopes,max_replies_per_minute,daily_credit_budget,quiet_hours,escalation_rules,owner_approval_required,output_moderation_required,takeover_active,takeover_started_at,automation_version,auto_reply_skill_id",
         "owner_user_id": f"eq.{owner_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
     })
-    return {"policy": rows[0] if rows else None, "auto_reply_runtime_enabled": False,
-            "runtime_reason": "AUTO_REPLY_RUNTIME_NOT_CONNECTED"}
+    return {"policy": rows[0] if rows else None,
+            "event_intake_enabled": bool(rows and rows[0].get("auto_reply_enabled")),
+            "auto_reply_runtime_enabled": False,
+            "runtime_reason": "AGENT_SOCIAL_RUNTIME_DISPATCH_NOT_CONNECTED"}
 
 
 @router.put("/automation/{agent_id}")

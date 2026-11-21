@@ -239,6 +239,9 @@ as $$
 declare v_participant record; v_channel text; v_live boolean;
 begin
   if new.sender_type<>'human' or new.sender_user_id is null then return new; end if;
+  if not exists(select 1 from public.conversation_participants cp
+    where cp.conversation_id=new.conversation_id and cp.user_id=new.sender_user_id
+      and cp.participant_type='human') then return new; end if;
   select exists(select 1 from public.live_sessions s
     where s.conversation_id=new.conversation_id and s.status='live') into v_live;
   if v_live then
@@ -295,6 +298,12 @@ begin
      or p_lease_seconds not between 10 and 300 then
     raise exception 'AGENT_SOCIAL_EVENT_CLAIM_INVALID' using errcode='22023';
   end if;
+  update public.agent_social_automation_events e set status='dead_letter',
+    claim_token=null,lease_expires_at=null,reason_code='retry_exhausted',updated_at=now()
+  where e.attempt_count>=e.max_attempts and (
+    e.status in ('received','retry_wait')
+    or (e.status='claimed' and e.lease_expires_at<=now())
+  );
   return query
   with picked as (
     select e.id from public.agent_social_automation_events e
@@ -395,5 +404,46 @@ grant execute on function public.heartbeat_agent_social_automation_event(uuid,uu
 grant execute on function public.complete_agent_social_automation_event(uuid,uuid,uuid) to service_role;
 grant execute on function public.fail_agent_social_automation_event(uuid,uuid,text,integer) to service_role;
 grant execute on function public.cancel_agent_social_automation_events(uuid,uuid,text) to service_role;
+
+
+create or replace function public.cancel_agent_social_events_on_policy_change()
+returns trigger language plpgsql security definer set search_path=''
+as $
+begin
+  if new.takeover_active or not new.is_enabled or new.revoked_at is not null
+     or not new.auto_reply_enabled or new.version is distinct from old.version then
+    perform public.cancel_agent_social_automation_events(
+      new.owner_user_id,new.agent_id,
+      case when new.takeover_active then 'owner_takeover'
+           when not new.is_enabled or new.revoked_at is not null then 'policy_revoked'
+           else 'automation_policy_changed' end
+    );
+  end if;
+  return new;
+end $;
+
+create or replace function public.cancel_agent_social_events_on_grant_revoke()
+returns trigger language plpgsql security definer set search_path=''
+as $
+begin
+  if old.status='active' and new.status<>'active' then
+    perform public.cancel_agent_social_automation_events(
+      new.owner_user_id,new.agent_id,'automation_grant_revoked'
+    );
+  end if;
+  return new;
+end $;
+
+revoke all on function public.cancel_agent_social_events_on_policy_change() from public,anon,authenticated;
+revoke all on function public.cancel_agent_social_events_on_grant_revoke() from public,anon,authenticated;
+drop trigger if exists agent_social_cancel_events_policy_change on public.agent_social_presence_policies;
+create trigger agent_social_cancel_events_policy_change
+after update on public.agent_social_presence_policies
+for each row execute function public.cancel_agent_social_events_on_policy_change();
+drop trigger if exists agent_social_cancel_events_grant_revoke on public.agent_social_automation_grants;
+create trigger agent_social_cancel_events_grant_revoke
+after update of status on public.agent_social_automation_grants
+for each row execute function public.cancel_agent_social_events_on_grant_revoke();
+
 
 commit;
