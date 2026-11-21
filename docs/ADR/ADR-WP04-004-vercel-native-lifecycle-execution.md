@@ -1,21 +1,38 @@
-# ADR-WP04-004 — Vercel-native bounded lifecycle execution
+# ADR-WP04-004 — Vercel-native bounded lifecycle execution (historical decision)
 
-- Status: ACCEPTED — Product Owner direction recorded 2026-11-04
-- Scope: WP-04 / ENG-P13 Content & Media Lifecycle
-- Runtime: existing Vercel project api-allpha, project root apps/api
-- Database: existing canonical Supabase project dvdziauyvuhcnqhrrvww; no new database or queue
+- **Status:** SUPERSEDED on 2026-11-22 by `ADR-RAILWAY-001-canonical-runtime-platform.md`.
+- **Original status:** ACCEPTED — Product Owner direction recorded 2026-11-04.
+- **Original scope:** WP-04 / ENG-P13 Content & Media Lifecycle.
+- **Historical runtime:** Vercel project `api-allpha`, root `apps/api`.
+- **Canonical database:** Supabase `dvdziauyvuhcnqhrrvww`.
 
-## Context
-WP-04 source workers previously used long-running polling loops. Vercel Functions are request-scoped; persistent daemon loops must not run inside them. The linked Vercel team is on Hobby and supports at most one Cron execution per day.
+## Historical context and decision
 
-## Decision
-1. One Vercel Cron at 17 3 * * * calls authenticated FastAPI endpoint GET /internal/cron/platform-lifecycle.
-2. Cron authentication uses server-only CRON_SECRET and constant-time bearer comparison; missing secret fails closed.
-3. Reuse Postgres lifecycle tables/RPCs, leases, idempotency, retries and dead-letter state. Each invocation processes at most one leased batch for scheduled publication and provider cleanup; never invoke daemon run() loops.
-4. Cron enqueues due retention candidates in a bounded batch but does not claim or execute purge jobs.
-5. Malware scanning remains mandatory. Until an approved scanner adapter compatible with the deployed runtime is available, image/transcode/provider-callback derivative processing stays deferred and private. No no-op scanner, synthetic clean result or readiness bypass.
-6. Purge requires all five server-side flags true: CONTENT_RETENTION_PURGE_ENABLED, CONTENT_RETENTION_BACKUP_VERIFIED, CONTENT_RETENTION_RESTORE_DRILL_VERIFIED, CONTENT_RETENTION_LEGAL_HOLD_VERIFIED, CONTENT_RETENTION_APPROVAL_VERIFIED. All default false.
-7. Hobby Cron is a daily recovery sweep, not near-real-time scheduled publication. A due schedule may wait until the next daily run; higher-frequency SLA requires more frequent Cron entitlement or an approved Vercel-native event trigger.
+This ADR originally selected one Vercel Cron at `17 3 * * *` to call authenticated FastAPI endpoint `GET /internal/cron/platform-lifecycle`. It required server-only `CRON_SECRET`, constant-time bearer comparison, bounded batches, Postgres leases/idempotency/retries, non-destructive retention enqueue, mandatory malware scanning, and all five retention purge gates.
 
-## Consequences
-No Railway, second database, duplicate queue or persistent daemon is introduced. Cron has no guaranteed retry, so Postgres lease expiry and retry/dead-letter state provide recovery. Cloudinary callback verifies and enqueues only. Runtime activation requires deployment, environment variables, Cron registration and invocation logs. Scanner, provider, backup/PITR and restore evidence remain separate gates.
+Those lifecycle and security requirements remain valid. The hosting decision does not.
+
+## Superseding decision
+
+The Product Owner's 2026-11-22 instruction establishes Railway as the only Allpha deployment, backend runtime, worker, Cron and orchestration platform. The previous Vercel runtime/Cron decision is no longer operative.
+
+See `docs/ADR/ADR-RAILWAY-001-canonical-runtime-platform.md` for:
+- canonical Railway services and worker inventory;
+- single-consumer/single-scheduler ownership;
+- worker credentials and activation gates;
+- Cron ownership and lifecycle split;
+- custom-domain/traffic cutover;
+- safe removal of Vercel configuration and integrations.
+
+## Preserved invariants
+
+1. Reuse canonical Supabase lifecycle tables/RPCs; no second database or queue.
+2. Use bounded batches, Postgres leases, idempotency, retry/backoff and dead-letter state.
+3. Keep malware scanning mandatory; fail closed when the approved scanner is unavailable.
+4. Keep retention purge disabled until backup/PITR, restore, legal-hold and approval gates are proven.
+5. Never activate duplicate publication, cleanup or outbox consumers.
+6. Do not claim runtime activation without deployment, invocation and durable database evidence.
+
+## Migration status
+
+At the time this ADR was superseded, `apps/api/vercel.json` still contained the legacy daily Cron declaration. No Railway lifecycle Cron or dedicated worker service had yet been verified. Do not remove the legacy config until the Railway replacement and traffic cutover satisfy ADR-RAILWAY-001; do not keep both consumers active during handover.
