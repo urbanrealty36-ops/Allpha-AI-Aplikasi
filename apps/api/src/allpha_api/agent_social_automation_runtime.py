@@ -493,7 +493,8 @@ async def run_social_events_once(store: AgentRuntimeStore, *, limit: int = 5) ->
     """Claim and dispatch one bounded batch to the canonical Agent Runtime task table."""
     router = build_text_generation_router_from_environment()
     if (os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() != "true"
-            or os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() != "true"):
+            or os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() != "true"
+            or not callable(getattr(store, "request", None))):
         return 0
     if router is None:
         logger.warning("WP-06 event dispatch paused: canonical text-generation Model Router is not configured")
@@ -917,7 +918,9 @@ async def reconcile_social_reply_approvals(store: AgentRuntimeStore, *, limit: i
         "status": "in.(queued,running,awaiting_approval)", "order": "created_at.asc",
         "limit": str(max(1, min(limit, 50))),
     })
-    if os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() != "true":
+    if (os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() != "true"
+            or os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() != "true"
+            or not callable(getattr(store, "request", None))):
         return 0
     reconciled = 0
     for run in runs:
