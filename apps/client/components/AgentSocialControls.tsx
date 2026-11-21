@@ -94,7 +94,7 @@ export function AgentSocialControls({ session, apiBase }: Props) {
         }
         setAutomation(currentAutomation);
         setGrantScopes([]);
-        setChannels(currentAutomation?.auto_reply_channels || []);
+        setChannels((currentAutomation?.auto_reply_channels || []).filter(channel => channel !== "live_chat"));
         setBlockedTopicsText((currentAutomation?.blocked_topics || []).join(", "));
         setReplyTone(currentAutomation?.reply_tone || "friendly_concise");
         setDailyBudget(String(currentAutomation?.daily_credit_budget ?? 0));

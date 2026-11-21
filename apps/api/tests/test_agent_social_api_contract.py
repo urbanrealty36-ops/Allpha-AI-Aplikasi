@@ -255,3 +255,23 @@ def test_automation_grant_create_and_revoke_fail_closed_until_schema_is_active(m
             AGENT, uuid.uuid4(), AutomationGrantRevoke(), owner,
         ))
     assert revoke_error.value.status_code == 503
+
+
+
+def test_live_chat_automation_policy_is_rejected_until_eng_p25_agent_permission_exists(monkeypatch):
+    async def owned(owner_id, agent_id):
+        return {"id": str(agent_id)}
+
+    async def forbidden_db(*args, **kwargs):
+        raise AssertionError("Live Chat policy must fail closed before persistence")
+
+    monkeypatch.setattr(agent_social_api, "_active_owned_agent", owned)
+    monkeypatch.setattr(agent_social_api, "_server_db", forbidden_db)
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "true")
+    payload = AutomationPolicyWrite(auto_reply_channels=["live_chat"], expected_version=1)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(agent_social_api.put_automation(AGENT, payload, {"id": str(uuid.uuid4())}))
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "ENG_P25_LIVE_AGENT_PARTICIPANT_AUTHORITY_NOT_AVAILABLE"

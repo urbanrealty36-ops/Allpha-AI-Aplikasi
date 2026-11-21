@@ -115,6 +115,11 @@ async def put_automation(agent_id: uuid.UUID, payload: AutomationPolicyWrite,
     owner_id = str(user["id"])
     await _active_owned_agent(owner_id, str(agent_id))
     _require_automation_schema()
+    if "live_chat" in payload.auto_reply_channels:
+        raise HTTPException(409, detail={
+            "code": "ENG_P25_LIVE_AGENT_PARTICIPANT_AUTHORITY_NOT_AVAILABLE",
+            "message": "Live Chat Auto Reply tetap terkunci sampai ENG-P25 menyediakan izin participant Agent kanonis.",
+        })
     if any(not topic.strip() or len(topic.strip()) > 120 for topic in payload.blocked_topics):
         raise HTTPException(422, detail={"code": "AGENT_SOCIAL_BLOCKED_TOPIC_INVALID", "message": "Topik yang diblokir harus berisi 1–120 karakter."})
     if any(not scope.strip() or len(scope.strip()) > 120 for scope in payload.allowed_tool_scopes):
