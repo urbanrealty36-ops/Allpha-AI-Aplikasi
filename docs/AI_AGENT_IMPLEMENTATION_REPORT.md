@@ -484,3 +484,32 @@
 - Supabase checks remain read-only; canonical migration ledger remains at `20261115185633`. Event intake/claim, rate-serialization and DM approval migrations remain source-only. No database mutation, migration application, worker activation, staging, or deployment action was performed. Vercel automatically created three production-target deployment records for source commit `8706ceb`; all three are `CANCELED` and none reached `READY`. No runtime verification was performed.
 - CI proves source/client build and test contracts only. It does not prove migration execution, PostgreSQL locking/RLS/privileges, actual worker processing, lease fencing/recovery under database concurrency, or end-to-end Social publishing. These remain unverified under ENG-P37 and the current execution restrictions.
 - **WP-06 remains `in_progress`; no phase promotion.** WP-11, ENG-P25–P27 and Authentication statuses remain unchanged.
+
+
+---
+
+# 2026-11-22 — WP-06 continuation / Railway API deployment checkpoint
+
+**Workstream:** WP-06 Agent Social Automation (continues in progress)  
+**Repository / branch:** `urbanrealty36-ops/Allpha-AI-Aplikasi` / `main`  
+**Source commit deployed:** `d32c8b992b4f7a4c0a532d2675fc6ed36f850969`
+
+**Railway configuration and build**
+- Bound Railway project `49dccd43-0ebe-4128-8010-164a273d8cad`, production environment `1ae6e7f7-2583-4505-b1b8-a5bdd2eb598a`, existing service `Allpha-AI-Aplikasi` (`65c6c05e-3a72-46cf-a745-745a0187066f`) to the repository `main` source.
+- Configured the existing service as the FastAPI API service: root directory `/apps/api`, Dockerfile builder, Dockerfile `Dockerfile` (resolved by Railway as `apps/api/Dockerfile`), watch path `/apps/api/**`, health check `/healthz`, port `8080`, restart policy `ALWAYS`.
+- Configured canonical Supabase project URL and its publishable key, production environment label, and allowed Web/Super Admin origins. No service-role/secret key was copied into the client or invented.
+- Explicitly left Agent Runtime and Generation workers disabled. The Railway variable inventory does not include `SUPABASE_SERVICE_ROLE_KEY`; privileged audit/governance paths therefore remain fail-closed.
+- Railway build deployment `34d273e5-047c-4479-a230-e990e52d7034` completed with status **SUCCESS** from branch `main` and source commit above. Docker build installed `allpha-api` successfully; Uvicorn started on `0.0.0.0:8080`; Railway health check recorded `GET /healthz` → **200 OK**.
+- Generated Railway service domain: `https://allpha-ai-aplikasi-production.up.railway.app`, target port `8080`. Domain is Railway-managed; no custom DNS change was made.
+- Railway request metrics showed no external traffic samples at the time of verification. Direct public URL probe was not available from this execution environment; therefore only the Railway health-check request is confirmed, not a full public/authenticated API journey.
+- No separate Railway service was created for Web, Native Client, or Super Admin. Web and Super Admin remain independently deployed client surfaces; Native is a distributable mobile client, not a persistent Railway runtime. Their production deployment state was not changed in this increment.
+
+**WP-06 implementation/dependency state**
+- Existing code-level hardening remains in place: serialized event rate intake, event/task heartbeat lease-loss handling, cancellation/ledger reconciliation boundaries, DM approval contract gate, and Live Chat fail-closed ENG-P25 gate.
+- Knowledge Consent/Grant provider remains blocked under ADR-0005: Option C direction only; physical schema/provider/migration awaits object-level reconciliation and Privacy/Security + Data Platform decision. Retrieval remains fail-closed.
+- Live Chat Agent participant/session authority remains blocked on the canonical ENG-P25 contract. No alternate permission model was introduced.
+- Source-only WP-06 migrations remain unapplied; Supabase was not mutated. No worker was activated, no DM/social publishing E2E was claimed, and no RLS/concurrency/ledger runtime proof was performed.
+- Previous Allpha Smoke run `44931848743` remains the available source/CI evidence (842 API tests passed, 1 warning; Web and Native checks passed). It is not evidence of live PostgreSQL, worker, or Social publishing integration.
+
+**Status:** WP-06 **in_progress**; not complete. WP-11, ENG-P25–P27, and Authentication statuses unchanged.  
+**Next exact work:** obtain approved ADR-0005 physical object reconciliation/provider decision and canonical ENG-P25 Agent participant/session contract; provision the required server-only Supabase secret through Railway's secure variable manager; then perform narrowly scoped DB/worker/approval/publishing verification without duplicate authority or unsafe migration.
