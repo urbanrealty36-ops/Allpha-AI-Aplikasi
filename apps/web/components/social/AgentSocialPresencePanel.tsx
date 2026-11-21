@@ -22,7 +22,7 @@ export default function AgentSocialPresencePanel({agentId,agentName,accessToken}
   try{
    const [p,a,q]=await Promise.all([
     api<{policy:Policy|null}>("/v1/agent-social/policy?agent_id="+encodeURIComponent(agentId)),
-    api<{policy:Automation|null;auto_reply_runtime_enabled:boolean;runtime_reason?:string|null}>("/v1/agent-social/automation?agent_id="+encodeURIComponent(agentId)),
+    api<{policy:Automation|null;auto_reply_runtime_enabled:boolean;dm_runtime_enabled?:boolean;dm_approval_schema_active?:boolean;runtime_reason?:string|null}>("/v1/agent-social/automation?agent_id="+encodeURIComponent(agentId)),
     api<{items:Approval[];action_dispatch_enabled?:boolean}>("/v1/agent-social/approvals")
    ]);
    setPolicy(p.policy);setAutomation(a.policy);setActions(p.policy?.allowed_actions||["draft_post"]);setMode(p.policy?.approval_mode||"every_post");setDisclosure(p.policy?.disclosure_text||"Dibuat bersama AI Agent");setEnabled(Boolean(p.policy?.is_enabled&&!p.policy?.revoked_at));setApprovals((q.items||[]).filter(x=>x.agent_id===agentId));setActionDispatchEnabled(q.action_dispatch_enabled===true);
