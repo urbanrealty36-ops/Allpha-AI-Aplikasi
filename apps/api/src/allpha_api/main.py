@@ -414,7 +414,7 @@ async def update_my_profile(payload: ProfileUpdate, user: dict[str, Any] = Depen
         raise HTTPException(status_code=422, detail={"code": "EMPTY_UPDATE", "message": "Tidak ada perubahan profil."})
     result = await user_db_request(
         "PATCH", "profiles", request.state.supabase_access_token,
-        params={"id": f"eq.{user['id']}", "select": "id,username,display_name,avatar_url,bio,visibility,created_at,updated_at"},
+        params={"id": f"eq.{user['id']}", "select": "id,username,display_name,avatar_url,bio,visibility,locale,created_at,updated_at"},
         body=changes, prefer="return=representation",
     )
     if not result:
