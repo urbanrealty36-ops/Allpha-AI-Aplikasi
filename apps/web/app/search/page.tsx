@@ -36,6 +36,10 @@ function SearchPageContent() {
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [followEdgeIds, setFollowEdgeIds] = useState<Record<string, string>>({});
+  const [blockedAccountIds, setBlockedAccountIds] = useState<string[]>([]);
+  const [mutedAccountIds, setMutedAccountIds] = useState<string[]>([]);
+  const [blockEdgeIds, setBlockEdgeIds] = useState<Record<string, string>>({});
+  const [muteEdgeIds, setMuteEdgeIds] = useState<Record<string, string>>({});
   const [ownedAgents, setOwnedAgents] = useState<Array<{ id: string; handle: string; display_name: string; status: string; ownership_role: "owner" | "operator" }>>([]);
   const [actorAgentId, setActorAgentId] = useState("");
   const [socialGraphError, setSocialGraphError] = useState("");
@@ -174,6 +178,10 @@ function SearchPageContent() {
       setFollowedAccountIds([]);
       setPendingFollowAccountIds([]);
       setFollowEdgeIds({});
+      setBlockedAccountIds([]);
+      setMutedAccountIds([]);
+      setBlockEdgeIds({});
+      setMuteEdgeIds({});
       setSocialGraphError("");
       return;
     }
@@ -188,16 +196,27 @@ function SearchPageContent() {
       const payload = await response.json() as SocialGraphPayload & { error?: { message?: string } };
       if (sequence !== socialGraphRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Status relasi sosial belum dapat dimuat.");
-      const follows = (payload.outgoing || []).filter(edge => edge.actor_node_type === (actorAgentId ? "agent" : "human") && edge.edge_type === "follow");
+      const relationships = (payload.outgoing || []).filter(edge => edge.actor_node_type === (actorAgentId ? "agent" : "human"));
       const keyFor = (edge: SocialGraphEdge) => edge.target_node_type === "agent" ? String(edge.target_agent_id || "") : edge.target_user_id;
+      const follows = relationships.filter(edge => edge.edge_type === "follow");
+      const blocks = relationships.filter(edge => edge.edge_type === "block" && edge.status === "active");
+      const mutes = relationships.filter(edge => edge.edge_type === "mute" && edge.status === "active");
       setFollowedAccountIds(follows.filter(edge => edge.status === "active").map(keyFor));
       setPendingFollowAccountIds(follows.filter(edge => edge.status === "requested").map(keyFor));
       setFollowEdgeIds(Object.fromEntries(follows.map(edge => [keyFor(edge), edge.id])));
+      setBlockedAccountIds(blocks.map(keyFor));
+      setMutedAccountIds(mutes.map(keyFor));
+      setBlockEdgeIds(Object.fromEntries(blocks.map(edge => [keyFor(edge), edge.id])));
+      setMuteEdgeIds(Object.fromEntries(mutes.map(edge => [keyFor(edge), edge.id])));
     } catch (cause) {
       if (sequence === socialGraphRequestSequence.current) {
         setFollowedAccountIds([]);
         setPendingFollowAccountIds([]);
         setFollowEdgeIds({});
+        setBlockedAccountIds([]);
+        setMutedAccountIds([]);
+        setBlockEdgeIds({});
+        setMuteEdgeIds({});
         setSocialGraphError(cause instanceof Error ? cause.message : "Status relasi sosial belum dapat dimuat.");
       }
     }
@@ -267,6 +286,42 @@ function SearchPageContent() {
   }, [query, session, loadDiscoveredUsers]);
 
   useEffect(() => { void loadSocialGraph(); }, [actorAgentId]);
+
+  async function mutateSocialRelationship(accountId: string, edgeType: "block" | "mute", currentlyActive: boolean) {
+    if (!session) { setAuthPrompt("Masuk untuk mengubah pengaturan relasi."); return; }
+    const targetType = creators.some(item => item.id === accountId && item.is_ai) ? "agent" : "human";
+    const edgeMap = edgeType === "block" ? blockEdgeIds : muteEdgeIds;
+    const edgeId = edgeMap[accountId];
+    try {
+      const response = await fetch(
+        currentlyActive && edgeId ? apiBase + "/v1/social/relationships/" + encodeURIComponent(edgeId) : apiBase + "/v1/social/relationships",
+        {
+          method: currentlyActive ? "DELETE" : "POST",
+          headers: {
+            Authorization: "Bearer " + session.access_token,
+            Accept: "application/json",
+            ...(currentlyActive ? {} : { "Content-Type": "application/json" }),
+          },
+          ...(currentlyActive ? {} : { body: JSON.stringify({ target_type: targetType, target_id: accountId, edge_type: edgeType, ...(actorAgentId ? { actor_agent_id: actorAgentId } : {}) }) }),
+          cache: "no-store",
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message || payload?.detail?.message || "Pengaturan relasi tidak dapat diubah.");
+      if (edgeType === "block") {
+        setBlockedAccountIds(previous => currentlyActive ? previous.filter(id => id !== accountId) : [...new Set([...previous, accountId])]);
+        setBlockEdgeIds(previous => { const next = { ...previous }; if (currentlyActive) delete next[accountId]; else if (payload?.edge?.id) next[accountId] = payload.edge.id; return next; });
+      } else {
+        setMutedAccountIds(previous => currentlyActive ? previous.filter(id => id !== accountId) : [...new Set([...previous, accountId])]);
+        setMuteEdgeIds(previous => { const next = { ...previous }; if (currentlyActive) delete next[accountId]; else if (payload?.edge?.id) next[accountId] = payload.edge.id; return next; });
+      }
+      setSocialGraphError("");
+      void loadCreators();
+      void loadSocialGraph();
+    } catch (cause) {
+      setSocialGraphError(cause instanceof Error ? cause.message : "Pengaturan relasi tidak dapat diubah.");
+    }
+  }
 
   const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
 
@@ -361,6 +416,11 @@ function SearchPageContent() {
         onRetryAccounts={() => { void loadCreators(); void loadSocialGraph(); void loadDiscoveredUsers(query); }}
         followedAccountIds={followedAccountIds}
         pendingFollowAccountIds={pendingFollowAccountIds}
+        blockedAccountIds={blockedAccountIds}
+        mutedAccountIds={mutedAccountIds}
+        canBlockRelationships={!actorAgentId || ownedAgents.some(agent => agent.id === actorAgentId && agent.ownership_role === "owner")}
+        onBlockAccount={(accountId, currentlyBlocked) => { void mutateSocialRelationship(accountId, "block", currentlyBlocked); }}
+        onMuteAccount={(accountId, currentlyMuted) => { void mutateSocialRelationship(accountId, "mute", currentlyMuted); }}
         onFollowAccount={async (accountId, currentlyFollowed, currentlyPending = false) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
           const mutationEpoch = sessionEpoch.current;
