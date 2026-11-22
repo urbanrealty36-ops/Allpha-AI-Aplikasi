@@ -20,7 +20,7 @@ else process.env.EAS_PROJECT_ID = previousEasProjectId;
 assert.ok(pkg.dependencies.expo && pkg.dependencies["expo-secure-store"]);
 assert.match(app,/signInWithPassword/); assert.match(app,/signUp\(/);
 assert.match(app,/Authorization: "Bearer " \+ session.access_token/);
-assert.match(app,/SecureStore\.setItemAsync/); assert.match(app,/https:\/\/api\.allpha\.web\.id/); assert.match(app,/\/healthz/);
+assert.match(app,/import \* as SecureStore from "expo-secure-store"/); assert.match(app,/createSecureSessionStorage\(SecureStore\)/); assert.match(app,/https:\/\/api\.allpha\.web\.id/); assert.match(app,/\/healthz/);
 assert.match(app,/\/v1\/me\/consents/); assert.match(app,/Riwayat persetujuan/);
 assert.match(app,/versi resmi Terms of Service dan Privacy Policy ditetapkan/);
 assert.match(app,/const \[socialLoading, setSocialLoading\] = useState\(false\)/);
