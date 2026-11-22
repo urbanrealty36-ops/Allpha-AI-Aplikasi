@@ -326,8 +326,8 @@ assert.ok(webSearch.includes('fetch(apiBase + "/v1/search?q="'), "Search must us
 for (const contract of [
   "lastSessionUserId", "sessionEpoch.current += 1", "searchRequestSequence.current",
   "trendsRequestSequence.current", "recommendationsRequestSequence.current", "creatorsRequestSequence.current",
-  "socialGraphRequestSequence.current", "/v1/me/social-graph", "/v1/me/social-edges",
-  "pendingFollowAccountIds", "follow_request_created", "lastUrlQuery.current = null",
+  "socialGraphRequestSequence.current", "/v1/social/relationships", "/v1/social/relationships/",
+  "pendingFollowAccountIds", "followEdgeIds", "actorAgentId", "follow_request_created", "lastUrlQuery.current = null",
   "if (sequence !== searchRequestSequence.current) return",
   "if (sequence === trendsRequestSequence.current)", "if (sequence === recommendationsRequestSequence.current)",
   "if (sequence === creatorsRequestSequence.current)"
