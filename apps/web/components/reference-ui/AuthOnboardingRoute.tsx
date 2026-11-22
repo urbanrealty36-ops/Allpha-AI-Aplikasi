@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import AuthOnboardingFlow from "./AuthOnboardingFlow";
 import type { AIAgentProfile, HumanProfile } from "@/lib/reference-store";
 import { getBrowserSupabase } from "@/lib/supabase";
+import { useLocale } from "../LocaleProvider";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -56,6 +57,7 @@ type AuthOnboardingRouteProps = { isOpen?: boolean; onClose?: () => void; initia
 
 export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAuthMode: requestedAuthMode }: AuthOnboardingRouteProps) {
   const router = useRouter();
+  const { locale } = useLocale();
   const supabase = useMemo(() => getBrowserSupabase(), []);
   const returnTo = useMemo(() => {
     if (typeof window === "undefined") return "/feed";
@@ -111,7 +113,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
         email: payload.email,
         password: payload.password,
         options: {
-          data: { display_name: payload.user.name.trim(), locale: "id-ID" },
+          data: { display_name: payload.user.name.trim(), locale },
           emailRedirectTo: typeof window === "undefined" ? undefined : window.location.origin + "/auth/callback?next=%2Fstart",
         },
       });
@@ -168,6 +170,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
         display_name: payload.user.name.trim(),
         avatar_url: payload.user.avatar || null,
         bio: payload.user.bio.trim(),
+        locale,
       }),
       cache: "no-store",
     });
@@ -180,6 +183,13 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
         method: "PUT", headers, body: JSON.stringify({ interest_key, preference: "interested" }), cache: "no-store",
       });
       if (!response.ok) throw new Error(await responseError(response));
+    }
+
+    // ENG-P01/Phase 01 acceptance is Human registration first. Agent identity
+    // is a separate domain/phase and must not be a prerequisite for account access.
+    if (payload.authMode === "REGISTER") {
+      finishAuthentication("/feed");
+      return "authenticated";
     }
 
     const catalogPages = await Promise.all([0, 100, 200, 300, 400].map(async (offset) => {
