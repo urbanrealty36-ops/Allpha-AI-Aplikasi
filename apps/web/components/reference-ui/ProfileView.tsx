@@ -71,6 +71,11 @@ interface ProfileViewProps {
   onOpenAccountSettings?: (tab?: "profile" | "settings" | "social" | "consents") => void;
   onLogout?: () => Promise<void>;
   onRevokeOtherSessions?: () => Promise<void>;
+  authSessions?: Array<{ id: string; created_at: string | null; updated_at: string | null; refreshed_at: string | null; aal: string | null; user_agent: string | null; ip: string | null; is_current: boolean }> | null;
+  authSessionsLoading?: boolean;
+  authSessionsError?: string;
+  onLoadAuthSessions?: () => Promise<void>;
+  onRevokeAuthSession?: (sessionId: string) => Promise<void>;
   knowledgeDocs: KnowledgeDocument[];
   posts: PostItem[];
   isTakeoverActive: boolean | null;
@@ -105,6 +110,11 @@ export default function ProfileView({
   onOpenAccountSettings,
   onLogout,
   onRevokeOtherSessions,
+  authSessions = null,
+  authSessionsLoading = false,
+  authSessionsError = "",
+  onLoadAuthSessions,
+  onRevokeAuthSession,
   knowledgeDocs,
   posts,
   isTakeoverActive = null,
@@ -1133,7 +1143,7 @@ export default function ProfileView({
 
               {/* 12. LOGOUT & CABUT SESI */}
               <button
-                onClick={() => setSelectedSettingDetail('SESSION')}
+                onClick={() => { setSelectedSettingDetail('SESSION'); if (onLoadAuthSessions) void onLoadAuthSessions().catch(() => undefined); }}
                 className="w-full py-3 px-3.5 flex items-center justify-between bg-rose-50 hover:bg-rose-100 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] rounded-2xl transition active:translate-x-0.5 active:translate-y-0.5 text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">
@@ -1354,8 +1364,20 @@ export default function ProfileView({
               <div className="p-4 bg-rose-50 border-t-2 border-slate-900 text-xs space-y-2.5">
                 <h4 className="font-black text-rose-950">Sesi Login Aktif & Keamanan:</h4>
                 <p className="text-rose-900 font-bold text-[11px]">
-                  • Status sesi aktif akan ditampilkan setelah layanan keamanan terhubung.
+                  Daftar perangkat dan pencabutan sesi dimuat langsung dari Allpha API.
                 </p>
+                {authSessionsLoading && <p role="status" className="rounded-xl border border-rose-200 bg-white p-3 text-[11px] font-bold text-rose-800">Memuat sesi aktif…</p>}
+                {authSessionsError && <div role="alert" className="rounded-xl border border-rose-300 bg-white p-3 text-[11px] font-bold text-rose-800">{authSessionsError}<button type="button" onClick={() => { if (onLoadAuthSessions) void onLoadAuthSessions().catch(() => undefined); }} className="ml-2 underline">Coba lagi</button></div>}
+                {!authSessionsLoading && !authSessionsError && authSessions !== null && authSessions.length === 0 && <p className="rounded-xl border border-rose-200 bg-white p-3 text-[11px] text-rose-800">Tidak ada sesi aktif yang dapat ditampilkan.</p>}
+                {authSessions?.map((item) => (
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-white p-3">
+                    <div className="min-w-0">
+                      <p className="font-black text-slate-900">{item.user_agent || "Perangkat tidak teridentifikasi"} {item.is_current && <span className="ml-1 rounded-md bg-emerald-200 px-1.5 py-0.5 text-[9px] font-black text-emerald-900">PERANGKAT INI</span>}</p>
+                      <p className="mt-1 text-[10px] text-slate-600">{item.ip || "IP tidak tersedia"} · Aktivitas {item.refreshed_at || item.updated_at || item.created_at || "waktu tidak tersedia"}</p>
+                    </div>
+                    {!item.is_current && <button type="button" disabled={authSessionsLoading || !onRevokeAuthSession} onClick={() => { if (!onRevokeAuthSession) return; void onRevokeAuthSession(item.id).then(() => showToast("Sesi perangkat dicabut.")).catch((cause) => showToast(cause instanceof Error ? cause.message : "Pencabutan sesi gagal.")); }} className="rounded-lg border border-rose-300 px-2.5 py-1.5 font-black text-rose-800 disabled:opacity-50">Cabut</button>}
+                  </div>
+                ))}
                 <div className="flex gap-2 pt-1">
                   <button 
                     onClick={() => {
