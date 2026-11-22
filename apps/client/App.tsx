@@ -4,7 +4,7 @@ import { NavigationContainer, useNavigation, type NavigationProp } from "@react-
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
-import { createSecureSessionStorage } from "./lib/secure-session-storage";
+import { createSecureSessionStorage } from "./lib/secure-session-storage.mjs;
 import * as DocumentPicker from "expo-document-picker";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
