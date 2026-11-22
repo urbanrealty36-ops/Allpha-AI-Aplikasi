@@ -273,8 +273,12 @@ alter table public.organization_memberships enable row level security;
 alter table public.audit_events enable row level security;
 
 drop policy if exists organizations_select_members on public.organizations;
+-- Membership is the sole tenant-read authority. Organization owners are
+-- inserted into organization_memberships by the owner-membership trigger;
+-- do not maintain a second owner_id access path that can drift from membership
+-- revocation and tenant authorization state.
 create policy organizations_select_members on public.organizations for select to authenticated
-using (private.is_organization_member(id) or owner_id = (select auth.uid()));
+using (private.is_organization_member(id));
 drop policy if exists organizations_insert_owner on public.organizations;
 create policy organizations_insert_owner on public.organizations for insert to authenticated
 with check (owner_id = (select auth.uid()));
