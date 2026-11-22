@@ -204,6 +204,13 @@ assert.ok(app.includes('processedAuthUrls.current.delete(rawUrl)'), 'Native auth
 assert.ok(app.includes("const [passwordUpdated, setPasswordUpdated] = useState(false)"), "Native password recovery must retain the password-updated state so revocation can be retried without resubmitting the password");
 assert.ok(app.includes("if (!passwordUpdated) {") && app.includes('passwordUpdated ? "Cabut sesi dan selesaikan"'), "Native recovery must retry server session revocation independently after password update");
 assert.ok(app.includes("authLinkSubscription.remove()"), "Native auth deep-link listener must be removed on every navigator cleanup path");
+assert.ok(app.includes("const [sessionVerificationError, setSessionVerificationError] = useState<string | null>(null)"), "Native session verification must expose a recoverable unavailable state");
+assert.ok(app.includes("retrySessionVerificationRef.current = () =>"), "Native session verification must provide an explicit retry path");
+assert.ok(app.includes("authResponse.status === 401 || authResponse.status === 403"), "Definitive Supabase rejection must clear the invalid local session");
+assert.ok(app.includes("meResponse.status === 401 || meResponse.status === 403"), "Definitive FastAPI rejection must clear the invalid local session");
+assert.ok(app.includes("Sesi lokal tetap disimpan; coba lagi."), "Transient Auth/API failures must preserve the recoverable local session");
+assert.ok(app.includes("Konten akun tetap terkunci sampai verifikasi berhasil."), "Protected Native content must remain hidden while session verification is unavailable");
+assert.ok(app.includes("retrySessionVerificationRef.current?.()"), "Native unavailable screen must invoke the session verification retry");
 
 assert.ok(app.includes('function AuthCallback({ status, canContinue }'), "Native callback screen must expose truthful success/error states");
 assert.ok(app.includes('const ready = status === "success" && canContinue'), "Native callback must wait for FastAPI identity bootstrap before continuing");

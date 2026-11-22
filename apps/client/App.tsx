@@ -2278,6 +2278,8 @@ function Navigator() {
   const [journeyTab, setJourneyTab] = useState<"agents" | "feed">("feed");
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [authCallbackStatus, setAuthCallbackStatus] = useState<"pending" | "success" | "error">("pending");
+  const [sessionVerificationError, setSessionVerificationError] = useState<string | null>(null);
+  const retrySessionVerificationRef = useRef<(() => void) | null>(null);
   const recoveryFlowRef = useRef(false);
   const processedAuthUrls = useRef(new Set<string>());
   const journeyRequestSequence = useRef(0);
@@ -2356,11 +2358,17 @@ function Navigator() {
       const sequence = ++journeyRequestSequence.current;
       setSession(next);
       setJourneyReady(false);
+      setSessionVerificationError(null);
       if (!next) {
+        retrySessionVerificationRef.current = null;
         setJourneyTab("feed");
         if (active && sequence === journeyRequestSequence.current) setJourneyReady(true);
         return;
       }
+      retrySessionVerificationRef.current = () => {
+        setSessionVerificationError(null);
+        void resolveJourney(next);
+      };
       try {
         // Verify the persisted token against Supabase Auth without relying on
         // client-side cached session state, then bootstrap the same Human
@@ -2369,7 +2377,14 @@ function Navigator() {
           headers: { apikey: supabaseKey, Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
         if (sequence !== journeyRequestSequence.current) return;
-        if (!authResponse.ok) throw new Error("Sesi tidak valid atau telah dicabut.");
+        if (!authResponse.ok) {
+          if (authResponse.status === 401 || authResponse.status === 403) {
+            await supabase?.auth.signOut({ scope: "local" });
+            if (sequence === journeyRequestSequence.current) setSession(null);
+            return;
+          }
+          throw new Error("Layanan verifikasi Supabase sementara tidak tersedia. Sesi lokal tetap disimpan; coba lagi.");
+        }
         const verifiedUser = await authResponse.json() as { id?: string; email_confirmed_at?: string | null };
         if (verifiedUser.id !== next.user.id || !verifiedUser.email_confirmed_at) {
           if (sequence !== journeyRequestSequence.current) return;
@@ -2381,7 +2396,14 @@ function Navigator() {
           headers: { Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
         if (sequence !== journeyRequestSequence.current) return;
-        if (!meResponse.ok) throw new Error("Identitas Human belum dapat diverifikasi oleh Allpha API.");
+        if (!meResponse.ok) {
+          if (meResponse.status === 401 || meResponse.status === 403) {
+            await supabase?.auth.signOut({ scope: "local" });
+            if (sequence === journeyRequestSequence.current) setSession(null);
+            return;
+          }
+          throw new Error("Allpha API sementara tidak dapat memverifikasi identitas. Sesi lokal tetap disimpan; coba lagi.");
+        }
         const me = await meResponse.json() as { profile?: Profile };
         if (me.profile?.account_status !== "active") {
           if (sequence !== journeyRequestSequence.current) return;
@@ -2400,12 +2422,12 @@ function Navigator() {
           if (sequence !== journeyRequestSequence.current) return;
           setJourneyTab(Array.isArray(payload.items) && payload.items.length > 0 ? "feed" : "agents");
         }
-      } catch {
-        // Fail closed; stale checks must never sign out a newer authenticated session.
+      } catch (cause) {
+        // Network/5xx failures are recoverable: keep the persisted session but
+        // never render protected surfaces until Supabase and FastAPI verify it.
         if (sequence === journeyRequestSequence.current) {
-          setSession(null);
           setJourneyTab("feed");
-          await supabase?.auth.signOut({ scope: "local" });
+          setSessionVerificationError(cause instanceof Error ? cause.message : "Verifikasi sesi gagal sementara. Periksa koneksi lalu coba lagi.");
         }
       } finally {
         if (active && sequence === journeyRequestSequence.current) setJourneyReady(true);
@@ -2442,6 +2464,7 @@ function Navigator() {
   }, []);
 
   if (!ready || (session && !journeyReady)) return <View style={s.loading}><ActivityIndicator size="large" color="#A5B4FC"/><Text style={s.muted}>Menyiapkan sesi dan memeriksa identitas AI Agent…</Text></View>;
+  if (session && sessionVerificationError) return <View style={s.loading}><Text style={s.title}>Verifikasi sesi tertunda</Text><Text style={s.muted}>{sessionVerificationError}</Text><Text style={s.muted}>Sesi aman di perangkat dipertahankan. Konten akun tetap terkunci sampai verifikasi berhasil.</Text><Pressable accessibilityRole="button" onPress={() => retrySessionVerificationRef.current?.()} style={s.button}><Text style={s.buttonText}>Coba lagi</Text></Pressable></View>;
   return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: {
     Welcome: "", Auth: "auth", AuthCallback: "auth/callback", Recovery: "auth/recovery", Profile: "profile", Account: "account", Agents: "agents",
     Feed: "feed", Reels: "reels", Stories: "stories", Search: "search", Messages: "messages",
