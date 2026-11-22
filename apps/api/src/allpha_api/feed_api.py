@@ -120,15 +120,23 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     item = rows[0]
     followed, hidden = await _edges(viewer_id)
     owner_id = str(item.get("owner_id"))
-    if owner_id in hidden or (item.get("visibility") == "followers" and owner_id not in followed and owner_id != viewer_id):
-        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    creator_key = _creator_node_key(item)
     owner_profile = (await _profiles_for({owner_id})).get(owner_id)
-    if (
-        not owner_profile
-        or owner_profile.get("account_status", "active") != "active"
-        or (owner_profile.get("visibility") != "public" and owner_id not in followed and owner_id != viewer_id)
-    ):
+    if not owner_profile or owner_profile.get("account_status", "active") != "active":
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    if creator_key in hidden:
+        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    if item.get("ai_agent_id"):
+        agent = await _agent_for_attributed_content(item)
+        if not agent or (agent.get("visibility") != "public" and creator_key not in followed and owner_id != viewer_id):
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+        if item.get("visibility") == "followers" and creator_key not in followed and owner_id != viewer_id:
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
+    else:
+        if (item.get("visibility") == "followers" and creator_key not in followed and owner_id != viewer_id) or (
+            owner_profile.get("visibility") != "public" and creator_key not in followed and owner_id != viewer_id
+        ):
+            raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     return item
 
 async def _agent_for_attributed_content(item: dict[str, Any]) -> dict[str, Any] | None:
@@ -137,7 +145,7 @@ async def _agent_for_attributed_content(item: dict[str, Any]) -> dict[str, Any] 
         return None
     owner_id = str(item.get("owner_id") or "")
     agents = await _server_db("GET", "ai_agents", params={
-        "select": "id,handle,display_name,avatar_url,description,disclosure,status",
+        "select": "id,handle,display_name,avatar_url,description,disclosure,status,visibility",
         "id": f"eq.{agent_id}", "status": "eq.active", "limit": "1",
     })
     if not agents:
@@ -222,21 +230,48 @@ async def _agent_share_metadata(content_ids: list[str]) -> tuple[dict[str, int],
     return counts, repost_counts, by_content
 
 
+def _graph_node_key(node_type: str | None, user_id: str | None, agent_id: str | None) -> str:
+    if node_type == "agent" and agent_id:
+        return "agent:" + str(agent_id)
+    return "human:" + str(user_id or "")
+
+
+def _creator_node_key(item: dict[str, Any]) -> str:
+    return _graph_node_key("agent" if item.get("ai_agent_id") else "human",
+                           str(item.get("owner_id") or ""),
+                           str(item.get("ai_agent_id") or "") if item.get("ai_agent_id") else None)
+
+
 async def _edges(user_id: str) -> tuple[set[str], set[str]]:
+    # Only edges whose endpoint is the viewer's Human node affect the Human feed.
+    # Agent-owned relationships remain independent even when the same Human owns
+    # both identities; the owner context is never treated as the Agent node.
     outgoing = await _server_db("GET", "social_edges", params={
-        "select": "target_user_id,edge_type,status", "actor_user_id": f"eq.{user_id}",
+        "select": "target_user_id,target_node_type,target_agent_id,edge_type,status",
+        "actor_user_id": f"eq.{user_id}", "actor_node_type": "eq.human",
         "edge_type": "in.(follow,block,mute)", "limit": "1500",
     })
-    incoming = await _server_db("GET", "social_edges", params={
-        "select": "actor_user_id,status", "target_user_id": f"eq.{user_id}",
+    incoming_blocks = await _server_db("GET", "social_edges", params={
+        "select": "actor_user_id,actor_node_type,actor_agent_id,status",
+        "target_user_id": f"eq.{user_id}", "target_node_type": "eq.human",
         "edge_type": "eq.block", "status": "eq.active", "limit": "500",
     })
-    followed = {str(x["target_user_id"]) for x in (outgoing or []) if x.get("edge_type") == "follow" and x.get("status") == "active"}
+    followed = {
+        _graph_node_key(x.get("target_node_type"), str(x.get("target_user_id") or ""),
+                        str(x.get("target_agent_id") or "") if x.get("target_agent_id") else None)
+        for x in (outgoing or []) if x.get("edge_type") == "follow" and x.get("status") == "active"
+    }
     hidden = {
-        str(x["target_user_id"]) for x in (outgoing or [])
+        _graph_node_key(x.get("target_node_type"), str(x.get("target_user_id") or ""),
+                        str(x.get("target_agent_id") or "") if x.get("target_agent_id") else None)
+        for x in (outgoing or [])
         if x.get("edge_type") in {"block", "mute"} and x.get("status") == "active"
     }
-    hidden.update(str(x["actor_user_id"]) for x in (incoming or []) if x.get("status") == "active")
+    hidden.update(
+        _graph_node_key(x.get("actor_node_type"), str(x.get("actor_user_id") or ""),
+                        str(x.get("actor_agent_id") or "") if x.get("actor_agent_id") else None)
+        for x in (incoming_blocks or []) if x.get("status") == "active"
+    )
     return followed, hidden
 
 async def _profiles_for(user_ids: set[str]) -> dict[str, dict[str, Any]]:
@@ -337,23 +372,15 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in candidates})
     candidates = [
         row for row in candidates
-        if str(row.get("owner_id")) not in hidden
-        and str(row.get("owner_id")) in profile_by_id
+        if str(row.get("owner_id") or "") in profile_by_id
         and profile_by_id[str(row.get("owner_id"))].get("account_status", "active") == "active"
-        and (
-            (row.get("visibility") == "public" and (
-                profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
-                or (owner and str(row.get("owner_id")) in followed)
-            ))
-            or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed)
-        )
     ]
     # Agent attribution is shown only for active Agents with a current active owner link.
     attributed_ids = {str(row.get("ai_agent_id")) for row in candidates if row.get("ai_agent_id")}
     agent_by_id: dict[str, dict[str, Any]] = {}
     if attributed_ids:
         agent_rows = await _server_db("GET", "ai_agents", params={
-            "select": "id,handle,display_name,avatar_url,description,disclosure,status",
+            "select": "id,handle,display_name,avatar_url,description,disclosure,status,visibility",
             "id": f"in.({','.join(sorted(attributed_ids))})", "status": "eq.active",
             "limit": str(min(1000, len(attributed_ids))),
         })
@@ -376,8 +403,30 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
 
     # "Following" is an explicit relationship feed, not a ranking hint: return only
     # active followed creators. Guest requests already fall back to chronological public feed.
+    candidates = [
+        row for row in candidates
+        if (not owner or _creator_node_key(row) not in hidden)
+        and (
+            not owner
+            or (
+                _creator_node_key(row) in followed
+                or (
+                    row.get("ai_agent_id") is None
+                    and profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
+                    and row.get("visibility") == "public"
+                )
+                or (
+                    row.get("ai_agent_id") is not None
+                    and str(row.get("ai_agent_id")) in agent_by_id
+                    and agent_by_id[str(row.get("ai_agent_id"))].get("visibility") == "public"
+                    and row.get("visibility") == "public"
+                )
+                or str(row.get("owner_id")) == owner
+            )
+        )
+    ]
     if owner and effective_mode == "following":
-        candidates = [row for row in candidates if str(row.get("owner_id")) in followed]
+        candidates = [row for row in candidates if _creator_node_key(row) in followed]
 
     # Explicit viewer feedback is authoritative for that viewer's future feed.
     # It is private owner-scoped data and never becomes a public engagement metric.
@@ -438,7 +487,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
     for row in candidates:
         cid = str(row["id"])
         like_count, comment_count, save_count, share_count = likes.get(cid, 0), comment_counts.get(cid, 0), save_counts.get(cid, 0), share_counts.get(cid, 0)
-        followed_creator = bool(owner and str(row.get("owner_id")) in followed)
+        followed_creator = bool(owner and _creator_node_key(row) in followed)
         body_tokens = set(re.findall(r"[a-z0-9]+", str(row.get("body") or "").casefold()))
         interest_matches = sum(
             1 for key in interest_keys
