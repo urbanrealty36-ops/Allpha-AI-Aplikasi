@@ -71,6 +71,38 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   "Global layout must constrain mobile viewport overflow");
 }
 
+// Authentication repair regression contracts: one shared auth route, verified sessions,
+// email confirmation recovery, OAuth callback and password recovery.
+{
+  const authRoute = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
+  const authFlow = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+  const requireSession = readFileSync(new URL("../components/RequireSession.tsx", import.meta.url), "utf8");
+  const startJourney = readFileSync(new URL("../app/start/page.tsx", import.meta.url), "utf8");
+  const callback = readFileSync(new URL("../app/auth/callback/page.tsx", import.meta.url), "utf8");
+  const forgotPassword = readFileSync(new URL("../app/forgot-password/page.tsx", import.meta.url), "utf8");
+  const resetPassword = readFileSync(new URL("../app/reset-password/page.tsx", import.meta.url), "utf8");
+  const account = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
+  for (const contract of [
+    "verification_pending", "supabase.auth.getUser(session.access_token)", "email_confirmed_at",
+    "supabase.auth.resend", "supabase.auth.signInWithOAuth", "/auth/callback?next=%2Fstart",
+    "finishAuthentication(\"/feed\")", "returnTo"
+  ]) assert.ok(authRoute.includes(contract), `missing canonical auth lifecycle contract: ${contract}`);
+  assert.ok(authFlow.includes("onResendVerification") && authFlow.includes("verificationPending") &&
+    authFlow.includes("/forgot-password") && authFlow.includes("minLength={authMode === 'REGISTER' ? 8 : undefined}"),
+    "shared auth UI must support verification resend, password recovery and typed password validation");
+  assert.ok(requireSession.includes("supabase.auth.getUser(data.session.access_token)") &&
+    requireSession.includes("authEventSeen"), "protected routes must validate persisted sessions and avoid stale initialization races");
+  assert.ok(startJourney.includes("/v1/me") && startJourney.includes("email_confirmed_at") &&
+    startJourney.includes("account_status"), "post-login routing must resolve verified Human identity before Agent onboarding");
+  assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext"), "OAuth/email callback must exchange code and enforce safe redirect");
+  assert.ok(forgotPassword.includes("resetPasswordForEmail") && forgotPassword.includes("/auth/callback?next=%2Freset-password"),
+    "password recovery must use Supabase Auth with the canonical callback");
+  assert.ok(resetPassword.includes("updateUser({ password })") && resetPassword.includes("getSession"),
+    "password reset must require a valid recovery session");
+  assert.ok(account.includes('window.location.assign("/" + modeParam') && !account.includes("supabase.auth.signInWithPassword"),
+    "account page must not create a second independent sign-in/register UI flow");
+}
+
 
 const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", import.meta.url), "utf8");
 for (const contract of [
