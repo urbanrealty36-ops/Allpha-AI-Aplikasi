@@ -84,8 +84,11 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
       void Promise.resolve().then(() => validateSession(nextSession));
     });
 
+    // Ignore a late getSession result if an Auth event has already supplied
+    // a newer session state while the initial lookup was in flight.
+    const initialGeneration = generation;
     void supabase.auth.getSession().then(({ data: current, error }) => {
-      if (!active) return;
+      if (!active || generation !== initialGeneration) return;
       if (error) {
         setSession(null);
         setStatus("unavailable");
@@ -93,7 +96,7 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
       }
       void validateSession(current.session);
     }).catch(() => {
-      if (active) {
+      if (active && generation === initialGeneration) {
         setSession(null);
         setStatus("unavailable");
       }
