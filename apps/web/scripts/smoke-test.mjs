@@ -336,6 +336,11 @@ const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView
 assert.ok(exploreView.includes("pendingFollowAccountIds") && exploreView.includes("<span>Menunggu</span>") && exploreView.includes("Batalkan permintaan mengikuti"), "Explore must distinguish active follows from cancellable private-profile requests");
 assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("loadDiscoveredUsers"), "Explore must connect username discovery to the canonical discovery endpoint");
 assert.ok(exploreView.includes("discoveryError") && exploreView.includes("relationshipError"), "Explore must expose explicit discovery and relationship error states");
+const agentPassportPath = new URL("../app/agents/passport/[handle]/page.tsx", import.meta.url);
+if (existsSync(agentPassportPath)) {
+  const agentPassport = readFileSync(agentPassportPath, "utf8");
+  assert.ok(agentPassport.includes("/v1/social/nodes/agent/") && agentPassport.includes("followers_count"), "Agent Passport must use canonical Social Graph summary counts");
+}
 const socialFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
 if (existsSync(socialFeedApiPath)) {
   const socialFeedApi = readFileSync(socialFeedApiPath, "utf8");
