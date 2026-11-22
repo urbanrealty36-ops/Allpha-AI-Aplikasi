@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { NavigationContainer, useNavigation, type NavigationProp } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -2281,6 +2281,23 @@ function Navigator() {
   const recoveryFlowRef = useRef(false);
   const processedAuthUrls = useRef(new Set<string>());
   const journeyRequestSequence = useRef(0);
+
+  // Keep Supabase token refresh aligned with the native application lifecycle.
+  // Refreshing while backgrounded wastes work; failing to restart on foreground
+  // can leave a restored session stale when the user returns to the app.
+  useEffect(() => {
+    if (!supabase) return;
+    const syncAuthRefresh = (state: string | null) => {
+      if (state === "active" || state === null) supabase.auth.startAutoRefresh();
+      else supabase.auth.stopAutoRefresh();
+    };
+    syncAuthRefresh(AppState.currentState);
+    const subscription = AppState.addEventListener("change", syncAuthRefresh);
+    return () => {
+      subscription.remove();
+      supabase.auth.stopAutoRefresh();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;

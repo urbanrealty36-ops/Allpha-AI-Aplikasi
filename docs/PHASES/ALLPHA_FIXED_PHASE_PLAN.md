@@ -508,3 +508,13 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Verification:** Railway service configuration confirms `api.allpha.web.id` targets port 8080 and uses `/readyz` as its health check. The new GitHub Actions run is the required execution evidence; do not promote ENG-P01 based on this correction alone.
 - **Status:** ENG-P01 remains `in_progress`. External Supabase Auth custom-scheme redirect allow-list, approved EAS project linkage, `EXPO_TOKEN`, remote signing credentials and physical-device callback/recovery evidence remain open.
 - **Next:** complete the remaining external native platform gates; only then proceed to ENG-P02 acceptance according to the fixed dependency order.
+
+## 22. ENG-P01 Native foreground/background session refresh lifecycle — 2026-11-22
+
+- **Scope / PRD traceability:** ENG-P01 native platform foundation; Master PRD sections 7.1, 17, 73 and 86 (native lifecycle, verified session continuity, session revocation and reliability).
+- **Root cause:** Native Supabase Auth persisted sessions and enabled automatic refresh, but the React Native application did not bind refresh scheduling to foreground/background transitions. A session could therefore resume with stale credentials or continue scheduling refresh work while backgrounded.
+- **Implementation:** apps/client/App.tsx now starts Supabase Auth auto-refresh when the app is active (or initial AppState is not yet available), stops it when inactive/backgrounded, and removes the AppState listener plus stops refresh during Navigator cleanup. The existing PKCE callback, SecureStore persistence, FastAPI /v1/me identity bootstrap and /v1/auth/revoke server revocation remain the single auth flow.
+- **Coverage:** Web — NOT AFFECTED (browser auth lifecycle remains owned by Web); API/DB — NOT AFFECTED (no contract or schema change); Native Client — CHANGE (Android/iOS lifecycle); Super Admin — NOT AFFECTED (separate operator session lifecycle).
+- **Verification:** Native smoke assertions now require the AppState listener and both refresh transitions. The commit-triggered CI result is pending at commit time; no physical-device background/foreground or real callback journey is claimed by a source assertion.
+- **Status:** ENG-P01 remains `in_progress`. This closes the native app-state refresh implementation gap, not the external Auth redirect/EAS signing/real-device acceptance gates.
+- **Next:** observe Android/iOS/Web CI; obtain authorized Supabase Auth redirect configuration and approved EAS project/signing access; run signed production builds and device callback, recovery, restore, background/foreground and logout/revocation journeys. ENG-P02 acceptance remains dependency-gated until ENG-P01 is complete.
