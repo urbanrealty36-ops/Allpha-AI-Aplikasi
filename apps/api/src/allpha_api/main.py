@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from allpha_api.auth import current_user, user_db_request
+from allpha_api.auth import current_session_user, current_user, user_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.agent_task_schedule_api import router as agent_task_schedule_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
@@ -375,7 +375,7 @@ async def system_status(request: Request) -> dict[str, Any]:
 
 
 @app.post("/v1/auth/revoke", tags=["identity"])
-async def revoke_my_auth_session(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+async def revoke_my_auth_session(request: Request, user: dict[str, Any] = Depends(current_session_user)) -> dict[str, bool]:
     """Fence only the caller's current Auth session before client-side sign-out."""
     session_id = getattr(request.state, "auth_session_id", None)
     if not session_id:
