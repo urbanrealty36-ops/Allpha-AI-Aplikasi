@@ -112,12 +112,12 @@ select * from public.add_organization_member_for_actor(current_setting('app.test
 reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','55555555-5555-4555-8555-555555555555',false);
-do $
+do $$
 begin
  if (select count(*) from public.organizations where id=current_setting('app.test_org_id')::uuid)<>1 then raise exception 'tenant member cannot read its organization'; end if;
  if (select count(*) from public.organization_memberships where organization_id=current_setting('app.test_org_id')::uuid)<>1 then raise exception 'tenant member must see only its own membership'; end if;
  if (select count(*) from public.audit_events where organization_id=current_setting('app.test_org_id')::uuid)<>0 then raise exception 'tenant member must not read admin audit events'; end if;
-end $;
+end $$;
 reset role;
 set role service_role;
 select public.remove_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'22222222-2222-4222-8222-222222222222','55555555-5555-4555-8555-555555555555');
@@ -137,7 +137,7 @@ end $$;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select id, is_current, user_agent, ip from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666');
-do $allpha_session_list_test$
+do $$allpha_session_list_test$
 begin
  if (select count(*) from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666'))<>2 then raise exception 'session list must include only the caller active sessions'; end if;
  if not exists(select 1 from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666') where id='66666666-6666-4666-8666-666666666666') then raise exception 'current session row missing'; end if;
@@ -147,7 +147,7 @@ begin
  if exists(select 1 from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666') where id='88888888-8888-4888-8888-888888888888') then raise exception 'foreign user session leaked'; end if;
 end $allpha_session_list_test$;
 select public.revoke_my_other_auth_sessions('66666666-6666-4666-8666-666666666666');
-do $allpha_session_revoke_test$
+do $$allpha_session_revoke_test$
 begin
  if exists(select 1 from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666') where id='77777777-7777-4777-8777-777777777777') then raise exception 'revoked other session remains visible'; end if;
  if (select count(*) from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666'))<>1 then raise exception 'revoked sessions must disappear from session list'; end if;
@@ -172,27 +172,27 @@ begin
  if not has_function_privilege('service_role','public.create_organization_for_user(uuid,text,text)','EXECUTE') then raise exception 'service_role cannot execute organization creation RPC'; end if;
  if has_table_privilege('authenticated','public.organizations','INSERT') then raise exception 'authenticated can directly insert organizations'; end if;
  if not (select relrowsecurity from pg_class where oid='public.organizations'::regclass) or not (select relrowsecurity from pg_class where oid='public.organization_memberships'::regclass) or not (select relrowsecurity from pg_class where oid='public.audit_events'::regclass) then raise exception 'RLS missing'; end if;
-end $;
+end $$;
 select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
-do $
+do $$
 begin
  if (select count(*) from public.organizations where id=current_setting('app.test_org_id')::uuid)<>1 then raise exception 'tenant admin cannot read its organization'; end if;
  if (select count(*) from public.organization_memberships where organization_id=current_setting('app.test_org_id')::uuid)<>3 then raise exception 'tenant admin cannot read all organization memberships'; end if;
  if (select count(*) from public.audit_events where organization_id=current_setting('app.test_org_id')::uuid)=0 then raise exception 'tenant admin cannot read organization audit events'; end if;
-end $;
+end $$;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
-do $
+do $$
 begin
  if (select count(*) from public.organizations where id=current_setting('app.test_org_id')::uuid)<>1 then raise exception 'tenant owner cannot read its organization'; end if;
  if (select count(*) from public.organization_memberships where organization_id=current_setting('app.test_org_id')::uuid)<>3 then raise exception 'tenant owner cannot read all organization memberships'; end if;
  if (select count(*) from public.audit_events where organization_id=current_setting('app.test_org_id')::uuid)=0 then raise exception 'tenant owner cannot read organization audit events'; end if;
-end $;
+end $$;
 select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
-do $
+do $$
 begin
  if (select count(*) from public.organizations where slug='eng-p02-repair-check')<>0 then raise exception 'cross-user organization read leaked'; end if;
  if (select count(*) from public.organization_memberships where user_id='11111111-1111-4111-8111-111111111111')<>0 then raise exception 'cross-user membership read leaked'; end if;
-end $;
+end $$;
 """)
         print("PASS: forward repair migration applies twice; tenant member/admin/owner/outsider RLS reads, server-only organization/member commands, role hierarchy, audit and session revocation verified.")
         return 0
