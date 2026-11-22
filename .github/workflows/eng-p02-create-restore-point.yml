@@ -77,6 +77,19 @@ jobs:
             "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/backups/restore-point")"
           printf '%s\n' "$status" > recovery-evidence/create.status
           if [[ "$status" != "200" && "$status" != "201" ]]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          try:
+              payload=json.loads(Path("recovery-evidence/create.raw.json").read_text())
+          except Exception:
+              payload={}
+          print(json.dumps({
+              "provider_error_code": payload.get("code") if isinstance(payload,dict) else None,
+              "provider_error_message": payload.get("message") if isinstance(payload,dict) else None,
+              "raw_response": "withheld",
+          }, indent=2))
+          PY
             echo "::error::Supabase did not create the requested restore point (HTTP $status). No database migration was applied."
             exit 1
           fi
