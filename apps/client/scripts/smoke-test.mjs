@@ -150,6 +150,9 @@ assert.ok(app.includes('initialStoryId && !selectedStory && !guestLoading') && a
 assert.ok(app.includes('if (!active) return;') && app.includes('setSelectedFeedItem(payload.item)') && app.includes('return () => { active = false; };'), "Feed deep-link requests must ignore stale results after route changes or unmount");
 assert.ok(app.includes('updateInterestPreference') && app.includes('"not_interested"'), "Native Social Graph must persist both interested and not-interested preferences");
 assert.ok(app.includes('result.outcome === "follow_active"') && app.includes('result.outcome === "follow_request_created"'), "Native Social Graph must show the server-derived follow outcome");
+for (const contract of ["/v1/social/relationships", "/v1/social/discover-agents?q=", "/v1/social/activity?limit=", "actor_agent_id", "target_type: targetType", "socialTargetType", "socialActorAgentId", "target_node_type"]) {
+  assert.ok(app.includes(contract), "Native Social Graph must use the typed Human-Agent relationship contract: " + contract);
+}
 const guestWelcome = app.slice(app.indexOf("function Welcome"), app.indexOf("function Auth"));
 for (const contract of [
   "/v1/feed?mode=recent&limit=10", "/v1/stories?limit=20", "/v1/reels?mode=recent&limit=10",
