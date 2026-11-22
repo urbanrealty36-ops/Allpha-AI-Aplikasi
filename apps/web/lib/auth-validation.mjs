@@ -4,10 +4,9 @@ export function isValidEmail(value) {
 }
 
 /**
- * Validate a browser session against the canonical FastAPI identity boundary.
- * Supabase Auth alone cannot detect an application-level session revocation.
- * Only an explicit 401/403 or a mismatched/inactive identity is definitive;
- * transport, server, and malformed-contract failures preserve the local session.
+ * Resolve a browser session through the canonical FastAPI identity boundary.
+ * FastAPI verifies Supabase Auth, auth.sessions revocation and account status.
+ * Only explicit rejection clears a local session; transient failures preserve it.
  */
 export async function verifyBackendSession(apiBase, session, fetchImpl = fetch) {
   try {
@@ -37,7 +36,7 @@ export async function verifyBackendSession(apiBase, session, fetchImpl = fetch) 
     if (identity.profile.account_status !== "active") {
       return { status: "rejected" };
     }
-    return { status: "valid" };
+    return { status: "valid", identity };
   } catch {
     return { status: "unavailable" };
   }

@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import { verifyBackendSession } from "../../lib/auth-validation.mjs";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 type AgentList = { items?: { id: string; status: string }[] };
+type StartIdentity = { user: { id: string; email?: string }; profile: { id: string; account_status: string; username?: string | null } };
 
 export default function StartJourneyPage() {
   const supabase = useMemo(() => getBrowserSupabase(), []);
@@ -32,27 +34,42 @@ export default function StartJourneyPage() {
       setStatus("Memverifikasi sesi dan memuat profil melalui Allpha API…");
       try {
         const { data: verified, error: verifyError } = await supabase.auth.getUser(session.access_token);
-        if (verifyError || !verified.user || verified.user.id !== session.user.id || !verified.user.email_confirmed_at) {
+        if (verifyError) {
+          const statusCode = (verifyError as { status?: number }).status;
+          if (statusCode === 401 || statusCode === 403) {
+            await supabase.auth.signOut({ scope: "local" });
+            if (active) window.location.replace("/login");
+            return;
+          }
+          throw new Error("Layanan autentikasi sementara tidak tersedia. Sesi lokal dipertahankan; coba lagi.");
+        }
+        if (!verified.user || verified.user.id !== session.user.id) {
           await supabase.auth.signOut({ scope: "local" });
-          throw new Error("Sesi tidak valid atau email belum terverifikasi. Silakan masuk kembali.");
+          if (active) window.location.replace("/login");
+          return;
         }
-        const identityResponse = await fetch(apiBase + "/v1/me", {
-          headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
-          cache: "no-store",
-        });
-        if (!identityResponse.ok) {
-          let message = "Profil Human tidak dapat dimuat.";
-          try { const body = await identityResponse.json(); message = body?.error?.message ?? body?.detail?.message ?? message; } catch {}
-          throw new Error(message);
+        if (!verified.user.email_confirmed_at) {
+          throw new Error("Email belum terverifikasi. Selesaikan verifikasi email sebelum melanjutkan.");
         }
-        const identity = await identityResponse.json() as { user?: { id?: string }; profile?: { account_status?: string; username?: string | null } | null };
-        if (identity.user?.id !== session.user.id || identity.profile?.account_status !== "active") {
-          throw new Error("Status akun tidak mengizinkan akses aplikasi.");
+        const backend = await verifyBackendSession<StartIdentity>(apiBase, session);
+        if (backend.status === "rejected") {
+          await supabase.auth.signOut({ scope: "local" });
+          if (active) window.location.replace("/login");
+          return;
         }
+        if (backend.status !== "valid") {
+          throw new Error("Sesi belum dapat diverifikasi oleh Allpha API. Sesi lokal dipertahankan; coba lagi.");
+        }
+        const identity = backend.identity;
         const response = await fetch(apiBase + "/v1/agents", {
           headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
           cache: "no-store",
         });
+        if (response.status === 401 || response.status === 403) {
+          await supabase.auth.signOut({ scope: "local" });
+          if (active) window.location.replace("/login");
+          return;
+        }
         if (!response.ok) {
           let message = "Status identitas AI Agent tidak dapat diverifikasi.";
           try {
@@ -81,6 +98,10 @@ export default function StartJourneyPage() {
         return;
       }
       void routeSession(data.session);
+    }).catch(() => {
+      if (!active) return;
+      setError("Sesi lokal tidak dapat dibaca. Coba muat ulang untuk memulihkan sesi.");
+      setStatus("Sesi tidak dapat diverifikasi.");
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) void routeSession(session);

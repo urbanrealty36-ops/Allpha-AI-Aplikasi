@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import { verifyBackendSession } from "../../lib/auth-validation.mjs";
 import ProfileView from "../../components/reference-ui/ProfileView";
 import type { AIAgentProfile, HumanProfile, KnowledgeDocument, PostItem } from "../../lib/reference-store";
-type Me = { user?: { id: string; email?: string }; profile?: { username?: string | null; display_name?: string; avatar_url?: string | null; bio?: string } | null };
+type Me = { user: { id: string; email?: string }; profile: { id: string; account_status: string; username?: string | null; display_name?: string; avatar_url?: string | null; bio?: string } };
 type ApiAgent = { id: string; handle: string; display_name: string; description: string; avatar_url?: string | null; persona?: Record<string, unknown>; visibility?: "private" | "public"; status: string; ownership?: { owner_user_id: string; status: string } };
 type ApiFeedItem = { id: string; owner_id: string; ai_agent_id?: string | null; author_type?: "human" | "agent"; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null; disclosure?: string | null } | null; authorship?: { type: "human_agent" | "agent_attributed" | "human"; human_owner_id?: string | null; agent?: { display_name?: string | null } | null; disclosure?: string | null }; body: string; created_at: string; published_at?: string | null; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; media?: { id: string; media_type: string; preview_url?: string | null }[]; engagement?: { likes: number; comments: number; shares?: number; reposts?: number }; agent_shares?: { id: string; created_at?: string | null; quote_body?: string | null; disclosure?: string | null; agent: { id: string; handle: string; display_name: string; avatar_url?: string | null } }[]; viewer_reaction?: string | null; saved?: boolean };
 type ApiAgentSkill = { id: string; name: string; slug: string; status: "draft" | "published" | "archived"; version: number };
@@ -44,14 +45,17 @@ export default function ProfilePage() {
     setLoading(true);
     const headers = { Authorization: "Bearer " + current.access_token, Accept: "application/json" };
     try {
-      const [meResponse, agentsResponse, socialSummaryResponse] = await Promise.all([
-        fetch(apiBase + "/v1/me", { headers, cache: "no-store" }),
+      const backend = await verifyBackendSession<Me>(apiBase, current);
+      if (backend.status === "rejected") {
+        await supabase.auth.signOut({ scope: "local" });
+        return;
+      }
+      if (backend.status !== "valid") throw new Error("Sesi belum dapat diverifikasi oleh Allpha API. Sesi lokal dipertahankan; coba lagi.");
+      const me = backend.identity;
+      const [agentsResponse, socialSummaryResponse] = await Promise.all([
         fetch(apiBase + "/v1/agents", { headers, cache: "no-store" }),
         fetch(apiBase + "/v1/social/nodes/human/" + encodeURIComponent(current.user.id) + "/summary", { headers, cache: "no-store" }),
       ]);
-      if (!meResponse.ok) throw new Error("Identitas Human belum dapat dimuat dari Allpha API.");
-      const me = await meResponse.json() as Me;
-      if (!me.user || me.user.id !== current.user.id) throw new Error("Identitas Human kanonis tidak cocok dengan sesi aktif.");
       const displayName = me.profile?.display_name?.trim() || me.user.email || "Pengguna";
       const socialSummary = socialSummaryResponse.ok
         ? await socialSummaryResponse.json() as { followers_count?: number; following_count?: number }
@@ -69,6 +73,10 @@ export default function ProfilePage() {
         badge: "Human",
       };
 
+      if (agentsResponse.status === 401 || agentsResponse.status === 403) {
+        await supabase.auth.signOut({ scope: "local" });
+        return;
+      }
       if (!agentsResponse.ok) throw new Error("Daftar Agent belum tersedia dari Allpha API.");
       const payload = await agentsResponse.json() as { items?: ApiAgent[] };
       const owned = (payload.items || []).filter(item =>
@@ -77,6 +85,10 @@ export default function ProfilePage() {
       let profilePosts: PostItem[] = [];
       try {
         const feedResponse = await fetch(apiBase + "/v1/me/profile-feed?limit=50", { headers, cache: "no-store" });
+        if (feedResponse.status === 401 || feedResponse.status === 403) {
+          await supabase.auth.signOut({ scope: "local" });
+          return;
+        }
         if (!feedResponse.ok) throw new Error("Feed profil belum dapat dimuat dari Allpha API (HTTP " + feedResponse.status + ").");
         {
           const feedPayload = await feedResponse.json() as { items?: ApiFeedItem[] };

@@ -30,7 +30,9 @@ test("backend session validation accepts the matching active identity", async ()
     assert.equal(options.cache, "no-store");
     return jsonResponse(200, { user: { id: "user-123" }, profile: { id: "user-123", account_status: "active" } });
   });
-  assert.deepEqual(result, { status: "valid" });
+  assert.equal(result.status, "valid");
+  assert.equal(result.identity.user.id, "user-123");
+  assert.equal(result.identity.profile.account_status, "active");
 });
 
 test("backend session validation rejects explicitly revoked sessions", async () => {

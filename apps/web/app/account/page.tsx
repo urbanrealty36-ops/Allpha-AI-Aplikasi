@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
+import { verifyBackendSession } from "../../lib/auth-validation.mjs";
 
 type Profile = {
   id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string;
@@ -14,7 +15,7 @@ type Settings = {
   notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean };
   privacy_settings: { discoverable_by_username: boolean }; updated_at: string;
 };
-type IdentityResponse = { user: { id: string; email?: string; email_confirmed_at?: string }; profile: Profile | null };
+type IdentityResponse = { user: { id: string; email?: string; email_confirmed_at?: string }; profile: Profile };
 type SettingsResponse = { settings: Settings | null };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string; created_at?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested"; created_at?: string; updated_at?: string };
@@ -63,22 +64,27 @@ export default function HomePage() {
     const sequence = ++identityRequestSequence.current;
     setLoading(true); setError("");
     try {
+      const backend = await verifyBackendSession<IdentityResponse>(apiBase, active);
+      if (backend.status === "rejected") {
+        await supabase?.auth.signOut({ scope: "local" });
+        return;
+      }
+      if (backend.status !== "valid") throw new Error("Sesi belum dapat diverifikasi oleh Allpha API. Sesi lokal dipertahankan; coba lagi.");
       const headers = { Authorization: "Bearer " + active.access_token };
-      const responses = await Promise.all([
-        fetch(apiBase + "/v1/me", { headers, cache: "no-store" }),
-        fetch(apiBase + "/v1/me/settings", { headers, cache: "no-store" }),
-      ]);
-      if (!responses[0].ok) throw new Error(await apiError(responses[0]));
-      if (!responses[1].ok) throw new Error(await apiError(responses[1]));
-      const identity = await responses[0].json() as IdentityResponse;
-      const prefs = await responses[1].json() as SettingsResponse;
+      const settingsResponse = await fetch(apiBase + "/v1/me/settings", { headers, cache: "no-store" });
+      if (settingsResponse.status === 401 || settingsResponse.status === 403) {
+        await supabase?.auth.signOut({ scope: "local" });
+        return;
+      }
+      if (!settingsResponse.ok) throw new Error(await apiError(settingsResponse));
+      const identity = backend.identity;
+      const prefs = await settingsResponse.json() as SettingsResponse;
       if (sequence !== identityRequestSequence.current) return;
-      if (identity.user?.id !== active.user.id) throw new Error("Identitas kanonis tidak cocok dengan sesi aktif.");
       setProfile(identity.profile); setSettings(prefs.settings);
     } catch (cause) {
       if (sequence === identityRequestSequence.current) setError(cause instanceof Error ? cause.message : "Data identitas tidak dapat dimuat.");
     } finally { if (sequence === identityRequestSequence.current) setLoading(false); }
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
