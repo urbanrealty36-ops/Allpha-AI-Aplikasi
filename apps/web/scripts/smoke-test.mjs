@@ -327,7 +327,7 @@ for (const contract of [
   "lastSessionUserId", "sessionEpoch.current += 1", "searchRequestSequence.current",
   "trendsRequestSequence.current", "recommendationsRequestSequence.current", "creatorsRequestSequence.current",
   "socialGraphRequestSequence.current", "/v1/social/relationships", "/v1/social/relationships/",
-  "pendingFollowAccountIds", "followEdgeIds", "actorAgentId", "follow_request_created", "lastUrlQuery.current = null",
+  "pendingFollowAccountIds", "followEdgeIds", "actorAgentId", "/v1/social/actor-agents", "follow_request_created", "lastUrlQuery.current = null",
   "if (sequence !== searchRequestSequence.current) return",
   "if (sequence === trendsRequestSequence.current)", "if (sequence === recommendationsRequestSequence.current)",
   "if (sequence === creatorsRequestSequence.current)"
