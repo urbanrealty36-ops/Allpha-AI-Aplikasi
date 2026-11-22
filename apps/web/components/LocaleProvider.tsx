@@ -1,6 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { getBrowserSupabase } from "@/lib/supabase";
+
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\\/$/, "");
 
 export type AllphaLocale = "id-ID" | "en-US";
 type LocaleContextValue = { locale: AllphaLocale; setLocale: (locale: AllphaLocale) => void; t: (key: string) => string };
@@ -32,11 +35,42 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<AllphaLocale>("id-ID");
 
   useEffect(() => {
+    let active = true;
     const stored = window.localStorage.getItem(STORAGE_KEY);
     const browserLocale = window.navigator.language.toLowerCase().startsWith("en") ? "en-US" : "id-ID";
     const next: AllphaLocale = stored === "en-US" || stored === "id-ID" ? stored : browserLocale;
     setLocaleState(next);
     document.documentElement.lang = next === "id-ID" ? "id" : "en";
+
+    const supabase = getBrowserSupabase();
+    const hydrateProfileLocale = async (accessToken: string) => {
+      try {
+        const response = await fetch(apiBase + "/v1/me", {
+          headers: { Authorization: "Bearer " + accessToken },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json() as { profile?: { locale?: string | null } | null };
+        const profileLocale = payload.profile?.locale;
+        if (!active || (profileLocale !== "id-ID" && profileLocale !== "en-US")) return;
+        setLocaleState(profileLocale);
+        window.localStorage.setItem(STORAGE_KEY, profileLocale);
+        document.documentElement.lang = profileLocale === "id-ID" ? "id" : "en";
+      } catch {
+        // Keep the last locally selected language when the profile cannot be loaded.
+      }
+    };
+
+    if (supabase) {
+      void supabase.auth.getSession().then(({ data }) => {
+        if (active && data.session?.access_token) void hydrateProfileLocale(data.session.access_token);
+      });
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.access_token) void hydrateProfileLocale(session.access_token);
+      });
+      return () => { active = false; subscription.unsubscribe(); };
+    }
+    return () => { active = false; };
   }, []);
 
   const setLocale = useCallback((next: AllphaLocale) => {
