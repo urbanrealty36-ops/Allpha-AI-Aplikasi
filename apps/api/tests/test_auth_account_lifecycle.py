@@ -1,6 +1,5 @@
 """ENG-P02 account-state enforcement at the authenticated API boundary."""
 import asyncio
-import json
 import time
 import uuid
 
@@ -66,7 +65,7 @@ def test_deactivated_account_is_denied_even_with_active_supabase_session(monkeyp
     request = _request()
     session_user = asyncio.run(auth.current_session_user(request, credentials))
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(auth.current_user(request, session_user)))
+        asyncio.run(auth.current_user(request, session_user))
 
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "ACCOUNT_NOT_ACTIVE"
@@ -88,8 +87,10 @@ def test_missing_identity_profile_fails_closed(monkeypatch):
     monkeypatch.setattr(auth, "user_db_request", fake_user_db_request)
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=_token())
 
+    request = _request()
+    session_user = asyncio.run(auth.current_session_user(request, credentials))
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(auth.current_user(_request(), credentials))
+        asyncio.run(auth.current_user(request, session_user))
 
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "ACCOUNT_PROFILE_UNAVAILABLE"
@@ -111,7 +112,8 @@ def test_active_account_keeps_authenticated_api_access(monkeypatch):
     request = _request()
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=_token())
 
-    user = asyncio.run(auth.current_user(request, credentials))
+    session_user = asyncio.run(auth.current_session_user(request, credentials))
+    user = asyncio.run(auth.current_user(request, session_user))
 
     assert user["id"] == "11111111-1111-4111-8111-111111111111"
     assert request.state.user_id == user["id"]
