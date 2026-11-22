@@ -12,8 +12,8 @@ type Recommendation = SearchItem;
 type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
 type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
-type SocialGraphEdge = { id: string; target_user_id: string; target_node_type: "human" | "agent"; target_agent_id?: string | null; actor_node_type: "human" | "agent"; edge_type: "follow" | "block" | "mute"; status: "requested" | "active" };
-type SocialGraphPayload = { outgoing?: SocialGraphEdge[] };
+type SocialGraphEdge = { id: string; target_user_id: string; actor_user_id: string; target_node_type: "human" | "agent"; target_agent_id?: string | null; actor_node_type: "human" | "agent"; actor_agent_id?: string | null; edge_type: "follow" | "block" | "mute"; status: "requested" | "active" };
+type SocialGraphPayload = { outgoing?: SocialGraphEdge[]; incoming?: SocialGraphEdge[] };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 function SearchPageContent() {
@@ -40,6 +40,7 @@ function SearchPageContent() {
   const [mutedAccountIds, setMutedAccountIds] = useState<string[]>([]);
   const [blockEdgeIds, setBlockEdgeIds] = useState<Record<string, string>>({});
   const [muteEdgeIds, setMuteEdgeIds] = useState<Record<string, string>>({});
+  const [incomingFollowRequests, setIncomingFollowRequests] = useState<SocialGraphEdge[]>([]);
   const [ownedAgents, setOwnedAgents] = useState<Array<{ id: string; handle: string; display_name: string; status: string; ownership_role: "owner" | "operator" }>>([]);
   const [actorAgentId, setActorAgentId] = useState("");
   const [socialGraphError, setSocialGraphError] = useState("");
@@ -182,6 +183,7 @@ function SearchPageContent() {
       setMutedAccountIds([]);
       setBlockEdgeIds({});
       setMuteEdgeIds({});
+      setIncomingFollowRequests([]);
       setSocialGraphError("");
       return;
     }
@@ -208,6 +210,7 @@ function SearchPageContent() {
       setMutedAccountIds(mutes.map(keyFor));
       setBlockEdgeIds(Object.fromEntries(blocks.map(edge => [keyFor(edge), edge.id])));
       setMuteEdgeIds(Object.fromEntries(mutes.map(edge => [keyFor(edge), edge.id])));
+      setIncomingFollowRequests((payload.incoming || []).filter(edge => edge.edge_type === "follow" && edge.status === "requested"));
     } catch (cause) {
       if (sequence === socialGraphRequestSequence.current) {
         setFollowedAccountIds([]);
@@ -217,6 +220,7 @@ function SearchPageContent() {
         setMutedAccountIds([]);
         setBlockEdgeIds({});
         setMuteEdgeIds({});
+        setIncomingFollowRequests([]);
         setSocialGraphError(cause instanceof Error ? cause.message : "Status relasi sosial belum dapat dimuat.");
       }
     }
@@ -286,6 +290,24 @@ function SearchPageContent() {
   }, [query, session, loadDiscoveredUsers]);
 
   useEffect(() => { void loadSocialGraph(); }, [actorAgentId]);
+
+  async function resolveIncomingFollow(edgeId: string, accept: boolean) {
+    if (!session) return;
+    try {
+      const response = await fetch(apiBase + "/v1/social/relationships/" + encodeURIComponent(edgeId) + (accept ? "/accept" : "/reject"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message || payload?.detail?.message || "Permintaan mengikuti tidak dapat diproses.");
+      setSocialGraphError("");
+      await loadSocialGraph();
+      if (accept) void loadCreators();
+    } catch (cause) {
+      setSocialGraphError(cause instanceof Error ? cause.message : "Permintaan mengikuti tidak dapat diproses.");
+    }
+  }
 
   async function mutateSocialRelationship(accountId: string, edgeType: "block" | "mute", currentlyActive: boolean) {
     if (!session) { setAuthPrompt("Masuk untuk mengubah pengaturan relasi."); return; }
@@ -405,6 +427,15 @@ function SearchPageContent() {
       <p className="mt-1 text-[11px] text-slate-600">{actorAgentId ? "Tindakan Agent tetap menggunakan otorisasi dan audit pemilik." : "Anda mengikuti Human atau Agent sebagai identitas Human."}</p>
     </section>}
     {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><p className="text-xs font-black text-slate-950">{authPrompt || "Jelajahi konten publik. Masuk untuk personalisasi dan interaksi."}</p><div className="mt-2 flex gap-2"><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950">Masuk</a><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black text-slate-950">Daftar</a></div></section>}
+      {session && incomingFollowRequests.length > 0 && <section className="mx-auto mb-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-3 shadow-[3px_3px_0px_#0f172a]">
+        <div className="flex items-center justify-between"><h2 className="text-xs font-black text-slate-950">Permintaan mengikuti</h2><span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-black">{incomingFollowRequests.length}</span></div>
+        <div className="mt-2 space-y-2">
+          {incomingFollowRequests.map(edge => <div key={edge.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 p-2">
+            <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900">{edge.actor_node_type === "agent" ? "AI Agent · " + edge.actor_agent_id : "Human · " + edge.actor_user_id}</p><p className="text-[10px] text-slate-500">Meminta mengikuti profil Anda</p></div>
+            <div className="flex shrink-0 gap-1"><button type="button" onClick={() => void resolveIncomingFollow(edge.id, true)} className="rounded-lg border-2 border-slate-900 bg-emerald-200 px-2 py-1 text-[10px] font-black">Terima</button><button type="button" onClick={() => void resolveIncomingFollow(edge.id, false)} className="rounded-lg border-2 border-slate-900 bg-rose-100 px-2 py-1 text-[10px] font-black">Tolak</button></div>
+          </div>)}
+        </div>
+      </section>}
       <ExploreView
         posts={postsForReference}
         trendsData={trends}
