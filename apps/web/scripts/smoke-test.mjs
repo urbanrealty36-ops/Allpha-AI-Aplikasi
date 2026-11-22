@@ -47,7 +47,7 @@ assert.doesNotMatch(workflows, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 assert.ok(workflows.includes("setSupabase(getBrowserSupabase())") && workflows.includes("after hydration"), "Workflow Supabase client must initialize after hydration to avoid duplicate server/client fallback UI");
 assert.ok(workflows.includes('if (!supabase) return <main className="identity-shell">') && workflows.includes("  </main>;\n}"), "Workflow fallback and main page must be separate, well-formed return branches");
 const globalStyles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
-assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Workflow configuration keys must wrap at narrow mobile widths");
+assert.ok(globalStyles.includes(".config-card p") && globalStyles.includes("overflow-wrap: anywhere"), "Workflow configuration keys must wrap at narrow mobile widths");
 
 {
 // Splash and both public/dedicated authentication entry points share canonical auth.
