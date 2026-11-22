@@ -17,10 +17,23 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
   useEffect(() => {
     if (!supabase) { setSession(null); setChecking(false); return; }
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (active) { setSession(data.session); setChecking(false); }
-    }).catch(() => { if (active) { setSession(null); setChecking(false); } });
+    let authEventSeen = false;
+    void supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!active || authEventSeen) return;
+      if (error || !data.session) { setSession(null); setChecking(false); return; }
+      // getSession reads persisted state; getUser validates it with Supabase Auth
+      // before a protected screen is rendered.
+      const { data: verified, error: verifyError } = await supabase.auth.getUser(data.session.access_token);
+      if (!active || authEventSeen) return;
+      if (verifyError || !verified.user || verified.user.id !== data.session.user.id) {
+        await supabase.auth.signOut({ scope: "local" });
+        if (active) { setSession(null); setChecking(false); }
+        return;
+      }
+      setSession(data.session); setChecking(false);
+    }).catch(() => { if (active && !authEventSeen) { setSession(null); setChecking(false); } });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
       if (active) { setSession(next); setChecking(false); }
     });
     return () => { active = false; data.subscription.unsubscribe(); };
