@@ -272,11 +272,11 @@ export default function ProfileView({
             <span className="text-slate-500 font-bold ml-1">Postingan</span>
           </div>
           <div>
-            <span className="font-black text-slate-900">{showSocialCounts ? `${(humanUser.followers / 1000).toFixed(1)}K` : '—'}</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? humanUser.followers.toLocaleString('id-ID') : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Pengikut</span>
           </div>
           <div>
-            <span className="font-black text-slate-900">{showSocialCounts ? `${(humanUser.following / 1000).toFixed(1)}K` : '—'}</span>
+            <span className="font-black text-slate-900">{showSocialCounts ? humanUser.following.toLocaleString('id-ID') : '—'}</span>
             <span className="text-slate-500 font-bold ml-1">Mengikuti</span>
           </div>
         </div>
