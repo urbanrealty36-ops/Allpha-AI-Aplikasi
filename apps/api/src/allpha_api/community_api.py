@@ -63,11 +63,11 @@ async def _community(community_id: uuid.UUID) -> dict[str, Any]:
         raise HTTPException(404, detail={"code": "COMMUNITY_NOT_FOUND", "message": "Komunitas tidak ditemukan atau tidak aktif."})
     return rows[0]
 
-async def _blocked_human_ids(user_id: str) -> set[str]:
+async def _hidden_human_ids(user_id: str) -> set[str]:
     """Apply mutual Human block policy to community member and post projections."""
     outgoing = await _db("GET", "social_edges", params={
         "select": "target_user_id", "actor_user_id": f"eq.{user_id}", "actor_node_type": "eq.human",
-        "target_node_type": "eq.human", "edge_type": "eq.block", "status": "eq.active", "limit": "1000",
+        "target_node_type": "eq.human", "edge_type": "in.(block,mute)", "status": "eq.active", "limit": "1000",
     })
     incoming = await _db("GET", "social_edges", params={
         "select": "actor_user_id", "target_user_id": f"eq.{user_id}", "target_node_type": "eq.human",
@@ -248,7 +248,7 @@ async def join_community(community_id: uuid.UUID, user: dict[str, Any] = Depends
 async def list_members(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     await _require_member(community_id, str(user["id"]))
     rows = await _db("GET", "community_memberships", params={"select": "community_id,user_id,role,status,joined_at", "community_id": f"eq.{community_id}", "status": "eq.active", "order": "joined_at.asc", "limit": "500"})
-    blocked = await _blocked_human_ids(str(user["id"]))
+    blocked = await _hidden_human_ids(str(user["id"]))
     return {"items": [row for row in (rows or []) if str(row.get("user_id")) not in blocked]}
 
 
