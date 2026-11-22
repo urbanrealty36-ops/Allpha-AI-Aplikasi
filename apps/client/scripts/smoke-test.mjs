@@ -3,7 +3,7 @@ import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/mesh
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { readFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { createSecureSessionStorage } from "../lib/secure-session-storage.ts";
+import { createSecureSessionStorage } from "../lib/secure-session-storage.mjs";
 const require = createRequire(import.meta.url);
 const app=readFileSync(new URL("../App.tsx",import.meta.url),"utf8");
 const cfg=JSON.parse(readFileSync(new URL("../app.json",import.meta.url),"utf8"));
