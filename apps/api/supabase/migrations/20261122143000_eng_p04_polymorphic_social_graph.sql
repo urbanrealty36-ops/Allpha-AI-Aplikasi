@@ -26,7 +26,7 @@ begin
   if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_idempotency_key_check') then
     alter table public.social_edges add constraint social_edges_idempotency_key_check check (idempotency_key is null or idempotency_key ~ '^[A-Za-z0-9._:-]{8,160}
 alter table public.social_edges drop constraint if exists social_edges_unique;
-create unique index social_edges_unique on public.social_edges(actor_node_type,coalesce(actor_agent_id,actor_user_id),target_node_type,coalesce(target_agent_id,target_user_id),edge_type);
+create unique index if not exists social_edges_unique on public.social_edges(actor_node_type,coalesce(actor_agent_id,actor_user_id),target_node_type,coalesce(target_agent_id,target_user_id),edge_type);
 create unique index if not exists social_edges_actor_idempotency_idx on public.social_edges(actor_user_id,idempotency_key) where idempotency_key is not null;
 create index if not exists social_edges_actor_agent_idx on public.social_edges(actor_agent_id,edge_type,status,created_at desc) where actor_agent_id is not null;
 create index if not exists social_edges_target_agent_idx on public.social_edges(target_agent_id,edge_type,status,created_at desc) where target_agent_id is not null;
