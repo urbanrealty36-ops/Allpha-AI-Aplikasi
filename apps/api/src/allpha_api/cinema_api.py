@@ -11,10 +11,13 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
+
+import allpha_api.generation_jobs_api as generation_jobs_api
 
 from allpha_api.auth import current_user, optional_current_user
 from allpha_api.content_api import _signed_media_preview_url
@@ -193,6 +196,15 @@ class CinemaAssetAttach(BaseModel):
     asset_role: Literal["reference", "storyboard", "source_video", "source_audio", "music",
                         "subtitle", "generated_image", "generated_video", "cover", "trailer"]
     display_name: str = Field(min_length=1, max_length=160)
+
+
+class CinemaGenerationCreate(generation_jobs_api.GenerationJobCreate):
+    target_section: Literal["screenplay_draft"] = "screenplay_draft"
+
+
+class CinemaGenerationApply(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
 
 
 @router.get("/catalog")
@@ -408,6 +420,214 @@ async def save_cinema_production(
     if not rows:
         raise HTTPException(409, detail={"code": "CINEMA_PRODUCTION_VERSION_CONFLICT", "message": "Versi production berubah atau akses edit telah dicabut."})
     return {"item": rows[0]}
+
+
+async def _require_cinema_generation_link(
+    title_id: uuid.UUID, job_id: uuid.UUID, user: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    title = await _title_access(title_id, str(user["id"]), {"edit_metadata"})
+    rows = await _db("GET", "cinema_generation_job_links", params={
+        "select": "generation_job_id,title_id,owner_id,requester_user_id,target_section,expected_title_version,idempotency_key,applied_at,applied_version",
+        "generation_job_id": "eq." + str(job_id),
+        "title_id": "eq." + str(title_id),
+        "owner_id": "eq." + str(title["owner_id"]),
+        "requester_user_id": "eq." + str(user["id"]),
+        "limit": "1",
+    })
+    if not rows:
+        raise HTTPException(404, detail={
+            "code": "CINEMA_GENERATION_JOB_NOT_FOUND",
+            "message": "Generation job tidak terhubung ke judul Cinema ini.",
+        })
+    return title, rows[0]
+
+
+@router.post("/creator/titles/{title_id}/generation-jobs", status_code=202)
+async def create_cinema_generation_job(
+    title_id: uuid.UUID, payload: CinemaGenerationCreate, request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    if not idempotency_key or not 8 <= len(idempotency_key) <= 160:
+        raise HTTPException(400, detail={
+            "code": "IDEMPOTENCY_KEY_REQUIRED",
+            "message": "Idempotency-Key 8–160 karakter wajib dikirim.",
+        })
+    title = await _title_access(title_id, str(user["id"]), {"edit_metadata"})
+    if title.get("status") not in {"draft", "rejected"}:
+        raise HTTPException(409, detail={
+            "code": "CINEMA_PRODUCTION_LOCKED",
+            "message": "AI screenplay generation hanya tersedia untuk draft atau judul yang dikembalikan.",
+        })
+    generation_payload = generation_jobs_api.GenerationJobCreate.model_validate(
+        payload.model_dump(exclude={"target_section"})
+    )
+    # Reuse the canonical Generation Job, Model Router, credit reservation,
+    # moderation, private artifact storage, retry and cancellation lifecycle.
+    job = await generation_jobs_api.create_generation_job(
+        generation_payload, request, idempotency_key, user,
+    )
+    job_id = str(job.get("job_id") or "")
+    if not job_id:
+        raise HTTPException(503, detail={
+            "code": "CINEMA_GENERATION_JOB_UNCONFIRMED",
+            "message": "Canonical Generation Job belum dapat dikonfirmasi.",
+        })
+    link_payload = {
+        "generation_job_id": job_id, "title_id": str(title_id),
+        "owner_id": str(title["owner_id"]), "requester_user_id": str(user["id"]),
+        "target_section": payload.target_section,
+        "expected_title_version": int(title.get("version") or 1),
+        "idempotency_key": idempotency_key,
+    }
+    links = await _db(
+        "POST", "cinema_generation_job_links",
+        params={"on_conflict": "requester_user_id,idempotency_key"},
+        payload=link_payload,
+        prefer="resolution=ignore-duplicates,return=representation",
+    )
+    if not links:
+        existing = await _db("GET", "cinema_generation_job_links", params={
+            "select": "generation_job_id,title_id,owner_id,target_section,expected_title_version",
+            "requester_user_id": "eq." + str(user["id"]),
+            "idempotency_key": "eq." + idempotency_key, "limit": "1",
+        })
+        if (not existing or str(existing[0].get("generation_job_id")) != job_id
+                or str(existing[0].get("title_id")) != str(title_id)
+                or str(existing[0].get("owner_id")) != str(title["owner_id"])
+                or existing[0].get("target_section") != payload.target_section):
+            raise HTTPException(409, detail={
+                "code": "CINEMA_GENERATION_IDEMPOTENCY_CONFLICT",
+                "message": "Idempotency-Key telah digunakan untuk konteks Cinema yang berbeda.",
+            })
+    return {
+        "job_id": job_id, "task_id": job.get("task_id"), "status": job.get("status"),
+        "idempotent_replay": bool(job.get("idempotent_replay")),
+        "target_section": payload.target_section,
+        "expected_title_version": int(title.get("version") or 1),
+        "reserved_credits": job.get("reserved_credits"),
+    }
+
+
+@router.get("/creator/titles/{title_id}/generation-jobs/{job_id}")
+async def get_cinema_generation_job(
+    title_id: uuid.UUID, job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    _, link = await _require_cinema_generation_link(title_id, job_id, user)
+    result = await generation_jobs_api.get_generation_job(job_id, user)
+    return {
+        **result, "target_section": link["target_section"],
+        "expected_title_version": link["expected_title_version"],
+        "applied_at": link.get("applied_at"), "applied_version": link.get("applied_version"),
+    }
+
+
+@router.post("/creator/titles/{title_id}/generation-jobs/{job_id}/cancel")
+async def cancel_cinema_generation_job(
+    title_id: uuid.UUID, job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    await _require_cinema_generation_link(title_id, job_id, user)
+    return await generation_jobs_api.cancel_generation_job(job_id, user)
+
+
+@router.get("/creator/titles/{title_id}/generation-jobs/{job_id}/artifact")
+async def get_cinema_generation_artifact(
+    title_id: uuid.UUID, job_id: uuid.UUID, user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    await _require_cinema_generation_link(title_id, job_id, user)
+    return await generation_jobs_api.get_generation_artifact(job_id, user)
+
+
+@router.post("/creator/titles/{title_id}/generation-jobs/{job_id}/apply")
+async def apply_cinema_generation_job(
+    title_id: uuid.UUID, job_id: uuid.UUID, payload: CinemaGenerationApply,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    title, link = await _require_cinema_generation_link(title_id, job_id, user)
+    if link.get("applied_at"):
+        return {
+            "outcome": "replayed", "generation_job_id": str(job_id),
+            "title_id": str(title_id), "title_version": link.get("applied_version"),
+        }
+    expected_version = int(payload.expected_version)
+    if (expected_version != int(link.get("expected_title_version") or 0)
+            or expected_version != int(title.get("version") or 0)):
+        raise HTTPException(409, detail={
+            "code": "CINEMA_PRODUCTION_VERSION_CONFLICT",
+            "message": "Production document berubah sejak generation job dibuat. Buat generation job baru berdasarkan versi terkini.",
+        })
+    jobs = await generation_jobs_api._admin_request("GET", "generation_jobs", params={
+        "select": "id,owner_user_id,status,moderation_status,artifact_bucket,artifact_path,artifact_deletion_requested_at,artifact_deleted_at",
+        "id": "eq." + str(job_id), "owner_user_id": "eq." + str(user["id"]), "limit": "1",
+    })
+    if not jobs:
+        raise HTTPException(404, detail={
+            "code": "GENERATION_JOB_NOT_FOUND", "message": "Canonical Generation Job tidak ditemukan.",
+        })
+    job = jobs[0]
+    if job.get("artifact_deleted_at") or job.get("artifact_deletion_requested_at"):
+        raise HTTPException(410, detail={
+            "code": "GENERATION_ARTIFACT_UNAVAILABLE",
+            "message": "Artefak generation telah dihapus atau sedang dihapus.",
+        })
+    if (job.get("status") != "succeeded" or job.get("moderation_status") != "approved"
+            or job.get("artifact_bucket") != "generation-artifacts" or not job.get("artifact_path")):
+        raise HTTPException(409, detail={
+            "code": "CINEMA_GENERATION_ARTIFACT_NOT_READY",
+            "message": "Screenplay hanya dapat diterapkan setelah Generation Job sukses dan moderasi menyetujui artefaknya.",
+        })
+    signed_url = await generation_jobs_api._signed_generation_artifact(
+        str(job["artifact_bucket"]), str(job["artifact_path"]),
+    )
+    expected_host = urlparse(os.getenv("SUPABASE_URL", "")).netloc
+    if not expected_host or urlparse(signed_url).netloc != expected_host:
+        raise HTTPException(503, detail={
+            "code": "CINEMA_GENERATION_ARTIFACT_HOST_INVALID",
+            "message": "Host artefak privat tidak cocok dengan Supabase canonical.",
+        })
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12, connect=3)) as client:
+            response = await client.get(signed_url)
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, detail={
+            "code": "CINEMA_GENERATION_ARTIFACT_DOWNLOAD_FAILED",
+            "message": "Artefak screenplay belum dapat diunduh dari Storage privat.",
+        }) from exc
+    content_type = str(response.headers.get("content-type") or "").split(";")[0].lower()
+    if content_type not in {"text/plain", "text/markdown", "application/octet-stream"}:
+        raise HTTPException(415, detail={
+            "code": "CINEMA_GENERATION_ARTIFACT_TYPE_INVALID",
+            "message": "Artefak bukan dokumen teks screenplay yang didukung.",
+        })
+    if len(response.content) > 60000:
+        raise HTTPException(422, detail={
+            "code": "CINEMA_SCREENPLAY_OUTPUT_TOO_LARGE",
+            "message": "Hasil screenplay melebihi batas 60 KiB.",
+        })
+    try:
+        screenplay_text = response.content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(422, detail={
+            "code": "CINEMA_SCREENPLAY_OUTPUT_ENCODING_INVALID",
+            "message": "Hasil screenplay harus berupa UTF-8.",
+        }) from exc
+    if not screenplay_text.strip():
+        raise HTTPException(422, detail={
+            "code": "CINEMA_SCREENPLAY_OUTPUT_EMPTY",
+            "message": "Hasil screenplay kosong dan tidak dapat diterapkan.",
+        })
+    result = await _db("POST", "rpc/cinema_apply_generation_job_output", payload={
+        "p_generation_job_id": str(job_id), "p_owner_id": str(title["owner_id"]),
+        "p_requester_user_id": str(user["id"]), "p_expected_version": expected_version,
+        "p_output_text": screenplay_text,
+    })
+    if not isinstance(result, dict) or result.get("outcome") not in {"applied", "replayed"}:
+        raise HTTPException(503, detail={
+            "code": "CINEMA_GENERATION_APPLY_UNCONFIRMED",
+            "message": "Penerapan screenplay belum dapat dikonfirmasi oleh database.",
+        })
+    return result
 
 
 @router.get("/creator/titles/{title_id}/assets")
