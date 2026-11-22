@@ -861,3 +861,11 @@ assert.ok(cinemaWorkspaceSource.includes("Media Creator Studio tidak dapat dimua
 assert.ok(cinemaWorkspaceSource.includes("const controller = new AbortController();"), "Generation polling must be cancellable when the selected film changes or workspace unmounts");
 assert.ok(cinemaWorkspaceSource.includes("controller.abort()"), "Generation polling cleanup must abort in-flight API and artifact requests");
 assert.ok(cinemaWorkspaceSource.includes("setGenerationJobId(\"\");"), "Changing the selected film must clear the previous film's generation job context");
+
+// Feed, Stories and comments share a cancellable authenticated request lifecycle.
+
+const feedPageSource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
+assert.ok(feedPageSource.includes("feedAbortController.current?.abort()"), "Feed requests must be cancelled on replacement and session changes");
+assert.ok(feedPageSource.includes('request("/v1/stories?limit=30", { signal: controller.signal })'), "Stories loading must support cancellation and preserve API errors");
+assert.ok(feedPageSource.includes('"/comments", { signal: controller.signal })'), "Per-post comment loading must be cancellable");
+assert.ok(feedPageSource.includes('Stories tidak dapat dimuat.'), "Stories API failures must be visible instead of silently rendered as an empty story strip");
