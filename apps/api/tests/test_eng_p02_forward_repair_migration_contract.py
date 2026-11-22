@@ -48,7 +48,8 @@ def test_eng_p02_forward_repair_restores_only_additive_tenant_and_session_object
 def test_session_inventory_never_exposes_refresh_tokens_or_cross_user_sessions():
     sql = MIGRATION.read_text(encoding="utf-8").lower()
     start = sql.index("create or replace function public.list_my_auth_sessions")
-    end = sql.index("$allpha_session_list$", start)
+    opening = sql.index("$allpha_session_list$", start)
+    end = sql.index("$allpha_session_list$", opening + len("$allpha_session_list$"))
     body = sql[start:end]
     assert "where s.user_id = (select auth.uid())" in body
     assert "s.id = p_current_session_id" in body
