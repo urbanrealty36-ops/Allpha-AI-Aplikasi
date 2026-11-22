@@ -855,3 +855,9 @@ const cinemaWorkspaceSource = readFileSync(new URL("../components/ai-cinema/AiCi
 assert.ok(cinemaWorkspaceSource.includes("Status layanan Creator Studio tidak dapat dimuat."), "Creator Studio must expose capability-loading failures");
 assert.ok(cinemaWorkspaceSource.includes("Daftar Agent untuk generasi tidak dapat dimuat."), "Creator Studio must expose Agent runtime loading failures");
 assert.ok(cinemaWorkspaceSource.includes("Media Creator Studio tidak dapat dimuat."), "Creator Studio must expose media loading failures instead of silently presenting an empty library");
+
+// Generation polling must not leak requests or artifacts across Creator Studio title changes.
+
+assert.ok(cinemaWorkspaceSource.includes("const controller = new AbortController();"), "Generation polling must be cancellable when the selected film changes or workspace unmounts");
+assert.ok(cinemaWorkspaceSource.includes("controller.abort()"), "Generation polling cleanup must abort in-flight API and artifact requests");
+assert.ok(cinemaWorkspaceSource.includes("setGenerationJobId(\"\");"), "Changing the selected film must clear the previous film's generation job context");
