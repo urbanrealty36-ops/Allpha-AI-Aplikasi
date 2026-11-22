@@ -783,3 +783,25 @@ def test_protected_api_rejects_revoked_supabase_session(monkeypatch):
         asyncio.run(current_user(request, HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)))
     assert getattr(caught.value, "status_code", None) == 401
     assert getattr(caught.value, "detail", {}).get("code") == "SESSION_REVOKED"
+
+
+def test_session_revocation_endpoint_is_scoped_to_verified_current_session(monkeypatch):
+    calls = []
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return True
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "verified-session-token"
+        request.state.auth_session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        return {"id": "authenticated-user"}
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.post("/v1/auth/revoke", headers={"Authorization": "Bearer verified-session-token"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json() == {"revoked": True}
+    assert calls == [("POST", "rpc/revoke_my_auth_session", "verified-session-token", {
+        "body": {"p_session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+    })]
