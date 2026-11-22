@@ -157,3 +157,16 @@ for (const contract of [
   "requestLogin(\"Mengikuti kreator\")", "Share.share", "Linking.openURL"
 ]) assert.ok(guestWelcome.includes(contract), `missing Native guest social contract: ${contract}`);
 
+
+
+for (const contract of [
+  'emailRedirectTo: "https://allpha.web.id/auth/callback?next=%2Fstart"',
+  'supabase.auth.getUser(data.session.access_token)',
+  'email_confirmed_at',
+  'supabase.auth.resend({ type: "signup"',
+  'resetPasswordForEmail',
+  'auth/v1/user',
+  '"/v1/me"',
+  'account_status',
+  'scope: "local"'
+]) assert.ok(app.includes(contract), `missing Native auth/session lifecycle contract: ${contract}`);
