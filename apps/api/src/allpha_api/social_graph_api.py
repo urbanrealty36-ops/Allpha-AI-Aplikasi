@@ -202,7 +202,6 @@ async def get_node_relationship_summary(
 ) -> dict[str, Any]:
     """Return privacy-safe graph counts and the viewer's relationship state for a typed profile."""
     viewer_id = str(user["id"]) if user else None
-    node_key = f"{node_type}:{node_id}"
     if node_type == "human":
         rows = await _server_db("GET", "profiles", params={
             "select": "id,visibility,account_status", "id": f"eq.{node_id}", "limit": "1",
@@ -211,8 +210,6 @@ async def get_node_relationship_summary(
             raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Profil tidak ditemukan."})
         visibility = rows[0].get("visibility")
         owner_id = str(node_id)
-        follower_filter = {"target_node_type": "eq.human", "target_user_id": f"eq.{node_id}"}
-        following_filter = {"actor_node_type": "eq.human", "actor_user_id": f"eq.{node_id}"}
     else:
         rows = await _server_db("GET", "ai_agents", params={
             "select": "id,created_by,visibility,status", "id": f"eq.{node_id}", "limit": "1",
@@ -227,8 +224,6 @@ async def get_node_relationship_summary(
         })
         if not owner_id or not owners:
             raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Kepemilikan Agent tidak aktif."})
-        follower_filter = {"target_node_type": "eq.agent", "target_agent_id": f"eq.{node_id}"}
-        following_filter = {"actor_node_type": "eq.agent", "actor_agent_id": f"eq.{node_id}"}
 
     viewer_follow = []
     viewer_blocks = []
