@@ -1274,6 +1274,14 @@ class AgentCapabilityRequest(BaseModel):
     required_permission_scopes: list[str] = Field(default_factory=list, max_length=30)
     risk_level: Literal["low", "medium", "high", "critical"] = "low"
 
+class AgentCapabilityDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["approved", "denied", "revoked"]
+    reason: str = Field(min_length=8, max_length=500)
+
+
+_capability_review_operator = require_operator_scope("platform:capabilities.review")
+
 
 async def _require_agent_owner(agent_id: uuid.UUID, request: Request, user: dict[str, Any]) -> str:
     token = request.state.supabase_access_token
@@ -1481,6 +1489,81 @@ async def request_agent_capability(agent_id: uuid.UUID, payload: AgentCapability
                                  body=body, prefer="return=representation")
     if not rows:
         raise HTTPException(status_code=500, detail={"code": "CAPABILITY_REQUEST_FAILED", "message": "Permintaan capability tidak dapat disimpan."})
+    return {"capability": rows[0], "runtime_authorized": False}
+
+
+@app.get("/v1/admin/agent-capabilities", tags=["agent-studio-governance"])
+async def list_agent_capability_reviews(
+    request: Request,
+    status: Literal["requested", "approved", "denied", "revoked"] = "requested",
+    risk_level: Literal["low", "medium", "high", "critical"] | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    operator: dict[str, Any] = Depends(_capability_review_operator),
+) -> dict[str, Any]:
+    params = {
+        "select": "id,agent_id,created_by,capability_key,description,required_permission_scopes,risk_level,status,reviewed_by,reviewed_at,review_reason,policy_version,runtime_policy_id,created_at,updated_at",
+        "status": f"eq.{status}", "order": "created_at.asc", "limit": str(limit),
+    }
+    if risk_level:
+        params["risk_level"] = f"eq.{risk_level}"
+    rows = await privileged_rest_request("GET", "agent_capabilities", params=params)
+    await write_operator_audit(
+        request, actor_user_id=operator["id"], action="agent.capability.review.list",
+        outcome="allowed", resource_type="agent_capability",
+        metadata={"status": status, "risk_level": risk_level, "limit": limit, "result_count": len(rows or [])},
+    )
+    return {"items": rows or [], "limit": limit, "status": status}
+
+
+@app.post("/v1/admin/agent-capabilities/{capability_id}/decision", tags=["agent-studio-governance"])
+async def decide_agent_capability(
+    capability_id: uuid.UUID,
+    payload: AgentCapabilityDecision,
+    request: Request,
+    operator: dict[str, Any] = Depends(_capability_review_operator),
+) -> dict[str, Any]:
+    current = await privileged_rest_request(
+        "GET", "agent_capabilities",
+        params={"select": "id,agent_id,created_by,capability_key,description,required_permission_scopes,risk_level,status",
+                "id": f"eq.{capability_id}", "limit": "1"},
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "CAPABILITY_NOT_FOUND", "message": "Permintaan capability tidak ditemukan."})
+    capability = current[0]
+    risk_level = capability.get("risk_level")
+    if risk_level in ("high", "critical") and "platform:capabilities.review.high_risk" not in operator.get("scopes", []):
+        await write_operator_audit(
+            request, actor_user_id=operator["id"], action="agent.capability.review.denied",
+            outcome="denied", resource_type="agent_capability", resource_id=str(capability_id),
+            metadata={"agent_id": capability.get("agent_id"), "capability_key": capability.get("capability_key"),
+                      "risk_level": risk_level, "decision": payload.decision, "reason": "high_risk_scope_missing"},
+        )
+        raise HTTPException(status_code=403, detail={"code": "HIGH_RISK_REVIEW_SCOPE_REQUIRED", "message": "Capability berisiko tinggi memerlukan scope review khusus."})
+    expected_status = "approved" if payload.decision == "revoked" else "requested"
+    if capability.get("status") != expected_status:
+        await write_operator_audit(
+            request, actor_user_id=operator["id"], action="agent.capability.review.conflict",
+            outcome="denied", resource_type="agent_capability", resource_id=str(capability_id),
+            metadata={"current_status": capability.get("status"), "requested_decision": payload.decision},
+        )
+        raise HTTPException(status_code=409, detail={"code": "CAPABILITY_REVIEW_CONFLICT", "message": "Status capability telah berubah atau keputusan tidak sesuai lifecycle."})
+    body = {"status": payload.decision, "reviewed_by": operator["id"],
+            "reviewed_at": datetime.now(timezone.utc).isoformat(), "review_reason": payload.reason}
+    rows = await privileged_rest_request(
+        "PATCH", "agent_capabilities",
+        params={"id": f"eq.{capability_id}", "status": f"eq.{expected_status}",
+                "select": "id,agent_id,created_by,capability_key,description,required_permission_scopes,risk_level,status,reviewed_by,reviewed_at,review_reason,policy_version,runtime_policy_id,created_at,updated_at"},
+        body=body, prefer="return=representation",
+    )
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "CAPABILITY_REVIEW_CONFLICT", "message": "Permintaan capability berubah saat diproses."})
+    if payload.decision == "revoked":
+        await write_operator_audit(
+            request, actor_user_id=operator["id"], action="agent.capability.review.revoked",
+            outcome="allowed", resource_type="agent_capability", resource_id=str(capability_id),
+            metadata={"agent_id": capability.get("agent_id"), "capability_key": capability.get("capability_key"),
+                      "risk_level": risk_level, "reason": payload.reason},
+        )
     return {"capability": rows[0], "runtime_authorized": False}
 
 
