@@ -403,15 +403,15 @@ if (existsSync(nativeContentPath)) assert.ok(nativeApp.includes('prefixes: ["all
 // UI-COPY-02 identity journey must use the source onboarding flow with real Auth/API boundaries.
 const authRoute = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const authAdapter = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
-const authFlowSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+const authFlowSourceUiCopy02 = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
 assert.ok(authRoute.includes("AuthOnboardingRoute"), "Login must use the reference onboarding adapter");
 assert.ok(authAdapter.includes("supabase.auth.signUp") && authAdapter.includes("supabase.auth.signInWithPassword"), "Onboarding must use Supabase Auth");
 assert.ok(authAdapter.includes('apiBase + "/v1/me"') && authAdapter.includes('apiBase + "/v1/me/profile"'), "Onboarding must provision and update canonical profile through FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/agents"') && authAdapter.includes('method: "POST"'), "Agent creation must use canonical FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/skill-catalog?limit=100&offset="'), "Agent Skill selection must use the canonical paginated catalog");
-assert.ok(authFlowSource.includes("await onComplete(") && authFlowSource.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
+assert.ok(authFlowSourceUiCopy02.includes("await onComplete(") && authFlowSourceUiCopy02.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
 assert.doesNotMatch(authFlow, /picsum\.photos|Bonus Selamat Datang: \+50 AI Credits|INITIAL_USER|INITIAL_AGENT/);
-assert.ok(authFlowSource.includes("skillsLoading") && authFlowSource.includes("skillsError") && authFlowSource.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
+assert.ok(authFlowSourceUiCopy02.includes("skillsLoading") && authFlowSourceUiCopy02.includes("skillsError") && authFlowSourceUiCopy02.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
 
 
 
