@@ -42,6 +42,8 @@ assert.ok(agents.includes('execution outcome') || agents.includes("hasilnya tida
   assert.ok(chrome.includes("loadStories(null)"), "Feed Chrome must load public Stories without an authenticated session");
   assert.ok(chrome.includes("activeSession ? { Authorization: \"Bearer \" + activeSession.access_token } : {}"),
     "Stories request must attach a token only when a session exists");
+  assert.ok(chrome.includes("storiesAbortController.current?.abort()"), "auth changes and unmount must cancel obsolete Stories requests");
+  assert.ok(chrome.includes("signal: controller.signal"), "Stories requests must support cancellation");
   assert.ok(chrome.includes("storiesRequestSequence.current") && chrome.includes("sequence === storiesRequestSequence.current"),
     "stale Stories responses must not overwrite a newer auth-session request");
   assert.ok(chrome.includes("Coba lagi") && chrome.includes("onClick={() => void loadStories(session)}"),
