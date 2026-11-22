@@ -502,7 +502,7 @@ export default function AuthOnboardingPage({
               </button>
             </div>
           </div>
-        )}}
+        )}
       </main>
 
       {/* FOOTER */}
