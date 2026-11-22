@@ -456,3 +456,9 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Coverage:** Web — INTEGRATE (existing social/feed API clients retain routes); API/DB — CHANGE (typed FastAPI command path and forward migration); Native Android/iOS — INTEGRATE (same canonical HTTP contracts); Super Admin — INTEGRATE (existing moderation/graph governance contracts).
 - **Verification:** API route tests and a disposable PostgreSQL 17 migration/RPC/grant test were added to the ENG-P01 workflow. They are source-level/isolated evidence until CI is observed. No production migration was applied; no real client journey or live mutation is claimed.
 - **Status:** ENG-P04 remains `in_progress`. Migration apply is intentionally deferred; Feed/Discovery/Search/Community/Notification integration and Interest Ontology remain open.
+
+
+## 33. ENG-P02/P04 disposable PostgreSQL readiness correction — 2026-11-22
+
+- The ENG-P01 workflow reached the ENG-P02 disposable database gate, but the script attempted its first migration query during the official PostgreSQL container's temporary initdb postmaster shutdown window. The failure was a harness readiness race (psql connection returned no server socket), not a migration assertion or production database failure.
+- Updated both ENG-P02 and ENG-P04 CI harnesses to require two successful SQL probes separated by a stability interval before applying migration SQL. Production Supabase remains unchanged.

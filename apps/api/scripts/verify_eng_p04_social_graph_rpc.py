@@ -19,10 +19,19 @@ def psql(sql):
 def main():
     run(["docker","run","-d","--rm","--name",NAME,"-e","POSTGRES_PASSWORD=ci-only","postgres:17-alpine"])
     try:
+        # Avoid the temporary initdb postmaster false-positive from pg_isready.
+        time.sleep(1)
+        ready = False
         for i in range(60):
-            if run(["docker","exec",NAME,"pg_isready","-U","postgres"],check=False).returncode == 0: break
-            if i == 59: raise RuntimeError("PostgreSQL readiness timeout")
+            probe = run(["docker","exec",NAME,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"],check=False)
+            if probe.returncode == 0:
+                time.sleep(1)
+                stable = run(["docker","exec",NAME,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"],check=False)
+                if stable.returncode == 0:
+                    ready = True
+                    break
             time.sleep(1)
+        if not ready: raise RuntimeError("PostgreSQL 17 did not reach stable SQL readiness")
         psql("""
 create role anon nologin;
 create role authenticated nologin;

@@ -25,11 +25,21 @@ def main() -> int:
     migration_sql=MIGRATION.read_text(encoding="utf-8")
     run(["docker","run","--detach","--rm","--name",CONTAINER,"-e","POSTGRES_PASSWORD=allpha-ci-only","postgres:17-alpine"])
     try:
+        # The official image briefly starts a temporary postmaster during initdb.
+        # pg_isready can report that temporary socket as ready just before it shuts down.
+        # Require two successful SQL probes separated by a short stability interval.
+        time.sleep(1)
+        ready = False
         for attempt in range(60):
-            ready=run(["docker","exec",CONTAINER,"pg_isready","-U","postgres","-d","postgres"],check=False)
-            if ready.returncode==0: break
-            if attempt==59: raise RuntimeError("Disposable PostgreSQL 17 did not become ready")
+            probe = run(["docker","exec",CONTAINER,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"],check=False)
+            if probe.returncode == 0:
+                time.sleep(1)
+                stable = run(["docker","exec",CONTAINER,"psql","-X","-A","-t","-U","postgres","-d","postgres","-c","select 1"],check=False)
+                if stable.returncode == 0:
+                    ready = True
+                    break
             time.sleep(1)
+        if not ready: raise RuntimeError("Disposable PostgreSQL 17 did not reach stable SQL readiness")
         psql("""
 create role anon nologin;
 create role authenticated nologin;
