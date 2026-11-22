@@ -127,6 +127,22 @@ export default function HomePage() {
     window.location.assign("/" + modeParam + "?mode=" + modeParam + "&next=" + encodeURIComponent(next));
   }
 
+  async function handleLogout() {
+    if (!session || !supabase) return;
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/auth/revoke", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(await apiError(response));
+      const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+      if (signOutError) throw signOutError;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Sesi tidak dapat dicabut.");
+    } finally { setSaving(false); }
+  }
+
   async function loadConsentHistory() {
     if (!session) return;
     const sequence = ++consentRequestSequence.current;
@@ -298,7 +314,7 @@ export default function HomePage() {
       </form></section><footer className="identity-footer"><span>ALLPHA · HUMAN IDENTITY</span><span>Data nyata · Akses berbasis sesi</span></footer></main>;
 
   return <main className="identity-shell">
-    <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="account-menu"><span className="signed-in">{session.user.email}</span><a className="button-primary" href="/feed">Buka Feed ↗</a><a className="button-quiet" href="/agents">AI Agent Studio ↗</a><a className="button-quiet" href="/content-studio">Creator Studio ↗</a><a className="button-quiet" href="/billing">Billing & AI Credits ↗</a><a className="button-quiet" href="/reels">Reels ↗</a><button className="button-quiet" onClick={() => void supabase.auth.signOut()}>Keluar ↗</button></div></header>
+    <header className="identity-topbar"><a className="brand" href="/"><span className="brand-mark">A</span> ALLPHA</a><div className="account-menu"><span className="signed-in">{session.user.email}</span><a className="button-primary" href="/feed">Buka Feed ↗</a><a className="button-quiet" href="/agents">AI Agent Studio ↗</a><a className="button-quiet" href="/content-studio">Creator Studio ↗</a><a className="button-quiet" href="/billing">Billing & AI Credits ↗</a><a className="button-quiet" href="/reels">Reels ↗</a><button className="button-quiet" disabled={saving} onClick={() => void handleLogout()}>{saving ? "Mencabut sesi…" : "Keluar ↗"}</button></div></header>
     <section className="workspace-heading"><div><span className="section-kicker">RUANG PERSONAL</span><h1>Identitas manusia</h1><p>Profil dan pengaturan yang tersimpan pada akun Allpha Anda.</p></div>
       {profile && <div className="profile-chip">{profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <span>{(profile.display_name || session.user.email || "A").slice(0, 1).toUpperCase()}</span>}<div><strong>{profile.display_name || "Pengguna Allpha"}</strong><small>{profile.username ? "@" + profile.username : "Username belum diatur"}</small></div></div>}
     </section>
