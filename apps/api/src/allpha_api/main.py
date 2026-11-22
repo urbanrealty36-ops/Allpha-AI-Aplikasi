@@ -451,7 +451,7 @@ async def revoke_selected_auth_session(
 
 
 @app.get("/v1/me", tags=["identity"])
-async def get_me(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
+async def get_me(user: dict[str, Any] = Depends(current_session_user), request: Request = None) -> dict[str, Any]:
     access_token = request.state.supabase_access_token
     rows = await user_db_request(
         "GET", "profiles",

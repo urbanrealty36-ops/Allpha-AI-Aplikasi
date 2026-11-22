@@ -312,3 +312,57 @@ def test_follow_request_accept_is_scoped_to_authenticated_target(monkeypatch):
 
     assert response.status_code == 200
     assert service_calls == [("accept_social_follow_for_actor", {"p_actor_user_id": "human-123", "p_edge_id": edge_id})]
+
+
+
+def test_first_authenticated_profile_read_provisions_profile_before_account_guard(monkeypatch):
+    """A verified new Supabase session must be able to create its own profile."""
+    from fastapi import Request
+    from allpha_api.auth import current_session_user
+
+    calls = []
+    profile = {
+        "id": "human-new",
+        "username": "new-human",
+        "display_name": "New Human",
+        "avatar_url": None,
+        "bio": "",
+        "visibility": "public",
+        "locale": "id-ID",
+        "account_status": "active",
+    }
+
+    async def fake_session_user(request: Request):
+        request.state.supabase_access_token = "verified-new-session"
+        return {
+            "id": "human-new",
+            "email": "new-human@example.invalid",
+            "user_metadata": {"display_name": "New Human", "locale": "id-ID"},
+        }
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        if method == "GET" and path == "profiles":
+            return []
+        if method == "POST" and path == "profiles":
+            return [profile]
+        raise AssertionError(f"unexpected database operation: {method} {path}")
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_session_user] = fake_session_user
+    try:
+        response = client.get("/v1/me", headers={"Authorization": "Bearer verified-new-session"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["profile"]["id"] == "human-new"
+    assert [call[:3] for call in calls] == [
+        ("GET", "profiles", "verified-new-session"),
+        ("POST", "profiles", "verified-new-session"),
+    ]
+    assert calls[1][3]["body"] == {
+        "id": "human-new",
+        "display_name": "New Human",
+        "locale": "id-ID",
+    }
