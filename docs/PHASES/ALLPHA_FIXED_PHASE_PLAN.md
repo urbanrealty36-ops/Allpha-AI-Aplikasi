@@ -318,6 +318,6 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Locale selector in the actual form:** added visible Indonesian/English controls to the Human registration/login modal header. The selector uses the root `LocaleProvider`, so switching language updates the open form immediately, not only the welcome splash. Auth labels, placeholders, mode tabs, interest labels, email-verification notices and form actions use the shared bilingual message catalog.
 - **Preference persistence:** language selection is persisted in browser storage and, when an authenticated Supabase session exists, saved through the canonical FastAPI `PATCH /v1/me/profile` contract. Signed-in locale hydration continues from `/v1/me`.
 - **Changed files:** `apps/web/components/reference-ui/AuthOnboardingPage.tsx`, `apps/web/components/reference-ui/AuthOnboardingFlow.tsx`, `apps/web/components/LocaleProvider.tsx`.
-- **Commits:** `890da9d`, `bc5eeb3`, `a374cf8`, `57f4f99`, `87c3c4e`, `5567385`, `1defe92`.
+- **Commits:** `890da9d`, `bc5eeb3`, `a374cf8`, `57f4f99`, `87c3c4e`, `5567385`, `1defe92`, `9bf10bd` (align step heading across Indonesian/English).
 - **Verification:** source-level inspection only. Per Product Owner direction, no external browser/device/E2E or production acceptance was run; those remain `DEFERRED / NOT VERIFIED`. No deployment is claimed.
 - **Phase status:** ENG-P01/ENG-P02 remain `in_progress`; this UI parity and locale correction does not independently close either phase.
