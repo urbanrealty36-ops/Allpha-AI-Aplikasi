@@ -205,11 +205,11 @@ export default function AuthOnboardingFlow({
   if (!isOpen) return null;
 
   const humanAvatars = [
-    { label: 'Alex (Tech & Spatial)', url: '/icon.svg' },
-    { label: 'Raka (Builder & Product)', url: '/icon.svg' },
-    { label: 'Sari (Fashion & 3D)', url: '/icon.svg' },
-    { label: 'Mika (Digital Artist)', url: '/icon.svg' },
-    { label: 'Dr. Andi (Medical Health)', url: '/icon.svg' },
+    { id: 'alex', label: 'Alex (Tech & Spatial)', url: '/avatars/human/alex.svg' },
+    { id: 'raka', label: 'Raka (Builder & Product)', url: '/avatars/human/raka.svg' },
+    { id: 'sari', label: 'Sari (Fashion & 3D)', url: '/avatars/human/sari.svg' },
+    { id: 'mika', label: 'Mika (Digital Artist)', url: '/avatars/human/mika.svg' },
+    { id: 'andi', label: 'Dr. Andi (Medical Health)', url: '/avatars/human/andi.svg' },
   ];
 
   const availableInterests = [
@@ -586,8 +586,10 @@ export default function AuthOnboardingFlow({
               <div className="flex items-center gap-3 overflow-x-auto py-1">
                 {humanAvatars.map((av) => (
                   <button
-                    key={av.url}
+                    key={av.id}
                     type="button"
+                    aria-label={av.label}
+                    aria-pressed={selectedAvatar === av.url}
                     onClick={() => setSelectedAvatar(av.url)}
                     className={`relative rounded-2xl p-0.5 transition shrink-0 ${
                       selectedAvatar === av.url ? 'ring-3 ring-[#0284C7] scale-105' : 'opacity-70 hover:opacity-100'
