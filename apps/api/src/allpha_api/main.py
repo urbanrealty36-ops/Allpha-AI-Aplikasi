@@ -373,6 +373,21 @@ async def system_status(request: Request) -> dict[str, Any]:
     }
 
 
+@app.post("/v1/auth/revoke", tags=["identity"])
+async def revoke_my_auth_session(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+    """Fence only the caller's current Auth session before client-side sign-out."""
+    session_id = getattr(request.state, "auth_session_id", None)
+    if not session_id:
+        raise HTTPException(status_code=401, detail={"code": "SESSION_INVALID", "message": "Sesi tidak memiliki identitas yang valid."})
+    revoked = await user_db_request(
+        "POST", "rpc/revoke_my_auth_session", request.state.supabase_access_token,
+        body={"p_session_id": session_id},
+    )
+    if revoked is not True:
+        raise HTTPException(status_code=409, detail={"code": "SESSION_REVOCATION_FAILED", "message": "Sesi tidak dapat dicabut. Silakan ulangi."})
+    return {"revoked": True}
+
+
 @app.get("/v1/me", tags=["identity"])
 async def get_me(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
     access_token = request.state.supabase_access_token
