@@ -12,7 +12,7 @@ type Recommendation = SearchItem;
 type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
 type DiscoveredUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
 type Payload<T> = { items: T[]; query?: string; count?: number; has_more?: boolean; error?: { message?: string } };
-type SocialGraphEdge = { target_user_id: string; edge_type: "follow" | "block" | "mute"; status: "requested" | "active" };
+type SocialGraphEdge = { id: string; target_user_id: string; target_node_type: "human" | "agent"; target_agent_id?: string | null; actor_node_type: "human" | "agent"; edge_type: "follow" | "block" | "mute"; status: "requested" | "active" };
 type SocialGraphPayload = { outgoing?: SocialGraphEdge[] };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
@@ -35,6 +35,7 @@ function SearchPageContent() {
   const [discoveryError, setDiscoveryError] = useState("");
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
+  const [followEdgeIds, setFollowEdgeIds] = useState<Record<string, string>>({});
   const [socialGraphError, setSocialGraphError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -167,16 +168,18 @@ function SearchPageContent() {
     const sequence = ++socialGraphRequestSequence.current;
     setSocialGraphError("");
     try {
-      const response = await fetch(apiBase + "/v1/me/social-graph", {
+      const response = await fetch(apiBase + "/v1/social/relationships", {
         headers: { Authorization: "Bearer " + session.access_token },
         cache: "no-store",
       });
       const payload = await response.json() as SocialGraphPayload & { error?: { message?: string } };
       if (sequence !== socialGraphRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Status relasi sosial belum dapat dimuat.");
-      const follows = (payload.outgoing || []).filter(edge => edge.edge_type === "follow");
-      setFollowedAccountIds(follows.filter(edge => edge.status === "active").map(edge => edge.target_user_id));
-      setPendingFollowAccountIds(follows.filter(edge => edge.status === "requested").map(edge => edge.target_user_id));
+      const follows = (payload.outgoing || []).filter(edge => edge.actor_node_type === "human" && edge.edge_type === "follow");
+      const keyFor = (edge: SocialGraphEdge) => edge.target_node_type === "agent" ? "agent:" + edge.target_agent_id : "human:" + edge.target_user_id;
+      setFollowedAccountIds(follows.filter(edge => edge.status === "active").map(keyFor));
+      setPendingFollowAccountIds(follows.filter(edge => edge.status === "requested").map(keyFor));
+      setFollowEdgeIds(Object.fromEntries(follows.map(edge => [keyFor(edge), edge.id])));
     } catch (cause) {
       if (sequence === socialGraphRequestSequence.current) {
         setFollowedAccountIds([]);
@@ -262,7 +265,7 @@ function SearchPageContent() {
   }, [session, urlQuery, runSearch]);
 
   const accountsForReference: SocialAccountItem[] = creators.map(item => ({
-    id: item.id,
+    id: (item.is_ai ? "agent:" : "human:") + item.id,
     name: item.display_name || item.username || "Kreator",
     handle: item.username || "",
     avatar: item.avatar_url || "/icon.svg",
@@ -274,7 +277,7 @@ function SearchPageContent() {
   }));
 
   const discoveredAccountsForReference: SocialAccountItem[] = discoveredUsers.map(item => ({
-    id: item.id,
+    id: "human:" + item.id,
     name: item.display_name || item.username,
     handle: item.username,
     avatar: item.avatar_url || "/icon.svg",
@@ -336,12 +339,18 @@ function SearchPageContent() {
         onFollowAccount={async (accountId, currentlyFollowed, currentlyPending = false) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
           const mutationEpoch = sessionEpoch.current;
+          const [targetType, targetId] = accountId.split(":", 2);
+          if (!targetId || (targetType !== "human" && targetType !== "agent")) {
+            setSocialGraphError("Identitas target tidak valid.");
+            return;
+          }
           const removingRelationship = currentlyFollowed || currentlyPending;
           try {
+            const edgeId = followEdgeIds[accountId];
             const response = await fetch(
-              removingRelationship
-                ? apiBase + "/v1/me/social-edges/" + encodeURIComponent(accountId) + "/follow"
-                : apiBase + "/v1/me/social-edges",
+              removingRelationship && edgeId
+                ? apiBase + "/v1/social/relationships/" + encodeURIComponent(edgeId)
+                : apiBase + "/v1/social/relationships",
               {
                 method: removingRelationship ? "DELETE" : "POST",
                 headers: {
@@ -349,7 +358,7 @@ function SearchPageContent() {
                   Accept: "application/json",
                   ...(removingRelationship ? {} : { "Content-Type": "application/json" }),
                 },
-                ...(removingRelationship ? {} : { body: JSON.stringify({ target_user_id: accountId, edge_type: "follow" }) }),
+                ...(removingRelationship ? {} : { body: JSON.stringify({ target_type: targetType, target_id: targetId, edge_type: "follow" }) }),
                 cache: "no-store",
               },
             );
@@ -359,12 +368,15 @@ function SearchPageContent() {
             if (removingRelationship) {
               setFollowedAccountIds(previous => previous.filter(id => id !== accountId));
               setPendingFollowAccountIds(previous => previous.filter(id => id !== accountId));
+              setFollowEdgeIds(previous => { const next = { ...previous }; delete next[accountId]; return next; });
             } else if (payload?.outcome === "follow_request_created" || payload?.edge?.status === "requested") {
               setFollowedAccountIds(previous => previous.filter(id => id !== accountId));
               setPendingFollowAccountIds(previous => [...new Set([...previous, accountId])]);
+              if (payload?.edge?.id) setFollowEdgeIds(previous => ({ ...previous, [accountId]: payload.edge.id }));
             } else {
               setFollowedAccountIds(previous => [...new Set([...previous, accountId])]);
               setPendingFollowAccountIds(previous => previous.filter(id => id !== accountId));
+              if (payload?.edge?.id) setFollowEdgeIds(previous => ({ ...previous, [accountId]: payload.edge.id }));
             }
             setSocialGraphError("");
             setAuthPrompt("");
