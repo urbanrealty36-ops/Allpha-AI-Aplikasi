@@ -119,27 +119,12 @@ export default function HomePage() {
   }, []);
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!supabase) return;
-    setSaving(true); setError(""); setMessage("");
-    try {
-      if (mode === "signup") {
-        const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { display_name: displayName.trim(), locale: "id-ID" } } });
-        if (authError) throw authError;
-        if (!data.session) {
-          setMessage("Akun dibuat. Periksa email untuk menyelesaikan konfirmasi sebelum masuk.");
-        } else {
-          setMessage("Akun berhasil dibuat. Menyiapkan onboarding Allpha…");
-          window.location.assign("/start");
-          return;
-        }
-      } else {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (authError) throw authError;
-        window.location.assign("/start");
-        return;
-      }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Autentikasi gagal."); }
-    finally { setSaving(false); }
+    event.preventDefault();
+    const next = "/account";
+    const modeParam = mode === "signup" ? "register" : "login";
+    // Account settings must not implement a second auth flow. Reuse the
+    // canonical onboarding route and preserve the intended destination.
+    window.location.assign("/" + modeParam + "?mode=" + modeParam + "&next=" + encodeURIComponent(next));
   }
 
   async function loadConsentHistory() {
