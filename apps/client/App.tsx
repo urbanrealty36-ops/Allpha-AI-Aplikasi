@@ -4,6 +4,7 @@ import { NavigationContainer, useNavigation, type NavigationProp } from "@react-
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
+import { createSecureSessionStorage } from "./lib/secure-session-storage";
 import * as DocumentPicker from "expo-document-picker";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
@@ -100,34 +101,8 @@ const configured = Boolean(supabaseUrl && supabaseKey);
 const nativeAuthRedirect = process.env.EXPO_PUBLIC_NATIVE_AUTH_REDIRECT_URL || "https://allpha.web.id/auth/callback?next=%2Fstart";
 const nativeRecoveryRedirect = process.env.EXPO_PUBLIC_NATIVE_RECOVERY_REDIRECT_URL || "https://allpha.web.id/auth/callback?next=%2Freset-password";
 
-// Chunking keeps larger auth sessions within platform secure-storage item limits.
-const secureStorage = {
-  async getItem(key: string) {
-    const n = Number(await SecureStore.getItemAsync(key + ":count") || 0);
-    if (n > 0 && n <= 30) {
-      const parts = await Promise.all(Array.from({ length: n }, (_, i) => SecureStore.getItemAsync(key + ":" + i)));
-      return parts.every((part) => part !== null) ? parts.join("") : null;
-    }
-    return SecureStore.getItemAsync(key);
-  },
-  async setItem(key: string, value: string) {
-    const chunks = value.match(/[\s\S]{1,1800}/g) || [""];
-    if (chunks.length > 30) throw new Error("Sesi terlalu besar untuk penyimpanan aman perangkat.");
-    const oldCount = Number(await SecureStore.getItemAsync(key + ":count") || 0);
-    await SecureStore.deleteItemAsync(key).catch(() => undefined);
-    for (let i = 0; i < Math.max(oldCount, chunks.length); i++) {
-      if (i < chunks.length) await SecureStore.setItemAsync(key + ":" + i, chunks[i]);
-      else await SecureStore.deleteItemAsync(key + ":" + i).catch(() => undefined);
-    }
-    await SecureStore.setItemAsync(key + ":count", String(chunks.length));
-  },
-  async removeItem(key: string) {
-    const n = Number(await SecureStore.getItemAsync(key + ":count") || 0);
-    await Promise.all(Array.from({ length: Math.min(n, 30) }, (_, i) => SecureStore.deleteItemAsync(key + ":" + i).catch(() => undefined)));
-    await SecureStore.deleteItemAsync(key + ":count").catch(() => undefined);
-    await SecureStore.deleteItemAsync(key).catch(() => undefined);
-  }
-};
+// Versioned, commit-pointer storage preserves the previous session if a chunk write is interrupted.
+const secureStorage = createSecureSessionStorage(SecureStore);
 const supabase: SupabaseClient | null = configured ? createClient(supabaseUrl, supabaseKey, {
   auth: { storage: secureStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce" }
 }) : null;
