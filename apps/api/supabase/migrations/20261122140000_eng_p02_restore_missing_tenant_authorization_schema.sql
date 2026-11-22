@@ -42,6 +42,15 @@ create index if not exists audit_events_org_created_idx
 create index if not exists audit_events_actor_created_idx
   on public.audit_events(actor_user_id,created_at desc);
 
+create or replace function public.set_updated_at()
+returns trigger language plpgsql set search_path = ''
+as $
+begin
+  new.updated_at := pg_catalog.now();
+  return new;
+end;
+$;
+
 create or replace function private.is_organization_member(target_organization uuid)
 returns boolean language sql stable security definer set search_path = ''
 as $$
@@ -120,6 +129,9 @@ create policy audit_events_no_client_update on public.audit_events for update to
 drop policy if exists audit_events_no_client_delete on public.audit_events;
 create policy audit_events_no_client_delete on public.audit_events for delete to authenticated using (false);
 
+drop trigger if exists organizations_set_updated_at on public.organizations;
+create trigger organizations_set_updated_at before update on public.organizations
+for each row execute function public.set_updated_at();
 drop trigger if exists organizations_add_creator_as_owner on public.organizations;
 create trigger organizations_add_creator_as_owner after insert on public.organizations
 for each row execute function public.create_organization_owner_membership();
@@ -131,6 +143,7 @@ revoke all on function private.is_organization_member(uuid) from public,anon;
 revoke all on function private.is_organization_admin(uuid) from public,anon;
 grant execute on function private.is_organization_member(uuid) to authenticated;
 grant execute on function private.is_organization_admin(uuid) to authenticated;
+revoke all on function public.set_updated_at() from public,anon,authenticated;
 revoke all on function public.create_organization_owner_membership() from public,anon,authenticated;
 revoke all on function public.audit_organization_created() from public,anon,authenticated;
 
