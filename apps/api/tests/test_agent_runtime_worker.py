@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from fastapi import HTTPException
 
 from allpha_api import agent_runtime_worker as worker
