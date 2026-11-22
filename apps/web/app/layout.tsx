@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./identity.css";
 import ReferenceAppShell from "../components/ReferenceAppShell";
+import { LocaleProvider } from "../components/LocaleProvider";
 
 export const viewport: Viewport = {
   themeColor: "#2563eb",
@@ -41,7 +42,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="id" className="h-full bg-slate-50">
       <body className="h-full font-sans antialiased text-slate-900 bg-slate-50 selection:bg-blue-100 selection:text-blue-900" suppressHydrationWarning>
-        <ReferenceAppShell>{children}</ReferenceAppShell>
+        <LocaleProvider><ReferenceAppShell>{children}</ReferenceAppShell></LocaleProvider>
       </body>
     </html>
   );
