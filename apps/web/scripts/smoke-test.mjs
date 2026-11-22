@@ -123,6 +123,12 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
     account.includes('/v1/me/sessions') && account.includes('/v1/me/sessions/revoke-others') &&
     account.includes("Sesi sudah tidak berlaku. Silakan masuk kembali."),
     "account session inventory must discard stale cross-user responses, use canonical FastAPI revoke contracts and clear definitively rejected sessions");
+  assert.ok(account.includes("const loadAuthSessions = useCallback") &&
+    account.includes('if (tab !== "sessions" || !session) return;') &&
+    account.includes("sessionsAutoLoadToken.current === session.access_token") &&
+    account.includes("sessionsAutoLoadToken.current = null;") &&
+    !account.includes('setTab("sessions"); void loadAuthSessions()'),
+    "restored account session deep links must load the canonical inventory once per authenticated token without duplicate requests");
 }
 
 
