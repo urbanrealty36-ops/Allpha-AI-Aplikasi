@@ -82,6 +82,8 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   const forgotPassword = readFileSync(new URL("../app/forgot-password/page.tsx", import.meta.url), "utf8");
   const resetPassword = readFileSync(new URL("../app/reset-password/page.tsx", import.meta.url), "utf8");
   const account = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
+  const profile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
+  const sessionValidation = readFileSync(new URL("../lib/auth-validation.mjs", import.meta.url), "utf8");
   for (const contract of [
     "verification_pending", "supabase.auth.getUser(session.access_token)", "email_confirmed_at", "emailRedirectTo",
     "supabase.auth.resend", "supabase.auth.signInWithOAuth", "/auth/callback?next=%2Fstart",
@@ -94,9 +96,14 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
     requireSession.includes("generation !== initialGeneration") && requireSession.includes('setStatus("unavailable")') &&
     requireSession.includes("Coba lagi") && requireSession.includes('signOut({ scope: "local" })'),
     "protected routes must verify Auth events, preserve sessions during transient outages, expose retry and clear definitively invalid sessions");
-  assert.ok(startJourney.includes("/v1/me") && startJourney.includes("email_confirmed_at") &&
-    startJourney.includes("account_status") && startJourney.includes("hasCompletedHumanProfile"),
-    "post-login routing must resolve verified Human identity and avoid repeating onboarding for completed profiles");
+  assert.ok(startJourney.includes("verifyBackendSession<StartIdentity>") && startJourney.includes("email_confirmed_at") &&
+    startJourney.includes("hasCompletedHumanProfile") && sessionValidation.includes("/v1/me") &&
+    sessionValidation.includes('identity.profile.account_status !== "active"'),
+    "post-login routing must resolve verified Human identity through the canonical backend session guard and avoid repeating onboarding for completed profiles");
+  assert.ok(account.includes("verifyBackendSession<IdentityResponse>") &&
+    profile.includes("verifyBackendSession<Me>") &&
+    sessionValidation.includes('response.status === 401 || response.status === 403'),
+    "account, profile and onboarding routes must share FastAPI revocation and account-state validation");
   assert.ok(authRoute.includes("identity.profile?.username") && authRoute.includes('finishAuthentication("/feed")'),
     "returning Human accounts without an Agent must still enter the app without forced first-run onboarding");
   assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext"), "OAuth/email callback must exchange code and enforce safe redirect");
