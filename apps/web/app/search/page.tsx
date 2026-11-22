@@ -315,6 +315,10 @@ function SearchPageContent() {
     const edgeMap = edgeType === "block" ? blockEdgeIds : muteEdgeIds;
     const edgeId = edgeMap[accountId];
     try {
+      if (currentlyActive && !edgeId) {
+        await loadSocialGraph();
+        throw new Error("Relasi sudah berubah. Status terbaru telah dimuat; coba lagi.");
+      }
       const response = await fetch(
         currentlyActive && edgeId ? apiBase + "/v1/social/relationships/" + encodeURIComponent(edgeId) : apiBase + "/v1/social/relationships",
         {
