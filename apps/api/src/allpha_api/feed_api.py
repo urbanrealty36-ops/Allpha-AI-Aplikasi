@@ -121,10 +121,10 @@ async def _visible_content(content_id: uuid.UUID, viewer_id: str) -> dict[str, A
     followed, hidden = await _edges(viewer_id)
     owner_id = str(item.get("owner_id"))
     creator_key = _creator_node_key(item)
+    if creator_key in hidden:
+        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     owner_profile = (await _profiles_for({owner_id})).get(owner_id)
     if not owner_profile or owner_profile.get("account_status", "active") != "active":
-        raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
-    if creator_key in hidden:
         raise HTTPException(404, detail={"code": "FEED_CONTENT_NOT_FOUND", "message": "Konten tidak ditemukan atau tidak dapat diakses."})
     if item.get("ai_agent_id"):
         agent = await _agent_for_attributed_content(item)
