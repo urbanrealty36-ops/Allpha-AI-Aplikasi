@@ -52,7 +52,7 @@ assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Work
 // Splash and both public/dedicated authentication entry points share canonical auth.
 const onboardingPage = readFileSync(new URL("../components/reference-ui/AuthOnboardingPage.tsx", import.meta.url), "utf8");
 const welcomePage = readFileSync(new URL("../app/welcome/page.tsx", import.meta.url), "utf8");
-const authRoute = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
+const canonicalAuthRoute = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
 const authFlow = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(onboardingPage, /Slide Sapa & Panduan|Login \/ Register|Buka Feed Aplikasi/,
   "Splash header must not render the three wide navigation actions");
@@ -60,8 +60,8 @@ assert.ok(onboardingPage.includes("onStartAuthentication('REGISTER')") && onboar
   "Public onboarding auth actions must open the matching auth modal mode");
 assert.ok(welcomePage.includes("<AuthOnboardingRoute") && welcomePage.includes("isOpen={authModalMode !== null}"),
   "Public onboarding must mount the canonical auth card as a modal");
-assert.ok(authRoute.includes("supabase.auth.signUp") && authRoute.includes("supabase.auth.signInWithPassword") &&
-  authRoute.includes("/v1/me/profile") && authRoute.includes("/v1/agents"),
+assert.ok(canonicalAuthRoute.includes("supabase.auth.signUp") && canonicalAuthRoute.includes("supabase.auth.signInWithPassword") &&
+  canonicalAuthRoute.includes("/v1/me/profile") && canonicalAuthRoute.includes("/v1/agents"),
   "Modal and dedicated routes must share Supabase Auth and FastAPI identity provisioning");
 assert.ok(authFlow.includes("authMode === 'LOGIN'") && authFlow.includes("authMode === 'REGISTER' && ("),
   "Login must not require registration-only Human/Agent identity fields");
