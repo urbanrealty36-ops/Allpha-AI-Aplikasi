@@ -333,17 +333,83 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [error, setError] = useState("");
   async function submit() {
-    if (!supabase) return; setBusy(true); setError(""); setMessage("");
+    if (!supabase || busy) return;
+    setBusy(true); setError(""); setMessage("");
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail)) {
+      setError("Masukkan alamat email yang valid."); setBusy(false); return;
+    }
     try {
       if (mode === "signup") {
         if (!name.trim()) throw new Error("Nama tampilan wajib diisi.");
-        const { data, error: e } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { display_name: name.trim(), locale: "id-ID" } } });
-        if (e) throw e; setMessage(data.session ? "Akun berhasil dibuat." : "Akun dibuat. Periksa email untuk konfirmasi sebelum masuk.");
-      } else { const { error: e } = await supabase.auth.signInWithPassword({ email: email.trim(), password }); if (e) throw e; }
+        if (password.length < 8) throw new Error("Kata sandi minimal 8 karakter.");
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: { display_name: name.trim(), locale: "id-ID" },
+            emailRedirectTo: "https://allpha.web.id/auth/callback?next=%2Fstart",
+          },
+        });
+        if (signUpError) throw signUpError;
+        if (!data.session) {
+          setMessage("Pendaftaran berhasil dimulai. Verifikasi email melalui tautan yang dikirim, lalu kembali ke aplikasi untuk masuk.");
+          return;
+        }
+        const { data: verified, error: verifyError } = await supabase.auth.getUser(data.session.access_token);
+        if (verifyError || !verified.user?.email_confirmed_at) {
+          await supabase.auth.signOut({ scope: "local" });
+          setMessage("Verifikasi email diperlukan sebelum akun dapat digunakan.");
+          return;
+        }
+        const profileResponse = await fetch(apiBase + "/v1/me", {
+          headers: { Authorization: "Bearer " + data.session.access_token, Accept: "application/json" },
+        });
+        if (!profileResponse.ok) throw new Error("Profil Human belum dapat disiapkan. Coba masuk kembali.");
+      } else {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        if (signInError) throw signInError;
+        if (!data.session) throw new Error("Sesi login tidak tersedia. Silakan coba kembali.");
+        const { data: verified, error: verifyError } = await supabase.auth.getUser(data.session.access_token);
+        if (verifyError || !verified.user?.email_confirmed_at) {
+          await supabase.auth.signOut({ scope: "local" });
+          throw new Error("Email belum terverifikasi. Periksa email Anda sebelum masuk.");
+        }
+        const profileResponse = await fetch(apiBase + "/v1/me", {
+          headers: { Authorization: "Bearer " + data.session.access_token, Accept: "application/json" },
+        });
+        if (!profileResponse.ok) throw new Error("Profil akun tidak dapat diverifikasi oleh Allpha API.");
+        const profilePayload = await profileResponse.json() as { profile?: Profile };
+        if (profilePayload.profile?.account_status !== "active") {
+          await supabase.auth.signOut({ scope: "local" });
+          throw new Error("Akun sedang dinonaktifkan dan tidak dapat digunakan.");
+        }
+        setMessage("Login berhasil. Menyiapkan ruang Allpha…");
+      }
     } catch (e) { setError(e instanceof Error ? e.message : "Autentikasi gagal. Coba lagi."); }
     finally { setBusy(false); }
   }
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView contentContainerStyle={s.page}><Brand/><View style={s.card}><Text style={s.title}>{mode === "signin" ? "Selamat datang kembali" : "Buat identitas Anda"}</Text>{mode === "signup" && <TextInput accessibilityLabel="Nama tampilan" placeholder="Nama tampilan" placeholderTextColor="#8B94AC" value={name} onChangeText={setName} style={s.input}/>}<TextInput accessibilityLabel="Email" autoCapitalize="none" keyboardType="email-address" autoComplete="email" placeholder="Email" placeholderTextColor="#8B94AC" value={email} onChangeText={setEmail} style={s.input}/><TextInput accessibilityLabel="Kata sandi" secureTextEntry autoCapitalize="none" placeholder="Kata sandi (min. 8 karakter)" placeholderTextColor="#8B94AC" value={password} onChangeText={setPassword} style={s.input}/>{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}{!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}{busy && <ActivityIndicator color="#A5B4FC"/>}<Button title={busy ? "Memproses…" : mode === "signin" ? "Masuk dengan aman" : "Daftar"} disabled={busy || !email.trim() || password.length < 8 || (mode === "signup" && !name.trim())} onPress={() => void submit()}/><Button title={mode === "signin" ? "Belum punya akun? Daftar" : "Sudah punya akun? Masuk"} secondary onPress={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setMessage(""); }}/><Button title="Kembali" secondary onPress={() => nav.goBack()}/></View></ScrollView></KeyboardAvoidingView>;
+  async function resendVerification() {
+    if (!supabase || !email.trim()) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const { error: resendError } = await supabase.auth.resend({ type: "signup", email: email.trim().toLowerCase(), options: { emailRedirectTo: "https://allpha.web.id/auth/callback?next=%2Fstart" } });
+      if (resendError) throw resendError;
+      setMessage("Email verifikasi dikirim ulang. Periksa inbox dan folder spam.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Email verifikasi gagal dikirim ulang."); }
+    finally { setBusy(false); }
+  }
+  async function requestPasswordReset() {
+    if (!supabase || !email.trim()) { setError("Isi email terlebih dahulu untuk pemulihan kata sandi."); return; }
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: "https://allpha.web.id/auth/callback?next=%2Freset-password" });
+      if (resetError) throw resetError;
+      setMessage("Tautan pemulihan kata sandi telah dikirim jika email terdaftar.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Pemulihan kata sandi tidak dapat dimulai."); }
+    finally { setBusy(false); }
+  }
+  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView contentContainerStyle={s.page}><Brand/><View style={s.card}><Text style={s.title}>{mode === "signin" ? "Selamat datang kembali" : "Buat identitas Anda"}</Text>{mode === "signup" && <TextInput accessibilityLabel="Nama tampilan" placeholder="Nama tampilan" placeholderTextColor="#8B94AC" value={name} onChangeText={setName} style={s.input}/>}<TextInput accessibilityLabel="Email" autoCapitalize="none" keyboardType="email-address" autoComplete="email" textContentType="emailAddress" placeholder="Email" placeholderTextColor="#8B94AC" value={email} onChangeText={setEmail} style={s.input}/><TextInput accessibilityLabel="Kata sandi" secureTextEntry autoCapitalize="none" autoComplete={mode === "signin" ? "current-password" : "new-password"} textContentType={mode === "signin" ? "password" : "newPassword"} placeholder="Kata sandi (min. 8 karakter)" placeholderTextColor="#8B94AC" value={password} onChangeText={setPassword} style={s.input}/>{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}{!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}{busy && <ActivityIndicator color="#A5B4FC"/>}<Button title={busy ? "Memproses…" : mode === "signin" ? "Masuk dengan aman" : "Daftar"} disabled={busy || !email.trim() || password.length < 8 || (mode === "signup" && !name.trim())} onPress={() => void submit()}/>{mode === "signin" && <Button title="Lupa kata sandi?" secondary disabled={busy} onPress={() => void requestPasswordReset()}/>} {mode === "signup" && !!message && <Button title="Kirim ulang verifikasi email" secondary disabled={busy} onPress={() => void resendVerification()}/>}<Button title={mode === "signin" ? "Belum punya akun? Daftar" : "Sudah punya akun? Masuk"} secondary onPress={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); setMessage(""); }}/><Button title="Kembali" secondary onPress={() => nav.goBack()}/></View></ScrollView></KeyboardAvoidingView>;
 }
 
 function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
