@@ -6,26 +6,25 @@ alter table public.social_edges
   add column if not exists actor_agent_id uuid,
   add column if not exists target_agent_id uuid,
   add column if not exists idempotency_key text;
-do $migration$
-begin
-  if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_actor_node_type_check') then
-    alter table public.social_edges add constraint social_edges_actor_node_type_check check (actor_node_type in ('human','agent'));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_target_node_type_check') then
-    alter table public.social_edges add constraint social_edges_target_node_type_check check (target_node_type in ('human','agent'));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_actor_node_shape_check') then
-    alter table public.social_edges add constraint social_edges_actor_node_shape_check check ((actor_node_type='human' and actor_agent_id is null) or (actor_node_type='agent' and actor_agent_id is not null));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_target_node_shape_check') then
-    alter table public.social_edges add constraint social_edges_target_node_shape_check check ((target_node_type='human' and target_agent_id is null) or (target_node_type='agent' and target_agent_id is not null));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_same_node_check') then
-    alter table public.social_edges add constraint social_edges_same_node_check check (not (actor_node_type=target_node_type and coalesce(actor_agent_id,actor_user_id)=coalesce(target_agent_id,target_user_id)));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_edges'::regclass and conname='social_edges_idempotency_key_check') then
-    alter table public.social_edges add constraint social_edges_idempotency_key_check check (idempotency_key is null or idempotency_key ~ '^[A-Za-z0-9._:-]{8,160}
-alter table public.social_edges drop constraint if exists social_edges_unique;
+alter table public.social_edges
+  drop constraint if exists social_edges_actor_node_type_check,
+  drop constraint if exists social_edges_target_node_type_check,
+  drop constraint if exists social_edges_actor_node_shape_check,
+  drop constraint if exists social_edges_target_node_shape_check,
+  drop constraint if exists social_edges_same_node_check,
+  drop constraint if exists social_edges_idempotency_key_check,
+  drop constraint if exists social_edges_actor_agent_id_fkey,
+  drop constraint if exists social_edges_target_agent_id_fkey,
+  drop constraint if exists social_edges_unique;
+alter table public.social_edges
+  add constraint social_edges_actor_node_type_check check (actor_node_type in ('human','agent')),
+  add constraint social_edges_target_node_type_check check (target_node_type in ('human','agent')),
+  add constraint social_edges_actor_node_shape_check check ((actor_node_type='human' and actor_agent_id is null) or (actor_node_type='agent' and actor_agent_id is not null)),
+  add constraint social_edges_target_node_shape_check check ((target_node_type='human' and target_agent_id is null) or (target_node_type='agent' and target_agent_id is not null)),
+  add constraint social_edges_same_node_check check (not (actor_node_type=target_node_type and coalesce(actor_agent_id,actor_user_id)=coalesce(target_agent_id,target_user_id))),
+  add constraint social_edges_idempotency_key_check check (idempotency_key is null or length(idempotency_key) between 8 and 160),
+  add constraint social_edges_actor_agent_id_fkey foreign key (actor_agent_id) references public.ai_agents(id) on delete cascade,
+  add constraint social_edges_target_agent_id_fkey foreign key (target_agent_id) references public.ai_agents(id) on delete cascade;
 create unique index if not exists social_edges_unique on public.social_edges(actor_node_type,coalesce(actor_agent_id,actor_user_id),target_node_type,coalesce(target_agent_id,target_user_id),edge_type);
 create unique index if not exists social_edges_actor_idempotency_idx on public.social_edges(actor_user_id,idempotency_key) where idempotency_key is not null;
 create index if not exists social_edges_actor_agent_idx on public.social_edges(actor_agent_id,edge_type,status,created_at desc) where actor_agent_id is not null;
@@ -38,22 +37,16 @@ alter table public.social_graph_events
   add column if not exists target_node_type text not null default 'human',
   add column if not exists actor_agent_id uuid,
   add column if not exists target_agent_id uuid;
-do $migration$
-begin
-  if not exists (select 1 from pg_constraint where conrelid='public.social_graph_events'::regclass and conname='social_graph_events_actor_node_type_check') then
-    alter table public.social_graph_events add constraint social_graph_events_actor_node_type_check check (actor_node_type in ('human','agent'));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_graph_events'::regclass and conname='social_graph_events_target_node_type_check') then
-    alter table public.social_graph_events add constraint social_graph_events_target_node_type_check check (target_node_type in ('human','agent'));
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_graph_events'::regclass and conname='social_graph_events_actor_agent_id_fkey') then
-    alter table public.social_graph_events add constraint social_graph_events_actor_agent_id_fkey foreign key (actor_agent_id) references public.ai_agents(id) on delete set null;
-  end if;
-  if not exists (select 1 from pg_constraint where conrelid='public.social_graph_events'::regclass and conname='social_graph_events_target_agent_id_fkey') then
-    alter table public.social_graph_events add constraint social_graph_events_target_agent_id_fkey foreign key (target_agent_id) references public.ai_agents(id) on delete set null;
-  end if;
-end
-$migration$;
+alter table public.social_graph_events
+  drop constraint if exists social_graph_events_actor_node_type_check,
+  drop constraint if exists social_graph_events_target_node_type_check,
+  drop constraint if exists social_graph_events_actor_agent_id_fkey,
+  drop constraint if exists social_graph_events_target_agent_id_fkey;
+alter table public.social_graph_events
+  add constraint social_graph_events_actor_node_type_check check (actor_node_type in ('human','agent')),
+  add constraint social_graph_events_target_node_type_check check (target_node_type in ('human','agent')),
+  add constraint social_graph_events_actor_agent_id_fkey foreign key (actor_agent_id) references public.ai_agents(id) on delete set null,
+  add constraint social_graph_events_target_agent_id_fkey foreign key (target_agent_id) references public.ai_agents(id) on delete set null;
 
 create or replace function public.enforce_social_edge_policy()
 returns trigger language plpgsql security definer set search_path = ''
