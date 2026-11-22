@@ -60,8 +60,11 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
   const returnTo = useMemo(() => {
     if (typeof window === "undefined") return "/feed";
     const requested = new URLSearchParams(window.location.search).get("next");
-    return requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") ? requested : "/feed";
-  }, []);
+    const safeRequested = requested && requested.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\") && !/^\/(login|register|auth\/)/.test(requested);
+    if (safeRequested) return requested;
+    if (onClose) return window.location.pathname + window.location.search;
+    return "/feed";
+  }, [onClose]);
   const routeAuthMode = useMemo(() => {
     if (typeof window === "undefined") return undefined;
     const mode = new URLSearchParams(window.location.search).get("mode");
@@ -74,16 +77,16 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       : "REGISTER" as const;
   }, []);
   const initialAuthMode = requestedAuthMode ?? routeAuthMode;
-  const finishAuthentication = () => {
+  const finishAuthentication = (destination = returnTo) => {
     onClose?.();
-    router.replace(returnTo);
+    router.replace(destination);
   };
 
   async function googleSignIn() {
     if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
     const redirectTo = typeof window === "undefined"
       ? undefined
-      : window.location.origin + "/agents?onboarding=required";
+      : window.location.origin + "/auth/callback?next=%2Fstart";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: redirectTo ? { redirectTo } : {},
@@ -111,7 +114,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       });
       if (error) throw error;
       session = data.session;
-      if (!session) throw new Error("Akun tercatat oleh Supabase, tetapi sesi belum tersedia. Konfirmasi email terlebih dahulu, lalu masuk kembali untuk melanjutkan pembuatan Agent.");
+      if (!session) return "verification_pending";
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({ email: payload.email, password: payload.password });
       if (error) throw error;
@@ -119,7 +122,18 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     }
     if (!session) throw new Error("Sesi Supabase tidak tersedia. Silakan coba masuk kembali.");
 
+    // A persisted/local session is not sufficient proof: confirm it against Supabase Auth
+    // before provisioning identity or allowing any application workflow to continue.
+    const { data: verified, error: verifyError } = await supabase.auth.getUser(session.access_token);
+    if (verifyError || !verified.user || verified.user.id !== session.user.id || !verified.user.email_confirmed_at) {
+      await supabase.auth.signOut({ scope: "local" });
+      throw new Error("Identitas atau verifikasi email belum dapat dikonfirmasi. Silakan verifikasi email dan masuk kembali.");
+    }
     const headers = { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" };
+    // /v1/me is the canonical profile-provisioning/read contract. It must succeed
+    // before any domain-specific identity is created or queried.
+    const meResponse = await fetch(apiBase + "/v1/me", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
+    if (!meResponse.ok) throw new Error(await responseError(meResponse));
     const existingResponse = await fetch(apiBase + "/v1/agents", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
     if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
     const existing = await existingResponse.json() as AgentList;
@@ -130,15 +144,12 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     }
     if (payload.authMode === "LOGIN") {
       router.replace("/agents?onboarding=required");
-      return;
+      return "authenticated";
     }
 
     if (!payload.user.name.trim() || !payload.user.username.replace(/^@/, "").trim()) {
       throw new Error("Lengkapi nama dan username Human sebelum membuat Agent.");
     }
-    const meResponse = await fetch(apiBase + "/v1/me", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
-    if (!meResponse.ok) throw new Error(await responseError(meResponse));
-
     const identityResponse = await fetch(apiBase + "/v1/me/profile", {
       method: "PATCH",
       headers,
@@ -201,7 +212,14 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       cache: "no-store",
     });
     if (!agentResponse.ok) throw new Error(await responseError(agentResponse));
-    finishAuthentication();
+    finishAuthentication("/feed");
+    return "authenticated";
+  }
+
+  async function resendVerification(email: string) {
+    if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
+    const { error } = await supabase.auth.resend({ type: "signup", email });
+    if (error) throw error;
   }
 
   return (
@@ -211,6 +229,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
         onClose={() => { if (onClose) onClose(); else router.replace(returnTo); }}
         onComplete={complete}
         onGoogleSignIn={googleSignIn}
+        onResendVerification={resendVerification}
         currentUser={emptyHuman}
         currentAgent={emptyAgent}
         initialAuthMode={initialAuthMode}
