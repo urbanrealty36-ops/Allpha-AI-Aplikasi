@@ -540,7 +540,7 @@ if (existsSync(nativeSocialPath)) {
   assert.ok(nativeSocialSource.includes('result.outcome === "follow_active"') && nativeSocialSource.includes('result.outcome === "follow_request_created"'), "Native Social Graph must distinguish active follows from private-profile requests");
   for (const contract of [
     "/v1/social/discover-users", "socialDiscoveryUsers", "socialDiscoveryRequestSequence.current",
-    "Pencarian username menghormati pengaturan penemuan akun", "ID TARGET UNTUK BLOKIR / BISUKAN"
+    "Pencarian username menghormati pengaturan penemuan akun", "TARGET MANUAL ·", "Target AI Agent", "socialActorAgentId", "/v1/social/relationships"
   ]) assert.ok(nativeSocialSource.includes(contract), "Native Social Graph must use privacy-aware username discovery: " + contract);
 }
 for (const tab of ["profile", "settings", "social", "consents"]) assert.ok(accountRoute.includes('"'+tab+'"'), `Account deep-link contract missing tab: ${tab}`);
