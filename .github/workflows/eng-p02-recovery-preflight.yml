@@ -1,0 +1,143 @@
+name: ENG-P02 Supabase Recovery Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/eng-p02-recovery-preflight.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eng-p02-recovery-preflight
+  cancel-in-progress: false
+
+jobs:
+  capture-recovery-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
+    steps:
+      - name: Require the existing read-only Management API credential
+        shell: bash
+        run: |
+          if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+            echo "::error::GitHub Actions secret SUPABASE_ACCESS_TOKEN is unavailable; no recovery evidence was captured."
+            exit 1
+          fi
+          test "$SUPABASE_PROJECT_ID" = "dvdziauyvuhcnqhrrvww"
+
+      - name: Capture database backups and billing add-ons (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-evidence
+          backups_status="$(curl --silent --show-error -o recovery-evidence/database-backups.raw.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/backups")"
+          addons_status="$(curl --silent --show-error -o recovery-evidence/billing-addons.raw.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/billing/addons")"
+          printf '%s\n' "$backups_status" > recovery-evidence/database-backups.status
+          printf '%s\n' "$addons_status" > recovery-evidence/billing-addons.status
+          if [[ "$backups_status" != "200" || "$addons_status" != "200" ]]; then
+            echo "::error::Supabase Management API read failed (backups HTTP $backups_status; billing add-ons HTTP $addons_status). Response bodies are not printed to avoid leaking provider metadata."
+            exit 1
+          fi
+
+      - name: Produce sanitized recovery evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          root = Path("recovery-evidence")
+          sensitive = ("url", "uri", "token", "secret", "password", "credential", "connection", "key", "path")
+
+          def redact(value):
+              if isinstance(value, dict):
+                  return {
+                      str(k): ("<redacted>" if any(part in str(k).lower() for part in sensitive) else redact(v))
+                      for k, v in value.items()
+                  }
+              if isinstance(value, list):
+                  return [redact(item) for item in value]
+              return value
+
+          def load(name):
+              return json.loads((root / name).read_text(encoding="utf-8"))
+
+          backups = load("database-backups.raw.json")
+          addons = load("billing-addons.raw.json")
+
+          def find_backup_count(value):
+              if isinstance(value, list):
+                  return len(value)
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      if "backup" in key.lower() and isinstance(child, list):
+                          return len(child)
+                  for child in value.values():
+                      result = find_backup_count(child)
+                      if result is not None:
+                          return result
+              return None
+
+          pitr_signals = []
+          def find_pitr(value, prefix=""):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      name = f"{prefix}.{key}" if prefix else str(key)
+                      if "pitr" in name.lower():
+                          pitr_signals.append({"field": name, "value": redact(child)})
+                      find_pitr(child, name)
+              elif isinstance(value, list):
+                  for index, child in enumerate(value):
+                      find_pitr(child, f"{prefix}[{index}]")
+              elif isinstance(value, str) and "pitr" in value.lower():
+                  pitr_signals.append({"field": prefix, "value": value})
+
+          find_pitr(addons)
+          record = {
+              "project_ref": "dvdziauyvuhcnqhrrvww",
+              "captured_at_utc": datetime.now(timezone.utc).isoformat(),
+              "source": "Supabase Management API (read-only GET)",
+              "http_status": {
+                  "database_backups": (root / "database-backups.status").read_text().strip(),
+                  "billing_addons": (root / "billing-addons.status").read_text().strip(),
+              },
+              "database_backup_count": find_backup_count(backups),
+              "database_backups": redact(backups),
+              "billing_addons": redact(addons),
+              "pitr_indicators": pitr_signals,
+              "storage_objects_included_in_database_backups": False,
+              "storage_backup_coverage": "Not verified by this database-backup API; Storage objects require a separate recovery mechanism.",
+              "rpo_rto": "Not exposed by this capture; owner must record explicit objectives or state that they remain undefined.",
+              "restore_execution": "Not performed. This workflow is read-only and does not initiate restore, migration, or DDL.",
+          }
+          (root / "recovery-preflight.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+          print(json.dumps({
+              "project_ref": record["project_ref"],
+              "captured_at_utc": record["captured_at_utc"],
+              "http_status": record["http_status"],
+              "database_backup_count": record["database_backup_count"],
+              "pitr_indicators": pitr_signals,
+              "storage_objects_included_in_database_backups": False,
+              "rpo_rto": record["rpo_rto"],
+              "restore_execution": record["restore_execution"],
+          }, indent=2))
+          PY
+
+      - name: Upload sanitized recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p02-supabase-recovery-preflight
+          path: recovery-evidence/recovery-preflight.json
+          if-no-files-found: error
+          retention-days: 30
