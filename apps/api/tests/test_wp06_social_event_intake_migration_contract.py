@@ -27,3 +27,26 @@ def test_wp06_social_event_intake_forward_repair_uses_verified_extension_signatu
     assert "public.digest(" in historical_sql
     assert not (SUPABASE / "migrations" / historical.name).exists()
     assert not (SUPABASE / "migrations" / repaired.name).exists()
+
+
+
+def test_wp06_worker_schema_readiness_gate_is_service_role_only_and_fail_closed():
+    migration = (
+        SUPABASE / "source-only-migrations"
+        / "20261122130000_wp06_social_automation_schema_readiness.sql"
+    )
+    assert migration.is_file()
+    sql = migration.read_text(encoding="utf-8")
+    assert "create or replace function public.agent_social_automation_schema_readiness()" in sql
+    assert "'agent_social_automation_events'" in sql
+    assert "'agent_social_automation_runs'" in sql
+    assert "'agent_social_control_events'" in sql
+    assert "public.claim_agent_social_automation_events(uuid,integer,integer)" in sql
+    assert "public.heartbeat_agent_social_automation_event(uuid,uuid,integer)" in sql
+    assert "public.complete_agent_social_automation_event(uuid,uuid,uuid)" in sql
+    assert "public.fail_agent_social_automation_event(uuid,uuid,text,integer)" in sql
+    assert "public.cancel_agent_social_automation_events(uuid,uuid,text)" in sql
+    assert "has_table_privilege('service_role'" in sql
+    assert "has_function_privilege('service_role'" in sql
+    assert "revoke all on function public.agent_social_automation_schema_readiness() from public, anon, authenticated" in sql
+    assert "grant execute on function public.agent_social_automation_schema_readiness() to service_role" in sql
