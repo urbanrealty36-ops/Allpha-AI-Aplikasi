@@ -136,7 +136,7 @@ export default function HomePage() {
         headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
       });
       if (!response.ok) throw new Error(await apiError(response));
-      const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+      const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
       if (signOutError) throw signOutError;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sesi tidak dapat dicabut.");
