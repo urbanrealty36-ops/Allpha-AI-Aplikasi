@@ -132,7 +132,7 @@ async def discover_agents(
     normalized = q.strip().lstrip("@")
     if not normalized:
         raise HTTPException(422, detail={"code": "SOCIAL_AGENT_SEARCH_INVALID", "message": "Masukkan nama atau handle Agent."})
-    rows = await _rows("GET", "ai_agents", token, params={
+    rows = await _server_db("GET", "ai_agents", params={
         "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
         "status": "eq.active", "visibility": "eq.public",
         "handle": "ilike.*" + normalized + "*",
@@ -142,13 +142,13 @@ async def discover_agents(
         return {"items": [], "query": normalized}
     ids = [str(row["id"]) for row in rows]
     owners = [str(row["created_by"]) for row in rows if row.get("created_by")]
-    ownerships = await _rows("GET", "agent_ownerships", token, params={
+    ownerships = await _server_db("GET", "agent_ownerships", params={
         "select": "agent_id,owner_user_id", "agent_id": "in.(" + ",".join(ids) + ")",
         "owner_user_id": "in.(" + ",".join(owners) + ")", "ownership_role": "eq.owner",
         "status": "eq.active", "limit": str(min(500, len(ids) * 2)),
     })
     valid = {(str(row["agent_id"]), str(row["owner_user_id"])) for row in ownerships}
-    owner_profiles = await _rows("GET", "profiles", token, params={
+    owner_profiles = await _server_db("GET", "profiles", params={
         "select": "id,account_status", "id": "in.(" + ",".join(sorted(set(owners))) + ")",
         "limit": str(min(500, len(set(owners)))),
     }) if owners else []
