@@ -50,6 +50,10 @@ const messages: Record<string, { id: string; en: string }> = {
   "auth.interest.business": { id: "Bisnis", en: "Business" },
   "auth.interest.design": { id: "Desain 3D", en: "3D Design" },
   "auth.interest.gaming": { id: "Gaming", en: "Gaming" },
+  "auth.interest.businessFinance": { id: "Bisnis & Finansial", en: "Business & Finance" },
+  "auth.interest.designUi": { id: "Desain & UI/UX", en: "Design & UI/UX" },
+  "auth.interest.education": { id: "Edukasi & Riset", en: "Education & Research" },
+  "auth.interest.metaverse": { id: "Gaming & Metaverse", en: "Gaming & Metaverse" },
   "auth.publicAuthTitle": { id: "Autentikasi Allpha Universe", en: "Allpha Universe Authentication" },
   "auth.publicAuthDescription": { id: "Gunakan satu formulir autentikasi yang sama untuk registrasi dan login, baik dari halaman publik maupun setelah onboarding.", en: "Use the same registration and sign-in form from the public page or after onboarding." },
 };
