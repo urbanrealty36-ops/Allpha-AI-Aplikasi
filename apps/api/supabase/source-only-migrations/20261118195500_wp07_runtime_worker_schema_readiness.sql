@@ -18,9 +18,11 @@ declare
   v_function text;
   v_proc regprocedure;
   v_missing_privileges text[] := '{}'::text[];
+  v_missing_rls text[] := '{}'::text[];
   v_required_tables text[] := array[
     'agent_runtime_sessions','agent_runtime_tasks','agent_runtime_checkpoints',
-    'agent_runtime_tool_plans','agent_runtime_execution_events','ai_agents','agent_skills',
+    'agent_runtime_tool_plans','agent_runtime_execution_events','agent_runtime_effect_receipts',
+    'ai_agents','agent_skills',
     'agent_capabilities','agent_runtime_policies',
     'agent_memory_policies','agent_memory_items','agent_memory_events'
   ];
@@ -112,8 +114,14 @@ begin
   foreach v_table in array v_required_tables loop
     if to_regclass('public.' || v_table) is null then
       v_missing_tables := array_append(v_missing_tables, v_table);
-    elsif not has_table_privilege('service_role', 'public.' || v_table, 'SELECT') then
-      v_missing_privileges := array_append(v_missing_privileges, v_table || ':SELECT');
+    else
+      if not coalesce((select c.relrowsecurity from pg_class c
+        where c.oid=to_regclass('public.' || v_table)), false) then
+        v_missing_rls := array_append(v_missing_rls, v_table);
+      end if;
+      if not has_table_privilege('service_role', 'public.' || v_table, 'SELECT') then
+        v_missing_privileges := array_append(v_missing_privileges, v_table || ':SELECT');
+      end if;
     end if;
   end loop;
 
@@ -141,11 +149,13 @@ begin
     'ready', cardinality(v_missing_tables)=0
       and cardinality(v_missing_columns)=0
       and cardinality(v_missing_functions)=0
-      and cardinality(v_missing_privileges)=0,
+      and cardinality(v_missing_privileges)=0
+      and cardinality(v_missing_rls)=0,
     'missing_tables', to_jsonb(v_missing_tables),
     'missing_columns', to_jsonb(v_missing_columns),
     'missing_functions', to_jsonb(v_missing_functions),
     'missing_privileges', to_jsonb(v_missing_privileges),
+    'missing_rls', to_jsonb(v_missing_rls),
     'checked_at', now()
   );
 end;
