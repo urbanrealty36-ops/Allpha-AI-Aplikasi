@@ -739,3 +739,47 @@ def test_social_edge_delete_returns_not_found_and_never_deletes_another_actor_ed
     assert response.json()["error"]["code"] == "SOCIAL_EDGE_NOT_FOUND"
     assert calls[0][3]["params"]["actor_user_id"] == "eq.authenticated-actor"
 
+
+
+def test_protected_api_rejects_revoked_supabase_session(monkeypatch):
+    import time
+    import uuid
+    import jwt
+
+    session_id = str(uuid.uuid4())
+    token = jwt.encode(
+        {"sub": "authenticated-user", "session_id": session_id, "exp": int(time.time()) + 3600},
+        "test-only-signing-key",
+        algorithm="HS256",
+    )
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"id": "authenticated-user", "email_confirmed_at": "2026-11-22T00:00:00Z"}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def get(self, *args, **kwargs): return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://auth-session-test.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    async def revoked_session(method, path, access_token, **kwargs):
+        assert method == "POST"
+        assert path == "rpc/is_auth_session_active"
+        assert access_token == token
+        assert kwargs["body"]["p_session_id"] == session_id
+        return False
+
+    monkeypatch.setattr("allpha_api.auth.user_db_request", revoked_session)
+    request = Request({"type": "http", "method": "GET", "path": "/v1/me", "headers": [], "query_string": b"", "server": ("test", 80), "client": ("test", 1234), "scheme": "http"})
+    from fastapi.security import HTTPAuthorizationCredentials
+    with pytest.raises(Exception) as caught:
+        import asyncio
+        asyncio.run(current_user(request, HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)))
+    assert getattr(caught.value, "status_code", None) == 401
+    assert getattr(caught.value, "detail", {}).get("code") == "SESSION_REVOKED"
