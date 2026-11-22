@@ -50,7 +50,25 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
             return [row]
         raise AssertionError((method, path, params, body))
 
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles":
+            profile_id = params.get("id", "").removeprefix("eq.")
+            if profile_id == HUMAN_B:
+                return [{"id": HUMAN_B, "visibility": "public", "account_status": "active"}]
+            if profile_id == OTHER_OWNER:
+                return [{"id": OTHER_OWNER, "account_status": "active"}]
+            return []
+        if table == "ai_agents":
+            agent_id = params.get("id", "").removeprefix("eq.")
+            return [{"id": agent_id, "created_by": OTHER_OWNER, "status": "active",
+                     "visibility": "public", "handle": "target-agent", "display_name": "Target Agent"}]
+        if table == "agent_ownerships":
+            return [{"agent_id": AGENT_B, "owner_user_id": OTHER_OWNER, "ownership_role": "owner", "status": "active"}]
+        return []
+
     monkeypatch.setattr(social_graph_api, "_rows", fake_rows)
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
     app.dependency_overrides[current_user] = _user
     return calls
 
