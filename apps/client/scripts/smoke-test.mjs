@@ -163,11 +163,13 @@ for (const contract of [
 
 
 for (const contract of [
-  'emailRedirectTo: "https://allpha.web.id/auth/callback?next=%2Fstart"',
+  'emailRedirectTo: nativeAuthRedirect',
+  'options: { emailRedirectTo: nativeAuthRedirect }',
   'supabase.auth.getUser(data.session.access_token)',
   'email_confirmed_at',
   'supabase.auth.resend({ type: "signup"',
   'resetPasswordForEmail',
+  'redirectTo: nativeRecoveryRedirect',
   'auth/v1/user',
   '"/v1/me"',
   'account_status',
@@ -176,3 +178,13 @@ for (const contract of [
   'scope: "local"'
 ]) assert.ok(app.includes(contract), `missing Native auth/session lifecycle contract: ${contract}`);
 assert.ok(app.includes("[^" + String.fromCharCode(92) + "s@]") && app.includes(".test(normalizedEmail)"), "Native auth email validation must use whitespace-aware email syntax");
+
+
+for (const contract of [
+  'AuthCallback: "auth/callback"', 'Recovery: "auth/recovery"',
+  'exchangeCodeForSession(code)', 'setSession({ access_token: accessToken, refresh_token: refreshToken })',
+  'EXPO_PUBLIC_NATIVE_AUTH_REDIRECT_URL', 'EXPO_PUBLIC_NATIVE_RECOVERY_REDIRECT_URL',
+  'recoveryFlowRef.current', 'supabase.auth.updateUser({ password })',
+  'apiBase + "/v1/auth/revoke"', 'function PasswordRecovery()',
+]) assert.ok(app.includes(contract), `missing Native PKCE deep-link and recovery contract: ${contract}`);
+assert.ok(app.includes('const callbackPath = (parsed.hostname + parsed.pathname).toLowerCase()'), 'Native auth callback must normalize custom-scheme routes');
