@@ -285,6 +285,58 @@ async def _profiles_for(user_ids: set[str]) -> dict[str, dict[str, Any]]:
     return {str(row.get("id")): row for row in (rows or [])}
 
 
+async def _filter_social_visibility(
+    rows: list[dict[str, Any]],
+    viewer_id: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Apply Human/Agent relationship, owner lifecycle and independent profile visibility."""
+    owner_ids = {str(row.get("owner_id") or "") for row in rows if row.get("owner_id")}
+    profiles = await _profiles_for(owner_ids)
+    agent_ids = {str(row.get("ai_agent_id")) for row in rows if row.get("ai_agent_id")}
+    agents: dict[str, dict[str, Any]] = {}
+    active_owner_pairs: set[tuple[str, str]] = set()
+    if agent_ids:
+        agent_rows = await _server_db("GET", "ai_agents", params={
+            "select": "id,created_by,visibility,status,handle,display_name,avatar_url,description",
+            "id": "in.(" + ",".join(sorted(agent_ids)) + ")", "status": "eq.active",
+            "limit": str(min(1000, len(agent_ids))),
+        })
+        agents = {str(row["id"]): row for row in (agent_rows or [])}
+        owner_rows = await _server_db("GET", "agent_ownerships", params={
+            "select": "agent_id,owner_user_id", "agent_id": "in.(" + ",".join(sorted(agent_ids)) + ")",
+            "ownership_role": "eq.owner", "status": "eq.active", "limit": str(min(2000, len(agent_ids) * 2)),
+        })
+        active_owner_pairs = {(str(row.get("agent_id")), str(row.get("owner_user_id"))) for row in (owner_rows or [])}
+    followed, hidden = await _edges(viewer_id) if viewer_id else (set(), set())
+    visible: list[dict[str, Any]] = []
+    for row in rows:
+        owner_id = str(row.get("owner_id") or "")
+        profile = profiles.get(owner_id)
+        if not profile or profile.get("account_status", "active") != "active":
+            continue
+        key = _creator_node_key(row)
+        if key in hidden:
+            continue
+        is_owner = bool(viewer_id and owner_id == viewer_id)
+        is_followed = key in followed
+        if row.get("ai_agent_id"):
+            agent_id = str(row.get("ai_agent_id"))
+            agent = agents.get(agent_id)
+            if not agent or (agent_id, owner_id) not in active_owner_pairs:
+                continue
+            if agent.get("visibility") != "public" and not is_followed and not is_owner:
+                continue
+            if row.get("visibility") == "followers" and not is_followed and not is_owner:
+                continue
+        else:
+            if row.get("visibility") == "followers" and not is_followed and not is_owner:
+                continue
+            if row.get("visibility") == "public" and profile.get("visibility") != "public" and not is_followed and not is_owner:
+                continue
+        visible.append(row)
+    return visible, profiles, agents
+
+
 async def _enqueue_social_notification(
     recipient_user_id: str,
     event_key: str,
