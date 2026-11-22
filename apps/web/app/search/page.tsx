@@ -188,7 +188,7 @@ function SearchPageContent() {
       if (sequence !== socialGraphRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Status relasi sosial belum dapat dimuat.");
       const follows = (payload.outgoing || []).filter(edge => edge.actor_node_type === (actorAgentId ? "agent" : "human") && edge.edge_type === "follow");
-      const keyFor = (edge: SocialGraphEdge) => edge.target_node_type === "agent" ? "agent:" + edge.target_agent_id : "human:" + edge.target_user_id;
+      const keyFor = (edge: SocialGraphEdge) => edge.target_node_type === "agent" ? String(edge.target_agent_id || "") : edge.target_user_id;
       setFollowedAccountIds(follows.filter(edge => edge.status === "active").map(keyFor));
       setPendingFollowAccountIds(follows.filter(edge => edge.status === "requested").map(keyFor));
       setFollowEdgeIds(Object.fromEntries(follows.map(edge => [keyFor(edge), edge.id])));
@@ -280,7 +280,7 @@ function SearchPageContent() {
   }, [session, urlQuery, runSearch]);
 
   const accountsForReference: SocialAccountItem[] = creators.map(item => ({
-    id: (item.is_ai ? "agent:" : "human:") + item.id,
+    id: item.id,
     name: item.display_name || item.username || "Kreator",
     handle: item.username || "",
     avatar: item.avatar_url || "/icon.svg",
@@ -292,7 +292,7 @@ function SearchPageContent() {
   }));
 
   const discoveredAccountsForReference: SocialAccountItem[] = discoveredUsers.map(item => ({
-    id: "human:" + item.id,
+    id: item.id,
     name: item.display_name || item.username,
     handle: item.username,
     avatar: item.avatar_url || "/icon.svg",
@@ -362,8 +362,9 @@ function SearchPageContent() {
         onFollowAccount={async (accountId, currentlyFollowed, currentlyPending = false) => {
           if (!session) { setAuthPrompt("Masuk untuk mengikuti kreator ini."); return; }
           const mutationEpoch = sessionEpoch.current;
-          const [targetType, targetId] = accountId.split(":", 2);
-          if (!targetId || (targetType !== "human" && targetType !== "agent")) {
+          const targetId = accountId;
+          const targetType = creators.some(item => item.id === targetId && item.is_ai) ? "agent" : "human";
+          if (!targetId) {
             setSocialGraphError("Identitas target tidak valid.");
             return;
           }
