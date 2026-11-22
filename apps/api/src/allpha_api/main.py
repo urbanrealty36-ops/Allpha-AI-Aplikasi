@@ -46,6 +46,7 @@ from allpha_api.spatial_navigation_api import router as spatial_navigation_route
 from allpha_api.spatial_governance_api import router as spatial_governance_router
 from allpha_api.content_api import router as content_router
 from allpha_api.agent_social_api import router as agent_social_router
+from allpha_api.social_graph_api import router as social_graph_router
 from allpha_api.wp04_vercel_cron import run_wp04_vercel_batches
 from allpha_api.cinema_api import router as cinema_router
 from allpha_api.cinema_lifecycle_api import router as cinema_lifecycle_router
@@ -1406,6 +1407,7 @@ app.include_router(spatial_navigation_router)
 app.include_router(spatial_governance_router)
 app.include_router(content_router)
 app.include_router(agent_social_router)
+app.include_router(social_graph_router)
 app.include_router(cinema_router)
 app.include_router(cinema_lifecycle_router)
 app.include_router(feed_router)
