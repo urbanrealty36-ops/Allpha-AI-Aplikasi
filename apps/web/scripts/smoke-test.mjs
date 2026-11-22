@@ -483,7 +483,7 @@ assert.ok(askAiView.includes("Belum ada percakapan dari Agent Runtime"), "Ask AI
 
 const profileRoute = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
 const profileView = readFileSync(new URL("../components/reference-ui/ProfileView.tsx", import.meta.url), "utf8");
-assert.ok(profileRoute.includes('"/v1/me"') && profileRoute.includes('"/v1/agents"'), "Profile route must load canonical identity and Agent catalog");
+assert.ok(profileRoute.includes("verifyBackendSession<Me>") && profileRoute.includes('"/v1/agents"'), "Profile route must load canonical identity through the backend session guard and Agent catalog");
 assert.ok(!profileView.includes("const ownedAgents = [") && !profileView.includes("Brand 3D Vector") && !profileView.includes("0x7F2b"), "Profile must not seed demo Agents, skills, credits or ledger identity");
 assert.ok(profileView.includes("showCredits && ag.credits != null"), "Profile credit values must only appear when canonical balances are supplied");
 
@@ -726,7 +726,7 @@ assert.ok(takeoverActions.includes("Kontrol takeover dinonaktifkan sampai status
 
 
 // WP-02 profile truth-state and session-safe source wiring.
-assert.ok(profileRoute.includes('fetch(apiBase + "/v1/me", { headers, cache: "no-store" })'));
+assert.ok(profileRoute.includes("verifyBackendSession<Me>"), "Profile identity must be resolved through the canonical FastAPI session guard");
 assert.ok(profileRoute.includes('fetch(apiBase + "/v1/agents", { headers, cache: "no-store" })'));
 assert.ok(profileRoute.includes('fetch(apiBase + "/v1/me/profile-feed?limit=50"'));
 assert.ok(profileRoute.includes("nextHuman.postsCount = profilePosts.length"), "Profile post count must be derived from returned canonical profile feed items");
