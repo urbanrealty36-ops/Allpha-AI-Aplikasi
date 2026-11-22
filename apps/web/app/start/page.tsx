@@ -45,7 +45,7 @@ export default function StartJourneyPage() {
           try { const body = await identityResponse.json(); message = body?.error?.message ?? body?.detail?.message ?? message; } catch {}
           throw new Error(message);
         }
-        const identity = await identityResponse.json() as { user?: { id?: string }; profile?: { account_status?: string } | null };
+        const identity = await identityResponse.json() as { user?: { id?: string }; profile?: { account_status?: string; username?: string | null } | null };
         if (identity.user?.id !== session.user.id || identity.profile?.account_status !== "active") {
           throw new Error("Status akun tidak mengizinkan akses aplikasi.");
         }
@@ -65,7 +65,8 @@ export default function StartJourneyPage() {
         if (!active) return;
         routed = true;
         const hasAgentIdentity = Array.isArray(payload.items) && payload.items.length > 0;
-        window.location.replace(hasAgentIdentity ? "/feed" : "/agents?onboarding=required");
+        const hasCompletedHumanProfile = Boolean(identity.profile?.username);
+        window.location.replace(hasAgentIdentity || hasCompletedHumanProfile ? "/feed" : "/agents?onboarding=required");
       } catch (cause) {
         if (!active) return;
         setError(cause instanceof Error ? cause.message : "Perjalanan onboarding tidak dapat dilanjutkan.");
