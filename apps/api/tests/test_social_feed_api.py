@@ -450,9 +450,9 @@ def test_public_creator_recommendations_require_real_public_profiles_and_posts(m
             return [{"owner_id": public_id, "published_at": now}, {"owner_id": public_id, "published_at": now}]
         if table == "profiles":
             assert public_id in params.get("id", "")
-            assert params.get("visibility") == "eq.public"
+            assert "visibility" not in params
             return [{"id": public_id, "username": "public_creator", "display_name": "Public Creator",
-                     "avatar_url": None, "bio": "Real public profile", "visibility": "public"}]
+                     "avatar_url": None, "bio": "Real public profile", "visibility": "public", "account_status": "active"}]
         raise AssertionError(f"unexpected table {table}")
 
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
