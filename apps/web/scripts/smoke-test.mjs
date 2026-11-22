@@ -95,7 +95,7 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   assert.ok(startJourney.includes("/v1/me") && startJourney.includes("email_confirmed_at") &&
     startJourney.includes("account_status") && startJourney.includes("hasCompletedHumanProfile"),
     "post-login routing must resolve verified Human identity and avoid repeating onboarding for completed profiles");
-  assert.ok(authRoute.includes("identity.profile?.username") && authRoute.includes("finishAuthentication()"),
+  assert.ok(authRoute.includes("identity.profile?.username") && authRoute.includes('finishAuthentication("/feed")'),
     "returning Human accounts without an Agent must still enter the app without forced first-run onboarding");
   assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext"), "OAuth/email callback must exchange code and enforce safe redirect");
   assert.ok(forgotPassword.includes("resetPasswordForEmail") && forgotPassword.includes("/auth/callback?next=%2Freset-password"),
