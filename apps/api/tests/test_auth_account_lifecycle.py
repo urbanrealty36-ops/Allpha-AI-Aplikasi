@@ -39,13 +39,37 @@ def _request():
     return Request({"type": "http", "method": "GET", "path": "/v1/me", "headers": [], "query_string": b"", "server": ("test", 80), "client": ("test", 1), "scheme": "http", "http_version": "1.1"})
 
 
-def _token():
+def _token(subject="11111111-1111-4111-8111-111111111111"):
     return jwt.encode({
-        "sub": "11111111-1111-4111-8111-111111111111",
+        "sub": subject,
         "session_id": str(uuid.uuid4()),
         "exp": int(time.time()) + 300,
         "aud": "authenticated",
     }, "test-only-unverified-signature", algorithm="HS256")
+
+
+def test_token_subject_must_match_remote_authenticated_identity(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://unit-test.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test")
+    monkeypatch.setattr(auth.httpx, "AsyncClient", _AuthClient)
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, kwargs))
+        raise AssertionError("session RPC must not run for a mismatched token identity")
+
+    monkeypatch.setattr(auth, "user_db_request", fake_user_db_request)
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=_token(subject="22222222-2222-4222-8222-222222222222"),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(auth.current_session_user(_request(), credentials))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "IDENTITY_MISMATCH"
+    assert calls == []
 
 
 def test_deactivated_account_is_denied_even_with_active_supabase_session(monkeypatch):

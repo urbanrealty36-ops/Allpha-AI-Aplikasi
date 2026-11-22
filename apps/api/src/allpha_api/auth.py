@@ -59,6 +59,13 @@ async def current_session_user(
             credentials.credentials,
             options={"verify_signature": False, "verify_exp": False, "verify_aud": False},
         )
+        # The remote Auth response is authoritative. Bind the locally-read
+        # session claims to that same identity before using any claim for access.
+        if str(claims.get("sub") or "") != str(user["id"]):
+            raise HTTPException(
+                status_code=401,
+                detail={"code": "IDENTITY_MISMATCH", "message": "Identitas token tidak cocok dengan sesi autentikasi."},
+            )
         session_id = uuid.UUID(str(claims.get("session_id") or claims.get("sid") or ""))
     except (jwt.PyJWTError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail={"code": "SESSION_INVALID", "message": "Sesi tidak memiliki identitas yang valid."})
