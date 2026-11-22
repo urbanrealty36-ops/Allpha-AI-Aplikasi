@@ -89,6 +89,77 @@ def test_worker_dispatches_claimed_notification_with_lease_and_safe_payload(monk
     ]
 
 
+def test_worker_requires_latest_explicit_product_updates_consent(monkeypatch):
+    delivery = {
+        "id": "delivery-consent", "notification_id": "notification-consent", "user_id": "user-consent",
+        "device_id": "device-consent", "lease_token": "lease-consent", "attempt_count": 1,
+        "max_attempts": 5, "state": "sending",
+    }
+
+    async def run_case(consent_rows):
+        patches = []
+        sent = []
+
+        async def fake_rpc(name, payload):
+            if name == "enqueue_notification_push_deliveries":
+                return 0
+            if name == "claim_notification_push_receipts":
+                return []
+            if name == "claim_notification_push_deliveries":
+                return [delivery]
+            raise AssertionError(name)
+
+        async def fake_rest(method, table, *, params=None, body=None, prefer=None):
+            if method == "GET" and table == "notifications":
+                return [{"id": "notification-consent", "user_id": "user-consent", "title": "Update",
+                         "body": "Product update", "category": "product_updates",
+                         "delivery_state": "delivered", "payload": {}, "expires_at": None}]
+            if method == "GET" and table == "notification_devices":
+                return [{"id": "device-consent", "user_id": "user-consent",
+                         "expo_push_token": "ExponentPushToken[valid]", "enabled": True}]
+            if method == "GET" and table == "user_settings":
+                return [{"notification_preferences": {"push_enabled": True, "product_updates": True}}]
+            if method == "GET" and table == "user_consents":
+                assert params["consent_type"] == "eq.product_updates"
+                assert params["order"] == "recorded_at.desc,id.desc"
+                return consent_rows
+            if method == "PATCH" and table == "notification_push_deliveries":
+                patches.append(body)
+                return [{"id": "delivery-consent"}]
+            raise AssertionError((method, table, params))
+
+        async def fake_send(*args, **kwargs):
+            sent.append(args)
+            return {"ticket_id": "ticket-consent"}
+
+        monkeypatch.setattr(worker, "_provider_enabled", lambda: True)
+        monkeypatch.setattr(worker, "_rpc", fake_rpc)
+        monkeypatch.setattr(worker, "_rest", fake_rest)
+        monkeypatch.setattr(worker, "_expo_send", fake_send)
+        result = await worker.process_batch(limit=5)
+        return result, patches, sent
+
+    missing, missing_patches, missing_sent = asyncio.run(run_case([]))
+    assert missing["sent"] == 0
+    assert missing_patches[0]["state"] == "suppressed"
+    assert missing_patches[0]["last_error_code"] == "product_updates_consent_missing_or_revoked"
+    assert missing_sent == []
+
+    revoked, revoked_patches, revoked_sent = asyncio.run(run_case([
+        {"granted": False, "recorded_at": "2026-11-23T00:00:00Z"},
+    ]))
+    assert revoked["sent"] == 0
+    assert revoked_patches[0]["state"] == "suppressed"
+    assert revoked_sent == []
+
+    granted, granted_patches, granted_sent = asyncio.run(run_case([
+        {"granted": True, "recorded_at": "2026-11-22T00:00:00Z"},
+    ]))
+    assert granted["sent"] == 1
+    assert granted_patches[0]["state"] == "sent"
+    assert len(granted_sent) == 1
+
+
 def test_worker_retries_transient_provider_failure_with_bounded_backoff(monkeypatch):
     delivery = {
         "id": "delivery-1", "notification_id": "notification-1", "user_id": "user-1",

@@ -193,7 +193,7 @@ async def _disable_device(device_id: str, user_id: str) -> None:
     )
 
 
-async def _notification_and_device(delivery: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+async def _notification_and_device(delivery: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any], bool]:
     notifications = await _rest(
         "GET", "notifications",
         params={
@@ -222,9 +222,26 @@ async def _notification_and_device(delivery: dict[str, Any]) -> tuple[dict[str, 
         },
     )
     preferences = settings[0].get("notification_preferences", {}) if settings else {}
-    return (notifications[0] if notifications else None,
+    notification = notifications[0] if notifications else None
+    product_updates_consent = False
+    if notification and notification.get("category") == "product_updates":
+        consent_rows = await _rest(
+            "GET", "user_consents",
+            params={
+                "select": "granted,recorded_at",
+                "user_id": f"eq.{delivery['user_id']}",
+                "consent_type": "eq.product_updates",
+                "order": "recorded_at.desc,id.desc",
+                "limit": "1",
+            },
+        )
+        # Consent history is append-only. The most recent decision is authoritative;
+        # absence of an explicit grant and an explicit withdrawal both fail closed.
+        product_updates_consent = bool(consent_rows and consent_rows[0].get("granted") is True)
+    return (notification,
             devices[0] if devices else None,
-            preferences if isinstance(preferences, dict) else {})
+            preferences if isinstance(preferences, dict) else {},
+            product_updates_consent)
 
 
 def _safe_push_data(notification: dict[str, Any]) -> dict[str, Any]:
@@ -356,7 +373,7 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
               "retrying": 0, "failed": 0, "receipts": receipt_counts["checked"]}
     for delivery in deliveries:
         try:
-            notification, device, preferences = await _notification_and_device(delivery)
+            notification, device, preferences, product_updates_consent = await _notification_and_device(delivery)
             if not notification or notification.get("delivery_state") != "delivered" or not device:
                 await _patch_delivery(delivery, {
                     "state": "suppressed", "last_error_code": "notification_or_device_unavailable",
@@ -375,6 +392,12 @@ async def process_batch(*, limit: int = 25) -> dict[str, int]:
             if preferences.get("push_enabled") is False or preferences.get(category) is False:
                 await _patch_delivery(delivery, {
                     "state": "suppressed", "last_error_code": "notification_preference_disabled",
+                })
+                continue
+            if category == "product_updates" and not product_updates_consent:
+                await _patch_delivery(delivery, {
+                    "state": "suppressed",
+                    "last_error_code": "product_updates_consent_missing_or_revoked",
                 })
                 continue
             expires_at = notification.get("expires_at")
