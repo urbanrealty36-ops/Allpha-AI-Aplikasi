@@ -21,6 +21,7 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+      EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
     steps:
       - name: Checkout main source
         uses: actions/checkout@v4
