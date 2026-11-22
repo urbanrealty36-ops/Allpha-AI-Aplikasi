@@ -121,6 +121,11 @@ delete from public.agent_skills where id='33333333-3333-4333-8333-333333333333';
         if denied.returncode == 0: raise RuntimeError("authenticated owner unexpectedly deleted a Skill")
         # Operator publishes v2. Owner cannot edit published content, then rolls
         # to draft v3 while the old publication remains visible; operator publishes v5.
+        psql("""
+set role service_role;
+update public.agent_skills set status='published' where id='33333333-3333-4333-8333-333333333333';
+reset role;
+""")
         denied = psql("""
 set role authenticated;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
@@ -128,16 +133,13 @@ update public.agent_skills set name='unauthorized overwrite' where id='33333333-
 """,check=False)
         if denied.returncode == 0: raise RuntimeError("authenticated owner unexpectedly edited a published Skill")
         psql("""
-set role service_role;
-update public.agent_skills set status='published' where id='33333333-3333-4333-8333-333333333333';
-reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 update public.agent_skills set status='draft' where id='33333333-3333-4333-8333-333333333333';
 reset role;
-do $ begin
+do $$ begin
  if (select version from public.agent_skill_publications where id='33333333-3333-4333-8333-333333333333')<>2 then raise exception 'published Passport snapshot disappeared during draft rollover'; end if;
-end $;
+end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 update public.agent_skills set name='Safe Skill v2',changelog='rollover draft' where id='33333333-3333-4333-8333-333333333333';
@@ -149,7 +151,7 @@ update public.agent_skills set status='published' where id='33333333-3333-4333-8
 update public.agent_skills set status='published' where id='55555555-5555-4555-8555-555555555555';
 reset role;
 """)
-        psql("""
+                psql("""
 do $$
 declare v integer; n text; old_name text;
 begin
