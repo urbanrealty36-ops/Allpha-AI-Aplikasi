@@ -36,6 +36,18 @@ assert.ok(agents.includes('task.state !== "created"'));
 assert.ok(agents.includes('execution outcome') || agents.includes("hasilnya tidak diketahui"));
 
 
+// Public Stories remain visible to guests and recover through an explicit retry.
+{
+  const chrome = readFileSync(new URL("../components/reference-ui/ReferenceFeedChrome.tsx", import.meta.url), "utf8");
+  assert.ok(chrome.includes("loadStories(null)"), "Feed Chrome must load public Stories without an authenticated session");
+  assert.ok(chrome.includes("activeSession ? { Authorization: \"Bearer \" + activeSession.access_token } : {}"),
+    "Stories request must attach a token only when a session exists");
+  assert.ok(chrome.includes("storiesRequestSequence.current") && chrome.includes("sequence === storiesRequestSequence.current"),
+    "stale Stories responses must not overwrite a newer auth-session request");
+  assert.ok(chrome.includes("Coba lagi") && chrome.includes("onClick={() => void loadStories(session)}"),
+    "Stories errors must expose a retry action");
+}
+ 
 const workflows = readFileSync(new URL("../app/workflows/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/workflows/definitions", "/v1/workflows/runs", "Authorization: \"Bearer \" + session.access_token",
