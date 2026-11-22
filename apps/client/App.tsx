@@ -44,7 +44,7 @@ type Routes = {
   AuthCallback: undefined;
   Recovery: undefined;
   Profile: undefined;
-  Account: { tab?: "profile" | "settings" | "social" | "consents" | "billing" } | undefined;
+  Account: { tab?: "profile" | "settings" | "social" | "consents" | "sessions" | "billing" } | undefined;
   Agents: undefined;
   Feed: { content?: string } | undefined;
   Reels: undefined;
@@ -90,6 +90,7 @@ type NativeMessage = { id: string; body: string; sender_type: string; sender_use
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean } };
 type DiscoveredSocialUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: boolean };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
+type AuthSessionRecord = { id: string; created_at: string | null; updated_at: string | null; refreshed_at: string | null; not_after: string | null; aal: string | null; user_agent: string | null; ip: string | null; is_current: boolean };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000") : "https://api.allpha.web.id")).replace(/\/$/, "");
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -508,10 +509,10 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
 
 function createMessageId() { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }); }
 
-function Profile({ session, initialTab = "profile", initialStoryId, initialContentId }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "billing" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities" | "generate" | "live"; initialStoryId?: string; initialContentId?: string }) {
+function Profile({ session, initialTab = "profile", initialStoryId, initialContentId }: { session: Session; initialTab?: "profile" | "settings" | "notifications" | "social" | "consents" | "sessions" | "billing" | "agents" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities" | "generate" | "live"; initialStoryId?: string; initialContentId?: string }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "billing" | "agents" | "agentSocial" | "challenges" | "content" | "cinema" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities" | "generate" | "live">(initialTab);
+  const [tab, setTab] = useState<"profile" | "settings" | "notifications" | "social" | "consents" | "sessions" | "billing" | "agents" | "agentSocial" | "challenges" | "content" | "cinema" | "feed" | "reels" | "stories" | "discovery" | "messages" | "communities" | "generate" | "live">(initialTab);
   const getNativeAccessToken = useCallback(async () => {
     if (!supabase) return session.access_token;
     const { data } = await supabase.auth.getSession();
@@ -652,6 +653,9 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
+  const [authSessions, setAuthSessions] = useState<AuthSessionRecord[] | null>(null);
+  const [authSessionsBusy, setAuthSessionsBusy] = useState(false);
+  const [authSessionsError, setAuthSessionsError] = useState("");
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [socialActivity, setSocialActivity] = useState<SocialActivityItem[]>([]);
   const [socialLoading, setSocialLoading] = useState(false);
@@ -1409,6 +1413,45 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       setConsentError(cause instanceof Error ? cause.message : "Riwayat persetujuan tidak dapat dimuat.");
     } finally { setConsentLoading(false); }
   }
+  async function loadAuthSessions() {
+    setAuthSessionsBusy(true); setAuthSessionsError("");
+    try {
+      const payload = await apiRequest("/v1/me/sessions") as { items?: AuthSessionRecord[] };
+      setAuthSessions(Array.isArray(payload.items) ? payload.items : []);
+    } catch (cause) {
+      setAuthSessionsError(cause instanceof Error ? cause.message : "Daftar sesi tidak dapat dimuat.");
+    } finally { setAuthSessionsBusy(false); }
+  }
+  async function revokeAuthSession(sessionId: string) {
+    Alert.alert("Cabut sesi perangkat", "Perangkat ini harus login kembali.", [
+      { text: "Batal", style: "cancel" },
+      { text: "Cabut sesi", style: "destructive", onPress: () => {
+        void (async () => {
+          setAuthSessionsBusy(true); setAuthSessionsError("");
+          try {
+            await apiRequest("/v1/me/sessions/" + encodeURIComponent(sessionId) + "/revoke", { method: "POST" });
+            setMessage("Sesi perangkat berhasil dicabut."); await loadAuthSessions();
+          } catch (cause) { setAuthSessionsError(cause instanceof Error ? cause.message : "Sesi tidak dapat dicabut."); }
+          finally { setAuthSessionsBusy(false); }
+        })();
+      }},
+    ]);
+  }
+  async function revokeOtherAuthSessions() {
+    Alert.alert("Cabut perangkat lain", "Semua sesi lain dicabut. Sesi perangkat ini tetap aktif.", [
+      { text: "Batal", style: "cancel" },
+      { text: "Cabut semua", style: "destructive", onPress: () => {
+        void (async () => {
+          setAuthSessionsBusy(true); setAuthSessionsError("");
+          try {
+            const payload = await apiRequest("/v1/me/sessions/revoke-others", { method: "POST" }) as { revoked_count: number };
+            setMessage(payload.revoked_count + " sesi perangkat lain berhasil dicabut."); await loadAuthSessions();
+          } catch (cause) { setAuthSessionsError(cause instanceof Error ? cause.message : "Sesi perangkat lain tidak dapat dicabut."); }
+          finally { setAuthSessionsBusy(false); }
+        })();
+      }},
+    ]);
+  }
   async function loadSocialGraph() {
     setSocialLoading(true); setError(""); setMessage("");
     try {
@@ -1885,7 +1928,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       <Text style={s.muted}>{session.user.email || session.user.id}</Text>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button title="Profil" secondary={tab !== "profile"} onPress={() => { setTab("profile"); setError(""); setMessage(""); }}/>
-        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Notifikasi" secondary={tab !== "notifications"} onPress={() => { setTab("notifications"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadAgents(); void loadSocialActorAgents(); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="Billing & AI Credits" secondary={tab !== "billing"} onPress={() => { setTab("billing"); setError(""); setMessage(""); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Human + AI Social" secondary={tab !== "agentSocial"} onPress={() => { setTab("agentSocial"); setError(""); setMessage(""); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="AI Cinema · Draft Film" secondary={tab !== "cinema"} onPress={() => { setTab("cinema"); setError(""); setMessage(""); }}/><Button title="AI Generate" secondary={tab !== "generate"} onPress={() => { setTab("generate"); setError(""); setMessage(""); }}/><Button title="Live Stage" secondary={tab !== "live"} onPress={() => { setTab("live"); setError(""); setMessage(""); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Pesan" secondary={tab !== "messages"} onPress={() => { setTab("messages"); setError(""); setMessage(""); void loadMessageConversations(); }}/><Button title="Komunitas & Workspace" secondary={tab !== "communities"} onPress={() => { setTab("communities"); setError(""); setMessage(""); void loadCommunityWorkspace(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
+        <Button title="Pengaturan & privasi" secondary={tab !== "settings"} onPress={() => { setTab("settings"); setError(""); setMessage(""); }}/><Button title="Notifikasi" secondary={tab !== "notifications"} onPress={() => { setTab("notifications"); setError(""); setMessage(""); }}/><Button title="Social Graph" secondary={tab !== "social"} onPress={() => { setTab("social"); setError(""); setMessage(""); void loadAgents(); void loadSocialActorAgents(); void loadSocialGraph(); }}/><Button title="Riwayat persetujuan" secondary={tab !== "consents"} onPress={() => { setTab("consents"); setError(""); setMessage(""); void loadConsentHistory(); }}/><Button title="Perangkat & sesi" secondary={tab !== "sessions"} onPress={() => { setTab("sessions"); setError(""); setMessage(""); void loadAuthSessions(); }}/><Button title="Billing & AI Credits" secondary={tab !== "billing"} onPress={() => { setTab("billing"); setError(""); setMessage(""); }}/><Button title="AI Agent & Passport" secondary={tab !== "agents"} onPress={() => { setTab("agents"); setError(""); setMessage(""); setAgentPassport(null); void loadAgents(); }}/><Button title="Human + AI Social" secondary={tab !== "agentSocial"} onPress={() => { setTab("agentSocial"); setError(""); setMessage(""); }}/><Button title="Skill Challenge" secondary={tab !== "challenges"} onPress={() => { setTab("challenges"); setError(""); setMessage(""); if (!challengeAgentId && agents[0]) void loadChallengeCatalog(agents[0].id); void loadChallengeRuns().catch(cause => setError(cause instanceof Error ? cause.message : "Riwayat challenge gagal dimuat.")); }}/><Button title="Creator Studio" secondary={tab !== "content"} onPress={() => { setTab("content"); setError(""); setMessage(""); void loadMyContent(); }}/><Button title="AI Cinema · Draft Film" secondary={tab !== "cinema"} onPress={() => { setTab("cinema"); setError(""); setMessage(""); }}/><Button title="AI Generate" secondary={tab !== "generate"} onPress={() => { setTab("generate"); setError(""); setMessage(""); }}/><Button title="Live Stage" secondary={tab !== "live"} onPress={() => { setTab("live"); setError(""); setMessage(""); }}/><Button title="Feed sosial" secondary={tab !== "feed"} onPress={() => { setTab("feed"); setError(""); setMessage(""); void loadNativeFeed(true); }}/><Button title="Search & Discovery" secondary={tab !== "discovery"} onPress={() => { setTab("discovery"); setError(""); setMessage(""); setDiscoveryError(""); void loadDiscoveryTrends(); void loadDiscoveryRecommendations(); }}/><Button title="Pesan" secondary={tab !== "messages"} onPress={() => { setTab("messages"); setError(""); setMessage(""); void loadMessageConversations(); }}/><Button title="Komunitas & Workspace" secondary={tab !== "communities"} onPress={() => { setTab("communities"); setError(""); setMessage(""); void loadCommunityWorkspace(); }}/><Button title="Reels" secondary={tab !== "reels"} onPress={() => { setTab("reels"); setError(""); setMessage(""); void loadNativeReels(true); }}/><Button title="Stories" secondary={tab !== "stories"} onPress={() => { setTab("stories"); setError(""); setMessage(""); void loadNativeStories(); }}/>
       </View>
       {loading ? <ActivityIndicator color="#A5B4FC"/> : error ? <><Text accessibilityRole="alert" style={s.error}>{error}</Text><Button title="Coba lagi" onPress={() => setRetry(n => n + 1)}/></> :
       tab === "live" ? <LiveControlCenter session={session} apiBase={apiBase}/> : tab === "generate" ? <NativeGenerateCenter apiBase={apiBase} getAccessToken={getNativeAccessToken} initialJobId={linkedGenerationJobId}/> : tab === "cinema" ? <><AiCinemaPlaybackCenter getAccessToken={getNativeAccessToken}/><AiCinemaCreatorWorkspace getAccessToken={getNativeAccessToken}/></> : tab === "billing" ? <BillingCenter getAccessToken={getNativeAccessToken}/> : tab === "discovery" ? <>
@@ -1995,7 +2038,14 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Text style={s.kicker}>PRIVASI</Text><Text style={s.body}>Temukan profil melalui username</Text>
         <View style={{ flexDirection: "row", gap: 8 }}><Button title="Dapat ditemukan" secondary={!settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: true } })}/><Button title="Tidak ditemukan" secondary={settings.privacy_settings.discoverable_by_username} onPress={() => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: false } })}/></View>
         <Button title={busy ? "Menyimpan…" : "Simpan pengaturan"} disabled={busy} onPress={() => void saveSettings()}/>
-      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text> : tab === "consents" ? <>
+      </> : <Text style={s.muted}>Pengaturan belum tersedia.</Text> : tab === "sessions" ? <>
+        <Text style={s.kicker}>ENG-P02 · KEAMANAN AKUN</Text><Text style={s.title}>Perangkat & sesi login</Text>
+        <Text style={s.muted}>Lihat sesi aktif akun Anda. Anda dapat mencabut satu perangkat atau semua sesi lain; sesi saat ini tetap aktif.</Text>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title="Cabut semua perangkat lain" secondary disabled={authSessionsBusy || !authSessions?.some(item => !item.is_current)} onPress={() => void revokeOtherAuthSessions()}/><Button title="Muat ulang" secondary disabled={authSessionsBusy} onPress={() => void loadAuthSessions()}/></View>
+        {authSessionsBusy && <ActivityIndicator color="#A5B4FC"/>}
+        {!!authSessionsError && <Text accessibilityRole="alert" style={s.error}>{authSessionsError}</Text>}
+        {authSessions === null ? <Text style={s.muted}>Daftar sesi belum dimuat.</Text> : authSessions.length === 0 ? <Text style={s.muted}>Tidak ada sesi aktif yang terdaftar.</Text> : authSessions.map(item => <View key={item.id} style={s.socialRow}><Text style={s.body}>{item.is_current ? "Perangkat ini · Sesi saat ini" : item.user_agent || "Perangkat lain"}</Text><Text style={s.muted}>{item.user_agent || "Perangkat tidak teridentifikasi"}{item.ip ? " · " + item.ip : ""}</Text><Text style={s.muted}>Diperbarui: {item.updated_at ? new Date(item.updated_at).toLocaleString() : "Tidak tersedia"} · {item.aal || "AAL tidak tersedia"}</Text>{item.is_current ? <Text style={s.status}>Aktif sekarang</Text> : <Button title="Cabut sesi" secondary disabled={authSessionsBusy} onPress={() => revokeAuthSession(item.id)}/>}</View>)}
+      </> : tab === "consents" ? <>
         <Text style={s.kicker}>PRIVASI & TRANSPARANSI</Text><Text style={s.title}>Riwayat persetujuan</Text>
         <Text style={s.body}>Bagian ini hanya menampilkan catatan yang sudah tersimpan melalui API Allpha. Persetujuan baru belum dapat direkam sampai versi resmi Terms of Service dan Privacy Policy ditetapkan.</Text>
         {consentLoading ? <ActivityIndicator color="#A5B4FC"/> : consentError ? <><Text accessibilityRole="alert" style={s.error}>{consentError}</Text><Button title="Coba lagi" secondary onPress={() => void loadConsentHistory()}/></> : consentHistory === null ? <Text style={s.muted}>Riwayat belum dimuat.</Text> : consentHistory.length === 0 ? <Text style={s.muted}>Belum ada catatan persetujuan pada akun ini.</Text> : consentHistory.map((item, index) => <View key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index} style={s.socialRow}><Text style={s.body}>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</Text><Text style={s.muted}>Versi tercatat: {item.policy_version}</Text><Text style={s.muted}>{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</Text></View>)}
