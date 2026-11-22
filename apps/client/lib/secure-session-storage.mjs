@@ -1,4 +1,3 @@
-const CHUNK_SIZE = 1800;
 const MAX_CHUNKS = 30;
 const MANIFEST_PREFIX = "v1:";
 const DELETED_MANIFEST = "v1:deleted";
@@ -20,12 +19,12 @@ function parseManifest(value) {
  * previous Supabase session readable.
  */
 export function createSecureSessionStorage(store) {
-  const queues = new Map<string, Promise<void>>();
+  const queues = new Map();
 
   async function serialize(key, operation) {
     const previous = queues.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>(resolve => { release = resolve; });
+    let release;
+    const current = new Promise(resolve => { release = resolve; });
     const queued = previous.then(() => current);
     queues.set(key, queued);
     await previous;
@@ -55,7 +54,7 @@ export function createSecureSessionStorage(store) {
         if (chunks.some(chunk => chunk === null)) {
           throw new Error("Sesi aman tidak lengkap; data lama tidak akan dipakai sebagai fallback.");
         }
-        return (chunks as string[]).join("");
+        return chunks.join("");
       }
 
       // Backward-compatible read for sessions written by the previous
@@ -65,7 +64,7 @@ export function createSecureSessionStorage(store) {
         const chunks = await Promise.all(Array.from({ length: legacyCount }, (_, index) =>
           store.getItemAsync(key + ":" + index)
         ));
-        return chunks.every(chunk => chunk !== null) ? (chunks as string[]).join("") : null;
+        return chunks.every(chunk => chunk !== null) ? chunks.join("") : null;
       }
       return store.getItemAsync(key);
     },
