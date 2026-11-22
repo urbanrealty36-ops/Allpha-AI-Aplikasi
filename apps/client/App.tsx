@@ -81,6 +81,7 @@ type Profile = { id: string; username: string | null; display_name: string; avat
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; actor_node_type?: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
+type SocialActivityItem = { id: string; event_type: string; actor_node_type: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; created_at: string };
 type NativeConversation = { id: string; title?: string | null; kind: "human" | "agent"; last_message?: { body: string; created_at: string; delivery_status: string } };
 type NativeMessage = { id: string; body: string; sender_type: string; sender_user_id?: string; created_at: string; delivery_status: string; generation_job_id?: string | null };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean } };
@@ -558,6 +559,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
+  const [socialActivity, setSocialActivity] = useState<SocialActivityItem[]>([]);
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
   const [socialTargetType, setSocialTargetType] = useState<"human" | "agent">("human");
@@ -1315,7 +1317,14 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   }
   async function loadSocialGraph() {
     setSocialLoading(true); setError(""); setMessage("");
-    try { setSocialGraph(await apiRequest("/v1/me/social-graph") as SocialGraph); }
+    try {
+      const [graph, activity] = await Promise.all([
+        apiRequest("/v1/me/social-graph") as Promise<SocialGraph>,
+        apiRequest("/v1/social/activity?limit=30") as Promise<{ items?: SocialActivityItem[] }>,
+      ]);
+      setSocialGraph(graph);
+      setSocialActivity(activity.items || []);
+    }
     catch (e) { setError(e instanceof Error ? e.message : "Social Graph tidak dapat dimuat."); }
     finally { setSocialLoading(false); }
   }
@@ -2075,6 +2084,14 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
         <Text style={s.kicker}>PENGIKUT ANDA ({socialGraph.summary?.followers ?? socialGraph.incoming_followers?.length ?? 0})</Text>
         {(socialGraph.incoming_followers || []).length ? socialGraph.incoming_followers!.map(edge => <View key={edge.id} style={s.socialRow}><Text style={s.body}>{edge.actor_user_id}</Text><Text style={s.muted}>mengikuti Anda</Text></View>) : <Text style={s.muted}>Belum ada pengikut yang dapat ditampilkan.</Text>}
         {socialGraph.summary && <Text style={s.muted}>Mengikuti {socialGraph.summary.following} · Pengikut {socialGraph.summary.followers} · Permintaan {socialGraph.summary.pending_follow_requests} · Blokir {socialGraph.summary.blocked} · Bisukan {socialGraph.summary.muted}{socialGraph.summary.truncated ? " · Daftar dibatasi 500" : ""}</Text>}
+        <Text style={s.kicker}>ACTIVITY STREAM ({socialActivity.length})</Text>
+        {socialActivity.length ? socialActivity.slice(0, 12).map(item => <View key={item.id} style={s.socialRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.body}>{item.event_type.replaceAll(".", " · ")}</Text>
+            <Text style={s.muted}>{item.actor_node_type === "agent" ? "AI Agent " + (item.actor_agent_id || "") : "Human"}{item.target_node_type ? " → " + (item.target_node_type === "agent" ? "AI Agent " + (item.target_agent_id || "") : "Human") : ""}</Text>
+          </View>
+          <Text style={s.muted}>{new Date(item.created_at).toLocaleDateString("id-ID")}</Text>
+        </View>) : <Text style={s.muted}>Belum ada aktivitas relasi.</Text>}
         <Text style={s.kicker}>MINAT</Text>
         <TextInput accessibilityLabel="Tambah minat" value={interestKey} onChangeText={value => setInterestKey(value.toLowerCase())} autoCapitalize="none" maxLength={80} style={field} placeholder="contoh: desain.3d" placeholderTextColor="#8B94AC"/>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}><Button title={interestPreference === "interested" ? "✓ Diminati" : "Diminati"} secondary={interestPreference !== "interested"} onPress={() => setInterestPreference("interested")}/><Button title={interestPreference === "not_interested" ? "✓ Tidak diminati" : "Tidak diminati"} secondary={interestPreference !== "not_interested"} onPress={() => setInterestPreference("not_interested")}/></View>
