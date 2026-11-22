@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../lib/supabase";
+import { verifyBackendSession } from "../lib/auth-validation.mjs";
+
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 type SessionStatus = "checking" | "unavailable" | "unauthenticated" | "authenticated";
 
@@ -37,8 +40,6 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
 
       setStatus("checking");
       try {
-        // Never render protected content from persisted browser state alone.
-        // Supabase Auth must confirm the access token before the route is opened.
         const { data, error } = await supabase.auth.getUser(candidate.access_token);
         if (!active || currentGeneration !== generation) return;
 
@@ -52,9 +53,6 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
             }
             return;
           }
-
-          // Network/service failures are recoverable. Keep the persisted session
-          // and ask the user to retry rather than destroying a potentially valid login.
           setSession(null);
           setStatus("unavailable");
           return;
@@ -69,6 +67,25 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
           return;
         }
 
+        // Supabase Auth validates token signature/expiry. FastAPI then applies
+        // auth.sessions revocation fencing and returns the canonical account state.
+        const backend = await verifyBackendSession(apiBase, candidate);
+        if (!active || currentGeneration !== generation) return;
+
+        if (backend.status === "rejected") {
+          await supabase.auth.signOut({ scope: "local" });
+          if (active && currentGeneration === generation) {
+            setSession(null);
+            setStatus("unauthenticated");
+          }
+          return;
+        }
+        if (backend.status !== "valid") {
+          setSession(null);
+          setStatus("unavailable");
+          return;
+        }
+
         setSession(candidate);
         setStatus("authenticated");
       } catch {
@@ -80,12 +97,9 @@ export default function RequireSession({ children, title = "Fitur Allpha", descr
     };
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      // Defer the Auth request until the subscription callback has returned.
       void Promise.resolve().then(() => validateSession(nextSession));
     });
 
-    // Ignore a late getSession result if an Auth event has already supplied
-    // a newer session state while the initial lookup was in flight.
     const initialGeneration = generation;
     void supabase.auth.getSession().then(({ data: current, error }) => {
       if (!active || generation !== initialGeneration) return;
