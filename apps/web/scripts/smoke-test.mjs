@@ -90,8 +90,10 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   assert.ok(authFlow.includes("onResendVerification") && authFlow.includes("verificationPending") &&
     authFlow.includes("/forgot-password") && authFlow.includes("minLength={authMode === 'REGISTER' ? 8 : undefined}"),
     "shared auth UI must support verification resend, password recovery and typed password validation");
-  assert.ok(requireSession.includes("supabase.auth.getUser(data.session.access_token)") &&
-    requireSession.includes("authEventSeen"), "protected routes must validate persisted sessions and avoid stale initialization races");
+  assert.ok(requireSession.includes("supabase.auth.getUser(candidate.access_token)") &&
+    requireSession.includes("generation") && requireSession.includes('setStatus("unavailable")') &&
+    requireSession.includes("Coba lagi") && requireSession.includes('signOut({ scope: "local" })'),
+    "protected routes must verify Auth events, preserve sessions during transient outages, expose retry and clear definitively invalid sessions");
   assert.ok(startJourney.includes("/v1/me") && startJourney.includes("email_confirmed_at") &&
     startJourney.includes("account_status") && startJourney.includes("hasCompletedHumanProfile"),
     "post-login routing must resolve verified Human identity and avoid repeating onboarding for completed profiles");
