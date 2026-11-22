@@ -70,6 +70,12 @@ async def current_session_user(
     if active is not True:
         raise HTTPException(status_code=401, detail={"code": "SESSION_REVOKED", "message": "Sesi telah dicabut atau kedaluwarsa. Silakan masuk kembali."})
 
+    request.state.user_id = user["id"]
+    request.state.auth_session_id = str(session_id)
+    request.state.supabase_access_token = credentials.credentials
+    return user
+
+
 async def current_user(
     request: Request,
     user: dict[str, Any] = Depends(current_session_user),
@@ -80,7 +86,7 @@ async def current_user(
     profile = await user_db_request(
         "GET",
         "profiles",
-        credentials.credentials,
+        request.state.supabase_access_token,
         params={
             "select": "id,account_status",
             "id": f"eq.{user['id']}",
@@ -110,8 +116,9 @@ async def optional_current_user(
     """Resolve an optional session for public-read endpoints; never grants write access."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         return None
-    # Reuse the same remote Supabase Auth verification as protected routes.
-    return await current_user(request, credentials)
+    # Reuse the same remote Supabase Auth and session fence, then apply account state.
+    session_user = await current_session_user(request, credentials)
+    return await current_user(request, session_user)
 
 
 async def user_db_request(
