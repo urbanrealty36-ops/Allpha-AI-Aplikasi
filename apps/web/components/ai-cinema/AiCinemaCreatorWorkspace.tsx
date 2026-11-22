@@ -445,11 +445,11 @@ export default function AiCinemaCreatorWorkspace() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       try {
-        const result = await authorizedRequest<{ job: GenerationJob }>("/v1/generation/jobs/" + encodeURIComponent(generationJobId));
+        const result = await authorizedRequest<{ job: GenerationJob }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}`);
         if (!active) return;
         setGenerationJob(result.job);
         if (result.job.status === "succeeded" && result.job.artifact_available) {
-          const artifact = await authorizedRequest<{ url: string }>("/v1/generation/jobs/" + encodeURIComponent(generationJobId) + "/artifact");
+          const artifact = await authorizedRequest<{ url: string }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}/artifact`);
           const response = await fetch(artifact.url, { cache: "no-store" });
           if (!response.ok) throw new Error("Artefak generation privat tidak dapat diambil.");
           const output = await response.text();
@@ -466,13 +466,13 @@ export default function AiCinemaCreatorWorkspace() {
     };
     void poll();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [generationJobId]);
+  }, [generationJobId, selectedTitleId]);
 
   async function cancelCinemaGeneration() {
     if (!generationJobId || generationJob?.status !== "queued") return;
     setGenerationBusy(true); setError(""); setNotice("");
     try {
-      await authorizedRequest("/v1/generation/jobs/" + encodeURIComponent(generationJobId) + "/cancel", { method: "POST" });
+      await authorizedRequest(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}/cancel`, { method: "POST" });
       setGenerationJob(current => current ? { ...current, status: "cancelled" } : current);
       setNotice("Generation Job yang belum diproses berhasil diminta pembatalannya.");
     } catch (cause) {
