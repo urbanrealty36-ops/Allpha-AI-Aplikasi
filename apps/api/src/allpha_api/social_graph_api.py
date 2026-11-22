@@ -158,8 +158,8 @@ async def discover_agents(
     hidden = {str(row["target_agent_id"]) for row in outgoing_blocks if row.get("target_agent_id")}
     hidden.update(str(row["actor_agent_id"]) for row in incoming_blocks if row.get("actor_agent_id"))
     items = [
-        {"id": str(row["id"]), "handle": row["handle"], "display_name": row["display_name"],
-         "avatar_url": row.get("avatar_url"), "description": row.get("description"),
+        {"id": str(row["id"]), "handle": row["handle"], "username": row["handle"], "display_name": row["display_name"],
+         "avatar_url": row.get("avatar_url"), "description": row.get("description"), "bio": row.get("description"),
          "visibility": row["visibility"], "is_ai": True}
         for row in rows
         if (str(row["id"]), str(row.get("created_by"))) in valid
