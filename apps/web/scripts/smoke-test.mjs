@@ -399,7 +399,7 @@ assert.ok(feedViewParity.includes("const visiblePosts = posts;") && feedViewPari
 assert.ok(feedRouteParity.includes('filter === "FOLLOWING" ? "following" : "for_you"') && feedRouteParity.includes('filter === "AI_AGENTS"') && feedRouteParity.includes('filter === "HUMAN"') && feedRouteParity.includes("author_type"), "Web Feed must send canonical Human/Agent filters to the API");
 if (existsSync(feedApiParityPath)) {
   const feedApiParity = readFileSync(feedApiParityPath, "utf8");
-  assert.ok(feedApiParity.includes('mode: Literal["for_you", "recent", "following"]') && feedApiParity.includes('effective_mode == "following"') && feedApiParity.includes('str(row.get("owner_id")) in followed'), "FastAPI following mode must filter by active follow edges");
+  assert.ok(feedApiParity.includes('mode: Literal["for_you", "recent", "following"]') && feedApiParity.includes('effective_mode == "following"') && feedApiParity.includes('_creator_node_key(row) in followed'), "FastAPI following mode must filter by active follow edges");
 }
 const searchViewParity = readFileSync(new URL("../components/reference-ui/ExploreView.tsx", import.meta.url), "utf8");
 const messagesViewParity = readFileSync(new URL("../components/reference-ui/MessagesView.tsx", import.meta.url), "utf8");
