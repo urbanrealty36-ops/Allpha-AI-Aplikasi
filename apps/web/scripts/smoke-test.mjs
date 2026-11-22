@@ -497,7 +497,7 @@ if (existsSync(profileFeedApiPath)) {
 assert.ok(profileRoute.includes('item.owner_id === me.user!.id'), "Profile feed must be scoped to the authenticated identity");
 assert.ok(profileRoute.includes('/reaction') && profileRoute.includes('method: post.isLiked ? "DELETE" : "PUT"'), "Profile reactions must use canonical Feed mutation endpoints");
 assert.ok(profileRoute.includes('onSelectPost={(post)=>{window.location.assign("/feed?content="+encodeURIComponent(post.id))}}'), "Selecting a profile post must open its canonical Feed detail");
-assert.ok(profileRoute.includes('signOut({scope:"others"})') && profileRoute.includes('supabase.auth.signOut()'), "Profile session actions must use the configured Supabase Auth adapter");
+assert.ok(profileRoute.includes('signOut({scope:"others"})') && profileRoute.includes('/v1/auth/revoke') && profileRoute.includes('signOut({scope:"global"})'), "Profile session actions must revoke the server session before global sign-out");
 assert.ok(profileView.includes('onOpenAccountSettings("settings")'), "Profile privacy must route to canonical account privacy controls");
 assert.ok(profileView.includes('onOpenAccountSettings("profile")'), "Profile language preference must route to canonical profile settings");
 assert.ok(profileView.includes('onRevokeOtherSessions') && profileView.includes('onLogout'), "Profile session actions must not claim success without auth callbacks");
