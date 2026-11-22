@@ -21,7 +21,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
-      RESTORE_POINT_NAME: allpha-eng-p02-pre-migration-20261123
+      RESTORE_POINT_NAME: allpha-p02-20261123
     steps:
       - name: Require the existing Management API credential
         shell: bash
