@@ -403,15 +403,15 @@ if (existsSync(nativeContentPath)) assert.ok(nativeApp.includes('prefixes: ["all
 // UI-COPY-02 identity journey must use the source onboarding flow with real Auth/API boundaries.
 const authRoute = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const authAdapter = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
-const splashAuthFlowContractSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+const authFlowSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
 assert.ok(authRoute.includes("AuthOnboardingRoute"), "Login must use the reference onboarding adapter");
 assert.ok(authAdapter.includes("supabase.auth.signUp") && authAdapter.includes("supabase.auth.signInWithPassword"), "Onboarding must use Supabase Auth");
 assert.ok(authAdapter.includes('apiBase + "/v1/me"') && authAdapter.includes('apiBase + "/v1/me/profile"'), "Onboarding must provision and update canonical profile through FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/agents"') && authAdapter.includes('method: "POST"'), "Agent creation must use canonical FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/skill-catalog?limit=100&offset="'), "Agent Skill selection must use the canonical paginated catalog");
-assert.ok(splashAuthFlowContractSource.includes("await onComplete(") && splashAuthFlowContractSource.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
+assert.ok(authFlowSource.includes("await onComplete(") && authFlowSource.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
 assert.doesNotMatch(authFlow, /picsum\.photos|Bonus Selamat Datang: \+50 AI Credits|INITIAL_USER|INITIAL_AGENT/);
-assert.ok(splashAuthFlowContractSource.includes("skillsLoading") && splashAuthFlowContractSource.includes("skillsError") && splashAuthFlowContractSource.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
+assert.ok(authFlowSource.includes("skillsLoading") && authFlowSource.includes("skillsError") && authFlowSource.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
 
 
 
@@ -601,7 +601,7 @@ for (const contract of [
   "let authEventSeen = false", "if (active && !authEventSeen) applySession(data.session)"
 ]) assert.ok(reelsSessionSource.includes(contract), "Reels must isolate auth sessions and stale loads: " + contract);
 
-const splashAuthFlowContractSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+const authFlowSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
 const authRouteSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
 const feedAuthEntrySource = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
 for (const contract of [
@@ -610,7 +610,7 @@ for (const contract of [
   "setAuthMode(initialAuthMode)",
   'get("mode")',
   'initialAuthMode={initialAuthMode}'
-]) assert.ok((splashAuthFlowContractSource + authRouteSource).includes(contract), "Canonical auth modal must support direct login/register entry: " + contract);
+]) assert.ok((authFlowSource + authRouteSource).includes(contract), "Canonical auth modal must support direct login/register entry: " + contract);
 for (const contract of [
   'router.push("/login?next="',
   '&mode=login',
