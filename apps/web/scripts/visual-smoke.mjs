@@ -50,6 +50,37 @@ try {
     }
     await page.close();
   }
+
+  // Functional navigation regression: verify real client-side actions, not only HTTP route availability.
+  const interactionPage = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+  try {
+    await interactionPage.goto(baseUrl + "/feed", { waitUntil: "domcontentloaded", timeout: 45000 });
+    await interactionPage.getByRole("button", { name: "Buka halaman awal Allpha" }).click();
+    await interactionPage.waitForURL((url) => url.pathname === "/welcome", { timeout: 10000 });
+    console.log(JSON.stringify({ interaction: "header-brand-navigation", result: "passed", pathname: new URL(interactionPage.url()).pathname }));
+
+    await interactionPage.goto(baseUrl + "/feed", { waitUntil: "domcontentloaded", timeout: 45000 });
+    await interactionPage.getByRole("button", { name: /Film AI/ }).click();
+    await interactionPage.waitForURL((url) => url.pathname === "/ai-cinema", { timeout: 10000 });
+    console.log(JSON.stringify({ interaction: "bottom-nav-film-ai", result: "passed", pathname: new URL(interactionPage.url()).pathname }));
+
+    await interactionPage.goto(baseUrl + "/feed", { waitUntil: "domcontentloaded", timeout: 45000 });
+    await interactionPage.getByRole("button", { name: "Search" }).click();
+    const searchInput = interactionPage.getByPlaceholder("Cari konten, agent, district 3D...");
+    await searchInput.fill("uji navigasi");
+    await searchInput.press("Enter");
+    await interactionPage.waitForURL((url) => url.pathname === "/search" && url.searchParams.get("q") === "uji navigasi", { timeout: 10000 });
+    console.log(JSON.stringify({ interaction: "header-search-submit", result: "passed", pathname: new URL(interactionPage.url()).pathname }));
+
+    await interactionPage.goto(baseUrl + "/feed", { waitUntil: "domcontentloaded", timeout: 45000 });
+    await interactionPage.getByRole("button", { name: "Pesan" }).click();
+    await interactionPage.waitForURL((url) => url.pathname === "/messages", { timeout: 10000 });
+    console.log(JSON.stringify({ interaction: "header-messages-navigation", result: "passed", pathname: new URL(interactionPage.url()).pathname }));
+  } catch (error) {
+    failures.push({ interaction: "global-navigation", reason: error instanceof Error ? error.message : String(error) });
+  } finally {
+    await interactionPage.close();
+  }
 } finally {
   await browser.close();
 }
