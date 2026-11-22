@@ -1,0 +1,65 @@
+name: Allpha Native EAS Production Builds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: allpha-native-eas-production
+  cancel-in-progress: false
+
+jobs:
+  production-build:
+    name: Signed Android AAB and iOS IPA via EAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: apps/client
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+    steps:
+      - name: Checkout main source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/client/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate native source
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Require approved EAS project and token
+        shell: bash
+        run: |
+          if [[ -z "$EXPO_TOKEN" ]]; then
+            echo "::error::GitHub Actions secret EXPO_TOKEN is not configured."
+            exit 1
+          fi
+          if [[ -z "$EAS_PROJECT_ID" ]]; then
+            echo "::error::GitHub Actions repository variable EAS_PROJECT_ID is not configured."
+            exit 1
+          fi
+          if [[ ! "$EAS_PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+            echo "::error::EAS_PROJECT_ID must be the UUID of the already-approved Allpha EAS project."
+            exit 1
+          fi
+
+      - name: Verify linked EAS project
+        run: npx eas-cli project:info --non-interactive
+
+      - name: Build signed Android AAB and iOS IPA
+        run: npx eas-cli build --platform all --profile production --non-interactive
