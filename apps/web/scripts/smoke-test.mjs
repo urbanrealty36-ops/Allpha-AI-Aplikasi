@@ -50,20 +50,20 @@ const globalStyles = readFileSync(new URL("../app/globals.css", import.meta.url)
 assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Workflow configuration keys must wrap at narrow mobile widths");
 
 // Splash and both public/dedicated authentication entry points share canonical auth.
-const onboardingPage = readFileSync(new URL("../components/reference-ui/AuthOnboardingPage.tsx", import.meta.url), "utf8");
-const welcomePage = readFileSync(new URL("../app/welcome/page.tsx", import.meta.url), "utf8");
-const canonicalAuthRoute = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
-const authFlow = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
-assert.doesNotMatch(onboardingPage, /Slide Sapa & Panduan|Login \/ Register|Buka Feed Aplikasi/,
+const splashOnboardingSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingPage.tsx", import.meta.url), "utf8");
+const welcomeModalSource = readFileSync(new URL("../app/welcome/page.tsx", import.meta.url), "utf8");
+const canonicalAuthRouteSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
+const authFlowSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(splashOnboardingSource, /Slide Sapa & Panduan|Login \/ Register|Buka Feed Aplikasi/,
   "Splash header must not render the three wide navigation actions");
-assert.ok(onboardingPage.includes("onStartAuthentication('REGISTER')") && onboardingPage.includes("onStartAuthentication('LOGIN')"),
+assert.ok(splashOnboardingSource.includes("onStartAuthentication('REGISTER')") && splashOnboardingSource.includes("onStartAuthentication('LOGIN')"),
   "Public onboarding auth actions must open the matching auth modal mode");
-assert.ok(welcomePage.includes("<AuthOnboardingRoute") && welcomePage.includes("isOpen={authModalMode !== null}"),
+assert.ok(welcomeModalSource.includes("<AuthOnboardingRoute") && welcomeModalSource.includes("isOpen={authModalMode !== null}"),
   "Public onboarding must mount the canonical auth card as a modal");
-assert.ok(canonicalAuthRoute.includes("supabase.auth.signUp") && canonicalAuthRoute.includes("supabase.auth.signInWithPassword") &&
-  canonicalAuthRoute.includes("/v1/me/profile") && canonicalAuthRoute.includes("/v1/agents"),
+assert.ok(canonicalAuthRouteSource.includes("supabase.auth.signUp") && canonicalAuthRouteSource.includes("supabase.auth.signInWithPassword") &&
+  canonicalAuthRouteSource.includes("/v1/me/profile") && canonicalAuthRouteSource.includes("/v1/agents"),
   "Modal and dedicated routes must share Supabase Auth and FastAPI identity provisioning");
-assert.ok(authFlow.includes("authMode === 'LOGIN'") && authFlow.includes("authMode === 'REGISTER' && ("),
+assert.ok(authFlowSource.includes("authMode === 'LOGIN'") && authFlowSource.includes("authMode === 'REGISTER' && ("),
   "Login must not require registration-only Human/Agent identity fields");
 assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("min-width: 0") &&
   globalStyles.includes("max-width: 100%"),
@@ -401,15 +401,15 @@ if (existsSync(nativeContentPath)) assert.ok(nativeApp.includes('prefixes: ["all
 // UI-COPY-02 identity journey must use the source onboarding flow with real Auth/API boundaries.
 const authRoute = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const authAdapter = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
-const authFlow = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+const authFlowSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
 assert.ok(authRoute.includes("AuthOnboardingRoute"), "Login must use the reference onboarding adapter");
 assert.ok(authAdapter.includes("supabase.auth.signUp") && authAdapter.includes("supabase.auth.signInWithPassword"), "Onboarding must use Supabase Auth");
 assert.ok(authAdapter.includes('apiBase + "/v1/me"') && authAdapter.includes('apiBase + "/v1/me/profile"'), "Onboarding must provision and update canonical profile through FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/agents"') && authAdapter.includes('method: "POST"'), "Agent creation must use canonical FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/skill-catalog?limit=100&offset="'), "Agent Skill selection must use the canonical paginated catalog");
-assert.ok(authFlow.includes("await onComplete(") && authFlow.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
+assert.ok(authFlowSource.includes("await onComplete(") && authFlowSource.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");
 assert.doesNotMatch(authFlow, /picsum\.photos|Bonus Selamat Datang: \+50 AI Credits|INITIAL_USER|INITIAL_AGENT/);
-assert.ok(authFlow.includes("skillsLoading") && authFlow.includes("skillsError") && authFlow.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
+assert.ok(authFlowSource.includes("skillsLoading") && authFlowSource.includes("skillsError") && authFlowSource.includes("submissionError"), "Onboarding must expose loading and recoverable error states");
 
 
 
