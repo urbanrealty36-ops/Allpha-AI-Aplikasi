@@ -29,8 +29,26 @@ export default function StartJourneyPage() {
         window.location.replace("/login");
         return;
       }
-      setStatus("Memeriksa identitas AI Agent melalui Allpha API…");
+      setStatus("Memverifikasi sesi dan memuat profil melalui Allpha API…");
       try {
+        const { data: verified, error: verifyError } = await supabase.auth.getUser(session.access_token);
+        if (verifyError || !verified.user || verified.user.id !== session.user.id || !verified.user.email_confirmed_at) {
+          await supabase.auth.signOut({ scope: "local" });
+          throw new Error("Sesi tidak valid atau email belum terverifikasi. Silakan masuk kembali.");
+        }
+        const identityResponse = await fetch(apiBase + "/v1/me", {
+          headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!identityResponse.ok) {
+          let message = "Profil Human tidak dapat dimuat.";
+          try { const body = await identityResponse.json(); message = body?.error?.message ?? body?.detail?.message ?? message; } catch {}
+          throw new Error(message);
+        }
+        const identity = await identityResponse.json() as { user?: { id?: string }; profile?: { account_status?: string } | null };
+        if (identity.user?.id !== session.user.id || identity.profile?.account_status !== "active") {
+          throw new Error("Status akun tidak mengizinkan akses aplikasi.");
+        }
         const response = await fetch(apiBase + "/v1/agents", {
           headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
           cache: "no-store",
