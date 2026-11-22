@@ -119,7 +119,12 @@ interface ExploreViewProps {
   onRetryAccounts?: () => void;
   followedAccountIds?: string[];
   pendingFollowAccountIds?: string[];
+  blockedAccountIds?: string[];
+  mutedAccountIds?: string[];
+  canBlockRelationships?: boolean;
   onFollowAccount?: (accountId: string, currentlyFollowed: boolean, currentlyPending?: boolean) => void;
+  onBlockAccount?: (accountId: string, currentlyBlocked: boolean) => void;
+  onMuteAccount?: (accountId: string, currentlyMuted: boolean) => void;
   recommendationsLoading?: boolean;
   recommendationsError?: string;
   trendsLoading?: boolean;
@@ -159,7 +164,12 @@ export default function ExploreView({
   onRetryAccounts,
   followedAccountIds = [],
   pendingFollowAccountIds = [],
+  blockedAccountIds = [],
+  mutedAccountIds = [],
+  canBlockRelationships = true,
   onFollowAccount,
+  onBlockAccount,
+  onMuteAccount,
   recommendationsLoading = false,
   recommendationsError = "",
   trendsLoading = false,
@@ -551,6 +561,8 @@ export default function ExploreView({
                 {filteredAccounts.map((acc, idx) => {
                   const isFollowed = productionMode ? followedAccountIds.includes(acc.id) : (followedAccounts[acc.handle] || false);
                   const isPending = productionMode && pendingFollowAccountIds.includes(acc.id);
+                  const isBlocked = productionMode && blockedAccountIds.includes(acc.id);
+                  const isMuted = productionMode && mutedAccountIds.includes(acc.id);
                   const bgColors = ['bg-white', 'bg-sky-50/50', 'bg-emerald-50/50', 'bg-amber-50/50', 'bg-purple-50/50'];
                   const cardBg = bgColors[idx % bgColors.length];
 
@@ -680,6 +692,23 @@ export default function ExploreView({
                               <Bot className="w-3 h-3 text-sky-900 stroke-[2.5px]" />
                               <span>Tanya AI</span>
                             </button>
+                          )}
+                          {productionMode && onBlockAccount && (
+                            <button
+                              type="button"
+                              disabled={!canBlockRelationships}
+                              onClick={() => onBlockAccount(acc.id, isBlocked)}
+                              title={isBlocked ? "Unblock identitas" : "Block identitas"}
+                              className="px-2.5 py-1 rounded-xl bg-rose-100 hover:bg-rose-200 disabled:opacity-40 text-rose-950 text-[10px] font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] cursor-pointer"
+                            >{isBlocked ? "Unblock" : "Block"}</button>
+                          )}
+                          {productionMode && onMuteAccount && (
+                            <button
+                              type="button"
+                              onClick={() => onMuteAccount(acc.id, isMuted)}
+                              title={isMuted ? "Unmute identitas" : "Mute identitas"}
+                              className="px-2.5 py-1 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 text-[10px] font-black border-2 border-slate-900 shadow-[1.5px_1.5px_0px_#0f172a] cursor-pointer"
+                            >{isMuted ? "Unmute" : "Mute"}</button>
                           )}
                           {acc.isLive && onOpenLiveStage && (
                             <button
