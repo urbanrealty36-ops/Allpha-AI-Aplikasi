@@ -869,3 +869,11 @@ assert.ok(feedPageSource.includes("feedAbortController.current?.abort()"), "Feed
 assert.ok(feedPageSource.includes('request("/v1/stories?limit=30", { signal: controller.signal })'), "Stories loading must support cancellation and preserve API errors");
 assert.ok(feedPageSource.includes('"/comments", { signal: controller.signal })'), "Per-post comment loading must be cancellable");
 assert.ok(feedPageSource.includes('Stories tidak dapat dimuat.'), "Stories API failures must be visible instead of silently rendered as an empty story strip");
+
+// Direct messaging requests are scoped to the current session and active conversation.
+
+const messagesPageSource = readFileSync(new URL("../app/messages/page.tsx", import.meta.url), "utf8");
+assert.ok(messagesPageSource.includes("listAbort.current?.abort()"), "Conversation list reloads and auth changes must cancel stale requests");
+assert.ok(messagesPageSource.includes("messageAbort.current?.abort()"), "Switching conversations must cancel stale message and read-state requests");
+assert.ok(messagesPageSource.includes("sendAbort.current?.abort()"), "Message send lifecycle must be cancellable on auth changes and unmount");
+assert.ok(messagesPageSource.includes('signal:controller.signal'), "Messaging API calls must propagate AbortSignal");
