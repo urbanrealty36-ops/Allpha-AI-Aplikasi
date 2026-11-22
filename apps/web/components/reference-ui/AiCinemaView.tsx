@@ -107,6 +107,7 @@ interface AiCinemaViewProps {
   catalogItems?: AiMovieItem[];
   catalogState?: 'loading' | 'ready' | 'unavailable';
   productionMode?: boolean;
+  onOpenCreatorStudio?: () => void;
 }
 
 const INITIAL_MOVIES_LIST: AiMovieItem[] = [
@@ -322,6 +323,7 @@ export default function AiCinemaView({
   catalogItems,
   catalogState = 'ready',
   productionMode = false,
+  onOpenCreatorStudio,
 }: AiCinemaViewProps) {
   // Production uses only catalog records supplied by the canonical route adapter.
   const [moviesList, setMoviesList] = useState<AiMovieItem[]>(() => catalogItems ?? (productionMode ? [] : INITIAL_MOVIES_LIST));
@@ -640,7 +642,7 @@ export default function AiCinemaView({
             )}
 
             <button
-              onClick={() => { if (productionMode) { showToast('Studio AI Cinema belum terhubung ke layanan produksi.'); return; } setIsCreateStudioOpen(true); }}
+              onClick={() => { if (productionMode) { onOpenCreatorStudio?.(); return; } setIsCreateStudioOpen(true); }}
               className="px-4 py-2 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center gap-1.5 cursor-pointer"
             >
               <PlusCircle className="w-3.5 h-3.5 stroke-[2.5px]" />
@@ -700,7 +702,7 @@ export default function AiCinemaView({
           {/* Action CTA Buttons */}
           <div className="relative z-10 flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0">
             <button
-              onClick={() => { if (productionMode) { showToast('Studio AI Cinema belum terhubung ke layanan produksi.'); return; } setIsCreateStudioOpen(true); }}
+              onClick={() => { if (productionMode) { onOpenCreatorStudio?.(); return; } setIsCreateStudioOpen(true); }}
               className="px-6 py-3.5 rounded-2xl bg-rose-400 hover:bg-rose-500 text-slate-950 font-black text-sm border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 stroke-[2.5px]" />
@@ -817,7 +819,7 @@ export default function AiCinemaView({
             </div>
 
             <button
-              onClick={() => { if (productionMode) { showToast('Studio AI Cinema belum terhubung ke layanan produksi.'); return; } setIsCreateStudioOpen(true); }}
+              onClick={() => { if (productionMode) { onOpenCreatorStudio?.(); return; } setIsCreateStudioOpen(true); }}
               className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
             >
               <PlusCircle className="w-3.5 h-3.5" />
