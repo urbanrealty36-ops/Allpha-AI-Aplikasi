@@ -386,3 +386,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - Corrected the database role-update guard to fail closed when actor membership is absent or NULL; also rejects NULL member-role input explicitly.
 - Extended the disposable PostgreSQL RBAC check so a non-member actor cannot change a tenant member's role. This closes the NULL-comparison authorization bypass class in the new service-only role RPC.
 - No production migration applied. ENG-P02 remains `in_progress`; CI result remains pending.
+
+
+## 24. ENG-P02 API regression test aligned to server-only mutation contract — 2026-11-22
+
+- Updated the pre-existing organization-create test to assert the new FastAPI → service-role RPC contract and server-derived actor ID. The previous test was asserting the retired user-token direct PostgREST write path and caused the first CI run to report 879 passed / 1 failed.
+- No production data or migration changes.
+- Targeted CI rerun is pending; ENG-P02 remains `in_progress` until the migration/RBAC disposable PostgreSQL check and API suite both pass.

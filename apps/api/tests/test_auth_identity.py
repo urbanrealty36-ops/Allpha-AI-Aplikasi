@@ -107,15 +107,15 @@ def test_profile_payload_rejects_authority_fields():
 def test_create_organization_uses_authenticated_identity(monkeypatch):
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
         return [{"id": "org-1", "name": "Test Org", "slug": "test-org", "owner_id": "user-123"}]
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "test-token"
         return {"id": "user-123", "email": "test@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
@@ -127,8 +127,7 @@ def test_create_organization_uses_authenticated_identity(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 201
-    assert calls[0][0:3] == ("POST", "organizations", "test-token")
-    assert calls[0][3]["body"]["owner_id"] == "user-123"
+    assert calls == [("create_organization_for_user", {"p_actor_user_id": "user-123", "p_name": "Test Org", "p_slug": "test-org"})]
     assert "owner_id" not in response.request.content.decode()
 
 
