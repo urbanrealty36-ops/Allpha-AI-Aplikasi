@@ -118,6 +118,11 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
     "account page must not create a second independent sign-in/register UI flow");
   assert.ok(account.includes('/v1/auth/revoke') && account.includes('signOut({ scope: "local" })'),
     "Web account logout must revoke the server session before global Supabase sign-out");
+  assert.ok(account.includes("sessionsRequestSequence.current += 1") &&
+    account.includes("setAuthSessions(null)") && account.includes("sequence === sessionsRequestSequence.current") &&
+    account.includes('/v1/me/sessions') && account.includes('/v1/me/sessions/revoke-others') &&
+    account.includes("Sesi sudah tidak berlaku. Silakan masuk kembali."),
+    "account session inventory must discard stale cross-user responses, use canonical FastAPI revoke contracts and clear definitively rejected sessions");
 }
 
 
