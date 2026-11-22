@@ -174,6 +174,8 @@ def test_cinema_generation_cancel_delegates_to_canonical_queue(monkeypatch):
         return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 7, "title": "Test Film"}
 
     async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "POST" and table == "rpc/cinema_generation_schema_readiness":
+            return {"ready": True, "missing": []}
         if method == "GET" and table == "cinema_generation_job_links":
             return [{
                 "generation_job_id": JOB, "title_id": TITLE, "owner_id": OWNER,
