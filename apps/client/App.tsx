@@ -2272,10 +2272,14 @@ function Navigator() {
         else if (data.session) setAuthCallbackStatus("success");
         else if (callbackPath === "auth/callback") setAuthCallbackStatus("error");
       } catch {
+        // Release the deduplication lock after a transient exchange/session error.
+        // A later Linking event or app relaunch can retry the same callback URL;
+        // successfully processed URLs remain locked to prevent duplicate exchanges.
+        processedAuthUrls.current.delete(rawUrl);
         recoveryFlowRef.current = false;
         setRecoveryMode(false);
         if (callbackPath === "auth/callback") setAuthCallbackStatus("error");
-        Alert.alert("Autentikasi gagal", "Tautan tidak dapat diverifikasi. Minta tautan baru lalu coba kembali.");
+        Alert.alert("Autentikasi gagal", "Tautan tidak dapat diverifikasi. Periksa koneksi lalu buka kembali tautan atau minta tautan baru.");
       }
     };
     const authLinkSubscription = Linking.addEventListener("url", ({ url }) => { void handleNativeAuthUrl(url); });
