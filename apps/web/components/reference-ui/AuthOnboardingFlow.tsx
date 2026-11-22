@@ -670,7 +670,6 @@ export default function AuthOnboardingFlow({
                   })}
                 </div>
               </div>
-            </div>
 
               </>
               )}
