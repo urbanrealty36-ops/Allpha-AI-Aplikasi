@@ -275,7 +275,7 @@ begin
   if coalesce(v_actor_role,'') not in ('owner','admin') then
     raise exception using errcode='42501',message='organization_management_forbidden';
   end if;
-  if p_target_user_id is null or p_role not in ('member','admin') then
+  if p_target_user_id is null or p_role is null or p_role not in ('member','admin') then
     raise exception using errcode='22023',message='organization_member_input_invalid';
   end if;
   if v_actor_role='admin' and p_role<>'member' then
@@ -302,10 +302,10 @@ as $
 declare v_actor_role text; v_target_role text;
 begin
   v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
-  if v_actor_role<>'owner' then
+  if coalesce(v_actor_role,'')<>'owner' then
     raise exception using errcode='42501',message='only_owner_can_change_member_roles';
   end if;
-  if p_role not in ('member','admin') then
+  if p_role is null or p_role not in ('member','admin') then
     raise exception using errcode='22023',message='organization_member_role_invalid';
   end if;
   select m.role into v_target_role from public.organization_memberships m

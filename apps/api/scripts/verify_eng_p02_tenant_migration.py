@@ -66,6 +66,16 @@ begin
  end;
 end $$;
 select * from public.update_organization_member_role_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','admin');
+do $
+begin
+ begin
+  perform * from public.update_organization_member_role_for_actor(
+   (select id from public.organizations where slug='eng-p02-repair-check'),
+   '44444444-4444-4444-8444-444444444444','33333333-3333-4333-8333-333333333333','member');
+  raise exception using errcode='P0001',message='non-member unexpectedly changed a tenant role';
+ exception when insufficient_privilege then null;
+ end;
+end $;
 do $$
 begin
  begin

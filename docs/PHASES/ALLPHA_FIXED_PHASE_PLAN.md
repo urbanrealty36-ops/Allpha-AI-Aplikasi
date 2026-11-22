@@ -379,3 +379,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **API contracts:** `POST /v1/organizations`, `POST /v1/organizations/{id}/memberships`, `PATCH /v1/organizations/{id}/memberships/{user_id}`, and `DELETE /v1/organizations/{id}/memberships/{user_id}`.
 - **Verification:** API contract tests and disposable PostgreSQL 17 RBAC/migration verification are added. CI result remains pending until observed; no production migration, organization mutation, deployment or real tenant journey is claimed.
 - **Status:** ENG-P02 remains `in_progress`; source backend/RPC contracts are implemented, but live schema repair remains blocked by the recovery gate. Service-role credential privilege/scope and real multi-tenant production behavior remain unverified.
+
+
+## 23. ENG-P02 authorization null-context regression guard — 2026-11-22
+
+- Corrected the database role-update guard to fail closed when actor membership is absent or NULL; also rejects NULL member-role input explicitly.
+- Extended the disposable PostgreSQL RBAC check so a non-member actor cannot change a tenant member's role. This closes the NULL-comparison authorization bypass class in the new service-only role RPC.
+- No production migration applied. ENG-P02 remains `in_progress`; CI result remains pending.
