@@ -44,6 +44,9 @@ export function createSecureSessionStorage(store) {
 
   return {
     async getItem(key) {
+      // Serialize reads with writes/removals so cleanup cannot delete the
+      // generation a reader has already selected from the commit manifest.
+      return serialize(key, async () => {
       const manifest = await store.getItemAsync(key + ":manifest");
       if (manifest !== null) {
         const parsed = parseManifest(manifest);
@@ -67,6 +70,7 @@ export function createSecureSessionStorage(store) {
         return chunks.every(chunk => chunk !== null) ? chunks.join("") : null;
       }
       return store.getItemAsync(key);
+      });
     },
 
     async setItem(key, value) {
