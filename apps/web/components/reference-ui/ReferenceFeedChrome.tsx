@@ -44,33 +44,41 @@ export default function ReferenceFeedChrome({
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storiesError, setStoriesError] = useState("");
   const storiesRequestSequence = useRef(0);
+  const storiesAbortController = useRef<AbortController | null>(null);
 
   const loadStories = useCallback(async (activeSession: Session | null) => {
     const sequence = ++storiesRequestSequence.current;
+    storiesAbortController.current?.abort();
+    const controller = new AbortController();
+    storiesAbortController.current = controller;
     setStoriesLoading(true);
     setStoriesError("");
     try {
       const response = await fetch(apiBase + "/v1/stories?limit=30", {
         headers: { ...(activeSession ? { Authorization: "Bearer " + activeSession.access_token } : {}), Accept: "application/json" },
         cache: "no-store",
+        signal: controller.signal,
       });
       if (!response.ok) {
         let message = `Stories tidak dapat dimuat (HTTP ${response.status}).`;
         try {
           const body = await response.json();
-          message = body?.error?.message ?? body?.detail?.message ?? message;
+          message = body?.error?.message ?? body?.detail?.message ?? (typeof body?.detail === "string" ? body.detail : message);
         } catch {}
         throw new Error(message);
       }
       const data = await response.json() as { items?: Story[] };
       if (sequence === storiesRequestSequence.current) setStories(data.items ?? []);
     } catch (cause) {
-      if (sequence === storiesRequestSequence.current) {
+      if (sequence === storiesRequestSequence.current && !(cause instanceof DOMException && cause.name === "AbortError")) {
         setStoriesError(cause instanceof Error ? cause.message : "Stories tidak dapat dimuat.");
         setStories([]);
       }
     } finally {
-      if (sequence === storiesRequestSequence.current) setStoriesLoading(false);
+      if (sequence === storiesRequestSequence.current) {
+        storiesAbortController.current = null;
+        setStoriesLoading(false);
+      }
     }
   }, []);
 
@@ -84,6 +92,7 @@ export default function ReferenceFeedChrome({
       return () => {
         active = false;
         storiesRequestSequence.current += 1;
+        storiesAbortController.current?.abort();
       };
     }
     void supabase.auth.getSession().then(({ data }) => {
@@ -103,6 +112,7 @@ export default function ReferenceFeedChrome({
     return () => {
       active = false;
       storiesRequestSequence.current += 1;
+      storiesAbortController.current?.abort();
       listener.subscription.unsubscribe();
     };
   }, [supabase, loadStories]);
