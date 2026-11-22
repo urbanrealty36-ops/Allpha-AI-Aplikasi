@@ -110,7 +110,10 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       const { data, error } = await supabase.auth.signUp({
         email: payload.email,
         password: payload.password,
-        options: { data: { display_name: payload.user.name.trim(), locale: "id-ID" } },
+        options: {
+          data: { display_name: payload.user.name.trim(), locale: "id-ID" },
+          emailRedirectTo: typeof window === "undefined" ? undefined : window.location.origin + "/auth/callback?next=%2Fstart",
+        },
       });
       if (error) throw error;
       session = data.session;
