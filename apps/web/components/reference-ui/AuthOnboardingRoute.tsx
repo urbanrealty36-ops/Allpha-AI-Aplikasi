@@ -140,6 +140,15 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     const meResponse = await fetch(apiBase + "/v1/me", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
     if (!meResponse.ok) throw new Error(await responseError(meResponse));
     const identity = await meResponse.json() as { profile?: { username?: string | null } | null };
+    // The chosen locale is a Human Identity preference, persisted on the canonical profile
+    // for both new registrations and returning users.
+    const localeResponse = await fetch(apiBase + "/v1/me/profile", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ locale }),
+      cache: "no-store",
+    });
+    if (!localeResponse.ok) throw new Error(await responseError(localeResponse));
     const existingResponse = await fetch(apiBase + "/v1/agents", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
     if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
     const existing = await existingResponse.json() as AgentList;
