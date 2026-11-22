@@ -72,6 +72,79 @@ as $$
   );
 $$;
 
+create or replace function public.revoke_my_auth_session(p_session_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_revoked uuid;
+begin
+  if (select auth.uid()) is null then
+    raise exception using errcode = '28000', message = 'authentication_required';
+  end if;
+
+  update auth.sessions
+     set not_after = pg_catalog.now(),
+         updated_at = pg_catalog.now()
+   where id = p_session_id
+     and user_id = (select auth.uid())
+     and (not_after is null or not_after > pg_catalog.now())
+  returning id into v_revoked;
+
+  if v_revoked is null then
+    return false;
+  end if;
+
+  insert into public.audit_events(actor_user_id,action,resource_type,resource_id,metadata)
+  values ((select auth.uid()),'auth.session.revoked','auth_session',v_revoked::text,
+          jsonb_build_object('scope','selected'));
+  return true;
+end;
+$;
+
+create or replace function public.revoke_my_other_auth_sessions(p_current_session_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_revoked integer;
+begin
+  if (select auth.uid()) is null then
+    raise exception using errcode = '28000', message = 'authentication_required';
+  end if;
+
+  if not exists (
+    select 1 from auth.sessions s
+     where s.id = p_current_session_id
+       and s.user_id = (select auth.uid())
+       and (s.not_after is null or s.not_after > pg_catalog.now())
+  ) then
+    raise exception using errcode = '28000', message = 'current_session_invalid';
+  end if;
+
+  with revoked as (
+    update auth.sessions
+       set not_after = pg_catalog.now(),
+           updated_at = pg_catalog.now()
+     where user_id = (select auth.uid())
+       and id <> p_current_session_id
+       and (not_after is null or not_after > pg_catalog.now())
+     returning id
+  )
+  insert into public.audit_events(actor_user_id,action,resource_type,resource_id,metadata)
+  select (select auth.uid()),'auth.session.revoked','auth_session',revoked.id::text,
+         jsonb_build_object('scope','other_devices')
+    from revoked;
+
+  get diagnostics v_revoked = row_count;
+  return v_revoked;
+end;
+$;
+
 create or replace function public.create_organization_owner_membership()
 returns trigger language plpgsql security definer set search_path = ''
 as $$
@@ -144,6 +217,10 @@ revoke all on function private.is_organization_admin(uuid) from public,anon;
 grant execute on function private.is_organization_member(uuid) to authenticated;
 grant execute on function private.is_organization_admin(uuid) to authenticated;
 revoke all on function public.set_updated_at() from public,anon,authenticated;
+revoke all on function public.revoke_my_auth_session(uuid) from public,anon;
+grant execute on function public.revoke_my_auth_session(uuid) to authenticated;
+revoke all on function public.revoke_my_other_auth_sessions(uuid) from public,anon;
+grant execute on function public.revoke_my_other_auth_sessions(uuid) to authenticated;
 revoke all on function public.create_organization_owner_membership() from public,anon,authenticated;
 revoke all on function public.audit_organization_created() from public,anon,authenticated;
 
