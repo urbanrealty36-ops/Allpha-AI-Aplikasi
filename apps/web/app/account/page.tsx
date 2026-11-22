@@ -150,6 +150,10 @@ export default function HomePage() {
         method: "POST",
         headers: { Authorization: "Bearer " + session.access_token, Accept: "application/json" },
       });
+      if (response.status === 401 || response.status === 403) {
+        await supabase.auth.signOut({ scope: "local" });
+        return;
+      }
       if (!response.ok) throw new Error(await apiError(response));
       const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
       if (signOutError) throw signOutError;
