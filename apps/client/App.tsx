@@ -79,12 +79,12 @@ type KnowledgeSource = { id: string; filename: string; size_bytes: number; sha25
 type KnowledgeRetrievalResult = { source_id: string; source_version: number; chunk_id: string; content: string; content_sha256: string; source_location: Record<string, unknown>; sensitivity: string; retrieval_method: "vector" | "keyword" | "hybrid"; score: number; provider_id?: string | null; model_id?: string | null; model_version?: string | null; index_generation?: string | null };
 type Profile = { id: string; username: string | null; display_name: string; avatar_url: string | null; bio: string; locale: "id-ID" | "en-US"; visibility: "public" | "private"; account_status?: "active" | "deactivation_requested"; created_at?: string };
 type Settings = { theme: "light" | "dark" | "system"; notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean }; privacy_settings: { discoverable_by_username: boolean }; updated_at?: string };
-type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string };
+type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; actor_node_type?: "human" | "agent"; target_node_type?: "human" | "agent"; actor_agent_id?: string | null; target_agent_id?: string | null; edge_type: "follow" | "block" | "mute"; status?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested" };
 type NativeConversation = { id: string; title?: string | null; kind: "human" | "agent"; last_message?: { body: string; created_at: string; delivery_status: string } };
 type NativeMessage = { id: string; body: string; sender_type: string; sender_user_id?: string; created_at: string; delivery_status: string; generation_job_id?: string | null };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean } };
-type DiscoveredSocialUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: false };
+type DiscoveredSocialUser = { id: string; username: string; display_name: string; avatar_url?: string | null; bio?: string; visibility: "public" | "private"; is_ai: boolean };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? (Platform.OS === "android" ? "http://10.0.2.2:8000" : "http://localhost:8000") : "https://api.allpha.web.id")).replace(/\/$/, "");
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
@@ -560,6 +560,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
   const [socialGraph, setSocialGraph] = useState<SocialGraph | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [targetUserId, setTargetUserId] = useState("");
+  const [socialTargetType, setSocialTargetType] = useState<"human" | "agent">("human");
+  const [socialActorAgentId, setSocialActorAgentId] = useState("");
   const [socialDiscoveryQuery, setSocialDiscoveryQuery] = useState("");
   const [socialDiscoveryUsers, setSocialDiscoveryUsers] = useState<DiscoveredSocialUser[]>([]);
   const [socialDiscoveryBusy, setSocialDiscoveryBusy] = useState(false);
@@ -1328,7 +1330,8 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     }
     setSocialDiscoveryBusy(true); setSocialDiscoveryError("");
     try {
-      const payload = await apiRequest("/v1/social/discover-users?q=" + encodeURIComponent(query) + "&limit=20") as { items?: DiscoveredSocialUser[] };
+      const endpoint = socialTargetType === "agent" ? "/v1/social/discover-agents?q=" : "/v1/social/discover-users?q=";
+      const payload = await apiRequest(endpoint + encodeURIComponent(query) + "&limit=20") as { items?: DiscoveredSocialUser[] };
       if (sequence !== socialDiscoveryRequestSequence.current) return;
       setSocialDiscoveryUsers(Array.isArray(payload.items) ? payload.items : []);
     } catch (cause) {
@@ -1338,14 +1341,21 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       }
     } finally { if (sequence === socialDiscoveryRequestSequence.current) setSocialDiscoveryBusy(false); }
   }
-  async function addSocialEdge(edgeType: "follow" | "block" | "mute", targetOverride?: string) {
+  async function addSocialEdge(edgeType: "follow" | "block" | "mute", targetOverride?: string, targetTypeOverride?: "human" | "agent") {
     const targetId = (targetOverride ?? targetUserId).trim();
+    const targetType = targetTypeOverride ?? socialTargetType;
     if (!targetId) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await apiRequest("/v1/me/social-edges", { method: "POST", body: JSON.stringify({ target_user_id: targetId, edge_type: edgeType }) }) as { outcome?: string; idempotent_replay?: boolean };
+      const result = await apiRequest("/v1/social/relationships", {
+        method: "POST",
+        body: JSON.stringify({
+          target_type: targetType, target_id: targetId, edge_type: edgeType,
+          ...(socialActorAgentId ? { actor_agent_id: socialActorAgentId } : {}),
+        }),
+      }) as { outcome?: string; idempotent_replay?: boolean; edge?: SocialEdge };
       if (!targetOverride) setTargetUserId("");
-      const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti akun ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : result.outcome === "user_blocked" ? "Akun diblokir." : result.outcome === "user_muted" ? "Akun dibisukan." : "Relasi sosial tersimpan.";
+      const outcomeMessage = result.outcome === "follow_active" ? "Anda sekarang mengikuti identitas ini." : result.outcome === "follow_request_created" ? "Permintaan mengikuti menunggu persetujuan." : edgeType === "block" ? "Identitas diblokir." : edgeType === "mute" ? "Identitas dibisukan." : "Relasi sosial tersimpan.";
       setMessage(result.idempotent_replay ? "Relasi tersebut sudah ada; tidak dibuat duplikat." : outcomeMessage);
       await loadSocialGraph();
       if (targetOverride && edgeType === "follow") await searchSocialUsers();
@@ -1353,17 +1363,15 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
     finally { setBusy(false); }
   }
   async function removeSocialEdge(edge: SocialEdge) {
-    const target = edge.target_user_id || edge.actor_user_id;
-    if (!target) return;
     setBusy(true); setError(""); setMessage("");
-    try { await apiRequest("/v1/me/social-edges/" + encodeURIComponent(target) + "/" + edge.edge_type, { method: "DELETE" }); setMessage("Relasi dihapus."); await loadSocialGraph(); }
+    try { await apiRequest("/v1/social/relationships/" + encodeURIComponent(edge.id), { method: "DELETE" }); setMessage("Relasi dihapus."); await loadSocialGraph(); }
     catch (e) { setError(e instanceof Error ? e.message : "Relasi tidak dapat dihapus."); }
     finally { setBusy(false); }
   }
   async function resolveFollowRequest(edgeId: string, accept: boolean) {
     setBusy(true); setError(""); setMessage("");
     try {
-      await apiRequest(accept ? "/v1/me/follow-requests/" + encodeURIComponent(edgeId) + "/accept" : "/v1/me/follow-requests/" + encodeURIComponent(edgeId), { method: accept ? "POST" : "DELETE" });
+      await apiRequest("/v1/social/relationships/" + encodeURIComponent(edgeId) + (accept ? "/accept" : "/reject"), { method: "POST" });
       setMessage(accept ? "Permintaan diterima." : "Permintaan ditolak."); await loadSocialGraph();
     } catch (e) { setError(e instanceof Error ? e.message : "Permintaan gagal diproses."); }
     finally { setBusy(false); }
