@@ -173,6 +173,7 @@ function SearchPageContent() {
       socialGraphRequestSequence.current += 1;
       setFollowedAccountIds([]);
       setPendingFollowAccountIds([]);
+      setFollowEdgeIds({});
       setSocialGraphError("");
       return;
     }
@@ -196,6 +197,7 @@ function SearchPageContent() {
       if (sequence === socialGraphRequestSequence.current) {
         setFollowedAccountIds([]);
         setPendingFollowAccountIds([]);
+        setFollowEdgeIds({});
         setSocialGraphError(cause instanceof Error ? cause.message : "Status relasi sosial belum dapat dimuat.");
       }
     }
