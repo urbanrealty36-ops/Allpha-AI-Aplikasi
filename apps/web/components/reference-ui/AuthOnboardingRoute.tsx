@@ -153,8 +153,8 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
     const existing = await existingResponse.json() as AgentList;
     if (existing.items?.length) {
-      // Return to the public context that prompted authentication; the original action is not replayed.
-      finishAuthentication();
+      // Successful login from the public modal enters the authenticated product.
+      finishAuthentication("/feed");
       return;
     }
     if (payload.authMode === "LOGIN") {
@@ -194,7 +194,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
           if (!interestResponse.ok) throw new Error(await responseError(interestResponse));
         }
       }
-      finishAuthentication();
+      finishAuthentication("/feed");
       return "authenticated";
     }
 
