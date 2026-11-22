@@ -8,6 +8,7 @@ const messages: Record<string, { id: string; en: string }> = {
   "language.label": { id: "Bahasa", en: "Language" },
   "onboarding.counter": { id: "Slide Sapa", en: "Welcome slide" },
   "onboarding.counterOf": { id: "dari", en: "of" },
+  "auth.accountStep": { id: "Akun Human", en: "Human account" },
   "auth.registerTitle": { id: "Registrasi Human Identity", en: "Create your Allpha account" },
   "auth.loginTitle": { id: "Masuk ke Human Identity", en: "Sign in to Allpha" },
   "auth.registerTab": { id: "Daftar", en: "Sign up" },
