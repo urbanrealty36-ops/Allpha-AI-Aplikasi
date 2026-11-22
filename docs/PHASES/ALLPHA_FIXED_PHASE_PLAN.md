@@ -422,3 +422,11 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - The first CI run after adding the capability governance routes failed during test collection because the new list endpoint used FastAPI `Query` without importing it. No tests or migration checks ran in that job.
 - Added the missing import and corrected the ENG-P06 phase table row so the previous entry description is not duplicated.
 - P06 remains `in_progress`; rerun API tests and the ENG-P02 disposable PostgreSQL gate.
+
+
+## 29. ENG-P02 organization RPC function-body reconstruction — 2026-11-22
+
+- PostgreSQL CI caught a truncated PL/pgSQL body in the new organization creation function: the slug regex anchor interacted badly with the generated source block and left the SQL string literal unterminated. The error was caught in disposable PostgreSQL before any production DDL.
+- Rebuilt the complete five-function server-only RBAC block using explicit dollar-quote delimiters and delegated slug-format enforcement to the existing canonical database constraint while retaining name/slug length checks.
+- All five functions are now present in source; rerun PostgreSQL 17 apply-twice, owner/admin hierarchy, audit, RLS and non-member negative cases.
+- ENG-P02 remains `in_progress`; production recovery gate remains open.
