@@ -5,6 +5,8 @@ import os
 from typing import Any
 
 import httpx
+import jwt
+import uuid
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -47,7 +49,29 @@ async def current_user(
     user = response.json()
     if not user.get("id"):
         raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Token tidak memiliki identitas pengguna."})
+
+    # Supabase Auth validates signature/expiry above. The session_id claim is read
+    # only after that remote validation, then fenced against auth.sessions using
+    # an auth.uid()-scoped RPC so a revoked refresh session cannot keep using an
+    # otherwise-unexpired access JWT for protected API operations.
+    try:
+        claims = jwt.decode(
+            credentials.credentials,
+            options={"verify_signature": False, "verify_exp": False, "verify_aud": False},
+        )
+        session_id = uuid.UUID(str(claims.get("session_id") or claims.get("sid") or ""))
+    except (jwt.PyJWTError, ValueError, TypeError):
+        raise HTTPException(status_code=401, detail={"code": "SESSION_INVALID", "message": "Sesi tidak memiliki identitas yang valid."})
+
+    active = await user_db_request(
+        "POST", "rpc/is_auth_session_active", credentials.credentials,
+        body={"p_session_id": str(session_id)},
+    )
+    if active is not True:
+        raise HTTPException(status_code=401, detail={"code": "SESSION_REVOKED", "message": "Sesi telah dicabut atau kedaluwarsa. Silakan masuk kembali."})
+
     request.state.user_id = user["id"]
+    request.state.auth_session_id = str(session_id)
     request.state.supabase_access_token = credentials.credentials
     return user
 
