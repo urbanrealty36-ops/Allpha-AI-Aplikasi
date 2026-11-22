@@ -340,7 +340,7 @@ const socialFeedApiPath = new URL("../../api/src/allpha_api/feed_api.py", import
 if (existsSync(socialFeedApiPath)) {
   const socialFeedApi = readFileSync(socialFeedApiPath, "utf8");
   for (const contract of [
-    '"/v1/social/discover-users"', "discoverable_by_username", '"account_status": "eq.active"',
+    '"/v1/social/discover-users"', "discoverable_by_username", 'profile.get("account_status", "active") != "active"',
     "owner_profile.get(\"account_status\", \"active\")", '"/v1/social/follow/{target_user_id}"'
   ]) assert.ok(socialFeedApi.includes(contract), "Social Graph API must enforce discovery and active-profile privacy: " + contract);
 }
