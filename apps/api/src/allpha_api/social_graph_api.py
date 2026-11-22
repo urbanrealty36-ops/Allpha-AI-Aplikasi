@@ -178,6 +178,22 @@ async def discover_agents(
 
 
 
+
+@router.get("/activity")
+async def get_social_activity(
+    limit: int = Query(default=30, ge=1, le=100),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Owner-scoped activity stream preserving typed Agent attribution."""
+    owner_id = str(user["id"])
+    rows = await _server_db("GET", "social_graph_events", params={
+        "select": "id,event_type,actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,entity_key,payload,created_at",
+        "or": f"(actor_user_id.eq.{owner_id},target_user_id.eq.{owner_id})",
+        "order": "created_at.desc,id.desc", "limit": str(limit),
+    })
+    return {"items": rows or [], "count": len(rows or [])}
+
+
 @router.get("/nodes/{node_type}/{node_id}/summary")
 async def get_node_relationship_summary(
     node_type: Literal["human", "agent"],
