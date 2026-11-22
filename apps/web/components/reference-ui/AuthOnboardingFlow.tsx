@@ -235,6 +235,27 @@ export default function AuthOnboardingFlow({
       setStep('HUMAN_REGISTER');
       return;
     }
+    if (authMode === 'LOGIN') {
+      setIsSubmitting(true);
+      try {
+        await onComplete({
+          user: currentUser,
+          agent: currentAgent,
+          email: humanEmail.trim(),
+          password: humanPassword,
+          authMode: 'LOGIN',
+          interests: [],
+          persona: agentPersona,
+        });
+        setStep('SUCCESS');
+        window.setTimeout(() => onClose(), 1200);
+      } catch (cause) {
+        setSubmissionError(cause instanceof Error ? cause.message : 'Login tidak dapat diselesaikan.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
     if (!humanName.trim() || !humanHandle.trim() || !agentName.trim() || !agentHandle.trim() || selectedSkills.length === 0) {
       setSubmissionError('Lengkapi identitas Human, identitas Agent, dan pilih minimal satu Skill.');
       return;
@@ -530,6 +551,7 @@ export default function AuthOnboardingFlow({
               </div>
             </div>
 
+            {authMode === 'REGISTER' && (
             {/* Avatar Selector */}
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase">
@@ -557,8 +579,10 @@ export default function AuthOnboardingFlow({
               </div>
             </div>
 
+            )}
             {/* Form Fields */}
             <div className="space-y-3">
+              {authMode === 'REGISTER' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-black text-slate-900">Nama Lengkap</label>
@@ -582,6 +606,7 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
+              )}
               <div>
                 <label className="text-[11px] font-black text-slate-900">Email</label>
                 <div className="relative mt-1">
@@ -610,6 +635,8 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
+              {authMode === 'REGISTER' && (
+              <>
               <div>
                 <label className="text-[11px] font-black text-slate-900">Bio Singkat</label>
                 <input
@@ -646,6 +673,10 @@ export default function AuthOnboardingFlow({
               </div>
             </div>
 
+              </>
+              )}
+            </div>
+
             {/* Navigation Buttons */}
             <div className="flex items-center justify-between pt-3 border-t-2 border-slate-100">
               <button
@@ -657,11 +688,12 @@ export default function AuthOnboardingFlow({
               </button>
               <button
                 type="button"
-                onClick={() => setStep('AGENT_ONBOARDING')}
-                className="px-5 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5"
+                onClick={() => authMode === 'LOGIN' ? void handleFinishOnboarding() : setStep('AGENT_ONBOARDING')}
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60"
               >
-                <span>Lanjut: Setup AI Agent</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>{isSubmitting ? 'Memproses…' : authMode === 'LOGIN' ? 'Masuk ke Allpha Universe' : 'Lanjut: Setup AI Agent'}</span>
+                {authMode === 'REGISTER' && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
             </div>
           </div>
