@@ -106,7 +106,10 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
     "account, profile and onboarding routes must share FastAPI revocation and account-state validation");
   assert.ok(authRoute.includes("identity.profile?.username") && authRoute.includes('finishAuthentication("/feed")'),
     "returning Human accounts without an Agent must still enter the app without forced first-run onboarding");
-  assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext"), "OAuth/email callback must exchange code and enforce safe redirect");
+  assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext") &&
+    callback.includes("codeExchangeCompleted.current") && callback.includes("retryNonce") &&
+    callback.includes("Sesi lokal dipertahankan") && callback.includes("Coba lagi"),
+    "OAuth/email callback must enforce safe redirect, avoid re-exchanging a completed code and retry transient verification without discarding the session");
   assert.ok(forgotPassword.includes("resetPasswordForEmail") && forgotPassword.includes("/auth/callback?next=%2Freset-password"),
     "password recovery must use Supabase Auth with the canonical callback");
   assert.ok(resetPassword.includes("updateUser({ password })") && resetPassword.includes("getSession"),
