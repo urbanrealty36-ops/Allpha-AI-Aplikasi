@@ -52,7 +52,8 @@ interface AuthOnboardingFlowProps {
     authMode: 'REGISTER' | 'LOGIN';
     interests: string[];
     persona: string;
-  }) => Promise<void>;
+  }) => Promise<'authenticated' | 'verification_pending' | void>;
+  onResendVerification?: (email: string) => Promise<void>;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
   onGoogleSignIn?: () => Promise<void>;
@@ -68,6 +69,7 @@ export default function AuthOnboardingFlow({
   currentUser,
   currentAgent,
   onGoogleSignIn,
+  onResendVerification,
   initialAuthMode,
 }: AuthOnboardingFlowProps) {
   const [step, setStep] = useState<OnboardingStep>('SPLASH');
@@ -161,6 +163,8 @@ export default function AuthOnboardingFlow({
   const [isAutoReplyEnabled, setIsAutoReplyEnabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState('');
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(true);
   const [skillsError, setSkillsError] = useState('');
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
@@ -238,7 +242,7 @@ export default function AuthOnboardingFlow({
     if (authMode === 'LOGIN') {
       setIsSubmitting(true);
       try {
-        await onComplete({
+        const result = await onComplete({
           user: currentUser,
           agent: currentAgent,
           email: humanEmail.trim(),
@@ -247,6 +251,7 @@ export default function AuthOnboardingFlow({
           interests: [],
           persona: agentPersona,
         });
+        if (result === 'verification_pending') { setVerificationPending(true); return; }
         setStep('SUCCESS');
         window.setTimeout(() => onClose(), 1200);
       } catch (cause) {
@@ -284,7 +289,8 @@ export default function AuthOnboardingFlow({
     };
     setIsSubmitting(true);
     try {
-      await onComplete({ user: updatedHuman, agent: updatedAgent, email: humanEmail.trim(), password: humanPassword, authMode, interests: selectedInterests, persona: agentPersona });
+      const result = await onComplete({ user: updatedHuman, agent: updatedAgent, email: humanEmail.trim(), password: humanPassword, authMode, interests: selectedInterests, persona: agentPersona });
+      if (result === 'verification_pending') { setVerificationPending(true); return; }
       setStep('SUCCESS');
       setTimeout(() => onClose(), 1800);
     } catch (cause) {
@@ -298,6 +304,7 @@ export default function AuthOnboardingFlow({
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-[6px_6px_0px_#0f172a] border-3 border-slate-900 overflow-hidden flex flex-col max-h-[92vh]">
         {submissionError && <p role="alert" className="mx-4 mt-4 rounded-xl border-2 border-rose-500 bg-white p-3 text-xs font-bold text-rose-700">{submissionError}</p>}
+        {verificationPending && <div role="status" className="mx-4 mt-4 rounded-xl border-2 border-sky-500 bg-sky-50 p-3 text-xs font-semibold text-sky-950"><p className="font-black">Verifikasi email diperlukan</p><p className="mt-1">Tautan verifikasi telah diminta untuk {humanEmail}. Buka email tersebut, verifikasi akun, lalu masuk menggunakan alamat email yang sama. Profil dan Agent baru akan diprovisikan setelah sesi terverifikasi.</p><button type="button" disabled={resendingVerification || !onResendVerification} onClick={async () => { if (!onResendVerification) return; setResendingVerification(true); try { await onResendVerification(humanEmail.trim()); setSubmissionError('Email verifikasi dikirim ulang. Periksa inbox dan folder spam.'); } catch (cause) { setSubmissionError(cause instanceof Error ? cause.message : 'Email verifikasi tidak dapat dikirim ulang.'); } finally { setResendingVerification(false); } }} className="mt-2 font-black underline disabled:opacity-50">{resendingVerification ? 'Mengirim ulang…' : 'Kirim ulang email verifikasi'}</button><button type="button" onClick={() => { setVerificationPending(false); setAuthMode('LOGIN'); setStep('HUMAN_REGISTER'); }} className="ml-3 mt-2 font-black underline">Kembali ke Login</button></div>}
         {/* Top Dismiss Button */}
         <button
           onClick={onClose}
