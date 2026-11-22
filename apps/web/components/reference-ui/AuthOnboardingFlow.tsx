@@ -307,7 +307,7 @@ export default function AuthOnboardingFlow({
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-[6px_6px_0px_#0f172a] border-3 border-slate-900 overflow-hidden flex flex-col max-h-[92vh]">
         {submissionError && <p role="alert" className="mx-4 mt-4 rounded-xl border-2 border-rose-500 bg-white p-3 text-xs font-bold text-rose-700">{submissionError}</p>}
-        {verificationPending && <div role="status" className="mx-4 mt-4 rounded-xl border-2 border-sky-500 bg-sky-50 p-3 text-xs font-semibold text-sky-950"><p className="font-black">Verifikasi email diperlukan</p><p className="mt-1">Tautan verifikasi telah diminta untuk {humanEmail}. Buka email tersebut, verifikasi akun, lalu masuk menggunakan alamat email yang sama. Profil dan Agent baru akan diprovisikan setelah sesi terverifikasi.</p><button type="button" disabled={resendingVerification || !onResendVerification} onClick={async () => { if (!onResendVerification) return; setResendingVerification(true); try { await onResendVerification(humanEmail.trim()); setSubmissionError('Email verifikasi dikirim ulang. Periksa inbox dan folder spam.'); } catch (cause) { setSubmissionError(cause instanceof Error ? cause.message : 'Email verifikasi tidak dapat dikirim ulang.'); } finally { setResendingVerification(false); } }} className="mt-2 font-black underline disabled:opacity-50">{resendingVerification ? 'Mengirim ulang…' : 'Kirim ulang email verifikasi'}</button><button type="button" onClick={() => { setVerificationPending(false); setAuthMode('LOGIN'); setStep('HUMAN_REGISTER'); }} className="ml-3 mt-2 font-black underline">Kembali ke Login</button></div>}
+        {verificationPending && <div role="status" className="mx-4 mt-4 rounded-xl border-2 border-sky-500 bg-sky-50 p-3 text-xs font-semibold text-sky-950"><p className="font-black">{t("auth.verificationTitle")}</p><p className="mt-1">{t("auth.verificationBody")}</p><button type="button" disabled={resendingVerification || !onResendVerification} onClick={async () => { if (!onResendVerification) return; setResendingVerification(true); try { await onResendVerification(humanEmail.trim()); setSubmissionError('Email verifikasi dikirim ulang. Periksa inbox dan folder spam.'); } catch (cause) { setSubmissionError(cause instanceof Error ? cause.message : 'Email verifikasi tidak dapat dikirim ulang.'); } finally { setResendingVerification(false); } }} className="mt-2 font-black underline disabled:opacity-50">{resendingVerification ? t("auth.resending") : t("auth.resend")}</button><button type="button" onClick={() => { setVerificationPending(false); setAuthMode('LOGIN'); setStep('HUMAN_REGISTER'); }} className="ml-3 mt-2 font-black underline">{t("auth.backToLogin")}</button></div>}
         {/* Top Dismiss Button */}
         <button
           onClick={onClose}
@@ -543,19 +543,26 @@ export default function AuthOnboardingFlow({
                   {authMode === 'REGISTER' ? t('auth.registerTitle') : t('auth.loginTitle')}
                 </h2>
               </div>
-              <div className="flex rounded-xl bg-slate-100 p-1 border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a] text-xs font-black">
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-1 rounded-lg bg-white p-1 border border-slate-300 text-[10px] font-black" aria-label={t("language.label")}>
+                  <button type="button" onClick={() => setLocale("id-ID")} aria-pressed={locale === "id-ID"} className={`px-2 py-1 rounded-md ${locale === "id-ID" ? "bg-sky-600 text-white" : "text-slate-600"}`}>🇮🇩 ID</button>
+                  <button type="button" onClick={() => setLocale("en-US")} aria-pressed={locale === "en-US"} className={`px-2 py-1 rounded-md ${locale === "en-US" ? "bg-sky-600 text-white" : "text-slate-600"}`}>🇺🇸 EN</button>
+                </div>
+                <div className="flex rounded-xl bg-slate-100 p-1 border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a] text-xs font-black">
                 <button
+                  type="button"
                   onClick={() => setAuthMode('REGISTER')}
                   className={`px-3 py-1 rounded-lg transition ${authMode === 'REGISTER' ? 'bg-[#0284C7] text-white shadow-xs' : 'text-slate-700'}`}
                 >
-                  Daftar
+                  {t("auth.registerTab")}
                 </button>
                 <button
                   onClick={() => setAuthMode('LOGIN')}
                   className={`px-3 py-1 rounded-lg transition ${authMode === 'LOGIN' ? 'bg-[#0284C7] text-white shadow-xs' : 'text-slate-700'}`}
                 >
-                  Masuk
+                  {t("auth.loginTab")}
                 </button>
+                </div>
               </div>
             </div>
 
@@ -563,7 +570,7 @@ export default function AuthOnboardingFlow({
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase">
                 <User className="w-3.5 h-3.5 text-[#0284C7]" />
-                <span>Pilih Foto Avatar Human Anda</span>
+                <span>{t("auth.avatar")}</span>
               </label>
               <div className="flex items-center gap-3 overflow-x-auto py-1">
                 {humanAvatars.map((av) => (
@@ -597,7 +604,7 @@ export default function AuthOnboardingFlow({
                     type="text"
                     value={humanName}
                     onChange={(e) => setHumanName(e.target.value)}
-                    placeholder="Contoh: Alex Tamara"
+                    placeholder={t("auth.fullNamePlaceholder")}
                     className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
@@ -607,7 +614,7 @@ export default function AuthOnboardingFlow({
                     type="text"
                     value={humanHandle}
                     onChange={(e) => setHumanHandle(e.target.value)}
-                    placeholder="@alextamara"
+                    placeholder={t("auth.usernamePlaceholder")}
                     className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
@@ -622,7 +629,7 @@ export default function AuthOnboardingFlow({
                     type="email"
                     value={humanEmail}
                     onChange={(e) => setHumanEmail(e.target.value)}
-                    placeholder="nama@domain.com"
+                    placeholder={t("auth.emailPlaceholder")}
                     autoComplete="email"
                     required
                     className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
@@ -638,7 +645,7 @@ export default function AuthOnboardingFlow({
                     type="password"
                     value={humanPassword}
                     onChange={(e) => setHumanPassword(e.target.value)}
-                    placeholder="Min. 8 karakter"
+                    placeholder={t("auth.passwordPlaceholder")}
                     autoComplete={authMode === 'LOGIN' ? 'current-password' : 'new-password'}
                     minLength={authMode === 'REGISTER' ? 8 : undefined}
                     required
@@ -656,14 +663,14 @@ export default function AuthOnboardingFlow({
                   type="text"
                   value={humanBio}
                   onChange={(e) => setHumanBio(e.target.value)}
-                  placeholder="Ceritakan tentang passion atau fokus Anda..."
+                  placeholder={t("auth.bioPlaceholder")}
                   className="w-full mt-1 px-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                 />
               </div>
 
               {/* Interest Tags */}
               <div>
-                <label className="text-[11px] font-black text-slate-900">{t('auth.interests')}</label>
+                <label className="text-[11px] font-black text-slate-900">{t("auth.chooseInterests")}</label>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {availableInterests.map((interest) => {
                     const isSelected = selectedInterests.includes(interest);
