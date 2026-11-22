@@ -110,6 +110,34 @@ for (const contract of [
   await legacyStorage.setItem("legacy", "migrated-session");
   assert.equal(await legacyStorage.getItem("legacy"), "migrated-session", "the next write must migrate legacy sessions to the versioned format");
 
+  // A reader holding the old manifest must finish before a writer can
+  // commit a new generation and clean up the old chunks.
+  const raceValues = new Map();
+  let releaseChunkRead, chunkReadStartedResolve;
+  const chunkStarted = new Promise(resolve => { chunkReadStartedResolve = resolve; });
+  const chunkGate = new Promise(resolve => { releaseChunkRead = resolve; });
+  let pauseOldChunk = false;
+  const raceStore = {
+    async getItemAsync(key) {
+      if (pauseOldChunk && key.includes(":v1:") && key.endsWith(":0")) {
+        pauseOldChunk = false; chunkReadStartedResolve(); await chunkGate;
+      }
+      return raceValues.has(key) ? raceValues.get(key) : null;
+    },
+    async setItemAsync(key, value) { raceValues.set(key, value); },
+    async deleteItemAsync(key) { raceValues.delete(key); },
+  };
+  const raceStorage = createSecureSessionStorage(raceStore);
+  await raceStorage.setItem("race-session", "previous-session");
+  pauseOldChunk = true;
+  const pendingRead = raceStorage.getItem("race-session");
+  await chunkStarted;
+  const pendingWrite = raceStorage.setItem("race-session", "replacement-session");
+  releaseChunkRead();
+  assert.equal(await pendingRead, "previous-session", "concurrent read must finish against its committed generation");
+  await pendingWrite;
+  assert.equal(await raceStorage.getItem("race-session"), "replacement-session", "writer must commit after serialized read");
+
   await storage.removeItem("sb-auth-token");
   assert.equal(await storage.getItem("sb-auth-token"), null, "logout must tombstone the session before chunk cleanup");
 }
