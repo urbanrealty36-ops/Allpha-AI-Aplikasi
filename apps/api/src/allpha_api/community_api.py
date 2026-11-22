@@ -63,6 +63,19 @@ async def _community(community_id: uuid.UUID) -> dict[str, Any]:
         raise HTTPException(404, detail={"code": "COMMUNITY_NOT_FOUND", "message": "Komunitas tidak ditemukan atau tidak aktif."})
     return rows[0]
 
+async def _blocked_human_ids(user_id: str) -> set[str]:
+    """Apply mutual Human block policy to community member and post projections."""
+    outgoing = await _db("GET", "social_edges", params={
+        "select": "target_user_id", "actor_user_id": f"eq.{user_id}", "actor_node_type": "eq.human",
+        "target_node_type": "eq.human", "edge_type": "eq.block", "status": "eq.active", "limit": "1000",
+    })
+    incoming = await _db("GET", "social_edges", params={
+        "select": "actor_user_id", "target_user_id": f"eq.{user_id}", "target_node_type": "eq.human",
+        "actor_node_type": "eq.human", "edge_type": "eq.block", "status": "eq.active", "limit": "1000",
+    })
+    return {str(row["target_user_id"]) for row in (outgoing or [])} | {str(row["actor_user_id"]) for row in (incoming or [])}
+
+
 async def _membership(community_id: uuid.UUID, user_id: str) -> dict[str, Any] | None:
     rows = await _db("GET", "community_memberships", params={"select": "*", "community_id": f"eq.{community_id}", "user_id": f"eq.{user_id}", "status": "eq.active", "limit": "1"})
     return rows[0] if rows else None
@@ -235,7 +248,8 @@ async def join_community(community_id: uuid.UUID, user: dict[str, Any] = Depends
 async def list_members(community_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     await _require_member(community_id, str(user["id"]))
     rows = await _db("GET", "community_memberships", params={"select": "community_id,user_id,role,status,joined_at", "community_id": f"eq.{community_id}", "status": "eq.active", "order": "joined_at.asc", "limit": "500"})
-    return {"items": rows or []}
+    blocked = await _blocked_human_ids(str(user["id"]))
+    return {"items": [row for row in (rows or []) if str(row.get("user_id")) not in blocked]}
 
 
 @router.patch("/communities/{community_id}/members/{member_id}")
@@ -297,7 +311,8 @@ async def list_community_posts(community_id: uuid.UUID, limit: int = Query(defau
     if community["visibility"] == "private":
         await _require_member(community_id, str(user["id"]))
     rows = await _db("GET", "community_posts", params={"select": "*", "community_id": f"eq.{community_id}", "status": "eq.published", "order": "is_pinned.desc,pinned_at.desc,created_at.desc", "limit": str(limit)})
-    return {"items": rows or []}
+    blocked = await _blocked_human_ids(str(user["id"]))
+    return {"items": [row for row in (rows or []) if str(row.get("author_id")) not in blocked]}
 
 
 @router.delete("/communities/{community_id}/invites/{invite_id}", status_code=204)
