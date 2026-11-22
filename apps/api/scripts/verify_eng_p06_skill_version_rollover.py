@@ -46,6 +46,7 @@ grant usage on schema auth to public;
 grant execute on function auth.uid() to public;
 create table public.ai_agents(id uuid primary key,visibility text not null,status text not null);
 create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
+grant select on public.agent_ownerships to authenticated, service_role;
 create table public.agent_skills(
  id uuid primary key default gen_random_uuid(),agent_id uuid not null,created_by uuid not null,
  slug text not null,name text not null,description text not null default '',category text not null default 'general',
