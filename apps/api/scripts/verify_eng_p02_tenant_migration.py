@@ -1,4 +1,4 @@
-"""Validate the ENG-P02 forward repair on disposable PostgreSQL 17 (CI only)."""
+"""Validate ENG-P02 tenant repair and RBAC on disposable PostgreSQL 17 (CI only)."""
 from __future__ import annotations
 from pathlib import Path
 import subprocess, sys, time, uuid
@@ -17,9 +17,8 @@ def psql(sql: str) -> subprocess.CompletedProcess[str]:
     return run(["docker","exec","-i",CONTAINER,"psql","-X","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],input_text=sql)
 
 def main() -> int:
-    if not MIGRATION.is_file():
-        raise RuntimeError(f"Migration not found: {MIGRATION}")
-    migration_sql = MIGRATION.read_text(encoding="utf-8")
+    if not MIGRATION.is_file(): raise RuntimeError(f"Migration not found: {MIGRATION}")
+    migration_sql=MIGRATION.read_text(encoding="utf-8")
     run(["docker","run","--detach","--rm","--name",CONTAINER,"-e","POSTGRES_PASSWORD=allpha-ci-only","postgres:17-alpine"])
     try:
         for attempt in range(60):
@@ -37,55 +36,82 @@ create table auth.sessions(id uuid primary key,user_id uuid not null references 
 create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
 grant usage on schema auth to authenticated;
 grant execute on function auth.uid() to public;
+grant usage on schema public to service_role;
 """)
         psql(migration_sql)
         psql(migration_sql)
         psql("""
-insert into auth.users(id) values ('11111111-1111-4111-8111-111111111111'),('22222222-2222-4222-8222-222222222222');
-insert into auth.sessions(id,user_id) values ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111');
+insert into auth.users(id) values
+ ('11111111-1111-4111-8111-111111111111'),
+ ('22222222-2222-4222-8222-222222222222'),
+ ('33333333-3333-4333-8333-333333333333'),
+ ('44444444-4444-4444-8444-444444444444'),
+ ('55555555-5555-4555-8555-555555555555');
+insert into auth.sessions(id,user_id) values ('66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111');
+set role service_role;
+select * from public.create_organization_for_user('11111111-1111-4111-8111-111111111111','ENG-P02 Repair Check','eng-p02-repair-check');
+select * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','admin');
+select * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','member');
+do $$
+begin
+ begin
+  perform * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','44444444-4444-4444-8444-444444444444','admin');
+  raise exception using errcode='P0001',message='admin unexpectedly granted admin role';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  perform * from public.update_organization_member_role_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','admin');
+  raise exception using errcode='P0001',message='admin unexpectedly promoted member';
+ exception when insufficient_privilege then null;
+ end;
+end $$;
+select * from public.update_organization_member_role_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','admin');
+do $$
+begin
+ begin
+  perform public.remove_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333');
+  raise exception using errcode='P0001',message='admin unexpectedly removed another admin';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  perform public.remove_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111');
+  raise exception using errcode='P0001',message='owner unexpectedly removed owner membership';
+ exception when insufficient_privilege then null;
+ end;
+end $$;
+select * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','member');
+select public.remove_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','55555555-5555-4555-8555-555555555555');
+reset role;
 set role authenticated;
-select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
-insert into public.organizations(slug,name,owner_id) values ('eng-p02-repair-check','ENG-P02 Repair Check','11111111-1111-4111-8111-111111111111');
-do $$
-begin
- if (select count(*) from public.organizations where slug='eng-p02-repair-check')<>1 then raise exception 'owner cannot read organization'; end if;
- if (select count(*) from public.organization_memberships where user_id='11111111-1111-4111-8111-111111111111' and role='owner')<>1 then raise exception 'owner membership trigger missing'; end if;
- if (select count(*) from public.audit_events where action='organization.created')<>1 then raise exception 'organization audit missing'; end if;
-end $$;
-do $$
-begin
- begin
-  update public.organizations set owner_id='22222222-2222-4222-8222-222222222222' where slug='eng-p02-repair-check';
-  raise exception using errcode='P0001',message='owner_id update unexpectedly succeeded';
- exception when insufficient_privilege then null;
- end;
- begin
-  insert into public.organization_memberships(organization_id,user_id,role) select id,'22222222-2222-4222-8222-222222222222','admin' from public.organizations where slug='eng-p02-repair-check';
-  raise exception using errcode='P0001',message='membership escalation unexpectedly succeeded';
- exception when insufficient_privilege then null;
- end;
-end $$;
-select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
+select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
 do $$
 begin
  if (select count(*) from public.organizations where slug='eng-p02-repair-check')<>0 then raise exception 'cross-user organization read leaked'; end if;
  if (select count(*) from public.organization_memberships where user_id='11111111-1111-4111-8111-111111111111')<>0 then raise exception 'cross-user membership read leaked'; end if;
+ begin
+  insert into public.organizations(slug,name,owner_id) values('client-write-forbidden','Forbidden','44444444-4444-4444-8444-444444444444');
+  raise exception using errcode='P0001',message='authenticated direct organization insert unexpectedly succeeded';
+ exception when insufficient_privilege then null;
+ end;
 end $$;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
-select public.revoke_my_auth_session('33333333-3333-4333-8333-333333333333');
+select public.revoke_my_auth_session('66666666-6666-4666-8666-666666666666');
 reset role;
 do $$
 begin
- if not (select not_after is not null from auth.sessions where id='33333333-3333-4333-8333-333333333333') then raise exception 'session revoke failed'; end if;
- if not exists(select 1 from public.audit_events where action='auth.session.revoked' and resource_id='33333333-3333-4333-8333-333333333333') then raise exception 'session revoke audit missing'; end if;
- if has_column_privilege('authenticated','public.organizations','owner_id','UPDATE') then raise exception 'owner_id remains updateable'; end if;
- if not has_column_privilege('authenticated','public.organizations','slug','UPDATE') or not has_column_privilege('authenticated','public.organizations','name','UPDATE') then raise exception 'editable org columns missing'; end if;
- if has_function_privilege('anon','public.revoke_my_auth_session(uuid)','EXECUTE') then raise exception 'anon can execute revoke function'; end if;
- if not has_function_privilege('authenticated','public.revoke_my_auth_session(uuid)','EXECUTE') then raise exception 'authenticated cannot execute self-scoped revoke function'; end if;
+ if not (select not_after is not null from auth.sessions where id='66666666-6666-4666-8666-666666666666') then raise exception 'session revoke failed'; end if;
+ if not exists(select 1 from public.audit_events where action='organization.created') then raise exception 'organization audit missing'; end if;
+ if not exists(select 1 from public.audit_events where action='organization.member.added') then raise exception 'membership add audit missing'; end if;
+ if not exists(select 1 from public.audit_events where action='organization.member.role_changed') then raise exception 'membership role audit missing'; end if;
+ if not exists(select 1 from public.audit_events where action='organization.member.removed') then raise exception 'membership removal audit missing'; end if;
+ if not exists(select 1 from public.audit_events where action='auth.session.revoked') then raise exception 'session revoke audit missing'; end if;
+ if has_function_privilege('authenticated','public.create_organization_for_user(uuid,text,text)','EXECUTE') then raise exception 'authenticated can execute server-only organization creation RPC'; end if;
+ if not has_function_privilege('service_role','public.create_organization_for_user(uuid,text,text)','EXECUTE') then raise exception 'service_role cannot execute organization creation RPC'; end if;
+ if has_table_privilege('authenticated','public.organizations','INSERT') then raise exception 'authenticated can directly insert organizations'; end if;
  if not (select relrowsecurity from pg_class where oid='public.organizations'::regclass) or not (select relrowsecurity from pg_class where oid='public.organization_memberships'::regclass) or not (select relrowsecurity from pg_class where oid='public.audit_events'::regclass) then raise exception 'RLS missing'; end if;
 end $$;
 """)
-        print("PASS: migration applies twice; owner bootstrap/audit, session revocation, tenant RLS and owner_id privilege boundary verified.")
+        print("PASS: migration applies twice; server-only organization/member commands, role hierarchy, audit, session revocation and tenant RLS verified.")
         return 0
     finally:
         run(["docker","rm","--force",CONTAINER],check=False)

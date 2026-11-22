@@ -162,3 +162,44 @@ async def user_db_request(
     if not response.content:
         return None
     return response.json()
+
+
+async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any:
+    """Invoke a server-only Supabase RPC using the backend service-role secret."""
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not service_key:
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_NOT_CONFIGURED", "message": "Layanan data server belum dikonfigurasi."})
+    if not function_name.isidentifier():
+        raise HTTPException(status_code=500, detail={"code": "SERVICE_RPC_INVALID", "message": "Kontrak RPC internal tidak valid."})
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(f"{url}/rest/v1/rpc/{function_name}", headers=headers, json=body)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_UNAVAILABLE", "message": "Layanan data server sementara tidak tersedia."}) from exc
+    if response.status_code >= 500:
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_UNAVAILABLE", "message": "Layanan data server sementara tidak tersedia."})
+    if response.status_code >= 400:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        sqlstate = payload.get("code") if isinstance(payload, dict) else None
+        if sqlstate == "42501":
+            raise HTTPException(status_code=403, detail={"code": "ORGANIZATION_FORBIDDEN", "message": "Hak pengelolaan organisasi tidak tersedia."})
+        if sqlstate in ("P0002", "23503"):
+            raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota atau organisasi tidak ditemukan."})
+        if sqlstate == "23505" or response.status_code == 409:
+            raise HTTPException(status_code=409, detail={"code": "ORGANIZATION_MEMBER_CONFLICT", "message": "Keanggotaan organisasi sudah ada atau bertentangan."})
+        if sqlstate == "22023" or response.status_code in (400, 422):
+            raise HTTPException(status_code=422, detail={"code": "ORGANIZATION_INPUT_INVALID", "message": "Data organisasi atau keanggotaan tidak valid."})
+        if response.status_code in (401, 403):
+            raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_AUTH_INVALID", "message": "Kredensial layanan data server tidak valid."})
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_UNAVAILABLE", "message": "Layanan data server sementara tidak tersedia."})
+    if not response.content:
+        return None
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"code": "SERVICE_DATABASE_RESPONSE_INVALID", "message": "Respons layanan data server tidak valid."}) from exc

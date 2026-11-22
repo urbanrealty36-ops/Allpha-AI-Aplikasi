@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from allpha_api.auth import current_session_user, current_user, user_db_request
+from allpha_api.auth import current_session_user, current_user, user_db_request, service_db_request
 from allpha_api.agent_runtime_api import router as agent_runtime_router
 from allpha_api.agent_task_schedule_api import router as agent_task_schedule_router
 from allpha_api.text_generation_adapters import build_text_generation_router_from_environment
@@ -200,6 +200,16 @@ class OrganizationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=2, max_length=120)
     slug: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+
+class OrganizationMemberCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: uuid.UUID
+    role: Literal["admin", "member"] = "member"
+
+
+class OrganizationMemberRoleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["admin", "member"]
 
 
 
@@ -862,13 +872,10 @@ async def list_organizations(user: dict[str, Any] = Depends(current_user), reque
 
 
 @app.post("/v1/organizations", status_code=201, tags=["organizations"])
-async def create_organization(payload: OrganizationCreate, user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
-    # owner_id comes from the validated Supabase Auth identity, never the client payload.
-    rows = await user_db_request(
-        "POST", "organizations", request.state.supabase_access_token,
-        body={"name": payload.name, "slug": payload.slug, "owner_id": user["id"]},
-        params={"select": "id,name,slug,owner_id,created_at,updated_at"},
-        prefer="return=representation",
+async def create_organization(payload: OrganizationCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await service_db_request(
+        "create_organization_for_user",
+        body={"p_actor_user_id": user["id"], "p_name": payload.name, "p_slug": payload.slug},
     )
     if not rows:
         raise HTTPException(status_code=500, detail={"code": "CREATE_FAILED", "message": "Organisasi tidak dapat dibuat."})
@@ -881,7 +888,6 @@ async def list_organization_memberships(organization_id: uuid.UUID, user: dict[s
         "GET", "organization_memberships", request.state.supabase_access_token,
         params={"select": "organization_id,user_id,role,invited_by,created_at", "organization_id": f"eq.{organization_id}", "order": "created_at.asc", "limit": "500"},
     )
-    # RLS filters memberships; return 404 rather than disclose a private tenant's existence.
     if not rows:
         orgs = await user_db_request(
             "GET", "organizations", request.state.supabase_access_token,
@@ -890,6 +896,40 @@ async def list_organization_memberships(organization_id: uuid.UUID, user: dict[s
         if not orgs:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Organisasi tidak ditemukan."})
     return {"items": rows}
+
+
+@app.post("/v1/organizations/{organization_id}/memberships", status_code=201, tags=["organizations"])
+async def add_organization_membership(organization_id: uuid.UUID, payload: OrganizationMemberCreate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await service_db_request(
+        "add_organization_member_for_actor",
+        body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(payload.user_id), "p_role": payload.role},
+    )
+    if not rows:
+        raise HTTPException(status_code=500, detail={"code": "MEMBERSHIP_CREATE_FAILED", "message": "Keanggotaan tidak dapat dibuat."})
+    return {"membership": rows[0]}
+
+
+@app.patch("/v1/organizations/{organization_id}/memberships/{member_user_id}", tags=["organizations"])
+async def update_organization_membership_role(organization_id: uuid.UUID, member_user_id: uuid.UUID, payload: OrganizationMemberRoleUpdate, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    rows = await service_db_request(
+        "update_organization_member_role_for_actor",
+        body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(member_user_id), "p_role": payload.role},
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota organisasi tidak ditemukan."})
+    return {"membership": rows[0]}
+
+
+@app.delete("/v1/organizations/{organization_id}/memberships/{member_user_id}", tags=["organizations"])
+async def remove_organization_membership(organization_id: uuid.UUID, member_user_id: uuid.UUID, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    removed = await service_db_request(
+        "remove_organization_member_for_actor",
+        body={"p_organization_id": str(organization_id), "p_actor_user_id": user["id"], "p_target_user_id": str(member_user_id)},
+    )
+    if removed is not True:
+        raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota organisasi tidak ditemukan."})
+    return {"removed": True}
+
 
 
 # ENG-P04 — AI Agent identity is separate from the signed-in Human identity.

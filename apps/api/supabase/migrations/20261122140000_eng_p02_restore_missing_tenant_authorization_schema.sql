@@ -167,6 +167,201 @@ begin
 end;
 $$;
 
+
+-- Server-only organization command boundary. Clients receive SELECT only;
+-- all tenant mutations are authorized here and invoked by FastAPI with service_role.
+create or replace function private.organization_role_for_user(p_organization_id uuid,p_user_id uuid)
+returns text language sql stable security definer set search_path = ''
+as $
+  select m.role from public.organization_memberships m
+   where m.organization_id=p_organization_id and m.user_id=p_user_id limit 1;
+$;
+
+create or replace function public.create_organization_for_user(p_actor_user_id uuid,p_name text,p_slug text)
+returns table(id uuid,name text,slug text,owner_id uuid,created_at timestamptz,updated_at timestamptz)
+language plpgsql security definer set search_path = ''
+as $
+begin
+  if p_actor_user_id is null then
+    raise exception using errcode='28000',message='actor_required';
+  end if;
+  if p_name is null or pg_catalog.char_length(p_name) not between 2 and 120
+     or p_slug is null or p_slug !~ '^[a-z0-9][a-z0-9-]{1,62}
+alter table public.organization_memberships enable row level security;
+alter table public.audit_events enable row level security;
+
+drop policy if exists organizations_select_members on public.organizations;
+create policy organizations_select_members on public.organizations for select to authenticated
+using (private.is_organization_member(id) or owner_id = (select auth.uid()));
+drop policy if exists organizations_insert_owner on public.organizations;
+create policy organizations_insert_owner on public.organizations for insert to authenticated
+with check (owner_id = (select auth.uid()));
+drop policy if exists organizations_update_admins on public.organizations;
+create policy organizations_update_admins on public.organizations for update to authenticated
+using (private.is_organization_admin(id)) with check (private.is_organization_admin(id));
+
+drop policy if exists memberships_select_self_or_admin on public.organization_memberships;
+drop policy if exists organization_memberships_select_self_or_admin on public.organization_memberships;
+create policy memberships_select_self_or_admin on public.organization_memberships for select to authenticated
+using (user_id = (select auth.uid()) or private.is_organization_admin(organization_id));
+drop policy if exists memberships_no_client_insert on public.organization_memberships;
+create policy memberships_no_client_insert on public.organization_memberships for insert to authenticated with check (false);
+drop policy if exists memberships_no_client_update on public.organization_memberships;
+create policy memberships_no_client_update on public.organization_memberships for update to authenticated using (false) with check (false);
+drop policy if exists memberships_no_client_delete on public.organization_memberships;
+create policy memberships_no_client_delete on public.organization_memberships for delete to authenticated using (false);
+
+drop policy if exists audit_events_select_org_admins on public.audit_events;
+create policy audit_events_select_org_admins on public.audit_events for select to authenticated
+using (organization_id is not null and private.is_organization_admin(organization_id));
+drop policy if exists audit_events_no_client_insert on public.audit_events;
+create policy audit_events_no_client_insert on public.audit_events for insert to authenticated with check (false);
+drop policy if exists audit_events_no_client_update on public.audit_events;
+create policy audit_events_no_client_update on public.audit_events for update to authenticated using (false) with check (false);
+drop policy if exists audit_events_no_client_delete on public.audit_events;
+create policy audit_events_no_client_delete on public.audit_events for delete to authenticated using (false);
+
+drop trigger if exists organizations_set_updated_at on public.organizations;
+create trigger organizations_set_updated_at before update on public.organizations
+for each row execute function public.set_updated_at();
+drop trigger if exists organizations_add_creator_as_owner on public.organizations;
+create trigger organizations_add_creator_as_owner after insert on public.organizations
+for each row execute function public.create_organization_owner_membership();
+drop trigger if exists organizations_audit_created on public.organizations;
+create trigger organizations_audit_created after insert on public.organizations
+for each row execute function public.audit_organization_created();
+
+revoke all on function private.is_organization_member(uuid) from public,anon;
+revoke all on function private.is_organization_admin(uuid) from public,anon;
+grant execute on function private.is_organization_member(uuid) to authenticated;
+grant execute on function private.is_organization_admin(uuid) to authenticated;
+revoke all on function public.set_updated_at() from public,anon,authenticated;
+revoke all on function public.revoke_my_auth_session(uuid) from public,anon;
+grant execute on function public.revoke_my_auth_session(uuid) to authenticated;
+revoke all on function public.revoke_my_other_auth_sessions(uuid) from public,anon;
+grant execute on function public.revoke_my_other_auth_sessions(uuid) to authenticated;
+revoke all on function public.create_organization_owner_membership() from public,anon,authenticated;
+revoke all on function public.audit_organization_created() from public,anon,authenticated;
+
+grant usage on schema public to authenticated,service_role;
+grant select on public.organizations,public.organization_memberships,public.audit_events to authenticated;
+revoke insert,update,delete on public.organizations,public.organization_memberships,public.audit_events from authenticated;
+revoke insert (id,slug,name,owner_id,created_at,updated_at), update (id,slug,name,owner_id,created_at,updated_at)
+  on public.organizations from authenticated;
+grant execute on function public.create_organization_for_user(uuid,text,text) to service_role;
+grant execute on function public.add_organization_member_for_actor(uuid,uuid,uuid,text) to service_role;
+grant execute on function public.update_organization_member_role_for_actor(uuid,uuid,uuid,text) to service_role;
+grant execute on function public.remove_organization_member_for_actor(uuid,uuid,uuid) to service_role;
+ then
+    raise exception using errcode='22023',message='organization_input_invalid';
+  end if;
+  perform pg_catalog.set_config('request.jwt.claim.sub',p_actor_user_id::text,true);
+  return query
+    insert into public.organizations as o(name,slug,owner_id)
+    values(p_name,p_slug,p_actor_user_id)
+    returning o.id,o.name,o.slug,o.owner_id,o.created_at,o.updated_at;
+end;
+$;
+
+create or replace function public.add_organization_member_for_actor(
+ p_organization_id uuid,p_actor_user_id uuid,p_target_user_id uuid,p_role text
+)
+returns table(organization_id uuid,user_id uuid,role text,invited_by uuid,created_at timestamptz)
+language plpgsql security definer set search_path = ''
+as $
+declare v_actor_role text;
+begin
+  v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
+  if coalesce(v_actor_role,'') not in ('owner','admin') then
+    raise exception using errcode='42501',message='organization_management_forbidden';
+  end if;
+  if p_target_user_id is null or p_role not in ('member','admin') then
+    raise exception using errcode='22023',message='organization_member_input_invalid';
+  end if;
+  if v_actor_role='admin' and p_role<>'member' then
+    raise exception using errcode='42501',message='admin_cannot_grant_admin';
+  end if;
+  insert into public.organization_memberships(organization_id,user_id,role,invited_by)
+  values(p_organization_id,p_target_user_id,p_role,p_actor_user_id);
+  insert into public.audit_events(actor_user_id,organization_id,action,resource_type,resource_id,metadata)
+  values(p_actor_user_id,p_organization_id,'organization.member.added','organization_membership',
+         p_target_user_id::text,jsonb_build_object('role',p_role));
+  return query
+    select m.organization_id,m.user_id,m.role,m.invited_by,m.created_at
+      from public.organization_memberships m
+     where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
+end;
+$;
+
+create or replace function public.update_organization_member_role_for_actor(
+ p_organization_id uuid,p_actor_user_id uuid,p_target_user_id uuid,p_role text
+)
+returns table(organization_id uuid,user_id uuid,role text,invited_by uuid,created_at timestamptz)
+language plpgsql security definer set search_path = ''
+as $
+declare v_actor_role text; v_target_role text;
+begin
+  v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
+  if v_actor_role<>'owner' then
+    raise exception using errcode='42501',message='only_owner_can_change_member_roles';
+  end if;
+  if p_role not in ('member','admin') then
+    raise exception using errcode='22023',message='organization_member_role_invalid';
+  end if;
+  select m.role into v_target_role from public.organization_memberships m
+   where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
+  if not found then
+    raise exception using errcode='P0002',message='organization_member_not_found';
+  end if;
+  if v_target_role='owner' then
+    raise exception using errcode='42501',message='organization_owner_role_is_immutable';
+  end if;
+  update public.organization_memberships m set role=p_role
+   where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
+  insert into public.audit_events(actor_user_id,organization_id,action,resource_type,resource_id,metadata)
+  values(p_actor_user_id,p_organization_id,'organization.member.role_changed','organization_membership',
+         p_target_user_id::text,jsonb_build_object('from',v_target_role,'to',p_role));
+  return query
+    select m.organization_id,m.user_id,m.role,m.invited_by,m.created_at
+      from public.organization_memberships m
+     where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
+end;
+$;
+
+create or replace function public.remove_organization_member_for_actor(
+ p_organization_id uuid,p_actor_user_id uuid,p_target_user_id uuid
+)
+returns boolean language plpgsql security definer set search_path = ''
+as $
+declare v_actor_role text; v_target_role text;
+begin
+  v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
+  if coalesce(v_actor_role,'') not in ('owner','admin') then
+    raise exception using errcode='42501',message='organization_management_forbidden';
+  end if;
+  select m.role into v_target_role from public.organization_memberships m
+   where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
+  if not found then
+    raise exception using errcode='P0002',message='organization_member_not_found';
+  end if;
+  if v_target_role='owner' or (v_actor_role='admin' and v_target_role<>'member') then
+    raise exception using errcode='42501',message='organization_member_removal_forbidden';
+  end if;
+  delete from public.organization_memberships m
+   where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
+  insert into public.audit_events(actor_user_id,organization_id,action,resource_type,resource_id,metadata)
+  values(p_actor_user_id,p_organization_id,'organization.member.removed','organization_membership',
+         p_target_user_id::text,jsonb_build_object('role',v_target_role));
+  return true;
+end;
+$;
+
+revoke all on function private.organization_role_for_user(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function public.create_organization_for_user(uuid,text,text) from public,anon,authenticated;
+revoke all on function public.add_organization_member_for_actor(uuid,uuid,uuid,text) from public,anon,authenticated;
+revoke all on function public.update_organization_member_role_for_actor(uuid,uuid,uuid,text) from public,anon,authenticated;
+revoke all on function public.remove_organization_member_for_actor(uuid,uuid,uuid) from public,anon,authenticated;
+
 alter table public.organizations enable row level security;
 alter table public.organization_memberships enable row level security;
 alter table public.audit_events enable row level security;
@@ -224,10 +419,12 @@ grant execute on function public.revoke_my_other_auth_sessions(uuid) to authenti
 revoke all on function public.create_organization_owner_membership() from public,anon,authenticated;
 revoke all on function public.audit_organization_created() from public,anon,authenticated;
 
-grant usage on schema public to authenticated;
-grant select on public.organizations to authenticated;
-revoke insert,update on public.organizations from authenticated;
+grant usage on schema public to authenticated,service_role;
+grant select on public.organizations,public.organization_memberships,public.audit_events to authenticated;
+revoke insert,update,delete on public.organizations,public.organization_memberships,public.audit_events from authenticated;
 revoke insert (id,slug,name,owner_id,created_at,updated_at), update (id,slug,name,owner_id,created_at,updated_at)
   on public.organizations from authenticated;
-grant insert (slug,name,owner_id), update (slug,name) on public.organizations to authenticated;
-grant select on public.organization_memberships,public.audit_events to authenticated;
+grant execute on function public.create_organization_for_user(uuid,text,text) to service_role;
+grant execute on function public.add_organization_member_for_actor(uuid,uuid,uuid,text) to service_role;
+grant execute on function public.update_organization_member_role_for_actor(uuid,uuid,uuid,text) to service_role;
+grant execute on function public.remove_organization_member_for_actor(uuid,uuid,uuid) to service_role;
