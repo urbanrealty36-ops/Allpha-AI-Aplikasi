@@ -230,7 +230,7 @@ export default function AuthOnboardingFlow({
     if (isSubmitting) return;
     setSubmissionError('');
     setVerificationPending(false);
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(humanEmail.trim()) || !humanPassword) {
+    if (!/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(humanEmail.trim()) || !humanPassword) {
       setSubmissionError('Masukkan email dan password untuk melanjutkan.');
       setStep('HUMAN_REGISTER');
       return;
