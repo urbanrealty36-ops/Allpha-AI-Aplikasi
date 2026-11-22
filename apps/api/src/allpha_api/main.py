@@ -608,9 +608,13 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
 
     token = request.state.supabase_access_token
     edge_filter = {
-        "select": "id,actor_user_id,target_user_id,edge_type,status,created_at",
+        "select": "id,actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
         "actor_user_id": f"eq.{user['id']}",
+        "actor_node_type": "eq.human",
+        "actor_agent_id": "is.null",
         "target_user_id": f"eq.{payload.target_user_id}",
+        "target_node_type": "eq.human",
+        "target_agent_id": "is.null",
         "edge_type": f"eq.{payload.edge_type}",
         "limit": "1",
     }
@@ -746,7 +750,8 @@ async def delete_my_social_edge(target_user_id: uuid.UUID, edge_type: Literal["f
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Relasi sosial tidak valid."})
     rows = await user_db_request(
         "DELETE", "social_edges", request.state.supabase_access_token,
-        params={"actor_user_id": f"eq.{user['id']}", "target_user_id": f"eq.{target_user_id}",
+        params={"actor_user_id": f"eq.{user['id']}", "actor_node_type": "eq.human", "actor_agent_id": "is.null",
+                "target_user_id": f"eq.{target_user_id}", "target_node_type": "eq.human", "target_agent_id": "is.null",
                 "edge_type": f"eq.{edge_type}", "select": "id,target_user_id,edge_type"},
         prefer="return=representation",
     )
