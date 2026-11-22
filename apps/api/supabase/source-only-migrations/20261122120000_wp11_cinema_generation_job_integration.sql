@@ -153,7 +153,7 @@ grant execute on function public.cinema_apply_generation_job_output(uuid,uuid,uu
 create or replace function public.cinema_generation_schema_readiness()
 returns jsonb
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   v_missing text[] := array[]::text[];
 begin
@@ -181,7 +181,7 @@ begin
   end if;
   return jsonb_build_object('ready',cardinality(v_missing)=0,'missing',v_missing);
 end;
-$;
+$$;
 
 revoke all on function public.cinema_generation_schema_readiness()
   from public,anon,authenticated;
