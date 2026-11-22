@@ -41,6 +41,32 @@ def _batch_size() -> int:
     return max(1, min(value, 25))
 
 
+async def _social_schema_ready(store: AgentRuntimeStore) -> bool:
+    """Fail closed for WP-06 until its own tables, RPCs, RLS and grants are ready."""
+    enabled = (
+        os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "false").lower() == "true"
+        and os.getenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false").lower() == "true"
+    )
+    if not enabled:
+        return False
+    try:
+        result = await store.request("POST", "rpc/agent_social_automation_schema_readiness", body={})
+    except AgentRuntimePersistenceError:
+        logger.warning("WP-06 Social consumer remains idle; schema readiness RPC is unavailable")
+        return False
+    if isinstance(result, list):
+        result = result[0] if result and isinstance(result[0], dict) else {}
+    if not isinstance(result, dict) or result.get("ready") is not True:
+        logger.warning(
+            "WP-06 Social consumer remains idle; missing_tables=%s missing_functions=%s missing_privileges=%s",
+            (result or {}).get("missing_tables", []) if isinstance(result, dict) else [],
+            (result or {}).get("missing_functions", []) if isinstance(result, dict) else [],
+            (result or {}).get("missing_privileges", []) if isinstance(result, dict) else [],
+        )
+        return False
+    return True
+
+
 def _concurrency() -> int:
     """Bound parallel task execution; each task still obtains its own DB lease."""
     try:
@@ -138,13 +164,17 @@ async def run_once(store: AgentRuntimeStore) -> int:
         )
         return 0
     await store.reap_retry_exhaustion()
-    try:
-        await run_social_events_once(store, limit=_batch_size())
-        await reconcile_social_reply_approvals(store, limit=_batch_size())
-    except AgentRuntimePersistenceError:
-        logger.exception("WP-06 Social intake or approval reconciliation unavailable")
+    social_ready = await _social_schema_ready(store)
+    if social_ready:
+        try:
+            await run_social_events_once(store, limit=_batch_size())
+            await reconcile_social_reply_approvals(store, limit=_batch_size())
+        except AgentRuntimePersistenceError:
+            logger.exception("WP-06 Social intake or approval reconciliation unavailable")
 
     rows = await store.list_runnable_planned_tasks(limit=_batch_size())
+    if not social_ready:
+        rows = [row for row in rows if not is_agent_social_reply_task(row)]
     processed = 0
     concurrency = _concurrency()
     # Process bounded groups. If one group encounters uncertain persistence,
@@ -158,10 +188,11 @@ async def run_once(store: AgentRuntimeStore) -> int:
         if any(stop_batch for _, stop_batch in outcomes):
             break
 
-    try:
-        await reconcile_social_reply_approvals(store, limit=_batch_size())
-    except AgentRuntimePersistenceError:
-        logger.exception("WP-06 post-batch approval reconciliation unavailable")
+    if social_ready:
+        try:
+            await reconcile_social_reply_approvals(store, limit=_batch_size())
+        except AgentRuntimePersistenceError:
+            logger.exception("WP-06 post-batch approval reconciliation unavailable")
     return processed
 
 
