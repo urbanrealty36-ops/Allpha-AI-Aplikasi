@@ -22,11 +22,11 @@ permissions:
 # Public client configuration shared by the four monorepo app surfaces.
 # These are public URLs/keys only; never place service-role or provider secrets here.
 env:
-  ALLPHA_API_BASE_URL: https://allpha-api.up.railway.app
-  NEXT_PUBLIC_API_BASE_URL: https://allpha-api.up.railway.app
+  ALLPHA_API_BASE_URL: https://api.allpha.web.id
+  NEXT_PUBLIC_API_BASE_URL: https://api.allpha.web.id
   NEXT_PUBLIC_SUPABASE_URL: https://dvdziauyvuhcnqhrrvww.supabase.co
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Kc2veoWBTA_Plv-LBMfMqw_82bu43hg
-  EXPO_PUBLIC_API_BASE_URL: https://allpha-api.up.railway.app
+  EXPO_PUBLIC_API_BASE_URL: https://api.allpha.web.id
   EXPO_PUBLIC_SUPABASE_URL: https://dvdziauyvuhcnqhrrvww.supabase.co
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Kc2veoWBTA_Plv-LBMfMqw_82bu43hg
 concurrency:
@@ -34,6 +34,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  canonical-runtime-origin:
+    name: Verify canonical Railway API origin
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify the live API readiness endpoint and shared client origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ALLPHA_API_BASE_URL" = "https://api.allpha.web.id"
+          test "$NEXT_PUBLIC_API_BASE_URL" = "$ALLPHA_API_BASE_URL"
+          test "$EXPO_PUBLIC_API_BASE_URL" = "$ALLPHA_API_BASE_URL"
+          curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 "$ALLPHA_API_BASE_URL/readyz"
+
   api-tests:
     name: API regression tests
     runs-on: ubuntu-latest

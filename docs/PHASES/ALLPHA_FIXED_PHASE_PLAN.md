@@ -3,7 +3,7 @@
 **Product authority:** `docs/PRD/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE.md`  
 **Agent rules:** `AGENTS.md`  
 **Branch:** `main` · **Monorepo:** `urbanrealty36-ops/Allpha-AI-Aplikasi`  
-**Last reconciled:** 2026-11-22 (ENG-P01 native callback retry fix, EAS production workflow/config and fresh Allpha Smoke/API regression evidence recorded; external redirect/EAS/device gates remain open)
+**Last reconciled:** 2026-11-22 (ENG-P01 canonical Railway API origin corrected in the platform workflow; readiness probe added; external Auth redirect/EAS/device gates remain open)
 
 > Dokumen ini adalah satu-satunya acuan operasional untuk urutan ENG phase, status, cakupan empat aplikasi, dependensi, aset 3D, dan pekerjaan berikutnya. Master PRD tetap menjadi sumber kebenaran produk. Jangan membuat phase baru, roadmap paralel, status board terpisah, atau dokumen phase rutin lainnya.
 
@@ -497,3 +497,14 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - The ENG-P06 CI verifier's prior lifecycle assertion was corrected to publish the first version before testing owner edits against a published Skill. A subsequent run exposed a literal SQL block delimiter typo (`DO $` rather than `DO $$`) in the verifier itself. Corrected the source and committed as `0437884a23d1402ab1152326f0b883b69550bc58`.
 - This is a test-harness repair only; it does not change the already-applied production migration or mutate production skill data.
 - CI for the exact latest commit has not yet reported the ENG-P01/API job. Do not treat the older failure as a product lifecycle failure, but do not mark ENG-P06 complete until the corrected disposable PostgreSQL 17 gate passes and the real owner/operator/runtime journey is evidenced.
+
+
+### 21. ENG-P01 canonical Railway API origin correction — 2026-11-22
+
+- **Scope / PRD traceability:** ENG-P01 platform foundation; Master PRD Railway canonical runtime addendum and ADR-RAILWAY-001.
+- **Root cause:** the ENG-P01 GitHub Actions workflow injected the legacy `https://allpha-api.up.railway.app` host into Web, Native and API build/test environments. The canonical Railway API service is configured on `api.allpha.web.id`; the legacy host is not a configured domain on the service.
+- **Implementation:** replaced all three legacy client/API origin values with `https://api.allpha.web.id`; added a dedicated CI gate that asserts the Web and Native API origins are identical and checks the live Railway `/readyz` endpoint before platform build jobs execute.
+- **Safety:** no production application source, database schema, credentials or live Railway variables were changed by this workflow correction. No duplicate runtime or deployment was created.
+- **Verification:** Railway service configuration confirms `api.allpha.web.id` targets port 8080 and uses `/readyz` as its health check. The new GitHub Actions run is the required execution evidence; do not promote ENG-P01 based on this correction alone.
+- **Status:** ENG-P01 remains `in_progress`. External Supabase Auth custom-scheme redirect allow-list, approved EAS project linkage, `EXPO_TOKEN`, remote signing credentials and physical-device callback/recovery evidence remain open.
+- **Next:** complete the remaining external native platform gates; only then proceed to ENG-P02 acceptance according to the fixed dependency order.
