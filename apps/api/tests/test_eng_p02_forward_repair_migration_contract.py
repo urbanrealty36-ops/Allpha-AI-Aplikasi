@@ -33,8 +33,6 @@ def test_eng_p02_forward_repair_restores_only_additive_tenant_and_session_object
     for fragment in required:
         assert fragment in sql, f"missing forward-repair contract: {fragment}"
 
-    # Policy/trigger replacement is intentionally idempotent. Table/data
-    # destruction and schema contraction are forbidden in this repair.
     forbidden = (
         r"\bdrop\s+table\b",
         r"\btruncate\b",
@@ -54,3 +52,13 @@ def test_session_inventory_never_exposes_refresh_tokens_or_cross_user_sessions()
     assert "where s.user_id = (select auth.uid())" in body
     assert "s.id = p_current_session_id" in body
     assert "refresh_token" not in body
+
+
+def test_tenant_rls_predicates_are_executable_only_for_authenticated_members():
+    sql = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "grant execute on function private.is_organization_member(uuid) to authenticated;" in sql
+    assert "grant execute on function private.is_organization_admin(uuid) to authenticated;" in sql
+    assert "revoke all on function private.is_organization_member(uuid) from public,anon;" in sql
+    assert "revoke all on function private.is_organization_admin(uuid) from public,anon;" in sql
+    assert "using (private.is_organization_member(id) or owner_id = (select auth.uid()))" in sql
+    assert "using (private.is_organization_admin(organization_id))" in sql
