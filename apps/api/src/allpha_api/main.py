@@ -389,6 +389,57 @@ async def revoke_my_auth_session(request: Request, user: dict[str, Any] = Depend
     return {"revoked": True}
 
 
+@app.get("/v1/me/sessions", tags=["identity"])
+async def list_my_auth_sessions(
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """List only the authenticated Human's active Supabase Auth sessions."""
+    rows = await user_db_request(
+        "POST",
+        "rpc/list_my_auth_sessions",
+        request.state.supabase_access_token,
+        body={"p_current_session_id": request.state.auth_session_id},
+    )
+    return {"items": rows or [], "current_session_id": request.state.auth_session_id}
+
+
+@app.post("/v1/me/sessions/revoke-others", tags=["identity"])
+async def revoke_other_auth_sessions(
+    request: Request,
+    user: dict[str, Any] = Depends(current_session_user),
+) -> dict[str, int]:
+    """Revoke all of this Human's active sessions except the current session."""
+    revoked = await user_db_request(
+        "POST",
+        "rpc/revoke_my_other_auth_sessions",
+        request.state.supabase_access_token,
+        body={"p_current_session_id": request.state.auth_session_id},
+    )
+    if not isinstance(revoked, int) or revoked < 0:
+        raise HTTPException(status_code=503, detail={"code": "SESSION_REVOCATION_FAILED", "message": "Sesi perangkat lain tidak dapat dicabut."})
+    return {"revoked_count": revoked}
+
+
+@app.post("/v1/me/sessions/{session_id}/revoke", tags=["identity"])
+async def revoke_selected_auth_session(
+    session_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_session_user),
+) -> dict[str, bool]:
+    """Revoke a session only when it belongs to the authenticated Human."""
+    revoked = await user_db_request(
+        "POST",
+        "rpc/revoke_my_auth_session",
+        request.state.supabase_access_token,
+        body={"p_session_id": str(session_id)},
+    )
+    if revoked is not True:
+        # Do not reveal whether a foreign session exists.
+        raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Sesi tidak ditemukan atau sudah tidak aktif."})
+    return {"revoked": True}
+
+
 @app.get("/v1/me", tags=["identity"])
 async def get_me(user: dict[str, Any] = Depends(current_user), request: Request = None) -> dict[str, Any]:
     access_token = request.state.supabase_access_token
