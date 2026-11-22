@@ -336,7 +336,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
     if (!supabase || busy) return;
     setBusy(true); setError(""); setMessage("");
     const normalizedEmail = email.trim().toLowerCase();
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setError("Masukkan alamat email yang valid."); setBusy(false); return;
     }
     try {
