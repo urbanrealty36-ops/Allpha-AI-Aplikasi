@@ -73,7 +73,9 @@ end $$;
 create trigger social_edges_events after insert or update or delete on public.social_edges for each row execute function public.capture_social_graph_event();
 alter table public.social_edges enable row level security;
 create policy social_edges_read on public.social_edges for select to authenticated using(actor_user_id=auth.uid() or target_user_id=auth.uid());
-grant select,insert,update,delete,truncate,references,trigger on public.social_edges to authenticated;
+grant select,delete,truncate,references,trigger on public.social_edges to authenticated;
+grant insert(actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,idempotency_key) on public.social_edges to authenticated;
+grant update(status) on public.social_edges to authenticated;
 """)
         migration = MIGRATION.read_text(encoding="utf-8")
         psql(migration)
@@ -101,7 +103,8 @@ select * from public.remove_social_edge_for_actor('11111111-1111-4111-8111-11111
 reset role;
 do $$
 begin
- if has_table_privilege('authenticated','public.social_edges','INSERT') or has_table_privilege('authenticated','public.social_edges','UPDATE') or has_table_privilege('authenticated','public.social_edges','DELETE') then raise exception 'authenticated direct DML remains'; end if;
+ if has_table_privilege('authenticated','public.social_edges','INSERT') or has_table_privilege('authenticated','public.social_edges','UPDATE') or has_table_privilege('authenticated','public.social_edges','DELETE') then raise exception 'authenticated table-level DML remains'; end if;
+ if has_column_privilege('authenticated','public.social_edges','actor_user_id','INSERT') or has_column_privilege('authenticated','public.social_edges','status','UPDATE') then raise exception 'authenticated column-level DML remains'; end if;
  if has_function_privilege('authenticated','public.create_social_edge_for_actor(uuid,uuid,text,text,uuid,uuid,text,text)','EXECUTE') then raise exception 'authenticated can execute server RPC'; end if;
  if not has_function_privilege('service_role','public.create_social_edge_for_actor(uuid,uuid,text,text,uuid,uuid,text,text)','EXECUTE') then raise exception 'service_role RPC grant missing'; end if;
  if (select count(*) from public.social_graph_events)<6 then raise exception 'event capture missing'; end if;

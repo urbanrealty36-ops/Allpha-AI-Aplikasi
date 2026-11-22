@@ -1,6 +1,13 @@
 -- ENG-P04 Social Graph command boundary. Forward-only; do not replay historical migrations.
 -- Keep one social_edges table and existing policy/event triggers as the canonical authority.
 revoke insert, update, delete, truncate, references, trigger on table public.social_edges from public, anon, authenticated;
+-- PostgreSQL table-level REVOKE does not remove column-level grants. Revoke
+-- the exact authenticated write columns discovered in the live ACL catalog.
+revoke insert (
+  actor_user_id, target_user_id, actor_node_type, target_node_type,
+  actor_agent_id, target_agent_id, edge_type, status, idempotency_key
+) on table public.social_edges from public, anon, authenticated;
+revoke update (status) on table public.social_edges from public, anon, authenticated;
 grant select on table public.social_edges to authenticated;
 
 create or replace function public.create_social_edge_for_actor(
