@@ -58,8 +58,9 @@ async def _social_schema_ready(store: AgentRuntimeStore) -> bool:
         result = result[0] if result and isinstance(result[0], dict) else {}
     if not isinstance(result, dict) or result.get("ready") is not True:
         logger.warning(
-            "WP-06 Social consumer remains idle; missing_tables=%s missing_functions=%s missing_privileges=%s",
+            "WP-06 Social consumer remains idle; missing_tables=%s missing_columns=%s missing_functions=%s missing_privileges=%s",
             (result or {}).get("missing_tables", []) if isinstance(result, dict) else [],
+            (result or {}).get("missing_columns", []) if isinstance(result, dict) else [],
             (result or {}).get("missing_functions", []) if isinstance(result, dict) else [],
             (result or {}).get("missing_privileges", []) if isinstance(result, dict) else [],
         )
