@@ -225,6 +225,12 @@ export default function AiCinemaCreatorWorkspace() {
   useEffect(() => { void loadReadyMedia(); }, [loadReadyMedia]);
   useEffect(() => { void loadCapabilityStatus(); }, [loadCapabilityStatus]);
   useEffect(() => { void loadEpisodes(selectedTitleId); }, [loadEpisodes, selectedTitleId]);
+  useEffect(() => {
+    setGenerationJobId("");
+    setGenerationJob(null);
+    setGenerationArtifactText("");
+    setGenerationQuote(null);
+  }, [selectedTitleId]);
 
   const loadCreatorGovernance = useCallback(async () => {
     try {
@@ -446,17 +452,18 @@ export default function AiCinemaCreatorWorkspace() {
   }
 
   useEffect(() => {
-    if (!generationJobId) return;
+    if (!generationJobId || !selectedTitleId) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
     const poll = async () => {
       try {
-        const result = await authorizedRequest<{ job: GenerationJob }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}`);
+        const result = await authorizedRequest<{ job: GenerationJob }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}`, { signal: controller.signal });
         if (!active) return;
         setGenerationJob(result.job);
         if (result.job.status === "succeeded" && result.job.artifact_available) {
-          const artifact = await authorizedRequest<{ url: string }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}/artifact`);
-          const response = await fetch(artifact.url, { cache: "no-store" });
+          const artifact = await authorizedRequest<{ url: string }>(`/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}/artifact`, { signal: controller.signal });
+          const response = await fetch(artifact.url, { cache: "no-store", signal: controller.signal });
           if (!response.ok) throw new Error("Artefak generation privat tidak dapat diambil.");
           const output = await response.text();
           if (active) setGenerationArtifactText(output.slice(0, 100000));
@@ -465,13 +472,13 @@ export default function AiCinemaCreatorWorkspace() {
         if (["failed", "cancelled", "pending_reconciliation", "succeeded"].includes(result.job.status)) return;
         timer = setTimeout(poll, 4000);
       } catch (cause) {
-        if (!active) return;
+        if (!active || (cause instanceof DOMException && cause.name === "AbortError")) return;
         setError(cause instanceof Error ? cause.message : "Status Generation Job belum dapat dimuat.");
         timer = setTimeout(poll, 8000);
       }
     };
     void poll();
-    return () => { active = false; if (timer) clearTimeout(timer); };
+    return () => { active = false; controller.abort(); if (timer) clearTimeout(timer); };
   }, [generationJobId, selectedTitleId]);
 
   async function applyCinemaGeneration() {
