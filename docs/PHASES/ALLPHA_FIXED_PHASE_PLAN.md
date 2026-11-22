@@ -3,7 +3,7 @@
 **Product authority:** `docs/PRD/ALLPHA_UNIVERSE_MASTER_PRD_v3.0.0_COMPLETE.md`  
 **Agent rules:** `AGENTS.md`  
 **Branch:** `main` · **Monorepo:** `urbanrealty36-ops/Allpha-AI-Aplikasi`  
-**Last reconciled:** 2026-10-13
+**Last reconciled:** 2026-11-22 (recovered original project source; WP-07 evidence checkpoint)
 
 > Dokumen ini adalah satu-satunya acuan operasional untuk urutan ENG phase, status, cakupan empat aplikasi, dependensi, aset 3D, dan pekerjaan berikutnya. Master PRD tetap menjadi sumber kebenaran produk. Jangan membuat phase baru, roadmap paralel, status board terpisah, atau dokumen phase rutin lainnya.
 
@@ -53,9 +53,9 @@ Aturan anti-kelalaian: satu phase tidak boleh dianggap selesai jika suatu aplika
 | ENG-P06 | Agent Studio, skills, tools, capability governance | not_started | Setelah identity/ownership siap |
 | ENG-P07 | Knowledge ingestion, document processing, Agent learning | not_started | Upload, proses, status job, provenance, delete/retry |
 | ENG-P08 | Agent memory, retrieval, context assembly, privacy isolation | not_started | Memory lifecycle dan owner/tenant isolation |
-| ENG-P09 | AI Gateway, Model Router, provider adapters, cost policy | not_started | Provider-neutral routing, metering, quota dan budget |
-| ENG-P10 | Agent Runtime, tool execution, conversation sessions | not_started | Runtime terikat permission, budget, tool contracts |
-| ENG-P11 | Durable workflow orchestration, checkpoint/resume | not_started | Durable state, retry/idempotency, cancellation/resume |
+| ENG-P09 | AI Gateway, Model Router, provider adapters, cost policy | in_progress | WP-07 generation source uses canonical router; close only after approved model route, moderation policy, credit/entitlement gates and real provider lifecycle evidence are available |
+| ENG-P10 | Agent Runtime, tool execution, conversation sessions | in_progress | Canonical runtime/store/API and `allpha-agent-runtime-worker` source exist; complete schema readiness, permission-bound execution and real recovery evidence before activation |
+| ENG-P11 | Durable workflow orchestration, checkpoint/resume | in_progress | WP-07 source covers leases, heartbeat, retry, checkpoint, cancellation and effect receipts; source-only migrations and runtime acceptance remain open |
 | ENG-P12 | Skill Challenge, evaluation, achievements/rewards | not_started | Evaluasi traceable, anti-abuse dan reward ledger |
 | ENG-P13 | Content creation dan media pipeline | not_started | Satu content model, upload, preview/publish/error recovery |
 | ENG-P14 | Social feed, ranking, interactions dan controls | not_started | API + seluruh client yang terdampak |
@@ -187,3 +187,16 @@ Sebelum memajukan status:
 
 ## 9. Berikutnya
 **Pekerjaan berikutnya adalah ENG-P01: implementasi fondasi native Android/iOS di `apps/client`, lalu menghubungkan ENG-P02/P03 ke native journey yang nyata.** Jangan membuat phase Android/iOS baru. Pekerjaan 3D dilanjutkan pada ENG-P21–ENG-P24 dengan kontrak di bagian 5, bukan lewat roadmap atau dokumen terpisah.
+
+## 10. Current WP-07 continuation checkpoint — 2026-11-22
+
+This checkpoint records repository and production-schema evidence observed during the current continuation. It does not create a new ENG phase or change the owning domain definitions.
+
+- **Owning engineering scope:** ENG-P09 (canonical AI Gateway/Model Router), ENG-P10 (canonical Agent Runtime), and ENG-P11 (durable orchestration/checkpoint lifecycle). WP-07 is the current cross-domain delivery workstream, not a new ENG phase.
+- **Source implementation observed:** `apps/api/src/allpha_api/agent_runtime.py`, `agent_runtime_store.py`, `agent_runtime_worker.py`, `agent_runtime_api.py`, and `agent_social_automation_runtime.py`. The worker checks `agent_runtime_worker_schema_readiness()` before reaping or claiming tasks, and is disabled by default through `ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=false`.
+- **Durable lifecycle source observed:** source-only migrations include `20261118194500_wp07_runtime_lease_heartbeat.sql`, `20261118195000_wp07_durable_retry_attempts.sql`, `20261118195500_wp07_runtime_worker_schema_readiness.sql`, `20261120200000_wp07_wp06_atomic_social_effect_receipts.sql`, `20261121100000_wp07_success_receipt_finalization_guard.sql`, `20261121110000_wp07_require_owner_approved_social_result.sql`, and `20261121120000_wp07_worker_owned_social_effect_dispatch.sql`.
+- **Production database evidence:** the Supabase migration ledger last reports `20261115185633`; the required runtime readiness RPC and `agent_runtime_tool_plans` were absent in the read-only catalog inspection. The above later migrations remain source-only and must not be represented as applied.
+- **Runtime evidence:** Railway production currently contains only the API, Web and Super Admin services. No dedicated Agent Runtime worker or scheduler service is active. Do not activate a consumer until the complete migration chain, server-only secret, schema readiness, policy and single-consumer ownership gates pass.
+- **WP-06 dependency:** the canonical Agent Runtime worker contains Social event intake, approval reconciliation and owner-approved effect dispatch integration in source. Real event processing, credit settlement, DM/publishing side effects and recovery remain unverified until the migration chain and runtime evidence exist.
+- **Current status:** ENG-P09/P10/P11 remain `in_progress`; WP-07 remains `IN_PROGRESS / SOURCE_IMPLEMENTED / MIGRATION_AND_ACCEPTANCE_NOT_VERIFIED`. No production-ready claim is permitted.
+- **Next action:** reconcile and validate the complete WP-07 source-only migration chain against an already-existing isolated non-production Supabase target, then exercise migration upgrade, RLS/grants, lease concurrency, stale-worker fencing, checkpoint recovery, event replay and effect receipts. The canonical production database must not be used for destructive or concurrency experiments. Do not create a second database or branch merely to bypass this gate.
