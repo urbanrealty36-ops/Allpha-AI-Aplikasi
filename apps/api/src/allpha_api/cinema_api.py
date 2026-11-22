@@ -423,6 +423,62 @@ async def save_cinema_production(
     return {"item": rows[0]}
 
 
+@router.get("/creator/production-readiness")
+async def cinema_production_readiness(
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Return truthful, non-billable readiness for the authenticated Cinema creator.
+
+    This endpoint never starts generation or reserves credits. It reports the
+    canonical database/schema and Model Router gates so clients can distinguish
+    an unavailable production service from an empty creator catalogue.
+    """
+    del user  # Authentication is required; readiness itself is not user-specific.
+    checks: dict[str, Any] = {
+        "api_credentials": "ready",
+        "generation_schema": "not_checked",
+        "model_router": "not_checked",
+    }
+    try:
+        _credentials()
+    except HTTPException:
+        checks["api_credentials"] = "not_configured"
+    if checks["api_credentials"] == "ready":
+        try:
+            readiness = await _db("POST", "rpc/cinema_generation_schema_readiness", payload={})
+            checks["generation_schema"] = (
+                "ready" if isinstance(readiness, dict) and readiness.get("ready") is True
+                else "incomplete"
+            )
+        except HTTPException:
+            checks["generation_schema"] = "unavailable"
+
+    router_instance = getattr(request.app.state, "text_generation_router", None)
+    if router_instance is None or not callable(getattr(router_instance, "preflight", None)):
+        checks["model_router"] = "not_configured"
+    else:
+        try:
+            await router_instance.preflight("private")
+            checks["model_router"] = "ready"
+        except Exception:
+            # Provider, tariff, policy and metering details remain server-side.
+            checks["model_router"] = "not_ready"
+
+    ready = all(value == "ready" for value in checks.values())
+    return {
+        "status": "ready" if ready else "not_ready",
+        "can_create_generation_job": ready,
+        "checks": checks,
+        "billing": "verified_during_generation_quote",
+        "message": (
+            "Layanan AI Cinema siap menerima generation job."
+            if ready else
+            "Layanan AI Cinema belum siap. Periksa konfigurasi database, schema, Model Router, kebijakan, tarif, dan metering."
+        ),
+    }
+
+
 async def _require_cinema_generation_schema() -> None:
     try:
         readiness = await _db("POST", "rpc/cinema_generation_schema_readiness", payload={})
