@@ -837,3 +837,14 @@ for (const requiredPath of [
 ]) {
   assert.ok(assetHealthRoute.includes(requiredPath), `runtime asset health probe is missing ${requiredPath}`);
 }
+
+
+// AI Cinema production CTA must open the real Creator Studio workspace,
+// not a legacy demo modal or a misleading unavailable-service toast.
+const cinemaPageSource = readFileSync(new URL("../app/ai-cinema/page.tsx", import.meta.url), "utf8");
+const cinemaViewSource = readFileSync(new URL("../components/reference-ui/AiCinemaView.tsx", import.meta.url), "utf8");
+assert.ok(cinemaPageSource.includes('id="ai-cinema-creator-studio"'), "AI Cinema page must expose the production Creator Studio target");
+assert.ok(cinemaPageSource.includes("onOpenCreatorStudio={openCreatorStudio}"), "AI Cinema must wire production CTA navigation to Creator Studio");
+assert.ok(cinemaPageSource.includes('scrollIntoView({ behavior: "smooth", block: "start" })'), "Creator Studio CTA must navigate users to the workspace");
+assert.ok(cinemaViewSource.includes("onOpenCreatorStudio?.()"), "production Create Film AI actions must use the Creator Studio callback");
+assert.ok(!cinemaViewSource.includes("Studio AI Cinema belum terhubung ke layanan produksi."), "production Create Film AI CTA must not falsely report the already-mounted Creator Studio as disconnected");
