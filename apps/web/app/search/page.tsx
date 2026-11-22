@@ -149,7 +149,7 @@ function SearchPageContent() {
     if (!session) { setOwnedAgents([]); return; }
     try {
       const response = await fetch(apiBase + "/v1/social/actor-agents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
-      const payload = await response.json() as { items?: Array<{ id: string; handle: string; display_name: string; status: string }> };
+      const payload = await response.json() as { items?: Array<{ id: string; handle: string; display_name: string; status: string; ownership_role: "owner" | "operator" }> };
       if (response.ok) setOwnedAgents(payload.items || []);
     } catch { setOwnedAgents([]); }
   }
