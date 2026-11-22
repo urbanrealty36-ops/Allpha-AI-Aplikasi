@@ -11,6 +11,7 @@ as $$
 declare
   v_missing_tables text[] := array[]::text[];
   v_missing_functions text[] := array[]::text[];
+  v_missing_columns text[] := array[]::text[];
   v_missing_privileges text[] := array[]::text[];
   v_required_tables text[] := array[
     'agent_social_presence_policies',
@@ -23,6 +24,7 @@ declare
   ];
   v_table text;
   v_function text;
+  v_column record;
 begin
   foreach v_table in array v_required_tables loop
     if to_regclass('public.' || v_table) is null then
@@ -34,6 +36,49 @@ begin
        or not has_table_privilege('service_role', 'public.' || v_table, 'insert')
        or not has_table_privilege('service_role', 'public.' || v_table, 'update') then
       v_missing_privileges := array_append(v_missing_privileges, v_table || ':service_role_dml');
+    end if;
+  end loop;
+
+  for v_column in
+    select * from (values
+      ('agent_social_presence_policies','owner_user_id'),
+      ('agent_social_presence_policies','agent_id'),
+      ('agent_social_presence_policies','is_enabled'),
+      ('agent_social_presence_policies','revoked_at'),
+      ('agent_social_presence_policies','auto_reply_enabled'),
+      ('agent_social_presence_policies','auto_reply_channels'),
+      ('agent_social_presence_policies','takeover_active'),
+      ('agent_social_presence_policies','version'),
+      ('agent_social_automation_events','id'),
+      ('agent_social_automation_events','owner_user_id'),
+      ('agent_social_automation_events','agent_id'),
+      ('agent_social_automation_events','channel'),
+      ('agent_social_automation_events','source_table'),
+      ('agent_social_automation_events','source_record_id'),
+      ('agent_social_automation_events','status'),
+      ('agent_social_automation_events','claim_token'),
+      ('agent_social_automation_events','lease_expires_at'),
+      ('agent_social_automation_events','attempt_count'),
+      ('agent_social_automation_events','max_attempts'),
+      ('agent_social_automation_events','available_at'),
+      ('agent_social_automation_events','event_fingerprint'),
+      ('agent_social_automation_events','runtime_task_id'),
+      ('agent_social_automation_runs','owner_user_id'),
+      ('agent_social_automation_runs','runtime_task_id'),
+      ('agent_social_automation_runs','source_event_id'),
+      ('agent_social_automation_runs','status')
+    ) as required(table_name,column_name)
+  loop
+    if to_regclass('public.' || v_column.table_name) is not null
+       and not exists (
+         select 1 from information_schema.columns
+         where table_schema='public'
+           and table_name=v_column.table_name
+           and column_name=v_column.column_name
+       ) then
+      v_missing_columns := array_append(
+        v_missing_columns, v_column.table_name || '.' || v_column.column_name
+      );
     end if;
   end loop;
 
@@ -54,9 +99,11 @@ begin
 
   return jsonb_build_object(
     'ready', cardinality(v_missing_tables)=0
+      and cardinality(v_missing_columns)=0
       and cardinality(v_missing_functions)=0
       and cardinality(v_missing_privileges)=0,
     'missing_tables', to_jsonb(v_missing_tables),
+    'missing_columns', to_jsonb(v_missing_columns),
     'missing_functions', to_jsonb(v_missing_functions),
     'missing_privileges', to_jsonb(v_missing_privileges)
   );
