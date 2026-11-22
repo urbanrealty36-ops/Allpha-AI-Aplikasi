@@ -36,6 +36,8 @@ function SearchPageContent() {
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [followEdgeIds, setFollowEdgeIds] = useState<Record<string, string>>({});
+  const [ownedAgents, setOwnedAgents] = useState<Array<{ id: string; handle: string; display_name: string; status: string }>>([]);
+  const [actorAgentId, setActorAgentId] = useState("");
   const [socialGraphError, setSocialGraphError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -138,6 +140,15 @@ function SearchPageContent() {
     } finally { if (sequence === recommendationsRequestSequence.current) setRecommendationsBusy(false); }
   }
 
+  async function loadOwnedAgents() {
+    if (!session) { setOwnedAgents([]); return; }
+    try {
+      const response = await fetch(apiBase + "/v1/agents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const payload = await response.json() as { items?: Array<{ id: string; handle: string; display_name: string; status: string }> };
+      if (response.ok) setOwnedAgents(payload.items || []);
+    } catch { setOwnedAgents([]); }
+  }
+
   async function loadCreators() {
     const sequence = ++creatorsRequestSequence.current;
     setCreatorsBusy(true); setCreatorsError("");
@@ -168,14 +179,15 @@ function SearchPageContent() {
     const sequence = ++socialGraphRequestSequence.current;
     setSocialGraphError("");
     try {
-      const response = await fetch(apiBase + "/v1/social/relationships", {
+      const graphUrl = apiBase + "/v1/social/relationships" + (actorAgentId ? "?actor_agent_id=" + encodeURIComponent(actorAgentId) : "");
+      const response = await fetch(graphUrl, {
         headers: { Authorization: "Bearer " + session.access_token },
         cache: "no-store",
       });
       const payload = await response.json() as SocialGraphPayload & { error?: { message?: string } };
       if (sequence !== socialGraphRequestSequence.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "Status relasi sosial belum dapat dimuat.");
-      const follows = (payload.outgoing || []).filter(edge => edge.actor_node_type === "human" && edge.edge_type === "follow");
+      const follows = (payload.outgoing || []).filter(edge => edge.actor_node_type === (actorAgentId ? "agent" : "human") && edge.edge_type === "follow");
       const keyFor = (edge: SocialGraphEdge) => edge.target_node_type === "agent" ? "agent:" + edge.target_agent_id : "human:" + edge.target_user_id;
       setFollowedAccountIds(follows.filter(edge => edge.status === "active").map(keyFor));
       setPendingFollowAccountIds(follows.filter(edge => edge.status === "requested").map(keyFor));
@@ -219,6 +231,7 @@ function SearchPageContent() {
     void loadTrends();
     void loadRecommendations();
     void loadCreators();
+    void loadOwnedAgents();
     void loadSocialGraph();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
@@ -250,6 +263,8 @@ function SearchPageContent() {
       }
     } finally { if (sequence === searchRequestSequence.current) setBusy(false); }
   }, [query, session, loadDiscoveredUsers]);
+
+  useEffect(() => { void loadSocialGraph(); }, [actorAgentId]);
 
   const urlQuery = searchParams.get("q")?.trim().slice(0, 100) ?? "";
 
@@ -324,6 +339,14 @@ function SearchPageContent() {
   }));
 
   return <>
+    {session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-3 shadow-[3px_3px_0px_#0f172a]">
+      <label htmlFor="social-actor-agent" className="block text-xs font-black text-slate-950">Identitas yang melakukan follow</label>
+      <select id="social-actor-agent" value={actorAgentId} onChange={event => setActorAgentId(event.target.value)} className="mt-2 w-full rounded-xl border-2 border-slate-900 bg-white p-2 text-sm font-bold">
+        <option value="">Human · akun saya</option>
+        {ownedAgents.filter(agent => agent.status === "active").map(agent => <option key={agent.id} value={agent.id}>AI Agent · @{agent.handle}</option>)}
+      </select>
+      <p className="mt-1 text-[11px] text-slate-600">{actorAgentId ? "Tindakan Agent tetap menggunakan otorisasi dan audit pemilik." : "Anda mengikuti Human atau Agent sebagai identitas Human."}</p>
+    </section>}
     {!session && <section className="mx-auto mt-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-[3px_3px_0px_#0f172a]"><p className="text-xs font-black text-slate-950">{authPrompt || "Jelajahi konten publik. Masuk untuk personalisasi dan interaksi."}</p><div className="mt-2 flex gap-2"><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 bg-sky-300 px-3 py-2 text-xs font-black text-slate-950">Masuk</a><a href={"/login?next=" + encodeURIComponent("/search")} className="rounded-xl border-2 border-slate-900 px-3 py-2 text-xs font-black text-slate-950">Daftar</a></div></section>}
       <ExploreView
         posts={postsForReference}
@@ -358,7 +381,7 @@ function SearchPageContent() {
                   Accept: "application/json",
                   ...(removingRelationship ? {} : { "Content-Type": "application/json" }),
                 },
-                ...(removingRelationship ? {} : { body: JSON.stringify({ target_type: targetType, target_id: targetId, edge_type: "follow" }) }),
+                ...(removingRelationship ? {} : { body: JSON.stringify({ target_type: targetType, target_id: targetId, edge_type: "follow", ...(actorAgentId ? { actor_agent_id: actorAgentId } : {}) }) }),
                 cache: "no-store",
               },
             );
