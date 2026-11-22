@@ -168,5 +168,7 @@ for (const contract of [
   'auth/v1/user',
   '"/v1/me"',
   'account_status',
-  'scope: "local"'
+  'scope: "local"',
+  '"/v1/auth/revoke"',
+  'scope: "global"'
 ]) assert.ok(app.includes(contract), `missing Native auth/session lifecycle contract: ${contract}`);
