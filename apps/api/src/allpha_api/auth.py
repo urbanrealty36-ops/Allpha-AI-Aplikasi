@@ -42,10 +42,14 @@ async def current_session_user(
         raise HTTPException(status_code=503, detail={"code": "AUTH_UNAVAILABLE", "message": "Layanan autentikasi tidak tersedia."}) from exc
     if response.status_code in (401, 403):
         raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Sesi tidak valid atau telah berakhir."})
-    if response.status_code >= 500:
-        raise HTTPException(status_code=503, detail={"code": "AUTH_UNAVAILABLE", "message": "Layanan autentikasi tidak tersedia."})
+    # Only an explicit Auth rejection proves that the presented token is invalid.
+    # Rate limits, gateway errors and unexpected upstream responses must not make
+    # clients discard a potentially valid local session.
     if response.status_code != 200:
-        raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Sesi tidak valid."})
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUTH_UNAVAILABLE", "message": "Layanan autentikasi sementara tidak dapat memverifikasi sesi."},
+        )
     user = response.json()
     if not user.get("id"):
         raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN", "message": "Token tidak memiliki identitas pengguna."})

@@ -807,3 +807,32 @@ def test_session_revocation_endpoint_is_scoped_to_verified_current_session(monke
     assert calls == [("POST", "rpc/revoke_my_auth_session", "verified-session-token", {
         "body": {"p_session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
     })]
+
+
+@pytest.mark.parametrize("upstream_status", [400, 408, 429, 500, 502, 503])
+def test_supabase_auth_upstream_failures_do_not_invalidate_local_session(monkeypatch, upstream_status):
+    class FakeResponse:
+        status_code = upstream_status
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://staging-example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    response = client.get("/v1/me", headers={"Authorization": "Bearer potentially-valid-session"})
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "AUTH_UNAVAILABLE"
+    assert "potentially-valid-session" not in response.text
