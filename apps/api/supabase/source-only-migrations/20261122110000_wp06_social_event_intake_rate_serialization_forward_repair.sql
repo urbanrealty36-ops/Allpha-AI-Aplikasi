@@ -7,7 +7,7 @@
 -- Extends the existing event inbox; Agent Runtime remains the sole execution queue.
 begin;
 
-do $
+do $$
 begin
   if to_regclass('public.agent_social_automation_events') is null
      or to_regclass('public.agent_social_presence_policies') is null
@@ -21,7 +21,7 @@ begin
   if to_regprocedure('extensions.digest(bytea,text)') is null then
     raise exception 'WP06_SOCIAL_EVENT_INTAKE_DIGEST_DEPENDENCY_MISSING';
   end if;
-end $;
+end $$;
 
 create or replace function public.enqueue_agent_social_automation_event(
   p_owner_user_id uuid,p_agent_id uuid,p_channel text,p_source_table text,
