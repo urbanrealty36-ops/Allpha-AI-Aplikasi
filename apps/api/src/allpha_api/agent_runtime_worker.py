@@ -167,7 +167,13 @@ async def run_once(store: AgentRuntimeStore) -> int:
 
 async def serve() -> None:
     if not _enabled():
-        logger.warning("Agent Runtime worker is disabled; set ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=true only after schema and policy gates pass")
+        logger.warning(
+            "Agent Runtime worker is deployed in disabled/idle mode; "
+            "set ALLPHA_AGENT_RUNTIME_WORKER_ENABLED=true only after schema and policy gates pass"
+        )
+        # Keep the Railway process healthy without opening a database connection
+        # or claiming work. A variable change triggers a redeploy to activate it.
+        await asyncio.Event().wait()
         return
     store = AgentRuntimeStore.from_environment()
     interval = _poll_seconds()

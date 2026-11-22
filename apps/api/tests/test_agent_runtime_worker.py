@@ -176,3 +176,23 @@ def test_worker_processes_independent_tasks_with_bounded_concurrency(monkeypatch
 
     assert processed == 3
     assert peak == 3
+
+
+
+def test_disabled_worker_remains_idle_without_opening_runtime_store(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_RUNTIME_WORKER_ENABLED", "false")
+
+    def forbidden_store():
+        raise AssertionError("disabled worker must not initialize a database connection")
+
+    monkeypatch.setattr(worker.AgentRuntimeStore, "from_environment", forbidden_store)
+
+    async def check_idle():
+        task = asyncio.create_task(worker.serve())
+        await asyncio.sleep(0)
+        assert not task.done()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(check_idle())
