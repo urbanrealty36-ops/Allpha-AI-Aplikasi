@@ -65,6 +65,9 @@ export default function FeedPage() {
   const feedRequestSequence = useRef(0);
   const preferencesRequestSequence = useRef(0);
   const commentRequestSequence = useRef(0);
+  const feedAbortController = useRef<AbortController | null>(null);
+  const storiesAbortController = useRef<AbortController | null>(null);
+  const commentsAbortControllers = useRef(new Map<string, AbortController>());
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
@@ -95,17 +98,20 @@ export default function FeedPage() {
     const requestedFeedMode = requestedMode ?? mode;
     const epoch = sessionEpoch.current;
     const sequence = ++feedRequestSequence.current;
+    feedAbortController.current?.abort();
+    const controller = new AbortController();
+    feedAbortController.current = controller;
     setLoading(true); setError("");
     try {
       const sharedContentId = reset && typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("content") : null;
       if (sharedContentId) {
-        const direct = await request("/v1/feed/item/" + encodeURIComponent(sharedContentId)) as { item: FeedItem };
+        const direct = await request("/v1/feed/item/" + encodeURIComponent(sharedContentId), { signal: controller.signal }) as { item: FeedItem };
         if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
         setItems([direct.item]); setCursor(null); void recordFeedSignal(direct.item.id, "view", 0, requestedFeedMode); return;
       }
       const params = new URLSearchParams({ mode: requestedFeedMode, limit: "20", author_type: requestedAuthorType ?? authorType });
       if (!reset && nextCursor) params.set("cursor", nextCursor);
-      const data = await request("/v1/feed?" + params.toString()) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
+      const data = await request("/v1/feed?" + params.toString(), { signal: controller.signal }) as { items?: FeedItem[]; next_cursor?: string | null; mode?: string; personalization_enabled?: boolean };
       if (epoch !== sessionEpoch.current || sequence !== feedRequestSequence.current) return;
       const receivedItems = data.items ?? [];
       setItems(current => reset ? receivedItems : [...current, ...receivedItems]);
@@ -114,8 +120,13 @@ export default function FeedPage() {
       if (typeof data.personalization_enabled === "boolean") setPersonalizationEnabled(data.personalization_enabled);
       if (data.mode === "for_you" || data.mode === "recent" || data.mode === "following") setMode(data.mode);
     } catch (cause) {
-      if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat.");
-    } finally { if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) setLoading(false); }
+      if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current && !(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Feed tidak dapat dimuat.");
+    } finally {
+      if (epoch === sessionEpoch.current && sequence === feedRequestSequence.current) {
+        feedAbortController.current = null;
+        setLoading(false);
+      }
+    }
   }, [authorType, items.length, mode, recordFeedSignal, request, session]);
 
   useEffect(() => {
@@ -131,6 +142,10 @@ export default function FeedPage() {
         sessionUserId.current = nextUserId;
         sessionEpoch.current += 1;
         feedRequestSequence.current += 1;
+        feedAbortController.current?.abort();
+        storiesAbortController.current?.abort();
+        commentsAbortControllers.current.forEach(controller => controller.abort());
+        commentsAbortControllers.current.clear();
         preferencesRequestSequence.current += 1;
         setItems([]);
         setStories([]);
@@ -154,7 +169,14 @@ export default function FeedPage() {
     void supabase.auth.getSession().then(({ data }) => {
       if (active && !authEventSeen) applySession(data.session);
     });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    return () => {
+      active = false;
+      feedAbortController.current?.abort();
+      storiesAbortController.current?.abort();
+      commentsAbortControllers.current.forEach(controller => controller.abort());
+      commentsAbortControllers.current.clear();
+      listener.subscription.unsubscribe();
+    };
   }, [supabase]);
 
   useEffect(() => {
@@ -254,11 +276,17 @@ export default function FeedPage() {
   }, [request, session]);
 
   useEffect(() => {
-    let active = true;
-    void request("/v1/stories?limit=30").then((data: { items?: FeedStory[] }) => {
-      if (active) setStories(data.items ?? []);
-    }).catch(() => { if (active) setStories([]); });
-    return () => { active = false; };
+    const controller = new AbortController();
+    storiesAbortController.current?.abort();
+    storiesAbortController.current = controller;
+    void request("/v1/stories?limit=30", { signal: controller.signal }).then((data: { items?: FeedStory[] }) => {
+      if (!controller.signal.aborted) setStories(data.items ?? []);
+    }).catch(cause => {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Stories tidak dapat dimuat.");
+    }).finally(() => {
+      if (storiesAbortController.current === controller) storiesAbortController.current = null;
+    });
+    return () => controller.abort();
   }, [request, session]);
 
   function requireLogin(action: string) {
@@ -315,12 +343,17 @@ export default function FeedPage() {
     if (!opening || comments[item.id]) return;
     const epoch = sessionEpoch.current;
     const sequence = ++commentRequestSequence.current;
+    commentsAbortControllers.current.get(item.id)?.abort();
+    const controller = new AbortController();
+    commentsAbortControllers.current.set(item.id, controller);
     try {
-      const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments") as { items?: FeedComment[] };
-      if (epoch !== sessionEpoch.current || sequence !== commentRequestSequence.current) return;
+      const data = await request("/v1/feed/" + encodeURIComponent(item.id) + "/comments", { signal: controller.signal }) as { items?: FeedComment[] };
+      if (epoch !== sessionEpoch.current || sequence !== commentRequestSequence.current || controller.signal.aborted) return;
       setComments(current => ({ ...current, [item.id]: data.items ?? [] }));
     } catch (cause) {
-      if (epoch === sessionEpoch.current && sequence === commentRequestSequence.current) setError(cause instanceof Error ? cause.message : "Komentar tidak dapat dimuat.");
+      if (epoch === sessionEpoch.current && sequence === commentRequestSequence.current && !(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Komentar tidak dapat dimuat.");
+    } finally {
+      if (commentsAbortControllers.current.get(item.id) === controller) commentsAbortControllers.current.delete(item.id);
     }
   }
 
