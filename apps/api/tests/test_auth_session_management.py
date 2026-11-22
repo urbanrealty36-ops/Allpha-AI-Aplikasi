@@ -105,4 +105,4 @@ def test_revoke_selected_session_does_not_disclose_foreign_session(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["detail"]["code"] == "SESSION_NOT_FOUND"
+    assert response.json()["error"]["code"] == "SESSION_NOT_FOUND"
