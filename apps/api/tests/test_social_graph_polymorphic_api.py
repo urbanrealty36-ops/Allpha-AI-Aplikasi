@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from allpha_api.auth import current_user
+from allpha_api.auth import current_user, optional_current_user
 from allpha_api.main import app
 from allpha_api import social_graph_api
 
@@ -155,3 +155,49 @@ def test_idempotency_key_is_persisted_and_replay_returns_existing_edge(monkeypat
     assert response.status_code == 200, response.text
     assert response.json()["idempotent_replay"] is True
     assert not any(call[0] == "POST" for call in calls)
+
+
+def test_human_profile_summary_uses_exact_typed_database_counts(monkeypatch):
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        params = params or {}
+        if table == "profiles":
+            return [{"id": HUMAN_B, "visibility": "public", "account_status": "active"}]
+        if table == "social_edges":
+            return []
+        if table == "rpc/social_graph_node_counts":
+            assert body == {"p_node_type": "human", "p_node_id": HUMAN_B}
+            return [{"followers_count": 42, "following_count": 17}]
+        raise AssertionError((method, table, params, body))
+
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    app.dependency_overrides[optional_current_user] = _user
+    try:
+        response = TestClient(app).get(f"/v1/social/nodes/human/{HUMAN_B}/summary")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    assert response.json()["followers_count"] == 42
+    assert response.json()["following_count"] == 17
+    assert response.json()["viewer_relationship"]["is_following"] is False
+
+
+def test_social_activity_stream_returns_typed_agent_attribution(monkeypatch):
+    event = {"id": "00000000-0000-4000-8000-000000000701", "event_type": "social.follow.created",
+             "actor_user_id": OWNER, "target_user_id": OTHER_OWNER, "actor_node_type": "agent",
+             "target_node_type": "human", "actor_agent_id": AGENT_A, "target_agent_id": None,
+             "entity_key": "follow", "payload": {"actor_node_type": "agent"}, "created_at": "2026-11-22T00:00:00Z"}
+
+    async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
+        assert method == "GET" and table == "social_graph_events"
+        assert params.get("or") == f"(actor_user_id.eq.{OWNER},target_user_id.eq.{OWNER})"
+        return [event]
+
+    monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    app.dependency_overrides[current_user] = _user
+    try:
+        response = TestClient(app).get("/v1/social/activity?limit=10")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["actor_node_type"] == "agent"
+    assert response.json()["items"][0]["actor_agent_id"] == AGENT_A
