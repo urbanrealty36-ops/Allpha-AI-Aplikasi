@@ -2110,9 +2110,11 @@ function Navigator() {
         const authResponse = await fetch(supabaseUrl.replace(/\/$/, "") + "/auth/v1/user", {
           headers: { apikey: supabaseKey, Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
+        if (sequence !== journeyRequestSequence.current) return;
         if (!authResponse.ok) throw new Error("Sesi tidak valid atau telah dicabut.");
         const verifiedUser = await authResponse.json() as { id?: string; email_confirmed_at?: string | null };
         if (verifiedUser.id !== next.user.id || !verifiedUser.email_confirmed_at) {
+          if (sequence !== journeyRequestSequence.current) return;
           await supabase?.auth.signOut({ scope: "local" });
           if (sequence === journeyRequestSequence.current) setSession(null);
           return;
@@ -2120,9 +2122,11 @@ function Navigator() {
         const meResponse = await fetch(apiBase + "/v1/me", {
           headers: { Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
+        if (sequence !== journeyRequestSequence.current) return;
         if (!meResponse.ok) throw new Error("Identitas Human belum dapat diverifikasi oleh Allpha API.");
         const me = await meResponse.json() as { profile?: Profile };
         if (me.profile?.account_status !== "active") {
+          if (sequence !== journeyRequestSequence.current) return;
           await supabase?.auth.signOut({ scope: "local" });
           if (sequence === journeyRequestSequence.current) setSession(null);
           return;
@@ -2139,7 +2143,7 @@ function Navigator() {
           setJourneyTab(Array.isArray(payload.items) && payload.items.length > 0 ? "feed" : "agents");
         }
       } catch {
-        // Fail closed; invalid/revoked sessions must never retain protected navigation.
+        // Fail closed; stale checks must never sign out a newer authenticated session.
         if (sequence === journeyRequestSequence.current) {
           setSession(null);
           setJourneyTab("feed");
