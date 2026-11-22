@@ -6,6 +6,7 @@ is fabricated here; publication remains gated until those canonical owners act.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import uuid
@@ -557,7 +558,7 @@ async def apply_cinema_generation_job(
             "message": "Production document berubah sejak generation job dibuat. Buat generation job baru berdasarkan versi terkini.",
         })
     jobs = await generation_jobs_api._admin_request("GET", "generation_jobs", params={
-        "select": "id,owner_user_id,status,moderation_status,artifact_bucket,artifact_path,artifact_deletion_requested_at,artifact_deleted_at",
+        "select": "id,owner_user_id,status,moderation_status,artifact_bucket,artifact_path,output_sha256,artifact_deletion_requested_at,artifact_deleted_at",
         "id": "eq." + str(job_id), "owner_user_id": "eq." + str(user["id"]), "limit": "1",
     })
     if not jobs:
@@ -599,6 +600,12 @@ async def apply_cinema_generation_job(
         raise HTTPException(415, detail={
             "code": "CINEMA_GENERATION_ARTIFACT_TYPE_INVALID",
             "message": "Artefak bukan dokumen teks screenplay yang didukung.",
+        })
+    expected_sha256 = str(job.get("output_sha256") or "")
+    if not expected_sha256 or hashlib.sha256(response.content).hexdigest() != expected_sha256:
+        raise HTTPException(409, detail={
+            "code": "CINEMA_GENERATION_ARTIFACT_HASH_MISMATCH",
+            "message": "Checksum artefak screenplay tidak cocok dengan receipt Generation Job.",
         })
     if len(response.content) > 60000:
         raise HTTPException(422, detail={

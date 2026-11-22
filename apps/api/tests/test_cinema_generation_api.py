@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 
 from fastapi.testclient import TestClient
@@ -113,8 +114,9 @@ def test_cinema_screenplay_apply_uses_private_moderated_generation_artifact(monk
         return [{
             "id": JOB, "owner_user_id": OWNER, "status": "succeeded",
             "moderation_status": "approved", "artifact_bucket": "generation-artifacts",
-            "artifact_path": "owner/job.txt", "artifact_deletion_requested_at": None,
-            "artifact_deleted_at": None,
+            "artifact_path": "owner/job.txt",
+            "output_sha256": hashlib.sha256(b"INT. BOGOR STATION - NIGHT\\nA detective enters the empty station.").hexdigest(),
+            "artifact_deletion_requested_at": None, "artifact_deleted_at": None,
         }]
 
     async def signed_artifact(bucket, path, *, expires_in=60):
@@ -129,6 +131,9 @@ def test_cinema_screenplay_apply_uses_private_moderated_generation_artifact(monk
             return None
 
     class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
         async def __aenter__(self):
             return self
 
