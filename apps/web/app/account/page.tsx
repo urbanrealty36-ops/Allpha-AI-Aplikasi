@@ -60,6 +60,7 @@ export default function HomePage() {
   const socialRequestSequence = useRef(0);
   const consentRequestSequence = useRef(0);
   const sessionsRequestSequence = useRef(0);
+  const sessionsAutoLoadToken = useRef<string | null>(null);
 
   const loadIdentity = useCallback(async (active: Session) => {
     const sequence = ++identityRequestSequence.current;
@@ -179,6 +180,15 @@ export default function HomePage() {
       if (sequence === sessionsRequestSequence.current) setSessionsLoading(false);
     }
   }
+
+  // A restored /account?tab=sessions deep link must load the same canonical
+  // device inventory as an explicit tab click, once per authenticated token.
+  useEffect(() => {
+    if (tab !== "sessions" || !session) return;
+    if (sessionsAutoLoadToken.current === session.access_token) return;
+    sessionsAutoLoadToken.current = session.access_token;
+    void loadAuthSessions();
+  }, [tab, session?.access_token]);
 
   async function revokeAuthSession(sessionId: string) {
     if (!session || !window.confirm("Cabut sesi perangkat ini? Perangkat tersebut harus login kembali.")) return;
@@ -390,7 +400,7 @@ export default function HomePage() {
     <section className="workspace-heading"><div><span className="section-kicker">RUANG PERSONAL</span><h1>Identitas manusia</h1><p>Profil dan pengaturan yang tersimpan pada akun Allpha Anda.</p></div>
       {profile && <div className="profile-chip">{profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <span>{(profile.display_name || session.user.email || "A").slice(0, 1).toUpperCase()}</span>}<div><strong>{profile.display_name || "Pengguna Allpha"}</strong><small>{profile.username ? "@" + profile.username : "Username belum diatur"}</small></div></div>}
     </section>
-    <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button><button className={tab === "consents" ? "active" : ""} onClick={() => { setTab("consents"); void loadConsentHistory(); }}>Riwayat persetujuan</button><button className={tab === "sessions" ? "active" : ""} onClick={() => { setTab("sessions"); void loadAuthSessions(); }}>Perangkat & sesi</button></nav>
+    <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button><button className={tab === "consents" ? "active" : ""} onClick={() => { setTab("consents"); void loadConsentHistory(); }}>Riwayat persetujuan</button><button className={tab === "sessions" ? "active" : ""} onClick={() => setTab("sessions")}>Perangkat & sesi</button></nav>
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
     {loading ? <section className="panel loading-panel" role="status">Mengambil profil dan pengaturan dari backend…</section> : !profile || !settings ? <section className="panel loading-panel">{error ? <><p className="muted">Profil dan pengaturan belum berhasil dimuat. Periksa koneksi atau sesi, lalu coba lagi.</p><button type="button" className="button-primary" onClick={() => { if (session) void loadIdentity(session); }}>Coba lagi</button></> : <><p className="muted">Profil belum tersedia.</p><button type="button" className="button-quiet" onClick={() => { if (session) void loadIdentity(session); }}>Muat ulang</button></>}</section> : tab === "social" ? <section className="panel settings-panel social-panel">
       <div className="panel-heading"><span className="section-kicker">SOCIAL GRAPH</span><h2>Relasi dan minat Anda</h2><p>Relasi dan preferensi minat disimpan melalui API terautentikasi. Pencarian akun berdasarkan username belum tersedia; gunakan ID pengguna target.</p></div>
