@@ -95,6 +95,8 @@ async def list_relationships(
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     token, owner_id = request.state.supabase_access_token, str(user["id"])
+    if actor_agent_id:
+        await _resolve_actor_agent(str(actor_agent_id), owner_id, request.state.supabase_access_token, "follow")
     outgoing_params = {
         "select": "id,actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
         "actor_user_id": f"eq.{owner_id}", "order": "created_at.desc", "limit": "1000",
