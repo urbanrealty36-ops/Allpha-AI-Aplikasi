@@ -468,6 +468,24 @@ export default function AiCinemaCreatorWorkspace() {
     return () => { active = false; if (timer) clearTimeout(timer); };
   }, [generationJobId, selectedTitleId]);
 
+  async function applyCinemaGeneration() {
+    if (!selectedTitleId || !generationJobId || generationJob?.status !== "succeeded" || generationJob.moderation_status !== "approved") return;
+    setGenerationBusy(true); setError(""); setNotice("");
+    try {
+      const result = await authorizedRequest<{ outcome: "applied" | "replayed"; title_version: number }>(
+        `/v1/cinema/creator/titles/${encodeURIComponent(selectedTitleId)}/generation-jobs/${encodeURIComponent(generationJobId)}/apply`,
+        { method: "POST", body: JSON.stringify({ expected_version: productionVersion }) },
+      );
+      setNotice(result.outcome === "replayed"
+        ? "Hasil generation ini sudah pernah diterapkan pada versi screenplay tersebut."
+        : "Hasil generation yang lolos moderation berhasil diterapkan ke screenplay Cinema.");
+      await loadCinemaProduction(selectedTitleId);
+      await loadTitles();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Hasil generation gagal diterapkan ke screenplay.");
+    } finally { setGenerationBusy(false); }
+  }
+
   async function cancelCinemaGeneration() {
     if (!generationJobId || generationJob?.status !== "queued") return;
     setGenerationBusy(true); setError(""); setNotice("");
@@ -609,7 +627,7 @@ export default function AiCinemaCreatorWorkspace() {
             </div>
             {generationQuote && <p className="rounded-xl border border-2 border-slate-900 bg-white p-3 text-xs text-slate-800">Estimasi: <strong>{generationQuote.estimated_credits.toLocaleString("id-ID")} AI Credits</strong> · {generationQuote.estimated_usage_units.toLocaleString("id-ID")} {generationQuote.usage_unit} · {generationQuote.model_id} · berlaku sampai {new Date(generationQuote.expires_at).toLocaleString("id-ID")}. Quote akan diverifikasi ulang oleh FastAPI saat job dibuat.</p>}
             {generationJob && <div className="rounded-xl border border-2 border-slate-900 bg-white p-3 text-xs text-slate-800"><p><strong>Generation Job:</strong> {generationJob.id} · <strong>Status:</strong> {generationJob.status} · <strong>Moderation:</strong> {generationJob.moderation_status || "menunggu hasil"}</p>{generationJob.error_code && <p className="mt-1 text-rose-800">Error: {generationJob.error_code}</p>}{generationJob.status === "succeeded" && !generationJob.artifact_available && <p className="mt-1 text-amber-800">Output belum dapat diakses sampai moderation menyetujui artefak privat.</p>}</div>}
-            {generationArtifactText && <div className="space-y-2 rounded-xl border border-2 border-slate-900 bg-white p-3"><p className="text-xs font-bold text-emerald-800">Artefak teks tersedia · moderation approved</p><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-800">{generationArtifactText}</pre><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSynopsis(generationArtifactText.slice(0, 5000))} className="rounded-lg border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-bold">Gunakan sebagai sinopsis film</button><button type="button" onClick={() => setEpisodeSynopsis(generationArtifactText.slice(0, 3000))} className="rounded-lg border-2 border-slate-900 bg-rose-100 px-3 py-2 text-xs font-bold">Gunakan sebagai sinopsis episode</button></div></div>}
+            {generationArtifactText && <div className="space-y-2 rounded-xl border border-2 border-slate-900 bg-white p-3"><p className="text-xs font-bold text-emerald-800">Artefak teks tersedia · moderation approved</p><pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs text-slate-800">{generationArtifactText}</pre><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSynopsis(generationArtifactText.slice(0, 5000))} className="rounded-lg border-2 border-slate-900 bg-sky-100 px-3 py-2 text-xs font-bold">Gunakan sebagai sinopsis film</button><button type="button" onClick={() => setEpisodeSynopsis(generationArtifactText.slice(0, 3000))} className="rounded-lg border-2 border-slate-900 bg-rose-100 px-3 py-2 text-xs font-bold">Gunakan sebagai sinopsis episode</button><button type="button" onClick={() => void applyCinemaGeneration()} disabled={generationBusy || !selectedTitleId || generationJob?.status !== "succeeded" || generationJob.moderation_status !== "approved"} className="rounded-lg border-2 border-slate-900 bg-emerald-100 px-3 py-2 text-xs font-bold disabled:opacity-40">Terapkan ke screenplay</button></div></div>}
             {runtimeAgentsState === "loading" && <p className="text-xs text-slate-600">Memuat Agent dan Skill milik Anda…</p>}
             {runtimeAgentsState === "ready" && runtimeAgents.length === 0 && <p className="text-xs text-slate-600">Belum ada Agent aktif dengan ownership Anda.</p>}
             {runtimeAgentsState === "ready" && selectedRuntimeAgent && !selectedRuntimeSkill && <p className="text-xs text-amber-800">Agent ini belum memiliki Published Skill dengan tool adapter Generation yang tersedia.</p>}
