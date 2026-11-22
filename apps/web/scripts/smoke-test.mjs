@@ -327,7 +327,7 @@ for (const contract of [
   "lastSessionUserId", "sessionEpoch.current += 1", "searchRequestSequence.current",
   "trendsRequestSequence.current", "recommendationsRequestSequence.current", "creatorsRequestSequence.current",
   "socialGraphRequestSequence.current", "/v1/social/relationships", "/v1/social/relationships/",
-  "pendingFollowAccountIds", "followEdgeIds", "actorAgentId", "/v1/social/actor-agents", "follow_request_created", "lastUrlQuery.current = null",
+  "pendingFollowAccountIds", "followEdgeIds", "actorAgentId", "/v1/social/actor-agents", "incomingFollowRequests", "resolveIncomingFollow", "onBlockAccount", "onMuteAccount", "blockedAccountIds", "mutedAccountIds", "follow_request_created", "lastUrlQuery.current = null",
   "if (sequence !== searchRequestSequence.current) return",
   "if (sequence === trendsRequestSequence.current)", "if (sequence === recommendationsRequestSequence.current)",
   "if (sequence === creatorsRequestSequence.current)"
@@ -336,6 +336,7 @@ const exploreView = readFileSync(new URL("../components/reference-ui/ExploreView
 assert.ok(exploreView.includes("pendingFollowAccountIds") && exploreView.includes("<span>Menunggu</span>") && exploreView.includes("Batalkan permintaan mengikuti"), "Explore must distinguish active follows from cancellable private-profile requests");
 assert.ok(webSearch.includes("/v1/social/discover-users") && webSearch.includes("discoveredUsers") && webSearch.includes("loadDiscoveredUsers"), "Explore must connect username discovery to the canonical discovery endpoint");
 assert.ok(exploreView.includes("discoveryError") && exploreView.includes("relationshipError"), "Explore must expose explicit discovery and relationship error states");
+assert.ok(exploreView.includes("onBlockAccount") && exploreView.includes("onMuteAccount") && exploreView.includes("blockedAccountIds") && exploreView.includes("mutedAccountIds"), "Explore account cards must expose canonical block and mute lifecycle controls");
 const agentPassportPath = new URL("../app/agents/passport/[handle]/page.tsx", import.meta.url);
 if (existsSync(agentPassportPath)) {
   const agentPassport = readFileSync(agentPassportPath, "utf8");
