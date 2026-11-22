@@ -41,6 +41,8 @@ function createClientUuid() {
 type Routes = {
   Welcome: undefined;
   Auth: { mode?: "signin" | "signup" } | undefined;
+  AuthCallback: undefined;
+  Recovery: undefined;
   Profile: undefined;
   Account: { tab?: "profile" | "settings" | "social" | "consents" | "billing" } | undefined;
   Agents: undefined;
@@ -92,6 +94,10 @@ const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL || (__DEV__ ? (Platform.OS
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 const configured = Boolean(supabaseUrl && supabaseKey);
+// Keep the existing HTTPS callback as the safe default until both native
+// redirect URIs are allow-listed in Supabase Auth and supplied to the EAS build.
+const nativeAuthRedirect = process.env.EXPO_PUBLIC_NATIVE_AUTH_REDIRECT_URL || "https://allpha.web.id/auth/callback?next=%2Fstart";
+const nativeRecoveryRedirect = process.env.EXPO_PUBLIC_NATIVE_RECOVERY_REDIRECT_URL || "https://allpha.web.id/auth/callback?next=%2Freset-password";
 
 // Chunking keeps larger auth sessions within platform secure-storage item limits.
 const secureStorage = {
@@ -329,6 +335,82 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
   </ScrollView>;
 }
 
+function AuthCallback() {
+  const nav = useNavigation<NavigationProp<Routes>>();
+  return <View style={[s.page, { justifyContent: "center" }]}>
+    <Brand/>
+    <View style={s.card}>
+      <ActivityIndicator color="#A5B4FC"/>
+      <Text style={s.title}>Memverifikasi tautan Allpha</Text>
+      <Text style={s.body}>Aplikasi sedang memproses tautan autentikasi. Jika tautan kedaluwarsa atau tidak dapat digunakan, minta tautan baru dari halaman masuk.</Text>
+      <Button title="Kembali ke masuk" secondary onPress={() => nav.navigate("Auth", { mode: "signin" })}/>
+    </View>
+  </View>;
+}
+
+function PasswordRecovery() {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [sessionReady, setSessionReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const { data } = await supabase?.auth.getSession() ?? { data: { session: null } };
+      if (active) setSessionReady(Boolean(data.session));
+    };
+    void refresh();
+    const subscription = supabase?.auth.onAuthStateChange((_event, next) => {
+      if (active) setSessionReady(Boolean(next));
+    }).data.subscription;
+    return () => { active = false; subscription?.unsubscribe(); };
+  }, []);
+
+  async function updatePassword() {
+    if (!supabase || busy) return;
+    if (!sessionReady) { setError("Sesi pemulihan tidak tersedia atau sudah kedaluwarsa. Minta tautan pemulihan baru."); return; }
+    if (password.length < 8) { setError("Kata sandi minimal 8 karakter."); return; }
+    if (password !== confirmation) { setError("Konfirmasi kata sandi tidak sama."); return; }
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      const { data: current } = await supabase.auth.getSession();
+      const token = current.session?.access_token;
+      if (!token) throw new Error("Kata sandi diperbarui, tetapi sesi pemulihan tidak tersedia untuk pencabutan sesi. Masuk kembali dan periksa sesi aktif.");
+      const revoke = await fetch(apiBase + "/v1/auth/revoke", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, Accept: "application/json" },
+      });
+      if (!revoke.ok) throw new Error("Kata sandi diperbarui, tetapi pencabutan sesi server belum berhasil. Coba ulangi agar sesi lama dicabut.");
+      await supabase.auth.signOut({ scope: "local" });
+      setMessage("Kata sandi berhasil diperbarui. Silakan masuk kembali dengan kata sandi baru.");
+      Alert.alert("Kata sandi diperbarui", "Sesi pemulihan telah dicabut. Silakan masuk kembali.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pemulihan kata sandi gagal.");
+    } finally { setBusy(false); }
+  }
+
+  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <ScrollView contentContainerStyle={s.page}>
+      <Brand/>
+      <View style={s.card}>
+        <Text style={s.title}>Buat kata sandi baru</Text>
+        <Text style={s.body}>Gunakan tautan pemulihan yang masih berlaku. Setelah kata sandi diperbarui, sesi pemulihan akan dicabut melalui API Allpha.</Text>
+        {!sessionReady && <Text accessibilityRole="alert" style={s.warning}>Menunggu sesi pemulihan yang valid. Jika tautan tidak berlaku, minta tautan baru.</Text>}
+        <TextInput accessibilityLabel="Kata sandi baru" secureTextEntry autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" value={password} onChangeText={setPassword} placeholder="Kata sandi baru (min. 8 karakter)" placeholderTextColor="#8B94AC" style={s.input}/>
+        <TextInput accessibilityLabel="Konfirmasi kata sandi baru" secureTextEntry autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" value={confirmation} onChangeText={setConfirmation} placeholder="Ulangi kata sandi baru" placeholderTextColor="#8B94AC" style={s.input}/>
+        {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+        {!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}
+        <Button title={busy ? "Memperbarui…" : "Simpan kata sandi baru"} disabled={busy || !sessionReady || password.length < 8 || !confirmation} onPress={() => void updatePassword()}/>
+      </View>
+    </ScrollView>
+  </KeyboardAvoidingView>;
+}
+
 function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } }) {
   const nav = useNavigation<NavigationProp<Routes>>();
   const [mode, setMode] = useState<"signin" | "signup">(route.params?.mode || "signin");
@@ -350,7 +432,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
           password,
           options: {
             data: { display_name: name.trim(), locale: "id-ID" },
-            emailRedirectTo: "https://allpha.web.id/auth/callback?next=%2Fstart",
+            emailRedirectTo: nativeAuthRedirect,
           },
         });
         if (signUpError) throw signUpError;
@@ -395,7 +477,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
     if (!supabase || !email.trim()) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const { error: resendError } = await supabase.auth.resend({ type: "signup", email: email.trim().toLowerCase(), options: { emailRedirectTo: "https://allpha.web.id/auth/callback?next=%2Fstart" } });
+      const { error: resendError } = await supabase.auth.resend({ type: "signup", email: email.trim().toLowerCase(), options: { emailRedirectTo: nativeAuthRedirect } });
       if (resendError) throw resendError;
       setMessage("Email verifikasi dikirim ulang. Periksa inbox dan folder spam.");
     } catch (e) { setError(e instanceof Error ? e.message : "Email verifikasi gagal dikirim ulang."); }
@@ -405,7 +487,7 @@ function Auth({ route }: { route: { params?: { mode?: "signin" | "signup" } } })
     if (!supabase || !email.trim()) { setError("Isi email terlebih dahulu untuk pemulihan kata sandi."); return; }
     setBusy(true); setError(""); setMessage("");
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: "https://allpha.web.id/auth/callback?next=%2Freset-password" });
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: nativeRecoveryRedirect });
       if (resetError) throw resetError;
       setMessage("Tautan pemulihan kata sandi telah dikirim jika email terdaftar.");
     } catch (e) { setError(e instanceof Error ? e.message : "Pemulihan kata sandi tidak dapat dimulai."); }
@@ -2134,11 +2216,52 @@ function Navigator() {
   const [ready, setReady] = useState(false);
   const [journeyReady, setJourneyReady] = useState(false);
   const [journeyTab, setJourneyTab] = useState<"agents" | "feed">("feed");
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const recoveryFlowRef = useRef(false);
+  const processedAuthUrls = useRef(new Set<string>());
   const journeyRequestSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
     let authEventSeen = false;
+    const handleNativeAuthUrl = async (rawUrl: string) => {
+      if (!supabase || !rawUrl || processedAuthUrls.current.has(rawUrl)) return;
+      let parsed: URL;
+      try { parsed = new URL(rawUrl); } catch { return; }
+      const callbackPath = (parsed.hostname + parsed.pathname).replace(/^\\/+/, "").toLowerCase();
+      if (callbackPath !== "auth/callback" && callbackPath !== "auth/recovery") return;
+      processedAuthUrls.current.add(rawUrl);
+      const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+      const read = (key: string) => parsed.searchParams.get(key) || hash.get(key);
+      const errorCode = read("error") || read("error_code");
+      if (errorCode || read("error_description")) {
+        Alert.alert("Tautan autentikasi tidak valid", "Tautan mungkin kedaluwarsa atau sudah digunakan. Minta tautan baru dari aplikasi.");
+        return;
+      }
+      const recovery = callbackPath === "auth/recovery" || read("type") === "recovery";
+      if (recovery) { recoveryFlowRef.current = true; setRecoveryMode(true); }
+      try {
+        const code = parsed.searchParams.get("code");
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          if (recovery && data.session) { setSession(data.session); setJourneyReady(true); setReady(true); }
+          return;
+        }
+        const accessToken = read("access_token");
+        const refreshToken = read("refresh_token");
+        if (!accessToken || !refreshToken) throw new Error("Token autentikasi tidak lengkap.");
+        const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) throw error;
+        if (recovery && data.session) { setSession(data.session); setJourneyReady(true); setReady(true); }
+      } catch {
+        recoveryFlowRef.current = false;
+        setRecoveryMode(false);
+        Alert.alert("Autentikasi gagal", "Tautan tidak dapat diverifikasi. Minta tautan baru lalu coba kembali.");
+      }
+    };
+    const authLinkSubscription = Linking.addEventListener("url", ({ url }) => { void handleNativeAuthUrl(url); });
+    void Linking.getInitialURL().then(url => { if (url) void handleNativeAuthUrl(url); });
     const resolveJourney = async (next: Session | null) => {
       if (!active) return;
       const sequence = ++journeyRequestSequence.current;
@@ -2216,17 +2339,26 @@ function Navigator() {
     });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       authEventSeen = true;
+      if (recoveryFlowRef.current && next) {
+        setSession(next);
+        setRecoveryMode(true);
+        setJourneyReady(true);
+        setReady(true);
+        return;
+      }
+      if (!next) { recoveryFlowRef.current = false; setRecoveryMode(false); }
       void resolveJourney(next);
     });
-    return () => { active = false; data.subscription.unsubscribe(); };
+    return () => { active = false; authLinkSubscription.remove(); data.subscription.unsubscribe(); };
   }, []);
 
   if (!ready || (session && !journeyReady)) return <View style={s.loading}><ActivityIndicator size="large" color="#A5B4FC"/><Text style={s.muted}>Menyiapkan sesi dan memeriksa identitas AI Agent…</Text></View>;
   return <NavigationContainer linking={{ prefixes: ["allpha://"], config: { screens: {
-    Welcome: "", Auth: "auth", Profile: "profile", Account: "account", Agents: "agents",
+    Welcome: "", Auth: "auth", AuthCallback: "auth/callback", Recovery: "auth/recovery", Profile: "profile", Account: "account", Agents: "agents",
     Feed: "feed", Reels: "reels", Stories: "stories", Search: "search", Messages: "messages",
     Notifications: "notifications", Communities: "communities", Generate: "generate", Live: "live",
-  } } }}><Stack.Navigator key={session?.user.id || "anonymous"} initialRouteName={session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{session ? <>
+  } } }}><Stack.Navigator key={recoveryMode ? "recovery" : session?.user.id || "anonymous"} initialRouteName={recoveryMode ? "Recovery" : session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{recoveryMode ? <Stack.Screen name="Recovery" component={PasswordRecovery}/> : session ? <>
+    <Stack.Screen name="AuthCallback" component={AuthCallback}/>
     <Stack.Screen name="Profile">{() => <Profile session={session} initialTab="profile"/>}</Stack.Screen>
     <Stack.Screen name="Account">{({ route }) => <Profile session={session} initialTab={route.params?.tab || "profile"}/>}</Stack.Screen>
     <Stack.Screen name="Agents">{() => <Profile session={session} initialTab="agents"/>}</Stack.Screen>
@@ -2239,7 +2371,7 @@ function Navigator() {
     <Stack.Screen name="Communities">{() => <Profile session={session} initialTab="communities"/>}</Stack.Screen>
     <Stack.Screen name="Generate">{() => <Profile session={session} initialTab="generate"/>}</Stack.Screen>
     <Stack.Screen name="Live">{() => <LiveControlCenter session={session} apiBase={apiBase}/>}</Stack.Screen>
-  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/><Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen><Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen></>}</Stack.Navigator></NavigationContainer>;
+  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/><Stack.Screen name="AuthCallback" component={AuthCallback}/><Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen><Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
