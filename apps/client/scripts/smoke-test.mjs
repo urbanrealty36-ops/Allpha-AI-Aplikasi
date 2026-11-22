@@ -138,7 +138,7 @@ assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
 
 
 assert.match(app,/linking=\{\{ prefixes: \["allpha:\/\/"\]/);
-assert.match(app,/Welcome: "", Auth: "auth", AuthCallback: "auth\\/callback", Recovery: "auth\\/recovery", Profile: "profile"/);
+assert.ok(app.includes('Welcome: "", Auth: "auth", AuthCallback: "auth/callback", Recovery: "auth/recovery", Profile: "profile"'), "Native auth callback and recovery routes must be registered");
 assert.ok(app.includes('Stories: { story?: string } | undefined') && app.includes('initialStoryId={route.params?.story}'), "Native Story deep links must preserve the selected Story ID");
 assert.ok(app.includes("selectedStoryId") && app.includes("Story tidak tersedia, tidak dapat diakses, atau sudah kedaluwarsa."), "Native Story deep links must show selected Story or a truthful unavailable state");
 assert.ok(app.includes('Feed: { content?: string } | undefined') && app.includes('initialContentId={route.params?.content}'), "Native Feed deep links must preserve the selected content ID");
