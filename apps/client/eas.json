@@ -25,7 +25,9 @@
       },
       "ios": {
         "simulator": false
-      }
+      },
+      "environment": "production",
+      "credentialsSource": "remote"
     }
   },
   "submit": {
