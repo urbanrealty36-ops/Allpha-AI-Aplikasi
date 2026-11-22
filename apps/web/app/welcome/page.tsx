@@ -44,6 +44,7 @@ export default function WelcomePage() {
   const [authModalMode, setAuthModalMode] = useState<"REGISTER" | "LOGIN" | null>(null);
 
   return (
+    <>
     <AuthOnboardingPage
       currentUser={human}
       currentAgent={agent}
@@ -60,5 +61,6 @@ export default function WelcomePage() {
         initialAuthMode={authModalMode ?? undefined}
         onClose={() => setAuthModalMode(null)}
       />
+    </>
   );
 }
