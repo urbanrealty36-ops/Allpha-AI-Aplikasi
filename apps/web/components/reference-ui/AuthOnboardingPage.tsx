@@ -494,10 +494,10 @@ export default function AuthOnboardingPage({
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button type="button" onClick={() => onStartAuthentication("REGISTER")} className="rounded-2xl bg-[#0284C7] text-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] px-4 py-4 text-sm font-black">
+              <button type="button" onClick={() => onStartAuthentication?.("REGISTER")} className="rounded-2xl bg-[#0284C7] text-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] px-4 py-4 text-sm font-black">
                 {t("auth.registerTab")}
               </button>
-              <button type="button" onClick={() => onStartAuthentication("LOGIN")} className="rounded-2xl bg-white text-slate-900 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] px-4 py-4 text-sm font-black">
+              <button type="button" onClick={() => onStartAuthentication?.("LOGIN")} className="rounded-2xl bg-white text-slate-900 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] px-4 py-4 text-sm font-black">
                 {t("auth.loginTab")}
               </button>
             </div>
