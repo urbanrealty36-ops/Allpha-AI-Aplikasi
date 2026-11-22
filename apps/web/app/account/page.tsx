@@ -105,9 +105,9 @@ export default function HomePage() {
       authEventSeen = true;
       if (!active) return;
       setSession(next);
-      socialRequestSequence.current += 1; consentRequestSequence.current += 1;
-      setSocialGraph(null); setConsentHistory(null);
-      setSocialLoading(false); setConsentLoading(false);
+      socialRequestSequence.current += 1; consentRequestSequence.current += 1; sessionsRequestSequence.current += 1;
+      setSocialGraph(null); setConsentHistory(null); setAuthSessions(null);
+      setSocialLoading(false); setConsentLoading(false); setSessionsLoading(false); setSessionsError("");
       if (next) void loadIdentity(next);
       else {
         identityRequestSequence.current += 1;
@@ -187,6 +187,10 @@ export default function HomePage() {
       const response = await fetch(apiBase + "/v1/me/sessions/" + encodeURIComponent(sessionId) + "/revoke", {
         method: "POST", headers: { Authorization: "Bearer " + session.access_token },
       });
+      if (response.status === 401 || response.status === 403) {
+        await supabase?.auth.signOut({ scope: "local" });
+        throw new Error("Sesi sudah tidak berlaku. Silakan masuk kembali.");
+      }
       if (!response.ok) throw new Error(await apiError(response));
       setMessage("Sesi perangkat berhasil dicabut."); await loadAuthSessions();
     } catch (cause) { setSessionsError(cause instanceof Error ? cause.message : "Sesi tidak dapat dicabut."); }
@@ -200,6 +204,10 @@ export default function HomePage() {
       const response = await fetch(apiBase + "/v1/me/sessions/revoke-others", {
         method: "POST", headers: { Authorization: "Bearer " + session.access_token },
       });
+      if (response.status === 401 || response.status === 403) {
+        await supabase?.auth.signOut({ scope: "local" });
+        throw new Error("Sesi sudah tidak berlaku. Silakan masuk kembali.");
+      }
       if (!response.ok) throw new Error(await apiError(response));
       const payload = await response.json() as { revoked_count: number };
       setMessage(payload.revoked_count + " sesi perangkat lain berhasil dicabut."); await loadAuthSessions();
