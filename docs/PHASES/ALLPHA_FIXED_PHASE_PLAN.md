@@ -276,3 +276,13 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Commits:** `6641833`, `2796c41`, `c52fd20`, `2f847c1`, `044a468`, `e71e5b5`, `72c7551`, `a0925b9`, `b737bcb`, `4d96554`, `61d30c3`.
 - **Verification:** earlier smoke runs exposed duplicate variable declarations in the new smoke assertion block; the bindings have now been isolated in a block scope in `61d30c3`. The latest CI for this correction is pending. No browser/device or live Supabase auth journey is claimed yet.
 - **Phase status:** UI-COPY-03 and ENG-P02 remain `in_progress` pending successful responsive visual checks at 360/390/820/1440 px and real Supabase + FastAPI auth journeys for public modal, dedicated Login, dedicated Register, OAuth redirect and recovery/error cases. This slice does not claim `integration_verified` or `production_verified`.
+
+
+### 17.1 Verification and deployment addendum — 2026-11-22
+
+- **Latest code commit:** `aac3df6f7c58e4dcd85305313e7e83dd253a99de` (auth form conditional nesting fix).
+- **Allpha Smoke:** run [44997716902](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44997716902) completed `success`: API tests, Web npm tests/build, Native npm tests/typecheck and Android Expo export all passed.
+- **Railway Web:** service `Allpha-Web` (`014297db-c780-4193-a60f-74581570ccc7`) deployment `24d7d821-753e-4005-8184-d7f8fc669923` completed `SUCCESS` on the same commit. Runtime log confirms Next.js 15.5.27 started and reported `Ready in 76ms` on port 8080; custom domain `allpha.web.id` is bound to the service.
+- **Reference UI Validation:** run [44997716915](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44997716915) passed smoke, TypeScript and production build; Playwright's 29-route × 4-viewport route check is still in progress at this addendum. Authenticated visual capture is conditional on dedicated E2E secrets and is not claimed as executed yet.
+- **Production auth journey:** source-level integration is implemented and CI builds; real user sign-up/sign-in and modal E2E against production Supabase/FastAPI remain unverified without a dedicated non-personal E2E account/credentials. Do not treat a successful build as proof of a real account journey.
+- **Status:** Web UI changes are deployed; responsive browser validation and authenticated journey proof remain open. UI-COPY-03 / ENG-P02 remain `in_progress` until the visual route run and auth E2E evidence are complete.
