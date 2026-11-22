@@ -14,7 +14,11 @@ def run(command: list[str], *, input_text: str | None = None, check: bool = True
     return result
 
 def psql(sql: str) -> subprocess.CompletedProcess[str]:
-    return run(["docker","exec","-i",CONTAINER,"psql","-X","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],input_text=sql)
+    try:
+        return run(["docker","exec","-i",CONTAINER,"psql","-X","-v","ON_ERROR_STOP=1","-U","postgres","-d","postgres"],input_text=sql)
+    except RuntimeError as exc:
+        logs = run(["docker","logs",CONTAINER],check=False)
+        raise RuntimeError(f"{exc}\ncontainer logs:\n{logs.stdout}\n{logs.stderr}") from exc
 
 def main() -> int:
     if not MIGRATION.is_file(): raise RuntimeError(f"Migration not found: {MIGRATION}")
@@ -66,7 +70,7 @@ begin
  end;
 end $$;
 select * from public.update_organization_member_role_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','admin');
-do $
+do $$
 begin
  begin
   perform * from public.update_organization_member_role_for_actor(
@@ -75,7 +79,7 @@ begin
   raise exception using errcode='P0001',message='non-member unexpectedly changed a tenant role';
  exception when insufficient_privilege then null;
  end;
-end $;
+end $$;
 do $$
 begin
  begin

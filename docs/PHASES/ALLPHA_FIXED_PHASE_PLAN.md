@@ -400,3 +400,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - The first PostgreSQL 17 disposable run passed the original tenant repair. After adding server-only organization/member RPCs, the next run caught malformed dollar-quote delimiters in the five newly added function bodies; API regression tests passed (880/880) but migration integration correctly failed before any production operation.
 - Corrected all five new function body delimiters to balanced PostgreSQL dollar quotes. The same disposable migration/RBAC test is retained as the required gate.
 - No production DDL executed. ENG-P02 remains `in_progress`; rerun is pending.
+
+
+## 26. ENG-P02 disposable RBAC test harness correction — 2026-11-22
+
+- The second RBAC integration run reached the disposable PostgreSQL step but failed while the harness executed its added non-member negative-case SQL. The harness had a malformed dollar-quoted `DO` block in that newly inserted assertion; the production migration was not executed.
+- Corrected the test harness block delimiter and added container log capture on PostgreSQL command failure so subsequent failures expose the server-side cause.
+- ENG-P02 remains `in_progress`; next run must prove migration apply-twice and full RBAC behavior before production recovery preflight can proceed.
