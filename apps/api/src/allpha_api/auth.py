@@ -70,6 +70,30 @@ async def current_user(
     if active is not True:
         raise HTTPException(status_code=401, detail={"code": "SESSION_REVOKED", "message": "Sesi telah dicabut atau kedaluwarsa. Silakan masuk kembali."})
 
+    # Account lifecycle is a server-side authorization boundary, not a UI hint.
+    # A deactivation request immediately prevents further protected API use,
+    # even when the caller still holds an otherwise-valid Supabase access JWT.
+    profile = await user_db_request(
+        "GET",
+        "profiles",
+        credentials.credentials,
+        params={
+            "select": "id,account_status",
+            "id": f"eq.{user['id']}",
+            "limit": "1",
+        },
+    )
+    if not profile:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ACCOUNT_PROFILE_UNAVAILABLE", "message": "Profil akun tidak tersedia; akses ditolak."},
+        )
+    if profile[0].get("account_status") != "active":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ACCOUNT_NOT_ACTIVE", "message": "Akun sedang dinonaktifkan dan tidak dapat menggunakan layanan."},
+        )
+
     request.state.user_id = user["id"]
     request.state.auth_session_id = str(session_id)
     request.state.supabase_access_token = credentials.credentials
