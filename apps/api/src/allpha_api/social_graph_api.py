@@ -349,8 +349,16 @@ async def accept_relationship(edge_id: uuid.UUID, request: Request,
         "select": "id,actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
     }, body={"status": "active"}, prefer="return=representation")
     if not rows:
+        replay = await _rows("GET", "social_edges", request.state.supabase_access_token, params={
+            "id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
+            "edge_type": "eq.follow", "status": "eq.active",
+            "select": "id,actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
+            "limit": "1",
+        })
+        if replay:
+            return {"edge": replay[0], "outcome": "follow_accepted", "idempotent_replay": True}
         raise HTTPException(404, detail={"code": "SOCIAL_FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan tidak ditemukan atau sudah diproses."})
-    return {"edge": rows[0], "outcome": "follow_accepted"}
+    return {"edge": rows[0], "outcome": "follow_accepted", "idempotent_replay": False}
 
 
 @router.post("/relationships/{edge_id}/reject")
@@ -361,8 +369,8 @@ async def reject_relationship(edge_id: uuid.UUID, request: Request,
         "edge_type": "eq.follow", "status": "eq.requested", "select": "id,actor_node_type,target_node_type,actor_agent_id,target_agent_id",
     }, prefer="return=representation")
     if not rows:
-        raise HTTPException(404, detail={"code": "SOCIAL_FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan tidak ditemukan atau sudah diproses."})
-    return {"removed": rows[0], "outcome": "follow_rejected"}
+        return {"removed": None, "outcome": "follow_rejected", "idempotent_replay": True}
+    return {"removed": rows[0], "outcome": "follow_rejected", "idempotent_replay": False}
 
 
 @router.delete("/relationships/{edge_id}")
@@ -373,5 +381,5 @@ async def remove_relationship(edge_id: uuid.UUID, request: Request,
         "select": "id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status",
     }, prefer="return=representation")
     if not rows:
-        raise HTTPException(404, detail={"code": "SOCIAL_EDGE_NOT_FOUND", "message": "Relasi tidak ditemukan atau bukan milik principal Anda."})
-    return {"removed": rows[0], "outcome": f"{rows[0]['edge_type']}_removed"}
+        return {"removed": None, "outcome": "already_removed", "idempotent_replay": True}
+    return {"removed": rows[0], "outcome": f"{rows[0]['edge_type']}_removed", "idempotent_replay": False}
