@@ -552,7 +552,6 @@ export default function AuthOnboardingFlow({
             </div>
 
             {authMode === 'REGISTER' && (
-            {/* Avatar Selector */}
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-900 flex items-center gap-1.5 uppercase">
                 <User className="w-3.5 h-3.5 text-[#0284C7]" />
