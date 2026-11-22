@@ -113,7 +113,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
         email: payload.email,
         password: payload.password,
         options: {
-          data: { display_name: payload.user.name.trim(), locale },
+          data: { display_name: payload.user.name.trim(), username: payload.user.username.replace(/^@/, "").trim().toLowerCase(), avatar_url: payload.user.avatar || null, bio: payload.user.bio.trim(), interests: payload.interests, locale },
           emailRedirectTo: typeof window === "undefined" ? undefined : window.location.origin + "/auth/callback?next=%2Fstart",
         },
       });
@@ -158,13 +158,43 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       return;
     }
     if (payload.authMode === "LOGIN") {
-      // Returning Humans with a completed profile are never forced through
-      // first-run onboarding again, even when they have not created an Agent.
-      if (identity.profile?.username) {
-        finishAuthentication();
-        return "authenticated";
+      // Email-confirmation registrations have no Supabase session at sign-up.
+      // Restore their Human profile from the metadata captured at registration.
+      if (!identity.profile?.username) {
+        const metadata = verified.user.user_metadata ?? {};
+        const username = typeof metadata.username === "string" ? metadata.username.replace(/^@/, "").trim().toLowerCase() : "";
+        const displayName = typeof metadata.display_name === "string" ? metadata.display_name.trim() : "";
+        if (!username || !displayName) {
+          throw new Error("Profil Human belum lengkap. Silakan hubungi dukungan Allpha untuk pemulihan akun.");
+        }
+        const profileResponse = await fetch(apiBase + "/v1/me/profile", {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            username,
+            display_name: displayName,
+            avatar_url: typeof metadata.avatar_url === "string" ? metadata.avatar_url : null,
+            bio: typeof metadata.bio === "string" ? metadata.bio : "",
+            locale,
+          }),
+          cache: "no-store",
+        });
+        if (!profileResponse.ok) throw new Error(await responseError(profileResponse));
+        const interests = Array.isArray(metadata.interests) ? metadata.interests : [];
+        for (const interest of interests) {
+          if (typeof interest !== "string") continue;
+          const interest_key = interest.toLowerCase().trim().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+          if (!interest_key) continue;
+          const interestResponse = await fetch(apiBase + "/v1/me/interests", {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ interest_key, preference: "interested" }),
+            cache: "no-store",
+          });
+          if (!interestResponse.ok) throw new Error(await responseError(interestResponse));
+        }
       }
-      router.replace("/agents?onboarding=required");
+      finishAuthentication();
       return "authenticated";
     }
 
