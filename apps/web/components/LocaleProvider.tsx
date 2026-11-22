@@ -3,7 +3,27 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type AllphaLocale = "id-ID" | "en-US";
-type LocaleContextValue = { locale: AllphaLocale; setLocale: (locale: AllphaLocale) => void };
+type LocaleContextValue = { locale: AllphaLocale; setLocale: (locale: AllphaLocale) => void; t: (key: string) => string };
+const messages: Record<string, { id: string; en: string }> = {
+  "language.label": { id: "Bahasa", en: "Language" },
+  "onboarding.counter": { id: "Slide Sapa", en: "Welcome slide" },
+  "onboarding.counterOf": { id: "dari", en: "of" },
+  "auth.registerTitle": { id: "Registrasi Human Identity", en: "Create your Allpha account" },
+  "auth.loginTitle": { id: "Masuk ke Human Identity", en: "Sign in to Allpha" },
+  "auth.registerTab": { id: "Daftar", en: "Sign up" },
+  "auth.loginTab": { id: "Masuk", en: "Sign in" },
+  "auth.name": { id: "Nama Lengkap", en: "Full name" },
+  "auth.username": { id: "Username (@handle)", en: "Username (@handle)" },
+  "auth.email": { id: "Email", en: "Email" },
+  "auth.password": { id: "Password", en: "Password" },
+  "auth.bio": { id: "Bio Singkat", en: "Short bio" },
+  "auth.interests": { id: "Pilih Minat & Topik Utama", en: "Choose your interests and topics" },
+  "auth.back": { id: "Kembali", en: "Back" },
+  "auth.submitRegister": { id: "Buat Akun Allpha", en: "Create Allpha account" },
+  "auth.submitLogin": { id: "Masuk ke Allpha Universe", en: "Sign in to Allpha Universe" },
+  "auth.processing": { id: "Memproses…", en: "Processing…" },
+  "auth.forgotPassword": { id: "Lupa password?", en: "Forgot password?" },
+};
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 const STORAGE_KEY = "allpha.locale";
 
@@ -25,7 +45,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent("allpha:locale-change", { detail: next }));
   }, []);
 
-  const value = useMemo(() => ({ locale, setLocale }), [locale, setLocale]);
+  const t = useCallback((key: string) => messages[key]?.[locale === "id-ID" ? "id" : "en"] ?? key, [locale]);
+  const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
 
