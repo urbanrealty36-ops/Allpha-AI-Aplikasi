@@ -135,9 +135,10 @@ export default function AiCinemaCreatorWorkspace() {
       ]);
       setCapabilityStatus(status);
       setProductionReadiness(readiness);
-    } catch {
+    } catch (cause) {
       setCapabilityStatus(null);
       setProductionReadiness(null);
+      setError(cause instanceof Error ? cause.message : "Status layanan Creator Studio tidak dapat dimuat.");
     } finally {
       setReadinessLoading(false);
     }
@@ -151,9 +152,10 @@ export default function AiCinemaCreatorWorkspace() {
       setRuntimeAgents(items);
       setGenerationAgentId(current => items.some(item => item.agent.id === current) ? current : items[0]?.agent.id ?? "");
       setRuntimeAgentsState("ready");
-    } catch {
+    } catch (cause) {
       setRuntimeAgents([]);
       setRuntimeAgentsState("unavailable");
+      setError(cause instanceof Error ? cause.message : "Daftar Agent untuk generasi tidak dapat dimuat.");
     }
   }, []);
 
@@ -185,8 +187,9 @@ export default function AiCinemaCreatorWorkspace() {
       const rows = Array.isArray(result.items) ? result.items : [];
       setCreatorMedia(rows);
       setReadyMedia(rows.filter(item => item.status === "ready" && item.scan_status === "clean" && item.processed_at).map(({ id, filename, media_type, size_bytes }) => ({ id, filename, media_type, size_bytes })));
-    } catch {
+    } catch (cause) {
       setCreatorMedia([]); setReadyMedia([]);
+      setError(cause instanceof Error ? cause.message : "Media Creator Studio tidak dapat dimuat.");
     }
   }, []);
 
