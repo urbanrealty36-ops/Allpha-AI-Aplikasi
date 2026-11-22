@@ -329,7 +329,7 @@ language sql
 stable
 security definer
 set search_path = ''
-as $
+as $allpha_session_list$
   select s.id,
          s.created_at,
          s.updated_at,
@@ -344,7 +344,7 @@ as $
      and (s.not_after is null or s.not_after > pg_catalog.now())
    order by (s.id = p_current_session_id) desc,
             coalesce(s.refreshed_at, s.updated_at, s.created_at) desc nulls last;
-$;
+$allpha_session_list$;
 
 revoke all on function public.list_my_auth_sessions(uuid) from public,anon;
 grant execute on function public.list_my_auth_sessions(uuid) to authenticated;
