@@ -93,7 +93,10 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   assert.ok(requireSession.includes("supabase.auth.getUser(data.session.access_token)") &&
     requireSession.includes("authEventSeen"), "protected routes must validate persisted sessions and avoid stale initialization races");
   assert.ok(startJourney.includes("/v1/me") && startJourney.includes("email_confirmed_at") &&
-    startJourney.includes("account_status"), "post-login routing must resolve verified Human identity before Agent onboarding");
+    startJourney.includes("account_status") && startJourney.includes("hasCompletedHumanProfile"),
+    "post-login routing must resolve verified Human identity and avoid repeating onboarding for completed profiles");
+  assert.ok(authRoute.includes("identity.profile?.username") && authRoute.includes("finishAuthentication()"),
+    "returning Human accounts without an Agent must still enter the app without forced first-run onboarding");
   assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext"), "OAuth/email callback must exchange code and enforce safe redirect");
   assert.ok(forgotPassword.includes("resetPasswordForEmail") && forgotPassword.includes("/auth/callback?next=%2Freset-password"),
     "password recovery must use Supabase Auth with the canonical callback");
