@@ -172,3 +172,4 @@ for (const contract of [
   '"/v1/auth/revoke"',
   'scope: "global"'
 ]) assert.ok(app.includes(contract), `missing Native auth/session lifecycle contract: ${contract}`);
+assert.ok(app.includes(String.raw`/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/`), "Native auth email validation must use whitespace-aware email syntax");
