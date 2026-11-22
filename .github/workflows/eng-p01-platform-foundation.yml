@@ -46,6 +46,8 @@ jobs:
       - name: Install and test API
         working-directory: apps/api
         run: python -m pip install -e ".[dev]" && python -m compileall -q src tests scripts && pytest -q
+      - name: Verify ENG-P02 tenant repair on disposable PostgreSQL 17
+        run: python apps/api/scripts/verify_eng_p02_tenant_migration.py
       - name: Build Railway deployment image
         run: docker build --file apps/api/Dockerfile --tag allpha-api:ci apps/api
       - name: Validate three-service Compose topology

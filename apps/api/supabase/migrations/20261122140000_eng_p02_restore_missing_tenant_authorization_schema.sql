@@ -44,12 +44,12 @@ create index if not exists audit_events_actor_created_idx
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql set search_path = ''
-as $
+as $$
 begin
   new.updated_at := pg_catalog.now();
   return new;
 end;
-$;
+$$;
 
 create or replace function private.is_organization_member(target_organization uuid)
 returns boolean language sql stable security definer set search_path = ''
@@ -77,7 +77,7 @@ returns boolean
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_revoked uuid;
 begin
@@ -102,14 +102,14 @@ begin
           jsonb_build_object('scope','selected'));
   return true;
 end;
-$;
+$$;
 
 create or replace function public.revoke_my_other_auth_sessions(p_current_session_id uuid)
 returns integer
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_revoked integer;
 begin
@@ -143,7 +143,7 @@ begin
   get diagnostics v_revoked = row_count;
   return v_revoked;
 end;
-$;
+$$;
 
 create or replace function public.create_organization_owner_membership()
 returns trigger language plpgsql security definer set search_path = ''
@@ -225,5 +225,9 @@ revoke all on function public.create_organization_owner_membership() from public
 revoke all on function public.audit_organization_created() from public,anon,authenticated;
 
 grant usage on schema public to authenticated;
-grant select,insert,update on public.organizations to authenticated;
+grant select on public.organizations to authenticated;
+revoke insert,update on public.organizations from authenticated;
+revoke insert (id,slug,name,owner_id,created_at,updated_at), update (id,slug,name,owner_id,created_at,updated_at)
+  on public.organizations from authenticated;
+grant insert (slug,name,owner_id), update (slug,name) on public.organizations to authenticated;
 grant select on public.organization_memberships,public.audit_events to authenticated;
