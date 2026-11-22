@@ -23,6 +23,7 @@ declare
     'agent_social_action_approvals'
   ];
   v_table text;
+  v_required_privileges text[];
   v_function text;
   v_column record;
 begin
@@ -32,10 +33,19 @@ begin
     elsif not coalesce((select c.relrowsecurity from pg_class c
       where c.oid=to_regclass('public.' || v_table)), false) then
       v_missing_privileges := array_append(v_missing_privileges, v_table || ':rls_disabled');
-    elsif not has_table_privilege('service_role', 'public.' || v_table, 'select')
-       or not has_table_privilege('service_role', 'public.' || v_table, 'insert')
-       or not has_table_privilege('service_role', 'public.' || v_table, 'update') then
-      v_missing_privileges := array_append(v_missing_privileges, v_table || ':service_role_dml');
+    else
+      -- Append-only audit/control projections intentionally require no UPDATE.
+      v_required_privileges := case
+        when v_table in ('agent_social_control_events','agent_social_audit_events')
+          then array['select','insert']::text[]
+        else array['select','insert','update']::text[]
+      end;
+      if exists (
+        select 1 from unnest(v_required_privileges) as required(privilege)
+        where not has_table_privilege('service_role', 'public.' || v_table, required.privilege)
+      ) then
+        v_missing_privileges := array_append(v_missing_privileges, v_table || ':service_role_table_privileges');
+      end if;
     end if;
   end loop;
 
