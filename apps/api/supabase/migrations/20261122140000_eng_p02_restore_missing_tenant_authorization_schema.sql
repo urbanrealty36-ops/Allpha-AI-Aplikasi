@@ -312,6 +312,45 @@ revoke all on function public.revoke_my_auth_session(uuid) from public,anon;
 grant execute on function public.revoke_my_auth_session(uuid) to authenticated;
 revoke all on function public.revoke_my_other_auth_sessions(uuid) from public,anon;
 grant execute on function public.revoke_my_other_auth_sessions(uuid) to authenticated;
+
+create or replace function public.list_my_auth_sessions(p_current_session_id uuid)
+returns table(
+  id uuid,
+  created_at timestamptz,
+  updated_at timestamptz,
+  refreshed_at timestamp,
+  not_after timestamptz,
+  aal text,
+  user_agent text,
+  ip text,
+  is_current boolean
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $
+  select s.id,
+         s.created_at,
+         s.updated_at,
+         s.refreshed_at,
+         s.not_after,
+         s.aal::text,
+         s.user_agent,
+         s.ip::text,
+         s.id = p_current_session_id
+    from auth.sessions s
+   where s.user_id = (select auth.uid())
+     and (s.not_after is null or s.not_after > pg_catalog.now())
+   order by (s.id = p_current_session_id) desc,
+            coalesce(s.refreshed_at, s.updated_at, s.created_at) desc nulls last;
+$;
+
+revoke all on function public.list_my_auth_sessions(uuid) from public,anon;
+grant execute on function public.list_my_auth_sessions(uuid) to authenticated;
+comment on function public.list_my_auth_sessions(uuid) is
+  'ENG-P02: returns only active Auth session metadata owned by auth.uid(); never exposes refresh tokens or other users sessions.';
+
 revoke all on function public.create_organization_owner_membership() from public,anon,authenticated;
 revoke all on function public.audit_organization_created() from public,anon,authenticated;
 
