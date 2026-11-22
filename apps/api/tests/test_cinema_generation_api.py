@@ -263,3 +263,86 @@ def test_cinema_generation_schema_gate_prevents_credit_reservation(monkeypatch):
         assert response.json()["error"]["code"] == "CINEMA_GENERATION_SCHEMA_NOT_READY"
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_generation_link_failure_compensates_new_queued_job(monkeypatch):
+    from fastapi import HTTPException
+
+    calls = []
+
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 9, "title": "Compensation Film"}
+
+    async def create_job(payload, request, idempotency_key, user):
+        return {"job_id": JOB, "task_id": "task-compensate", "status": "queued",
+                "reserved_credits": 10, "idempotent_replay": False}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "POST" and table == "rpc/cinema_generation_schema_readiness":
+            return {"ready": True, "missing": []}
+        if method == "POST" and table == "cinema_generation_job_links":
+            raise HTTPException(503, detail={"code": "DATABASE_UNAVAILABLE"})
+        raise AssertionError((method, table, params, payload))
+
+    async def cancel_job(job_id, user):
+        calls.append((str(job_id), user["id"]))
+        return {"job_id": str(job_id), "status": "cancelled"}
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    monkeypatch.setattr(cinema_api.generation_jobs_api, "create_generation_job", create_job)
+    monkeypatch.setattr(cinema_api.generation_jobs_api, "cancel_generation_job", cancel_job)
+    client = _client()
+    try:
+        response = client.post(
+            f"/v1/cinema/creator/titles/{TITLE}/generation-jobs",
+            headers={"Idempotency-Key": "cinema-compensate-01"},
+            json={"agent_id": AGENT, "skill_id": SKILL,
+                  "capability_id": "cinema.screenplay.draft", "prompt": "Draft screenplay."},
+        )
+        assert response.status_code == 503
+        assert calls == [(JOB, OWNER)]
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_cinema_generation_idempotency_conflict_compensates_only_new_job(monkeypatch):
+    calls = []
+
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 9, "title": "Conflict Film"}
+
+    async def create_job(payload, request, idempotency_key, user):
+        return {"job_id": JOB, "status": "queued", "idempotent_replay": False}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "POST" and table == "rpc/cinema_generation_schema_readiness":
+            return {"ready": True, "missing": []}
+        if method == "POST" and table == "cinema_generation_job_links":
+            return []
+        if method == "GET" and table == "cinema_generation_job_links":
+            return [{"generation_job_id": "66666666-6666-4666-8666-666666666666",
+                     "title_id": TITLE, "owner_id": OWNER, "target_section": "screenplay_draft"}]
+        raise AssertionError((method, table, params, payload))
+
+    async def cancel_job(job_id, user):
+        calls.append(str(job_id))
+        return {"job_id": str(job_id), "status": "cancelled"}
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    monkeypatch.setattr(cinema_api.generation_jobs_api, "create_generation_job", create_job)
+    monkeypatch.setattr(cinema_api.generation_jobs_api, "cancel_generation_job", cancel_job)
+    client = _client()
+    try:
+        response = client.post(
+            f"/v1/cinema/creator/titles/{TITLE}/generation-jobs",
+            headers={"Idempotency-Key": "cinema-conflict-01"},
+            json={"agent_id": AGENT, "skill_id": SKILL,
+                  "capability_id": "cinema.screenplay.draft", "prompt": "Draft screenplay."},
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "CINEMA_GENERATION_IDEMPOTENCY_CONFLICT"
+        assert calls == [JOB]
+    finally:
+        app.dependency_overrides.pop(current_user, None)
