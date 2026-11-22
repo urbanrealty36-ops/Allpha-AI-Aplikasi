@@ -21,6 +21,8 @@ type SocialInterest = { interest_key: string; preference: "interested" | "not_in
 type DiscoveredSocialUser = { id: string; username: string; display_name?: string | null; avatar_url?: string | null; visibility: "public" | "private" };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean }; };
 type ConsentRecord = { consent_type: "terms_of_service" | "privacy_policy" | string; policy_version: string; granted: boolean; recorded_at: string };
+type AuthSession = { id: string; created_at: string | null; updated_at: string | null; refreshed_at: string | null; not_after: string | null; aal: string | null; user_agent: string | null; ip: string | null; is_current: boolean };
+type AuthSessionsResponse = { items: AuthSession[]; current_session_id: string };
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
 
 async function apiError(response: Response): Promise<string> {
@@ -37,7 +39,10 @@ export default function HomePage() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(""); const [error, setError] = useState("");
-  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents">("profile");
+  const [tab, setTab] = useState<"profile" | "settings" | "social" | "consents" | "sessions">("profile");
+  const [authSessions, setAuthSessions] = useState<AuthSession[] | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
   const [consentHistory, setConsentHistory] = useState<ConsentRecord[] | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentError, setConsentError] = useState("");
@@ -113,7 +118,7 @@ export default function HomePage() {
   // resolve the same canonical profile/settings/privacy/relationship view.
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (requestedTab === "profile" || requestedTab === "settings" || requestedTab === "social" || requestedTab === "consents") {
+    if (requestedTab === "profile" || requestedTab === "settings" || requestedTab === "social" || requestedTab === "consents" || requestedTab === "sessions") {
       setTab(requestedTab);
     }
   }, []);
@@ -141,6 +146,46 @@ export default function HomePage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sesi tidak dapat dicabut.");
     } finally { setSaving(false); }
+  }
+
+  async function loadAuthSessions() {
+    if (!session) return;
+    setSessionsLoading(true); setSessionsError("");
+    try {
+      const response = await fetch(apiBase + "/v1/me/sessions", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      if (!response.ok) throw new Error(await apiError(response));
+      const payload = await response.json() as AuthSessionsResponse;
+      setAuthSessions(Array.isArray(payload.items) ? payload.items : []);
+    } catch (cause) {
+      setSessionsError(cause instanceof Error ? cause.message : "Daftar sesi tidak dapat dimuat.");
+    } finally { setSessionsLoading(false); }
+  }
+
+  async function revokeAuthSession(sessionId: string) {
+    if (!session || !window.confirm("Cabut sesi perangkat ini? Perangkat tersebut harus login kembali.")) return;
+    setSaving(true); setSessionsError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/me/sessions/" + encodeURIComponent(sessionId) + "/revoke", {
+        method: "POST", headers: { Authorization: "Bearer " + session.access_token },
+      });
+      if (!response.ok) throw new Error(await apiError(response));
+      setMessage("Sesi perangkat berhasil dicabut."); await loadAuthSessions();
+    } catch (cause) { setSessionsError(cause instanceof Error ? cause.message : "Sesi tidak dapat dicabut."); }
+    finally { setSaving(false); }
+  }
+
+  async function revokeOtherAuthSessions() {
+    if (!session || !window.confirm("Cabut semua sesi di perangkat lain? Sesi perangkat ini akan tetap aktif.")) return;
+    setSaving(true); setSessionsError(""); setMessage("");
+    try {
+      const response = await fetch(apiBase + "/v1/me/sessions/revoke-others", {
+        method: "POST", headers: { Authorization: "Bearer " + session.access_token },
+      });
+      if (!response.ok) throw new Error(await apiError(response));
+      const payload = await response.json() as { revoked_count: number };
+      setMessage(payload.revoked_count + " sesi perangkat lain berhasil dicabut."); await loadAuthSessions();
+    } catch (cause) { setSessionsError(cause instanceof Error ? cause.message : "Sesi perangkat lain tidak dapat dicabut."); }
+    finally { setSaving(false); }
   }
 
   async function loadConsentHistory() {
@@ -318,7 +363,7 @@ export default function HomePage() {
     <section className="workspace-heading"><div><span className="section-kicker">RUANG PERSONAL</span><h1>Identitas manusia</h1><p>Profil dan pengaturan yang tersimpan pada akun Allpha Anda.</p></div>
       {profile && <div className="profile-chip">{profile.avatar_url ? <img src={profile.avatar_url} alt="" /> : <span>{(profile.display_name || session.user.email || "A").slice(0, 1).toUpperCase()}</span>}<div><strong>{profile.display_name || "Pengguna Allpha"}</strong><small>{profile.username ? "@" + profile.username : "Username belum diatur"}</small></div></div>}
     </section>
-    <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button><button className={tab === "consents" ? "active" : ""} onClick={() => { setTab("consents"); void loadConsentHistory(); }}>Riwayat persetujuan</button></nav>
+    <nav className="identity-tabs" aria-label="Bagian identitas"><button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>Profil</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Pengaturan</button><button className={tab === "social" ? "active" : ""} onClick={() => { setTab("social"); void loadSocialGraph(); }}>Social Graph</button><button className={tab === "consents" ? "active" : ""} onClick={() => { setTab("consents"); void loadConsentHistory(); }}>Riwayat persetujuan</button><button className={tab === "sessions" ? "active" : ""} onClick={() => { setTab("sessions"); void loadAuthSessions(); }}>Perangkat & sesi</button></nav>
     {error && <p className="notice error" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}
     {loading ? <section className="panel loading-panel" role="status">Mengambil profil dan pengaturan dari backend…</section> : !profile || !settings ? <section className="panel loading-panel">{error ? <><p className="muted">Profil dan pengaturan belum berhasil dimuat. Periksa koneksi atau sesi, lalu coba lagi.</p><button type="button" className="button-primary" onClick={() => { if (session) void loadIdentity(session); }}>Coba lagi</button></> : <><p className="muted">Profil belum tersedia.</p><button type="button" className="button-quiet" onClick={() => { if (session) void loadIdentity(session); }}>Muat ulang</button></>}</section> : tab === "social" ? <section className="panel settings-panel social-panel">
       <div className="panel-heading"><span className="section-kicker">SOCIAL GRAPH</span><h2>Relasi dan minat Anda</h2><p>Relasi dan preferensi minat disimpan melalui API terautentikasi. Pencarian akun berdasarkan username belum tersedia; gunakan ID pengguna target.</p></div>
@@ -346,6 +391,12 @@ export default function HomePage() {
         <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<input value={interestKey} onChange={(e) => setInterestKey(e.target.value.toLowerCase())} maxLength={80} pattern="[a-z0-9][a-z0-9._-]{0,79}" placeholder="contoh: desain.3d" /></label><label>Preferensi<select value={interestPreference} onChange={(e) => setInterestPreference(e.target.value as "interested" | "not_interested")}><option value="interested">Diminati</option><option value="not_interested">Tidak diminati</option></select></label><button type="button" className="button-primary" disabled={saving || !interestKey.trim()} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}><span>{item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</span><button type="button" className="button-quiet" aria-label={"Ubah preferensi " + item.interest_key} disabled={saving} onClick={() => void updateInterestPreference(item.interest_key, item.preference === "interested" ? "not_interested" : "interested")}>{item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"}</button><button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
         {socialGraph.blocked_by.length > 0 && <p className="muted">Akun yang memblokir Anda: {socialGraph.blocked_by.map((edge) => edge.actor_user_id).join(", ")}</p>}
       </> : <div><p className="muted">Data Social Graph belum dimuat atau terjadi gangguan koneksi.</p><button type="button" className="button-quiet" onClick={() => void loadSocialGraph()}>Coba lagi</button></div>}
+    </section> : tab === "sessions" ? <section className="panel settings-panel social-panel" aria-labelledby="auth-sessions-title">
+      <div className="panel-heading"><span className="section-kicker">KEAMANAN AKUN</span><h2 id="auth-sessions-title">Perangkat & sesi login</h2><p>Daftar sesi aktif akun Anda. Anda dapat mencabut sesi tertentu atau seluruh sesi perangkat lain; sesi saat ini tetap aktif.</p></div>
+      <div className="form-actions"><button type="button" className="button-primary" disabled={saving || sessionsLoading || !authSessions?.some((item) => !item.is_current)} onClick={() => void revokeOtherAuthSessions()}>Cabut semua perangkat lain</button><button type="button" className="button-quiet" disabled={sessionsLoading} onClick={() => void loadAuthSessions()}>Muat ulang</button></div>
+      {sessionsError && <p className="notice error" role="alert">{sessionsError}</p>}
+      {sessionsLoading ? <p className="muted" role="status">Memuat sesi aktif…</p> : authSessions === null ? <p className="muted">Daftar sesi belum dimuat.</p> : authSessions.length === 0 ? <p className="muted">Tidak ada sesi aktif yang terdaftar.</p> : <div className="consent-history-list">{authSessions.map((item) => <article className="social-row" key={item.id}><div><strong>{item.is_current ? "Perangkat ini · Sesi saat ini" : item.user_agent || "Perangkat lain"}</strong><p className="muted">{item.user_agent || "Perangkat tidak teridentifikasi"}{item.ip ? " · " + item.ip : ""}</p><p className="muted">Terakhir diperbarui: {item.updated_at ? new Date(item.updated_at).toLocaleString(profile?.locale || "id-ID") : "Tidak tersedia"} · {item.aal || "AAL tidak tersedia"}</p><small className="muted">Session ID: <code>{item.id}</code></small></div>{item.is_current ? <span className="consent-state">Aktif sekarang</span> : <button type="button" className="button-quiet" disabled={saving} onClick={() => void revokeAuthSession(item.id)}>Cabut sesi</button>}</article>)}</div>}
+      <p className="muted">Metadata perangkat berasal dari registri sesi Supabase Auth. Alamat IP hanya ditampilkan kepada pemilik akun.</p>
     </section> : tab === "consents" ? <section className="panel settings-panel social-panel" aria-labelledby="consent-history-title">
       <div className="panel-heading"><span className="section-kicker">PRIVASI & TRANSPARANSI</span><h2 id="consent-history-title">Riwayat persetujuan</h2><p>Riwayat ini hanya menampilkan catatan yang sudah tersimpan melalui API Allpha. Persetujuan baru tidak dapat direkam sebelum versi resmi Terms of Service dan Privacy Policy ditetapkan.</p></div>
       {consentLoading ? <p className="muted" role="status">Memuat riwayat persetujuan…</p> : consentError ? <div><p className="notice error" role="alert">{consentError}</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Coba lagi</button></div> : consentHistory === null ? <p className="muted">Riwayat belum dimuat.</p> : consentHistory.length === 0 ? <div className="social-row"><p className="muted">Belum ada catatan persetujuan pada akun ini.</p><button type="button" className="button-quiet" onClick={() => void loadConsentHistory()}>Muat ulang</button></div> : <div className="consent-history-list">{consentHistory.map((item, index) => <article className="social-row" key={item.consent_type + ":" + item.policy_version + ":" + item.recorded_at + ":" + index}><div><strong>{item.consent_type === "terms_of_service" ? "Terms of Service" : item.consent_type === "privacy_policy" ? "Privacy Policy" : item.consent_type}</strong><p className="muted">Versi tercatat: <code>{item.policy_version}</code></p><p className="muted">{item.granted ? "Diberikan" : "Tidak diberikan"} · {item.recorded_at ? new Date(item.recorded_at).toLocaleString("id-ID") : "Waktu tidak tersedia"}</p></div><span className="consent-state">{item.granted ? "Tercatat" : "Tidak diberikan"}</span></article>)}</div>}
