@@ -66,5 +66,15 @@ export default function AiCinemaPage() {
     return () => { active = false; controller.abort(); };
   }, []);
 
-  return <><AiCinemaView userCredits={null} catalogItems={items} catalogState={state} productionMode /><AiCinemaPlaybackPanel titles={items.map(item => ({ id: item.id, title: item.title }))} /><AiCinemaCreatorWorkspace /></>;
+  const openCreatorStudio = () => {
+    document.getElementById("ai-cinema-creator-studio")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return <>
+    <AiCinemaView userCredits={null} catalogItems={items} catalogState={state} productionMode onOpenCreatorStudio={openCreatorStudio} />
+    <AiCinemaPlaybackPanel titles={items.map(item => ({ id: item.id, title: item.title }))} />
+    <section id="ai-cinema-creator-studio" aria-label="Creator Studio" className="scroll-mt-24">
+      <AiCinemaCreatorWorkspace />
+    </section>
+  </>;
 }
