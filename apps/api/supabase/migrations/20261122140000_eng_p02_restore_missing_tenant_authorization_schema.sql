@@ -172,15 +172,15 @@ $$;
 -- all tenant mutations are authorized here and invoked by FastAPI with service_role.
 create or replace function private.organization_role_for_user(p_organization_id uuid,p_user_id uuid)
 returns text language sql stable security definer set search_path = ''
-as $
+as $$
   select m.role from public.organization_memberships m
    where m.organization_id=p_organization_id and m.user_id=p_user_id limit 1;
-$;
+$$;
 
 create or replace function public.create_organization_for_user(p_actor_user_id uuid,p_name text,p_slug text)
 returns table(id uuid,name text,slug text,owner_id uuid,created_at timestamptz,updated_at timestamptz)
 language plpgsql security definer set search_path = ''
-as $
+as $$
 begin
   if p_actor_user_id is null then
     raise exception using errcode='28000',message='actor_required';
@@ -261,14 +261,14 @@ grant execute on function public.remove_organization_member_for_actor(uuid,uuid,
     values(p_name,p_slug,p_actor_user_id)
     returning o.id,o.name,o.slug,o.owner_id,o.created_at,o.updated_at;
 end;
-$;
+$$;
 
 create or replace function public.add_organization_member_for_actor(
  p_organization_id uuid,p_actor_user_id uuid,p_target_user_id uuid,p_role text
 )
 returns table(organization_id uuid,user_id uuid,role text,invited_by uuid,created_at timestamptz)
 language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_actor_role text;
 begin
   v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
@@ -291,14 +291,14 @@ begin
       from public.organization_memberships m
      where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
 end;
-$;
+$$;
 
 create or replace function public.update_organization_member_role_for_actor(
  p_organization_id uuid,p_actor_user_id uuid,p_target_user_id uuid,p_role text
 )
 returns table(organization_id uuid,user_id uuid,role text,invited_by uuid,created_at timestamptz)
 language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_actor_role text; v_target_role text;
 begin
   v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
@@ -326,13 +326,13 @@ begin
       from public.organization_memberships m
      where m.organization_id=p_organization_id and m.user_id=p_target_user_id;
 end;
-$;
+$$;
 
 create or replace function public.remove_organization_member_for_actor(
  p_organization_id uuid,p_actor_user_id uuid,p_target_user_id uuid
 )
 returns boolean language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_actor_role text; v_target_role text;
 begin
   v_actor_role := private.organization_role_for_user(p_organization_id,p_actor_user_id);
@@ -354,7 +354,7 @@ begin
          p_target_user_id::text,jsonb_build_object('role',v_target_role));
   return true;
 end;
-$;
+$$;
 
 revoke all on function private.organization_role_for_user(uuid,uuid) from public,anon,authenticated,service_role;
 revoke all on function public.create_organization_for_user(uuid,text,text) from public,anon,authenticated;

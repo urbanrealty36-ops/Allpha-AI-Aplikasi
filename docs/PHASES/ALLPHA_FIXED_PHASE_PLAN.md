@@ -393,3 +393,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - Updated the pre-existing organization-create test to assert the new FastAPI → service-role RPC contract and server-derived actor ID. The previous test was asserting the retired user-token direct PostgREST write path and caused the first CI run to report 879 passed / 1 failed.
 - No production data or migration changes.
 - Targeted CI rerun is pending; ENG-P02 remains `in_progress` until the migration/RBAC disposable PostgreSQL check and API suite both pass.
+
+
+## 25. ENG-P02 service-only RBAC migration delimiter regression — 2026-11-22
+
+- The first PostgreSQL 17 disposable run passed the original tenant repair. After adding server-only organization/member RPCs, the next run caught malformed dollar-quote delimiters in the five newly added function bodies; API regression tests passed (880/880) but migration integration correctly failed before any production operation.
+- Corrected all five new function body delimiters to balanced PostgreSQL dollar quotes. The same disposable migration/RBAC test is retained as the required gate.
+- No production DDL executed. ENG-P02 remains `in_progress`; rerun is pending.
