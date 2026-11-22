@@ -107,9 +107,11 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   assert.ok(authRoute.includes("identity.profile?.username") && authRoute.includes('finishAuthentication("/feed")'),
     "returning Human accounts without an Agent must still enter the app without forced first-run onboarding");
   assert.ok(callback.includes("exchangeCodeForSession") && callback.includes("safeNext") &&
-    callback.includes("codeExchangeCompleted.current") && callback.includes("retryNonce") &&
-    callback.includes("Sesi lokal dipertahankan") && callback.includes("Coba lagi"),
-    "OAuth/email callback must enforce safe redirect, avoid re-exchanging a completed code and retry transient verification without discarding the session");
+    callback.includes("codeExchangeCompleted.current") && callback.includes("codeExchangePromise") &&
+    callback.includes("codeExchangeAttempted.current") && callback.includes("accessTokenBeforeExchange.current") &&
+    callback.includes("providerError") && callback.includes("error_description") &&
+    callback.includes("retryNonce") && callback.includes("Sesi lokal dipertahankan") && callback.includes("Coba lagi"),
+    "OAuth/email callback must reject provider errors, exchange the incoming code instead of trusting an unrelated persisted session, deduplicate concurrent exchange, recover a persisted exchange after a lost response, enforce safe redirects and retry transient verification without discarding the session");
   assert.ok(forgotPassword.includes("resetPasswordForEmail") && forgotPassword.includes("/auth/callback?next=%2Freset-password"),
     "password recovery must use Supabase Auth with the canonical callback");
   assert.ok(resetPassword.includes("updateUser({ password })") && resetPassword.includes("getSession"),
