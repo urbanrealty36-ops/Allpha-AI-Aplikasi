@@ -74,7 +74,10 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       : "REGISTER" as const;
   }, []);
   const initialAuthMode = requestedAuthMode ?? routeAuthMode;
-  const finishAuthentication = () => { if (onClose) onClose(); else router.replace(returnTo); };
+  const finishAuthentication = () => {
+    onClose?.();
+    router.replace(returnTo);
+  };
 
   async function googleSignIn() {
     if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
