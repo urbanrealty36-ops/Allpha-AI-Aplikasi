@@ -966,20 +966,7 @@ async def search_content(
         "visibility": "in.(public,followers)" if owner else "eq.public", "or": f"({','.join(clauses)})",
         "order": "published_at.desc,id.desc", "limit": "500",
     })
-    followed, hidden = await _edges(owner) if owner else (set(), set())
-    eligible = [
-        row for row in (rows or [])
-        if str(row.get("owner_id")) not in hidden
-        and (row.get("visibility") == "public" or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed))
-    ]
-    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in eligible})
-    eligible = [
-        row for row in eligible
-        if str(row.get("owner_id")) in profile_by_id
-        and profile_by_id[str(row.get("owner_id"))].get("account_status", "active") == "active"
-        and (profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
-             or (owner and str(row.get("owner_id")) in followed))
-    ]
+    eligible, profile_by_id, agent_by_id = await _filter_social_visibility(rows or [], owner)
     needle = query.casefold()
     eligible.sort(key=lambda row: (
         0 if needle in str(row.get("body") or "").casefold() else 1,
@@ -1021,6 +1008,7 @@ async def search_content(
         "creator": {"username": profile_by_id.get(str(row.get("owner_id")), {}).get("username"),
                     "display_name": profile_by_id.get(str(row.get("owner_id")), {}).get("display_name") or profile_by_id.get(str(row.get("owner_id")), {}).get("username") or "Kreator",
                     "avatar_url": profile_by_id.get(str(row.get("owner_id")), {}).get("avatar_url")},
+        "agent": agent_by_id.get(str(row.get("ai_agent_id"))) if row.get("ai_agent_id") else None,
     } for row in page]
     return {"query": query, "items": items, "count": len(items), "has_more": len(eligible) > limit}
 
