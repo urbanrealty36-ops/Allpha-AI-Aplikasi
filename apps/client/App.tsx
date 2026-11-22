@@ -2077,7 +2077,7 @@ function Profile({ session, initialTab = "profile", initialStoryId, initialConte
       </View>
       <View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>ENG-P21 · UNIVERSE NAVIGATION</Text><SpatialNavigationScreen/></View>
       <View style={[s.card, { padding: 14, borderRadius: 18 }]}><Text style={s.kicker}>ENG-P22 · THEME BUILDER / GLB MANIFEST</Text><SpatialThemeCatalogScreen/></View>
-      <Button title="Keluar" secondary onPress={() => void supabase?.auth.signOut()}/>
+      <Button title="Keluar" secondary onPress={() => void (async () => { try { const token = await getNativeAccessToken(); const response = await fetch(apiBase + "/v1/auth/revoke", { method: "POST", headers: { Authorization: "Bearer " + token, Accept: "application/json" } }); if (!response.ok) throw new Error("Sesi belum berhasil dicabut. Periksa koneksi lalu coba kembali."); await supabase?.auth.signOut({ scope: "global" }); } catch (cause) { Alert.alert("Tidak dapat keluar", cause instanceof Error ? cause.message : "Pencabutan sesi gagal."); } })()}/>
     </View>
     <Text style={s.footnote}>Data identitas, pengaturan dan privasi dibaca/ditulis melalui API resmi. Tidak ada akses database langsung dari aplikasi.</Text>
   </ScrollView>;
