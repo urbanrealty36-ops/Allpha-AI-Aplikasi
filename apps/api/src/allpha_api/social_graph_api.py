@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi.responses import JSONResponse
 
@@ -109,6 +109,64 @@ async def list_relationships(
         "target_user_id": f"eq.{owner_id}", "order": "created_at.desc", "limit": "1000",
     })
     return {"outgoing": outgoing, "incoming": incoming, "contract_version": 3}
+
+
+
+@router.get("/discover-agents")
+async def discover_agents(
+    q: str = Query(min_length=2, max_length=80),
+    limit: int = Query(default=20, ge=1, le=50),
+    request: Request = None,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Search only published public Agents and apply the viewer's typed block/mute policy."""
+    token, viewer_id = request.state.supabase_access_token, str(user["id"])
+    normalized = q.strip().lstrip("@")
+    if not normalized:
+        raise HTTPException(422, detail={"code": "SOCIAL_AGENT_SEARCH_INVALID", "message": "Masukkan nama atau handle Agent."})
+    rows = await _rows("GET", "ai_agents", token, params={
+        "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
+        "status": "eq.active", "visibility": "eq.public",
+        "handle": "ilike.*" + normalized.replace("*", "").replace("%", "") + "*",
+        "order": "display_name.asc", "limit": str(limit),
+    })
+    if not rows:
+        return {"items": [], "query": normalized}
+    ids = [str(row["id"]) for row in rows]
+    owners = [str(row["created_by"]) for row in rows if row.get("created_by")]
+    ownerships = await _rows("GET", "agent_ownerships", token, params={
+        "select": "agent_id,owner_user_id", "agent_id": "in.(" + ",".join(ids) + ")",
+        "owner_user_id": "in.(" + ",".join(owners) + ")", "ownership_role": "eq.owner",
+        "status": "eq.active", "limit": str(min(500, len(ids) * 2)),
+    })
+    valid = {(str(row["agent_id"]), str(row["owner_user_id"])) for row in ownerships}
+    owner_profiles = await _rows("GET", "profiles", token, params={
+        "select": "id,account_status", "id": "in.(" + ",".join(sorted(set(owners))) + ")",
+        "limit": str(min(500, len(set(owners)))),
+    }) if owners else []
+    active_owners = {str(row["id"]) for row in owner_profiles if row.get("account_status", "active") == "active"}
+    outgoing_blocks = await _rows("GET", "social_edges", token, params={
+        "select": "target_agent_id,edge_type,status", "actor_user_id": f"eq.{viewer_id}",
+        "actor_node_type": "eq.human", "target_node_type": "eq.agent",
+        "edge_type": "in.(block,mute)", "status": "eq.active", "limit": "1000",
+    })
+    incoming_blocks = await _rows("GET", "social_edges", token, params={
+        "select": "actor_agent_id", "target_user_id": f"eq.{viewer_id}",
+        "target_node_type": "eq.human", "actor_node_type": "eq.agent",
+        "edge_type": "eq.block", "status": "eq.active", "limit": "1000",
+    })
+    hidden = {str(row["target_agent_id"]) for row in outgoing_blocks if row.get("target_agent_id")}
+    hidden.update(str(row["actor_agent_id"]) for row in incoming_blocks if row.get("actor_agent_id"))
+    items = [
+        {"id": str(row["id"]), "handle": row["handle"], "display_name": row["display_name"],
+         "avatar_url": row.get("avatar_url"), "description": row.get("description"),
+         "visibility": row["visibility"], "is_ai": True}
+        for row in rows
+        if (str(row["id"]), str(row.get("created_by"))) in valid
+        and str(row.get("created_by")) in active_owners
+        and str(row["id"]) not in hidden
+    ]
+    return {"items": items, "query": normalized, "count": len(items)}
 
 
 @router.post("/relationships", status_code=201)
