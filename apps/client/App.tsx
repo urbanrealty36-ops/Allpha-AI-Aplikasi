@@ -2104,6 +2104,29 @@ function Navigator() {
         return;
       }
       try {
+        // Verify the persisted token against Supabase Auth without relying on
+        // client-side cached session state, then bootstrap the same Human
+        // identity contract used by Web before loading any domain surface.
+        const authResponse = await fetch(supabaseUrl.replace(/\\/$/, "") + "/auth/v1/user", {
+          headers: { apikey: supabaseKey, Authorization: "Bearer " + next.access_token, Accept: "application/json" },
+        });
+        if (!authResponse.ok) throw new Error("Sesi tidak valid atau telah dicabut.");
+        const verifiedUser = await authResponse.json() as { id?: string; email_confirmed_at?: string | null };
+        if (verifiedUser.id !== next.user.id || !verifiedUser.email_confirmed_at) {
+          await supabase?.auth.signOut({ scope: "local" });
+          if (sequence === journeyRequestSequence.current) setSession(null);
+          return;
+        }
+        const meResponse = await fetch(apiBase + "/v1/me", {
+          headers: { Authorization: "Bearer " + next.access_token, Accept: "application/json" },
+        });
+        if (!meResponse.ok) throw new Error("Identitas Human belum dapat diverifikasi oleh Allpha API.");
+        const me = await meResponse.json() as { profile?: Profile };
+        if (me.profile?.account_status !== "active") {
+          await supabase?.auth.signOut({ scope: "local" });
+          if (sequence === journeyRequestSequence.current) setSession(null);
+          return;
+        }
         const response = await fetch(apiBase + "/v1/agents", {
           headers: { Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
@@ -2116,8 +2139,12 @@ function Navigator() {
           setJourneyTab(Array.isArray(payload.items) && payload.items.length > 0 ? "feed" : "agents");
         }
       } catch {
-        // Fail closed into the Agent screen; its own API-backed loader shows the actionable error.
-        if (sequence === journeyRequestSequence.current) setJourneyTab("agents");
+        // Fail closed; invalid/revoked sessions must never retain protected navigation.
+        if (sequence === journeyRequestSequence.current) {
+          setSession(null);
+          setJourneyTab("feed");
+          await supabase?.auth.signOut({ scope: "local" });
+        }
       } finally {
         if (active && sequence === journeyRequestSequence.current) setJourneyReady(true);
       }
