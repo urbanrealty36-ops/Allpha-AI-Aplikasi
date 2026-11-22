@@ -25,6 +25,10 @@ def test_worker_readiness_migration_checks_schema_and_service_role_access():
     assert sql.count("begin;") == 1
     assert sql.count("commit;") == 1
     assert "agent_runtime_tool_plans" in sql
+    assert "agent_runtime_effect_receipts" in sql
+    assert "v_missing_rls" in sql
+    assert "missing_rls" in sql
+    assert "c.relrowsecurity" in sql
     assert "agent_runtime_checkpoints" in sql
     assert "agent_memory_items" in sql
     assert "public.agent_memory_search(uuid,uuid,uuid[],text,text[],text,text,integer)" in sql
