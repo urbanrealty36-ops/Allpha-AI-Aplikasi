@@ -59,6 +59,7 @@ export default function HomePage() {
   const identityRequestSequence = useRef(0);
   const socialRequestSequence = useRef(0);
   const consentRequestSequence = useRef(0);
+  const sessionsRequestSequence = useRef(0);
 
   const loadIdentity = useCallback(async (active: Session) => {
     const sequence = ++identityRequestSequence.current;
@@ -93,8 +94,8 @@ export default function HomePage() {
     void supabase.auth.getSession().then(({ data }) => {
       if (!active || authEventSeen) return;
       setSession(data.session);
-      socialRequestSequence.current += 1; consentRequestSequence.current += 1;
-      setSocialGraph(null); setConsentHistory(null);
+      socialRequestSequence.current += 1; consentRequestSequence.current += 1; sessionsRequestSequence.current += 1;
+      setSocialGraph(null); setConsentHistory(null); setAuthSessions(null);
       if (data.session) void loadIdentity(data.session); else {
         identityRequestSequence.current += 1;
         setProfile(null); setSettings(null); setLoading(false);
@@ -115,7 +116,7 @@ export default function HomePage() {
     });
     return () => {
       active = false;
-      identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1;
+      identityRequestSequence.current += 1; socialRequestSequence.current += 1; consentRequestSequence.current += 1; sessionsRequestSequence.current += 1;
       listener.subscription.unsubscribe();
     };
   }, [supabase, loadIdentity]);
@@ -156,15 +157,27 @@ export default function HomePage() {
 
   async function loadAuthSessions() {
     if (!session) return;
+    const sequence = ++sessionsRequestSequence.current;
+    const token = session.access_token;
     setSessionsLoading(true); setSessionsError("");
     try {
-      const response = await fetch(apiBase + "/v1/me/sessions", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const response = await fetch(apiBase + "/v1/me/sessions", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+      if (response.status === 401 || response.status === 403) {
+        if (sequence === sessionsRequestSequence.current && session?.access_token === token) await supabase?.auth.signOut({ scope: "local" });
+        throw new Error("Sesi sudah tidak berlaku. Silakan masuk kembali.");
+      }
       if (!response.ok) throw new Error(await apiError(response));
       const payload = await response.json() as AuthSessionsResponse;
-      setAuthSessions(Array.isArray(payload.items) ? payload.items : []);
+      if (sequence === sessionsRequestSequence.current && session?.access_token === token) {
+        setAuthSessions(Array.isArray(payload.items) ? payload.items : []);
+      }
     } catch (cause) {
-      setSessionsError(cause instanceof Error ? cause.message : "Daftar sesi tidak dapat dimuat.");
-    } finally { setSessionsLoading(false); }
+      if (sequence === sessionsRequestSequence.current && session?.access_token === token) {
+        setSessionsError(cause instanceof Error ? cause.message : "Daftar sesi tidak dapat dimuat.");
+      }
+    } finally {
+      if (sequence === sessionsRequestSequence.current) setSessionsLoading(false);
+    }
   }
 
   async function revokeAuthSession(sessionId: string) {
