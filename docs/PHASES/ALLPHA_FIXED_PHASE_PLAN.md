@@ -430,3 +430,10 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - Rebuilt the complete five-function server-only RBAC block using explicit dollar-quote delimiters and delegated slug-format enforcement to the existing canonical database constraint while retaining name/slug length checks.
 - All five functions are now present in source; rerun PostgreSQL 17 apply-twice, owner/admin hierarchy, audit, RLS and non-member negative cases.
 - ENG-P02 remains `in_progress`; production recovery gate remains open.
+
+
+## 30. ENG-P02 least-privilege CI harness correction — 2026-11-22
+
+- The disposable PostgreSQL RBAC run reached the service-role command checks and failed because the harness performed a direct SELECT against `public.organizations` while running as the minimal `service_role` test role. The production FastAPI path calls only server-only RPCs and does not need direct table SELECT.
+- Updated the harness to capture the organization UUID from the server-only create RPC using psql `\gset` and reuse a session setting in subsequent assertions. This preserves the least-privilege service-role boundary rather than broadening table grants solely for the test.
+- ENG-P02 remains `in_progress`; rerun pending.

@@ -53,28 +53,29 @@ insert into auth.users(id) values
  ('55555555-5555-4555-8555-555555555555');
 insert into auth.sessions(id,user_id) values ('66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111');
 set role service_role;
-select * from public.create_organization_for_user('11111111-1111-4111-8111-111111111111','ENG-P02 Repair Check','eng-p02-repair-check');
-select * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','admin');
-select * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','member');
+select id as org_id from public.create_organization_for_user('11111111-1111-4111-8111-111111111111','ENG-P02 Repair Check','eng-p02-repair-check') \gset
+select set_config('app.test_org_id', :'org_id', false);
+select * from public.add_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','admin');
+select * from public.add_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','member');
 do $$
 begin
  begin
-  perform * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','44444444-4444-4444-8444-444444444444','admin');
+  perform * from public.add_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'22222222-2222-4222-8222-222222222222','44444444-4444-4444-8444-444444444444','admin');
   raise exception using errcode='P0001',message='admin unexpectedly granted admin role';
  exception when insufficient_privilege then null;
  end;
  begin
-  perform * from public.update_organization_member_role_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','admin');
+  perform * from public.update_organization_member_role_for_actor(current_setting('app.test_org_id')::uuid,'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','admin');
   raise exception using errcode='P0001',message='admin unexpectedly promoted member';
  exception when insufficient_privilege then null;
  end;
 end $$;
-select * from public.update_organization_member_role_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','admin');
+select * from public.update_organization_member_role_for_actor(current_setting('app.test_org_id')::uuid,'11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','admin');
 do $$
 begin
  begin
   perform * from public.update_organization_member_role_for_actor(
-   (select id from public.organizations where slug='eng-p02-repair-check'),
+   current_setting('app.test_org_id')::uuid,
    '44444444-4444-4444-8444-444444444444','33333333-3333-4333-8333-333333333333','member');
   raise exception using errcode='P0001',message='non-member unexpectedly changed a tenant role';
  exception when insufficient_privilege then null;
@@ -83,18 +84,18 @@ end $$;
 do $$
 begin
  begin
-  perform public.remove_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333');
+  perform public.remove_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333');
   raise exception using errcode='P0001',message='admin unexpectedly removed another admin';
  exception when insufficient_privilege then null;
  end;
  begin
-  perform public.remove_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111');
+  perform public.remove_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111');
   raise exception using errcode='P0001',message='owner unexpectedly removed owner membership';
  exception when insufficient_privilege then null;
  end;
 end $$;
-select * from public.add_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','member');
-select public.remove_organization_member_for_actor((select id from public.organizations where slug='eng-p02-repair-check'),'22222222-2222-4222-8222-222222222222','55555555-5555-4555-8555-555555555555');
+select * from public.add_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','member');
+select public.remove_organization_member_for_actor(current_setting('app.test_org_id')::uuid,'22222222-2222-4222-8222-222222222222','55555555-5555-4555-8555-555555555555');
 reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','44444444-4444-4444-8444-444444444444',false);
