@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const baseUrl = process.env.ALLPHA_VISUAL_BASE_URL || "http://127.0.0.1:3000";
-const routes = ["/", "/login", "/start", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/spatial/themes", "/spatial/sample-scene", "/theme/sample-theme", "/ai-cinema", "/marketplace", "/live", "/ask-ai", "/profile", "/skill-challenges", "/content-studio", "/agents", "/agents/sample-agent/studio", "/agents/passport/sample-handle", "/communities", "/notifications", "/workflows"];
+const routes = ["/", "/welcome", "/login", "/register", "/start", "/account", "/feed", "/create", "/stories", "/reels", "/search", "/messages", "/spatial/navigation", "/spatial/themes", "/spatial/sample-scene", "/theme/sample-theme", "/ai-cinema", "/marketplace", "/live", "/ask-ai", "/profile", "/skill-challenges", "/content-studio", "/agents", "/agents/sample-agent/studio", "/agents/passport/sample-handle", "/communities", "/notifications", "/workflows"];
 const viewports = [
   { width: 360, height: 800, label: "mobile-360" },
   { width: 390, height: 844, label: "mobile-390" },
@@ -24,10 +24,21 @@ try {
         documentWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body?.scrollWidth ?? 0,
         title: document.title,
+        bodyText: document.body?.innerText ?? "",
+        headerText: document.querySelector("header")?.innerText ?? "",
       }));
       const record = { viewport: viewport.label, route, status: response?.status() ?? null, ...result };
       console.log(JSON.stringify(record));
       if (!response || response.status() >= 400) failures.push({ ...record, reason: "HTTP 4xx/5xx or navigation failure" });
+      if (route === "/welcome" && /Slide Sapa & Panduan|Login \/ Register|Buka Feed Aplikasi/.test(result.headerText)) {
+        failures.push({ ...record, reason: "Splash header still contains removed action buttons" });
+      }
+      if (route === "/login" && (!result.bodyText.includes("Masuk ke Human Identity") || result.bodyText.includes("Nama Lengkap"))) {
+        failures.push({ ...record, reason: "Login route is rendering registration-only fields" });
+      }
+      if (route === "/register" && (!result.bodyText.includes("Registrasi Human Identity") || !result.bodyText.includes("Nama Lengkap"))) {
+        failures.push({ ...record, reason: "Register route is missing Human identity fields" });
+      }
       if (result.documentWidth > viewport.width + 2 || result.bodyWidth > viewport.width + 2) {
         failures.push({ ...record, reason: "horizontal overflow" });
       }
