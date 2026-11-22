@@ -224,6 +224,7 @@ export default function ReferenceNavigation() {
         onOpenTakeoverModal={() => navigate("/agents")}
         onOpenCreditsHub={() => navigate("/skill-challenges")}
         onOpenOnboarding={() => navigate("/agents?onboarding=required")}
+        onOpenOnboardingPage={() => navigate("/welcome")}
         onOpenMessages={() => navigate("/messages")}
         onOpenNotifications={() => setNotificationsModalOpen(true)}
         isMessagesActive={pathname.startsWith("/messages")}
