@@ -55,7 +55,7 @@ Aturan anti-kelalaian: satu phase tidak boleh dianggap selesai jika suatu aplika
 | ENG-P08 | Agent memory, retrieval, context assembly, privacy isolation | not_started | Memory lifecycle dan owner/tenant isolation |
 | ENG-P09 | AI Gateway, Model Router, provider adapters, cost policy | in_progress | WP-07 generation source uses canonical router; close only after approved model route, moderation policy, credit/entitlement gates and real provider lifecycle evidence are available |
 | ENG-P10 | Agent Runtime, tool execution, conversation sessions | in_progress | Canonical runtime/store/API and `allpha-agent-runtime-worker` source exist; complete schema readiness, permission-bound execution and real recovery evidence before activation |
-| ENG-P11 | Durable workflow orchestration, checkpoint/resume | in_progress | WP-07 source covers leases, heartbeat, retry, checkpoint, cancellation and effect receipts; source-only migrations and runtime acceptance remain open |
+| ENG-P11 | Durable workflow orchestration, checkpoint/resume | in_progress | WP-07 source covers leases, heartbeat, retry, checkpoint, cancellation and effect receipts; the Agent Runtime worker now supports bounded concurrent lease-fenced task execution (1–10, default 3). Source-only migrations and real runtime acceptance remain open |
 | ENG-P12 | Skill Challenge, evaluation, achievements/rewards | not_started | Evaluasi traceable, anti-abuse dan reward ledger |
 | ENG-P13 | Content creation dan media pipeline | not_started | Satu content model, upload, preview/publish/error recovery |
 | ENG-P14 | Social feed, ranking, interactions dan controls | not_started | API + seluruh client yang terdampak |

@@ -41,8 +41,92 @@ def _batch_size() -> int:
     return max(1, min(value, 25))
 
 
+def _concurrency() -> int:
+    """Bound parallel task execution; each task still obtains its own DB lease."""
+    try:
+        value = int(os.getenv("ALLPHA_AGENT_RUNTIME_WORKER_CONCURRENCY", "3"))
+    except ValueError:
+        value = 3
+    return max(1, min(value, 10))
+
+
+async def _process_runnable_task(
+    store: AgentRuntimeStore, row: dict[str, Any],
+) -> tuple[int, bool]:
+    """Execute one independently lease-fenced task; return (processed, stop_batch)."""
+    owner_id, task_id = row.get("owner_user_id"), row.get("id")
+    if not isinstance(owner_id, str) or not isinstance(task_id, str):
+        logger.error("Skipping malformed runtime task envelope")
+        return 0, False
+
+    if row.get("effect_outcome") in {"started", "unknown"} and _is_native_orchestration_task(row):
+        try:
+            await store.mark_unknown_effect(owner_id, task_id)
+            return 1, False
+        except AgentRuntimePersistenceError:
+            logger.exception(
+                "Could not terminalize native task with unknown non-reconcilable effect; task_id=%s",
+                task_id,
+            )
+            return 0, True
+
+    # Each executor claims through the canonical Postgres lease RPC before doing work.
+    # Planned Social effects are reconciled by their lease-owning executor before retry.
+    try:
+        if is_agent_social_reply_task(row):
+            await execute_agent_social_reply_task(
+                store, owner_id, task_id, row,
+                build_text_generation_router_from_environment(),
+            )
+        elif _is_native_orchestration_task(row):
+            await _execute_native_orchestration_task(store, owner_id, task_id, row)
+        else:
+            await _execute_planned_task(store, owner_id, task_id, row)
+        return 1, False
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        code = str(detail.get("code") or "RUNTIME_TASK_REJECTED")
+        if row.get("cancel_requested") is True:
+            logger.info("Runtime task cancellation remains pending; task_id=%s code=%s", task_id, code)
+            return 1, False
+        if is_agent_social_reply_task(row) and code == "SOCIAL_PROVIDER_OUTCOME_UNKNOWN":
+            logger.warning(
+                "WP-06 provider outcome is unknown; reservation is held for reconciliation; task_id=%s",
+                task_id,
+            )
+            return 1, False
+        try:
+            latest_getter = getattr(store, "get_task", None)
+            latest = await latest_getter(owner_id, task_id) if callable(latest_getter) else None
+            if latest and latest.get("state") in {
+                "succeeded", "partially_succeeded", "failed", "cancelled", "timed_out", "budget_exhausted",
+            }:
+                return 1, False
+            if row.get("state") in {"created", "queued", "retrying", "executing"}:
+                await store.fail_unclaimed_task(
+                    owner_id, task_id, int(row.get("task_version") or 1), code,
+                    lease_token=row.get("execution_lease_token"),
+                )
+        except AgentRuntimePersistenceError:
+            logger.exception("Could not reconcile rejected runtime task; task_id=%s", task_id)
+            return 0, True
+        logger.info(
+            "Runtime task not completed; task_id=%s status=%s code=%s",
+            task_id, exc.status_code, code,
+        )
+        return 1, False
+    except AgentRuntimePersistenceError:
+        # Outcome may be uncertain. Stop admitting more work in this batch; the
+        # canonical lease/recovery contract decides what already-running tasks do.
+        logger.exception("Runtime persistence uncertain; stopping batch at task_id=%s", task_id)
+        return 0, True
+    except Exception:
+        logger.exception("Unexpected runtime worker failure; task_id=%s", task_id)
+        return 0, True
+
+
 async def run_once(store: AgentRuntimeStore) -> int:
-    """Process one bounded batch only after the complete canonical schema is ready."""
+    """Process a bounded, schema-gated batch with bounded concurrent lease-fenced tasks."""
     readiness = await store.runtime_schema_readiness()
     if readiness.get("ready") is not True:
         logger.error(
@@ -59,68 +143,21 @@ async def run_once(store: AgentRuntimeStore) -> int:
         await reconcile_social_reply_approvals(store, limit=_batch_size())
     except AgentRuntimePersistenceError:
         logger.exception("WP-06 Social intake or approval reconciliation unavailable")
+
     rows = await store.list_runnable_planned_tasks(limit=_batch_size())
     processed = 0
-    for row in rows:
-        owner_id, task_id = row.get("owner_user_id"), row.get("id")
-        if not isinstance(owner_id, str) or not isinstance(task_id, str):
-            logger.error("Skipping malformed runtime task envelope")
-            continue
-        if row.get("effect_outcome") in {"started", "unknown"} and _is_native_orchestration_task(row):
-            try:
-                await store.mark_unknown_effect(owner_id, task_id)
-            except AgentRuntimePersistenceError:
-                logger.exception("Could not terminalize native task with unknown non-reconcilable effect; task_id=%s", task_id)
-                break
-            processed += 1
-            continue
-        # Planned Social effects are reconciled by the lease-owning executor before retry.
-        try:
-            if is_agent_social_reply_task(row):
-                await execute_agent_social_reply_task(
-                    store, owner_id, task_id, row,
-                    build_text_generation_router_from_environment(),
-                )
-            elif _is_native_orchestration_task(row):
-                await _execute_native_orchestration_task(store, owner_id, task_id, row)
-            else:
-                await _execute_planned_task(store, owner_id, task_id, row)
-            processed += 1
-        except HTTPException as exc:
-            detail = exc.detail if isinstance(exc.detail, dict) else {}
-            code = str(detail.get("code") or "RUNTIME_TASK_REJECTED")
-            if row.get("cancel_requested") is True:
-                logger.info("Runtime task cancellation remains pending; task_id=%s code=%s", task_id, code)
-                processed += 1
-                continue
-            if is_agent_social_reply_task(row) and code == "SOCIAL_PROVIDER_OUTCOME_UNKNOWN":
-                logger.warning("WP-06 provider outcome is unknown; reservation is held for reconciliation; task_id=%s", task_id)
-                processed += 1
-                continue
-            latest_getter = getattr(store, "get_task", None)
-            latest = await latest_getter(owner_id, task_id) if callable(latest_getter) else None
-            if latest and latest.get("state") in {"succeeded", "partially_succeeded", "failed", "cancelled", "timed_out", "budget_exhausted"}:
-                processed += 1
-                continue
-            if row.get("state") in {"created", "queued", "retrying", "executing"}:
-                try:
-                    await store.fail_unclaimed_task(
-                        owner_id, task_id, int(row.get("task_version") or 1), code,
-                        lease_token=row.get("execution_lease_token"),
-                    )
-                except AgentRuntimePersistenceError:
-                    logger.exception("Could not terminalize unclaimed runtime task; task_id=%s", task_id)
-                    break
-            logger.info("Runtime task not completed; task_id=%s status=%s code=%s",
-                        task_id, exc.status_code, code)
-            processed += 1
-        except AgentRuntimePersistenceError:
-            # Outcome may be uncertain. Stop this batch and let lease/recovery logic decide.
-            logger.exception("Runtime persistence uncertain; stopping batch at task_id=%s", task_id)
+    concurrency = _concurrency()
+    # Process bounded groups. If one group encounters uncertain persistence,
+    # wait for its in-flight tasks to settle before admitting another group.
+    for offset in range(0, len(rows), concurrency):
+        group = rows[offset:offset + concurrency]
+        outcomes = await asyncio.gather(*(
+            _process_runnable_task(store, row) for row in group
+        ))
+        processed += sum(count for count, _ in outcomes)
+        if any(stop_batch for _, stop_batch in outcomes):
             break
-        except Exception:
-            logger.exception("Unexpected runtime worker failure; task_id=%s", task_id)
-            break
+
     try:
         await reconcile_social_reply_approvals(store, limit=_batch_size())
     except AgentRuntimePersistenceError:

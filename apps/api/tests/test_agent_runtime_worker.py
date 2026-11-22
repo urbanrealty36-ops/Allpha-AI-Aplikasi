@@ -57,6 +57,7 @@ def test_worker_routes_planned_unknown_effects_to_reconciliation_executor(monkey
 
 
 def test_worker_stops_batch_when_unknown_effect_cannot_be_terminalized(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_RUNTIME_WORKER_CONCURRENCY", "1")
     store = FakeStore([
         {"id": "task-unknown", "owner_user_id": "owner-1", "state": "executing", "effect_outcome": "started", "input_payload": {"_native_orchestration_version": 1}},
         {"id": "task-created", "owner_user_id": "owner-1", "state": "created", "effect_outcome": None},
@@ -137,3 +138,41 @@ def test_worker_still_terminalizes_unknown_native_effects(monkeypatch):
     assert processed == 2
     assert store.unknown == [("owner-1", "native-unknown")]
     assert executed == ["planned"]
+
+
+
+def test_worker_processes_independent_tasks_with_bounded_concurrency(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_RUNTIME_WORKER_CONCURRENCY", "3")
+    store = FakeStore([
+        {"id": "task-1", "owner_user_id": "owner-1", "state": "created",
+         "input_payload": {"_runtime_plan_version": 1}},
+        {"id": "task-2", "owner_user_id": "owner-1", "state": "created",
+         "input_payload": {"_runtime_plan_version": 1}},
+        {"id": "task-3", "owner_user_id": "owner-1", "state": "created",
+         "input_payload": {"_runtime_plan_version": 1}},
+    ])
+    active = 0
+    peak = 0
+
+    async def fake_execute(received_store, owner_id, task_id, row):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {"task": {"id": task_id, "state": "succeeded"}}
+
+    async def no_social_events(*args, **kwargs):
+        return 0
+
+    async def no_approval_reconciliation(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr(worker, "_execute_planned_task", fake_execute)
+    monkeypatch.setattr(worker, "run_social_events_once", no_social_events)
+    monkeypatch.setattr(worker, "reconcile_social_reply_approvals", no_approval_reconciliation)
+
+    processed = asyncio.run(worker.run_once(store))
+
+    assert processed == 3
+    assert peak == 3
