@@ -436,6 +436,11 @@ function SearchPageContent() {
           </div>)}
         </div>
       </section>}
+      {session && (blockedAccountIds.length > 0 || mutedAccountIds.length > 0) && <section className="mx-auto mb-3 max-w-xl rounded-2xl border-2 border-slate-900 bg-white p-3 shadow-[3px_3px_0px_#0f172a]">
+        <h2 className="text-xs font-black text-slate-950">Relasi yang disembunyikan</h2>
+        {blockedAccountIds.map(id => <div key={"block:" + id} className="mt-2 flex items-center justify-between gap-2 text-xs"><span className="truncate text-slate-700">Blocked · {id}</span><button type="button" onClick={() => void mutateSocialRelationship(id, "block", true)} className="rounded-lg border-2 border-slate-900 bg-rose-100 px-2 py-1 font-black">Unblock</button></div>)}
+        {mutedAccountIds.map(id => <div key={"mute:" + id} className="mt-2 flex items-center justify-between gap-2 text-xs"><span className="truncate text-slate-700">Muted · {id}</span><button type="button" onClick={() => void mutateSocialRelationship(id, "mute", true)} className="rounded-lg border-2 border-slate-900 bg-amber-100 px-2 py-1 font-black">Unmute</button></div>)}
+      </section>}
       <ExploreView
         posts={postsForReference}
         trendsData={trends}
