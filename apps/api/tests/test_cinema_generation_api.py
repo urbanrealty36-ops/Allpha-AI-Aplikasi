@@ -220,6 +220,21 @@ def test_cinema_generation_link_migration_is_a_projection_not_a_second_queue():
     assert "create table if not exists public.cinema_render_jobs" not in sql
 
 
+
+def test_cinema_generation_migration_has_composite_owner_fk_prerequisite():
+    from pathlib import Path
+
+    root = Path(__file__).parents[1] / "supabase" / "source-only-migrations"
+    prerequisite = root / "20261122115000_wp11_cinema_title_owner_key_prerequisite.sql"
+    integration = root / "20261122120000_wp11_cinema_generation_job_integration.sql"
+    assert prerequisite.is_file() and integration.is_file()
+    sql = prerequisite.read_text(encoding="utf-8")
+    assert "create unique index if not exists cinema_titles_id_owner_id_uidx" in sql
+    assert "WP11_CINEMA_TITLE_OWNER_KEY_COLUMNS_MISSING" in sql
+    assert "WP11_CINEMA_TITLE_OWNER_KEY_INDEX_NOT_READY" in sql
+    assert prerequisite.name < integration.name
+
+
 def test_cinema_generation_schema_gate_prevents_credit_reservation(monkeypatch):
     async def title_access(*args, **kwargs):
         return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 7, "title": "Test Film"}
