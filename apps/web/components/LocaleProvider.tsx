@@ -103,6 +103,25 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE_KEY, next);
     document.documentElement.lang = next === "id-ID" ? "id" : "en";
     window.dispatchEvent(new CustomEvent("allpha:locale-change", { detail: next }));
+
+    // Persist the preference to the canonical Human profile whenever a session exists.
+    const supabase = getBrowserSupabase();
+    if (supabase) {
+      void supabase.auth.getSession().then(async ({ data }) => {
+        const token = data.session?.access_token;
+        if (!token) return;
+        try {
+          await fetch(apiBase + "/v1/me/profile", {
+            method: "PATCH",
+            headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+            body: JSON.stringify({ locale: next }),
+            cache: "no-store",
+          });
+        } catch {
+          // Local preference remains active; profile sync can retry on the next selection.
+        }
+      });
+    }
   }, []);
 
   const t = useCallback((key: string) => messages[key]?.[locale === "id-ID" ? "id" : "en"] ?? key, [locale]);
