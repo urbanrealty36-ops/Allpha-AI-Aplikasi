@@ -3,6 +3,7 @@ import { findInvalidMeshoptFallbackBuffers } from "../../../tools/3d-assets/mesh
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { readFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { createSecureSessionStorage } from "../lib/secure-session-storage.ts";
 const require = createRequire(import.meta.url);
 const app=readFileSync(new URL("../App.tsx",import.meta.url),"utf8");
 const cfg=JSON.parse(readFileSync(new URL("../app.json",import.meta.url),"utf8"));
@@ -72,6 +73,46 @@ for (const contract of [
   '"/v1/reels?"', "loadNativeReels", "ENG-P15 · REELS", "audio/mpeg", "audio/ogg",
   "Putar audio", "Putar video", "media_type.startsWith(\"audio/\")", 'contentFile.mimeType?.startsWith("audio/") ? "audio"'
 ]) assert.ok(app.includes(contract), `missing ENG-P15 Native Reels contract: ${contract}`);
+
+
+{
+  const values = new Map();
+  let failNextChunkWrite = false;
+  const store = {
+    async getItemAsync(key) { return values.has(key) ? values.get(key) : null; },
+    async setItemAsync(key, value) {
+      if (failNextChunkWrite && key.includes(":v1:") && !key.endsWith(":manifest")) {
+        failNextChunkWrite = false;
+        throw new Error("simulated secure-store write failure");
+      }
+      values.set(key, value);
+    },
+    async deleteItemAsync(key) { values.delete(key); }
+  };
+  const storage = createSecureSessionStorage(store);
+  const previousSession = "old-session-token".repeat(500);
+  await storage.setItem("sb-auth-token", previousSession);
+  assert.equal(await storage.getItem("sb-auth-token"), previousSession, "versioned chunks must round-trip a large session");
+
+  failNextChunkWrite = true;
+  await assert.rejects(storage.setItem("sb-auth-token", "new-session-token".repeat(500)), /simulated secure-store write failure/);
+  assert.equal(await storage.getItem("sb-auth-token"), previousSession, "an interrupted write must preserve the previous committed session");
+
+  const legacyStore = new Map([
+    ["legacy:count", "2"], ["legacy:0", "legacy-"], ["legacy:1", "session"]
+  ]);
+  const legacyStorage = createSecureSessionStorage({
+    async getItemAsync(key) { return legacyStore.has(key) ? legacyStore.get(key) : null; },
+    async setItemAsync(key, value) { legacyStore.set(key, value); },
+    async deleteItemAsync(key) { legacyStore.delete(key); }
+  });
+  assert.equal(await legacyStorage.getItem("legacy"), "legacy-session", "existing chunked sessions must remain readable during migration");
+  await legacyStorage.setItem("legacy", "migrated-session");
+  assert.equal(await legacyStorage.getItem("legacy"), "migrated-session", "the next write must migrate legacy sessions to the versioned format");
+
+  await storage.removeItem("sb-auth-token");
+  assert.equal(await storage.getItem("sb-auth-token"), null, "logout must tombstone the session before chunk cleanup");
+}
 
 console.log("ENG-P01 source, ENG-P10 task lifecycle, ENG-P12 Skill Challenge, ENG-P13 content pipeline, and ENG-P14 feed and ENG-P15 Reels smoke tests passed.");
 
