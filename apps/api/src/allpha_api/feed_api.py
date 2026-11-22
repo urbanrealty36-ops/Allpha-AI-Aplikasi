@@ -812,7 +812,8 @@ async def discover_users_by_username(
     }
     followed, hidden = await _edges(owner)
     existing_follows = await _server_db("GET", "social_edges", params={
-        "select": "target_user_id,status", "actor_user_id": f"eq.{owner}",
+        "select": "target_user_id,status", "actor_user_id": f"eq.{owner}", "actor_node_type": "eq.human",
+        "actor_agent_id": "is.null", "target_node_type": "eq.human", "target_agent_id": "is.null",
         "target_user_id": f"in.({','.join(candidate_ids)})", "edge_type": "eq.follow",
         "status": "in.(active,requested)", "limit": str(min(100, len(candidate_ids))),
     })
@@ -820,7 +821,8 @@ async def discover_users_by_username(
     items = []
     for profile in candidates:
         target = str(profile["id"])
-        if target not in discoverable or target in hidden or target in followed or target in already_related:
+        target_key = "human:" + target
+        if target not in discoverable or target_key in hidden or target_key in followed or target in already_related:
             continue
         is_public = profile.get("visibility") == "public"
         items.append({
