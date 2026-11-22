@@ -262,6 +262,24 @@ export default function AgentStudioPage() {
     } finally { setSaving(false); }
   }
 
+  async function createSkillDraftVersion(skill: Skill) {
+    if (!session || saving) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      const response = await fetch(`${apiBase}/v1/agents/${agentId}/skills/${skill.id}/draft`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + session.access_token },
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      const body = await response.json() as { draft_version?: number };
+      setNotice(`Draft versi ${body.draft_version ?? skill.version + 1} dibuat. Versi published sebelumnya tetap aktif sampai draft baru lolos review dan publikasi.`);
+      setVersionHistory(null);
+      await load(session);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Draft versi baru tidak dapat dibuat.");
+    } finally { setSaving(false); }
+  }
+
   async function loadSkillVersions(skill: Skill) {
     if (!session) return;
     setHistoryLoading(true); setError(""); setNotice("");
@@ -421,7 +439,7 @@ export default function AgentStudioPage() {
             <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{skill.name}</h3><p className="text-xs text-neutral-500">{skill.slug} · v{skill.version}</p></div><span className="rounded-full border px-2 py-1 text-xs">{skill.status}</span></div>
             {skill.description && <p className="mt-2 text-sm text-neutral-700">{skill.description}</p>}
             <p className="mt-2 text-xs text-neutral-500">Scopes: {skill.required_permission_scopes?.join(", ") || "belum ditentukan"}</p>
-            <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => beginSkillEdit(skill)} className="rounded-lg border px-3 py-1.5 text-xs font-medium">Edit Skill</button><button type="button" onClick={() => void loadSkillVersions(skill)} disabled={historyLoading} className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50">{historyLoading && versionHistory?.skillId === skill.id ? "Memuat riwayat…" : "Lihat riwayat versi"}</button></div>
+            <div className="mt-3 flex flex-wrap gap-2">{skill.status === "draft" ? <button type="button" onClick={() => beginSkillEdit(skill)} className="rounded-lg border px-3 py-1.5 text-xs font-medium">Edit Skill</button> : <button type="button" onClick={() => void createSkillDraftVersion(skill)} disabled={saving} className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50">{saving ? "Membuat draft…" : "Buat draft versi baru"}</button>}<button type="button" onClick={() => void loadSkillVersions(skill)} disabled={historyLoading} className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50">{historyLoading && versionHistory?.skillId === skill.id ? "Memuat riwayat…" : "Lihat riwayat versi"}</button></div>
             {editingSkillId === skill.id && <form onSubmit={saveSkillEdit} className="mt-3 grid gap-3 rounded-xl bg-neutral-50 p-3">
               <p className="text-sm font-semibold">Edit Skill · menyimpan akan membuat versi baru</p>
               <label className="grid gap-1 text-sm">Nama<input required minLength={2} maxLength={100} value={editName} onChange={e => setEditName(e.target.value)} className="rounded-lg border px-3 py-2"/></label>

@@ -1089,10 +1089,9 @@ async def get_public_agent_passport(handle: str) -> dict[str, Any]:
     # Anonymous projection deliberately excludes instructions, schemas, tool dependencies,
     # permission scopes, budgets, tests, persona, boundaries, and ownership.
     skills = await user_db_request(
-        "GET", "agent_skills", None,
+        "GET", "agent_skill_publications", None,
         params={"select": "id,slug,name,description,category,version,status,publication_terms,created_at,updated_at",
-                "agent_id": f"eq.{passport['id']}", "status": "eq.published",
-                "order": "version.desc", "limit": "50"},
+                "agent_id": f"eq.{passport['id']}", "order": "version.desc", "limit": "50"},
     )
     capabilities = await user_db_request(
         "GET", "agent_capabilities", None,
@@ -1320,12 +1319,43 @@ async def update_agent_skill(agent_id: uuid.UUID, skill_id: uuid.UUID, payload: 
     changes["version"] = int(current[0].get("version") or 1) + 1
     rows = await user_db_request(
         "PATCH", "agent_skills", token,
-        params={"id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "select": _SKILL_FIELDS},
+        params={"id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}",
+                "status": "eq.draft", "version": f"eq.{int(current[0].get('version') or 1)}",
+                "select": _SKILL_FIELDS},
         body=changes, prefer="return=representation",
     )
     if not rows:
-        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+        raise HTTPException(status_code=409, detail={"code": "SKILL_VERSION_CHANGED", "message": "Draft berubah bersamaan; muat ulang versi terbaru."})
     return {"skill": rows[0]}
+
+
+@app.post("/v1/agents/{agent_id}/skills/{skill_id}/draft", status_code=201, tags=["agent-studio"])
+async def create_agent_skill_draft_version(
+    agent_id: uuid.UUID,
+    skill_id: uuid.UUID,
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Open a new owner-controlled draft while retaining the last published snapshot."""
+    token = await _require_agent_owner(agent_id, request, user)
+    current = await user_db_request("GET", "agent_skills", token, params={
+        "select": _SKILL_FIELDS, "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
+    })
+    if not current:
+        raise HTTPException(status_code=404, detail={"code": "SKILL_NOT_FOUND", "message": "Skill tidak ditemukan."})
+    skill = current[0]
+    status = skill.get("status")
+    if status not in {"published", "archived"}:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_DRAFT_ALREADY_OPEN", "message": "Skill sudah memiliki draft aktif."})
+    based_on_version = int(skill.get("version") or 0)
+    rows = await user_db_request("PATCH", "agent_skills", token, params={
+        "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}",
+        "status": f"eq.{status}", "version": f"eq.{based_on_version}", "select": _SKILL_FIELDS,
+    }, body={"status": "draft"}, prefer="return=representation")
+    if not rows:
+        raise HTTPException(status_code=409, detail={"code": "SKILL_VERSION_CHANGED", "message": "Skill berubah bersamaan; muat ulang versi terbaru."})
+    return {"skill": rows[0], "based_on_version": based_on_version,
+            "draft_version": int(rows[0].get("version") or 0)}
 
 
 @app.post("/v1/admin/agents/{agent_id}/skills/{skill_id}/publish", tags=["agent-studio-governance"])
@@ -1356,8 +1386,11 @@ async def publish_agent_skill(
     digest = hashlib.sha256(encoded).hexdigest()
     if digest != payload.snapshot_digest:
         raise HTTPException(status_code=409, detail={"code": "SKILL_SNAPSHOT_DIGEST_MISMATCH", "message": "Digest snapshot tidak cocok."})
-    if snapshot.get("id") != str(skill_id) or snapshot.get("agent_id") != str(agent_id) or int(snapshot.get("version") or 0) != payload.expected_version:
-        raise HTTPException(status_code=409, detail={"code": "SKILL_SNAPSHOT_IDENTITY_MISMATCH", "message": "Identitas snapshot tidak cocok."})
+    if (snapshot.get("id") != str(skill_id) or snapshot.get("agent_id") != str(agent_id)
+            or snapshot.get("created_by") != skill.get("created_by")
+            or int(snapshot.get("version") or 0) != payload.expected_version
+            or snapshot.get("status") != "draft"):
+        raise HTTPException(status_code=409, detail={"code": "SKILL_SNAPSHOT_IDENTITY_MISMATCH", "message": "Identitas atau status snapshot draft tidak cocok."})
     if not isinstance(snapshot.get("tests"), list) or not snapshot["tests"]:
         raise HTTPException(status_code=422, detail={"code": "SKILL_REVIEW_TESTS_REQUIRED", "message": "Evaluation tests wajib tersedia."})
     if not isinstance(snapshot.get("evaluation_rubric"), dict) or not snapshot["evaluation_rubric"]:
@@ -1369,15 +1402,21 @@ async def publish_agent_skill(
         outcome="attempted", resource_type="agent_skill", resource_id=str(skill_id), metadata=audit)
     rows = await privileged_rest_request("PATCH", "agent_skills", params={
         "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "status": "eq.draft",
-        "version": f"eq.{payload.expected_version}", "select": _SKILL_FIELDS},
+        "version": f"eq.{payload.expected_version}", "select": "*"},
         body={"status": "published", "updated_at": datetime.now(timezone.utc).isoformat()},
         prefer="return=representation")
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SKILL_PUBLICATION_CONFLICT", "message": "Skill berubah saat review; publikasi ditolak."})
+    published_skill = rows[0]
+    published_version = int(published_skill.get("version") or 0)
+    published_encoded = json.dumps(published_skill, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    published_digest = hashlib.sha256(published_encoded).hexdigest()
     await write_operator_audit(request, actor_user_id=operator["id"], action="agent.skill.publish",
-        outcome="allowed", resource_type="agent_skill", resource_id=str(skill_id), metadata=audit)
-    return {"skill": rows[0], "published_version": payload.expected_version,
-            "snapshot_digest": digest, "reviewed_by": operator["id"], "publication_authorized": True}
+        outcome="allowed", resource_type="agent_skill", resource_id=str(skill_id),
+        metadata={**audit, "published_version": published_version, "published_snapshot_digest": published_digest})
+    return {"skill": published_skill, "published_version": published_version,
+            "snapshot_digest": published_digest, "reviewed_draft_version": payload.expected_version,
+            "reviewed_draft_digest": digest, "reviewed_by": operator["id"], "publication_authorized": True}
 
 
 @app.get("/v1/agents/{agent_id}/skills/{skill_id}/versions", tags=["agent-studio"])

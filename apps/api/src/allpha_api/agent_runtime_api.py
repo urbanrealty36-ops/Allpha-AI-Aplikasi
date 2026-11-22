@@ -372,7 +372,7 @@ async def _execute_planned_task(
     if plan is None:
         raise HTTPException(status_code=409, detail={"code": "TASK_PLAN_MISSING", "message": "Rencana tool tidak tersedia."})
     agent = await store.get_agent(owner_id, str(row["agent_id"]))
-    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]))
+    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]), version=int(row.get("skill_version") or 0))
     if not agent or not skill or skill.get("status") != "published":
         raise HTTPException(status_code=409, detail={"code": "PINNED_AGENT_SKILL_UNAVAILABLE", "message": "Agent atau Skill tidak lagi tersedia."})
     if int(agent["version"]) != int(row["agent_version"]) or int(skill["version"]) != int(row["skill_version"]):
@@ -555,7 +555,7 @@ async def _execute_planned_task(
                 task_id=task_id, task_version=int(row["task_version"]),
                 requester_id=owner_id, agent_id=str(row["agent_id"]),
                 agent_version=int(row["agent_version"]), owner_id=owner_id,
-                skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
+                skill_id=str(row["skill_id"]), skill_version=int(row.get("skill_version") or 0),
                 input_classification="user_input", allowed_memory_scope=(),
                 allowed_tool_keys=tuple(tool_keys),
                 capability_scopes=tuple(policy.get("required_permission_scopes") or []),
@@ -725,7 +725,7 @@ async def _execute_native_orchestration_task(
             raise HTTPException(status_code=409, detail={"code": "EXECUTION_OUTCOME_UNKNOWN", "message": "Outcome efek tidak diketahui; replay otomatis dilarang."})
 
     agent = await store.get_agent(owner_id, str(row["agent_id"]))
-    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]))
+    skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]), version=int(row.get("skill_version") or 0))
     if (not agent or not skill or skill.get("status") != "published"
             or int(agent.get("version") or 0) != int(row.get("agent_version") or 0)
             or int(skill.get("version") or 0) != int(row.get("skill_version") or 0)):
@@ -960,7 +960,7 @@ async def _execute_native_orchestration_task(
             task_id=task_id, task_version=int(row["task_version"]),
             requester_id=owner_id, agent_id=str(row["agent_id"]),
             agent_version=int(row["agent_version"]), owner_id=owner_id,
-            skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
+            skill_id=str(row["skill_id"]), skill_version=int(row.get("skill_version") or 0),
             input_classification="user_input", allowed_memory_scope=(),
             allowed_tool_keys=tuple(sorted(definitions)),
             capability_scopes=tuple(policy_scopes),
@@ -2009,7 +2009,7 @@ async def execute_task(task_id: uuid.UUID, request: Request,
         if getattr(definition, "execution_class", "side_effecting") != "pure":
             raise HTTPException(status_code=403, detail={"code": "TOOL_SIDE_EFFECT_BLOCKED", "message": "Tool dengan efek samping belum memiliki kontrak receipt dan approval yang aktif."})
         agent = await store.get_agent(owner_id, row["agent_id"])
-        skill = await store.get_skill(owner_id, row["agent_id"], row["skill_id"])
+        skill = await store.get_skill(owner_id, str(row["agent_id"]), str(row["skill_id"]), version=int(row.get("skill_version") or 0))
         capability = await store.get_approved_capability(row["agent_id"], row["tool_key"])
         if not agent or not skill or not capability or not capability.get("runtime_policy_id"):
             raise HTTPException(status_code=409, detail={"code": "RUNTIME_POLICY_UNAVAILABLE", "message": "Capability harus terikat ke policy runtime terdaftar dan disetujui."})
@@ -2052,7 +2052,7 @@ async def execute_task(task_id: uuid.UUID, request: Request,
         envelope = AgentTaskEnvelope(
             task_id=str(row["id"]), task_version=int(row["task_version"]),
             requester_id=owner_id, agent_id=str(row["agent_id"]), agent_version=int(row["agent_version"]),
-            owner_id=owner_id, skill_id=str(row["skill_id"]), skill_version=int(row["skill_version"]),
+            owner_id=owner_id, skill_id=str(row["skill_id"]), skill_version=int(row.get("skill_version") or 0),
             input_classification="user_input", allowed_memory_scope=(),
             allowed_tool_keys=(str(row["tool_key"]),),
             capability_scopes=tuple(skill.get("required_permission_scopes") or ()),

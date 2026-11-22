@@ -83,3 +83,55 @@ def test_worker_readiness_requires_success_receipt_guard():
         "/rest/v1/rpc/agent_runtime_worker_schema_readiness",
         "/rest/v1/rpc/agent_runtime_effect_receipt_guard_readiness",
     ]
+
+
+def test_runtime_skill_resolution_uses_exact_immutable_published_snapshot():
+    requests = []
+    owner_id = "owner-1"
+    agent_id = "agent-1"
+    skill_id = "skill-1"
+    snapshot = {
+        "id": skill_id, "agent_id": agent_id, "version": 7, "status": "published",
+        "tool_dependencies": ["text.normalize"], "required_permission_scopes": ["content:read"],
+        "budget_limits": {"max_runtime_seconds": 15, "max_tool_calls": 2},
+        "instructions": "immutable published instructions",
+    }
+
+    async def handler(request):
+        requests.append(request)
+        if request.url.path.endswith("/agent_ownerships"):
+            return httpx.Response(200, json=[{"agent_id": agent_id}])
+        if request.url.path.endswith("/agent_skill_versions"):
+            return httpx.Response(200, json=[{"snapshot": snapshot}])
+        return httpx.Response(404)
+
+    store = AgentRuntimeStore(
+        supabase_url="https://example.supabase.co",
+        service_key="test-service-role-key",
+        transport=httpx.MockTransport(handler),
+    )
+    resolved = asyncio.run(store.get_skill(owner_id, agent_id, skill_id, version=7))
+
+    assert resolved == snapshot
+    assert [request.url.path for request in requests] == [
+        "/rest/v1/agent_ownerships", "/rest/v1/agent_skill_versions",
+    ]
+    assert requests[1].url.params["version"] == "eq.7"
+    assert requests[1].url.params["skill_id"] == f"eq.{skill_id}"
+
+
+def test_runtime_skill_resolution_fails_closed_when_pinned_snapshot_is_missing():
+    async def handler(request):
+        if request.url.path.endswith("/agent_ownerships"):
+            return httpx.Response(200, json=[{"agent_id": "agent-1"}])
+        if request.url.path.endswith("/agent_skill_versions"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404)
+
+    store = AgentRuntimeStore(
+        supabase_url="https://example.supabase.co",
+        service_key="test-service-role-key",
+        transport=httpx.MockTransport(handler),
+    )
+    resolved = asyncio.run(store.get_skill("owner-1", "agent-1", "skill-1", version=4))
+    assert resolved is None

@@ -181,7 +181,7 @@ def test_public_passport_returns_only_public_projection(monkeypatch):
                 "visibility": "public",
                 "status": "active",
             }]
-        if path == "agent_skills":
+        if path == "agent_skill_publications":
             return [{"id": "skill-1", "slug": "summary", "name": "Summary", "version": 2, "status": "published"}]
         if path == "agent_capabilities":
             return [{"id": "cap-1", "capability_key": "calendar.read", "status": "approved"}]
@@ -199,7 +199,7 @@ def test_public_passport_returns_only_public_projection(monkeypatch):
     assert "owner_user_id" not in response.json()["passport"]
     assert "persona" not in calls[0][3]["params"]["select"]
     assert calls[0][0:3] == ("GET", "ai_agents", None)
-    assert calls[1][1] == "agent_skills"
+    assert calls[1][1] == "agent_skill_publications"
     assert calls[1][3]["params"]["select"] == "id,slug,name,description,category,version,status,publication_terms,created_at,updated_at"
     assert calls[2][1] == "agent_capabilities"
     assert "required_permission_scopes" not in calls[2][3]["params"]["select"]

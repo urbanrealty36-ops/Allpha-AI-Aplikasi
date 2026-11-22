@@ -83,12 +83,28 @@ class AgentRuntimeStore:
         })
         return rows[0] if rows else None
 
-    async def get_skill(self, owner_id: str, agent_id: str, skill_id: str) -> dict[str, Any] | None:
+    async def get_skill(
+        self, owner_id: str, agent_id: str, skill_id: str, *, version: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Resolve a published Skill, pinned to its immutable snapshot when version is supplied."""
         if not await self.owner_has_agent(owner_id, agent_id):
             return None
+        if version is not None:
+            snapshots = await self.request("GET", "agent_skill_versions", params={
+                "select": "snapshot", "skill_id": f"eq.{skill_id}",
+                "agent_id": f"eq.{agent_id}", "version": f"eq.{version}", "limit": "1",
+            })
+            snapshot = snapshots[0].get("snapshot") if snapshots else None
+            if not isinstance(snapshot, dict):
+                return None
+            if (snapshot.get("id") != skill_id or snapshot.get("agent_id") != agent_id
+                    or int(snapshot.get("version") or 0) != version
+                    or snapshot.get("status") != "published"):
+                return None
+            return snapshot
         rows = await self.request("GET", "agent_skills", params={
-            "select": "id,agent_id,version,status,tool_dependencies,required_permission_scopes,budget_limits",
-            "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}", "limit": "1",
+            "select": "*", "id": f"eq.{skill_id}", "agent_id": f"eq.{agent_id}",
+            "status": "eq.published", "limit": "1",
         })
         return rows[0] if rows else None
 

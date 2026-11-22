@@ -100,6 +100,8 @@ def test_skill_update_increments_version_and_rejects_authority_fields(monkeypatc
         if method == "GET" and path == "agent_skills":
             return [{"id": SKILL_ID, "agent_id": AGENT_ID, "version": 3, "status": "draft"}]
         if method == "PATCH" and path == "agent_skills":
+            assert kwargs["params"]["status"] == "eq.draft"
+            assert kwargs["params"]["version"] == "eq.3"
             return [{"id": SKILL_ID, "agent_id": AGENT_ID, "version": kwargs["body"]["version"], "name": "Updated Skill"}]
         raise AssertionError((method, path))
 
@@ -120,6 +122,92 @@ def test_skill_update_increments_version_and_rejects_authority_fields(monkeypatc
     finally:
         app.dependency_overrides.clear()
     assert rejected.status_code == 422
+
+
+def test_published_skill_can_roll_into_owner_draft_without_mutating_public_snapshot(monkeypatch):
+    calls = []
+
+    async def fake_db(method, path, token, **kwargs):
+        calls.append((method, path, kwargs))
+        if path == "agent_ownerships":
+            return [{"agent_id": AGENT_ID}]
+        if method == "GET" and path == "agent_skills":
+            return [{"id": SKILL_ID, "agent_id": AGENT_ID, "version": 5, "status": "published"}]
+        if method == "PATCH" and path == "agent_skills":
+            assert kwargs["body"] == {"status": "draft"}
+            return [{"id": SKILL_ID, "agent_id": AGENT_ID, "version": 6, "status": "draft"}]
+        raise AssertionError((method, path, kwargs))
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_db)
+    app.dependency_overrides[current_user] = auth_as()
+    try:
+        response = client.post(
+            f"/v1/agents/{AGENT_ID}/skills/{SKILL_ID}/draft",
+            headers={"Authorization": "Bearer token-owner-a"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201, response.text
+    assert response.json()["based_on_version"] == 5
+    assert response.json()["draft_version"] == 6
+    assert calls[-1][2]["params"]["status"] == "eq.published"
+    assert calls[-1][2]["params"]["version"] == "eq.5"
+
+
+def test_skill_publication_returns_actual_trigger_created_version_and_digest(monkeypatch):
+    import asyncio
+    import hashlib
+    import json
+    from allpha_api.main import AgentSkillPublicationReview, publish_agent_skill
+
+    draft = {
+        "id": SKILL_ID, "agent_id": AGENT_ID, "created_by": "owner-a",
+        "slug": "safe_skill", "name": "Safe Skill", "description": "Reviewed",
+        "category": "general", "inputs_schema": {"type": "object"},
+        "outputs_schema": {"type": "object"}, "instructions": "safe",
+        "constraints": {}, "tool_dependencies": [], "required_permission_scopes": [],
+        "model_requirements": {}, "budget_limits": {"max_runtime_seconds": 30, "max_tool_calls": 5},
+        "tests": [{"case": "basic"}], "evaluation_rubric": {"quality": 1},
+        "provenance": {}, "version": 4, "changelog": "draft v4",
+        "publication_terms": {"license": "owner"}, "status": "draft",
+        "created_at": "2026-10-14T00:00:00+00:00", "updated_at": "2026-10-14T00:01:00+00:00",
+    }
+    published = {**draft, "version": 5, "status": "published", "updated_at": "2026-10-14T00:02:00+00:00"}
+    draft_digest = hashlib.sha256(json.dumps(draft, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+    published_digest = hashlib.sha256(json.dumps(published, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+
+    async def fake_privileged(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET" and table == "agent_skills":
+            return [draft]
+        if method == "GET" and table == "agent_skill_versions":
+            return [{"snapshot": draft}]
+        if method == "PATCH" and table == "agent_skills":
+            return [published]
+        raise AssertionError((method, table, params, body))
+
+    async def fake_audit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("allpha_api.main.privileged_rest_request", fake_privileged)
+    monkeypatch.setattr("allpha_api.main.write_operator_audit", fake_audit)
+    request = Request({
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "https", "path": "/", "raw_path": b"/",
+        "query_string": b"", "headers": [], "client": ("127.0.0.1", 1234),
+        "server": ("localhost", 443),
+    })
+    payload = AgentSkillPublicationReview(
+        expected_version=4, snapshot_digest=draft_digest, reason="Review the complete version four skill",
+    )
+    result = asyncio.run(publish_agent_skill(
+        uuid.UUID(AGENT_ID), uuid.UUID(SKILL_ID), payload, request, {"id": "operator-1"},
+    ))
+
+    assert result["published_version"] == 5
+    assert result["snapshot_digest"] == published_digest
+    assert result["reviewed_draft_version"] == 4
+    assert result["reviewed_draft_digest"] == draft_digest
 
 
 def test_capability_request_is_declarative_and_not_runtime_authority(monkeypatch):
@@ -187,6 +275,24 @@ def test_eng_p06_migration_declares_owner_rls_versioning_and_no_runtime_grant():
     assert "status in ('requested','revoked')" in sql
     assert "grant select, insert, update on public.agent_capabilities to authenticated" in sql
     assert "grant update on public.agent_capabilities" not in sql
+
+
+def test_eng_p06_forward_migration_guards_lifecycle_and_public_snapshot_view():
+    migration_path = Path(__file__).parents[1] / "supabase" / "migrations" / "20261122180000_eng_p06_skill_version_rollover_runtime_pinning.sql"
+    sql = migration_path.read_text(encoding="utf-8").lower()
+    assert "guard_agent_skill_lifecycle" in sql
+    assert "before insert or update on public.agent_skills" in sql
+    assert "current_user = 'authenticated'" in sql
+    assert "current_user = 'service_role'" in sql
+    assert "agent_skill_publications" in sql
+    assert "security_barrier = true" in sql
+    assert "v.snapshot ->> 'status' = 'published'" in sql
+    assert "s.status <> 'archived'" in sql
+    assert "security definer" in sql
+    assert "create or replace function public.capture_agent_skill_version()" in sql
+    assert "revoke insert, update, delete, truncate, references, trigger on table public.agent_skill_versions" in sql
+    assert "revoke delete, truncate, references, trigger on table public.agent_skills" in sql
+    assert "drop policy if exists agent_skills_owner_delete" in sql
 
 
 def test_skill_version_history_is_owner_scoped_and_checks_skill_membership(monkeypatch):

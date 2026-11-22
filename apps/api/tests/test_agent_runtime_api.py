@@ -55,8 +55,10 @@ class FakeRuntimeStore:
     async def owner_has_agent(self, owner_id, agent_id):
         return owner_id == OWNER and agent_id == AGENT
 
-    async def get_skill(self, owner_id, agent_id, skill_id):
+    async def get_skill(self, owner_id, agent_id, skill_id, *, version=None):
         if await self.owner_has_agent(owner_id, agent_id) and skill_id == SKILL:
+            if version is not None and version != 1:
+                return None
             return {"id": SKILL, "agent_id": AGENT, "version": 1, "status": "published",
                     "tool_dependencies": list(FakeRuntimeStore.approved_tools), "required_permission_scopes": [],
                     "budget_limits": {"max_runtime_seconds": 3, "max_tool_calls": 5}}

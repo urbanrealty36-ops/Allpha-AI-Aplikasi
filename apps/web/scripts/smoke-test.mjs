@@ -511,6 +511,7 @@ assert.ok(agentsRoute.includes('get("agent")') && agentsRoute.includes('scrollIn
 const agentStudioRoute = readFileSync(new URL("../app/agents/[agentId]/studio/page.tsx", import.meta.url), "utf8");
 assert.ok(agentsRoute.includes('https://api.allpha.web.id') && agentStudioRoute.includes('https://api.allpha.web.id'), "Agent Runtime and Studio must use the canonical production API origin when no override is configured");
 assert.ok(agentStudioRoute.includes('href="/workflows"') && agentStudioRoute.includes("/knowledge/retrieve") && agentStudioRoute.includes("/skills"), "Agent Studio must link the canonical Workflow Engine and expose Skill/Knowledge API integrations");
+assert.ok(agentStudioRoute.includes("/draft") && agentStudioRoute.includes("Buat draft versi baru"), "Published Skills must support owner-controlled version rollover without editing immutable published content");
 assert.ok(!profileView.includes('tasks?.length || 4'), "Profile must not fabricate a scheduled task count");
 assert.ok(agentIdentityModal.includes("AI Gateway & Model Router") && !agentIdentityModal.includes("Gemini 2.5 Flash Allpha Gateway"), "Profile must defer provider/model selection to the canonical Model Router");
 assert.ok(agentIdentityModal.includes('await onSaveAgent(updated)') && agentIdentityModal.includes('saving ? "Menyimpan…"'), "Agent profile modal must await canonical persistence before closing");
@@ -533,6 +534,7 @@ if (existsSync(apiMainPath)) {
   assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
   assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
   assert.ok(apiMain.includes('service_db_request("create_social_edge_for_actor"') && apiMain.includes('"p_actor_node_type": "human"'), "Private profile follow must use the canonical policy-enforced server command, not client-selected status");
+  assert.ok(apiMain.includes("agent_skill_publications") && apiMain.includes('/skills/{skill_id}/draft'), "Agent Passport must resolve latest published Skill snapshots and Agent Studio must expose the owner draft rollover API");
 }
 const nativeSocialPath = new URL("../../client/App.tsx", import.meta.url);
 if (existsSync(nativeSocialPath)) {
