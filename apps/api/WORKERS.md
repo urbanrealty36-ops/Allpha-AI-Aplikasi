@@ -199,6 +199,12 @@ A successful image build or running container is not processing evidence. Activa
 - All new database changes are source-only and not present in the connected Supabase migration ledger. Worker activation remains disabled until canonical migrations are applied and runtime verification is authorized.
 
 
+### WP-06 Social event intake digest forward repair
+
+- The historical source-only candidate `20261122100000_wp06_social_event_intake_rate_serialization.sql` calls `public.digest(text,text)`, which is not the installed pgcrypto signature in the canonical database.
+- Keep that historical file byte-for-byte unchanged and classify it as superseded for application selection. The forward repair `20261122110000_wp06_social_event_intake_rate_serialization_forward_repair.sql` uses the observed `extensions.digest(bytea,text)` signature through `convert_to(...,'UTF8')` and fails closed if the function or required WP-06 relations are absent.
+- Both files remain source-only. This repair is not a production migration result and does not activate the WP-06 consumer; apply only through the WP-07 migration reconciliation and production recovery procedure.
+
 ### Worker schema readiness gate
 
 Before reaping, listing or claiming any Agent Runtime task, `run_once` calls the read-only `agent_runtime_worker_schema_readiness()` RPC. The worker stays idle unless the complete canonical task/session/checkpoint/tool-plan tables, retry/lease columns and claim/heartbeat/checkpoint/finalization/retry RPC signatures are present. A missing migration or RPC is reported as missing schema and no task is claimed. This gate is independent of `ALLPHA_AGENT_RUNTIME_WORKER_ENABLED`; both the schema predicate and the explicit worker flag must pass.
