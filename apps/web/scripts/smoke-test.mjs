@@ -118,6 +118,10 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
     "account page must not create a second independent sign-in/register UI flow");
   assert.ok(account.includes('/v1/auth/revoke') && account.includes('signOut({ scope: "local" })'),
     "Web account logout must revoke the server session before global Supabase sign-out");
+  const logoutBlock = account.slice(account.indexOf("async function handleLogout"), account.indexOf("const loadAuthSessions"));
+  assert.ok(logoutBlock.includes("response.status === 401 || response.status === 403") &&
+    logoutBlock.includes('signOut({ scope: "local" })'),
+    "logout must clear a definitively revoked local session but preserve it on transient API failure");
   assert.ok(account.includes("sessionsRequestSequence.current += 1") &&
     account.includes("setAuthSessions(null)") && account.includes("sequence === sessionsRequestSequence.current") &&
     account.includes('/v1/me/sessions') && account.includes('/v1/me/sessions/revoke-others') &&
