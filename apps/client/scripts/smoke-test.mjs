@@ -188,6 +188,7 @@ for (const contract of [
   'apiBase + "/v1/auth/revoke"', 'function PasswordRecovery()',
 ]) assert.ok(app.includes(contract), `missing Native PKCE deep-link and recovery contract: ${contract}`);
 assert.ok(app.includes('const callbackPath = (parsed.hostname + parsed.pathname).toLowerCase()'), 'Native auth callback must normalize custom-scheme routes');
+assert.ok(app.includes('processedAuthUrls.current.delete(rawUrl)'), 'Native auth callback must release failed URL deduplication so transient exchange errors can be retried');
 
 assert.ok(app.includes("const [passwordUpdated, setPasswordUpdated] = useState(false)"), "Native password recovery must retain the password-updated state so revocation can be retried without resubmitting the password");
 assert.ok(app.includes("if (!passwordUpdated) {") && app.includes('passwordUpdated ? "Cabut sesi dan selesaikan"'), "Native recovery must retry server session revocation independently after password update");
