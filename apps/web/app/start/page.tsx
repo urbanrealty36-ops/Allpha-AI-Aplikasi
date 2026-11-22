@@ -37,14 +37,14 @@ export default function StartJourneyPage() {
         if (verifyError) {
           const statusCode = (verifyError as { status?: number }).status;
           if (statusCode === 401 || statusCode === 403) {
-            await supabase.auth.signOut({ scope: "local" });
+            await supabase?.auth.signOut({ scope: "local" });
             if (active) window.location.replace("/login");
             return;
           }
           throw new Error("Layanan autentikasi sementara tidak tersedia. Sesi lokal dipertahankan; coba lagi.");
         }
         if (!verified.user || verified.user.id !== session.user.id) {
-          await supabase.auth.signOut({ scope: "local" });
+          await supabase?.auth.signOut({ scope: "local" });
           if (active) window.location.replace("/login");
           return;
         }
@@ -53,7 +53,7 @@ export default function StartJourneyPage() {
         }
         const backend = await verifyBackendSession<StartIdentity>(apiBase, session);
         if (backend.status === "rejected") {
-          await supabase.auth.signOut({ scope: "local" });
+          await supabase?.auth.signOut({ scope: "local" });
           if (active) window.location.replace("/login");
           return;
         }
@@ -66,7 +66,7 @@ export default function StartJourneyPage() {
           cache: "no-store",
         });
         if (response.status === 401 || response.status === 403) {
-          await supabase.auth.signOut({ scope: "local" });
+          await supabase?.auth.signOut({ scope: "local" });
           if (active) window.location.replace("/login");
           return;
         }

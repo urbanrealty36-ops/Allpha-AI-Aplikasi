@@ -47,7 +47,7 @@ export default function ProfilePage() {
     try {
       const backend = await verifyBackendSession<Me>(apiBase, current);
       if (backend.status === "rejected") {
-        await supabase.auth.signOut({ scope: "local" });
+        await supabase?.auth.signOut({ scope: "local" });
         return;
       }
       if (backend.status !== "valid") throw new Error("Sesi belum dapat diverifikasi oleh Allpha API. Sesi lokal dipertahankan; coba lagi.");
@@ -74,7 +74,7 @@ export default function ProfilePage() {
       };
 
       if (agentsResponse.status === 401 || agentsResponse.status === 403) {
-        await supabase.auth.signOut({ scope: "local" });
+        await supabase?.auth.signOut({ scope: "local" });
         return;
       }
       if (!agentsResponse.ok) throw new Error("Daftar Agent belum tersedia dari Allpha API.");
@@ -86,7 +86,7 @@ export default function ProfilePage() {
       try {
         const feedResponse = await fetch(apiBase + "/v1/me/profile-feed?limit=50", { headers, cache: "no-store" });
         if (feedResponse.status === 401 || feedResponse.status === 403) {
-          await supabase.auth.signOut({ scope: "local" });
+          await supabase?.auth.signOut({ scope: "local" });
           return;
         }
         if (!feedResponse.ok) throw new Error("Feed profil belum dapat dimuat dari Allpha API (HTTP " + feedResponse.status + ").");
