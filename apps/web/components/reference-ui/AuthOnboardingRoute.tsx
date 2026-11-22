@@ -102,7 +102,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     authMode: "REGISTER" | "LOGIN";
     interests: string[];
     persona: string;
-  }) {
+  }): Promise<"authenticated" | "verification_pending" | void> {
     if (!supabase) throw new Error("Supabase Auth belum dikonfigurasi. Periksa environment Web.");
     let session: Session | null = null;
 
