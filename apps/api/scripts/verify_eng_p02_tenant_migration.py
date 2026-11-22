@@ -137,7 +137,7 @@ end $$;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 select id, is_current, user_agent, ip from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666');
-do $$allpha_session_list_test$
+do $allpha_session_list_test$
 begin
  if (select count(*) from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666'))<>2 then raise exception 'session list must include only the caller active sessions'; end if;
  if not exists(select 1 from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666') where id='66666666-6666-4666-8666-666666666666') then raise exception 'current session row missing'; end if;
@@ -147,7 +147,7 @@ begin
  if exists(select 1 from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666') where id='88888888-8888-4888-8888-888888888888') then raise exception 'foreign user session leaked'; end if;
 end $allpha_session_list_test$;
 select public.revoke_my_other_auth_sessions('66666666-6666-4666-8666-666666666666');
-do $$allpha_session_revoke_test$
+do $allpha_session_revoke_test$
 begin
  if exists(select 1 from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666') where id='77777777-7777-4777-8777-777777777777') then raise exception 'revoked other session remains visible'; end if;
  if (select count(*) from public.list_my_auth_sessions('66666666-6666-4666-8666-666666666666'))<>1 then raise exception 'revoked sessions must disappear from session list'; end if;
