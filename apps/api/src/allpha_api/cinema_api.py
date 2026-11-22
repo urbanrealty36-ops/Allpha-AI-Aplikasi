@@ -556,12 +556,23 @@ async def create_cinema_generation_job(
         "expected_title_version": int(title.get("version") or 1),
         "idempotency_key": idempotency_key,
     }
-    links = await _db(
-        "POST", "cinema_generation_job_links",
-        params={"on_conflict": "requester_user_id,idempotency_key"},
-        payload=link_payload,
-        prefer="resolution=ignore-duplicates,return=representation",
-    )
+    try:
+        links = await _db(
+            "POST", "cinema_generation_job_links",
+            params={"on_conflict": "requester_user_id,idempotency_key"},
+            payload=link_payload,
+            prefer="resolution=ignore-duplicates,return=representation",
+        )
+    except HTTPException:
+        # Job creation already reserved credits. If the Cinema association cannot
+        # be persisted, compensate only a newly-created queued job; never cancel
+        # an idempotent replay that may be owned by a prior successful request.
+        if not job.get("idempotent_replay"):
+            try:
+                await generation_jobs_api.cancel_generation_job(uuid.UUID(job_id), user)
+            except HTTPException:
+                pass  # Running jobs are reconciled by the canonical generation lifecycle.
+        raise
     if not links:
         existing = await _db("GET", "cinema_generation_job_links", params={
             "select": "generation_job_id,title_id,owner_id,target_section,expected_title_version",
@@ -572,6 +583,11 @@ async def create_cinema_generation_job(
                 or str(existing[0].get("title_id")) != str(title_id)
                 or str(existing[0].get("owner_id")) != str(title["owner_id"])
                 or existing[0].get("target_section") != payload.target_section):
+            if not job.get("idempotent_replay"):
+                try:
+                    await generation_jobs_api.cancel_generation_job(uuid.UUID(job_id), user)
+                except HTTPException:
+                    pass
             raise HTTPException(409, detail={
                 "code": "CINEMA_GENERATION_IDEMPOTENCY_CONFLICT",
                 "message": "Idempotency-Key telah digunakan untuk konteks Cinema yang berbeda.",
