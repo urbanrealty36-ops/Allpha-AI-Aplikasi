@@ -7,6 +7,9 @@ import jwt
 import pytest
 from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.testclient import TestClient
+
+from allpha_api.main import app
 
 from allpha_api import auth
 
@@ -118,3 +121,34 @@ def test_active_account_keeps_authenticated_api_access(monkeypatch):
     assert user["id"] == "11111111-1111-4111-8111-111111111111"
     assert request.state.user_id == user["id"]
     assert request.state.auth_session_id
+
+
+def test_deactivated_account_can_still_revoke_its_own_session(monkeypatch):
+    from allpha_api.auth import current_session_user
+
+    async def fake_session_user(request: Request):
+        request.state.auth_session_id = "22222222-2222-4222-8222-222222222222"
+        request.state.supabase_access_token = "verified-live-session-token"
+        return {"id": "11111111-1111-4111-8111-111111111111"}
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return True
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_session_user] = fake_session_user
+    try:
+        response = TestClient(app).post("/v1/auth/revoke", headers={"Authorization": "Bearer test"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"revoked": True}
+    assert calls == [(
+        "POST",
+        "rpc/revoke_my_auth_session",
+        "verified-live-session-token",
+        {"body": {"p_session_id": "22222222-2222-4222-8222-222222222222"}},
+    )]
