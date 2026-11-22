@@ -2107,7 +2107,7 @@ function Navigator() {
         // Verify the persisted token against Supabase Auth without relying on
         // client-side cached session state, then bootstrap the same Human
         // identity contract used by Web before loading any domain surface.
-        const authResponse = await fetch(supabaseUrl.replace(/\\/$/, "") + "/auth/v1/user", {
+        const authResponse = await fetch(supabaseUrl.replace(/\/$/, "") + "/auth/v1/user", {
           headers: { apikey: supabaseKey, Authorization: "Bearer " + next.access_token, Accept: "application/json" },
         });
         if (!authResponse.ok) throw new Error("Sesi tidak valid atau telah dicabut.");
