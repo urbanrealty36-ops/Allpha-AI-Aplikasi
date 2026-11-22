@@ -49,6 +49,27 @@ assert.ok(workflows.includes('if (!supabase) return <main className="identity-sh
 const globalStyles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Workflow configuration keys must wrap at narrow mobile widths");
 
+// Splash and both public/dedicated authentication entry points share canonical auth.
+const onboardingPage = readFileSync(new URL("../components/reference-ui/AuthOnboardingPage.tsx", import.meta.url), "utf8");
+const welcomePage = readFileSync(new URL("../app/welcome/page.tsx", import.meta.url), "utf8");
+const authRoute = readFileSync(new URL("../components/reference-ui/AuthOnboardingRoute.tsx", import.meta.url), "utf8");
+const authFlow = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(onboardingPage, /Slide Sapa & Panduan|Login \/ Register|Buka Feed Aplikasi/,
+  "Splash header must not render the three wide navigation actions");
+assert.ok(onboardingPage.includes("onStartAuthentication('REGISTER')") && onboardingPage.includes("onStartAuthentication('LOGIN')"),
+  "Public onboarding auth actions must open the matching auth modal mode");
+assert.ok(welcomePage.includes("<AuthOnboardingRoute") && welcomePage.includes("isOpen={authModalMode !== null}"),
+  "Public onboarding must mount the canonical auth card as a modal");
+assert.ok(authRoute.includes("supabase.auth.signUp") && authRoute.includes("supabase.auth.signInWithPassword") &&
+  authRoute.includes("/v1/me/profile") && authRoute.includes("/v1/agents"),
+  "Modal and dedicated routes must share Supabase Auth and FastAPI identity provisioning");
+assert.ok(authFlow.includes("authMode === 'LOGIN'") && authFlow.includes("authMode === 'REGISTER' && ("),
+  "Login must not require registration-only Human/Agent identity fields");
+assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("min-width: 0") &&
+  globalStyles.includes("max-width: 100%"),
+  "Global layout must constrain mobile viewport overflow");
+
+
 const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", import.meta.url), "utf8");
 for (const contract of [
   "/v1/skill-challenges/catalog?agent_id=", "/v1/skill-challenges/runs", "idempotency_key",
