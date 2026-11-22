@@ -83,7 +83,7 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   const resetPassword = readFileSync(new URL("../app/reset-password/page.tsx", import.meta.url), "utf8");
   const account = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
   for (const contract of [
-    "verification_pending", "supabase.auth.getUser(session.access_token)", "email_confirmed_at",
+    "verification_pending", "supabase.auth.getUser(session.access_token)", "email_confirmed_at", "emailRedirectTo",
     "supabase.auth.resend", "supabase.auth.signInWithOAuth", "/auth/callback?next=%2Fstart",
     "finishAuthentication(\"/feed\")", "returnTo"
   ]) assert.ok(authRoute.includes(contract), `missing canonical auth lifecycle contract: ${contract}`);
