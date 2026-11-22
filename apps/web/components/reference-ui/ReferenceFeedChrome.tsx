@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Bot, Film, Plus, Radio, Sparkles, Users } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
@@ -43,13 +43,15 @@ export default function ReferenceFeedChrome({
   const [stories, setStories] = useState<Story[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
   const [storiesError, setStoriesError] = useState("");
+  const storiesRequestSequence = useRef(0);
 
-  const loadStories = useCallback(async (activeSession: Session) => {
+  const loadStories = useCallback(async (activeSession: Session | null) => {
+    const sequence = ++storiesRequestSequence.current;
     setStoriesLoading(true);
     setStoriesError("");
     try {
       const response = await fetch(apiBase + "/v1/stories?limit=30", {
-        headers: { Authorization: "Bearer " + activeSession.access_token, Accept: "application/json" },
+        headers: { ...(activeSession ? { Authorization: "Bearer " + activeSession.access_token } : {}), Accept: "application/json" },
         cache: "no-store",
       });
       if (!response.ok) {
@@ -61,43 +63,46 @@ export default function ReferenceFeedChrome({
         throw new Error(message);
       }
       const data = await response.json() as { items?: Story[] };
-      setStories(data.items ?? []);
+      if (sequence === storiesRequestSequence.current) setStories(data.items ?? []);
     } catch (cause) {
-      setStoriesError(cause instanceof Error ? cause.message : "Stories tidak dapat dimuat.");
-      setStories([]);
+      if (sequence === storiesRequestSequence.current) {
+        setStoriesError(cause instanceof Error ? cause.message : "Stories tidak dapat dimuat.");
+        setStories([]);
+      }
     } finally {
-      setStoriesLoading(false);
+      if (sequence === storiesRequestSequence.current) setStoriesLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!supabase) {
-      setStoriesLoading(false);
-      setStoriesError("Konfigurasi autentikasi belum tersedia.");
-      return;
-    }
     let active = true;
+    if (!supabase) {
+      // Stories are publicly readable. Missing browser Auth configuration must
+      // not suppress the anonymous Feed experience.
+      setSession(null);
+      void loadStories(null);
+      return () => {
+        active = false;
+        storiesRequestSequence.current += 1;
+      };
+    }
     void supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSession(data.session);
-      if (!data.session) {
-        setStories([]);
-        setStoriesLoading(false);
-      } else {
-        void loadStories(data.session);
-      }
+      void loadStories(data.session);
+    }).catch(() => {
+      if (!active) return;
+      setSession(null);
+      void loadStories(null);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       if (!active) return;
       setSession(next);
-      if (next) void loadStories(next);
-      else {
-        setStories([]);
-        setStoriesLoading(false);
-      }
+      void loadStories(next);
     });
     return () => {
       active = false;
+      storiesRequestSequence.current += 1;
       listener.subscription.unsubscribe();
     };
   }, [supabase, loadStories]);
@@ -150,7 +155,10 @@ export default function ReferenceFeedChrome({
         {storiesLoading ? (
           <div className="text-xs text-slate-500 shrink-0" role="status">Memuat Stories…</div>
         ) : storiesError ? (
-          <div className="text-xs text-rose-700 shrink-0" role="alert">{storiesError}</div>
+          <div className="flex shrink-0 items-center gap-2 text-xs text-rose-700" role="alert">
+            <span>{storiesError}</span>
+            <button type="button" onClick={() => void loadStories(session)} className="rounded-full border border-rose-300 px-2.5 py-1 font-bold hover:bg-rose-50">Coba lagi</button>
+          </div>
         ) : stories.length ? (
           stories.map((story, index) => {
             const media = story.media?.find(item => item.preview_url && item.media_type.startsWith("image/"));
