@@ -335,15 +335,21 @@ function Welcome({ initialStoryId, initialContentId }: { initialStoryId?: string
   </ScrollView>;
 }
 
-function AuthCallback() {
+function AuthCallback({ status, canContinue }: { status: "pending" | "success" | "error"; canContinue: boolean }) {
   const nav = useNavigation<NavigationProp<Routes>>();
+  const ready = status === "success" && canContinue;
+  const waiting = status === "pending" || (status === "success" && !canContinue);
   return <View style={[s.page, { justifyContent: "center" }]}>
     <Brand/>
     <View style={s.card}>
-      <ActivityIndicator color="#A5B4FC"/>
-      <Text style={s.title}>Memverifikasi tautan Allpha</Text>
-      <Text style={s.body}>Aplikasi sedang memproses tautan autentikasi. Jika tautan kedaluwarsa atau tidak dapat digunakan, minta tautan baru dari halaman masuk.</Text>
-      <Button title="Kembali ke masuk" secondary onPress={() => nav.navigate("Auth", { mode: "signin" })}/>
+      {waiting && <ActivityIndicator color="#A5B4FC"/>}
+      <Text style={s.title}>{ready ? "Email berhasil diverifikasi" : status === "error" ? "Tautan autentikasi tidak valid" : "Memverifikasi tautan Allpha"}</Text>
+      <Text style={s.body}>{ready ? "Identitas Human sudah diverifikasi oleh Supabase Auth dan FastAPI. Anda dapat melanjutkan ke Allpha." : status === "error" ? "Tautan mungkin kedaluwarsa atau sudah digunakan. Minta tautan baru dari halaman masuk." : "Aplikasi sedang memproses PKCE callback dan memverifikasi identitas melalui API Allpha."}</Text>
+      {ready
+        ? <Button title="Lanjut ke Allpha" onPress={() => nav.navigate("Profile")}/>
+        : status === "error"
+          ? <Button title="Kembali ke masuk" secondary onPress={() => nav.navigate("Auth", { mode: "signin" })}/>
+          : null}
     </View>
   </View>;
 }
@@ -2221,6 +2227,7 @@ function Navigator() {
   const [journeyReady, setJourneyReady] = useState(false);
   const [journeyTab, setJourneyTab] = useState<"agents" | "feed">("feed");
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [authCallbackStatus, setAuthCallbackStatus] = useState<"pending" | "success" | "error">("pending");
   const recoveryFlowRef = useRef(false);
   const processedAuthUrls = useRef(new Set<string>());
   const journeyRequestSequence = useRef(0);
@@ -2234,11 +2241,13 @@ function Navigator() {
       try { parsed = new URL(rawUrl); } catch { return; }
       const callbackPath = (parsed.hostname + parsed.pathname).toLowerCase();
       if (callbackPath !== "auth/callback" && callbackPath !== "auth/recovery") return;
+      if (callbackPath === "auth/callback") setAuthCallbackStatus("pending");
       processedAuthUrls.current.add(rawUrl);
       const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
       const read = (key: string) => parsed.searchParams.get(key) || hash.get(key);
       const errorCode = read("error") || read("error_code");
       if (errorCode || read("error_description")) {
+        if (callbackPath === "auth/callback") setAuthCallbackStatus("error");
         Alert.alert("Tautan autentikasi tidak valid", "Tautan mungkin kedaluwarsa atau sudah digunakan. Minta tautan baru dari aplikasi.");
         return;
       }
@@ -2250,6 +2259,8 @@ function Navigator() {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
           if (recovery && data.session) { setSession(data.session); setJourneyReady(true); setReady(true); }
+          else if (data.session) setAuthCallbackStatus("success");
+          else if (callbackPath === "auth/callback") setAuthCallbackStatus("error");
           return;
         }
         const accessToken = read("access_token");
@@ -2258,9 +2269,12 @@ function Navigator() {
         const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
         if (error) throw error;
         if (recovery && data.session) { setSession(data.session); setJourneyReady(true); setReady(true); }
+        else if (data.session) setAuthCallbackStatus("success");
+        else if (callbackPath === "auth/callback") setAuthCallbackStatus("error");
       } catch {
         recoveryFlowRef.current = false;
         setRecoveryMode(false);
+        if (callbackPath === "auth/callback") setAuthCallbackStatus("error");
         Alert.alert("Autentikasi gagal", "Tautan tidak dapat diverifikasi. Minta tautan baru lalu coba kembali.");
       }
     };
@@ -2362,7 +2376,7 @@ function Navigator() {
     Feed: "feed", Reels: "reels", Stories: "stories", Search: "search", Messages: "messages",
     Notifications: "notifications", Communities: "communities", Generate: "generate", Live: "live",
   } } }}><Stack.Navigator key={recoveryMode ? "recovery" : session?.user.id || "anonymous"} initialRouteName={recoveryMode ? "Recovery" : session ? "Profile" : "Welcome"} screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B1020" } }}>{recoveryMode ? <Stack.Screen name="Recovery" component={PasswordRecovery}/> : session ? <>
-    <Stack.Screen name="AuthCallback" component={AuthCallback}/>
+    <Stack.Screen name="AuthCallback">{() => <AuthCallback status={authCallbackStatus} canContinue={Boolean(session && journeyReady)}/>}</Stack.Screen>
     <Stack.Screen name="Profile">{() => <Profile session={session} initialTab="profile"/>}</Stack.Screen>
     <Stack.Screen name="Account">{({ route }) => <Profile session={session} initialTab={route.params?.tab || "profile"}/>}</Stack.Screen>
     <Stack.Screen name="Agents">{() => <Profile session={session} initialTab="agents"/>}</Stack.Screen>
@@ -2375,7 +2389,7 @@ function Navigator() {
     <Stack.Screen name="Communities">{() => <Profile session={session} initialTab="communities"/>}</Stack.Screen>
     <Stack.Screen name="Generate">{() => <Profile session={session} initialTab="generate"/>}</Stack.Screen>
     <Stack.Screen name="Live">{() => <LiveControlCenter session={session} apiBase={apiBase}/>}</Stack.Screen>
-  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/><Stack.Screen name="AuthCallback" component={AuthCallback}/><Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen><Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen></>}</Stack.Navigator></NavigationContainer>;
+  </> : <><Stack.Screen name="Welcome" component={Welcome}/><Stack.Screen name="Auth" component={Auth}/><Stack.Screen name="AuthCallback">{() => <AuthCallback status={authCallbackStatus} canContinue={Boolean(session && journeyReady)}/>}</Stack.Screen><Stack.Screen name="Feed">{({ route }) => <Welcome initialContentId={route.params?.content}/>}</Stack.Screen><Stack.Screen name="Stories">{({ route }) => <Welcome initialStoryId={route.params?.story}/>}</Stack.Screen></>}</Stack.Navigator></NavigationContainer>;
 }
 export default function App() { return <SafeAreaProvider><StatusBar style="light"/><Navigator/></SafeAreaProvider>; }
 
