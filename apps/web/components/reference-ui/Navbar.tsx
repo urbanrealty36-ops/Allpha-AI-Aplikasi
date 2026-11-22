@@ -61,9 +61,11 @@ export default function Navbar({
       <div className="max-w-xl mx-auto px-4 h-16 flex items-center justify-between gap-2.5">
         
         {/* Brand Logo Lockup - click to open Splash Sapa & Tour */}
-        <div 
+        <button
+          type="button"
           onClick={onOpenOnboardingPage}
-          className="flex items-center gap-2 cursor-pointer select-none group"
+          aria-label="Buka halaman awal Allpha"
+          className="flex items-center gap-2 border-0 bg-transparent p-0 text-left cursor-pointer select-none group"
           title="Buka Halaman Splash Sapa & Panduan Platform"
         >
           <div className="flex flex-col">
@@ -75,7 +77,7 @@ export default function Navbar({
               UNIVERSE
             </span>
           </div>
-        </div>
+        </button>
 
         {/* Expandable Search Input (if active) */}
         {isSearchOpen && (
