@@ -229,7 +229,8 @@ export default function AuthOnboardingFlow({
   const handleFinishOnboarding = async () => {
     if (isSubmitting) return;
     setSubmissionError('');
-    if (!humanEmail.trim() || !humanPassword) {
+    setVerificationPending(false);
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(humanEmail.trim()) || !humanPassword) {
       setSubmissionError('Masukkan email dan password untuk melanjutkan.');
       setStep('HUMAN_REGISTER');
       return;
@@ -622,6 +623,8 @@ export default function AuthOnboardingFlow({
                     value={humanEmail}
                     onChange={(e) => setHumanEmail(e.target.value)}
                     placeholder="nama@domain.com"
+                    autoComplete="email"
+                    required
                     className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
@@ -636,6 +639,9 @@ export default function AuthOnboardingFlow({
                     value={humanPassword}
                     onChange={(e) => setHumanPassword(e.target.value)}
                     placeholder="Min. 8 karakter"
+                    autoComplete={authMode === 'LOGIN' ? 'current-password' : 'new-password'}
+                    minLength={authMode === 'REGISTER' ? 8 : undefined}
+                    required
                     className="w-full pl-9 pr-3 py-2 bg-white rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] text-xs font-bold text-slate-900 outline-none"
                   />
                 </div>
