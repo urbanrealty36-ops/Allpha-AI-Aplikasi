@@ -213,6 +213,8 @@ def test_cinema_generation_link_migration_is_a_projection_not_a_second_queue():
     assert "create table if not exists public.cinema_generation_job_links" in sql
     assert "create or replace function public.cinema_apply_generation_job_output" in sql
     assert "create or replace function public.cinema_generation_schema_readiness" in sql
+    assert "language plpgsql security definer set search_path=''\nas $\ndeclare" in sql
+    assert "\nend;\n$;\n\nrevoke all on function public.cinema_generation_schema_readiness()" in sql
     assert "alter table public.cinema_generation_job_links enable row level security" in sql
     assert "public.agent_runtime_tasks" not in sql
     assert "create table if not exists public.cinema_render_jobs" not in sql
