@@ -81,7 +81,7 @@ export default function AuthOnboardingFlow({
     setAuthMode(initialAuthMode);
     setStep('HUMAN_REGISTER');
   }, [initialAuthMode, isOpen]);
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, t } = useLocale();
   const selectedLang = locale === 'id-ID' ? 'id' : 'en';
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [flowToast, setFlowToast] = useState<string | null>(null);
@@ -326,7 +326,7 @@ export default function AuthOnboardingFlow({
             <div className="w-full flex items-center justify-between pb-2 border-b-2 border-slate-900">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5 text-slate-700" />
-                <span>Pilih Bahasa / Language:</span>
+                <span>{t('language.label')} / Language:</span>
               </span>
               <div className="flex items-center gap-1">
                 {[
@@ -540,7 +540,7 @@ export default function AuthOnboardingFlow({
               <div>
                 <span className="text-[10px] font-black text-[#0284C7] tracking-wider uppercase">Langkah 1 dari 2</span>
                 <h2 className="text-base font-black text-slate-900 uppercase">
-                  {authMode === 'REGISTER' ? 'Registrasi Human Identity' : 'Masuk ke Human Identity'}
+                  {authMode === 'REGISTER' ? t('auth.registerTitle') : t('auth.loginTitle')}
                 </h2>
               </div>
               <div className="flex rounded-xl bg-slate-100 p-1 border-2 border-slate-900 shadow-[1px_1px_0px_#0f172a] text-xs font-black">
@@ -602,7 +602,7 @@ export default function AuthOnboardingFlow({
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-black text-slate-900">Username (@handle)</label>
+                  <label className="text-[11px] font-black text-slate-900">{t('auth.username')}</label>
                   <input
                     type="text"
                     value={humanHandle}
@@ -615,7 +615,7 @@ export default function AuthOnboardingFlow({
 
               )}
               <div>
-                <label className="text-[11px] font-black text-slate-900">Email</label>
+                <label className="text-[11px] font-black text-slate-900">{t('auth.email')}</label>
                 <div className="relative mt-1">
                   <Mail className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
                   <input
@@ -631,7 +631,7 @@ export default function AuthOnboardingFlow({
               </div>
 
               <div>
-                <label className="text-[11px] font-black text-slate-900">Password</label>
+                <label className="text-[11px] font-black text-slate-900">{t('auth.password')}</label>
                 <div className="relative mt-1">
                   <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
                   <input
@@ -647,11 +647,11 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
-              {authMode === 'LOGIN' && <div className="text-right"><a href="/forgot-password" className="text-[11px] font-black text-sky-700 underline">Lupa password?</a></div>}
+              {authMode === 'LOGIN' && <div className="text-right"><a href="/forgot-password" className="text-[11px] font-black text-sky-700 underline">{t('auth.forgotPassword')}</a></div>}
               {authMode === 'REGISTER' && (
               <>
               <div>
-                <label className="text-[11px] font-black text-slate-900">Bio Singkat</label>
+                <label className="text-[11px] font-black text-slate-900">{t('auth.bio')}</label>
                 <input
                   type="text"
                   value={humanBio}
@@ -663,7 +663,7 @@ export default function AuthOnboardingFlow({
 
               {/* Interest Tags */}
               <div>
-                <label className="text-[11px] font-black text-slate-900">Pilih Minat & Topik Utama</label>
+                <label className="text-[11px] font-black text-slate-900">{t('auth.interests')}</label>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {availableInterests.map((interest) => {
                     const isSelected = selectedInterests.includes(interest);
@@ -696,7 +696,7 @@ export default function AuthOnboardingFlow({
                 onClick={() => setStep('SPLASH')}
                 className="px-4 py-2 rounded-xl text-xs font-black text-slate-700 bg-white border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] hover:bg-slate-50 transition active:translate-x-0.5 active:translate-y-0.5"
               >
-                ← Kembali
+                ← {t('auth.back')}
               </button>
               <button
                 type="button"
@@ -704,7 +704,7 @@ export default function AuthOnboardingFlow({
                 disabled={isSubmitting}
                 className="px-5 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60"
               >
-                <span>{isSubmitting ? 'Memproses…' : authMode === 'LOGIN' ? 'Masuk ke Allpha Universe' : 'Buat Akun Allpha'}</span>
+                <span>{isSubmitting ? t('auth.processing') : authMode === 'LOGIN' ? t('auth.submitLogin') : t('auth.submitRegister')}</span>
                 {authMode === 'REGISTER' && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
             </div>
