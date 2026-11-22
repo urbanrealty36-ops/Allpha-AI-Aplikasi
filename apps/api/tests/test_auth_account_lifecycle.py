@@ -64,7 +64,7 @@ def test_deactivated_account_is_denied_even_with_active_supabase_session(monkeyp
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=_token())
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(auth.current_user(_request(), credentials))
+        asyncio.run(auth.current_user(_request(), asyncio.run(auth.current_session_user(_request(), credentials))))
 
     assert exc.value.status_code == 403
     assert exc.value.detail["code"] == "ACCOUNT_NOT_ACTIVE"
