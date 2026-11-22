@@ -150,4 +150,42 @@ revoke all on function public.cinema_apply_generation_job_output(uuid,uuid,uuid,
 grant execute on function public.cinema_apply_generation_job_output(uuid,uuid,uuid,integer,text)
   to service_role;
 
+create or replace function public.cinema_generation_schema_readiness()
+returns jsonb
+language plpgsql security definer set search_path=''
+as $
+declare
+  v_missing text[] := array[]::text[];
+begin
+  if to_regclass('public.generation_jobs') is null then
+    v_missing := array_append(v_missing,'generation_jobs');
+  end if;
+  if to_regclass('public.cinema_titles') is null then
+    v_missing := array_append(v_missing,'cinema_titles');
+  end if;
+  if to_regclass('public.cinema_collaborators') is null then
+    v_missing := array_append(v_missing,'cinema_collaborators');
+  end if;
+  if to_regclass('public.cinema_generation_job_links') is null then
+    v_missing := array_append(v_missing,'cinema_generation_job_links');
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='cinema_titles'
+      and column_name='production_document'
+  ) then
+    v_missing := array_append(v_missing,'cinema_titles.production_document');
+  end if;
+  if to_regprocedure('public.cinema_apply_generation_job_output(uuid,uuid,uuid,integer,text)') is null then
+    v_missing := array_append(v_missing,'cinema_apply_generation_job_output');
+  end if;
+  return jsonb_build_object('ready',cardinality(v_missing)=0,'missing',v_missing);
+end;
+$;
+
+revoke all on function public.cinema_generation_schema_readiness()
+  from public,anon,authenticated;
+grant execute on function public.cinema_generation_schema_readiness()
+  to service_role;
+
 commit;

@@ -33,6 +33,8 @@ def test_cinema_screenplay_generation_reuses_canonical_generation_job(monkeypatc
         return {"job_id": JOB, "task_id": "task-cinema-1", "status": "queued", "reserved_credits": 12}
 
     async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "POST" and table == "rpc/cinema_generation_schema_readiness":
+            return {"ready": True, "missing": []}
         if method == "POST" and table == "cinema_generation_job_links":
             captured["link"] = payload
             captured["prefer"] = prefer
@@ -99,6 +101,8 @@ def test_cinema_screenplay_apply_uses_private_moderated_generation_artifact(monk
         return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 7, "title": "Test Film"}
 
     async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        if method == "POST" and table == "rpc/cinema_generation_schema_readiness":
+            return {"ready": True, "missing": []}
         if method == "GET" and table == "cinema_generation_job_links":
             return [{
                 "generation_job_id": JOB, "title_id": TITLE, "owner_id": OWNER,
@@ -206,6 +210,37 @@ def test_cinema_generation_link_migration_is_a_projection_not_a_second_queue():
     assert "references public.generation_jobs(id)" in sql
     assert "create table if not exists public.cinema_generation_job_links" in sql
     assert "create or replace function public.cinema_apply_generation_job_output" in sql
+    assert "create or replace function public.cinema_generation_schema_readiness" in sql
     assert "alter table public.cinema_generation_job_links enable row level security" in sql
     assert "public.agent_runtime_tasks" not in sql
     assert "create table if not exists public.cinema_render_jobs" not in sql
+
+
+def test_cinema_generation_schema_gate_prevents_credit_reservation(monkeypatch):
+    async def title_access(*args, **kwargs):
+        return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 7, "title": "Test Film"}
+
+    async def fake_db(method, table, *, params=None, payload=None, prefer=None):
+        assert method == "POST" and table == "rpc/cinema_generation_schema_readiness"
+        return {"ready": False, "missing": ["cinema_generation_job_links"]}
+
+    async def forbidden_create(*args, **kwargs):
+        raise AssertionError("Generation Job must not reserve credits before Cinema schema readiness")
+
+    monkeypatch.setattr(cinema_api, "_title_access", title_access)
+    monkeypatch.setattr(cinema_api, "_db", fake_db)
+    monkeypatch.setattr(cinema_api.generation_jobs_api, "create_generation_job", forbidden_create)
+    client = _client()
+    try:
+        response = client.post(
+            f"/v1/cinema/creator/titles/{TITLE}/generation-jobs",
+            headers={"Idempotency-Key": "cinema-script-003"},
+            json={
+                "agent_id": AGENT, "skill_id": SKILL,
+                "capability_id": "cinema.screenplay.draft", "prompt": "Draft a screenplay.",
+            },
+        )
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "CINEMA_GENERATION_SCHEMA_NOT_READY"
+    finally:
+        app.dependency_overrides.pop(current_user, None)

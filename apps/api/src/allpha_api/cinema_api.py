@@ -423,9 +423,27 @@ async def save_cinema_production(
     return {"item": rows[0]}
 
 
+async def _require_cinema_generation_schema() -> None:
+    try:
+        readiness = await _db("POST", "rpc/cinema_generation_schema_readiness", payload={})
+    except HTTPException as exc:
+        raise HTTPException(503, detail={
+            "code": "CINEMA_GENERATION_SCHEMA_NOT_READY",
+            "message": "Schema Cinema Generation belum diterapkan melalui migration canonical.",
+        }) from exc
+    if not isinstance(readiness, dict) or readiness.get("ready") is not True:
+        missing = readiness.get("missing") if isinstance(readiness, dict) else []
+        raise HTTPException(503, detail={
+            "code": "CINEMA_GENERATION_SCHEMA_NOT_READY",
+            "message": "Schema Cinema Generation belum lengkap; Generation Job tidak dibuat agar AI Credits tidak ter-reserve tanpa link Cinema.",
+            "missing": missing if isinstance(missing, list) else [],
+        })
+
+
 async def _require_cinema_generation_link(
     title_id: uuid.UUID, job_id: uuid.UUID, user: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    await _require_cinema_generation_schema()
     title = await _title_access(title_id, str(user["id"]), {"edit_metadata"})
     rows = await _db("GET", "cinema_generation_job_links", params={
         "select": "generation_job_id,title_id,owner_id,requester_user_id,target_section,expected_title_version,idempotency_key,applied_at,applied_version",
@@ -460,6 +478,7 @@ async def create_cinema_generation_job(
             "code": "CINEMA_PRODUCTION_LOCKED",
             "message": "AI screenplay generation hanya tersedia untuk draft atau judul yang dikembalikan.",
         })
+    await _require_cinema_generation_schema()
     generation_payload = generation_jobs_api.GenerationJobCreate.model_validate(
         payload.model_dump(exclude={"target_section"})
     )

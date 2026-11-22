@@ -214,7 +214,7 @@ Before reaping, listing or claiming any Agent Runtime task, `run_once` calls the
 
 - Cinema screenplay generation delegates to the canonical `generation_jobs_api`; it does not create a second queue, Model Router, credit ledger, moderation engine, or artifact bucket.
 - `cinema_generation_job_links` is a title/owner/idempotency projection over `generation_jobs`. The canonical Generation Job worker owns execution, retries, moderation, private artifact storage and cancellation.
-- Cinema can inspect, cancel, retrieve the moderated private artifact and apply a screenplay draft to the version-checked production document. The apply RPC rechecks job owner, moderation, artifact availability, title version, collaborator edit permission and idempotent apply receipt.
+- Cinema checks `cinema_generation_schema_readiness()` before creating a Generation Job, so missing mapping/RPC schema fails closed before AI Credits are reserved. Cinema can inspect, cancel, retrieve the moderated private artifact and apply a screenplay draft to the version-checked production document. The apply RPC rechecks job owner, moderation, artifact availability, title version, collaborator edit permission and idempotent apply receipt.
 - Migration `20261122120000_wp11_cinema_generation_job_integration.sql` is source-only and depends on canonical `generation_jobs`, `cinema_titles.production_document` and `cinema_collaborators`. No Cinema generation mapping has been applied to production.
 - This implements the text screenplay vertical slice only. Video rendering provider/worker, render callback, export pipeline and distribution remain unimplemented/unverified; do not treat the Cinema rendering lifecycle as complete.
 
