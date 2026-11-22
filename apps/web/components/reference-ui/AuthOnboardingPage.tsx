@@ -41,7 +41,7 @@ interface AuthOnboardingPageProps {
   onEnterApp: () => void;
   onCompleteAuth: (user: HumanProfile, agent: AIAgentProfile, bonusCredits: number) => void;
   /** In production, hand authentication to the canonical auth route; never simulate success here. */
-  onStartAuthentication?: () => void;
+  onStartAuthentication?: (mode: 'REGISTER' | 'LOGIN') => void;
   currentUser: HumanProfile;
   currentAgent: AIAgentProfile;
   humanAvatarOptions?: string[];
@@ -200,12 +200,12 @@ export default function AuthOnboardingPage({
   };
 
   const handleGoogleSignIn = () => {
-    showToast('Google OAuth belum terhubung ke penyedia autentikasi. Tidak ada login yang dilakukan.');
+    onStartAuthentication?.('REGISTER');
   };
 
   const handleFinishRegister = () => {
     if (onStartAuthentication) {
-      onStartAuthentication();
+      onStartAuthentication('REGISTER');
       return;
     }
     showToast('Pendaftaran belum terhubung ke autentikasi dan provisioning kanonis. Tidak ada akun, Agent, atau kredit yang dibuat.');
@@ -214,7 +214,7 @@ export default function AuthOnboardingPage({
   const handleQuickLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (onStartAuthentication) {
-      onStartAuthentication();
+      onStartAuthentication('LOGIN');
       return;
     }
     showToast('Login belum terhubung ke autentikasi kanonis. Tidak ada sesi yang dibuat.');
@@ -231,8 +231,8 @@ export default function AuthOnboardingPage({
       )}
 
       {/* TOP NAVBAR (Neo-Brutalist Soft Pastel) */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b-2 border-slate-900 px-4 sm:px-6 py-3 shadow-xs">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-40 w-full min-w-0 bg-white/95 backdrop-blur border-b-2 border-slate-900 px-3 sm:px-6 py-3 shadow-xs">
+        <div className="w-full max-w-6xl min-w-0 mx-auto flex items-center gap-2">
           {/* Logo & Brand */}
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-[#0284C7] border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] flex items-center justify-center text-white font-black text-xl">
@@ -251,44 +251,11 @@ export default function AuthOnboardingPage({
             </div>
           </div>
 
-          {/* Section Navigation Tabs */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              onClick={() => setActiveSection('SLIDES')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 border-slate-900 transition cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${
-                activeSection === 'SLIDES'
-                  ? 'bg-[#FEF08A] text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]'
-                  : 'bg-white hover:bg-slate-100 text-slate-700'
-              }`}
-            >
-              <span>🌟 Slide Sapa & Panduan</span>
-            </button>
-
-            <button
-              onClick={() => setActiveSection('AUTH')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 border-slate-900 transition cursor-pointer active:translate-x-0.5 active:translate-y-0.5 ${
-                activeSection === 'AUTH'
-                  ? 'bg-[#BAE6FD] text-slate-950 shadow-[1.5px_1.5px_0px_#0f172a]'
-                  : 'bg-white hover:bg-slate-100 text-slate-700'
-              }`}
-            >
-              <span>🔐 Login / Register</span>
-            </button>
-
-            {/* Direct Bypass: Jelajahi Aplikasi Utama */}
-            <button
-              onClick={onEnterApp}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs font-black border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] transition flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ml-1"
-            >
-              <span>Buka Feed Aplikasi</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
         </div>
       </header>
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className="flex-1 w-full min-w-0 max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:p-8">
         
         {/* ========================================================================= */}
         {/* VIEW 1: INTERACTIVE SPLASH ONBOARDING SLIDES (Slide Sapa & Ekosistem)     */}
@@ -988,8 +955,8 @@ export default function AuthOnboardingPage({
       </main>
 
       {/* FOOTER */}
-      <footer className="mt-auto border-t-2 border-slate-900 bg-white px-4 py-4 text-center text-xs text-slate-600 font-semibold">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <footer className="mt-auto w-full min-w-0 border-t-2 border-slate-900 bg-white px-3 py-4 text-center text-xs text-slate-600 font-semibold">
+        <div className="max-w-6xl min-w-0 mx-auto flex flex-col sm:flex-row flex-wrap items-center justify-between gap-2">
           <span>© 2026 ALLPHA UNIVERSE • Satu Ekosistem untuk Manusia dan AI Agent.</span>
           <div className="flex items-center gap-4 text-xs font-bold text-slate-800">
             <button onClick={() => setActiveSection('SLIDES')} className="hover:underline">Panduan Ekosistem</button>
