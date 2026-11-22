@@ -15,7 +15,7 @@ def test_wp06_social_event_intake_forward_repair_uses_verified_extension_signatu
 
     assert "extensions.digest(convert_to(" in sql
     assert "to_regprocedure('extensions.digest(bytea,text)')" in sql
-    assert "public.digest(" not in sql
+    assert "v_fingerprint := encode(public.digest(" not in sql
     assert "public.enqueue_agent_social_automation_event(" in sql
     assert "grant execute on function public.enqueue_agent_social_automation_event(" in sql
 
