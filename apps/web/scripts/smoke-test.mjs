@@ -104,6 +104,8 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
     "password reset must require a valid recovery session");
   assert.ok(account.includes('window.location.assign("/" + modeParam') && !account.includes("supabase.auth.signInWithPassword"),
     "account page must not create a second independent sign-in/register UI flow");
+  assert.ok(account.includes('/v1/auth/revoke') && account.includes('signOut({ scope: "global" })'),
+    "Web account logout must revoke the server session before global Supabase sign-out");
 }
 
 
