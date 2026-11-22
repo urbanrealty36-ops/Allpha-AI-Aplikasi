@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi.responses import JSONResponse
 
-from allpha_api.auth import current_user, user_db_request
+from allpha_api.auth import current_user, optional_current_user, user_db_request
 from allpha_api.feed_api import _server_db
 
 router = APIRouter(prefix="/v1/social", tags=["social-graph"])
@@ -175,6 +175,94 @@ async def discover_agents(
         and str(row["id"]) not in hidden
     ]
     return {"items": items, "query": normalized, "count": len(items)}
+
+
+
+@router.get("/nodes/{node_type}/{node_id}/summary")
+async def get_node_relationship_summary(
+    node_type: Literal["human", "agent"],
+    node_id: uuid.UUID,
+    user: dict[str, Any] | None = Depends(optional_current_user),
+) -> dict[str, Any]:
+    """Return privacy-safe graph counts and the viewer's relationship state for a typed profile."""
+    viewer_id = str(user["id"]) if user else None
+    node_key = f"{node_type}:{node_id}"
+    if node_type == "human":
+        rows = await _server_db("GET", "profiles", params={
+            "select": "id,visibility,account_status", "id": f"eq.{node_id}", "limit": "1",
+        })
+        if not rows or rows[0].get("account_status") != "active":
+            raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+        visibility = rows[0].get("visibility")
+        owner_id = str(node_id)
+        follower_filter = {"target_node_type": "eq.human", "target_user_id": f"eq.{node_id}"}
+        following_filter = {"actor_node_type": "eq.human", "actor_user_id": f"eq.{node_id}"}
+    else:
+        rows = await _server_db("GET", "ai_agents", params={
+            "select": "id,created_by,visibility,status", "id": f"eq.{node_id}", "limit": "1",
+        })
+        if not rows or rows[0].get("status") != "active":
+            raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Agent tidak ditemukan atau belum dipublikasikan."})
+        visibility = rows[0].get("visibility")
+        owner_id = str(rows[0].get("created_by") or "")
+        owners = await _server_db("GET", "agent_ownerships", params={
+            "select": "agent_id,owner_user_id", "agent_id": f"eq.{node_id}",
+            "owner_user_id": f"eq.{owner_id}", "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
+        })
+        if not owner_id or not owners:
+            raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Kepemilikan Agent tidak aktif."})
+        follower_filter = {"target_node_type": "eq.agent", "target_agent_id": f"eq.{node_id}"}
+        following_filter = {"actor_node_type": "eq.agent", "actor_agent_id": f"eq.{node_id}"}
+
+    viewer_follow = []
+    viewer_blocks = []
+    reverse_blocks = []
+    if viewer_id:
+        viewer_follow = await _server_db("GET", "social_edges", params={
+            "select": "id,status", "actor_user_id": f"eq.{viewer_id}", "actor_node_type": "eq.human",
+            "target_node_type": f"eq.{node_type}",
+            **({"target_user_id": f"eq.{node_id}", "target_agent_id": "is.null"} if node_type == "human" else {"target_user_id": f"eq.{owner_id}", "target_agent_id": f"eq.{node_id}"}),
+            "edge_type": "eq.follow", "limit": "1",
+        })
+        viewer_blocks = await _server_db("GET", "social_edges", params={
+            "select": "id", "actor_user_id": f"eq.{viewer_id}", "actor_node_type": "eq.human",
+            "target_node_type": f"eq.{node_type}",
+            **({"target_user_id": f"eq.{node_id}", "target_agent_id": "is.null"} if node_type == "human" else {"target_user_id": f"eq.{owner_id}", "target_agent_id": f"eq.{node_id}"}),
+            "edge_type": "eq.block", "status": "eq.active", "limit": "1",
+        })
+        reverse_blocks = await _server_db("GET", "social_edges", params={
+            "select": "id", "target_user_id": f"eq.{viewer_id}", "target_node_type": "eq.human",
+            "actor_node_type": f"eq.{node_type}",
+            **({"actor_user_id": f"eq.{node_id}", "actor_agent_id": "is.null"} if node_type == "human" else {"actor_user_id": f"eq.{owner_id}", "actor_agent_id": f"eq.{node_id}"}),
+            "edge_type": "eq.block", "status": "eq.active", "limit": "1",
+        })
+    if viewer_blocks or reverse_blocks:
+        raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+    is_following = bool(viewer_follow and viewer_follow[0].get("status") == "active")
+    request_pending = bool(viewer_follow and viewer_follow[0].get("status") == "requested")
+    if visibility != "public" and viewer_id != owner_id and not is_following:
+        raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Profil tidak ditemukan."})
+
+    followers = await _server_db("GET", "social_edges", params={
+        "select": "id", **follower_filter, "edge_type": "eq.follow", "status": "eq.active", "limit": "10000",
+    })
+    following = await _server_db("GET", "social_edges", params={
+        "select": "id", **following_filter, "edge_type": "eq.follow", "status": "eq.active", "limit": "10000",
+    })
+    muted = False
+    if viewer_id:
+        mute_rows = await _server_db("GET", "social_edges", params={
+            "select": "id", "actor_user_id": f"eq.{viewer_id}", "actor_node_type": "eq.human",
+            "target_node_type": f"eq.{node_type}",
+            **({"target_user_id": f"eq.{node_id}", "target_agent_id": "is.null"} if node_type == "human" else {"target_user_id": f"eq.{owner_id}", "target_agent_id": f"eq.{node_id}"}),
+            "edge_type": "eq.mute", "status": "eq.active", "limit": "1",
+        })
+        muted = bool(mute_rows)
+    return {
+        "node_type": node_type, "node_id": str(node_id), "visibility": visibility,
+        "followers_count": len(followers or []), "following_count": len(following or []),
+        "viewer_relationship": {"is_following": is_following, "request_pending": request_pending, "muted": muted, "blocked": False},
+    }
 
 
 @router.post("/relationships", status_code=201)
