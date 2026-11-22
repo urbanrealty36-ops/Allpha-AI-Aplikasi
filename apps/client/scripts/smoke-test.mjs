@@ -192,3 +192,7 @@ assert.ok(app.includes('const callbackPath = (parsed.hostname + parsed.pathname)
 assert.ok(app.includes("const [passwordUpdated, setPasswordUpdated] = useState(false)"), "Native password recovery must retain the password-updated state so revocation can be retried without resubmitting the password");
 assert.ok(app.includes("if (!passwordUpdated) {") && app.includes('passwordUpdated ? "Cabut sesi dan selesaikan"'), "Native recovery must retry server session revocation independently after password update");
 assert.ok(app.includes("authLinkSubscription.remove()"), "Native auth deep-link listener must be removed on every navigator cleanup path");
+
+assert.ok(app.includes('function AuthCallback({ status, canContinue }'), "Native callback screen must expose truthful success/error states");
+assert.ok(app.includes('const ready = status === "success" && canContinue'), "Native callback must wait for FastAPI identity bootstrap before continuing");
+assert.ok(app.includes('setAuthCallbackStatus("success")') && app.includes('setAuthCallbackStatus("error")'), "Native callback must distinguish successful and failed code exchanges");
