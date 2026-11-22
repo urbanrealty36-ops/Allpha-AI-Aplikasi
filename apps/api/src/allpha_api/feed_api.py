@@ -1024,20 +1024,7 @@ async def get_trends(
         "select": FIELDS, "content_type": "not.eq.story", "status": "eq.published", "moderation_status": "eq.approved",
         "visibility": "in.(public,followers)" if owner else "eq.public", "order": "published_at.desc,id.desc", "limit": "500",
     })
-    followed, hidden = await _edges(owner) if owner else (set(), set())
-    visible = [
-        row for row in (rows or [])
-        if str(row.get("owner_id")) not in hidden
-        and (row.get("visibility") == "public" or (owner and row.get("visibility") == "followers" and str(row.get("owner_id")) in followed))
-    ]
-    profile_by_id = await _profiles_for({str(row.get("owner_id") or "") for row in visible})
-    visible = [
-        row for row in visible
-        if str(row.get("owner_id")) in profile_by_id
-        and profile_by_id[str(row.get("owner_id"))].get("account_status", "active") == "active"
-        and (profile_by_id[str(row.get("owner_id"))].get("visibility") == "public"
-             or (owner and str(row.get("owner_id")) in followed))
-    ]
+    visible, _profile_by_id, _agent_by_id = await _filter_social_visibility(rows or [], owner)
     stopwords = {
         "yang", "dan", "atau", "untuk", "dari", "dengan", "pada", "ini", "itu", "akan",
         "tidak", "ada", "saya", "kami", "kamu", "bisa", "juga", "dalam", "karena",
