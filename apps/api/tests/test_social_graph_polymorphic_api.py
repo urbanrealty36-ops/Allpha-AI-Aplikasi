@@ -112,7 +112,7 @@ def test_human_to_agent_relationship_resolves_agent_owner_and_target_type(monkey
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
-    body = next(call[3] for call in calls if call[0] == "POST")
+    body = next(call[3] for call in calls if call[0] == "RPC" and call[1] == "create_social_edge_for_actor")
     assert body["p_actor_node_type"] == "human" and body["p_target_node_type"] == "agent"
     assert body["p_target_agent_id"] == AGENT_B and body["p_target_user_id"] == OTHER_OWNER
 
@@ -126,7 +126,7 @@ def test_agent_to_human_relationship_requires_owner_and_uses_agent_actor_node(mo
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
-    body = next(call[3] for call in calls if call[0] == "POST")
+    body = next(call[3] for call in calls if call[0] == "RPC" and call[1] == "create_social_edge_for_actor")
     assert body["p_actor_node_type"] == "agent" and body["p_target_node_type"] == "human"
     assert body["p_actor_agent_id"] == AGENT_A and body["p_actor_user_id"] == OWNER
 
@@ -140,7 +140,7 @@ def test_agent_to_agent_relationship_is_a_single_typed_graph_edge(monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
-    body = next(call[3] for call in calls if call[0] == "POST")
+    body = next(call[3] for call in calls if call[0] == "RPC" and call[1] == "create_social_edge_for_actor")
     assert body["p_actor_node_type"] == "agent" and body["p_target_node_type"] == "agent"
     assert body["p_actor_agent_id"] == AGENT_A and body["p_target_agent_id"] == AGENT_B
 

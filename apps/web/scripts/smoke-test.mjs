@@ -532,7 +532,7 @@ if (existsSync(apiMainPath)) {
   assert.ok(apiMain.includes("discoverable_by_username"), "Canonical discovery API must enforce the saved username-discovery preference");
   assert.ok(apiMain.includes('def _social_edge_outcome') && apiMain.includes('"idempotent_replay": True') && apiMain.includes('return JSONResponse(status_code=200, content={'), "Social edge creation must return stable idempotent replay outcomes");
   assert.ok(apiMain.includes('edge_filter = {') && apiMain.includes('"actor_user_id": f"eq.{user[\'id\']}"') && apiMain.includes('"target_user_id": f"eq.{payload.target_user_id}"'), "Social edge idempotency lookup must be actor- and target-scoped");
-  assert.ok(apiMain.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Private profile follow must be persisted as requested, not rely on DB defaults");
+  assert.ok(apiMain.includes('service_db_request("create_social_edge_for_actor"') && apiMain.includes('"p_actor_node_type": "human"'), "Private profile follow must use the canonical policy-enforced server command, not client-selected status");
 }
 const nativeSocialPath = new URL("../../client/App.tsx", import.meta.url);
 if (existsSync(nativeSocialPath)) {
@@ -596,7 +596,7 @@ for (const contract of [
 const socialFeedLegacyFollowPath = new URL("../../api/src/allpha_api/feed_api.py", import.meta.url);
 if (existsSync(socialFeedLegacyFollowPath)) {
   const socialFeedLegacyFollowSource = readFileSync(socialFeedLegacyFollowPath, "utf8");
-  assert.ok(socialFeedLegacyFollowSource.includes('follow_status = "requested" if target_profile.get("visibility") == "private" else "active"'), "Legacy follow endpoint must not bypass private-profile approval");
+  assert.ok(socialFeedLegacyFollowSource.includes('service_db_request("create_social_edge_for_actor"') && socialFeedLegacyFollowSource.includes('"p_target_node_type": "human"'), "Legacy follow endpoint must delegate private-profile approval to the canonical database policy");
 }
 
 const sharedNavigationSource = readFileSync(new URL("../components/reference-ui/ReferenceNavigation.tsx", import.meta.url), "utf8");

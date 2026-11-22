@@ -544,31 +544,33 @@ def test_get_consents_is_scoped_to_authenticated_user(monkeypatch):
     )]
 
 def test_social_edge_create_uses_authenticated_actor_and_caller_token(monkeypatch):
-    calls = []
+    reads = []
+    service_calls = []
     target_user_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
+        reads.append((method, path, access_token, kwargs))
         if method == "GET" and path == "social_edges":
             return []
         if method == "GET" and path == "profiles":
             return [{"id": target_user_id, "visibility": "public", "account_status": "active"}]
-        if method == "POST" and path == "social_edges":
-            return [{
-                "id": "edge-1",
-                "actor_user_id": "authenticated-social-actor",
-                "target_user_id": target_user_id,
-                "edge_type": "follow",
-                "status": "active",
-                "created_at": "2026-10-14T00:00:00Z",
-            }]
-        raise AssertionError(f"unexpected database request: {method} {path}")
+        raise AssertionError(f"unexpected read: {method} {path}")
+
+    async def fake_service_db_request(function_name, *, body):
+        service_calls.append((function_name, body))
+        assert function_name == "create_social_edge_for_actor"
+        return [{
+            "id": "edge-1", "actor_user_id": body["p_actor_user_id"],
+            "target_user_id": body["p_target_user_id"], "edge_type": "follow",
+            "status": "active", "created_at": "2026-10-14T00:00:00Z",
+        }]
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "social-write-session-token"
         return {"id": "authenticated-social-actor", "email": "actor@example.invalid"}
 
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
@@ -582,13 +584,17 @@ def test_social_edge_create_uses_authenticated_actor_and_caller_token(monkeypatc
     assert response.status_code == 201
     assert response.json()["edge"]["target_user_id"] == target_user_id
     assert response.json()["idempotent_replay"] is False
-    assert calls[0][0:3] == ("GET", "social_edges", "social-write-session-token")
-    assert calls[-1][0:3] == ("POST", "social_edges", "social-write-session-token")
-    assert calls[-1][3]["body"] == {
-        "actor_user_id": "authenticated-social-actor",
-        "target_user_id": target_user_id,
-        "edge_type": "follow",
-        "status": "active",
+    assert all(call[0] == "GET" for call in reads)
+    assert service_calls[0][0] == "create_social_edge_for_actor"
+    assert service_calls[0][1] == {
+        "p_actor_user_id": "authenticated-social-actor",
+        "p_target_user_id": target_user_id,
+        "p_actor_node_type": "human",
+        "p_target_node_type": "human",
+        "p_actor_agent_id": None,
+        "p_target_agent_id": None,
+        "p_edge_type": "follow",
+        "p_idempotency_key": None,
     }
 
 
@@ -622,18 +628,18 @@ def test_social_edge_rejects_self_target_before_database_write(monkeypatch):
     assert calls == []
 
 def test_follow_request_accept_is_scoped_to_authenticated_recipient(monkeypatch):
-    calls = []
+    service_calls = []
     edge_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        service_calls.append((function_name, body))
         return [{"id": edge_id, "actor_user_id": "requester", "target_user_id": "recipient", "edge_type": "follow", "status": "active"}]
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "recipient-token"
         return {"id": "recipient", "email": "recipient@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
@@ -644,23 +650,19 @@ def test_follow_request_accept_is_scoped_to_authenticated_recipient(monkeypatch)
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    method, path, token, kwargs = calls[0]
-    assert (method, path, token) == ("PATCH", "social_edges", "recipient-token")
-    assert kwargs["params"]["id"] == f"eq.{edge_id}"
-    assert kwargs["params"]["target_user_id"] == "eq.recipient"
-    assert kwargs["params"]["status"] == "eq.requested"
-    assert kwargs["body"] == {"status": "active"}
+    assert service_calls == [("accept_social_follow_for_actor", {"p_actor_user_id": "recipient", "p_edge_id": edge_id})]
 
 
 def test_follow_request_accept_returns_safe_not_found_when_not_owned_or_pending(monkeypatch):
-    async def fake_user_db_request(method, path, access_token, **kwargs):
+    async def fake_service_db_request(function_name, *, body):
+        assert function_name == "accept_social_follow_for_actor"
         return []
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "recipient-token"
         return {"id": "recipient", "email": "recipient@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(

@@ -291,35 +291,27 @@ def test_follow_request_accept_is_scoped_to_authenticated_target(monkeypatch):
     from fastapi import Request
     from allpha_api.auth import current_user
 
-    calls = []
+    service_calls = []
+    edge_id = "00000000-0000-0000-0000-000000000303"
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, access_token, kwargs))
-        return [{
-            "id": "edge-123",
-            "actor_user_id": "human-sender",
-            "target_user_id": "human-recipient",
-            "edge_type": "follow",
-            "status": "active",
-            "created_at": "2026-10-14T00:00:00Z",
-        }]
+    async def fake_service_db_request(function_name, *, body):
+        service_calls.append((function_name, body))
+        return [{"id": edge_id, "actor_user_id": "requester", "target_user_id": "human-123",
+                 "edge_type": "follow", "status": "active"}]
 
     async def fake_current_user(request: Request):
-        request.state.supabase_access_token = "recipient-session-token"
-        return {"id": "human-recipient"}
+        request.state.supabase_access_token = "social-session-token"
+        return {"id": "human-123", "email": "human@example.invalid"}
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.post(
-            "/v1/me/follow-requests/00000000-0000-0000-0000-000000000123/accept",
+            f"/v1/me/follow-requests/{edge_id}/accept",
             headers={"Authorization": "Bearer test"},
         )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert calls[0][0:3] == ("PATCH", "social_edges", "recipient-session-token")
-    assert calls[0][3]["params"]["target_user_id"] == "eq.human-recipient"
-    assert calls[0][3]["params"]["status"] == "eq.requested"
-    assert calls[0][3]["body"] == {"status": "active"}
+    assert service_calls == [("accept_social_follow_for_actor", {"p_actor_user_id": "human-123", "p_edge_id": edge_id})]
