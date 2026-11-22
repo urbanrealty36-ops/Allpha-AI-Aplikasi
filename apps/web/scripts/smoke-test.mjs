@@ -85,7 +85,7 @@ assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("
   const profile = readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8");
   const sessionValidation = readFileSync(new URL("../lib/auth-validation.mjs", import.meta.url), "utf8");
   for (const contract of [
-    "verification_pending", "supabase.auth.getUser(session.access_token)", "email_confirmed_at", "emailRedirectTo",
+    "verification_pending", "verifyBackendSession<SessionIdentity>", "email_confirmed_at", "emailRedirectTo",
     "supabase.auth.resend", "supabase.auth.signInWithOAuth", "/auth/callback?next=%2Fstart",
     "finishAuthentication(\"/feed\")", "returnTo"
   ]) assert.ok(authRoute.includes(contract), `missing canonical auth lifecycle contract: ${contract}`);
@@ -458,7 +458,7 @@ const authAdapter = readFileSync(new URL("../components/reference-ui/AuthOnboard
 const authFlowSourceUiCopy02 = readFileSync(new URL("../components/reference-ui/AuthOnboardingFlow.tsx", import.meta.url), "utf8");
 assert.ok(authRoute.includes("AuthOnboardingRoute"), "Login must use the reference onboarding adapter");
 assert.ok(authAdapter.includes("supabase.auth.signUp") && authAdapter.includes("supabase.auth.signInWithPassword"), "Onboarding must use Supabase Auth");
-assert.ok(authAdapter.includes('apiBase + "/v1/me"') && authAdapter.includes('apiBase + "/v1/me/profile"'), "Onboarding must provision and update canonical profile through FastAPI");
+assert.ok(authAdapter.includes("verifyBackendSession<SessionIdentity>") && authAdapter.includes('apiBase + "/v1/me/profile"'), "Onboarding must provision identity through the canonical backend session guard and update profile through FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/agents"') && authAdapter.includes('method: "POST"'), "Agent creation must use canonical FastAPI");
 assert.ok(authAdapter.includes('apiBase + "/v1/skill-catalog?limit=100&offset="'), "Agent Skill selection must use the canonical paginated catalog");
 assert.ok(authFlowSourceUiCopy02.includes("await onComplete(") && authFlowSourceUiCopy02.includes("setStep('SUCCESS')"), "Onboarding success must follow awaited persistence");

@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import AuthOnboardingFlow from "./AuthOnboardingFlow";
 import type { AIAgentProfile, HumanProfile } from "@/lib/reference-store";
 import { getBrowserSupabase } from "@/lib/supabase";
+import { verifyBackendSession } from "@/lib/auth-validation.mjs";
 import { useLocale } from "../LocaleProvider";
 
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || (process.env.NODE_ENV === "production" ? "https://api.allpha.web.id" : "http://localhost:8000")).replace(/\/$/, "");
@@ -21,6 +22,10 @@ async function responseError(response: Response): Promise<string> {
 
 type SkillItem = { key: string; name: string; slug: string; category: string; catalog_version?: string; source?: { kind?: string }; character_profile?: Record<string, unknown> };
 type AgentList = { items?: Array<{ id: string }> };
+type SessionIdentity = {
+  user: { id: string; email_confirmed_at?: string | null; user_metadata?: Record<string, unknown> };
+  profile: { id: string; account_status: string; username?: string | null };
+};
 
 const emptyHuman: HumanProfile = {
   id: "",
@@ -127,19 +132,22 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     }
     if (!session) throw new Error("Sesi Supabase tidak tersedia. Silakan coba masuk kembali.");
 
-    // A persisted/local session is not sufficient proof: confirm it against Supabase Auth
-    // before provisioning identity or allowing any application workflow to continue.
-    const { data: verified, error: verifyError } = await supabase.auth.getUser(session.access_token);
-    if (verifyError || !verified.user || verified.user.id !== session.user.id || !verified.user.email_confirmed_at) {
+    // FastAPI verifies the Supabase Auth user, session revocation fence and
+    // account lifecycle in one canonical profile-provisioning request.
+    const backend = await verifyBackendSession<SessionIdentity>(apiBase, session);
+    if (backend.status === "rejected") {
       await supabase.auth.signOut({ scope: "local" });
-      throw new Error("Identitas atau verifikasi email belum dapat dikonfirmasi. Silakan verifikasi email dan masuk kembali.");
+      throw new Error("Sesi telah dicabut atau akun tidak aktif. Silakan masuk kembali.");
+    }
+    if (backend.status !== "valid") {
+      throw new Error("Layanan identitas Allpha sementara tidak tersedia. Sesi lokal dipertahankan; coba lagi.");
+    }
+    const identity = backend.identity;
+    if (!identity.user.email_confirmed_at) {
+      await supabase.auth.signOut({ scope: "local" });
+      throw new Error("Email belum terverifikasi. Selesaikan verifikasi email sebelum melanjutkan.");
     }
     const headers = { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" };
-    // /v1/me is the canonical profile-provisioning/read contract. It must succeed
-    // before any domain-specific identity is created or queried.
-    const meResponse = await fetch(apiBase + "/v1/me", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
-    if (!meResponse.ok) throw new Error(await responseError(meResponse));
-    const identity = await meResponse.json() as { profile?: { username?: string | null } | null };
     // The chosen locale is a Human Identity preference, persisted on the canonical profile
     // for both new registrations and returning users.
     const localeResponse = await fetch(apiBase + "/v1/me/profile", {
@@ -161,7 +169,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       // Email-confirmation registrations have no Supabase session at sign-up.
       // Restore their Human profile from the metadata captured at registration.
       if (!identity.profile?.username) {
-        const metadata = verified.user.user_metadata ?? {};
+        const metadata = identity.user.user_metadata ?? {};
         const username = typeof metadata.username === "string" ? metadata.username.replace(/^@/, "").trim().toLowerCase() : "";
         const displayName = typeof metadata.display_name === "string" ? metadata.display_name.trim() : "";
         if (!username || !displayName) {
