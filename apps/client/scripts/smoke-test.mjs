@@ -138,7 +138,7 @@ assert.deepEqual(findInvalidMeshoptFallbackBuffers(invalidMeshoptFallback), [
 
 
 assert.match(app,/linking=\{\{ prefixes: \["allpha:\/\/"\]/);
-assert.match(app,/Welcome: "", Auth: "auth", Profile: "profile"/);
+assert.match(app,/Welcome: "", Auth: "auth", AuthCallback: "auth\\/callback", Recovery: "auth\\/recovery", Profile: "profile"/);
 assert.ok(app.includes('Stories: { story?: string } | undefined') && app.includes('initialStoryId={route.params?.story}'), "Native Story deep links must preserve the selected Story ID");
 assert.ok(app.includes("selectedStoryId") && app.includes("Story tidak tersedia, tidak dapat diakses, atau sudah kedaluwarsa."), "Native Story deep links must show selected Story or a truthful unavailable state");
 assert.ok(app.includes('Feed: { content?: string } | undefined') && app.includes('initialContentId={route.params?.content}'), "Native Feed deep links must preserve the selected content ID");
@@ -188,3 +188,7 @@ for (const contract of [
   'apiBase + "/v1/auth/revoke"', 'function PasswordRecovery()',
 ]) assert.ok(app.includes(contract), `missing Native PKCE deep-link and recovery contract: ${contract}`);
 assert.ok(app.includes('const callbackPath = (parsed.hostname + parsed.pathname).toLowerCase()'), 'Native auth callback must normalize custom-scheme routes');
+
+assert.ok(app.includes("const [passwordUpdated, setPasswordUpdated] = useState(false)"), "Native password recovery must retain the password-updated state so revocation can be retried without resubmitting the password");
+assert.ok(app.includes("if (!passwordUpdated) {") && app.includes('passwordUpdated ? "Cabut sesi dan selesaikan"'), "Native recovery must retry server session revocation independently after password update");
+assert.ok(app.includes("authLinkSubscription.remove()"), "Native auth deep-link listener must be removed on every navigator cleanup path");
