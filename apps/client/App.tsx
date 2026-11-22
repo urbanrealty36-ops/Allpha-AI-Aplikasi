@@ -352,6 +352,7 @@ function PasswordRecovery() {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -372,12 +373,15 @@ function PasswordRecovery() {
   async function updatePassword() {
     if (!supabase || busy) return;
     if (!sessionReady) { setError("Sesi pemulihan tidak tersedia atau sudah kedaluwarsa. Minta tautan pemulihan baru."); return; }
-    if (password.length < 8) { setError("Kata sandi minimal 8 karakter."); return; }
-    if (password !== confirmation) { setError("Konfirmasi kata sandi tidak sama."); return; }
+    if (!passwordUpdated && password.length < 8) { setError("Kata sandi minimal 8 karakter."); return; }
+    if (!passwordUpdated && password !== confirmation) { setError("Konfirmasi kata sandi tidak sama."); return; }
     setBusy(true); setError(""); setMessage("");
     try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) throw updateError;
+      if (!passwordUpdated) {
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+        if (updateError) throw updateError;
+        setPasswordUpdated(true);
+      }
       const { data: current } = await supabase.auth.getSession();
       const token = current.session?.access_token;
       if (!token) throw new Error("Kata sandi diperbarui, tetapi sesi pemulihan tidak tersedia untuk pencabutan sesi. Masuk kembali dan periksa sesi aktif.");
@@ -399,13 +403,13 @@ function PasswordRecovery() {
       <Brand/>
       <View style={s.card}>
         <Text style={s.title}>Buat kata sandi baru</Text>
-        <Text style={s.body}>Gunakan tautan pemulihan yang masih berlaku. Setelah kata sandi diperbarui, sesi pemulihan akan dicabut melalui API Allpha.</Text>
+        <Text style={s.body}>{passwordUpdated ? "Kata sandi sudah diperbarui. Selesaikan pencabutan sesi server agar proses pemulihan aman ditutup." : "Gunakan tautan pemulihan yang masih berlaku. Setelah kata sandi diperbarui, sesi pemulihan akan dicabut melalui API Allpha."}</Text>
         {!sessionReady && <Text accessibilityRole="alert" style={s.warning}>Menunggu sesi pemulihan yang valid. Jika tautan tidak berlaku, minta tautan baru.</Text>}
         <TextInput accessibilityLabel="Kata sandi baru" secureTextEntry autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" value={password} onChangeText={setPassword} placeholder="Kata sandi baru (min. 8 karakter)" placeholderTextColor="#8B94AC" style={s.input}/>
         <TextInput accessibilityLabel="Konfirmasi kata sandi baru" secureTextEntry autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" value={confirmation} onChangeText={setConfirmation} placeholder="Ulangi kata sandi baru" placeholderTextColor="#8B94AC" style={s.input}/>
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
         {!!message && <Text accessibilityRole="alert" style={s.success}>{message}</Text>}
-        <Button title={busy ? "Memperbarui…" : "Simpan kata sandi baru"} disabled={busy || !sessionReady || password.length < 8 || !confirmation} onPress={() => void updatePassword()}/>
+        <Button title={busy ? "Memproses…" : passwordUpdated ? "Cabut sesi dan selesaikan" : "Simpan kata sandi baru"} disabled={busy || !sessionReady || (!passwordUpdated && (password.length < 8 || !confirmation))} onPress={() => void updatePassword()}/>
       </View>
     </ScrollView>
   </KeyboardAvoidingView>;
@@ -2326,7 +2330,7 @@ function Navigator() {
     if (!supabase) {
       setReady(true);
       setJourneyReady(true);
-      return () => { active = false; };
+      return () => { active = false; authLinkSubscription.remove(); };
     }
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!active || authEventSeen) return;
