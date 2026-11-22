@@ -93,6 +93,7 @@ def test_cinema_screenplay_generation_rejects_locked_title_before_job_creation(m
 
 def test_cinema_screenplay_apply_uses_private_moderated_generation_artifact(monkeypatch):
     captured = {}
+    artifact_bytes = b"INT. BOGOR STATION - NIGHT\nA detective enters the empty station."
 
     async def title_access(*args, **kwargs):
         return {"id": TITLE, "owner_id": OWNER, "status": "draft", "version": 7, "title": "Test Film"}
@@ -115,7 +116,7 @@ def test_cinema_screenplay_apply_uses_private_moderated_generation_artifact(monk
             "id": JOB, "owner_user_id": OWNER, "status": "succeeded",
             "moderation_status": "approved", "artifact_bucket": "generation-artifacts",
             "artifact_path": "owner/job.txt",
-            "output_sha256": hashlib.sha256(b"INT. BOGOR STATION - NIGHT\nA detective enters the empty station.").hexdigest(),
+            "output_sha256": hashlib.sha256(artifact_bytes).hexdigest(),
             "artifact_deletion_requested_at": None, "artifact_deleted_at": None,
         }]
 
@@ -125,7 +126,7 @@ def test_cinema_screenplay_apply_uses_private_moderated_generation_artifact(monk
 
     class FakeResponse:
         headers = {"content-type": "text/plain; charset=utf-8"}
-        content = b"INT. BOGOR STATION - NIGHT\nA detective enters the empty station."
+        content = artifact_bytes
 
         def raise_for_status(self):
             return None
