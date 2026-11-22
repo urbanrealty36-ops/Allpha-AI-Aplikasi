@@ -36,7 +36,7 @@ function SearchPageContent() {
   const [followedAccountIds, setFollowedAccountIds] = useState<string[]>([]);
   const [pendingFollowAccountIds, setPendingFollowAccountIds] = useState<string[]>([]);
   const [followEdgeIds, setFollowEdgeIds] = useState<Record<string, string>>({});
-  const [ownedAgents, setOwnedAgents] = useState<Array<{ id: string; handle: string; display_name: string; status: string }>>([]);
+  const [ownedAgents, setOwnedAgents] = useState<Array<{ id: string; handle: string; display_name: string; status: string; ownership_role: "owner" | "operator" }>>([]);
   const [actorAgentId, setActorAgentId] = useState("");
   const [socialGraphError, setSocialGraphError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -143,7 +143,7 @@ function SearchPageContent() {
   async function loadOwnedAgents() {
     if (!session) { setOwnedAgents([]); return; }
     try {
-      const response = await fetch(apiBase + "/v1/agents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      const response = await fetch(apiBase + "/v1/social/actor-agents", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
       const payload = await response.json() as { items?: Array<{ id: string; handle: string; display_name: string; status: string }> };
       if (response.ok) setOwnedAgents(payload.items || []);
     } catch { setOwnedAgents([]); }
