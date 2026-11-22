@@ -96,6 +96,30 @@ def _edge_filters(actor_id: str, target_owner_id: str, actor_agent_id: str | Non
     return filters
 
 
+
+@router.get("/actor-agents")
+async def list_social_actor_agents(
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """List only active Agent identities delegated to the authenticated Human."""
+    rows = await _rows("GET", "agent_ownerships", request.state.supabase_access_token, params={
+        "select": "agent_id,ownership_role,status,agent:ai_agents(id,handle,display_name,status)",
+        "owner_user_id": f"eq.{user['id']}", "ownership_role": "in.(owner,operator)",
+        "status": "eq.active", "order": "created_at.desc", "limit": "100",
+    })
+    items = []
+    for row in rows:
+        agent = row.get("agent")
+        if agent and agent.get("status") == "active":
+            items.append({
+                "id": str(agent["id"]), "handle": agent.get("handle"),
+                "display_name": agent.get("display_name"), "status": agent.get("status"),
+                "ownership_role": row.get("ownership_role"),
+            })
+    return {"items": items}
+
+
 @router.get("/relationships")
 async def list_relationships(
     request: Request,
