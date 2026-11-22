@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess, sys, time, uuid
 
 ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = ROOT / "apps/api/supabase/migrations/20261122140000_eng_p02_restore_missing_tenant_authorization_schema.sql"
+MIGRATION = ROOT / "apps/api/supabase/migrations/20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql"
 CONTAINER = f"allpha-eng-p02-migration-{uuid.uuid4().hex[:10]}"
 
 def run(command: list[str], *, input_text: str | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -159,7 +159,7 @@ begin
  if not (select relrowsecurity from pg_class where oid='public.organizations'::regclass) or not (select relrowsecurity from pg_class where oid='public.organization_memberships'::regclass) or not (select relrowsecurity from pg_class where oid='public.audit_events'::regclass) then raise exception 'RLS missing'; end if;
 end $$;
 """)
-        print("PASS: migration applies twice; server-only organization/member commands, role hierarchy, audit, session revocation and tenant RLS verified.")
+        print("PASS: forward repair migration applies twice; server-only organization/member commands, role hierarchy, audit, session revocation and tenant RLS verified.")
         return 0
     finally:
         run(["docker","rm","--force",CONTAINER],check=False)
@@ -167,5 +167,5 @@ end $$;
 if __name__=="__main__":
     try: raise SystemExit(main())
     except Exception as exc:
-        print(f"FAIL: ENG-P02 migration verification: {exc}",file=sys.stderr)
+        print(f"FAIL: ENG-P02 forward repair migration verification: {exc}",file=sys.stderr)
         raise SystemExit(1)

@@ -836,3 +836,80 @@ def test_supabase_auth_upstream_failures_do_not_invalidate_local_session(monkeyp
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "AUTH_UNAVAILABLE"
     assert "potentially-valid-session" not in response.text
+
+
+def test_session_inventory_uses_owner_scoped_rpc_and_marks_current_session(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return [{"id": "session-current", "is_current": True, "user_agent": "Web"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "owner-session-token"
+        request.state.auth_session_id = "session-current"
+        return {"id": "authenticated-user"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/me/sessions", headers={"Authorization": "Bearer owner-session-token"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [{"id": "session-current", "is_current": True, "user_agent": "Web"}], "current_session_id": "session-current"}
+    assert calls == [("POST", "rpc/list_my_auth_sessions", "owner-session-token", {"body": {"p_current_session_id": "session-current"}})]
+
+
+def test_revoke_other_sessions_uses_verified_current_session_context(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return 3
+
+    async def fake_current_session_user(request: Request):
+        request.state.supabase_access_token = "owner-session-token"
+        request.state.auth_session_id = "session-current"
+        return {"id": "authenticated-user"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_session_user] = fake_current_session_user
+    try:
+        response = client.post("/v1/me/sessions/revoke-others", headers={"Authorization": "Bearer owner-session-token"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"revoked_count": 3}
+    assert calls == [("POST", "rpc/revoke_my_other_auth_sessions", "owner-session-token", {"body": {"p_current_session_id": "session-current"}})]
+
+
+def test_selected_session_revocation_is_uuid_validated_and_owner_scoped(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, access_token, kwargs))
+        return True
+
+    async def fake_current_session_user(request: Request):
+        request.state.supabase_access_token = "owner-session-token"
+        request.state.auth_session_id = "session-current"
+        return {"id": "authenticated-user"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_session_user] = fake_current_session_user
+    try:
+        response = client.post(
+            "/v1/me/sessions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/revoke",
+            headers={"Authorization": "Bearer owner-session-token"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"revoked": True}
+    assert calls == [("POST", "rpc/revoke_my_auth_session", "owner-session-token", {
+        "body": {"p_session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+    })]
