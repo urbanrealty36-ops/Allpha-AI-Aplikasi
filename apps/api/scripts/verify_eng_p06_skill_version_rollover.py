@@ -152,7 +152,7 @@ update public.agent_skills set status='published' where id='55555555-5555-4555-8
 reset role;
 """)
         psql("""
-do $
+do $$
 declare v integer; n text; old_name text;
 begin
  select version,name into v,n from public.agent_skill_publications where id='33333333-3333-4333-8333-333333333333';
