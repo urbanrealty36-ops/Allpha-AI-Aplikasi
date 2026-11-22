@@ -22,6 +22,7 @@ import {
   Mail,
   Check
 } from 'lucide-react';
+import { useLocale } from '../LocaleProvider';
 import { 
   type HumanProfile, 
   type AIAgentProfile, 
@@ -80,7 +81,8 @@ export default function AuthOnboardingFlow({
     setAuthMode(initialAuthMode);
     setStep('HUMAN_REGISTER');
   }, [initialAuthMode, isOpen]);
-  const [selectedLang, setSelectedLang] = useState<'id' | 'en' | 'ja' | 'ms'>('id');
+  const { locale, setLocale } = useLocale();
+  const selectedLang = locale === 'id-ID' ? 'id' : 'en';
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [flowToast, setFlowToast] = useState<string | null>(null);
   const pwaInstall = usePWAInstall();
@@ -262,8 +264,8 @@ export default function AuthOnboardingFlow({
       }
       return;
     }
-    if (!humanName.trim() || !humanHandle.trim() || !agentName.trim() || !agentHandle.trim() || selectedSkills.length === 0) {
-      setSubmissionError('Lengkapi identitas Human, identitas Agent, dan pilih minimal satu Skill.');
+    if (!humanName.trim() || !humanHandle.trim()) {
+      setSubmissionError('Lengkapi nama dan username Human untuk membuat akun.');
       return;
     }
     const updatedHuman: HumanProfile = {
@@ -330,13 +332,11 @@ export default function AuthOnboardingFlow({
                 {[
                   { code: 'id', flag: '🇮🇩', name: 'ID' },
                   { code: 'en', flag: '🇺🇸', name: 'EN' },
-                  { code: 'ja', flag: '🇯🇵', name: 'JA' },
-                  { code: 'ms', flag: '🇸🇬', name: 'SG' },
                 ].map((l) => (
                   <button
                     key={l.code}
                     onClick={() => {
-                      setSelectedLang(l.code as 'id' | 'en' | 'ja' | 'ms');
+                      setLocale(l.code === 'id' ? 'id-ID' : 'en-US');
                     }}
                     className={`px-2 py-1 rounded-lg text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 cursor-pointer ${
                       selectedLang === l.code
@@ -700,11 +700,11 @@ export default function AuthOnboardingFlow({
               </button>
               <button
                 type="button"
-                onClick={() => authMode === 'LOGIN' ? void handleFinishOnboarding() : setStep('AGENT_ONBOARDING')}
+                onClick={() => void handleFinishOnboarding()}
                 disabled={isSubmitting}
                 className="px-5 py-2.5 rounded-xl bg-[#0284C7] hover:bg-sky-600 text-white text-xs font-black border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] flex items-center gap-1.5 transition active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60"
               >
-                <span>{isSubmitting ? 'Memproses…' : authMode === 'LOGIN' ? 'Masuk ke Allpha Universe' : 'Lanjut: Setup AI Agent'}</span>
+                <span>{isSubmitting ? 'Memproses…' : authMode === 'LOGIN' ? 'Masuk ke Allpha Universe' : 'Buat Akun Allpha'}</span>
                 {authMode === 'REGISTER' && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
             </div>
