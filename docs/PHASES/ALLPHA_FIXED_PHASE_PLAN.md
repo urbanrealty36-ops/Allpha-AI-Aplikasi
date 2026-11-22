@@ -286,3 +286,15 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - **Reference UI Validation:** run [44997716915](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44997716915) passed smoke, TypeScript and production build; Playwright's 29-route × 4-viewport route check is still in progress at this addendum. Authenticated visual capture is conditional on dedicated E2E secrets and is not claimed as executed yet.
 - **Production auth journey:** source-level integration is implemented and CI builds; real user sign-up/sign-in and modal E2E against production Supabase/FastAPI remain unverified without a dedicated non-personal E2E account/credentials. Do not treat a successful build as proof of a real account journey.
 - **Status:** Web UI changes are deployed; responsive browser validation and authenticated journey proof remain open. UI-COPY-03 / ENG-P02 remain `in_progress` until the visual route run and auth E2E evidence are complete.
+
+
+### 17.2 Responsive regression repair — 2026-11-22
+
+- The first 29-route responsive run identified a real mobile overflow on `/live` (body width 449 px at 360/390 px viewport) caused by the Live Stage title/status/viewer/action controls sharing a non-wrapping row. The Live Stage header is now stacked on mobile, with shrink-safe text, wrapping controls and mobile-first padding in commit `4fc9059a00a3fd08c955d3f0acacaa4616666fa2`.
+- The first route check's Login/Register failures were assertion case-sensitivity errors: rendered labels are uppercase. Assertions now normalize visible text to lowercase in commit `1b6425da47c97440e8690d00eb3b938b0943ecaa`. The actual rendered Login route showed only Email and Password; Register showed Human name/username/email/password/bio/interests.
+- **Latest commit:** `1b6425da47c97440e8690d00eb3b938b0943ecaa`.
+- **Allpha Smoke:** [run 44998101460](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44998101460) completed `success`, including API tests, Web tests/build, Native tests/typecheck and Android export.
+- **Railway Web:** deployment `7573143f-d16d-4a3b-8f89-f73c531ebf6e` completed `SUCCESS`; Next.js reported `Ready in 69ms`.
+- **Reference UI Validation:** [run 44998101452](https://github.com/urbanrealty36-ops/Allpha-AI-Aplikasi/actions/runs/44998101452) has passed smoke tests, typecheck and production build. The re-run of 29 routes × 4 viewports is still in progress; do not mark responsive QA complete until its result is green.
+- Authenticated E2E credentials remain unconfigured (`AUTH_E2E_CONFIGURED=false` in the previous validation run). Real sign-up/sign-in against production Supabase/FastAPI remains unverified; source wiring and build success do not replace a real authenticated journey.
+- **Phase:** UI-COPY-03 / ENG-P02 remain `in_progress`; no production-verified claim.
