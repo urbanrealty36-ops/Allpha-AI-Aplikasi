@@ -848,3 +848,10 @@ assert.ok(cinemaPageSource.includes("onOpenCreatorStudio={openCreatorStudio}"), 
 assert.ok(cinemaPageSource.includes('scrollIntoView({ behavior: "smooth", block: "start" })'), "Creator Studio CTA must navigate users to the workspace");
 assert.ok(cinemaViewSource.includes("onOpenCreatorStudio?.()"), "production Create Film AI actions must use the Creator Studio callback");
 assert.ok(!cinemaViewSource.includes("Studio AI Cinema belum terhubung ke layanan produksi."), "production Create Film AI CTA must not falsely report the already-mounted Creator Studio as disconnected");
+
+// Creator Studio API failures must be visible, not silently converted into empty states.
+
+const cinemaWorkspaceSource = readFileSync(new URL("../components/ai-cinema/AiCinemaCreatorWorkspace.tsx", import.meta.url), "utf8");
+assert.ok(cinemaWorkspaceSource.includes("Status layanan Creator Studio tidak dapat dimuat."), "Creator Studio must expose capability-loading failures");
+assert.ok(cinemaWorkspaceSource.includes("Daftar Agent untuk generasi tidak dapat dimuat."), "Creator Studio must expose Agent runtime loading failures");
+assert.ok(cinemaWorkspaceSource.includes("Media Creator Studio tidak dapat dimuat."), "Creator Studio must expose media loading failures instead of silently presenting an empty library");
