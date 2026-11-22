@@ -1,3 +1,61 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-.config-card p{overflow-wrap:anywhere}
+
+/* Global mobile-first viewport and intrinsic sizing safeguards. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  min-width: 320px;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  max-width: 100%;
+}
+
+.allpha-reference-app-content,
+.allpha-reference-app-content > * {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.config-card p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 639px) {
+  main,
+  section,
+  article {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  input,
+  textarea,
+  select {
+    min-width: 0;
+  }
+}
