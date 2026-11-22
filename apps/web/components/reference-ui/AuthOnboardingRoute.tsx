@@ -137,6 +137,7 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
     // before any domain-specific identity is created or queried.
     const meResponse = await fetch(apiBase + "/v1/me", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
     if (!meResponse.ok) throw new Error(await responseError(meResponse));
+    const identity = await meResponse.json() as { profile?: { username?: string | null } | null };
     const existingResponse = await fetch(apiBase + "/v1/agents", { headers: { Authorization: headers.Authorization }, cache: "no-store" });
     if (!existingResponse.ok) throw new Error(await responseError(existingResponse));
     const existing = await existingResponse.json() as AgentList;
@@ -146,6 +147,12 @@ export default function AuthOnboardingRoute({ isOpen = true, onClose, initialAut
       return;
     }
     if (payload.authMode === "LOGIN") {
+      // Returning Humans with a completed profile are never forced through
+      // first-run onboarding again, even when they have not created an Agent.
+      if (identity.profile?.username) {
+        finishAuthentication();
+        return "authenticated";
+      }
       router.replace("/agents?onboarding=required");
       return "authenticated";
     }
