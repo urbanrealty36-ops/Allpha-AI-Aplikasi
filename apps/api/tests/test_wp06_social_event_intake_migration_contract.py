@@ -13,8 +13,9 @@ def test_wp06_social_event_intake_forward_repair_uses_verified_extension_signatu
     sql = repaired.read_text(encoding="utf-8")
     historical_sql = historical.read_text(encoding="utf-8")
 
-    assert "do $" in sql
-    assert "end $;" in sql
+    dollar_quote = chr(36) * 2
+    assert "do " + dollar_quote in sql
+    assert "end " + dollar_quote + ";" in sql
     assert "extensions.digest(convert_to(" in sql
     assert "to_regprocedure('extensions.digest(bytea,text)')" in sql
     assert "v_fingerprint := encode(public.digest(" not in sql
