@@ -33,10 +33,10 @@ try {
       if (route === "/welcome" && /Slide Sapa & Panduan|Login \/ Register|Buka Feed Aplikasi/.test(result.headerText)) {
         failures.push({ ...record, reason: "Splash header still contains removed action buttons" });
       }
-      if (route === "/login" && (!result.bodyText.includes("Masuk ke Human Identity") || result.bodyText.includes("Nama Lengkap"))) {
+      if (route === "/login" && (!result.bodyText.toLowerCase().includes("masuk ke human identity") || result.bodyText.toLowerCase().includes("nama lengkap"))) {
         failures.push({ ...record, reason: "Login route is rendering registration-only fields" });
       }
-      if (route === "/register" && (!result.bodyText.includes("Registrasi Human Identity") || !result.bodyText.includes("Nama Lengkap"))) {
+      if (route === "/register" && (!result.bodyText.toLowerCase().includes("registrasi human identity") || !result.bodyText.toLowerCase().includes("nama lengkap"))) {
         failures.push({ ...record, reason: "Register route is missing Human identity fields" });
       }
       if (result.documentWidth > viewport.width + 2 || result.bodyWidth > viewport.width + 2) {
