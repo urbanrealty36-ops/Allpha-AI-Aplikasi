@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from allpha_api.auth import current_user
+from allpha_api.auth import current_session_user, current_user
 from allpha_api.main import OrganizationCreate, ProfileUpdate, app
 
 client = TestClient(app)
@@ -296,7 +296,7 @@ def test_profile_update_query_is_scoped_to_authenticated_user(monkeypatch):
         {
             "params": {
                 "id": "eq.authenticated-user",
-                "select": "id,username,display_name,avatar_url,bio,visibility,created_at,updated_at",
+                "select": "id,username,display_name,avatar_url,bio,visibility,locale,created_at,updated_at",
             },
             "body": {"display_name": "My profile"},
             "prefer": "return=representation",
@@ -780,7 +780,8 @@ def test_protected_api_rejects_revoked_supabase_session(monkeypatch):
     from fastapi.security import HTTPAuthorizationCredentials
     with pytest.raises(Exception) as caught:
         import asyncio
-        asyncio.run(current_user(request, HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)))
+        session_user = asyncio.run(current_session_user(request, HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)))
+        asyncio.run(current_user(request, session_user))
     assert getattr(caught.value, "status_code", None) == 401
     assert getattr(caught.value, "detail", {}).get("code") == "SESSION_REVOKED"
 
@@ -795,7 +796,7 @@ def test_session_revocation_endpoint_is_scoped_to_verified_current_session(monke
         request.state.auth_session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         return {"id": "authenticated-user"}
     monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
-    app.dependency_overrides[current_user] = fake_current_user
+    app.dependency_overrides[current_session_user] = fake_current_user
     try:
         response = client.post("/v1/auth/revoke", headers={"Authorization": "Bearer verified-session-token"})
     finally:
