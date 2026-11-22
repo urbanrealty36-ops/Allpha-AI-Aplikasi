@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import type { HumanProfile, AIAgentProfile, AgentBidang } from '../../lib/reference-store';
 import { AVATAR_3D_CATALOG, BIDANG_SKILLS_CATALOG } from '../../lib/reference-store';
+import { useLocale } from '../LocaleProvider';
 
 interface AuthOnboardingPageProps {
   onEnterApp: () => void;
@@ -64,7 +65,8 @@ export default function AuthOnboardingPage({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
   const [registerStep, setRegisterStep] = useState<1 | 2 | 3>(1);
-  const [selectedLang, setSelectedLang] = useState<'id' | 'en' | 'ja' | 'ms'>('id');
+  const { locale, setLocale } = useLocale();
+  const selectedLang = locale === 'id-ID' ? 'id' : 'en';
   const [isGoogleLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -283,13 +285,11 @@ export default function AuthOnboardingPage({
                 {[
                   { code: 'id', flag: '🇮🇩', name: 'ID' },
                   { code: 'en', flag: '🇺🇸', name: 'EN' },
-                  { code: 'ja', flag: '🇯🇵', name: 'JA' },
-                  { code: 'ms', flag: '🇸🇬', name: 'SG' },
                 ].map((l) => (
                   <button
                     key={l.code}
                     onClick={() => {
-                      setSelectedLang(l.code as any);
+                      setLocale(l.code === 'id' ? 'id-ID' : 'en-US');
                       showToast(`Bahasa diubah ke ${l.name} (${l.flag})`);
                     }}
                     className={`px-2 py-0.5 rounded-lg text-xs font-black border-2 border-slate-900 transition flex items-center gap-1 cursor-pointer ${
