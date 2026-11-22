@@ -1104,3 +1104,26 @@ def test_social_graph_summary_excludes_inactive_block_and_mute_edges(monkeypatch
                                 if table == "social_edges" and params.get("edge_type") == "eq.block"
                                 and params.get("target_user_id") == f"eq.{owner_id}")
     assert incoming_block_query["status"] == "eq.active"
+
+
+def test_feed_graph_edge_read_is_scoped_to_active_relationships(monkeypatch):
+    calls = []
+
+    async def fake_db(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params or {}))
+        assert method == "GET" and table == "social_edges"
+        return []
+
+    monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    followed, hidden = asyncio.run(feed_api._edges("viewer-1"))
+
+    assert followed == set()
+    assert hidden == set()
+    outgoing = next(params for method, table, params in calls
+                    if params.get("actor_user_id") == "eq.viewer-1")
+    assert outgoing["status"] == "eq.active"
+    assert outgoing["edge_type"] == "in.(follow,block,mute)"
+    assert outgoing["limit"] == "1000"
+    incoming = next(params for method, table, params in calls
+                    if params.get("target_user_id") == "eq.viewer-1")
+    assert incoming["status"] == "eq.active"

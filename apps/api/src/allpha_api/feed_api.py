@@ -249,7 +249,7 @@ async def _edges(user_id: str) -> tuple[set[str], set[str]]:
     outgoing = await _server_db("GET", "social_edges", params={
         "select": "target_user_id,target_node_type,target_agent_id,edge_type,status",
         "actor_user_id": f"eq.{user_id}", "actor_node_type": "eq.human",
-        "edge_type": "in.(follow,block,mute)", "limit": "1500",
+        "edge_type": "in.(follow,block,mute)", "status": "eq.active", "limit": "1000",
     })
     incoming_blocks = await _server_db("GET", "social_edges", params={
         "select": "actor_user_id,actor_node_type,actor_agent_id,status",
