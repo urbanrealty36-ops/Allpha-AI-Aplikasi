@@ -259,12 +259,10 @@ async def get_node_relationship_summary(
     if visibility != "public" and viewer_id != owner_id and not is_following:
         raise HTTPException(404, detail={"code": "SOCIAL_NODE_NOT_FOUND", "message": "Profil tidak ditemukan."})
 
-    followers = await _server_db("GET", "social_edges", params={
-        "select": "id", **follower_filter, "edge_type": "eq.follow", "status": "eq.active", "limit": "10000",
+    counts = await _server_db("POST", "rpc/social_graph_node_counts", body={
+        "p_node_type": node_type, "p_node_id": str(node_id),
     })
-    following = await _server_db("GET", "social_edges", params={
-        "select": "id", **following_filter, "edge_type": "eq.follow", "status": "eq.active", "limit": "10000",
-    })
+    count_row = counts[0] if counts else {"followers_count": 0, "following_count": 0}
     muted = False
     if viewer_id:
         mute_rows = await _server_db("GET", "social_edges", params={
@@ -276,7 +274,7 @@ async def get_node_relationship_summary(
         muted = bool(mute_rows)
     return {
         "node_type": node_type, "node_id": str(node_id), "visibility": visibility,
-        "followers_count": len(followers or []), "following_count": len(following or []),
+        "followers_count": int(count_row.get("followers_count") or 0), "following_count": int(count_row.get("following_count") or 0),
         "viewer_relationship": {"is_following": is_following, "request_pending": request_pending, "muted": muted, "blocked": False},
     }
 
