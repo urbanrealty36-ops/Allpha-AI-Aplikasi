@@ -239,11 +239,12 @@ async def get_published_scene_manifest(
                         "message": "Referensi versi aset pada scene tidak valid.",
                     })
                 assets = await _get_rows(client, url, key, "spatial_asset_versions", {
-                    "select": "asset_id,version,category,sha256,byte_size,storage_bucket,storage_path,status,moderation_status,license_evidence",
+                    "select": "asset_id,version,category,sha256,byte_size,storage_bucket,storage_path,status,moderation_status,license_evidence,license_evidence_status",
                     "asset_id": f"eq.{asset_id}",
                     "version": f"eq.{asset_version}",
                     "status": "eq.published",
                     "moderation_status": "eq.approved",
+                    "license_evidence_status": "eq.verified",
                     "limit": "1",
                 })
                 if not assets:
@@ -252,7 +253,7 @@ async def get_published_scene_manifest(
                         "message": "Scene merujuk aset yang belum dipublikasikan atau tidak disetujui.",
                     })
                 asset = assets[0]
-                if not asset.get("license_evidence") or asset.get("license_evidence") == {}:
+                if asset.get("license_evidence_status") != "verified" or not asset.get("license_evidence") or asset.get("license_evidence") == {}:
                     raise HTTPException(status_code=409, detail={
                         "code": "SPATIAL_ASSET_RIGHTS_UNVERIFIED",
                         "message": "Bukti lisensi aset belum tersedia.",
