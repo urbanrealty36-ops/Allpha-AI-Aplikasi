@@ -41,6 +41,9 @@ def test_wp06_worker_schema_readiness_gate_is_service_role_only_and_fail_closed(
     assert "'agent_social_automation_events'" in sql
     assert "'agent_social_automation_runs'" in sql
     assert "'agent_social_control_events'" in sql
+    assert "'agent_social_automation_events','event_fingerprint'" in sql
+    assert "'agent_social_automation_events','claim_token'" in sql
+    assert "'missing_columns', to_jsonb(v_missing_columns)" in sql
     assert "public.claim_agent_social_automation_events(uuid,integer,integer)" in sql
     assert "public.heartbeat_agent_social_automation_event(uuid,uuid,integer)" in sql
     assert "public.complete_agent_social_automation_event(uuid,uuid,uuid)" in sql
