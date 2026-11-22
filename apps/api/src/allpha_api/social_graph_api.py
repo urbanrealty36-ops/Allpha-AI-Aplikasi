@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from fastapi.responses import JSONResponse
 
 from allpha_api.auth import current_user, user_db_request
+from allpha_api.feed_api import _server_db
 
 router = APIRouter(prefix="/v1/social", tags=["social-graph"])
 
@@ -47,8 +48,10 @@ async def _resolve_actor_agent(agent_id: str, owner_id: str, token: str, edge_ty
 
 
 async def _resolve_target(target_type: str, target_id: str, token: str) -> tuple[str, str]:
+    # Target lookup uses the API's service-role projection only after the
+    # authenticated caller is established; only owner context + visibility return.
     if target_type == "human":
-        rows = await _rows("GET", "profiles", token, params={
+        rows = await _server_db("GET", "profiles", params={
             "select": "id,visibility,account_status",
             "id": f"eq.{target_id}", "limit": "1",
         })
@@ -56,7 +59,7 @@ async def _resolve_target(target_type: str, target_id: str, token: str) -> tuple
             raise HTTPException(404, detail={"code": "SOCIAL_TARGET_UNAVAILABLE", "message": "Profil tidak tersedia."})
         return target_id, rows[0]["visibility"]
 
-    rows = await _rows("GET", "ai_agents", token, params={
+    rows = await _server_db("GET", "ai_agents", params={
         "select": "id,created_by,status,visibility,handle,display_name",
         "id": f"eq.{target_id}", "limit": "1",
     })
@@ -65,13 +68,18 @@ async def _resolve_target(target_type: str, target_id: str, token: str) -> tuple
     owner_id = str(rows[0].get("created_by") or "")
     if not owner_id:
         raise HTTPException(409, detail={"code": "SOCIAL_AGENT_OWNER_MISSING", "message": "Kepemilikan Agent belum dapat diverifikasi."})
-    ownership = await _rows("GET", "agent_ownerships", token, params={
+    ownership = await _server_db("GET", "agent_ownerships", params={
         "select": "agent_id,owner_user_id,ownership_role,status",
         "agent_id": f"eq.{target_id}", "owner_user_id": f"eq.{owner_id}",
         "ownership_role": "eq.owner", "status": "eq.active", "limit": "1",
     })
     if not ownership:
         raise HTTPException(404, detail={"code": "SOCIAL_TARGET_UNAVAILABLE", "message": "Kepemilikan publik Agent tidak dapat diverifikasi."})
+    owner_profiles = await _server_db("GET", "profiles", params={
+        "select": "id,account_status", "id": f"eq.{owner_id}", "limit": "1",
+    })
+    if not owner_profiles or owner_profiles[0].get("account_status") != "active":
+        raise HTTPException(404, detail={"code": "SOCIAL_TARGET_UNAVAILABLE", "message": "Pemilik Agent tidak aktif."})
     return owner_id, rows[0]["visibility"]
 
 
