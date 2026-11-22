@@ -185,32 +185,30 @@ export default function LiveExperienceStage({
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-3 sm:px-4 py-4 pb-24 text-slate-900 font-sans space-y-4">
       {/* Top Header Live Stage bar (Playful Neo-Brutalist Soft Pastel) */}
-      <div className="flex items-center justify-between bg-rose-50 text-slate-950 p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900">
-        <div className="flex items-center gap-3">
-          <div className={`w-3.5 h-3.5 rounded-full border border-slate-900 ${liveStateAvailable && isLive ? "bg-rose-500 animate-pulse" : liveStateAvailable ? "bg-emerald-400" : "bg-slate-300"}`} aria-hidden="true" />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] px-2.5 py-0.5 rounded-full border-2 border-slate-900 font-black uppercase tracking-wider shadow-2xs ${liveStateAvailable && isLive ? "bg-rose-200 text-rose-950" : "bg-slate-200 text-slate-800"}`}>
+      <div className="flex min-w-0 flex-col gap-3 bg-rose-50 text-slate-950 p-3 sm:p-4 rounded-3xl shadow-[4px_4px_0px_#0f172a] border-2 border-slate-900 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={`mt-1 w-3.5 h-3.5 shrink-0 rounded-full border border-slate-900 ${liveStateAvailable && isLive ? "bg-rose-500 animate-pulse" : liveStateAvailable ? "bg-emerald-400" : "bg-slate-300"}`} aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className={`max-w-full text-[10px] px-2.5 py-0.5 rounded-full border-2 border-slate-900 font-black uppercase tracking-wider shadow-2xs ${liveStateAvailable && isLive ? "bg-rose-200 text-rose-950" : "bg-slate-200 text-slate-800"}`}>
                 {liveStateAvailable ? isLive ? "LIVE" : "STAGE READY" : "SESSION NOT CONNECTED"}
               </span>
-              <h1 className="text-sm font-black text-slate-950">Podcast & Live Experience Arena</h1>
+              <h1 className="min-w-0 text-xs sm:text-sm font-black text-slate-950 break-words">Podcast & Live Experience Arena</h1>
             </div>
-            <p className="text-[11px] font-semibold text-slate-700 mt-0.5">{activeTopic}</p>
+            <p className="text-[11px] font-semibold text-slate-700 mt-0.5 break-words">{activeTopic}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
-            <Users className="w-3.5 h-3.5" />
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
+          <div className="max-w-full flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border-2 border-slate-900 text-xs font-mono font-black text-amber-950 shadow-[1.5px_1.5px_0px_#0f172a]">
+            <Users className="w-3.5 h-3.5 shrink-0" />
             <span>{viewerCount === null ? '—' : viewerCount.toLocaleString()} Penonton</span>
           </div>
           <button
             onClick={() => setIsLive(!isLive)} disabled={!liveStateAvailable}
-            className={`px-4 py-1.5 rounded-2xl text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${
-              isLive ? 'bg-rose-400 hover:bg-rose-500 text-slate-950' : 'bg-emerald-300 hover:bg-emerald-400 text-slate-950'
-            }`}
+            className={`max-w-full px-3 sm:px-4 py-1.5 rounded-2xl text-xs font-black transition flex items-center gap-1.5 border-2 border-slate-900 shadow-[2px_2px_0px_#0f172a] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ${isLive ? 'bg-rose-400 hover:bg-rose-500 text-slate-950' : 'bg-emerald-300 hover:bg-emerald-400 text-slate-950'}`}
           >
             {isLive ? <Pause className="w-3.5 h-3.5 stroke-[3px]" /> : <Play className="w-3.5 h-3.5 stroke-[3px]" />}
             <span>{isLive ? 'Hentikan Siaran' : 'Mulai Siaran'}</span>
