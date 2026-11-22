@@ -6,7 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getBrowserSupabase } from "../../lib/supabase";
 import ExploreView, { type SocialAccountItem } from "../../components/reference-ui/ExploreView";
 import type { PostItem } from "../../lib/reference-store";
-type SearchItem = { id: string; body: string; content_type: string; owner_id: string; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
+type SearchItem = { id: string; body: string; content_type: string; owner_id: string; ai_agent_id?: string | null; agent?: { id: string; handle: string; display_name: string; avatar_url?: string | null; description?: string | null } | null; published_at?: string | null; created_at: string; creator?: { username?: string | null; display_name?: string | null; avatar_url?: string | null }; engagement?: { likes: number; comments: number; saves: number; shares: number }; viewer_reaction?: string | null; saved?: boolean };
 type Trend = { topic: string; content_count: number; example_content_id: string };
 type Recommendation = SearchItem;
 type Creator = { id: string; username?: string | null; display_name: string; avatar_url?: string | null; bio?: string; public_post_count: number; is_ai: boolean };
@@ -311,7 +311,7 @@ function SearchPageContent() {
   const postsForReference: PostItem[] = items.map(item => ({
     id: item.id,
     humanOwner: { name: item.creator?.display_name || item.creator?.username || "Kreator", handle: item.creator?.username || "", avatar: item.creator?.avatar_url || "", verified: false },
-    aiAgent: { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
+    aiAgent: item.agent ? { name: item.agent.display_name || item.agent.handle, handle: item.agent.handle, avatar: item.agent.avatar_url || "", specialty: item.agent.description || "AI Agent" } : { name: "—", handle: "", avatar: "", specialty: "Belum tersedia" },
     takeoverMode: false,
     timestamp: new Date(item.published_at ?? item.created_at).toLocaleString("id-ID"),
     content: item.body,
