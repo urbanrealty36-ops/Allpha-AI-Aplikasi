@@ -559,6 +559,13 @@ export default function AiCinemaCreatorWorkspace() {
         <div><p className="text-xs font-bold uppercase tracking-[.2em] text-sky-700">Creator Workspace</p><h2 className="mt-1 text-2xl font-black">Draft Film & Episode</h2><p className="mt-1 text-sm text-slate-700">Draft disimpan melalui FastAPI dan hanya dapat diakses pemiliknya.</p></div>
         <button type="button" onClick={() => { void loadTitles(); void loadCapabilityStatus(); void loadCreatorMedia(); }} disabled={loading} className="rounded-xl border-2 border-slate-900 bg-slate-100 px-4 py-2 text-sm font-black text-slate-950 shadow-[2px_2px_0px_#0f172a] hover:bg-slate-200 disabled:opacity-50">{loading ? "Memuat…" : "Muat ulang"}</button>
       </div>
+      <div className="mb-4 rounded-xl border-2 border-slate-900 bg-slate-50 p-3 text-xs text-slate-800" aria-live="polite">
+        <div className="flex items-center justify-between gap-2"><p className="font-bold">Production readiness</p><button type="button" onClick={() => void loadCapabilityStatus()} disabled={readinessLoading} className="rounded-lg border border-slate-900 px-2 py-1 font-bold disabled:opacity-50">{readinessLoading ? "Memeriksa…" : "Periksa ulang"}</button></div>
+        {!productionReadiness ? <p className="mt-1 text-rose-700">Status layanan belum dapat dikonfirmasi. Coba muat ulang.</p> : <>
+          <p className="mt-1 font-semibold">{productionReadiness.message}</p>
+          <div className="mt-2 flex flex-wrap gap-2">{Object.entries(productionReadiness.checks).map(([key,value])=><span key={key} className={"rounded-lg px-2 py-1 " + (value==="ready" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800")}>{key.replaceAll("_"," ")}: {value}</span>)}</div>
+        </>}
+      </div>
       {capabilityStatus && <div className="mb-4 rounded-xl border border-2 border-slate-900 bg-amber-50 p-3 text-xs text-amber-900">
         <p className="font-bold">Status layanan terhubung</p>
         <p className="mt-1">Generation: {capabilityStatus.generation} · Generation jobs: {capabilityStatus.generation_jobs} · Billing: {capabilityStatus.billing} · Playback entitlement: {capabilityStatus.playback_entitlement}</p>
