@@ -26,6 +26,11 @@ export default function AuthCallbackPage() {
     const run = async () => {
       if (!supabase) { setError("Supabase Auth belum dikonfigurasi."); return; }
       try {
+        const providerError = params.get("error");
+        if (providerError) {
+          const providerDescription = params.get("error_description");
+          throw new Error(providerDescription || `Penyedia autentikasi menolak proses login (${providerError}). Silakan coba lagi.`);
+        }
         const code = params.get("code");
         if (code && !codeExchangeCompleted.current) {
           // Never let an unrelated, already-persisted session bypass the OAuth
