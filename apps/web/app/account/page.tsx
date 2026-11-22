@@ -95,6 +95,7 @@ export default function HomePage() {
     void supabase.auth.getSession().then(({ data }) => {
       if (!active || authEventSeen) return;
       setSession(data.session);
+      sessionsAutoLoadToken.current = null;
       socialRequestSequence.current += 1; consentRequestSequence.current += 1; sessionsRequestSequence.current += 1;
       setSocialGraph(null); setConsentHistory(null); setAuthSessions(null);
       if (data.session) void loadIdentity(data.session); else {
@@ -106,6 +107,7 @@ export default function HomePage() {
       authEventSeen = true;
       if (!active) return;
       setSession(next);
+      sessionsAutoLoadToken.current = null;
       socialRequestSequence.current += 1; consentRequestSequence.current += 1; sessionsRequestSequence.current += 1;
       setSocialGraph(null); setConsentHistory(null); setAuthSessions(null);
       setSocialLoading(false); setConsentLoading(false); setSessionsLoading(false); setSessionsError("");
@@ -156,7 +158,7 @@ export default function HomePage() {
     } finally { setSaving(false); }
   }
 
-  async function loadAuthSessions() {
+  const loadAuthSessions = useCallback(async () => {
     if (!session) return;
     const sequence = ++sessionsRequestSequence.current;
     const token = session.access_token;
@@ -179,7 +181,7 @@ export default function HomePage() {
     } finally {
       if (sequence === sessionsRequestSequence.current) setSessionsLoading(false);
     }
-  }
+  }, [session, supabase]);
 
   // A restored /account?tab=sessions deep link must load the same canonical
   // device inventory as an explicit tab click, once per authenticated token.
