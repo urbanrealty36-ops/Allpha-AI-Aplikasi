@@ -199,6 +199,11 @@ A successful image build or running container is not processing evidence. Activa
 - All new database changes are source-only and not present in the connected Supabase migration ledger. Worker activation remains disabled until canonical migrations are applied and runtime verification is authorized.
 
 
+### WP-06 Social event-consumer readiness gate
+
+- The canonical Agent Runtime worker now checks the dedicated `agent_social_automation_schema_readiness()` RPC before invoking the WP-06 event intake or approval reconciler. The predicate verifies the required Social policy/grant/inbox/run/control/audit/approval relations, RLS, service-role table privileges and event lease/dispatch RPC execute grants.
+- Both explicit feature flags, `ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED=true` and `ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED=true`, are required before the readiness RPC is called. A missing/false readiness result leaves WP-06 events and reply tasks queued; unrelated canonical Agent Runtime tasks can continue.
+- Migration `20261122130000_wp06_social_automation_schema_readiness.sql` is source-only. It does not create another queue or worker and must be applied only after its WP-06 dependency migrations through the ADR-0024 procedure. No production social event consumer is activated by this source change.
 ### WP-06 Social event intake digest forward repair
 
 - The historical source-only candidate `20261122100000_wp06_social_event_intake_rate_serialization.sql` calls `public.digest(text,text)`, which is not the installed pgcrypto signature in the canonical database.
