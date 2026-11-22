@@ -123,6 +123,59 @@ def test_worker_does_not_claim_tasks_when_canonical_schema_is_incomplete(monkeyp
     assert executed == []
 
 
+
+def test_wp06_social_tasks_stay_queued_until_social_schema_readiness(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "true")
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "true")
+
+    class SocialGateStore(FakeStore):
+        def __init__(self, rows):
+            super().__init__(rows)
+            self.readiness_calls = 0
+
+        async def request(self, method, path, body=None):
+            assert method == "POST"
+            assert path == "rpc/agent_social_automation_schema_readiness"
+            self.readiness_calls += 1
+            return {"ready": False, "missing_tables": ["agent_social_automation_events"],
+                    "missing_functions": [], "missing_privileges": []}
+
+    store = SocialGateStore([
+        {"id": "social-task", "owner_user_id": "owner-1", "state": "created",
+         "input_payload": {"_agent_social_reply_version": 1}},
+        {"id": "ordinary-task", "owner_user_id": "owner-1", "state": "created",
+         "input_payload": {"_runtime_plan_version": 1}},
+    ])
+    executed = []
+
+    async def fake_execute(received_store, owner_id, task_id, row):
+        executed.append(task_id)
+
+    async def forbidden_social(*args, **kwargs):
+        raise AssertionError("social intake must not run before WP-06 schema readiness")
+
+    monkeypatch.setattr(worker, "_execute_planned_task", fake_execute)
+    monkeypatch.setattr(worker, "run_social_events_once", forbidden_social)
+    monkeypatch.setattr(worker, "reconcile_social_reply_approvals", forbidden_social)
+
+    processed = asyncio.run(worker.run_once(store))
+
+    assert store.readiness_calls == 1
+    assert processed == 1
+    assert executed == ["ordinary-task"]
+
+
+def test_wp06_social_worker_requires_both_explicit_activation_flags(monkeypatch):
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_SCHEMA_ENABLED", "true")
+    monkeypatch.setenv("ALLPHA_AGENT_SOCIAL_AUTOMATION_WORKER_ENABLED", "false")
+
+    class NoRpcStore(FakeStore):
+        async def request(self, *args, **kwargs):
+            raise AssertionError("disabled WP-06 consumer must not query readiness")
+
+    assert asyncio.run(worker._social_schema_ready(NoRpcStore([]))) is False
+
+
 def test_worker_still_terminalizes_unknown_native_effects(monkeypatch):
     store = FakeStore([
         {"id": "native-unknown", "owner_user_id": "owner-1", "state": "executing",
