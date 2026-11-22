@@ -114,9 +114,9 @@ async def list_relationships(
 
 @router.get("/discover-agents")
 async def discover_agents(
-    q: str = Query(min_length=2, max_length=80),
+    request: Request,
+    q: str = Query(min_length=2, max_length=30, pattern=r"^[a-zA-Z0-9_]+$"),
     limit: int = Query(default=20, ge=1, le=50),
-    request: Request = None,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Search only published public Agents and apply the viewer's typed block/mute policy."""
@@ -127,7 +127,7 @@ async def discover_agents(
     rows = await _rows("GET", "ai_agents", token, params={
         "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
         "status": "eq.active", "visibility": "eq.public",
-        "handle": "ilike.*" + normalized.replace("*", "").replace("%", "") + "*",
+        "handle": "ilike.*" + normalized + "*",
         "order": "display_name.asc", "limit": str(limit),
     })
     if not rows:
