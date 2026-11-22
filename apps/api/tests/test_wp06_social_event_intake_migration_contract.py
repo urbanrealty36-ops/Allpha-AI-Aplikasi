@@ -50,6 +50,9 @@ def test_wp06_worker_schema_readiness_gate_is_service_role_only_and_fail_closed(
     assert "public.fail_agent_social_automation_event(uuid,uuid,text,integer)" in sql
     assert "public.cancel_agent_social_automation_events(uuid,uuid,text)" in sql
     assert "has_table_privilege('service_role'" in sql
+    assert "agent_social_control_events','agent_social_audit_events" in sql
+    assert "then array['select','insert']::text[]" in sql
+    assert "then array['select','insert','update']::text[]" in sql
     assert "has_function_privilege('service_role'" in sql
     assert "revoke all on function public.agent_social_automation_schema_readiness() from public, anon, authenticated" in sql
     assert "grant execute on function public.agent_social_automation_schema_readiness() to service_role" in sql
