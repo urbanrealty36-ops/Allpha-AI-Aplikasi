@@ -221,6 +221,16 @@ export default function AuthOnboardingFlow({
     'Edukasi & Riset',
     'Gaming & Metaverse',
   ];
+  const interestTranslationKeys: Record<string, string> = {
+    'Kesehatan': 'auth.interest.health',
+    'IT & Teknologi': 'auth.interest.tech',
+    '3D Spatial': 'auth.interest.spatial',
+    'Kreator Konten': 'auth.interest.creator',
+    'Bisnis & Finansial': 'auth.interest.businessFinance',
+    'Desain & UI/UX': 'auth.interest.designUi',
+    'Edukasi & Riset': 'auth.interest.education',
+    'Gaming & Metaverse': 'auth.interest.metaverse',
+  };
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests(prev => 
@@ -685,7 +695,7 @@ export default function AuthOnboardingFlow({
                             : 'bg-white text-slate-800 hover:bg-slate-50'
                         }`}
                       >
-                        {isSelected ? `✓ ${interest}` : `+ ${interest}`}
+                        {isSelected ? `✓ ${t(interestTranslationKeys[interest] ?? interest)}` : `+ ${t(interestTranslationKeys[interest] ?? interest)}`}
                       </button>
                     );
                   })}
