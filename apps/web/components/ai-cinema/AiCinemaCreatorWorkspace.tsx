@@ -36,6 +36,7 @@ type CinemaCredit = { id: string; contributor_type: string; role: string; attrib
 type CinemaVersion = { id: string; version: number; created_at: string };
 type CinemaAsset = { id: string; media_id: string; asset_role: string; display_name: string; media?: { filename?: string; media_type?: string; status?: string; preview_url?: string } };
 type CinemaProductionResponse = { title_id: string; version: number; status: string; document: Record<string, unknown> };
+type CinemaReadiness = { status: "ready" | "not_ready"; can_create_generation_job: boolean; checks: Record<string, string>; message: string };
 const EMPTY_CINEMA_PRODUCTION = {
   schema_version: 1,
   screenplay: { logline: "", synopsis: "", draft: "" },
@@ -73,6 +74,8 @@ async function authorizedRequest<T>(path: string, init: RequestInit = {}): Promi
 export default function AiCinemaCreatorWorkspace() {
   const [titles, setTitles] = useState<DraftTitle[]>([]);
   const [capabilityStatus, setCapabilityStatus] = useState<CreatorStatus | null>(null);
+  const [productionReadiness, setProductionReadiness] = useState<CinemaReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
   const [episodes, setEpisodes] = useState<DraftEpisode[]>([]);
   const [readyMedia, setReadyMedia] = useState<ReadyMedia[]>([]);
   const [creatorMedia, setCreatorMedia] = useState<CreatorMedia[]>([]);
@@ -123,11 +126,19 @@ export default function AiCinemaCreatorWorkspace() {
   const [generationBusy, setGenerationBusy] = useState(false);
 
   const loadCapabilityStatus = useCallback(async () => {
+    setReadinessLoading(true);
     try {
-      const result = await authorizedRequest<CreatorStatus>("/v1/cinema/creator/status");
-      setCapabilityStatus(result);
+      const [status, readiness] = await Promise.all([
+        authorizedRequest<CreatorStatus>("/v1/cinema/creator/status"),
+        authorizedRequest<CinemaReadiness>("/v1/cinema/creator/production-readiness"),
+      ]);
+      setCapabilityStatus(status);
+      setProductionReadiness(readiness);
     } catch {
       setCapabilityStatus(null);
+      setProductionReadiness(null);
+    } finally {
+      setReadinessLoading(false);
     }
   }, []);
 
@@ -146,7 +157,8 @@ export default function AiCinemaCreatorWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (capabilityStatus?.generation === "configured"
+    if (productionReadiness?.can_create_generation_job === true
+        && capabilityStatus?.generation === "configured"
         && capabilityStatus.generation_jobs === "available"
         && capabilityStatus.billing === "available") {
       void loadRuntimeAgents();
@@ -155,7 +167,7 @@ export default function AiCinemaCreatorWorkspace() {
       setRuntimeAgentsState("idle");
       setGenerationQuote(null);
     }
-  }, [capabilityStatus, loadRuntimeAgents]);
+  }, [capabilityStatus, productionReadiness, loadRuntimeAgents]);
 
   useEffect(() => {
     const selected = runtimeAgents.find(item => item.agent.id === generationAgentId);
@@ -409,11 +421,15 @@ export default function AiCinemaCreatorWorkspace() {
         quoted_tool_inputs_sha256: generationQuote.tool_inputs_sha256,
       };
       if (generationQuote.knowledge_context_sha256) body.quoted_knowledge_context_sha256 = generationQuote.knowledge_context_sha256;
-      const created = await authorizedRequest<{ job_id: string; status: string; reserved_credits: number }>("/v1/generation/jobs", {
-        method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify(body),
-      });
+      if (!selectedTitleId) throw new Error("Pilih draft film sebelum menjalankan generation.");
+      const created = await authorizedRequest<{ job_id: string; status: string; reserved_credits: number }>(
+        "/v1/cinema/creator/titles/" + encodeURIComponent(selectedTitleId) + "/generation-jobs",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+          body: JSON.stringify({ ...body, target_section: "screenplay" }),
+        },
+      );
       setGenerationJobId(created.job_id);
       setGenerationJob({ id: created.job_id, status: created.status });
       setGenerationQuote(null);
