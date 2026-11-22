@@ -188,7 +188,7 @@ export default function HomePage() {
     if (sessionsAutoLoadToken.current === session.access_token) return;
     sessionsAutoLoadToken.current = session.access_token;
     void loadAuthSessions();
-  }, [tab, session?.access_token]);
+  }, [tab, session?.access_token, loadAuthSessions]);
 
   async function revokeAuthSession(sessionId: string) {
     if (!session || !window.confirm("Cabut sesi perangkat ini? Perangkat tersebut harus login kembali.")) return;
