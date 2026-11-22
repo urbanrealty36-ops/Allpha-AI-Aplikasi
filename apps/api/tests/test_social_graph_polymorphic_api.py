@@ -44,10 +44,6 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
             if replay and params.get("idempotency_key") == "eq.retry-key-001":
                 return [replay]
             return []
-        if path == "social_edges" and method == "POST":
-            row = {"id": "00000000-0000-4000-8000-000000000999", **body,
-                   "status": "active", "created_at": "2026-11-22T00:00:00Z"}
-            return [row]
         raise AssertionError((method, path, params, body))
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
@@ -67,8 +63,28 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
             return [{"agent_id": AGENT_B, "owner_user_id": OTHER_OWNER, "ownership_role": "owner", "status": "active"}]
         return []
 
+    async def fake_service_db_request(function_name, *, body):
+        calls.append(("RPC", function_name, {}, body, None))
+        if function_name == "create_social_edge_for_actor":
+            return [{
+                "id": "00000000-0000-4000-8000-000000000999",
+                "actor_user_id": body["p_actor_user_id"], "target_user_id": body["p_target_user_id"],
+                "actor_node_type": body["p_actor_node_type"], "target_node_type": body["p_target_node_type"],
+                "actor_agent_id": body["p_actor_agent_id"], "target_agent_id": body["p_target_agent_id"],
+                "edge_type": body["p_edge_type"], "status": "active",
+                "idempotency_key": body["p_idempotency_key"], "created_at": "2026-11-22T00:00:00Z",
+            }]
+        if function_name == "accept_social_follow_for_actor":
+            return [{"id": body["p_edge_id"], "actor_user_id": OTHER_OWNER, "target_user_id": OWNER, "edge_type": "follow", "status": "active"}]
+        if function_name == "reject_social_follow_for_actor":
+            return [{"id": body["p_edge_id"], "actor_user_id": OTHER_OWNER, "target_user_id": OWNER, "edge_type": "follow", "status": "requested"}]
+        if function_name == "remove_social_edge_for_actor":
+            return [{"id": body["p_edge_id"], "actor_user_id": OWNER, "target_user_id": OTHER_OWNER, "edge_type": "mute", "status": "active"}]
+        raise AssertionError(function_name)
+
     monkeypatch.setattr(social_graph_api, "_rows", fake_rows)
     monkeypatch.setattr(social_graph_api, "_server_db", fake_server_db)
+    monkeypatch.setattr(social_graph_api, "service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = _user
     return calls
 
@@ -82,9 +98,9 @@ def test_human_to_human_relationship_uses_typed_human_nodes(monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
-    body = next(call[3] for call in calls if call[0] == "POST")
-    assert body["actor_node_type"] == "human" and body["target_node_type"] == "human"
-    assert body["actor_agent_id"] is None and body["target_agent_id"] is None
+    body = next(call[3] for call in calls if call[0] == "RPC" and call[1] == "create_social_edge_for_actor")
+    assert body["p_actor_node_type"] == "human" and body["p_target_node_type"] == "human"
+    assert body["p_actor_agent_id"] is None and body["p_target_agent_id"] is None
 
 
 def test_human_to_agent_relationship_resolves_agent_owner_and_target_type(monkeypatch):
@@ -97,8 +113,8 @@ def test_human_to_agent_relationship_resolves_agent_owner_and_target_type(monkey
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
     body = next(call[3] for call in calls if call[0] == "POST")
-    assert body["actor_node_type"] == "human" and body["target_node_type"] == "agent"
-    assert body["target_agent_id"] == AGENT_B and body["target_user_id"] == OTHER_OWNER
+    assert body["p_actor_node_type"] == "human" and body["p_target_node_type"] == "agent"
+    assert body["p_target_agent_id"] == AGENT_B and body["p_target_user_id"] == OTHER_OWNER
 
 
 def test_agent_to_human_relationship_requires_owner_and_uses_agent_actor_node(monkeypatch):
@@ -111,8 +127,8 @@ def test_agent_to_human_relationship_requires_owner_and_uses_agent_actor_node(mo
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
     body = next(call[3] for call in calls if call[0] == "POST")
-    assert body["actor_node_type"] == "agent" and body["target_node_type"] == "human"
-    assert body["actor_agent_id"] == AGENT_A and body["actor_user_id"] == OWNER
+    assert body["p_actor_node_type"] == "agent" and body["p_target_node_type"] == "human"
+    assert body["p_actor_agent_id"] == AGENT_A and body["p_actor_user_id"] == OWNER
 
 
 def test_agent_to_agent_relationship_is_a_single_typed_graph_edge(monkeypatch):
@@ -125,8 +141,8 @@ def test_agent_to_agent_relationship_is_a_single_typed_graph_edge(monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 201, response.text
     body = next(call[3] for call in calls if call[0] == "POST")
-    assert body["actor_node_type"] == "agent" and body["target_node_type"] == "agent"
-    assert body["actor_agent_id"] == AGENT_A and body["target_agent_id"] == AGENT_B
+    assert body["p_actor_node_type"] == "agent" and body["p_target_node_type"] == "agent"
+    assert body["p_actor_agent_id"] == AGENT_A and body["p_target_agent_id"] == AGENT_B
 
 
 def test_agent_operator_cannot_block_without_owner_authority(monkeypatch):
@@ -154,7 +170,7 @@ def test_idempotency_key_is_persisted_and_replay_returns_existing_edge(monkeypat
         app.dependency_overrides.clear()
     assert response.status_code == 200, response.text
     assert response.json()["idempotent_replay"] is True
-    assert not any(call[0] == "POST" for call in calls)
+    assert not any(call[0] == "RPC" for call in calls)
 
 
 def test_human_profile_summary_uses_exact_typed_database_counts(monkeypatch):
@@ -201,3 +217,37 @@ def test_social_activity_stream_returns_typed_agent_attribution(monkeypatch):
     assert response.status_code == 200, response.text
     assert response.json()["items"][0]["actor_node_type"] == "agent"
     assert response.json()["items"][0]["actor_agent_id"] == AGENT_A
+
+
+
+def test_accept_reject_and_remove_relationships_use_server_only_commands(monkeypatch):
+    calls = []
+    edge_id = "00000000-0000-4000-8000-000000000901"
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        if function_name == "accept_social_follow_for_actor":
+            return [{"id": edge_id, "target_user_id": OWNER, "edge_type": "follow", "status": "active"}]
+        if function_name == "reject_social_follow_for_actor":
+            return [{"id": edge_id, "target_user_id": OWNER, "edge_type": "follow", "status": "requested"}]
+        if function_name == "remove_social_edge_for_actor":
+            return [{"id": edge_id, "actor_user_id": OWNER, "edge_type": "mute", "status": "active"}]
+        raise AssertionError(function_name)
+
+    monkeypatch.setattr(social_graph_api, "service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = _user
+    client = TestClient(app)
+    try:
+        accepted = client.post(f"/v1/social/relationships/{edge_id}/accept")
+        rejected = client.post(f"/v1/social/relationships/{edge_id}/reject")
+        removed = client.delete(f"/v1/social/relationships/{edge_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert accepted.status_code == 200, accepted.text
+    assert rejected.status_code == 200, rejected.text
+    assert removed.status_code == 200, removed.text
+    assert [name for name, _ in calls] == [
+        "accept_social_follow_for_actor", "reject_social_follow_for_actor", "remove_social_edge_for_actor"
+    ]
+    assert all(body["p_actor_user_id"] == OWNER and body["p_edge_id"] == edge_id for _, body in calls)

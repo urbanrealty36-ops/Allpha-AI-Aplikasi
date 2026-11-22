@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi.responses import JSONResponse
 
-from allpha_api.auth import current_user, optional_current_user, user_db_request
+from allpha_api.auth import current_user, optional_current_user, user_db_request, service_db_request
 from allpha_api.feed_api import _server_db
 
 router = APIRouter(prefix="/v1/social", tags=["social-graph"])
@@ -347,14 +347,13 @@ async def create_relationship(
         return JSONResponse(status_code=200, content={"edge": existing[0], "outcome": "idempotent_replay", "idempotent_replay": True})
 
     body = {
-        "actor_user_id": owner_id, "target_user_id": target_owner_id,
-        "actor_node_type": actor_type, "target_node_type": payload.target_type,
-        "actor_agent_id": actor_agent_id, "target_agent_id": target_agent_id,
-        "edge_type": payload.edge_type, **({"idempotency_key": key} if key else {}),
+        "p_actor_user_id": owner_id, "p_target_user_id": target_owner_id,
+        "p_actor_node_type": actor_type, "p_target_node_type": payload.target_type,
+        "p_actor_agent_id": actor_agent_id, "p_target_agent_id": target_agent_id,
+        "p_edge_type": payload.edge_type, "p_idempotency_key": key,
     }
     try:
-        rows = await _rows("POST", "social_edges", token, body=body,
-                           params={"select": filters["select"]}, prefer="return=representation")
+        rows = await service_db_request("create_social_edge_for_actor", body=body)
     except HTTPException as exc:
         if exc.status_code != 409:
             raise
@@ -372,11 +371,9 @@ async def create_relationship(
 @router.post("/relationships/{edge_id}/accept")
 async def accept_relationship(edge_id: uuid.UUID, request: Request,
                               user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await _rows("PATCH", "social_edges", request.state.supabase_access_token, params={
-        "id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
-        "edge_type": "eq.follow", "status": "eq.requested",
-        "select": "id,actor_user_id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
-    }, body={"status": "active"}, prefer="return=representation")
+    rows = await service_db_request("accept_social_follow_for_actor", body={
+        "p_actor_user_id": str(user["id"]), "p_edge_id": str(edge_id),
+    })
     if not rows:
         replay = await _rows("GET", "social_edges", request.state.supabase_access_token, params={
             "id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
@@ -393,10 +390,9 @@ async def accept_relationship(edge_id: uuid.UUID, request: Request,
 @router.post("/relationships/{edge_id}/reject")
 async def reject_relationship(edge_id: uuid.UUID, request: Request,
                               user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await _rows("DELETE", "social_edges", request.state.supabase_access_token, params={
-        "id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
-        "edge_type": "eq.follow", "status": "eq.requested", "select": "id,actor_node_type,target_node_type,actor_agent_id,target_agent_id",
-    }, prefer="return=representation")
+    rows = await service_db_request("reject_social_follow_for_actor", body={
+        "p_actor_user_id": str(user["id"]), "p_edge_id": str(edge_id),
+    })
     if not rows:
         return {"removed": None, "outcome": "follow_rejected", "idempotent_replay": True}
     return {"removed": rows[0], "outcome": "follow_rejected", "idempotent_replay": False}
@@ -405,10 +401,9 @@ async def reject_relationship(edge_id: uuid.UUID, request: Request,
 @router.delete("/relationships/{edge_id}")
 async def remove_relationship(edge_id: uuid.UUID, request: Request,
                               user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await _rows("DELETE", "social_edges", request.state.supabase_access_token, params={
-        "id": f"eq.{edge_id}", "actor_user_id": f"eq.{user['id']}",
-        "select": "id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status",
-    }, prefer="return=representation")
+    rows = await service_db_request("remove_social_edge_for_actor", body={
+        "p_actor_user_id": str(user["id"]), "p_edge_id": str(edge_id),
+    })
     if not rows:
         return {"removed": None, "outcome": "already_removed", "idempotent_replay": True}
     return {"removed": rows[0], "outcome": f"{rows[0]['edge_type']}_removed", "idempotent_replay": False}

@@ -478,16 +478,20 @@ def test_follow_public_profile_is_idempotent_and_uses_server_actor(monkeypatch):
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params or {}, body, prefer))
         if table == "profiles":
-            return [{"id": target_id, "visibility": "public"}]
+            return [{"id": target_id, "visibility": "public", "account_status": "active"}]
         if table == "social_edges" and method == "GET":
             return []
-        if table == "social_edges" and method == "POST":
-            assert body["actor_user_id"] == actor_id
-            assert body["target_user_id"] == target_id
-            return [{"id": "edge-id", "target_user_id": target_id, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()}]
         raise AssertionError((method, table, params))
 
+    async def fake_service_db_request(function_name, *, body):
+        calls.append(("RPC", function_name, {}, body, None))
+        assert function_name == "create_social_edge_for_actor"
+        assert body["p_actor_user_id"] == actor_id
+        assert body["p_target_user_id"] == target_id
+        return [{"id": "edge-id", "target_user_id": target_id, "status": "active", "created_at": datetime.now(timezone.utc).isoformat()}]
+
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_user
     try:
         response = TestClient(app).put(f"/v1/social/follow/{target_id}")
@@ -496,6 +500,7 @@ def test_follow_public_profile_is_idempotent_and_uses_server_actor(monkeypatch):
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "active"
     assert response.json()["created"] is True
+    assert any(call[0] == "RPC" for call in calls)
 
 
 def test_unfollow_is_idempotent_and_actor_scoped(monkeypatch):
@@ -509,7 +514,7 @@ def test_unfollow_is_idempotent_and_actor_scoped(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         calls.append((method, table, params or {}))
-        assert method == "DELETE" and table == "social_edges"
+        assert method == "GET" and table == "social_edges"
         assert params["actor_user_id"] == f"eq.{actor_id}"
         assert params["target_user_id"] == f"eq.{target_id}"
         assert params["edge_type"] == "eq.follow"
@@ -523,6 +528,8 @@ def test_unfollow_is_idempotent_and_actor_scoped(monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["status"] == "not_following"
+    assert all(call[0] == "GET" for call in calls)
+
 
 def test_anonymous_can_read_comments_only_on_public_published_content(monkeypatch):
     content_id = "00000000-0000-0000-0000-000000000091"
@@ -623,14 +630,12 @@ def test_create_social_edge_replay_returns_existing_edge_without_duplicate_write
 
 
 def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
-    actor_id = "00000000-0000-0000-0000-000000000304"
-    target_id = "00000000-0000-0000-0000-000000000305"
+    actor_id = "00000000-0000-4000-8000-000000000304"
+    target_id = "00000000-0000-4000-8000-000000000305"
     created = {
-        "id": "00000000-0000-0000-0000-000000000306",
-        "actor_user_id": actor_id,
-        "target_user_id": target_id,
-        "edge_type": "follow",
-        "status": "requested",
+        "id": "00000000-0000-4000-8000-000000000306",
+        "actor_user_id": actor_id, "target_user_id": target_id,
+        "edge_type": "follow", "status": "requested",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     calls = []
@@ -644,16 +649,18 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
         if method == "GET" and path == "social_edges":
             return []
         if method == "GET" and path == "profiles":
-            assert params["select"] == "id,visibility,account_status"
             return [{"id": target_id, "visibility": "private", "account_status": "active"}]
-        assert method == "POST" and path == "social_edges"
-        assert body["actor_user_id"] == actor_id
-        assert body["target_user_id"] == target_id
-        assert body["edge_type"] == "follow"
-        assert body["status"] == "requested", "private-profile follow must not become active before owner approval"
+        raise AssertionError((method, path, params, body))
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append(("RPC", function_name, {}, body, None))
+        assert function_name == "create_social_edge_for_actor"
+        assert body["p_actor_user_id"] == actor_id and body["p_target_user_id"] == target_id
+        assert body["p_edge_type"] == "follow"
         return [created]
 
     monkeypatch.setattr(main_api, "user_db_request", fake_db)
+    monkeypatch.setattr(main_api, "service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_user
     try:
         response = TestClient(app).post(
@@ -667,7 +674,7 @@ def test_create_social_edge_reports_private_follow_as_pending(monkeypatch):
     payload = response.json()
     assert payload["idempotent_replay"] is False
     assert payload["outcome"] == "follow_request_created"
-    assert len(calls) == 5  # existing edge, target profile, two block directions, insert
+    assert [call[1] for call in calls if call[0] == "RPC"] == ["create_social_edge_for_actor"]
 
 
 def test_canonical_social_edge_rejects_deactivated_profile_before_relationship_write(monkeypatch):
@@ -870,17 +877,22 @@ def test_username_discovery_excludes_accounts_hidden_by_block_or_mute(monkeypatc
 def test_legacy_follow_route_persists_private_profile_follow_as_requested(monkeypatch):
     target_id = "22222222-2222-4222-8222-222222222223"
     writes = []
+
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         if table == "profiles":
             return [{"id": target_id, "visibility": "private", "account_status": "active"}]
         if table == "social_edges" and method == "GET":
             return []
-        if table == "social_edges" and method == "POST":
-            writes.append(body)
-            return [{"id": "legacy-private-follow", "target_user_id": target_id, "status": body["status"],
-                     "created_at": datetime.now(timezone.utc).isoformat()}]
-        raise AssertionError(f"unexpected relationship operation {method} {table}")
+        raise AssertionError(f"unexpected relationship read {method} {table}")
+
+    async def fake_service_db_request(function_name, *, body):
+        writes.append((function_name, body))
+        assert function_name == "create_social_edge_for_actor"
+        return [{"id": "legacy-private-follow", "target_user_id": target_id, "status": "requested",
+                 "created_at": datetime.now(timezone.utc).isoformat()}]
+
     monkeypatch.setattr(feed_api, "_server_db", fake_db)
+    monkeypatch.setattr(feed_api, "service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = _fixture_user
     try:
         response = TestClient(app).put(f"/v1/social/follow/{target_id}")
@@ -888,7 +900,7 @@ def test_legacy_follow_route_persists_private_profile_follow_as_requested(monkey
         app.dependency_overrides.clear()
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "requested"
-    assert writes and writes[0]["status"] == "requested"
+    assert writes and writes[0][0] == "create_social_edge_for_actor"
 
 
 def test_following_feed_returns_only_active_followed_creators(monkeypatch):

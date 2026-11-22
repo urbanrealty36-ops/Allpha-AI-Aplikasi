@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from allpha_api.auth import current_user, optional_current_user
+from allpha_api.auth import current_user, optional_current_user, service_db_request
 from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
 
@@ -910,23 +910,29 @@ async def follow_public_profile(
         or target_profile.get("account_status", "active") != "active"
     ):
         raise HTTPException(status_code=404, detail={"code": "PUBLIC_PROFILE_NOT_FOUND", "message": "Akun tidak ditemukan."})
-    for source, target in ((actor_id, target_id), (target_id, actor_id)):
-        blocks = await _server_db("GET", "social_edges", params={
-            "select": "id", "actor_user_id": f"eq.{source}", "target_user_id": f"eq.{target}",
-            "edge_type": "eq.block", "status": "eq.active", "limit": "1",
-        })
-        if blocks:
-            raise HTTPException(status_code=403, detail={"code": "SOCIAL_EDGE_BLOCKED", "message": "Tindakan ini tidak tersedia karena pembatasan akun."})
-    existing = await _server_db("GET", "social_edges", params={
+    edge_filter = {
         "select": "id,status", "actor_user_id": f"eq.{actor_id}", "target_user_id": f"eq.{target_id}",
+        "actor_node_type": "eq.human", "actor_agent_id": "is.null",
+        "target_node_type": "eq.human", "target_agent_id": "is.null",
         "edge_type": "eq.follow", "limit": "1",
-    })
+    }
+    existing = await _server_db("GET", "social_edges", params=edge_filter)
     if existing:
         return {"target_user_id": target_id, "status": existing[0].get("status"), "created": False}
-    follow_status = "requested" if target_profile.get("visibility") == "private" else "active"
-    rows = await _server_db("POST", "social_edges", params={"select": "id,target_user_id,status,created_at"},
-        body={"actor_user_id": actor_id, "target_user_id": target_id, "edge_type": "follow", "status": follow_status},
-        prefer="return=representation")
+    try:
+        rows = await service_db_request("create_social_edge_for_actor", body={
+            "p_actor_user_id": actor_id, "p_target_user_id": target_id,
+            "p_actor_node_type": "human", "p_target_node_type": "human",
+            "p_actor_agent_id": None, "p_target_agent_id": None,
+            "p_edge_type": "follow", "p_idempotency_key": None,
+        })
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        existing = await _server_db("GET", "social_edges", params=edge_filter)
+        if existing:
+            return {"target_user_id": target_id, "status": existing[0].get("status"), "created": False}
+        raise
     if not rows:
         raise HTTPException(status_code=409, detail={"code": "SOCIAL_FOLLOW_NOT_RECORDED", "message": "Permintaan mengikuti akun tidak dapat disimpan."})
     return {"target_user_id": target_id, "status": rows[0].get("status"), "created": True}
@@ -941,9 +947,16 @@ async def unfollow_profile(
     target_id = str(target_user_id)
     if actor_id == target_id:
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Akun tidak dapat mengikuti dirinya sendiri."})
-    await _server_db("DELETE", "social_edges", params={
-        "actor_user_id": f"eq.{actor_id}", "target_user_id": f"eq.{target_id}", "edge_type": "eq.follow",
-    }, prefer="return=minimal")
+    existing = await _server_db("GET", "social_edges", params={
+        "select": "id", "actor_user_id": f"eq.{actor_id}", "target_user_id": f"eq.{target_id}",
+        "actor_node_type": "eq.human", "actor_agent_id": "is.null",
+        "target_node_type": "eq.human", "target_agent_id": "is.null",
+        "edge_type": "eq.follow", "limit": "1",
+    })
+    if existing:
+        await service_db_request("remove_social_edge_for_actor", body={
+            "p_actor_user_id": actor_id, "p_edge_id": str(existing[0]["id"]),
+        })
     return {"target_user_id": target_id, "status": "not_following"}
 
 

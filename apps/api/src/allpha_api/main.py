@@ -691,11 +691,9 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
             "outcome": _social_edge_outcome(existing[0]),
         })
 
-    # Follow creation must enforce the same active-profile and reciprocal-block
-    # rules as Feed discovery. RLS alone is not the product relationship policy.
-    # Private-profile follows are explicit requests; never rely on a database
-    # default that could silently grant an active relationship.
-    follow_status: str | None = None
+    # The database policy trigger is authoritative for active actors, target
+    # privacy, reciprocal blocks and Agent ownership. Keep only the UX-friendly
+    # missing-profile lookup; never submit client-selected status or mutate tables.
     if payload.edge_type == "follow":
         target_profiles = await user_db_request("GET", "profiles", token, params={
             "select": "id,visibility,account_status",
@@ -712,37 +710,14 @@ async def create_my_social_edge(payload: SocialEdgeCreate, request: Request, use
                 "code": "PUBLIC_PROFILE_NOT_FOUND",
                 "message": "Akun tidak ditemukan.",
             })
-        follow_status = "requested" if target_profile.get("visibility") == "private" else "active"
-        for source_id, target_id in (
-            (str(user["id"]), str(payload.target_user_id)),
-            (str(payload.target_user_id), str(user["id"])),
-        ):
-            active_blocks = await user_db_request("GET", "social_edges", token, params={
-                "select": "id",
-                "actor_user_id": f"eq.{source_id}",
-                "target_user_id": f"eq.{target_id}",
-                "edge_type": "eq.block",
-                "status": "eq.active",
-                "limit": "1",
-            })
-            if active_blocks:
-                raise HTTPException(status_code=403, detail={
-                    "code": "SOCIAL_EDGE_BLOCKED",
-                    "message": "Relasi tidak dapat dibuat karena salah satu akun memblokir akun lainnya.",
-                })
 
     try:
-        rows = await user_db_request(
-            "POST", "social_edges", token,
-            body={
-                "actor_user_id": user["id"],
-                "target_user_id": str(payload.target_user_id),
-                "edge_type": payload.edge_type,
-                **({"status": follow_status} if follow_status else {}),
-            },
-            params={"select": edge_filter["select"]},
-            prefer="return=representation",
-        )
+        rows = await service_db_request("create_social_edge_for_actor", body={
+            "p_actor_user_id": str(user["id"]), "p_target_user_id": str(payload.target_user_id),
+            "p_actor_node_type": "human", "p_target_node_type": "human",
+            "p_actor_agent_id": None, "p_target_agent_id": None,
+            "p_edge_type": payload.edge_type, "p_idempotency_key": None,
+        })
     except HTTPException as exc:
         if exc.status_code != 409:
             raise
@@ -778,13 +753,9 @@ def _social_edge_outcome(edge: dict[str, Any]) -> str:
 
 @app.post("/v1/me/follow-requests/{edge_id}/accept", tags=["social"])
 async def accept_my_follow_request(edge_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await user_db_request(
-        "PATCH", "social_edges", request.state.supabase_access_token,
-        params={"id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
-                "edge_type": "eq.follow", "status": "eq.requested",
-                "select": "id,actor_user_id,target_user_id,edge_type,status,created_at"},
-        body={"status": "active"}, prefer="return=representation",
-    )
+    rows = await service_db_request("accept_social_follow_for_actor", body={
+        "p_actor_user_id": str(user["id"]), "p_edge_id": str(edge_id),
+    })
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan mengikuti tidak ditemukan atau sudah diproses."})
     await _drain_social_graph_outbox(batch_size=1)
@@ -793,12 +764,9 @@ async def accept_my_follow_request(edge_id: uuid.UUID, request: Request, user: d
 
 @app.delete("/v1/me/follow-requests/{edge_id}", tags=["social"])
 async def reject_my_follow_request(edge_id: uuid.UUID, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await user_db_request(
-        "DELETE", "social_edges", request.state.supabase_access_token,
-        params={"id": f"eq.{edge_id}", "target_user_id": f"eq.{user['id']}",
-                "edge_type": "eq.follow", "status": "eq.requested", "select": "id"},
-        prefer="return=representation",
-    )
+    rows = await service_db_request("reject_social_follow_for_actor", body={
+        "p_actor_user_id": str(user["id"]), "p_edge_id": str(edge_id),
+    })
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "FOLLOW_REQUEST_NOT_FOUND", "message": "Permintaan mengikuti tidak ditemukan atau sudah diproses."})
     await _drain_social_graph_outbox(batch_size=1)
@@ -809,13 +777,17 @@ async def reject_my_follow_request(edge_id: uuid.UUID, request: Request, user: d
 async def delete_my_social_edge(target_user_id: uuid.UUID, edge_type: Literal["follow", "block", "mute"], request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if str(target_user_id) == str(user["id"]):
         raise HTTPException(status_code=422, detail={"code": "SOCIAL_EDGE_SELF_TARGET", "message": "Relasi sosial tidak valid."})
-    rows = await user_db_request(
-        "DELETE", "social_edges", request.state.supabase_access_token,
+    edge_rows = await user_db_request(
+        "GET", "social_edges", request.state.supabase_access_token,
         params={"actor_user_id": f"eq.{user['id']}", "actor_node_type": "eq.human", "actor_agent_id": "is.null",
                 "target_user_id": f"eq.{target_user_id}", "target_node_type": "eq.human", "target_agent_id": "is.null",
-                "edge_type": f"eq.{edge_type}", "select": "id,target_user_id,edge_type"},
-        prefer="return=representation",
+                "edge_type": f"eq.{edge_type}", "select": "id,target_user_id,edge_type", "limit": "1"},
     )
+    if not edge_rows:
+        raise HTTPException(status_code=404, detail={"code": "SOCIAL_EDGE_NOT_FOUND", "message": "Relasi sosial tidak ditemukan."})
+    rows = await service_db_request("remove_social_edge_for_actor", body={
+        "p_actor_user_id": str(user["id"]), "p_edge_id": str(edge_rows[0]["id"]),
+    })
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "SOCIAL_EDGE_NOT_FOUND", "message": "Relasi sosial tidak ditemukan."})
     await _drain_social_graph_outbox(batch_size=1)
