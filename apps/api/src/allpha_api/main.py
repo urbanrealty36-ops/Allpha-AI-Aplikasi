@@ -625,9 +625,9 @@ async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(c
     )
     incoming_blocks = await user_db_request(
         "GET", "social_edges", token,
-        params={"select": "id,actor_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,created_at",
+        params={"select": "id,actor_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
                 "target_user_id": f"eq.{user['id']}", "edge_type": "eq.block",
-                "order": "created_at.desc", "limit": "500"},
+                "status": "eq.active", "order": "created_at.desc", "limit": "500"},
     )
     incoming_requests = await user_db_request(
         "GET", "social_edges", token,
@@ -642,8 +642,8 @@ async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(c
     )
     active_follows = sum(1 for edge in outgoing if edge.get("edge_type") == "follow" and edge.get("status") == "active")
     pending_follows = sum(1 for edge in outgoing if edge.get("edge_type") == "follow" and edge.get("status") == "requested")
-    blocks = sum(1 for edge in outgoing if edge.get("edge_type") == "block")
-    mutes = sum(1 for edge in outgoing if edge.get("edge_type") == "mute")
+    blocks = sum(1 for edge in outgoing if edge.get("edge_type") == "block" and edge.get("status") == "active")
+    mutes = sum(1 for edge in outgoing if edge.get("edge_type") == "mute" and edge.get("status") == "active")
     return {
         "outgoing": outgoing,
         "incoming_followers": incoming_followers,

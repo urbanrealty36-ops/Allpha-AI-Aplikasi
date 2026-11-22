@@ -1058,3 +1058,49 @@ def test_agent_repost_attribution_requires_active_public_agent_and_owner_link(mo
     assert shares[content_id][0]["agent"]["display_name"] == "Verified Agent"
     assert shares[content_id][0]["disclosure"] == "AI Agent repost"
     assert shares[content_id][0]["quote_body"] == "A quoted repost"
+
+
+def test_social_graph_summary_excludes_inactive_block_and_mute_edges(monkeypatch):
+    owner_id = "11111111-1111-4111-8111-111111111111"
+    calls = []
+
+    async def fake_user_db_request(method, table, token, *, params=None, body=None, prefer=None):
+        params = params or {}
+        calls.append((table, params))
+        if table == "social_edges" and params.get("actor_user_id") == f"eq.{owner_id}":
+            return [
+                {"edge_type": "block", "status": "active"},
+                {"edge_type": "block", "status": "removed"},
+                {"edge_type": "mute", "status": "active"},
+                {"edge_type": "mute", "status": "removed"},
+            ]
+        if table == "social_edges" and params.get("target_user_id") == f"eq.{owner_id}":
+            if params.get("edge_type") == "eq.block":
+                return [{"edge_type": "block", "status": "active"}]
+            return []
+        if table == "user_interests":
+            return []
+        raise AssertionError(f"unexpected table {table}: {params}")
+
+    monkeypatch.setattr(main_api, "user_db_request", fake_user_db_request)
+
+    def principal(request: Request):
+        request.state.supabase_access_token = "social-graph-summary-token"
+        request.state.user_id = owner_id
+        return {"id": owner_id, "email": "summary@example.invalid"}
+
+    app.dependency_overrides[current_user] = principal
+    try:
+        response = TestClient(app).get("/v1/me/social-graph")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["summary"]["blocked"] == 1
+    assert payload["summary"]["muted"] == 1
+    assert len(payload["blocked_by"]) == 1
+    incoming_block_query = next(params for table, params in calls
+                                if table == "social_edges" and params.get("edge_type") == "eq.block"
+                                and params.get("target_user_id") == f"eq.{owner_id}")
+    assert incoming_block_query["status"] == "eq.active"
