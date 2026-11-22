@@ -164,6 +164,16 @@ async def user_db_request(
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Akses ditolak oleh kebijakan otorisasi."})
     if response.status_code == 409:
         raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": "Data bertentangan dengan data yang sudah ada."})
+    if response.status_code == 404 and path.startswith("rpc/"):
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        if isinstance(payload, dict) and payload.get("code") in ("PGRST202", "PGRST203"):
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "DATABASE_SCHEMA_UNAVAILABLE", "message": "Kontrak layanan database belum tersedia. Coba lagi setelah sinkronisasi skema."},
+            )
     if response.status_code >= 500:
         raise HTTPException(status_code=503, detail={"code": "DATABASE_UNAVAILABLE", "message": "Database sementara tidak dapat diakses."})
     if response.status_code >= 400:

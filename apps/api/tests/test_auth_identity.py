@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from allpha_api.auth import current_session_user, current_user
+from allpha_api.auth import current_session_user, current_user, user_db_request
 from allpha_api.main import OrganizationCreate, ProfileUpdate, app
 
 client = TestClient(app)
@@ -913,3 +913,32 @@ def test_selected_session_revocation_is_uuid_validated_and_owner_scoped(monkeypa
     assert calls == [("POST", "rpc/revoke_my_auth_session", "owner-session-token", {
         "body": {"p_session_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
     })]
+
+
+def test_missing_postgrest_rpc_is_reported_as_schema_unavailable(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+
+    class FakeResponse:
+        status_code = 404
+        content = b'{"code":"PGRST202","message":"function not found"}'
+        def json(self):
+            return {"code": "PGRST202", "message": "function not found"}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def request(self, *args, **kwargs): return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://schema-test.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(user_db_request("POST", "rpc/list_my_auth_sessions", "owner-token", body={"p_current_session_id": "session-id"}))
+
+    assert caught.value.status_code == 503
+    assert caught.value.detail["code"] == "DATABASE_SCHEMA_UNAVAILABLE"
+    assert "PGRST202" not in str(caught.value.detail)
+    assert "owner-token" not in str(caught.value.detail)
