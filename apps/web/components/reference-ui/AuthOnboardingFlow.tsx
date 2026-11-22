@@ -538,7 +538,7 @@ export default function AuthOnboardingFlow({
             {/* Header */}
             <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3">
               <div>
-                <span className="text-[10px] font-black text-[#0284C7] tracking-wider uppercase">Langkah 1 dari 2</span>
+                <span className="text-[10px] font-black text-[#0284C7] tracking-wider uppercase">{t("auth.accountStep")}</span>
                 <h2 className="text-base font-black text-slate-900 uppercase">
                   {authMode === 'REGISTER' ? t('auth.registerTitle') : t('auth.loginTitle')}
                 </h2>
@@ -592,7 +592,7 @@ export default function AuthOnboardingFlow({
               {authMode === 'REGISTER' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-black text-slate-900">Nama Lengkap</label>
+                  <label className="text-[11px] font-black text-slate-900">{t("auth.name")}</label>
                   <input
                     type="text"
                     value={humanName}
