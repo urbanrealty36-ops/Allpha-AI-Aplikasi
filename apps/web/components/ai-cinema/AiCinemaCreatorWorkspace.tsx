@@ -120,6 +120,7 @@ export default function AiCinemaCreatorWorkspace() {
   const [generationCapabilityId, setGenerationCapabilityId] = useState("");
   const [generationPrompt, setGenerationPrompt] = useState("");
   const [generationQuote, setGenerationQuote] = useState<GenerationQuote | null>(null);
+  const [generationIdempotencyKey, setGenerationIdempotencyKey] = useState("");
   const [generationJobId, setGenerationJobId] = useState("");
   const [generationJob, setGenerationJob] = useState<GenerationJob | null>(null);
   const [generationArtifactText, setGenerationArtifactText] = useState("");
@@ -386,6 +387,7 @@ export default function AiCinemaCreatorWorkspace() {
         method: "POST", body: JSON.stringify(payload),
       });
       setGenerationQuote({ ...quote, request: payload });
+      setGenerationIdempotencyKey(crypto.randomUUID());
       setNotice("Estimasi AI Credits berhasil dihitung. Periksa biaya dan masa berlaku sebelum menjalankan generation.");
     } catch (cause) {
       setGenerationQuote(null);
@@ -426,13 +428,14 @@ export default function AiCinemaCreatorWorkspace() {
         "/v1/cinema/creator/titles/" + encodeURIComponent(selectedTitleId) + "/generation-jobs",
         {
           method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
+          headers: { "Idempotency-Key": generationIdempotencyKey || crypto.randomUUID() },
           body: JSON.stringify({ ...body, target_section: "screenplay" }),
         },
       );
       setGenerationJobId(created.job_id);
       setGenerationJob({ id: created.job_id, status: created.status });
       setGenerationQuote(null);
+      setGenerationIdempotencyKey("");
       setNotice("Generation Job dibuat melalui Agent Runtime dan AI Credit reservation. Output menunggu proses dan moderation.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Generation Job AI Cinema gagal dibuat.");
