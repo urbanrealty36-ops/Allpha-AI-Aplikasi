@@ -706,54 +706,71 @@ async def get_public_creator_recommendations(
     limit: int = Query(default=12, ge=1, le=30),
     user: dict[str, Any] | None = Depends(optional_current_user),
 ) -> dict[str, Any]:
-    """Recommend only public profile owners with real eligible public content; never invent verification or contact signals."""
+    """Recommend public Human and Agent nodes with independent graph visibility."""
     content_rows = await _server_db("GET", "content_items", params={
-        "select": "owner_id,published_at", "content_type": "not.eq.story",
+        "select": "owner_id,ai_agent_id,published_at", "content_type": "not.eq.story",
         "status": "eq.published", "moderation_status": "eq.approved", "visibility": "eq.public",
-        "order": "published_at.desc,id.desc", "limit": "1000",
+        "order": "published_at.desc,id.desc", "limit": "1500",
     })
     counts: dict[str, int] = {}
     latest: dict[str, str] = {}
     for row in content_rows or []:
-        creator_id = str(row.get("owner_id") or "")
-        if not creator_id:
+        key = _creator_node_key(row)
+        if key in {"human:", "agent:"}:
             continue
-        counts[creator_id] = counts.get(creator_id, 0) + 1
-        published_at = str(row.get("published_at") or "")
-        if creator_id not in latest or published_at > latest[creator_id]:
-            latest[creator_id] = published_at
+        counts[key] = counts.get(key, 0) + 1
+        stamp = str(row.get("published_at") or "")
+        if key not in latest or stamp > latest[key]:
+            latest[key] = stamp
     if not counts:
         return {"items": [], "count": 0, "source": "eligible_public_content"}
     owner = str(user["id"]) if user else None
     followed, hidden = await _edges(owner) if owner else (set(), set())
     excluded = hidden | followed
     if owner:
-        excluded.add(owner)
-    candidate_ids = [creator_id for creator_id in counts if creator_id not in excluded]
-    if not candidate_ids:
-        return {"items": [], "count": 0, "source": "eligible_public_content"}
-    profiles = await _server_db("GET", "profiles", params={
-        "select": "id,username,display_name,avatar_url,bio,visibility,account_status,created_at",
-        "id": f"in.({','.join(candidate_ids)})", "visibility": "eq.public", "account_status": "eq.active",
-        "limit": str(min(100, max(limit * 5, limit))),
-    })
-    by_id = {str(row.get("id")): row for row in (profiles or [])}
-    ranked = sorted((creator_id for creator_id in candidate_ids if creator_id in by_id),
-                    key=lambda creator_id: (counts[creator_id], latest.get(creator_id, "")), reverse=True)
-    items = []
-    for creator_id in ranked[:limit]:
-        profile = by_id[creator_id]
-        items.append({
-            "id": creator_id,
-            "username": profile.get("username"),
+        excluded.add("human:" + owner)
+    human_ids = [key.removeprefix("human:") for key in counts if key.startswith("human:") and key not in excluded]
+    agent_ids = [key.removeprefix("agent:") for key in counts if key.startswith("agent:") and key not in excluded]
+    profiles = await _profiles_for(set(human_ids))
+    human_items = []
+    for node_id in human_ids:
+        profile = profiles.get(node_id)
+        if not profile or profile.get("visibility") != "public" or profile.get("account_status", "active") != "active":
+            continue
+        key = "human:" + node_id
+        human_items.append({
+            "id": node_id, "username": profile.get("username"),
             "display_name": profile.get("display_name") or profile.get("username") or "Kreator",
-            "avatar_url": profile.get("avatar_url"),
-            "bio": profile.get("bio") or "",
-            "public_post_count": counts[creator_id],
-            "last_public_post_at": latest.get(creator_id),
-            "is_ai": False,
+            "avatar_url": profile.get("avatar_url"), "bio": profile.get("bio") or "",
+            "public_post_count": counts[key], "last_public_post_at": latest.get(key), "is_ai": False,
         })
-    return {"items": items, "count": len(items), "source": "eligible_public_content"}
+    agent_items = []
+    if agent_ids:
+        agents = await _server_db("GET", "ai_agents", params={
+            "select": "id,created_by,handle,display_name,avatar_url,description,visibility,status",
+            "id": "in.(" + ",".join(agent_ids) + ")", "visibility": "eq.public", "status": "eq.active",
+            "limit": str(min(500, len(agent_ids))),
+        })
+        owners = {str(row.get("created_by")) for row in (agents or []) if row.get("created_by")}
+        ownerships = await _server_db("GET", "agent_ownerships", params={
+            "select": "agent_id,owner_user_id", "agent_id": "in.(" + ",".join(agent_ids) + ")",
+            "ownership_role": "eq.owner", "status": "eq.active", "limit": str(min(1000, len(agent_ids) * 2)),
+        })
+        active_pairs = {(str(row.get("agent_id")), str(row.get("owner_user_id"))) for row in (ownerships or [])}
+        owner_profiles = await _profiles_for(owners)
+        for agent in agents or []:
+            agent_id, owner_id = str(agent["id"]), str(agent.get("created_by") or "")
+            if (agent_id, owner_id) not in active_pairs or not owner_profiles.get(owner_id) or owner_profiles[owner_id].get("account_status", "active") != "active":
+                continue
+            key = "agent:" + agent_id
+            agent_items.append({
+                "id": agent_id, "username": agent.get("handle"), "display_name": agent.get("display_name") or agent.get("handle"),
+                "avatar_url": agent.get("avatar_url"), "bio": agent.get("description") or "",
+                "public_post_count": counts.get(key, 0), "last_public_post_at": latest.get(key), "is_ai": True,
+            })
+    items = human_items + agent_items
+    items.sort(key=lambda item: (item["public_post_count"], item.get("last_public_post_at") or ""), reverse=True)
+    return {"items": items[:limit], "count": min(len(items), limit), "source": "eligible_public_content"}
 
 
 @router.get("/v1/social/discover-users", tags=["social-graph"])
