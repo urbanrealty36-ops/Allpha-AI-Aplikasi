@@ -641,6 +641,7 @@ export default function AuthOnboardingFlow({
                 </div>
               </div>
 
+              {authMode === 'LOGIN' && <div className="text-right"><a href="/forgot-password" className="text-[11px] font-black text-sky-700 underline">Lupa password?</a></div>}
               {authMode === 'REGISTER' && (
               <>
               <div>
