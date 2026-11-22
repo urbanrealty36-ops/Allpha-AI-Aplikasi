@@ -359,8 +359,8 @@ function PasswordRecovery() {
   useEffect(() => {
     let active = true;
     const refresh = async () => {
-      const { data } = await supabase?.auth.getSession() ?? { data: { session: null } };
-      if (active) setSessionReady(Boolean(data.session));
+      const result = await supabase?.auth.getSession();
+      if (active) setSessionReady(Boolean(result?.data.session));
     };
     void refresh();
     const subscription = supabase?.auth.onAuthStateChange((_event, next) => {
@@ -2228,7 +2228,7 @@ function Navigator() {
       if (!supabase || !rawUrl || processedAuthUrls.current.has(rawUrl)) return;
       let parsed: URL;
       try { parsed = new URL(rawUrl); } catch { return; }
-      const callbackPath = (parsed.hostname + parsed.pathname).replace(/^\\/+/, "").toLowerCase();
+      const callbackPath = (parsed.hostname + parsed.pathname).toLowerCase();
       if (callbackPath !== "auth/callback" && callbackPath !== "auth/recovery") return;
       processedAuthUrls.current.add(rawUrl);
       const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
