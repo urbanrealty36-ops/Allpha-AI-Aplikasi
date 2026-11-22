@@ -17,6 +17,9 @@ export default function AuthCallbackPage() {
   const [error, setError] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
   const codeExchangeCompleted = useRef(false);
+  const codeExchangeAttempted = useRef(false);
+  const accessTokenBeforeExchange = useRef<string | null>(null);
+  const codeExchangePromise = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -25,16 +28,46 @@ export default function AuthCallbackPage() {
       try {
         const code = params.get("code");
         if (code && !codeExchangeCompleted.current) {
-          // A previous exchange may have persisted the session even if the
-          // browser lost its response. Reuse it rather than consuming the code twice.
-          const { data: existing, error: existingError } = await supabase.auth.getSession();
-          if (existingError) throw existingError;
-          if (existing.session) {
-            codeExchangeCompleted.current = true;
-          } else {
-            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-            if (exchangeError) throw exchangeError;
-            codeExchangeCompleted.current = true;
+          // Never let an unrelated, already-persisted session bypass the OAuth
+          // code exchange. This matters when a different account was signed in
+          // before the callback URL was opened.
+          if (!codeExchangePromise.current) {
+            codeExchangePromise.current = (async () => {
+              if (!codeExchangeAttempted.current) {
+                const { data: beforeExchange, error: beforeError } = await supabase.auth.getSession();
+                if (beforeError) throw beforeError;
+                accessTokenBeforeExchange.current = beforeExchange.session?.access_token ?? null;
+                codeExchangeAttempted.current = true;
+              } else {
+                // Supabase may persist the new session even when the browser
+                // loses the exchange response. Accept it only if the token
+                // changed from the session captured before the first exchange.
+                const { data: recovered, error: recoveryError } = await supabase.auth.getSession();
+                if (recoveryError) throw recoveryError;
+                if (recovered.session && recovered.session.access_token !== accessTokenBeforeExchange.current) {
+                  codeExchangeCompleted.current = true;
+                  return;
+                }
+              }
+
+              const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              if (exchangeError) {
+                const { data: recovered, error: recoveryError } = await supabase.auth.getSession();
+                if (recoveryError) throw recoveryError;
+                if (recovered.session && recovered.session.access_token !== accessTokenBeforeExchange.current) {
+                  codeExchangeCompleted.current = true;
+                  return;
+                }
+                throw exchangeError;
+              }
+              codeExchangeCompleted.current = true;
+            })();
+          }
+          try {
+            await codeExchangePromise.current;
+          } catch (exchangeFailure) {
+            codeExchangePromise.current = null;
+            throw exchangeFailure;
           }
         }
         const { data, error: sessionError } = await supabase.auth.getSession();
