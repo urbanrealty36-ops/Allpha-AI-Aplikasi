@@ -103,21 +103,26 @@ async def list_social_actor_agents(
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """List only active Agent identities delegated to the authenticated Human."""
-    rows = await _rows("GET", "agent_ownerships", request.state.supabase_access_token, params={
-        "select": "agent_id,ownership_role,status,agent:ai_agents(id,handle,display_name,status)",
+    token = request.state.supabase_access_token
+    ownerships = await _rows("GET", "agent_ownerships", token, params={
+        "select": "agent_id,ownership_role,status",
         "owner_user_id": f"eq.{user['id']}", "ownership_role": "in.(owner,operator)",
         "status": "eq.active", "order": "created_at.desc", "limit": "100",
     })
-    items = []
-    for row in rows:
-        agent = row.get("agent")
-        if agent and agent.get("status") == "active":
-            items.append({
-                "id": str(agent["id"]), "handle": agent.get("handle"),
-                "display_name": agent.get("display_name"), "status": agent.get("status"),
-                "ownership_role": row.get("ownership_role"),
-            })
-    return {"items": items}
+    agent_ids = [str(row["agent_id"]) for row in ownerships if row.get("agent_id")]
+    if not agent_ids:
+        return {"items": []}
+    agents = await _rows("GET", "ai_agents", token, params={
+        "select": "id,handle,display_name,status",
+        "id": "in.(" + ",".join(agent_ids) + ")", "status": "eq.active", "limit": "100",
+    })
+    roles = {str(row["agent_id"]): row.get("ownership_role") for row in ownerships}
+    return {"items": [
+        {"id": str(agent["id"]), "handle": agent.get("handle"),
+         "display_name": agent.get("display_name"), "status": "active",
+         "ownership_role": roles.get(str(agent["id"]), "owner")}
+        for agent in (agents or [])
+    ]}
 
 
 @router.get("/relationships")
