@@ -65,7 +65,7 @@ export default function AuthOnboardingPage({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
   const [registerStep, setRegisterStep] = useState<1 | 2 | 3>(1);
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, t } = useLocale();
   const selectedLang = locale === 'id-ID' ? 'id' : 'en';
   const [isGoogleLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -269,7 +269,7 @@ export default function AuthOnboardingPage({
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-slate-900 animate-pulse" />
                 <span className="text-xs font-black text-slate-900">
-                  Slide Sapa {currentSlideIndex + 1} dari {onboardingSlides.length}:
+                  {t('onboarding.counter')} {currentSlideIndex + 1} {t('onboarding.counterOf')} {onboardingSlides.length}:
                 </span>
                 <span className="text-xs font-bold text-slate-600 hidden md:inline">
                   Kenali seluruh fitur ekosistem Allpha Universe sebelum masuk ke aplikasi utama.
