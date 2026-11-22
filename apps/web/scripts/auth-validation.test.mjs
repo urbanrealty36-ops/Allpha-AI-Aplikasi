@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isValidEmail } from "../lib/auth-validation.js";
+import { isValidEmail } from "../lib/auth-validation.mjs";
 
 test("accepts a normal email address", () => {
   assert.equal(isValidEmail("farhan@example.com"), true);

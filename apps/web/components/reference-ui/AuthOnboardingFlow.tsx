@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { isValidEmail } from '@/lib/auth-validation';
+import { isValidEmail } from '@/lib/auth-validation.mjs';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { 
   Sparkles, 
