@@ -49,6 +49,7 @@ assert.ok(workflows.includes('if (!supabase) return <main className="identity-sh
 const globalStyles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 assert.ok(globalStyles.includes(".config-card p{overflow-wrap:anywhere}"), "Workflow configuration keys must wrap at narrow mobile widths");
 
+{
 // Splash and both public/dedicated authentication entry points share canonical auth.
 const splashOnboardingSource = readFileSync(new URL("../components/reference-ui/AuthOnboardingPage.tsx", import.meta.url), "utf8");
 const welcomeModalSource = readFileSync(new URL("../app/welcome/page.tsx", import.meta.url), "utf8");
@@ -68,6 +69,7 @@ assert.ok(authFlowSource.includes("authMode === 'LOGIN'") && authFlowSource.incl
 assert.ok(globalStyles.includes("overflow-x: hidden") && globalStyles.includes("min-width: 0") &&
   globalStyles.includes("max-width: 100%"),
   "Global layout must constrain mobile viewport overflow");
+}
 
 
 const challenges = readFileSync(new URL("../app/skill-challenges/page.tsx", import.meta.url), "utf8");
