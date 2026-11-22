@@ -553,24 +553,24 @@ async def get_my_social_graph(request: Request, user: dict[str, Any] = Depends(c
     token = request.state.supabase_access_token
     outgoing = await user_db_request(
         "GET", "social_edges", token,
-        params={"select": "id,target_user_id,edge_type,status,created_at",
+        params={"select": "id,target_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
                 "actor_user_id": f"eq.{user['id']}", "order": "created_at.desc", "limit": "500"},
     )
     incoming_followers = await user_db_request(
         "GET", "social_edges", token,
-        params={"select": "id,actor_user_id,edge_type,status,created_at",
+        params={"select": "id,actor_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
                 "target_user_id": f"eq.{user['id']}", "edge_type": "eq.follow",
                 "status": "eq.active", "order": "created_at.desc", "limit": "500"},
     )
     incoming_blocks = await user_db_request(
         "GET", "social_edges", token,
-        params={"select": "id,actor_user_id,edge_type,created_at",
+        params={"select": "id,actor_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,created_at",
                 "target_user_id": f"eq.{user['id']}", "edge_type": "eq.block",
                 "order": "created_at.desc", "limit": "500"},
     )
     incoming_requests = await user_db_request(
         "GET", "social_edges", token,
-        params={"select": "id,actor_user_id,edge_type,status,created_at",
+        params={"select": "id,actor_user_id,actor_node_type,target_node_type,actor_agent_id,target_agent_id,edge_type,status,created_at",
                 "target_user_id": f"eq.{user['id']}", "edge_type": "eq.follow",
                 "status": "eq.requested", "order": "created_at.desc", "limit": "500"},
     )
