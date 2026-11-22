@@ -25,7 +25,7 @@ def _config() -> tuple[str, str]:
     return url, key
 
 
-async def current_user(
+async def current_session_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> dict[str, Any]:
@@ -70,6 +70,10 @@ async def current_user(
     if active is not True:
         raise HTTPException(status_code=401, detail={"code": "SESSION_REVOKED", "message": "Sesi telah dicabut atau kedaluwarsa. Silakan masuk kembali."})
 
+async def current_user(
+    request: Request,
+    user: dict[str, Any] = Depends(current_session_user),
+) -> dict[str, Any]:
     # Account lifecycle is a server-side authorization boundary, not a UI hint.
     # A deactivation request immediately prevents further protected API use,
     # even when the caller still holds an otherwise-valid Supabase access JWT.
@@ -94,10 +98,9 @@ async def current_user(
             detail={"code": "ACCOUNT_NOT_ACTIVE", "message": "Akun sedang dinonaktifkan dan tidak dapat menggunakan layanan."},
         )
 
-    request.state.user_id = user["id"]
-    request.state.auth_session_id = str(session_id)
-    request.state.supabase_access_token = credentials.credentials
+
     return user
+
 
 
 async def optional_current_user(
