@@ -51,6 +51,8 @@ def test_account_export_and_deletion_lifecycle_remain_owner_scoped_and_private()
     assert "jsonb_each(p_value)" in normalized
     assert "jsonb_array_elements(p_value)" in normalized
     assert "account_export_filter_kind_unsupported" in normalized
+    assert "set_account_retention_policy_active" in normalized
+    assert "platform:account_lifecycle.manage" in normalized
     assert "p_storage_path = j.user_id::text || '/' || j.id::text || '.json.gz'" in normalized
 
 
