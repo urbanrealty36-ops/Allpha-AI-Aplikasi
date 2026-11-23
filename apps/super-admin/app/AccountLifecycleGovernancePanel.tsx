@@ -11,6 +11,22 @@ type LegalHold = {
   id: string; subject_ref: string; reference_code: string; reason_code: string;
   active: boolean; created_at: string; released_at?: string | null;
 };
+type SourcePolicy = {
+  source_key: string; table_name: string; filter_kind: string; owner_columns: string[];
+  dependency_order: number; enabled: boolean; data_class?: string | null;
+  deletion_action?: string | null; policy_version?: string | null; reason?: string | null;
+  policy_active: boolean;
+};
+type DependencyRule = {
+  id: string; child_schema: string; child_table: string; constraint_name: string;
+  fk_column?: string | null; delete_rule: string; resolution_action: string;
+  reason?: string | null; active: boolean;
+};
+type SourceDraft = {
+  data_class: string; deletion_action: string; dependency_order: string;
+  policy_version: string; reason: string; active: boolean;
+};
+type DependencyDraft = { resolution_action: string; reason: string; active: boolean };
 type DeletionRequest = {
   id: string; subject_ref: string; status: string; policy_version?: string | null;
   requested_at: string; scheduled_for?: string | null; error_code?: string | null;
@@ -20,6 +36,10 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
   const [policies, setPolicies] = useState<RetentionPolicy[]>([]);
   const [holds, setHolds] = useState<LegalHold[]>([]);
   const [requests, setRequests] = useState<DeletionRequest[]>([]);
+  const [sourcePolicies, setSourcePolicies] = useState<SourcePolicy[]>([]);
+  const [dependencyRules, setDependencyRules] = useState<DependencyRule[]>([]);
+  const [sourceDrafts, setSourceDrafts] = useState<Record<string, SourceDraft>>({});
+  const [dependencyDrafts, setDependencyDrafts] = useState<Record<string, DependencyDraft>>({});
   const [dataClass, setDataClass] = useState("");
   const [retentionDays, setRetentionDays] = useState("");
   const [policyVersion, setPolicyVersion] = useState("");
@@ -56,14 +76,33 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
     setLoading(true); setError("");
     try {
       const query = statusFilter ? "?status=" + encodeURIComponent(statusFilter) : "";
-      const [policyPayload, holdPayload, requestPayload] = await Promise.all([
+      const [policyPayload, holdPayload, requestPayload, sourcePayload, dependencyPayload] = await Promise.all([
         request("/v1/admin/account-lifecycle/retention-policies"),
         request("/v1/admin/account-lifecycle/legal-holds"),
         request("/v1/admin/account-lifecycle/deletion-requests" + query),
+        request("/v1/admin/account-lifecycle/source-policies"),
+        request("/v1/admin/account-lifecycle/dependency-rules?limit=500"),
       ]);
+      const sourceItems: SourcePolicy[] = Array.isArray(sourcePayload?.items) ? sourcePayload.items : [];
+      const dependencyItems: DependencyRule[] = Array.isArray(dependencyPayload?.items) ? dependencyPayload.items : [];
       setPolicies(Array.isArray(policyPayload?.items) ? policyPayload.items : []);
       setHolds(Array.isArray(holdPayload?.items) ? holdPayload.items : []);
       setRequests(Array.isArray(requestPayload?.items) ? requestPayload.items : []);
+      setSourcePolicies(sourceItems);
+      setDependencyRules(dependencyItems);
+      setSourceDrafts(Object.fromEntries(sourceItems.map(item => [item.source_key, {
+        data_class: item.data_class || "owner_private",
+        deletion_action: item.deletion_action || "block",
+        dependency_order: String(item.dependency_order ?? 100),
+        policy_version: item.policy_version || "",
+        reason: item.reason || "",
+        active: item.policy_active === true,
+      }])));
+      setDependencyDrafts(Object.fromEntries(dependencyItems.map(item => [item.id, {
+        resolution_action: item.resolution_action || "block",
+        reason: item.reason || "",
+        active: item.active === true,
+      }])));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Governance lifecycle tidak dapat dimuat.");
     } finally { setLoading(false); }
@@ -97,6 +136,50 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
       setNotice("Status kebijakan " + policy.data_class + " diperbarui melalui transaksi backend.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Status kebijakan tidak dapat diubah."); }
+    finally { setBusy(false); }
+  }
+
+
+  async function saveSourcePolicy(item: SourcePolicy) {
+    const draft = sourceDrafts[item.source_key];
+    if (!draft || draft.reason.trim().length < 8 || !draft.policy_version.trim()) {
+      setError("Setiap pemetaan sumber membutuhkan versi kebijakan dan alasan minimal 8 karakter.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await request("/v1/admin/account-lifecycle/source-policies/" + encodeURIComponent(item.source_key), {
+        method: "PUT",
+        body: JSON.stringify({
+          data_class: draft.data_class, deletion_action: draft.deletion_action,
+          dependency_order: Number(draft.dependency_order), policy_version: draft.policy_version.trim(),
+          reason: draft.reason.trim(), active: draft.active,
+        }),
+      });
+      setNotice("Pemetaan sumber " + item.source_key + " tersimpan; status aktif mengikuti pilihan eksplisit.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pemetaan sumber gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
+  async function saveDependencyRule(item: DependencyRule) {
+    const draft = dependencyDrafts[item.id];
+    if (!draft || draft.reason.trim().length < 8) {
+      setError("Setiap aturan foreign key membutuhkan alasan minimal 8 karakter.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await request("/v1/admin/account-lifecycle/dependency-rules/" + encodeURIComponent(item.id), {
+        method: "PATCH",
+        body: JSON.stringify({
+          resolution_action: draft.resolution_action,
+          reason: draft.reason.trim(), active: draft.active,
+        }),
+      });
+      setNotice("Aturan " + item.constraint_name + " tersimpan dan tercatat di audit operator.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Aturan foreign key gagal disimpan."); }
     finally { setBusy(false); }
   }
 
@@ -155,6 +238,54 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
         </tbody></table></div>
       </section>
 
+
+      <section className="panel">
+        <header className="panelHead"><div><h3>Source-to-data-class deletion mapping</h3><p>Setiap source harus dipetakan eksplisit. Delete rows hanya tersedia untuk handler owner_columns; sumber dengan handler lain harus dipertahankan atau diblokir sampai handler khusus tersedia.</p></div></header>
+        <div className="tableWrap"><table><thead><tr><th>Source</th><th>Data class</th><th>Disposition</th><th>Order</th><th>Policy version / reason</th><th>Active</th><th>Aksi</th></tr></thead><tbody>
+          {sourcePolicies.map(item => {
+            const draft = sourceDrafts[item.source_key];
+            const ownerDeleteSupported = item.filter_kind === "owner_columns" && item.owner_columns.length > 0;
+            return <tr key={item.source_key}>
+              <td><strong>{item.source_key}</strong><br/><small>{item.table_name} · {item.filter_kind}</small></td>
+              <td><select aria-label={"Data class " + item.source_key} value={draft?.data_class || "owner_private"} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], data_class: event.target.value}}))}>
+                <option value="owner_private">owner_private</option><option value="agent_operational">agent_operational</option><option value="tenant_shared">tenant_shared</option><option value="published_knowledge">published_knowledge</option><option value="session_scoped">session_scoped</option><option value="public_catalog">public_catalog</option>
+              </select></td>
+              <td><select aria-label={"Disposition " + item.source_key} value={draft?.deletion_action || "block"} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], deletion_action: event.target.value}}))}>
+                <option value="block">block</option><option value="preserve">preserve</option><option value="delete_rows" disabled={!ownerDeleteSupported}>delete_rows{!ownerDeleteSupported ? " (handler unavailable)" : ""}</option>
+              </select></td>
+              <td><input aria-label={"Dependency order " + item.source_key} type="number" min={0} max={10000} value={draft?.dependency_order ?? "100"} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], dependency_order: event.target.value}}))} /></td>
+              <td><input aria-label={"Policy version " + item.source_key} value={draft?.policy_version ?? ""} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], policy_version: event.target.value}}))} placeholder="policy version" /><input aria-label={"Reason " + item.source_key} value={draft?.reason ?? ""} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], reason: event.target.value}}))} placeholder="decision rationale (min 8)" /></td>
+              <td><input aria-label={"Active " + item.source_key} type="checkbox" checked={draft?.active === true} onChange={event => setSourceDrafts(current => ({...current, [item.source_key]: {...current[item.source_key], active: event.target.checked}}))} /></td>
+              <td><button disabled={busy || !draft || draft.reason.trim().length < 8 || !draft.policy_version.trim()} onClick={() => void saveSourcePolicy(item)}>Simpan</button></td>
+            </tr>;
+          })}
+          {!sourcePolicies.length && <tr><td colSpan={7} className="emptyCell">{loading ? "Memuat registry sumber…" : "Registry sumber belum tersedia."}</td></tr>}
+        </tbody></table></div>
+      </section>
+
+      <section className="panel">
+        <header className="panelHead"><div><h3>Foreign-key dependency resolution</h3><p>Aksi dibatasi menurut delete rule PostgreSQL. Composite FK atau aksi yang tidak kompatibel tetap diblokir, bukan dipaksakan.</p></div></header>
+        <div className="tableWrap"><table><thead><tr><th>Child table / constraint</th><th>FK</th><th>Database rule</th><th>Resolution</th><th>Reason</th><th>Active</th><th>Aksi</th></tr></thead><tbody>
+          {dependencyRules.map(item => {
+            const draft = dependencyDrafts[item.id];
+            const choices = item.delete_rule === "CASCADE" ? ["database_cascade", "block"]
+              : item.delete_rule === "SET NULL" ? ["database_set_null", "block"]
+              : item.fk_column && ["RESTRICT", "NO ACTION"].includes(item.delete_rule) ? ["delete_rows", "block"] : ["block"];
+            return <tr key={item.id}>
+              <td><strong>{item.child_schema}.{item.child_table}</strong><br/><small>{item.constraint_name}</small></td>
+              <td>{item.fk_column || "composite / unresolved"}</td><td>{item.delete_rule}</td>
+              <td><select aria-label={"Resolution " + item.constraint_name} value={draft?.resolution_action || "block"} onChange={event => setDependencyDrafts(current => ({...current, [item.id]: {...current[item.id], resolution_action: event.target.value}}))}>
+                {choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+              </select></td>
+              <td><input aria-label={"Reason " + item.constraint_name} value={draft?.reason ?? ""} onChange={event => setDependencyDrafts(current => ({...current, [item.id]: {...current[item.id], reason: event.target.value}}))} placeholder="decision rationale (min 8)" /></td>
+              <td><input aria-label={"Active " + item.constraint_name} type="checkbox" checked={draft?.active === true} onChange={event => setDependencyDrafts(current => ({...current, [item.id]: {...current[item.id], active: event.target.checked}}))} /></td>
+              <td><button disabled={busy || !draft || draft.reason.trim().length < 8} onClick={() => void saveDependencyRule(item)}>Simpan</button></td>
+            </tr>;
+          })}
+          {!dependencyRules.length && <tr><td colSpan={7} className="emptyCell">{loading ? "Memuat aturan FK…" : "Tidak ada aturan FK."}</td></tr>}
+        </tbody></table></div>
+      </section>
+
       <section className="panel">
         <header className="panelHead"><div><h3>Legal holds</h3><p>Setiap hold membutuhkan reference code dan reason code dari proses legal yang berwenang.</p></div></header>
         <form className="grantForm" onSubmit={createHold}>
@@ -172,7 +303,7 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
 
       <section className="panel">
         <header className="panelHead"><div><h3>Permintaan penghapusan akun</h3><p>Daftar permintaan dan status fail-closed. Penjadwalan/penghapusan tidak tersedia selama seluruh kelas data belum memiliki kebijakan aktif dan legal hold belum diperiksa.</p></div>
-          <select aria-label="Filter status penghapusan" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">Semua status</option><option value="awaiting_policy">awaiting_policy</option><option value="scheduled">scheduled</option><option value="processing">processing</option><option value="blocked_legal_hold">blocked_legal_hold</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="failed">failed</option></select>
+          <select aria-label="Filter status penghapusan" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">Semua status</option><option value="awaiting_policy">awaiting_policy</option><option value="scheduled">scheduled</option><option value="processing">processing</option><option value="blocked_legal_hold">blocked_legal_hold</option><option value="blocked_dependency">blocked_dependency</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="failed">failed</option></select>
         </header>
         <div className="tableWrap"><table><thead><tr><th>Request</th><th>Subject</th><th>Status</th><th>Diminta</th><th>Terjadwal</th><th>Error</th></tr></thead><tbody>
           {requests.map(item => <tr key={item.id}><td><code>{item.id}</code></td><td><code>{item.subject_ref}</code></td><td><span className="pill warning">{item.status}</span></td><td>{new Date(item.requested_at).toLocaleString("id-ID")}</td><td>{item.scheduled_for ? new Date(item.scheduled_for).toLocaleString("id-ID") : "—"}</td><td>{item.error_code || "—"}</td></tr>)}
