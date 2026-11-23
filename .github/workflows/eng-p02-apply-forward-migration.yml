@@ -184,7 +184,7 @@ jobs:
             echo "Target migration 20261123191500 is already recorded; no second apply is required." \
               | tee ../recovery-evidence/migration-dry-run.txt
           else
-            supabase db push --dry-run --db-url "$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
+            supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/migration-dry-run.txt
             dry_run_file="../recovery-evidence/migration-dry-run.txt"
             test -s "$dry_run_file"
             grep -Fq "Would push these migrations:" "$dry_run_file"
