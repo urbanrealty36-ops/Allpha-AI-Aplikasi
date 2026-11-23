@@ -9,6 +9,8 @@ on:
       - "apps/api/src/allpha_api/interest_graph_api.py"
       - "apps/api/src/allpha_api/recommendation_engine.py"
       - "apps/api/tests/test_account_lifecycle_worker_lifespan.py"
+      - "apps/api/tests/test_eng_p03_interest_graph_export_migration_contract.py"
+      - "apps/api/supabase/migrations/20261123201000_eng_p03_export_interest_graph_sources.sql"
       - "apps/api/tests/test_social_graph_polymorphic_api.py"
       - "apps/api/tests/test_interest_graph_api.py"
       - "apps/api/tests/test_recommendation_engine.py"
@@ -44,6 +46,7 @@ jobs:
         run: |
           python -m pytest \
             tests/test_account_lifecycle_worker_lifespan.py \
+            tests/test_eng_p03_interest_graph_export_migration_contract.py \
             tests/test_interest_graph_api.py \
             tests/test_recommendation_engine.py \
             tests/test_social_graph_polymorphic_api.py \
