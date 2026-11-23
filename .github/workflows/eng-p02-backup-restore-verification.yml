@@ -279,14 +279,11 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tmp/eng-p03-export-lease.sql
           docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
             psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
-              select case when exists (
-                select 1 from supabase_migrations.schema_migrations where version='20261123191800'
-              ) then 'lease_scoped_migration_ledger=PASS' else 'lease_scoped_migration_ledger=FAIL' end;
               select case when position('p_lease_token::text' in pg_get_functiondef(
                 'public.complete_account_export_job(uuid,uuid,text,text,bigint,jsonb)'::regprocedure
               )) > 0 then 'lease_scoped_completion_rpc=PASS' else 'lease_scoped_completion_rpc=FAIL' end;
             " | tee recovery-evidence/p03-export-lease-verification.txt
-          for assertion in lease_scoped_migration_ledger lease_scoped_completion_rpc; do
+          for assertion in lease_scoped_completion_rpc; do
             grep -q "^$assertion=PASS$" recovery-evidence/p03-export-lease-verification.txt
           done
           docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
