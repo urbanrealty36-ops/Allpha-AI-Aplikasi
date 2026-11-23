@@ -7,7 +7,14 @@ on:
       - ".github/workflows/eng-p03-p04-focused-regression.yml"
       - "apps/api/src/allpha_api/main.py"
       - "apps/api/src/allpha_api/account_lifecycle_api.py"
+      - "apps/api/src/allpha_api/account_lifecycle_governance_api.py"
       - "apps/api/src/allpha_api/account_lifecycle_worker.py"
+      - "apps/super-admin/app/AccountLifecycleGovernancePanel.tsx"
+      - "apps/api/supabase/migrations/20261124120000_eng_p03_account_deletion_ownership_transfers.sql"
+      - "apps/api/supabase/migrations/20261124140000_eng_p03_account_deletion_attribution_anonymization.sql"
+      - "apps/api/tests/test_account_lifecycle_api.py"
+      - "apps/api/tests/test_account_lifecycle_governance_api.py"
+      - "apps/api/tests/test_eng_p03_account_deletion_disposition_migration_contract.py"
       - "apps/web/app/account/AccountDataLifecyclePanel.tsx"
       - "apps/client/components/AccountDataLifecycleScreen.tsx"
       - "apps/api/supabase/migrations/20261123125248_eng_p03_account_export_progress.sql"
@@ -59,6 +66,9 @@ jobs:
         working-directory: apps/api
         run: |
           python -m pytest \
+            tests/test_account_lifecycle_api.py \
+            tests/test_account_lifecycle_governance_api.py \
+            tests/test_eng_p03_account_deletion_disposition_migration_contract.py \
             tests/test_account_lifecycle_worker.py \
             tests/test_account_lifecycle_worker_lifespan.py \
             tests/test_account_lifecycle_worker_progress.py \
