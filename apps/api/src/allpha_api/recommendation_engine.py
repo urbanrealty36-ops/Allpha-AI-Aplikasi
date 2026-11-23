@@ -5,11 +5,11 @@ from math import isfinite, log1p
 from typing import Any
 
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "followed_creator": 2.0,
-    "explicit_interest": 3.0,
-    "passion": 1.5,
-    "habit": 0.75,
-    "engagement": 0.2,
+    "followed_creator": 1000.0,
+    "explicit_interest": 100.0,
+    "passion": 25.0,
+    "habit": 10.0,
+    "engagement": 1.0,
     "mutual_connection": 2.0,
     "shared_interest": 3.0,
 }
