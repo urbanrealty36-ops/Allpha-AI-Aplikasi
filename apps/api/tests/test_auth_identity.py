@@ -220,6 +220,7 @@ def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(mo
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "tenant-b-token"
+        request.state.user_id = "tenant-b-user"
         return {"id": "tenant-b-user", "email": "tenant-b@example.invalid"}
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
@@ -400,6 +401,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
 
     async def fake_current_user(request: Request):
         request.state.supabase_access_token = "tenant-a-session-token"
+        request.state.user_id = "tenant-a-user"
         return {"id": "tenant-a-user", "email": "tenant-a@example.invalid"}
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", fake_user_db_request)
