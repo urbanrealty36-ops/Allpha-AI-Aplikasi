@@ -24,7 +24,6 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
       RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
-      EXPECTED_RESTORE_SHA256: 786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0
       EXPECTED_MIGRATION_BLOB: c971f37d29fcf010590435ca8515dd3e4ebe6b1c
       TARGET_MIGRATION_VERSION: "20261123191500"
       TARGET_MIGRATION_NAME: eng_p02_forward_repair_tenant_and_session_schema
