@@ -60,5 +60,7 @@ def test_tenant_rls_predicates_are_executable_only_for_authenticated_members():
     assert "grant execute on function private.is_organization_admin(uuid) to authenticated;" in sql
     assert "revoke all on function private.is_organization_member(uuid) from public,anon;" in sql
     assert "revoke all on function private.is_organization_admin(uuid) from public,anon;" in sql
-    assert "using (private.is_organization_member(id) or owner_id = (select auth.uid()))" in sql
+    assert "create trigger organizations_add_creator_as_owner after insert on public.organizations" in sql
+    assert "using (private.is_organization_member(id));" in sql
+    assert "using (private.is_organization_member(id) or owner_id = (select auth.uid()))" not in sql
     assert "or private.is_organization_admin(organization_id))" in sql
