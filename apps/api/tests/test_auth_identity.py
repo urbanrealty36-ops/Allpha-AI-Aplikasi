@@ -435,6 +435,7 @@ def test_membership_lookup_for_authorized_user_uses_session_token_and_org_scope(
 
 
 def test_record_consent_uses_authenticated_user_and_caller_session(monkeypatch):
+    monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "policy-test-v1")
     calls = []
 
     async def fake_user_db_request(method, path, access_token, **kwargs):
