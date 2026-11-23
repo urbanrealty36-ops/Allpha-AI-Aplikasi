@@ -469,7 +469,7 @@ async def get_social_recommendations(
             "display_name": profile.get("display_name"), "avatar_url": profile.get("avatar_url"),
             "bio": profile.get("bio"), "mutual_followers_count": mutual_count,
             "shared_interests_count": shared_count,
-            "recommendation_score": mutual_count * 2 + shared_count * 3,
+            "recommendation_score": score_creator_candidate(mutual_count, shared_count, policy_weights),
             "reason": "mutual_connections_and_shared_interests" if mutual_count and shared_count else "shared_interests" if shared_count else "mutual_connections",
         })
         if len(items) >= limit:
