@@ -46,3 +46,36 @@ def test_remaining_source_dispositions_preserve_shared_conversations_and_spatial
     assert "v_step.action='anonymize'" in source
     assert "p.deletion_action in ('preserve','anonymize')" in source
     assert "cinema_episodes','cinema_titles" in source
+
+
+
+IDENTITY_TOMBSTONES = MIGRATIONS / "20261124193000_eng_p03_identity_tombstones_and_provider_cancellation.sql"
+
+
+def test_financial_fk_references_use_private_pseudonymous_identity_subjects():
+    source = " ".join(IDENTITY_TOMBSTONES.read_text(encoding="utf-8").lower().split())
+    assert "create table if not exists private.account_identity_subjects" in source
+    assert "subject_ref text not null unique check (subject_ref ~ '^[a-f0-9]{64}$')" in source
+    assert "references private.account_identity_subjects(subject_id) on delete restrict" in source
+    assert "billing_orders_owner_user_id_fkey" in source
+    assert "billing_receipts_owner_user_id_fkey" in source
+    assert "credit_ledger_accounts_owner_user_id_fkey" in source
+    assert "content_retention_holds_created_by_fkey" in source
+    assert "resolution_action='preserve_tombstone'" in source
+    assert "account_deletion_identity_tombstone_conflict" in source
+    assert "account_deletion_active_subscription_unresolved" in source
+
+
+def test_subscription_cancellation_is_leased_idempotent_and_provider_confirmed():
+    source = " ".join(IDENTITY_TOMBSTONES.read_text(encoding="utf-8").lower().split())
+    assert "private.account_deletion_subscription_cancellation_jobs" in source
+    assert "public.prepare_account_deletion_subscription_cancellations()" in source
+    assert "public.claim_account_deletion_subscription_cancellation_jobs" in source
+    assert "public.complete_account_deletion_subscription_cancellation_job" in source
+    assert "public.fail_account_deletion_subscription_cancellation_job" in source
+    assert "idempotency_key text not null unique" in source
+    assert "lease_expires_at" in source
+    assert "status='completed'" in source
+    assert "generation_artifact_deletions" in source
+    assert "account_deletion_artifact_queue_lease_active" in source
+    assert "account_deletion_subscription_cancellation_pending" in source
