@@ -377,6 +377,7 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
                           idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
                           user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     key, _ = _billing_config()
+    stripe_environment = os.getenv("ALLPHA_STRIPE_MODE", "test").strip().lower()
     if not idempotency_key or not 8 <= len(idempotency_key) <= 160:
         raise HTTPException(400, detail={"code": "IDEMPOTENCY_KEY_REQUIRED", "message": "Idempotency-Key 8–160 karakter wajib dikirim."})
     products = await _db("GET", "billing_products", params={
@@ -420,7 +421,7 @@ async def create_checkout(payload: CheckoutCreate, request: Request,
 
     created = await _rpc("billing_create_order", {
         "p_owner_user_id": str(user["id"]), "p_product_key": payload.product_key,
-        "p_idempotency_key": idempotency_key,
+        "p_idempotency_key": idempotency_key, "p_stripe_environment": stripe_environment,
     })
     if not isinstance(created, dict) or not created.get("order_id"):
         raise HTTPException(503, detail={"code": "BILLING_ORDER_NOT_CONFIRMED", "message": "Pesanan belum dapat disimpan secara permanen."})
