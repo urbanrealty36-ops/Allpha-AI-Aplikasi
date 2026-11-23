@@ -226,7 +226,15 @@ export default function AccountLifecycleGovernancePanel({ apiBase, getAccessToke
       <section className="panel">
         <header className="panelHead"><div><h3>Kebijakan retensi per kelas data</h3><p>Nilai dan dasar hukum harus berasal dari keputusan yang disahkan. Kebijakan baru selalu nonaktif sampai operator mengaktifkannya.</p></div></header>
         <form className="grantForm" onSubmit={createPolicy}>
-          <label>Data class<input value={dataClass} onChange={event => setDataClass(event.target.value)} pattern="[a-z][a-z0-9_]{1,63}" maxLength={64} required placeholder="contoh: social_content" /></label>
+          <label>Data class<select value={dataClass} onChange={event => setDataClass(event.target.value)} required>
+            <option value="">Pilih kelas data</option>
+            <option value="owner_private">owner_private</option>
+            <option value="agent_operational">agent_operational</option>
+            <option value="tenant_shared">tenant_shared</option>
+            <option value="published_knowledge">published_knowledge</option>
+            <option value="session_scoped">session_scoped</option>
+            <option value="public_catalog">public_catalog</option>
+          </select></label>
           <label>Retention days<input type="number" min={0} max={36500} step={1} value={retentionDays} onChange={event => setRetentionDays(event.target.value)} required /></label>
           <label>Policy version<input value={policyVersion} onChange={event => setPolicyVersion(event.target.value)} maxLength={40} required placeholder="referensi versi resmi" /></label>
           <label>Legal basis<textarea value={legalBasis} onChange={event => setLegalBasis(event.target.value)} minLength={8} maxLength={500} required placeholder="Dasar hukum yang disetujui, bukan teks otomatis." /></label>
