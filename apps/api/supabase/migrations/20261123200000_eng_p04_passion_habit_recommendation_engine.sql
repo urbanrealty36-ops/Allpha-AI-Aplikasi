@@ -87,7 +87,7 @@ begin
   if p_actor_user_id is null or not exists(select 1 from auth.users u where u.id=p_actor_user_id) then
     raise exception 'interest_signal_actor_not_found' using errcode='P0002';
   end if;
-  if p_signal_type not in ('passion','habit')
+  if p_signal_type is null or p_signal_type not in ('passion','habit')
      or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
      or p_strength is null or p_strength < 0 or p_strength > 1
      or p_consent_version is null or char_length(p_consent_version) not between 1 and 80 then
@@ -143,6 +143,10 @@ begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
+  if p_actor_user_id is null or not exists(select 1 from auth.users u where u.id=p_actor_user_id)
+     or p_signal_type is null or p_signal_type not in ('passion','habit') then
+    raise exception 'interest_signal_actor_or_type_invalid' using errcode='22023';
+  end if;
   select c.interest_key into v_key from public.interest_catalog c
    where c.active and (lower(c.interest_key)=lower(p_interest_key)
       or exists(select 1 from unnest(c.aliases) a where lower(a)=lower(p_interest_key)))
@@ -168,6 +172,9 @@ declare v_count integer;
 begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
+  end if;
+  if p_actor_user_id is null or not exists(select 1 from auth.users u where u.id=p_actor_user_id) then
+    raise exception 'interest_signal_actor_not_found' using errcode='P0002';
   end if;
   delete from public.user_interest_graph_signals s where s.user_id=p_actor_user_id;
   get diagnostics v_count=row_count;
