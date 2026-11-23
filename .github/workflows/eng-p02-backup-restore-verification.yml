@@ -1,0 +1,165 @@
+name: ENG-P02 Verify Pre-Migration Backup Restore
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/eng-p02-backup-restore-verification.yml
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: eng-p02-backup-restore-verification
+  cancel-in-progress: false
+
+jobs:
+  restore-backup-to-disposable-supabase-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BACKUP_RUN_ID: "45095637852"
+      BACKUP_ARTIFACT_ID: "14783236131"
+      EXPECTED_BACKUP_SHA256: "786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0"
+      LOCAL_DB_PASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the exact pre-migration backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eng-p02-pre-migration-db-backup
+          path: recovery-evidence
+          run-id: ${{ env.BACKUP_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Verify artifact identity and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s recovery-evidence/allpha-p02-pre-migration.dump
+          test -s recovery-evidence/restore-point-evidence.json
+          actual_sha256="$(sha256sum recovery-evidence/allpha-p02-pre-migration.dump | awk '{print $1}')"
+          test "$actual_sha256" = "$EXPECTED_BACKUP_SHA256"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("recovery-evidence/restore-point-evidence.json").read_text())
+          assert manifest["project_ref"] == "dvdziauyvuhcnqhrrvww"
+          assert manifest["restore_tested"] is False
+          assert manifest["database_migration_applied"] is False
+          assert manifest["restore_executed"] is False
+          assert manifest["sha256"] == "786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0"
+          print("Backup artifact identity and original manifest verified; no production restore or DDL is performed.")
+          PY
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start an isolated local Supabase PostgreSQL 17 stack
+        working-directory: apps/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase start
+
+      - name: Create a separate disposable restore database
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD="$LOCAL_DB_PASSWORD" \
+            postgres:17-alpine \
+            psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+              -v ON_ERROR_STOP=1 \
+              -c 'CREATE DATABASE allpha_p02_restore_verification'
+
+      - name: Restore the full custom archive into the disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD="$LOCAL_DB_PASSWORD" \
+            -v "$PWD/recovery-evidence:/backup:ro" \
+            postgres:17-alpine \
+            pg_restore \
+              --host=127.0.0.1 \
+              --port=54322 \
+              --username=postgres \
+              --dbname=allpha_p02_restore_verification \
+              --no-owner \
+              --no-privileges \
+              --exit-on-error \
+              /backup/allpha-p02-pre-migration.dump
+
+      - name: Verify restored schema, RLS and migration history
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD="$LOCAL_DB_PASSWORD" \
+            postgres:17-alpine \
+            psql -h 127.0.0.1 -p 54322 -U postgres -d allpha_p02_restore_verification \
+              -v ON_ERROR_STOP=1 -Atc "
+                select case when current_database()='allpha_p02_restore_verification' then 'database_identity=PASS' else 'database_identity=FAIL' end;
+                select case when to_regclass('auth.users') is not null then 'auth_users=PASS' else 'auth_users=FAIL' end;
+                select case when to_regclass('public.profiles') is not null then 'profiles=PASS' else 'profiles=FAIL' end;
+                select case when to_regclass('public.user_settings') is not null then 'user_settings=PASS' else 'user_settings=FAIL' end;
+                select case when to_regclass('public.user_consents') is not null then 'user_consents=PASS' else 'user_consents=FAIL' end;
+                select case when to_regclass('supabase_migrations.schema_migrations') is not null then 'migration_history=PASS' else 'migration_history=FAIL' end;
+                select case when bool_and(relrowsecurity) then 'identity_rls=PASS' else 'identity_rls=FAIL' end
+                  from pg_class c join pg_namespace n on n.oid=c.relnamespace
+                 where n.nspname='public' and c.relname in ('profiles','user_settings','user_consents');
+                select 'profile_rows=' || count(*) from public.profiles;
+                select 'settings_rows=' || count(*) from public.user_settings;
+                select 'consent_rows=' || count(*) from public.user_consents;
+                select 'remote_migration_high_water=' || coalesce(max(version), 'none') from supabase_migrations.schema_migrations;
+              " | tee recovery-evidence/restore-verification.txt
+          grep -q '^database_identity=PASS$' recovery-evidence/restore-verification.txt
+          grep -q '^auth_users=PASS$' recovery-evidence/restore-verification.txt
+          grep -q '^profiles=PASS$' recovery-evidence/restore-verification.txt
+          grep -q '^user_settings=PASS$' recovery-evidence/restore-verification.txt
+          grep -q '^user_consents=PASS$' recovery-evidence/restore-verification.txt
+          grep -q '^migration_history=PASS$' recovery-evidence/restore-verification.txt
+          grep -q '^identity_rls=PASS$' recovery-evidence/restore-verification.txt
+
+      - name: Publish sanitized restore-test evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
+          evidence = Path("recovery-evidence/restore-verification.txt").read_text().splitlines()
+          result = {
+              "project_ref": "dvdziauyvuhcnqhrrvww",
+              "source_backup_run_id": 45095637852,
+              "source_backup_artifact_id": 14783236131,
+              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "restore_target": "isolated local Supabase PostgreSQL 17 disposable database",
+              "restore_completed": True,
+              "restore_verified_at_utc": datetime.now(timezone.utc).isoformat(),
+              "production_database_touched": False,
+              "production_migration_applied": False,
+              "checks": evidence,
+              "storage_objects_included": False,
+              "rpo_rto": "Not established by this logical database restore test",
+          }
+          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2))
+          print(json.dumps(result, indent=2))
+          PY
+
+      - name: Upload restore verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p02-disposable-restore-verification
+          path: |
+            recovery-evidence/restore-verification.json
+            recovery-evidence/restore-verification.txt
+          if-no-files-found: error
+          retention-days: 90
