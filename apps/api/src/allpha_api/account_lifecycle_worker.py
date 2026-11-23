@@ -52,6 +52,19 @@ class AccountLifecycleWorker:
         response.raise_for_status()
         return response.json() if response.content else None
 
+    async def set_progress(self, job_id: str, lease_token: str, percent: int, stage: str) -> None:
+        updated = await self.rpc(
+            "update_account_export_job_progress",
+            {
+                "p_job_id": job_id,
+                "p_lease_token": lease_token,
+                "p_progress_percent": percent,
+                "p_progress_stage": stage,
+            },
+        )
+        if updated is not True:
+            raise RuntimeError("ACCOUNT_EXPORT_PROGRESS_NOT_RECORDED")
+
     async def upload(self, object_path: str, payload: bytes) -> None:
         response = await self.client.post(
             f"{self.base}/storage/v1/object/account-exports/{quote(object_path, safe='/')}",
@@ -133,6 +146,7 @@ class AccountLifecycleWorker:
                 self._maintain_lease(job_id, lease_token, stop_heartbeat, lease_lost)
             )
 
+            await self.set_progress(job_id, lease_token, 10, "snapshot")
             snapshot = await self.rpc(
                 "build_my_account_export_snapshot",
                 {"p_job_id": job_id, "p_lease_token": lease_token},
@@ -159,6 +173,7 @@ class AccountLifecycleWorker:
             ):
                 raise RuntimeError("ACCOUNT_EXPORT_SNAPSHOT_INCOMPLETE")
 
+            await self.set_progress(job_id, lease_token, 50, "compress")
             encoded = json.dumps(
                 snapshot,
                 ensure_ascii=False,
@@ -171,10 +186,12 @@ class AccountLifecycleWorker:
             # overwriting the artifact produced by a worker holding a newer lease.
             object_path = f"{user_id}/{job_id}/{lease_token}.json.gz"
             uploaded_path = object_path
+            await self.set_progress(job_id, lease_token, 75, "upload")
             await self.upload(object_path, compressed)
             if lease_lost.is_set():
                 raise RuntimeError("ACCOUNT_EXPORT_LEASE_LOST")
 
+            await self.set_progress(job_id, lease_token, 90, "publishing")
             completion_attempted = True
             completed = await self.rpc(
                 "complete_account_export_job",
