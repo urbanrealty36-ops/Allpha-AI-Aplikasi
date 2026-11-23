@@ -163,7 +163,7 @@ def test_interest_signal_rejects_client_supplied_consent_version():
             headers={"Authorization": "Bearer interest-graph-token"},
             json={
                 "interest_key": "technology", "signal_type": "habit", "strength": 0.5,
-                "signal_source": "observed_interaction", "consent_version": "client-forged-version",
+                "signal_source": "explicit_feedback", "consent_version": "client-forged-version",
             },
         )
     finally:
@@ -190,3 +190,23 @@ def test_interest_catalog_and_taxonomy_relationships_are_server_read_only(monkey
     assert response.json()["items"][0]["interest_key"] == "technology"
     assert response.json()["relationships"][0]["relation_type"] == "parent_of"
     assert [call[1] for call in calls] == ["interest_catalog", "interest_taxonomy_edges"]
+
+
+def test_client_cannot_forge_server_observed_interest_signals():
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-graph-token"
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.put(
+            "/v1/me/interest-signals",
+            headers={"Authorization": "Bearer interest-graph-token"},
+            json={
+                "interest_key": "technology", "signal_type": "habit", "strength": 0.5,
+                "signal_source": "observed_interaction",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
