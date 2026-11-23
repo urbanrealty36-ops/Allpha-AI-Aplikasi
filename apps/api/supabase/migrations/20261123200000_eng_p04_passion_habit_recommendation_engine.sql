@@ -175,14 +175,22 @@ begin
       or exists(select 1 from unnest(c.aliases) a where lower(a)=lower(p_interest_key)))
    order by case when lower(c.interest_key)=lower(p_interest_key) then 0 else 1 end limit 1;
   if v_key is null then raise exception 'interest_key_not_in_catalog' using errcode='P0002'; end if;
-  return query delete from public.user_interest_graph_signals s
-   where s.user_id=p_actor_user_id and s.agent_id is not distinct from p_agent_id
-     and s.interest_key=v_key and s.signal_type=p_signal_type
-   returning s.interest_key,s.signal_type,s.agent_id;
-  if found then
-    insert into public.user_interest_graph_signal_events(user_id,agent_id,interest_key,signal_type,action)
-    values(p_actor_user_id,p_agent_id,v_key,p_signal_type,'delete');
-  end if;
+  return query
+  with deleted as (
+    delete from public.user_interest_graph_signals s
+     where s.user_id=p_actor_user_id and s.agent_id is not distinct from p_agent_id
+       and s.interest_key=v_key and s.signal_type=p_signal_type
+    returning s.user_id,s.agent_id,s.interest_key,s.signal_type,s.signal_source,s.consent_version
+  ), logged as (
+    insert into public.user_interest_graph_signal_events(
+      user_id,agent_id,interest_key,signal_type,action,signal_source,consent_version
+    )
+    select user_id,agent_id,interest_key,signal_type,'delete',signal_source,consent_version
+      from deleted
+    returning id
+  )
+  select d.interest_key,d.signal_type,d.agent_id
+    from deleted d cross join logged;
 end;
 $delete_interest_signal$;
 
