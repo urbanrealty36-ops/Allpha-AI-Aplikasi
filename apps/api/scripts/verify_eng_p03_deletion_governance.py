@@ -188,7 +188,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
  ('workspace_documents_in_memberships','workspace_documents','member_workspaces'),
  ('workspace_annotations_in_memberships','workspace_annotations','member_workspaces');
 """)
-                source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
+        source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
         psql(f"""
