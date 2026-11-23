@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
 from allpha_api.auth import current_session_user, current_user, user_db_request
@@ -233,12 +233,11 @@ def test_membership_lookup_with_manipulated_cross_tenant_id_returns_not_found(mo
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["error"]["code"] == "NOT_FOUND"
-    assert calls[0][1] == "organization_memberships"
+    assert response.json()["error"]["code"] == "ORGANIZATION_NOT_FOUND"
+    assert len(calls) == 1
+    assert calls[0][0:3] == ("GET", "organization_memberships", "tenant-b-token")
     assert calls[0][3]["params"]["organization_id"] == f"eq.{foreign_organization_id}"
-    assert calls[1][1] == "organizations"
-    assert calls[1][3]["params"]["id"] == f"eq.{foreign_organization_id}"
-    assert all(call[2] == "tenant-b-token" for call in calls)
+    assert calls[0][3]["params"]["user_id"] == "eq.tenant-b-user"
 
 def test_profile_update_is_self_scoped_and_rejects_server_owned_fields(monkeypatch):
     calls = []
@@ -942,3 +941,32 @@ def test_missing_postgrest_rpc_is_reported_as_schema_unavailable(monkeypatch):
     assert caught.value.detail["code"] == "DATABASE_SCHEMA_UNAVAILABLE"
     assert "PGRST202" not in str(caught.value.detail)
     assert "owner-token" not in str(caught.value.detail)
+
+
+def test_missing_postgrest_table_is_reported_as_schema_unavailable(monkeypatch):
+    class FakeResponse:
+        status_code = 404
+        content = b'{"code":"PGRST205"}'
+        def json(self):
+            return {"code": "PGRST205"}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+        async def request(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://schema-missing.example.supabase.co")
+    monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test_only")
+    monkeypatch.setattr("allpha_api.auth.httpx.AsyncClient", FakeAsyncClient)
+
+    with pytest.raises(HTTPException) as exc:
+        import asyncio
+        asyncio.run(user_db_request("GET", "organizations", "verified-test-token"))
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "DATABASE_SCHEMA_UNAVAILABLE"
