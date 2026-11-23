@@ -49,7 +49,7 @@ def test_remaining_source_dispositions_preserve_shared_conversations_and_spatial
 
 
 
-IDENTITY_TOMBSTONES = MIGRATIONS / "20261124193000_eng_p03_identity_tombstones_and_provider_cancellation.sql"
+IDENTITY_TOMBSTONES = MIGRATIONS / "20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
 
 
 def test_financial_fk_references_use_private_pseudonymous_identity_subjects():
