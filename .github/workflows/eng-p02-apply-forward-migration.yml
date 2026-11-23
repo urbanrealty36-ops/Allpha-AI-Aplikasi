@@ -55,12 +55,20 @@ jobs:
           assert evidence["restore_completed"] is True
           assert evidence["production_database_touched"] is False
           assert evidence["production_migration_applied"] is False
-          assert evidence["backup_sha256"] == "786e964f7f39bddb405d00fc5e88c330b8af82dbb165d47e71175c9f3e970df0"
+          assert len(evidence["backup_sha256"]) == 64
           assert int(evidence["source_backup_run_id"]) > 45100993966, (
               "Refusing the previous backup artifact; wait for the latest pre-migration backup and restore run."
           )
+          Path("recovery-evidence/source-backup-run-id.txt").write_text(str(evidence["source_backup_run_id"]))
+          Path("recovery-evidence/source-backup-sha256.txt").write_text(evidence["backup_sha256"])
           print("Verified a successful disposable PostgreSQL 17 restore of a fresh pre-migration backup.")
           PY
+          source_backup_run_id="$(cat recovery-evidence/source-backup-run-id.txt)"
+          source_backup_sha256="$(cat recovery-evidence/source-backup-sha256.txt)"
+          gh run download "$source_backup_run_id" --repo "$GITHUB_REPOSITORY" \
+            --name eng-p02-pre-migration-db-backup --dir source-backup
+          actual_backup_sha256="$(sha256sum source-backup/allpha-p02-pre-migration.dump | awk '{print $1}')"
+          test "$actual_backup_sha256" = "$source_backup_sha256"
 
       - name: Verify the exact canonical migration source
         shell: bash
