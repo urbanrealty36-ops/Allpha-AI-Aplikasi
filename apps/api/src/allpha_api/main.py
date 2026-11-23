@@ -185,6 +185,7 @@ class ConsentCreate(BaseModel):
     consent_type: Literal["terms_of_service", "privacy_policy", "product_updates"]
     policy_version: str = Field(min_length=1, max_length=40)
     granted: bool
+    source: Literal["onboarding", "account_settings", "policy_refresh"] = "account_settings"
 
 
 CONSENT_POLICY_VERSION_ENV = {
@@ -575,31 +576,48 @@ async def update_my_settings(payload: UserSettingsUpdate, request: Request, user
 @app.get("/v1/me/consents", tags=["identity"])
 async def get_my_consents(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     rows = await user_db_request(
-        "GET", "user_consents", request.state.supabase_access_token,
-        params={"select": "consent_type,policy_version,granted,recorded_at", "user_id": f"eq.{user['id']}", "order": "recorded_at.desc", "limit": "100"},
+        "GET", "user_consent_events", request.state.supabase_access_token,
+        params={"select": "id,consent_type,policy_version,decision,source,idempotency_key,recorded_at", "user_id": f"eq.{user['id']}", "order": "recorded_at.desc,id.desc", "limit": "100"},
     )
-    return {"items": rows}
+    policy_versions = {
+        consent_type: (os.getenv(env_name, "").strip() or None)
+        for consent_type, env_name in CONSENT_POLICY_VERSION_ENV.items()
+    }
+    return {"items": rows, "current_policy_versions": policy_versions}
 
 
 @app.post("/v1/me/consents", status_code=201, tags=["identity"])
 async def record_my_consent(payload: ConsentCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    # Consent history is append-only and bound to the server-configured, approved
-    # policy version. A client-provided version is a claim, never authority.
+    # The API validates the server-configured approved version. The service-only
+    # RPC persists the append-only event; authenticated clients cannot write the
+    # consent tables directly or forge policy versions through PostgREST.
     policy_version = require_current_consent_policy_version(payload.consent_type, payload.policy_version)
-    rows = await user_db_request(
-        "POST", "user_consents", request.state.supabase_access_token,
+    if not payload.granted and payload.consent_type != "product_updates":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "REQUIRED_POLICY_WITHDRAWAL_NOT_SUPPORTED", "message": "Persetujuan Terms of Service dan Privacy Policy tidak dapat dicabut melalui kontrol pembaruan produk."},
+        )
+    decision = "granted" if payload.granted else "revoked"
+    idempotency_key = request.headers.get("Idempotency-Key", "").strip() or uuid.uuid4().hex
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", idempotency_key):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_IDEMPOTENCY_KEY", "message": "Idempotency-Key harus 8–128 karakter alfanumerik atau . _ : -."},
+        )
+    rows = await service_db_request(
+        "record_account_consent_event_for_actor",
         body={
-            "user_id": user["id"],
-            "consent_type": payload.consent_type,
-            "policy_version": policy_version,
-            "granted": payload.granted,
+            "p_actor_user_id": user["id"],
+            "p_consent_type": payload.consent_type,
+            "p_policy_version": policy_version,
+            "p_decision": decision,
+            "p_source": payload.source,
+            "p_idempotency_key": idempotency_key,
         },
-        params={"select": "consent_type,policy_version,granted,recorded_at"},
-        prefer="return=representation",
     )
-    if not rows:
-        raise HTTPException(status_code=409, detail={"code": "CONSENT_NOT_RECORDED", "message": "Persetujuan tidak dapat dicatat. Periksa apakah versi kebijakan sudah pernah dicatat."})
-    return {"consent": rows[0]}
+    if not isinstance(rows, list) or len(rows) != 1:
+        raise HTTPException(status_code=409, detail={"code": "CONSENT_NOT_RECORDED", "message": "Persetujuan tidak dapat dicatat atau kunci idempotensi bertentangan dengan permintaan sebelumnya."})
+    return {"consent": rows[0], "idempotency_key": idempotency_key}
 
 
 @app.post("/v1/me/deactivation-request", tags=["identity"])
