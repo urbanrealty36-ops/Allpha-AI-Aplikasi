@@ -44,15 +44,44 @@ def policy_from_rows(rows: Any) -> tuple[str, dict[str, float]]:
     return DEFAULT_POLICY_VERSION, dict(DEFAULT_WEIGHTS)
 
 
+def expand_interest_weights(
+    selected_interest_keys: list[str],
+    taxonomy_edges: list[dict[str, Any]],
+) -> dict[str, float]:
+    """Expand one canonical ontology hop; related_to is symmetric, parent_of is directional."""
+    weights = {str(key): 1.0 for key in selected_interest_keys if key}
+    selected = set(weights)
+    for edge in taxonomy_edges:
+        if not isinstance(edge, dict) or edge.get("active", True) is not True:
+            continue
+        source = str(edge.get("source_interest_key") or "")
+        target = str(edge.get("target_interest_key") or "")
+        relation = edge.get("relation_type")
+        try:
+            weight = float(edge.get("weight") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not source or not target or not isfinite(weight) or not 0 < weight <= 1:
+            continue
+        if relation == "related_to":
+            if source in selected:
+                weights[target] = max(weights.get(target, 0.0), weight)
+            if target in selected:
+                weights[source] = max(weights.get(source, 0.0), weight)
+        elif relation == "parent_of" and source in selected:
+            weights[target] = max(weights.get(target, 0.0), weight)
+    return weights
+
+
 def score_creator_candidate(
     mutual_connections: int,
-    shared_interests: int,
+    shared_interests: float,
     weights: dict[str, float] | None = None,
 ) -> float:
     policy = normalize_weights(weights)
     return round(
         max(0, mutual_connections) * policy["mutual_connection"]
-        + max(0, shared_interests) * policy["shared_interest"],
+        + max(0.0, shared_interests) * policy["shared_interest"],
         6,
     )
 
