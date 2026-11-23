@@ -127,7 +127,7 @@ insert into public.agent_ownerships(agent_id,owner_user_id,ownership_role,status
  ('{AGENT}','{OWNER}','owner','active'),('{OTHER_AGENT}','{OTHER}','owner','active');
 set request.jwt.claim.role='service_role';
 select * from public.set_my_interest_preference_for_actor('{OWNER}','technology','interested');
-do $
+do $$
 begin
   if (select count(*) from public.interest_catalog
        where active and interest_key in ('ai_agents','social_network','ai_cinema','live_streaming')) <> 4 then
