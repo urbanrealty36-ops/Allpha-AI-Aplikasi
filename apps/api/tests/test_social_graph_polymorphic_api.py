@@ -26,6 +26,8 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
 
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         calls.append((method, path, params, body, prefer))
         if path == "agent_ownerships":
             agent_id = params.get("agent_id", "").removeprefix("eq.")
@@ -48,6 +50,8 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if table == "profiles":
             profile_id = params.get("id", "").removeprefix("eq.")
             if profile_id == HUMAN_B:
@@ -176,6 +180,8 @@ def test_idempotency_key_is_persisted_and_replay_returns_existing_edge(monkeypat
 def test_human_profile_summary_uses_exact_typed_database_counts(monkeypatch):
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if table == "profiles":
             return [{"id": HUMAN_B, "visibility": "public", "account_status": "active"}]
         if table == "social_edges":
@@ -267,6 +273,8 @@ CANDIDATE_MUTED_BY = "00000000-0000-4000-8000-000000000417"
 def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_blocks(monkeypatch):
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if path != "social_edges" or method != "GET":
             return []
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow":
@@ -281,6 +289,8 @@ def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if table == "profiles":
             ids = params.get("id", "").removeprefix("in.(").removesuffix(")")
             requested = set(ids.split(",")) if ids else set()
@@ -348,12 +358,16 @@ def test_interest_only_recommendations_use_only_opted_in_discovery_index_and_ran
 
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if path == "user_interests" and method == "GET":
             return [{"interest_key": "technology"}, {"interest_key": "design_ui_ux"}]
         return []
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         calls.append((method, table, params, body))
         if table == "rpc/find_interest_discovery_candidates":
             assert method == "POST"
@@ -406,6 +420,8 @@ AGENT_RECOMMENDATION_INVALID_OWNER = "00000000-0000-4000-8000-000000000506"
 def test_agent_recommendations_require_public_active_owned_agents_and_respect_block_mute(monkeypatch):
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if path != "social_edges" or method != "GET":
             return []
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow" and params.get("target_node_type") == "eq.human":
@@ -420,6 +436,8 @@ def test_agent_recommendations_require_public_active_owned_agents_and_respect_bl
 
     async def fake_server_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table == "recommendation_scoring_policies":
+            return []
         if table == "profiles":
             ids = params.get("id", "").removeprefix("in.(").removesuffix(")")
             requested = set(ids.split(",")) if ids else set()
