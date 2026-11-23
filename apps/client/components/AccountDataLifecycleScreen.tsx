@@ -1,9 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
 
-type ExportJob = { id: string; status: string; requested_at: string; expires_at?: string | null; file_size_bytes?: number | null; error_code?: string | null };
+type ExportJob = { id: string; status: string; requested_at: string; progress_percent?: number; progress_stage?: string; expires_at?: string | null; file_size_bytes?: number | null; error_code?: string | null };
 type DeletionRequest = { id: string; status: string; requested_at: string; policy_version?: string | null };
 type Props = { apiBase: string; getAccessToken: () => Promise<string> };
+
+function progressLabel(stage?: string) {
+  const values: Record<string, string> = {
+    claimed: "Worker mengambil job", snapshot: "Mengumpulkan data akun",
+    compress: "Menyusun arsip", upload: "Mengunggah arsip privat",
+    publishing: "Menyimpan hasil ekspor",
+  };
+  return values[stage ?? ""] || "Menunggu antrean";
+}
 
 function label(status: string) {
   const values: Record<string, string> = {
@@ -129,6 +138,12 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
           <View key={item.id} style={{ borderTopWidth: 1, borderTopColor: "#303A52", paddingTop: 10, gap: 6 }}>
             <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>{label(item.status)}</Text>
             <Text style={{ color: "#AAB4CC" }}>{new Date(item.requested_at).toLocaleString("id-ID")}{item.file_size_bytes ? " · " + Math.ceil(item.file_size_bytes / 1024) + " KB" : ""}{item.expires_at ? " · Kedaluwarsa " + new Date(item.expires_at).toLocaleString("id-ID") : ""}</Text>
+            {item.status === "running" && <>
+              <Text accessibilityLiveRegion="polite" style={{ color: "#AAB4CC" }}>{progressLabel(item.progress_stage)} · {item.progress_percent ?? 5}%</Text>
+              <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: item.progress_percent ?? 5 }} style={{ height: 6, borderRadius: 6, backgroundColor: "#303A52", overflow: "hidden" }}>
+                <View style={{ height: 6, width: Math.max(5, Math.min(100, item.progress_percent ?? 5)) + "%", backgroundColor: "#A5B4FC" }} />
+              </View>
+            </>}
             {!!item.error_code && <Text style={{ color: "#FF9AAB" }}>{item.error_code}</Text>}
             {item.status === "succeeded" && button("Unduh arsip", () => void downloadExport(item.id), busy)}
           </View>
