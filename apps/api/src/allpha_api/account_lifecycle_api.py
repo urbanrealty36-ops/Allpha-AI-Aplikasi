@@ -193,7 +193,7 @@ async def list_account_exports(
         "account_export_jobs",
         request.state.supabase_access_token,
         params={
-            "select": "id,status,requested_at,started_at,completed_at,failed_at,expires_at,error_code,file_size_bytes,manifest",
+            "select": "id,status,progress_percent,progress_stage,requested_at,started_at,completed_at,failed_at,expires_at,error_code,file_size_bytes,manifest",
             "user_id": f"eq.{user['id']}",
             "order": "requested_at.desc",
             "limit": "50",
