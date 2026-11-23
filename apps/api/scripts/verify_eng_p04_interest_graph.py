@@ -156,7 +156,7 @@ begin
     perform * from public.set_user_interest_graph_signal_for_actor(
       '{OWNER}','technology','habit',0.5,'observed_interaction','interest-graph-v1',null
     );
-    raise exception 'observed Habit signal unexpectedly succeeded without personalization consent';
+    raise exception 'observed Habit signal unexpectedly succeeded without feed/discovery consent';
   exception when insufficient_privilege then null;
   end;
   begin
