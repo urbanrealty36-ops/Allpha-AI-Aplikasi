@@ -2,9 +2,9 @@ from pathlib import Path
 
 
 MIGRATIONS = Path(__file__).parents[1] / "supabase" / "migrations"
-TRANSFER = MIGRATIONS / "20261124120000_eng_p03_account_deletion_ownership_transfers.sql"
-ANONYMIZATION = MIGRATIONS / "20261124140000_eng_p03_account_deletion_attribution_anonymization.sql"
-SOURCE_DISPOSITIONS = MIGRATIONS / "20261124160000_eng_p03_cinema_conversation_spatial_anonymization.sql"
+TRANSFER = MIGRATIONS / "20261123173919_eng_p03_account_deletion_ownership_transfers.sql"
+ANONYMIZATION = MIGRATIONS / "20261123174325_eng_p03_account_deletion_attribution_anonymization.sql"
+SOURCE_DISPOSITIONS = MIGRATIONS / "20261123174529_eng_p03_cinema_conversation_spatial_anonymization.sql"
 
 
 def test_transfer_migration_is_owner_scoped_and_revalidates_successor_at_execution():
