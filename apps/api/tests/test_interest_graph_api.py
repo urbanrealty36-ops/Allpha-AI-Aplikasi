@@ -69,7 +69,6 @@ def test_interest_signal_write_uses_service_rpc_and_authenticated_actor(monkeypa
         "p_actor_user_id": "interest-graph-owner", "p_interest_key": "spatial_3d",
         "p_signal_type": "passion", "p_strength": 1.0, "p_signal_source": "user_selected",
         "p_consent_version": "interest-graph-v1",
-        "p_agent_id": None,
     })]
 
 
@@ -119,3 +118,46 @@ def test_interest_signal_reset_requires_explicit_integer_confirmation(monkeypatc
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "INTEREST_SIGNAL_RESET_UNCONFIRMED"
+
+
+
+def test_interest_signal_write_can_target_only_an_owned_agent(monkeypatch):
+    calls = []
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        return [{"user_id": "interest-graph-owner", "agent_id": "owned-agent", "interest_key": "technology"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-graph-token"
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.put(
+            "/v1/me/interest-signals",
+            headers={"Authorization": "Bearer interest-graph-token"},
+            json={
+                "interest_key": "technology", "signal_type": "passion", "strength": 0.8,
+                "signal_source": "user_selected", "agent_id": "11111111-1111-4111-8111-111111111111",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls[0][1]["p_actor_user_id"] == "interest-graph-owner"
+    assert calls[0][1]["p_agent_id"] == "11111111-1111-4111-8111-111111111111"
+    assert calls[0][1]["p_consent_version"] == "interest-graph-v1"
+
+
+def test_interest_signal_rejects_client_supplied_consent_version():
+    response = client.put(
+        "/v1/me/interest-signals",
+        json={
+            "interest_key": "technology", "signal_type": "habit", "strength": 0.5,
+            "signal_source": "observed_interaction", "consent_version": "client-forged-version",
+        },
+    )
+    assert response.status_code == 422
