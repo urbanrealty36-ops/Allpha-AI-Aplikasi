@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from allpha_api.auth import current_user, optional_current_user, user_db_request, service_db_request
 from allpha_api.feed_api import _server_db
+from allpha_api.recommendation_engine import policy_from_rows, score_creator_candidate
 
 router = APIRouter(prefix="/v1/social", tags=["social-graph"])
 
@@ -312,6 +313,10 @@ async def get_social_recommendations(
         candidate_id = str(row.get("user_id") or "")
         if candidate_id and candidate_id != viewer_id:
             interest_counts[candidate_id] = interest_counts.get(candidate_id, 0) + 1
+    scoring_rows = await _server_db("GET", "recommendation_scoring_policies", params={
+        "select": "version,weights,active", "policy_key": "eq.default", "active": "eq.true", "limit": "1",
+    }) or []
+    policy_version, policy_weights = policy_from_rows(scoring_rows)
 
     if node_type == "agent":
         if not mutual_counts:
@@ -371,7 +376,11 @@ async def get_social_recommendations(
             and str(row.get("id")) not in hidden_agent_ids
         ]
         eligible_agents.sort(key=lambda row: (
-            -(mutual_counts.get(str(row.get("created_by")), 0) * 2 + interest_counts.get(str(row.get("created_by")), 0) * 3),
+            -score_creator_candidate(
+                mutual_counts.get(str(row.get("created_by")), 0),
+                interest_counts.get(str(row.get("created_by")), 0),
+                policy_weights,
+            ),
             str(row.get("display_name") or "").casefold(),
             str(row.get("id") or ""),
         ))
@@ -381,10 +390,14 @@ async def get_social_recommendations(
             "description": row.get("description"),
             "mutual_followers_count": mutual_counts.get(str(row.get("created_by")), 0),
             "shared_interests_count": interest_counts.get(str(row.get("created_by")), 0),
-            "recommendation_score": mutual_counts.get(str(row.get("created_by")), 0) * 2 + interest_counts.get(str(row.get("created_by")), 0) * 3,
+            "recommendation_score": score_creator_candidate(
+                mutual_counts.get(str(row.get("created_by")), 0),
+                interest_counts.get(str(row.get("created_by")), 0),
+                policy_weights,
+            ),
             "reason": "owned_by_mutual_connection_and_shared_interests" if interest_counts.get(str(row.get("created_by")), 0) else "owned_by_mutual_connection",
         } for row in eligible_agents[:limit]]
-        return {"items": items, "count": len(items), "strategy": "mutual_connection_owners_and_shared_interests"}
+        return {"items": items, "count": len(items), "strategy": "mutual_connection_owners_and_shared_interests", "ranking_version": policy_version}
 
     candidate_pool = set(mutual_counts) | set(interest_counts)
     if not candidate_pool:
@@ -462,7 +475,7 @@ async def get_social_recommendations(
         if len(items) >= limit:
             break
     strategy = "mutual_connections_and_shared_interests" if mutual_counts and interest_counts else "shared_interests" if interest_counts else "mutual_connections"
-    return {"items": items, "count": len(items), "strategy": strategy}
+    return {"items": items, "count": len(items), "strategy": strategy, "ranking_version": policy_version}
 
 
 @router.get("/activity")
