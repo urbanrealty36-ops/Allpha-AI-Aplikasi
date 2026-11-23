@@ -139,3 +139,67 @@ def test_deletion_request_listing_validates_filter_and_uses_bounded_query(monkey
     with pytest.raises(HTTPException) as error:
         asyncio.run(governance.list_deletion_requests("not-a-status", 25, OPERATOR))
     assert error.value.status_code == 422
+
+
+
+def test_retention_policy_deactivation_rejects_unconfirmed_database_result(monkeypatch):
+    calls = []
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        calls.append((method, table, params, body))
+        if method == "GET":
+            return [{"id": str(POLICY_ID), "data_class": "social_content", "policy_version": "v1", "active": True}]
+        return False
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.deactivate_retention_policy(POLICY_ID, _request(), OPERATOR))
+
+    assert error.value.status_code == 503
+    assert [item["outcome"] for item in audits] == ["attempted"]
+
+
+def test_retention_policy_deactivation_requires_exact_inactive_row(monkeypatch):
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET":
+            return [{"id": str(POLICY_ID), "data_class": "social_content", "policy_version": "v1", "active": True}]
+        return {"id": str(POLICY_ID), "active": False}
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+    result = asyncio.run(governance.deactivate_retention_policy(POLICY_ID, _request(), OPERATOR))
+
+    assert result["item"]["active"] is False
+    assert [item["outcome"] for item in audits] == ["attempted", "allowed"]
+
+
+def test_retention_policy_activation_rejects_unconfirmed_state(monkeypatch):
+    audits = []
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        if method == "GET":
+            return [{"id": str(POLICY_ID), "data_class": "social_content", "policy_version": "v1", "active": False}]
+        return {"id": str(POLICY_ID), "active": False}
+
+    async def audit(request, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    monkeypatch.setattr(governance, "write_operator_audit", audit)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.activate_retention_policy(POLICY_ID, _request(), OPERATOR))
+
+    assert error.value.status_code == 503
+    assert [item["outcome"] for item in audits] == ["attempted"]
