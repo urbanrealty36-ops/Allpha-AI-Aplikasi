@@ -183,7 +183,7 @@ begin
 end $$;
 update public.feed_preferences set personalization_enabled=true where user_id='{OWNER}';
 update public.user_settings
-   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":false}'::jsonb
+   set privacy_settings='{{"discoverable_by_username":true,"allow_interest_matching":false}}'::jsonb
  where user_id='{OWNER}';
 do $
 begin
@@ -196,7 +196,7 @@ begin
   end;
 end $;
 update public.user_settings
-   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":true}'::jsonb
+   set privacy_settings='{{"discoverable_by_username":true,"allow_interest_matching":true}}'::jsonb
  where user_id='{OWNER}';
 do $
 begin
@@ -233,7 +233,7 @@ begin
   end if;
 end $$;
 update public.user_settings
-   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":false}'::jsonb
+   set privacy_settings='{{"discoverable_by_username":true,"allow_interest_matching":false}}'::jsonb
  where user_id='{OWNER}';
 do $$
 begin
@@ -245,7 +245,7 @@ begin
   end if;
 end $$;
 update public.user_settings
-   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":true}'::jsonb
+   set privacy_settings='{{"discoverable_by_username":true,"allow_interest_matching":true}}'::jsonb
  where user_id='{OWNER}';
 select * from public.set_user_interest_graph_signal_for_actor(
  '{OWNER}','technology','habit',0.4,'observed_interaction','interest-graph-v1',null
