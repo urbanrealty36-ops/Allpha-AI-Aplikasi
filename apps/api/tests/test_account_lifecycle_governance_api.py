@@ -11,7 +11,7 @@ from allpha_api import account_lifecycle_governance_api as governance
 OPERATOR = {"id": "11111111-1111-4111-8111-111111111111", "scopes": ["platform:account_lifecycle.manage"]}
 POLICY_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 HOLD_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
-SUBJECT_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+SUBJECT_REF = "c" * 64
 
 
 def _request():
@@ -100,7 +100,7 @@ def test_legal_hold_create_and_release_are_audited(monkeypatch):
         if method == "GET":
             return [{"id": str(HOLD_ID), "reference_code": "CASE-2026-001", "reason_code": "legal_preservation"}]
         if method == "POST":
-            return [{"id": str(HOLD_ID), "subject_ref": str(SUBJECT_ID), "active": True}]
+            return [{"id": str(HOLD_ID), "subject_ref": SUBJECT_REF, "active": True}]
         return [{"id": str(HOLD_ID), "active": False, "released_by": OPERATOR["id"]}]
 
     async def audit(request, **kwargs):
@@ -109,7 +109,7 @@ def test_legal_hold_create_and_release_are_audited(monkeypatch):
     monkeypatch.setattr(governance, "privileged_rest_request", privileged)
     monkeypatch.setattr(governance, "write_operator_audit", audit)
     create_payload = governance.LegalHoldCreate(
-        subject_ref=SUBJECT_ID, reference_code="CASE-2026-001", reason_code="legal_preservation"
+        subject_ref=SUBJECT_REF, reference_code="CASE-2026-001", reason_code="legal_preservation"
     )
     created = asyncio.run(governance.create_legal_hold(create_payload, _request(), OPERATOR))
     release_payload = governance.LegalHoldRelease(reason="Court order closed and hold released")
@@ -203,3 +203,20 @@ def test_retention_policy_activation_rejects_unconfirmed_state(monkeypatch):
 
     assert error.value.status_code == 503
     assert [item["outcome"] for item in audits] == ["attempted"]
+
+
+
+def test_legal_hold_subject_ref_matches_hashed_deletion_subject():
+    payload = governance.LegalHoldCreate(
+        subject_ref="a" * 64,
+        reference_code="CASE-2026-002",
+        reason_code="legal_preservation",
+    )
+    assert payload.subject_ref == "a" * 64
+
+    with pytest.raises(ValueError):
+        governance.LegalHoldCreate(
+            subject_ref="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            reference_code="CASE-2026-003",
+            reason_code="legal_preservation",
+        )
