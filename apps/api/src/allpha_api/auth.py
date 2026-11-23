@@ -270,17 +270,24 @@ async def service_db_request(function_name: str, *, body: dict[str, Any]) -> Any
             payload = {}
         sqlstate = payload.get("code") if isinstance(payload, dict) else None
         is_social_rpc = function_name.startswith(("create_social_edge_", "accept_social_follow_", "reject_social_follow_", "remove_social_edge_"))
+        is_account_lifecycle_rpc = function_name.startswith(("create_account_deletion_request_for_actor",))
         if sqlstate == "42501":
             if is_social_rpc:
                 raise HTTPException(status_code=403, detail={"code": "SOCIAL_EDGE_FORBIDDEN", "message": "Tindakan relasi sosial tidak diizinkan oleh kebijakan akun atau kepemilikan."})
+            if is_account_lifecycle_rpc:
+                raise HTTPException(status_code=409, detail={"code": "ACCOUNT_NOT_ACTIVE", "message": "Akun tidak berada pada status aktif untuk mengajukan penghapusan."})
             raise HTTPException(status_code=403, detail={"code": "ORGANIZATION_FORBIDDEN", "message": "Hak pengelolaan organisasi tidak tersedia."})
         if sqlstate in ("P0002", "23503"):
             if is_social_rpc:
                 raise HTTPException(status_code=404, detail={"code": "SOCIAL_TARGET_UNAVAILABLE", "message": "Identitas atau relasi sosial tidak tersedia."})
+            if is_account_lifecycle_rpc:
+                raise HTTPException(status_code=404, detail={"code": "ACCOUNT_NOT_FOUND", "message": "Akun tidak ditemukan."})
             raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_MEMBER_NOT_FOUND", "message": "Anggota atau organisasi tidak ditemukan."})
         if sqlstate == "23505" or response.status_code == 409:
             if is_social_rpc:
                 raise HTTPException(status_code=409, detail={"code": "SOCIAL_EDGE_CONFLICT", "message": "Relasi sosial sudah tercatat atau bertentangan."})
+            if is_account_lifecycle_rpc:
+                raise HTTPException(status_code=409, detail={"code": "ACCOUNT_DELETION_REQUEST_ALREADY_OPEN", "message": "Permintaan penghapusan akun yang belum selesai sudah ada."})
             raise HTTPException(status_code=409, detail={"code": "ORGANIZATION_MEMBER_CONFLICT", "message": "Keanggotaan organisasi sudah ada atau bertentangan."})
         if sqlstate == "22023" or response.status_code in (400, 422):
             if is_social_rpc:
