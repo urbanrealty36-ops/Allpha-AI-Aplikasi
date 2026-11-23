@@ -26,6 +26,8 @@ def test_interest_discovery_index_requires_explicit_opt_in_and_public_discovery(
     assert "create table if not exists private.user_interest_discovery_index" in source
     assert '"discoverable_by_username":true,"allow_interest_matching":true' in source
     assert "ui.preference='interested'" in source
+    assert "p.visibility='public' and p.account_status='active'" in source
+    assert "join public.interest_catalog c on c.interest_key=i.interest_key and c.active=true" in source
     assert "create trigger user_interests_refresh_discovery_index" in source
     assert "create trigger user_settings_refresh_discovery_index" in source
     assert "revoke all privileges on private.user_interest_discovery_index from public,anon,authenticated" in source
