@@ -1,5 +1,5 @@
 name: ENG-P02 Create Pre-Migration Database Backup
-# Re-capture a fresh point-in-time backup after migration-source recovery and isolated-workspace validation.
+# Capture a fresh P02-applied recovery point; the restore gate also applies ENG-P03 only to its disposable copy.
 
 on:
   workflow_dispatch:
