@@ -13,3 +13,8 @@ def test_forward_repair_qualifies_idempotency_constraint_without_rewriting_histo
     assert "on conflict (user_id,idempotency_key) do nothing" not in source
     assert "revoke all on function public.record_account_consent_event_for_actor" in source
     assert "grant execute on function public.record_account_consent_event_for_actor" in source
+
+
+def test_export_completion_qualifies_pgcrypto_in_empty_search_path():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "extensions.digest(v_user_id::text,'sha256')" in source
