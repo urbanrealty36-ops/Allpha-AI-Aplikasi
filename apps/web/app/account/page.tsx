@@ -14,12 +14,13 @@ type Profile = {
 type Settings = {
   user_id: string; theme: "light" | "dark" | "system";
   notification_preferences: { product_updates: boolean; security_alerts: boolean; social_activity: boolean };
-  privacy_settings: { discoverable_by_username: boolean }; updated_at: string;
+  privacy_settings: { discoverable_by_username: boolean; allow_interest_matching: boolean }; updated_at: string;
 };
 type IdentityResponse = { user: { id: string; email?: string; email_confirmed_at?: string }; profile: Profile };
 type SettingsResponse = { settings: Settings | null };
 type SocialEdge = { id: string; target_user_id?: string; actor_user_id?: string; edge_type: "follow" | "block" | "mute"; status?: string; created_at?: string };
 type SocialInterest = { interest_key: string; preference: "interested" | "not_interested"; created_at?: string; updated_at?: string };
+type InterestCatalogItem = { interest_key: string; label: string; label_key: string; category: string; aliases?: string[]; sort_order: number };
 type DiscoveredSocialUser = { id: string; username: string; display_name?: string | null; avatar_url?: string | null; visibility: "public" | "private" };
 type SocialGraph = { outgoing: SocialEdge[]; incoming_followers?: SocialEdge[]; incoming_requests: SocialEdge[]; blocked_by: SocialEdge[]; interests: SocialInterest[]; summary?: { following: number; followers: number; pending_follow_requests: number; blocked: number; muted: number; interests: number; truncated: boolean }; };
 type ConsentRecord = { id: string; consent_type: "terms_of_service" | "privacy_policy" | "product_updates" | string; policy_version: string; decision: "granted" | "declined" | "revoked"; source: string; idempotency_key: string; recorded_at: string };
@@ -58,6 +59,7 @@ export default function HomePage() {
   const [socialDiscoveryLoading, setSocialDiscoveryLoading] = useState(false);
   const [socialDiscoveryError, setSocialDiscoveryError] = useState("");
   const [interestKey, setInterestKey] = useState("");
+  const [interestCatalog, setInterestCatalog] = useState<InterestCatalogItem[]>([]);
   const [interestPreference, setInterestPreference] = useState<"interested" | "not_interested">("interested");
   const identityRequestSequence = useRef(0);
   const socialRequestSequence = useRef(0);
@@ -85,7 +87,14 @@ export default function HomePage() {
       const identity = backend.identity;
       const prefs = await settingsResponse.json() as SettingsResponse;
       if (sequence !== identityRequestSequence.current) return;
-      setProfile(identity.profile); setSettings(prefs.settings);
+      setProfile(identity.profile);
+      setSettings(prefs.settings ? {
+        ...prefs.settings,
+        privacy_settings: {
+          discoverable_by_username: prefs.settings.privacy_settings?.discoverable_by_username === true,
+          allow_interest_matching: prefs.settings.privacy_settings?.allow_interest_matching === true,
+        },
+      } : null);
     } catch (cause) {
       if (sequence === identityRequestSequence.current) setError(cause instanceof Error ? cause.message : "Data identitas tidak dapat dimuat.");
     } finally { if (sequence === identityRequestSequence.current) setLoading(false); }
@@ -296,6 +305,13 @@ export default function HomePage() {
       if (!response.ok) throw new Error(await apiError(response));
       const graph = await response.json() as SocialGraph;
       if (sequence === socialRequestSequence.current && session?.access_token === token) setSocialGraph(graph);
+      try {
+        const catalogResponse = await fetch(apiBase + "/v1/interests/catalog", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+        if (catalogResponse.ok) {
+          const catalog = await catalogResponse.json() as { items?: InterestCatalogItem[] };
+          if (sequence === socialRequestSequence.current && session?.access_token === token) setInterestCatalog(catalog.items || []);
+        }
+      } catch { /* Catalog loading must not hide the caller's existing graph. */ }
     } catch (cause) {
       if (sequence === socialRequestSequence.current && session?.access_token === token) setError(cause instanceof Error ? cause.message : "Social Graph tidak dapat dimuat.");
     } finally { if (sequence === socialRequestSequence.current) setSocialLoading(false); }
@@ -356,7 +372,7 @@ export default function HomePage() {
   }
 
   async function saveInterest() {
-    const key = interestKey.trim().toLowerCase();
+    const key = interestKey.trim();
     if (!key) return;
     setSaving(true); setError(""); setMessage("");
     try {
@@ -471,7 +487,7 @@ export default function HomePage() {
           <span className="social-interest">Dibisukan: {socialGraph.summary.muted}</span>
           {socialGraph.summary.truncated && <span className="social-interest">Daftar dibatasi 500; pagination lanjutan diperlukan</span>}
         </div>}
-        <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<input value={interestKey} onChange={(e) => setInterestKey(e.target.value.toLowerCase())} maxLength={80} pattern="[a-z0-9][a-z0-9._-]{0,79}" placeholder="contoh: desain.3d" /></label><label>Preferensi<select value={interestPreference} onChange={(e) => setInterestPreference(e.target.value as "interested" | "not_interested")}><option value="interested">Diminati</option><option value="not_interested">Tidak diminati</option></select></label><button type="button" className="button-primary" disabled={saving || !interestKey.trim()} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}><span>{item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</span><button type="button" className="button-quiet" aria-label={"Ubah preferensi " + item.interest_key} disabled={saving} onClick={() => void updateInterestPreference(item.interest_key, item.preference === "interested" ? "not_interested" : "interested")}>{item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"}</button><button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
+        <section className="social-interests"><h3>Minat</h3><div className="social-add-row"><label>Tambah minat<select value={interestKey} onChange={(e) => setInterestKey(e.target.value)}><option value="">Pilih dari katalog Allpha</option>{interestCatalog.map((item) => <option key={item.interest_key} value={item.interest_key}>{item.label}</option>)}</select></label><label>Preferensi<select value={interestPreference} onChange={(e) => setInterestPreference(e.target.value as "interested" | "not_interested")}><option value="interested">Diminati</option><option value="not_interested">Tidak diminati</option></select></label><button type="button" className="button-primary" disabled={saving || !interestKey} onClick={() => void saveInterest()}>Simpan minat</button></div><div className="social-interest-list">{socialGraph.interests.map((item) => <span className="social-interest" key={item.interest_key}><span>{interestCatalog.find((catalogItem) => catalogItem.interest_key === item.interest_key)?.label || item.interest_key} · {item.preference === "interested" ? "Diminati" : "Tidak diminati"}</span><button type="button" className="button-quiet" aria-label={"Ubah preferensi " + item.interest_key} disabled={saving} onClick={() => void updateInterestPreference(item.interest_key, item.preference === "interested" ? "not_interested" : "interested")}>{item.preference === "interested" ? "Tandai tidak diminati" : "Aktifkan minat"}</button><button type="button" aria-label={"Hapus minat " + item.interest_key} disabled={saving} onClick={() => void removeInterest(item.interest_key)}>×</button></span>)}</div>{!socialGraph.interests.length && <p className="muted">Belum ada minat tersimpan.</p>}</section>
         {socialGraph.blocked_by.length > 0 && <p className="muted">Akun yang memblokir Anda: {socialGraph.blocked_by.map((edge) => edge.actor_user_id).join(", ")}</p>}
       </> : <div><p className="muted">Data Social Graph belum dimuat atau terjadi gangguan koneksi.</p><button type="button" className="button-quiet" onClick={() => void loadSocialGraph()}>Coba lagi</button></div>}
     </section> : tab === "sessions" ? <section className="panel settings-panel social-panel" aria-labelledby="auth-sessions-title">
@@ -519,7 +535,8 @@ export default function HomePage() {
           <PreferenceToggle title="Aktivitas sosial" description="Pemberitahuan interaksi sosial saat fitur tersedia." checked={settings.notification_preferences.social_activity} onChange={(checked) => setSettings({ ...settings, notification_preferences: { ...settings.notification_preferences, social_activity: checked } })} />
         </section>
         <section className="panel settings-panel"><div className="panel-heading"><span className="section-kicker">PRIVASI</span><h2>Kontrol penemuan profil</h2><p>Visibilitas profil publik dikendalikan pada data profil Anda.</p></div>
-          <PreferenceToggle title="Dapat ditemukan melalui username" description="Izinkan fitur pencarian menggunakan username saat discovery diaktifkan." checked={settings.privacy_settings.discoverable_by_username} onChange={(checked) => setSettings({ ...settings, privacy_settings: { discoverable_by_username: checked } })} />
+          <PreferenceToggle title="Dapat ditemukan melalui username" description="Izinkan profil publik Anda muncul dalam pencarian akun." checked={settings.privacy_settings.discoverable_by_username} onChange={(checked) => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, discoverable_by_username: checked, allow_interest_matching: checked ? settings.privacy_settings.allow_interest_matching : false } })} />
+          <PreferenceToggle title="Gunakan minat untuk rekomendasi" description="Opt-in agar minat yang Anda pilih dapat dicocokkan secara privat untuk rekomendasi akun. Minat tidak ditampilkan ke pengguna lain." checked={settings.privacy_settings.allow_interest_matching} disabled={!settings.privacy_settings.discoverable_by_username} onChange={(checked) => setSettings({ ...settings, privacy_settings: { ...settings.privacy_settings, allow_interest_matching: checked } })} />
           <div className="detail-line"><span>Visibilitas profil</span><strong>{profile.visibility === "public" ? "Publik" : "Privat"}</strong></div><button className="button-primary" disabled={saving}>{saving ? "Menyimpan…" : "Simpan pengaturan"}</button>
         </section><div className="settings-footer"><span className="muted">Preferensi disimpan melalui API terautentikasi.</span><button type="button" className="button-quiet" onClick={() => setTab("profile")}>Kembali ke profil</button></div>
       </form>}
