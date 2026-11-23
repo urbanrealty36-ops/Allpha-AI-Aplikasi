@@ -90,3 +90,39 @@ async def reset_my_interest_signals(
     if type(deleted) is not int:
         raise HTTPException(409, detail={"code": "INTEREST_SIGNAL_RESET_UNCONFIRMED", "message": "Reset sinyal minat belum terkonfirmasi."})
     return {"deleted_count": deleted}
+
+
+catalog_router = APIRouter(tags=["interest-ontology"])
+
+
+@catalog_router.get("/v1/interests/catalog")
+async def list_interest_catalog(
+    request: Request,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    items = await user_db_request(
+        "GET",
+        "interest_catalog",
+        request.state.supabase_access_token,
+        params={
+            "select": "interest_key,label,label_key,category,aliases,sensitivity,sort_order",
+            "active": "eq.true",
+            "order": "sort_order.asc,interest_key.asc",
+            "limit": "500",
+        },
+    )
+    relationships = await user_db_request(
+        "GET",
+        "interest_taxonomy_edges",
+        request.state.supabase_access_token,
+        params={
+            "select": "source_interest_key,target_interest_key,relation_type,weight",
+            "active": "eq.true",
+            "order": "source_interest_key.asc,target_interest_key.asc",
+            "limit": "1000",
+        },
+    )
+    return {
+        "items": items if isinstance(items, list) else [],
+        "relationships": relationships if isinstance(relationships, list) else [],
+    }
