@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from allpha_api.auth import current_user, optional_current_user, user_db_request, service_db_request
 from allpha_api.feed_api import _server_db
-from allpha_api.recommendation_engine import policy_from_rows, score_creator_candidate
+from allpha_api.recommendation_engine import optional_scoring_rows, policy_from_rows, score_creator_candidate
 
 router = APIRouter(prefix="/v1/social", tags=["social-graph"])
 
