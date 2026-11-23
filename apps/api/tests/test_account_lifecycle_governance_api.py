@@ -220,3 +220,41 @@ def test_legal_hold_subject_ref_matches_hashed_deletion_subject():
             reference_code="CASE-2026-003",
             reason_code="legal_preservation",
         )
+
+
+
+def test_deletion_request_listing_includes_dependency_blocked_state(monkeypatch):
+    captured = {}
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        captured.update(params or {})
+        return [{"status": "blocked_dependency"}]
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    result = asyncio.run(governance.list_deletion_requests("blocked_dependency", 25, OPERATOR))
+    assert result["items"] == [{"status": "blocked_dependency"}]
+    assert captured["status"] == "eq.blocked_dependency"
+
+
+def test_legal_hold_listing_accepts_hashed_subject_reference(monkeypatch):
+    captured = {}
+
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        captured.update(params or {})
+        return []
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    result = asyncio.run(governance.list_legal_holds("a" * 64, 25, OPERATOR))
+    assert result == {"items": [], "limit": 25}
+    assert captured["subject_ref"] == f"eq.{'a' * 64}"
+
+
+def test_legal_hold_listing_rejects_unhashed_subject_reference(monkeypatch):
+    async def privileged(method, table, *, params=None, body=None, prefer=None):
+        raise AssertionError("invalid subject_ref must be rejected before database access")
+
+    monkeypatch.setattr(governance, "privileged_rest_request", privileged)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(governance.list_legal_holds("not-a-hash", 25, OPERATOR))
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "ACCOUNT_LEGAL_HOLD_SUBJECT_INVALID"
