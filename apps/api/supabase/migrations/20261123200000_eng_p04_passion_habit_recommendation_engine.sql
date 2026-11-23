@@ -97,7 +97,7 @@ begin
   if p_signal_type is null or p_signal_type not in ('passion','habit')
      or p_signal_source is null or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
      or p_strength is null or p_strength < 0 or p_strength > 1
-     or p_consent_version is null or char_length(p_consent_version) not between 1 and 80 then
+     or p_consent_version is distinct from 'interest-graph-v1' then
     raise exception 'interest_signal_invalid' using errcode='22023';
   end if;
   if p_signal_type='passion' and p_signal_source='observed_interaction' then
