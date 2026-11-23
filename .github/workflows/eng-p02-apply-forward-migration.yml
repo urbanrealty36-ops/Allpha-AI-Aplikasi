@@ -185,7 +185,14 @@ jobs:
               | tee ../recovery-evidence/migration-dry-run.txt
           else
             supabase db push --dry-run --db-url "$DB_URL" | tee ../recovery-evidence/migration-dry-run.txt
-            python -c 'import re,pathlib; output=pathlib.Path("../recovery-evidence/migration-dry-run.txt").read_text(); versions=set(re.findall(r"20[0-9]{12}", output)); expected={"20261123191500"}; assert "Would push these migrations:" in output and versions==expected and "20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql" in output, f"Refusing production apply: expected only {sorted(expected)}, got {sorted(versions)}"; print("Dry-run contains exactly one pending migration: 20261123191500.")'
+            dry_run_file="../recovery-evidence/migration-dry-run.txt"
+            test -s "$dry_run_file"
+            grep -Fq "Would push these migrations:" "$dry_run_file"
+            grep -Fq "20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql" "$dry_run_file"
+            mapfile -t dry_run_versions < <(grep -Eo '20[0-9]{12}' "$dry_run_file" | sort -u)
+            test "${#dry_run_versions[@]}" -eq 1
+            test "${dry_run_versions[0]}" = "20261123191500"
+            echo "Dry-run contains exactly one pending migration: 20261123191500."
           fi
 
       - name: Apply only the isolated ENG-P02 forward migration when pending
