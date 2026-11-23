@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, optional_current_user, service_db_request
 from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
+from allpha_api.recommendation_engine import (FEED_RANKING_VERSION, matched_signal_affinity, policy_from_rows, score_content_candidate)
 
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,provenance,created_at,updated_at,published_at"
@@ -51,7 +52,7 @@ class ImpressionWrite(BaseModel):
     event_type: Literal["impression", "view"] = "impression"
     feed_mode: Literal["for_you", "following", "recent", "reels"] = "for_you"
     position: int = Field(ge=0, lt=1000)
-    ranking_version: str = Field(default="feed-rank-v1", min_length=1, max_length=80)
+    ranking_version: str = Field(default="feed-rank-v2", min_length=1, max_length=80)
 
 
 class FeedbackWrite(BaseModel):
@@ -503,6 +504,9 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
 
     interest_keys: list[str] = []
     not_interested_keys: list[str] = []
+    graph_signals: list[dict[str, Any]] = []
+    policy_weights: dict[str, float] | None = None
+    policy_version = FEED_RANKING_VERSION
     if owner and effective_mode == "for_you" and enabled:
         interest_rows = await _server_db("GET", "user_interests", params={
             "select": "interest_key,preference", "user_id": f"eq.{owner}", "limit": "500",
@@ -511,6 +515,14 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
                          if row.get("interest_key") and row.get("preference") == "interested"]
         not_interested_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
                                if row.get("interest_key") and row.get("preference") == "not_interested"]
+        graph_signals = await _server_db("GET", "user_interest_graph_signals", params={
+            "select": "interest_key,signal_type,strength",
+            "user_id": f"eq.{owner}", "limit": "500",
+        }) or []
+        scoring_rows = await _server_db("GET", "recommendation_scoring_policies", params={
+            "select": "version,weights,active", "policy_key": "eq.default", "active": "eq.true", "limit": "1",
+        }) or []
+        policy_version, policy_weights = policy_from_rows(scoring_rows)
     if not_interested_keys:
         def matches_interest(body: str, key: str) -> bool:
             terms = set(re.findall(r"[a-z0-9]+", key))
@@ -519,7 +531,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         candidates = [row for row in candidates if not any(matches_interest(str(row.get("body") or ""), key) for key in not_interested_keys)]
     ids = [str(r["id"]) for r in candidates]
     if not ids:
-        return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": "feed-rank-v1", "as_of": as_of.isoformat()}
+        return {"items": [], "next_cursor": None, "mode": effective_mode, "personalization_enabled": enabled, "ranking_version": "feed-rank-v2", "as_of": as_of.isoformat()}
     in_ids = f"in.({','.join(ids)})"
     reactions = await _server_db("GET", "content_reactions", params={"select": "content_id,actor_user_id,reaction", "content_id": in_ids, "limit": "5000"})
     comments = await _server_db("GET", "content_comments", params={"select": "content_id", "content_id": in_ids, "status": "eq.visible", "limit": "5000"})
@@ -545,17 +557,29 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
             1 for key in interest_keys
             if (terms := set(re.findall(r"[a-z0-9]+", key))) and terms.issubset(body_tokens)
         )
+        passion_affinity = matched_signal_affinity(body_tokens, graph_signals, "passion")
+        habit_affinity = matched_signal_affinity(body_tokens, graph_signals, "habit")
         engagement_total = like_count + comment_count + save_count + share_count
         signals = ["recency"]
         if followed_creator:
             signals.append("followed_creator")
         if interest_matches:
             signals.append("explicit_interest_match")
+        if passion_affinity:
+            signals.append("topic_affinity")
+        if habit_affinity:
+            signals.append("personalization_pattern")
         if engagement_total:
             signals.append("engagement")
-        # Version 1 is lexicographic, not a fabricated weighted score: followed creator,
-        # explicit user-interest match count, observed engagement, then publish time.
-        rank_key = (int(followed_creator), interest_matches, engagement_total, _published(row), str(row["id"]))
+        rank_score = score_content_candidate(
+            followed_creator=followed_creator,
+            explicit_interest_matches=interest_matches,
+            passion_affinity=passion_affinity,
+            habit_affinity=habit_affinity,
+            engagement_total=engagement_total,
+            weights=policy_weights,
+        )
+        rank_key = (rank_score, _published(row), str(row["id"]))
         ranked.append({**row, "engagement": {"likes": like_count, "comments": comment_count, "saves": save_count, "shares": share_count, "reposts": repost_counts.get(cid, 0)},
                        "viewer_reaction": viewer_reactions.get(cid), "saved": cid in viewer_saves,
                        "ranking_signals": signals, "_rank": rank_key})
@@ -587,7 +611,7 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
         snapshot_expires = _now() + __import__("datetime").timedelta(minutes=15)
         created_snapshot = await _server_db("POST", "feed_snapshots", body={
             "viewer_user_id": owner, "feed_mode": mode, "author_type": author_type,
-            "ranking_version": "feed-rank-v1", "expires_at": snapshot_expires.isoformat(),
+            "ranking_version": "feed-rank-v2", "expires_at": snapshot_expires.isoformat(),
             "item_count": len(ranked),
         }, prefer="return=representation")
         if not created_snapshot:
@@ -631,13 +655,13 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
             "agent": item["agent"],
             "disclosure": (provenance.get("disclosure") if provenance.get("coauthored") is True else (agent.get("disclosure") if agent else None)),
         }
-        item["ranking_version"] = "feed-rank-v1"
+        item["ranking_version"] = "feed-rank-v2"
         items.append(item)
     next_offset = offset + page_advance
     has_more = next_offset < snapshot_count
     next_cursor = _cursor_encode(snapshot_id, next_offset, owner, mode, author_type, snapshot_expires) if has_more else None
     return {"items": items, "next_cursor": next_cursor, "mode": effective_mode,
-            "personalization_enabled": enabled, "ranking_version": "feed-rank-v1",
+            "personalization_enabled": enabled, "ranking_version": "feed-rank-v2",
             "snapshot_id": snapshot_id, "snapshot_expires_at": snapshot_expires.isoformat(), "as_of": as_of.isoformat()}
 
 
