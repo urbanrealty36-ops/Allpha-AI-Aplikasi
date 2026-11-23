@@ -15,6 +15,7 @@ def test_interest_ontology_is_seeded_and_client_read_only():
     for key in (
         "health", "technology", "spatial_3d", "content_creator",
         "business_finance", "design_ui_ux", "education_research", "gaming_metaverse",
+        "ai_agents", "social_network", "ai_cinema", "live_streaming",
     ):
         assert f"('{key}'" in source
     assert "create policy interest_catalog_read_active" in source
