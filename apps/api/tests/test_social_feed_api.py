@@ -67,6 +67,8 @@ def test_feed_ranks_followed_creator_and_applies_block_mute_filters(monkeypatch)
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "feed_preferences":
             return []
         if table == "feed_feedback":
@@ -163,6 +165,8 @@ def test_follower_visibility_allows_only_active_followers_to_interact(monkeypatc
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "content_items":
             return [content]
         if table == "profiles":
@@ -200,6 +204,8 @@ def test_blocked_creator_content_cannot_receive_interactions(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "content_items":
             return [content]
         if table == "social_edges" and params.get("actor_user_id") == "eq.eng-p14-viewer":
@@ -229,6 +235,8 @@ def test_share_records_event_and_returns_deep_link(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "content_items": return [content]
         if table == "profiles":
             return [{"id": "eng-p14-author", "username": "author", "display_name": "Author", "avatar_url": None,
@@ -321,6 +329,8 @@ def test_inactive_social_edges_do_not_hide_feed_content(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "feed_preferences":
             return []
         if table == "feed_feedback":
@@ -379,6 +389,8 @@ def test_guest_feed_returns_only_public_published_content(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         calls.append((method, table, params))
         if table == "content_items":
             assert params.get("visibility") == "eq.public"
@@ -445,6 +457,8 @@ def test_public_creator_recommendations_require_real_public_profiles_and_posts(m
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "content_items":
             assert params.get("visibility") == "eq.public"
             return [{"owner_id": public_id, "published_at": now}, {"owner_id": public_id, "published_at": now}]
@@ -542,6 +556,8 @@ def test_anonymous_can_read_comments_only_on_public_published_content(monkeypatc
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         calls.append((method, table, params))
         if table == "content_items":
             return [content] if params.get("id") == f"eq.{content_id}" else []
@@ -814,6 +830,8 @@ def test_username_discovery_respects_saved_preference_status_and_private_project
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "profiles":
             return profiles
         if table == "user_settings":
@@ -854,6 +872,8 @@ def test_username_discovery_excludes_accounts_hidden_by_block_or_mute(monkeypatc
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "profiles":
             return profiles
         if table == "user_settings":
@@ -918,6 +938,8 @@ def test_following_feed_returns_only_active_followed_creators(monkeypatch):
 
     async def fake_db(method, table, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         if table == "feed_preferences":
             return []
         if table == "feed_feedback":
@@ -969,6 +991,8 @@ def test_two_principal_social_graph_reads_are_owner_scoped(monkeypatch):
         assert method == "GET"
         assert token in {item[1] for item in principals}
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         calls.append((token, table, params))
         if table == "social_edges":
             owner = params.get("actor_user_id") or params.get("target_user_id")
@@ -1066,6 +1090,8 @@ def test_social_graph_summary_excludes_inactive_block_and_mute_edges(monkeypatch
 
     async def fake_user_db_request(method, table, token, *, params=None, body=None, prefer=None):
         params = params or {}
+        if table in {"user_interest_graph_signals", "recommendation_scoring_policies"}:
+            return []
         calls.append((table, params))
         if table == "social_edges" and params.get("actor_user_id") == f"eq.{owner_id}":
             return [
