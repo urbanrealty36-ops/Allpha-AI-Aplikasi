@@ -71,6 +71,8 @@ class AccountLifecycleWorker:
             f"{self.base}/storage/v1/object/account-exports",
             json={"prefixes": [object_path]},
         )
+        if response.status_code == 404:
+            return
         response.raise_for_status()
 
     async def _maintain_lease(
