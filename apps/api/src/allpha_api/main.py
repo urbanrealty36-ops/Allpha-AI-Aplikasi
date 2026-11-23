@@ -925,43 +925,6 @@ async def delete_my_social_edge(target_user_id: uuid.UUID, edge_type: Literal["f
     return {"removed": rows[0]}
 
 
-@app.get("/v1/me/interests", tags=["social"])
-async def get_my_interests(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await user_db_request(
-        "GET", "user_interests", request.state.supabase_access_token,
-        params={"select": "interest_key,preference,created_at,updated_at",
-                "user_id": f"eq.{user['id']}", "order": "interest_key.asc", "limit": "500"},
-    )
-    return {"items": rows}
-
-
-@app.put("/v1/me/interests", tags=["social"])
-async def upsert_my_interest(payload: InterestPreferenceCreate, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    rows = await service_db_request("set_my_interest_preference_for_actor", body={
-        "p_actor_user_id": str(user["id"]),
-        "p_interest_key": payload.interest_key,
-        "p_preference": payload.preference,
-    })
-    if not isinstance(rows, list) or len(rows) != 1:
-        raise HTTPException(status_code=409, detail={"code": "INTEREST_NOT_RECORDED", "message": "Preferensi minat tidak dapat disimpan."})
-    await _drain_social_graph_outbox(batch_size=1)
-    return {"item": rows[0]}
-
-
-@app.delete("/v1/me/interests/{interest_key}", tags=["social"])
-async def delete_my_interest(interest_key: str, request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    if not interest_key or len(interest_key) > 80:
-        raise HTTPException(status_code=422, detail={"code": "INVALID_INTEREST_KEY", "message": "Kunci minat tidak valid."})
-    rows = await service_db_request("delete_my_interest_for_actor", body={
-        "p_actor_user_id": str(user["id"]),
-        "p_interest_key": interest_key,
-    })
-    if not isinstance(rows, list) or not rows:
-        raise HTTPException(status_code=404, detail={"code": "INTEREST_NOT_FOUND", "message": "Preferensi minat tidak ditemukan."})
-    await _drain_social_graph_outbox(batch_size=1)
-    return {"removed": rows[0]}
-
-
 @app.get("/v1/organizations", tags=["organizations"])
 async def list_organizations(request: Request, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     actor = OrganizationActor.from_request(request, user)
