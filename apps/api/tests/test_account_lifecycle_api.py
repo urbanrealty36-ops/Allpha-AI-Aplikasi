@@ -39,3 +39,59 @@ def test_deletion_request_reports_database_state_without_claiming_policy_is_unap
     assert result["deletion_request"]["status"] == "awaiting_policy"
     assert "belum disetujui" not in result["message"]
     assert "belum ada data yang dihapus" in result["message"]
+
+
+def test_account_deletion_ownership_transfer_uses_authenticated_database_rpc(monkeypatch):
+    from uuid import UUID
+    from starlette.requests import Request
+
+    from allpha_api.account_lifecycle_api import (
+        AccountDeletionOwnershipTransferCreate,
+        create_account_deletion_ownership_transfer,
+    )
+
+    calls = []
+
+    async def rpc(method, endpoint, access_token, **kwargs):
+        calls.append((method, endpoint, access_token, kwargs))
+        return {
+            "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "resource_type": "agent",
+            "resource_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "successor_user_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            "status": "requested",
+        }
+
+    monkeypatch.setattr("allpha_api.account_lifecycle_api.user_db_request", rpc)
+    request = Request({
+        "type": "http", "method": "POST", "path": "/", "headers": [],
+        "query_string": b"", "server": ("test", 80), "client": ("test", 1),
+        "scheme": "https", "http_version": "1.1",
+    })
+    request.state.supabase_access_token = "verified-session-token"
+    payload = AccountDeletionOwnershipTransferCreate(
+        resource_type="agent",
+        resource_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+        successor_user_id=UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+    )
+
+    result = asyncio.run(create_account_deletion_ownership_transfer(
+        UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        payload,
+        request,
+        {"id": "11111111-1111-4111-8111-111111111111"},
+    ))
+
+    assert result["transfer"]["status"] == "requested"
+    assert result["execution"] == "pending_deletion_request"
+    assert calls == [(
+        "POST",
+        "rpc/set_my_account_deletion_ownership_transfer",
+        "verified-session-token",
+        {"body": {
+            "p_request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "p_resource_type": "agent",
+            "p_resource_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "p_successor_user_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        }},
+    )]
