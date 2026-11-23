@@ -223,6 +223,63 @@ insert into private.account_export_sources(source_key,table_name,filter_kind,own
   ('spatial_agent_asset_mappings','spatial_agent_asset_mappings','owner_columns',array['created_by'],202)
 on conflict (source_key) do nothing;
 
+-- Fail the migration if the export allowlist references an absent table or
+-- owner/relation column. A successful export must never silently omit a source.
+do $
+declare
+  v_source record;
+  v_column text;
+  v_required_columns text[];
+begin
+  for v_source in
+    select table_name,filter_kind,owner_columns
+    from private.account_export_sources
+    where enabled
+  loop
+    if pg_catalog.to_regclass(pg_catalog.format('public.%I',v_source.table_name)) is null then
+      raise exception 'account_export_source_table_missing:%',v_source.table_name;
+    end if;
+    foreach v_column in array v_source.owner_columns loop
+      if not exists (
+        select 1 from information_schema.columns c
+        where c.table_schema='public' and c.table_name=v_source.table_name
+          and c.column_name=v_column
+      ) then
+        raise exception 'account_export_owner_column_missing:%.%',v_source.table_name,v_column;
+      end if;
+    end loop;
+    v_required_columns := case v_source.filter_kind
+      when 'owned_agents' then array['agent_id']
+      when 'owned_runtime_tasks' then array['task_id']
+      when 'participant_conversations' then array['conversation_id']
+      when 'conversation_messages' then array['sender_user_id','conversation_id']
+      when 'owned_content' then array['content_id']
+      when 'content_activity' then array['actor_user_id','content_id']
+      when 'member_workspaces' then array['workspace_id']
+      when 'member_communities' then array['community_id']
+      else array[]::text[]
+    end;
+    foreach v_column in array v_required_columns loop
+      if not exists (
+        select 1 from information_schema.columns c
+        where c.table_schema='public' and c.table_name=v_source.table_name
+          and c.column_name=v_column
+      ) then
+        raise exception 'account_export_filter_column_missing:%.%',v_source.table_name,v_column;
+      end if;
+    end loop;
+  end loop;
+  if not exists (select 1 from information_schema.columns where table_schema='public' and table_name='agent_ownerships' and column_name='owner_user_id')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='agent_runtime_tasks' and column_name='owner_user_id')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='conversation_participants' and column_name='user_id')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='content_items' and column_name='owner_id')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='workspace_memberships' and column_name='user_id')
+     or not exists (select 1 from information_schema.columns where table_schema='public' and table_name='community_memberships' and column_name='user_id') then
+    raise exception 'account_export_relation_source_columns_missing';
+  end if;
+end;
+$;
+
 create or replace function private.build_account_export_snapshot(p_user_id uuid)
 returns jsonb
 language plpgsql
@@ -274,7 +331,7 @@ begin
     order by sort_order, source_key
   loop
     if pg_catalog.to_regclass(pg_catalog.format('public.%I', v_source.table_name)) is null then
-      continue;
+      raise exception 'account_export_source_table_missing:%',v_source.table_name;
     end if;
 
     if v_source.filter_kind = 'owner_columns' then
