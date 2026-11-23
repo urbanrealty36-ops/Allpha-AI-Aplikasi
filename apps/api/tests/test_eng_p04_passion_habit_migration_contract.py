@@ -85,3 +85,9 @@ def test_discovery_consent_revocation_purges_observed_signals_for_human_and_agen
     assert "old.privacy_settings is distinct from new.privacy_settings" in source
     assert "s.user_id=new.user_id and s.signal_source='observed_interaction'" in source
     assert "perform private.refresh_user_interest_discovery_index(new.user_id)" in source
+
+
+def test_signal_delete_audit_preserves_source_and_consent_provenance():
+    source = MIGRATION.read_text(encoding="utf-8").lower()
+    assert "signal_source,consent_version" in source
+    assert "select user_id,agent_id,interest_key,signal_type,'delete',signal_source,consent_version" in source
