@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from allpha_api.auth import current_user, optional_current_user, service_db_request
 from allpha_api.content_api import _server_db, _signed_media_preview_url
 from allpha_api.operator_security import require_operator_scope, write_operator_audit
-from allpha_api.recommendation_engine import (FEED_RANKING_VERSION, matched_signal_affinity, policy_from_rows, score_content_candidate)
+from allpha_api.recommendation_engine import (FEED_RANKING_VERSION, matched_signal_affinity, policy_from_rows, score_content_candidate, optional_scoring_rows)
 
 router = APIRouter(tags=["social-feed"])
 FIELDS = "id,owner_id,ai_agent_id,content_type,body,visibility,status,moderation_status,version,provenance,created_at,updated_at,published_at"
@@ -515,13 +515,12 @@ async def get_feed(request: Request, mode: Literal["for_you", "recent", "followi
                          if row.get("interest_key") and row.get("preference") == "interested"]
         not_interested_keys = [str(row["interest_key"]).casefold() for row in (interest_rows or [])
                                if row.get("interest_key") and row.get("preference") == "not_interested"]
-        graph_signals = await _server_db("GET", "user_interest_graph_signals", params={
-            "select": "interest_key,signal_type,strength",
-            "user_id": f"eq.{owner}", "limit": "500",
-        }) or []
-        scoring_rows = await _server_db("GET", "recommendation_scoring_policies", params={
+        graph_signals = await optional_scoring_rows(_server_db, "user_interest_graph_signals", {
+            "select": "interest_key,signal_type,strength", "user_id": f"eq.{owner}", "limit": "500",
+        })
+        scoring_rows = await optional_scoring_rows(_server_db, "recommendation_scoring_policies", {
             "select": "version,weights,active", "policy_key": "eq.default", "active": "eq.true", "limit": "1",
-        }) or []
+        })
         policy_version, policy_weights = policy_from_rows(scoring_rows)
     if not_interested_keys:
         def matches_interest(body: str, key: str) -> bool:
