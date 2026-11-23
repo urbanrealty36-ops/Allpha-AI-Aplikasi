@@ -809,3 +809,16 @@ This is an evidence refresh inside the existing fixed plan. It does not create a
 - Commits: `60510530b60c008abde0776d4767f5917bfd0f3a` (API fix), `13ef2cb8bc9b8e758c0a04f69a9000ce56c614ae` (regression coverage).
 - Status remains **ENG-P04 IN PROGRESS**: code change is committed to `main`; production deployment was still BUILDING/DEPLOYING at the last check. Production currently has zero `content_items`, `social_edges`, `user_interests`, and `user_interest_graph_signals`, so authenticated real-user Feed/Discovery journeys cannot yet be evidenced from production data. No synthetic production rows were inserted.
 - Status remains **ENG-P03 IN PROGRESS**: deletion execution is still fail-closed because the PRD has no approved retention periods/SLA and the source-to-data-class/dependency manifest is incomplete. Do not promote P05 until the ENG-P03 and ENG-P04 gates are met.
+
+
+## 40.6 ENG-P03/P04 regression closure repairs — 2026-11-23
+
+- Updated export-worker fixtures for lease-fenced progress RPC; corrected the Feed taxonomy fixture so its ontology branch is reachable; corrected the PostgreSQL 17 verifier's missing dollar-quote delimiter.
+- Fixed Native export progress-bar width typing without changing runtime percentage semantics.
+- Updated Native recommendation contract and rows to render canonical reason categories, shared-interest counts and mutual-connection counts.
+- Expanded the focused regression workflow to include `test_account_lifecycle_worker.py`, `test_social_feed_api.py`, `feed_api.py`, and Native surfaces; corrected shell continuations and made the workflow trigger on its own changes.
+- Full CI evidence at commit `d1420b7fb3241f824dcee4f26a7ffc2aa49eec08`: Allpha Smoke run `45181505523` **SUCCESS** — API `1030 passed`, ENG-P04 PostgreSQL 17 verifier **SUCCESS**, Native `npm test` + `tsc --noEmit` + Android JS export **SUCCESS**, Web tests + production build **SUCCESS**.
+- Expanded focused ENG-P03/P04 workflow run `45181763641` **SUCCESS** at commit `14c7edfa77261cedc3b3d9d21660a6696fb9cf93`.
+- ENG-P03 remains **IN PROGRESS**: no deletion executor/dependency-aware erasure or complete six-class retention map is enabled. Active retention policies, legal holds, export jobs and deletion requests are all currently zero. The PRD has not defined retention durations or deletion SLAs; permanent deletion remains fail-closed. Android JS export is not a signed AAB; the repository documents that EAS project ID/token and signing credentials are not available in the connector context.
+- ENG-P04 remains **IN PROGRESS**: core API/DB/Feed/Native surfaces and privacy regressions are implemented, but production currently contains 0 content items, 0 social edges, 0 explicit interests and 0 Passion/Habit signals. Authenticated real-user Feed/Discovery and cross-client realtime journey evidence is therefore not available. No synthetic production records were created.
+- Do not promote ENG-P05 until both ENG-P03 and ENG-P04 DoD gates are met.
