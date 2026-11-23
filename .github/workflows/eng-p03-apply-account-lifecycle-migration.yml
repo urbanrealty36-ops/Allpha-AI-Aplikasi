@@ -24,7 +24,7 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: dvdziauyvuhcnqhrrvww
       RESTORE_RUN_ID: ${{ github.event.workflow_run.id }}
-      EXPECTED_MIGRATION_BLOB: c3e8572588b023f5ead7bd9fa3b45b8191a9dcf7
+      EXPECTED_MIGRATION_BLOB: e5263fc112d11012b1bdabe1e676fac7479a63f0
       TARGET_MIGRATION_VERSION: "20261123191600"
       TARGET_MIGRATION_NAME: eng_p03_account_export_and_deletion_request_lifecycle
     steps:
@@ -246,6 +246,17 @@ jobs:
           select case when has_function_privilege('service_role','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
                         and not has_function_privilege('authenticated','public.claim_account_export_jobs(text,integer,integer)','EXECUTE')
                    then 'worker_rpc_grants=PASS' else 'worker_rpc_grants=FAIL' end;
+          select case when has_function_privilege('service_role','public.set_account_retention_policy_active(uuid,uuid,boolean)','EXECUTE')
+                        and not has_function_privilege('authenticated','public.set_account_retention_policy_active(uuid,uuid,boolean)','EXECUTE')
+                   then 'retention_activation_rpc_grants=PASS' else 'retention_activation_rpc_grants=FAIL' end;
+          do $$
+          begin
+            perform public.set_account_retention_policy_active(gen_random_uuid(),gen_random_uuid(),true);
+            raise exception 'retention policy activation must reject an actor without the operator scope';
+          exception when insufficient_privilege then
+            null;
+          end;
+          $$;
           select case when has_function_privilege('service_role','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
                         and not has_function_privilege('authenticated','public.create_account_deletion_request_for_actor(uuid)','EXECUTE')
                         and has_function_privilege('authenticated','public.cancel_my_account_deletion(uuid)','EXECUTE')
