@@ -272,25 +272,26 @@ export default function AuthOnboardingFlow({
     { id: 'andi', label: 'Dr. Andi (Medical Health)', url: '/avatars/human/andi.svg' },
   ];
 
+  // Persist canonical ontology keys; localized labels are presentation only.
   const availableInterests = [
-    'Kesehatan',
-    'IT & Teknologi',
-    '3D Spatial',
-    'Kreator Konten',
-    'Bisnis & Finansial',
-    'Desain & UI/UX',
-    'Edukasi & Riset',
-    'Gaming & Metaverse',
+    'health',
+    'technology',
+    'spatial_3d',
+    'content_creator',
+    'business_finance',
+    'design_ui_ux',
+    'education_research',
+    'gaming_metaverse',
   ];
   const interestTranslationKeys: Record<string, string> = {
-    'Kesehatan': 'auth.interest.health',
-    'IT & Teknologi': 'auth.interest.tech',
-    '3D Spatial': 'auth.interest.spatial',
-    'Kreator Konten': 'auth.interest.creator',
-    'Bisnis & Finansial': 'auth.interest.businessFinance',
-    'Desain & UI/UX': 'auth.interest.designUi',
-    'Edukasi & Riset': 'auth.interest.education',
-    'Gaming & Metaverse': 'auth.interest.metaverse',
+    health: 'auth.interest.health',
+    technology: 'auth.interest.tech',
+    spatial_3d: 'auth.interest.spatial',
+    content_creator: 'auth.interest.creator',
+    business_finance: 'auth.interest.businessFinance',
+    design_ui_ux: 'auth.interest.designUi',
+    education_research: 'auth.interest.education',
+    gaming_metaverse: 'auth.interest.metaverse',
   };
 
   const toggleInterest = (interest: string) => {
