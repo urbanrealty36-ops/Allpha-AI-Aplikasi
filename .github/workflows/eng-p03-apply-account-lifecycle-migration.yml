@@ -27,7 +27,7 @@ jobs:
       EXPECTED_MIGRATION_BLOB: 69c390630ae31439785f292f9df1a15e3d253a70
       EXPECTED_EXPORT_LEASE_MIGRATION_BLOB: aa5fe5763432f8a2c9ca31fffb432b2327aa98c2
       EXPECTED_ACCOUNT_LIFECYCLE_MIGRATION_BLOB: e5263fc112d11012b1bdabe1e676fac7479a63f0
-      EXPECTED_EXPORT_EXPIRY_MIGRATION_BLOB: e33acd981e458d95bd2c00c14414447070b11c0a
+      EXPECTED_EXPORT_EXPIRY_MIGRATION_BLOB: 51120be917960c4366e682b62b80e5bca706988f
       TARGET_MIGRATION_VERSION: "20261123192100"
       TARGET_MIGRATION_NAME: eng_p03_export_artifact_expiration
     steps:
@@ -259,6 +259,13 @@ jobs:
           select case when exists(select 1 from pg_trigger
             where tgname='account_export_artifact_expiry' and not tgisinternal)
             then 'export_expiry_trigger=PASS' else 'export_expiry_trigger=FAIL' end;
+          select case when has_function_privilege('service_role','public.enqueue_expired_account_export_artifacts()','EXECUTE')
+            and has_function_privilege('service_role','public.claim_account_export_artifact_cleanup_jobs(text,integer,integer)','EXECUTE')
+            and has_function_privilege('service_role','public.complete_account_export_artifact_cleanup_job(uuid,uuid)','EXECUTE')
+            and has_function_privilege('service_role','public.fail_account_export_artifact_cleanup_job(uuid,uuid,text,integer)','EXECUTE')
+            and not has_function_privilege('authenticated','public.enqueue_expired_account_export_artifacts()','EXECUTE')
+            and not has_function_privilege('anon','public.enqueue_expired_account_export_artifacts()','EXECUTE')
+            then 'export_cleanup_rpc_grants=PASS' else 'export_cleanup_rpc_grants=FAIL' end;
           select case when exists (
             select 1 from supabase_migrations.schema_migrations
              where version='20261123191700' and name='eng_p03_consent_event_history'
@@ -329,7 +336,7 @@ jobs:
                    then 'deletion_rpc_grants=PASS' else 'deletion_rpc_grants=FAIL' end;
           SQL
 
-          for assertion in lease_scoped_migration_ledger export_expiry_migration_ledger export_expires_at export_cleanup_queue export_expiry_trigger consent_migration_ledger account_lifecycle_migration_ledger account_export_jobs lease_scoped_completion_rpc consent_idempotency_conflict_target account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
+          for assertion in lease_scoped_migration_ledger export_expiry_migration_ledger export_expires_at export_cleanup_queue export_expiry_trigger export_cleanup_rpc_grants consent_migration_ledger account_lifecycle_migration_ledger account_export_jobs lease_scoped_completion_rpc consent_idempotency_conflict_target account_deletion_requests account_lifecycle_events retention_policies legal_holds export_source_registry consent_events_table consent_export_source consent_events_rls consent_events_client_read_only legacy_consent_write_closed consent_rpc_service_only private_export_bucket deletion_policy_fail_closed account_lifecycle_rls recursive_secret_redaction redaction_rpc_grants owner_export_rpc worker_rpc_grants deletion_rpc_grants; do
             grep -q "^$assertion=PASS$" recovery-evidence/production-post-migration-verification.txt
           done
 
