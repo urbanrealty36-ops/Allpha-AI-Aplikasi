@@ -35,6 +35,9 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
   const [message, setMessage] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [transferType, setTransferType] = useState<"agent" | "organization">("agent");
+  const [transferResourceId, setTransferResourceId] = useState("");
+  const [transferSuccessorId, setTransferSuccessorId] = useState("");
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const token = await getAccessToken();
@@ -105,6 +108,23 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
     finally { setBusy(false); }
   }
 
+  async function createOwnershipTransfer(requestId: string) {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await request("/v1/me/deletion-requests/" + encodeURIComponent(requestId) + "/ownership-transfers", {
+        method: "POST",
+        body: JSON.stringify({
+          resource_type: transferType,
+          resource_id: transferResourceId.trim(),
+          successor_user_id: transferSuccessorId.trim(),
+        }),
+      });
+      setMessage("Instruksi pengalihan " + payload.transfer.resource_type + " tersimpan. Backend akan memvalidasi ulang saat proses penghapusan.");
+      setTransferResourceId(""); setTransferSuccessorId("");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Instruksi pengalihan gagal disimpan."); }
+    finally { setBusy(false); }
+  }
+
   async function cancelDeletion(id: string) {
     setBusy(true); setError(""); setMessage("");
     try {
@@ -162,6 +182,17 @@ export function AccountDataLifecycleScreen({ apiBase, getAccessToken }: Props) {
             {item.status === "awaiting_policy" && button("Batalkan permintaan", () => void cancelDeletion(item.id), busy)}
           </View>
         ))}
+        {openDeletion && <>
+          <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Pengalihan kepemilikan Agent / Organisasi</Text>
+          <Text style={{ color: "#AAB4CC", lineHeight: 20 }}>Masukkan ID resource milik Anda dan ID pengguna penerima. Backend memvalidasi kepemilikan, akun penerima, serta keanggotaan organisasi.</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {button("AI Agent", () => setTransferType("agent"), busy || transferType === "agent")}
+            {button("Organisasi", () => setTransferType("organization"), busy || transferType === "organization")}
+          </View>
+          <TextInput value={transferResourceId} onChangeText={setTransferResourceId} autoCapitalize="none" style={field} accessibilityLabel="Resource ID Agent atau Organisasi" placeholder="UUID resource"/>
+          <TextInput value={transferSuccessorId} onChangeText={setTransferSuccessorId} autoCapitalize="none" style={field} accessibilityLabel="Successor user ID" placeholder="UUID pengguna penerima"/>
+          {button(busy ? "Menyimpan…" : "Simpan instruksi pengalihan", () => void createOwnershipTransfer(openDeletion.id), busy || !transferResourceId.trim() || !transferSuccessorId.trim())}
+        </>}
         {openDeletion ? <Text style={{ color: "#F6C978" }}>Masih ada permintaan aktif. Batalkan terlebih dahulu jika ingin mengajukan ulang.</Text> : <>
           <Text style={{ color: "#AAB4CC" }}>Kata sandi saat ini</Text>
           <TextInput value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" style={field} accessibilityLabel="Kata sandi saat ini"/>
