@@ -328,7 +328,7 @@ class SourcePolicyUpdate(BaseModel):
 
 class DependencyRuleUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    resolution_action: Literal["database_cascade", "database_set_null", "delete_rows", "set_null", "transfer_owner", "block"]
+    resolution_action: Literal["database_cascade", "database_set_null", "delete_rows", "set_null", "transfer_owner", "preserve_tombstone", "block"]
     reason: str = Field(min_length=8, max_length=500)
     active: bool = True
 
@@ -445,6 +445,19 @@ async def update_deletion_dependency_rule(
             )
         )
         or (action == "set_null" and delete_rule == "SET NULL" and bool(rule.get("fk_column")))
+        or (
+            action == "preserve_tombstone"
+            and rule.get("child_schema") == "public"
+            and rule.get("constraint_name") in {
+                "agent_consumer_grant_events_owner_user_id_fkey",
+                "billing_orders_owner_user_id_fkey",
+                "billing_receipts_owner_user_id_fkey",
+                "billing_subscriptions_owner_user_id_fkey",
+                "content_retention_holds_created_by_fkey",
+                "credit_ledger_accounts_owner_user_id_fkey",
+                "playback_entitlements_owner_user_id_fkey",
+            }
+        )
     )
     if not compatible:
         raise fail(409, "ACCOUNT_DELETION_DEPENDENCY_ACTION_INCOMPATIBLE",
