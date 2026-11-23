@@ -154,7 +154,7 @@ begin
 end $$;
 """)
         # Exercise the specialized source handlers in an isolated PostgreSQL database.
-        psql(f"""
+        psql("""
 create schema private;
 grant usage on schema private to service_role;
 create table private.account_export_sources(
@@ -165,7 +165,6 @@ create table public.account_deletion_source_policies(
  source_key text primary key,data_class text,deletion_action text,policy_version text,reason text,
  active boolean not null default false,approved_by uuid,approved_at timestamptz
 );
-create function public.list_account_deletion_source_registry() returns boolean language sql as {dollar_quote} select true {dollar_quote};
 create table public.agent_ownerships(agent_id uuid,owner_user_id uuid,ownership_role text,status text);
 create table public.agent_skills(id uuid primary key,agent_id uuid,created_by uuid);
 create table public.agent_runtime_tasks(id uuid primary key,owner_user_id uuid);
@@ -190,6 +189,7 @@ insert into private.account_export_sources(source_key,table_name,filter_kind) va
  ('workspace_documents_in_memberships','workspace_documents','member_workspaces'),
  ('workspace_annotations_in_memberships','workspace_annotations','member_workspaces');
 """)
+        psql(f"create function public.list_account_deletion_source_registry() returns boolean language sql as {dollar_quote} select true {dollar_quote};")
         source_sql=SOURCE_MIGRATION.read_text(encoding="utf-8").split("\ndo " + chr(36) + chr(36),1)[0]
         psql(source_sql)
         psql(CANONICAL_REGISTRY_MIGRATION.read_text(encoding="utf-8"))
