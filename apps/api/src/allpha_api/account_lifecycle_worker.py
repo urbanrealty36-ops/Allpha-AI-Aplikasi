@@ -379,7 +379,7 @@ class AccountLifecycleWorker:
         self,
         subscription_id: str,
         idempotency_key: str,
-        stripe_mode: str | None,
+        stripe_environment: str | None,
     ) -> str:
         """Cancel one Stripe subscription using a stable idempotency key."""
         if os.getenv("ALLPHA_STRIPE_ENABLED", "false").strip().lower() != "true":
@@ -388,7 +388,7 @@ class AccountLifecycleWorker:
         mode = os.getenv("ALLPHA_STRIPE_MODE", "").strip().lower()
         if not key or mode not in {"test", "live"}:
             raise RuntimeError("ACCOUNT_DELETION_STRIPE_NOT_CONFIGURED")
-        if stripe_mode not in {"test", "live"} or stripe_mode != mode:
+        if stripe_environment not in {"test", "live"} or stripe_environment != mode:
             raise RuntimeError("ACCOUNT_DELETION_STRIPE_MODE_MISMATCH")
         if (mode == "live" and not key.startswith("sk_live_")) or (
             mode == "test" and not key.startswith("sk_test_")
@@ -452,7 +452,7 @@ class AccountLifecycleWorker:
                 await self._cancel_stripe_subscription(
                     subscription_id,
                     str(job.get("idempotency_key") or ""),
-                    job.get("stripe_mode") if isinstance(job.get("stripe_mode"), str) else None,
+                    job.get("stripe_environment") if isinstance(job.get("stripe_environment"), str) else None,
                 )
                 completed = await self.rpc(
                     "complete_account_deletion_subscription_cancellation_job",
