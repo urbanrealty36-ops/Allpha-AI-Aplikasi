@@ -199,7 +199,7 @@ begin
   return query
   insert into public.user_interests as ui(user_id,interest_key,preference)
   values(p_actor_user_id,v_interest_key,p_preference)
-  on conflict(user_id,interest_key) do update
+  on conflict on constraint user_interests_pkey do update
     set preference=excluded.preference,updated_at=now()
   returning ui.interest_key,ui.preference,ui.created_at,ui.updated_at;
 end;
