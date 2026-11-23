@@ -77,14 +77,23 @@ class OutboxWorker:
 
 
 def main() -> None:
+    """Run canonical social outbox and account lifecycle workers in one Railway worker slot."""
+    from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
+
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    worker = OutboxWorker()
+    outbox = OutboxWorker()
+    account = AccountLifecycleWorker()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+
+    def request_shutdown() -> None:
+        outbox.stopping = True
+        account.stopping = True
+
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: setattr(worker, "stopping", True))
+        loop.add_signal_handler(sig, request_shutdown)
     try:
-        loop.run_until_complete(worker.run())
+        loop.run_until_complete(asyncio.gather(outbox.run(), account.run()))
     finally:
         loop.close()
 
