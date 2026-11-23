@@ -360,7 +360,7 @@ async def healthz() -> dict[str, Any]:
                 "last_claimed_count": worker.last_claimed_count if worker is not None else 0,
                 "last_cleanup_count": worker.last_cleanup_count if worker is not None else 0,
                 "last_deletion_governance_count": worker.last_deletion_governance_count if worker is not None else 0,
-                "last_deletion_execution_count": worker.last_deletion_execution_count if worker is not None else 0,
+                "last_deletion_execution_count": getattr(worker, "last_deletion_execution_count", 0) if worker is not None else 0,
                 "poll_count": worker.poll_count if worker is not None else 0,
                 "last_error_code": worker.last_error_code if worker is not None else None,
             }
