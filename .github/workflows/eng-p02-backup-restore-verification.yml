@@ -402,6 +402,183 @@ jobs:
           grep -q '^export_expires_at=PASS$' recovery-evidence/p03-export-expiry-verification.txt
           echo "P03_EXPORT_EXPIRY_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
 
+      - name: Verify ENG-P03 deletion legal-hold governance on disposable restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration="apps/api/supabase/migrations/20261123192200_eng_p03_deletion_legal_hold_governance_worker.sql"
+          test -s "$migration"
+          docker cp "$migration" "$SUPABASE_DB_CONTAINER:/tmp/eng-p03-deletion-governance.sql"
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 \
+            -f /tmp/eng-p03-deletion-governance.sql
+          docker exec -i -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 <<'SQL' | tee recovery-evidence/p03-deletion-governance-verification.txt
+          begin;
+          select id as restore_actor_id from auth.users order by created_at limit 1 \gset
+          set local role service_role;
+          select set_config('request.jwt.claim.role','service_role',true);
+          select set_config('request.jwt.claim.sub', :'restore_actor_id', true);
+          do $deletion_governance_verifier$
+          declare
+            v_actor uuid := current_setting('request.jwt.claim.sub')::uuid;
+            v_subject text := encode(gen_random_bytes(32),'hex');
+            v_request uuid;
+            v_hold uuid;
+            v_result record;
+            v_status text;
+          begin
+            insert into public.account_legal_holds(subject_ref,reference_code,reason_code,active,created_by)
+            values(v_subject,'RESTORE-' || substr(gen_random_uuid()::text,1,12),'legal_preservation',true,v_actor)
+            returning id into v_hold;
+            insert into public.account_deletion_requests(user_id,subject_ref,status,request_metadata)
+            values(v_actor,v_subject,'awaiting_policy','{}'::jsonb) returning id into v_request;
+            select * into v_result from public.evaluate_account_deletion_governance(100);
+            if v_result.blocked_count<>1 then raise exception 'active legal hold did not block deletion'; end if;
+            select status into v_status from public.account_deletion_requests where id=v_request;
+            if v_status<>'blocked_legal_hold' then raise exception 'request did not enter legal-hold block'; end if;
+            update public.account_legal_holds set active=false,released_at=now(),released_by=v_actor where id=v_hold;
+            select * into v_result from public.evaluate_account_deletion_governance(100);
+            if v_result.unblocked_count<>1 then raise exception 'released legal hold did not unblock request'; end if;
+            select status into v_status from public.account_deletion_requests where id=v_request;
+            if v_status<>'awaiting_policy' then raise exception 'released request did not return to policy gate'; end if;
+            if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_blocked') then
+              raise exception 'deletion block audit event missing';
+            end if;
+            if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_unblocked') then
+              raise exception 'deletion unblocked audit event missing';
+            end if;
+            if not exists(select 1 from public.account_lifecycle_events where request_id=v_request and event_type='deletion_policy_pending') then
+              raise exception 'deletion policy pending audit event missing';
+            end if;
+            if v_status in ('processing','completed') then raise exception 'governance gate executed deletion'; end if;
+          end;
+          $deletion_governance_verifier$;
+          rollback;
+          SQL
+          echo "deletion_legal_hold_behavior=PASS" | tee -a recovery-evidence/p03-deletion-governance-verification.txt
+          docker exec -u postgres "$SUPABASE_DB_CONTAINER" \
+            psql -U supabase_admin -d allpha_p02_restore_verification -v ON_ERROR_STOP=1 -Atc "
+              select case when has_function_privilege('service_role','public.evaluate_account_deletion_governance(integer)','EXECUTE')
+                and not has_function_privilege('authenticated','public.evaluate_account_deletion_governance(integer)','EXECUTE')
+                and not has_function_privilege('anon','public.evaluate_account_deletion_governance(integer)','EXECUTE')
+                then 'deletion_governance_rpc_grants=PASS' else 'deletion_governance_rpc_grants=FAIL' end;
+              select case when position('deletion_unblocked' in pg_get_constraintdef((
+                select oid from pg_constraint where conname='account_lifecycle_events_event_type_check'
+              ))) > 0 then 'deletion_event_contract=PASS' else 'deletion_event_contract=FAIL' end;
+            " | tee -a recovery-evidence/p03-deletion-governance-verification.txt
+          grep -q '^deletion_governance_rpc_grants=PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
+          verification = Path("recovery-evidence/restore-verification.txt")
+          p03_verification = Path("recovery-evidence/p03-disposable-migration-verification.txt")
+          result = {
+              "project_ref": "dvdziauyvuhcnqhrrvww",
+              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
+              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
+              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "restore_completed": True,
+              "production_database_touched": False,
+              "production_migration_applied": False,
+              "p03_disposable_migration_applied": True,
+              "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
+              "p03_consent_migration_applied": True,
+              "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
+              "p03_consent_idempotency_repair_verified": True,
+              "p03_export_lease_migration_applied": True,
+              "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
+              "p03_export_expiry_migration_applied": True,
+              "p03_export_expiry_migration_blob": os.environ["P03_EXPORT_EXPIRY_MIGRATION_BLOB"],
+              "p03_deletion_governance_migration_applied": True,
+              "p03_deletion_governance_migration_blob": os.environ["P03_DELETION_GOVERNANCE_MIGRATION_BLOB"],
+              "storage_objects_included": False,
+              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+              "verification": verification.read_text().splitlines(),
+              "p03_migration_verification": p03_verification.read_text().splitlines(),
+              "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
+              "p03_export_lease_verification": Path("recovery-evidence/p03-export-lease-verification.txt").read_text().splitlines(),
+              "p03_export_expiry_verification": Path("recovery-evidence/p03-export-expiry-verification.txt").read_text().splitlines(),
+              "p03_deletion_governance_verification": Path("recovery-evidence/p03-deletion-governance-verification.txt").read_text().splitlines(),
+          }
+          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
+          PY
+
+      - name: Upload verified disposable restore evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p02-disposable-restore-verification
+          path: |
+            recovery-evidence/restore-verification.json
+            recovery-evidence/restore-verification.txt
+            recovery-evidence/p03-disposable-migration-verification.txt
+            recovery-evidence/p03-consent-event-verification.txt
+            recovery-evidence/p03-export-lease-verification.txt
+            recovery-evidence/p03-export-expiry-verification.txt
+            recovery-evidence/p03-deletion-governance-verification.txt
+          if-no-files-found: error
+          retention-days: 90
+ recovery-evidence/p03-deletion-governance-verification.txt
+          grep -q '^deletion_event_contract=PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          archive = Path("recovery-evidence/allpha-p02-pre-migration.dump")
+          verification = Path("recovery-evidence/restore-verification.txt")
+          p03_verification = Path("recovery-evidence/p03-disposable-migration-verification.txt")
+          result = {
+              "project_ref": "dvdziauyvuhcnqhrrvww",
+              "source_backup_run_id": int(os.environ["BACKUP_RUN_ID"]),
+              "source_backup_artifact_name": "eng-p02-pre-migration-db-backup",
+              "backup_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "restore_completed": True,
+              "production_database_touched": False,
+              "production_migration_applied": False,
+              "p03_disposable_migration_applied": True,
+              "p03_migration_blob": os.environ["P03_MIGRATION_BLOB"],
+              "p03_consent_migration_applied": True,
+              "p03_consent_migration_blob": os.environ["P03_CONSENT_MIGRATION_BLOB"],
+              "p03_consent_idempotency_repair_verified": True,
+              "p03_export_lease_migration_applied": True,
+              "p03_export_lease_migration_blob": os.environ["P03_EXPORT_LEASE_MIGRATION_BLOB"],
+              "p03_export_expiry_migration_applied": True,
+              "p03_export_expiry_migration_blob": os.environ["P03_EXPORT_EXPIRY_MIGRATION_BLOB"],
+              "storage_objects_included": False,
+              "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+              "verification": verification.read_text().splitlines(),
+              "p03_migration_verification": p03_verification.read_text().splitlines(),
+              "p03_consent_migration_verification": Path("recovery-evidence/p03-consent-event-verification.txt").read_text().splitlines(),
+              "p03_export_lease_verification": Path("recovery-evidence/p03-export-lease-verification.txt").read_text().splitlines(),
+              "p03_export_expiry_verification": Path("recovery-evidence/p03-export-expiry-verification.txt").read_text().splitlines(),
+          }
+          Path("recovery-evidence/restore-verification.json").write_text(json.dumps(result, indent=2) + "\n")
+          PY
+
+      - name: Upload verified disposable restore evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: eng-p02-disposable-restore-verification
+          path: |
+            recovery-evidence/restore-verification.json
+            recovery-evidence/restore-verification.txt
+            recovery-evidence/p03-disposable-migration-verification.txt
+            recovery-evidence/p03-consent-event-verification.txt
+            recovery-evidence/p03-export-lease-verification.txt
+            recovery-evidence/p03-export-expiry-verification.txt
+          if-no-files-found: error
+          retention-days: 90
+ recovery-evidence/p03-deletion-governance-verification.txt
+          echo "P03_DELETION_GOVERNANCE_MIGRATION_BLOB=$(git rev-parse HEAD:"$migration")" >> "$GITHUB_ENV"
+
       - name: Publish sanitized restore-test evidence
         shell: bash
         run: |
