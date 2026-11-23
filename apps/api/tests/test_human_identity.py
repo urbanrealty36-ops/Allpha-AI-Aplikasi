@@ -248,8 +248,8 @@ def test_consent_rejects_stale_policy_version_without_database_write(monkeypatch
     monkeypatch.setenv("ALLPHA_POLICY_VERSION_PRIVACY_POLICY", "v1.3")
     calls = []
 
-    async def fake_user_db_request(method, path, access_token, **kwargs):
-        calls.append((method, path, kwargs))
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
         raise AssertionError("stale consent must fail before database write")
 
     async def fake_current_user(request: Request):
