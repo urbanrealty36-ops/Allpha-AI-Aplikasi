@@ -187,18 +187,18 @@ jobs:
           set -euo pipefail
           supabase migration list --db-url "$DB_URL" | tee ../recovery-evidence/migration-list-before.txt
           if [[ "$TARGET_ALREADY_APPLIED" == "true" ]]; then
-            echo "Target migration 20261123191500 is already recorded; no second apply is required." \
+            echo "Target migration 20261123191600 is already recorded; no second apply is required." \
               | tee ../recovery-evidence/migration-dry-run.txt
           else
             supabase db push --dry-run --db-url "$DB_URL" 2>&1 | tee ../recovery-evidence/migration-dry-run.txt
             dry_run_file="../recovery-evidence/migration-dry-run.txt"
             test -s "$dry_run_file"
             grep -Fq "Would push these migrations:" "$dry_run_file"
-            grep -Fq "20261123191500_eng_p02_forward_repair_tenant_and_session_schema.sql" "$dry_run_file"
+            grep -Fq "20261123191600_eng_p03_account_export_and_deletion_request_lifecycle.sql" "$dry_run_file"
             mapfile -t dry_run_versions < <(grep -Eo '20[0-9]{12}' "$dry_run_file" | sort -u)
             test "${#dry_run_versions[@]}" -eq 1
-            test "${dry_run_versions[0]}" = "20261123191500"
-            echo "Dry-run contains exactly one pending migration: 20261123191500."
+            test "${dry_run_versions[0]}" = "20261123191600"
+            echo "Dry-run contains exactly one pending migration: 20261123191600."
           fi
 
       - name: Apply only the isolated ENG-P02 forward migration when pending
