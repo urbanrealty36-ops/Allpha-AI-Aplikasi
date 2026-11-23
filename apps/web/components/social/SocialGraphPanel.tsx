@@ -74,6 +74,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
   const [discoveredUsers, setDiscoveredUsers] = useState<DiscoveredUser[]>([]);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState("");
+  const [discoverySearched, setDiscoverySearched] = useState(false);
   const [draft, setDraft] = useState("");
   const [preference, setPreference] = useState<Interest["preference"]>("interested");
   const [loading, setLoading] = useState(true);
@@ -217,6 +218,7 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
       return;
     }
     setDiscoveryBusy(true);
+    setDiscoverySearched(true);
     setDiscoveryError("");
     try {
       const result = await apiRequest<{ items: DiscoveredUser[] }>(apiBase, accessToken,
@@ -310,11 +312,11 @@ export default function SocialGraphPanel({ apiBase, accessToken }: Props) {
               <p className="mt-1 text-xs text-slate-500">Cari awalan username. Hanya akun aktif yang mengaktifkan opsi dapat ditemukan yang akan ditampilkan.</p>
               <form onSubmit={searchDiscoverableUsers} className="mt-3 flex flex-wrap gap-2">
                 <label className="sr-only" htmlFor="social-discovery-username">Username yang dicari</label>
-                <input id="social-discovery-username" value={discoveryQuery} onChange={event => setDiscoveryQuery(event.target.value)} maxLength={31} autoCapitalize="none" autoComplete="off" spellCheck={false} placeholder="Cari username…" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 bg-white px-3 py-2 text-sm" />
+                <input id="social-discovery-username" value={discoveryQuery} onChange={event => { setDiscoveryQuery(event.target.value); setDiscoverySearched(false); setDiscoveredUsers([]); setDiscoveryError(""); }} maxLength={30} autoCapitalize="none" autoComplete="off" spellCheck={false} placeholder="Cari username…" className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 bg-white px-3 py-2 text-sm" />
                 <button type="submit" disabled={discoveryBusy || busy} className="rounded-xl border-2 border-slate-900 bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{discoveryBusy ? "Mencari…" : "Cari"}</button>
               </form>
               {discoveryError && <p role="alert" className="mt-3 text-sm text-rose-700">{discoveryError}</p>}
-              {!discoveryBusy && !discoveryError && discoveredUsers.length === 0 && discoveryQuery.trim().length >= 3 && <p className="mt-3 text-sm text-slate-500">Tidak ada profil yang dapat ditemukan untuk awalan username tersebut.</p>}
+              {discoverySearched && !discoveryBusy && !discoveryError && discoveredUsers.length === 0 && <p className="mt-3 text-sm text-slate-500">Tidak ada profil yang dapat ditemukan untuk awalan username tersebut.</p>}
               {discoveredUsers.length > 0 && <ul className="mt-3 space-y-2">{discoveredUsers.map(item => (
                 <li key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="min-w-0">
