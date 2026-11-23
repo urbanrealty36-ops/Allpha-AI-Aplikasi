@@ -561,8 +561,15 @@ async def update_my_settings(payload: UserSettingsUpdate, request: Request, user
         )
         current_privacy = current_rows[0].get("privacy_settings") if current_rows and isinstance(current_rows[0].get("privacy_settings"), dict) else {}
         merged_privacy = {**current_privacy, **requested_privacy}
-        if merged_privacy.get("allow_interest_matching") is True and merged_privacy.get("discoverable_by_username") is not True:
-            raise HTTPException(status_code=422, detail={"code": "INTEREST_MATCHING_REQUIRES_DISCOVERABILITY", "message": "Pencocokan minat hanya dapat diaktifkan jika profil juga dapat ditemukan."})
+        if merged_privacy.get("allow_interest_matching") is True:
+            if merged_privacy.get("discoverable_by_username") is not True:
+                raise HTTPException(status_code=422, detail={"code": "INTEREST_MATCHING_REQUIRES_DISCOVERABILITY", "message": "Pencocokan minat hanya dapat diaktifkan jika profil juga dapat ditemukan."})
+            profile_rows = await user_db_request(
+                "GET", "profiles", request.state.supabase_access_token,
+                params={"select": "visibility,account_status", "id": f"eq.{user['id']}", "limit": "1"},
+            )
+            if not profile_rows or profile_rows[0].get("visibility") != "public" or profile_rows[0].get("account_status") != "active":
+                raise HTTPException(status_code=422, detail={"code": "INTEREST_MATCHING_REQUIRES_PUBLIC_PROFILE", "message": "Pencocokan minat memerlukan profil publik dan aktif."})
         changes["privacy_settings"] = merged_privacy
     token = request.state.supabase_access_token
     rows = await user_db_request(
