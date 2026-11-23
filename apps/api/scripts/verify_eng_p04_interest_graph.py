@@ -182,6 +182,22 @@ begin
   end;
 end $$;
 update public.feed_preferences set personalization_enabled=true where user_id='{OWNER}';
+update public.user_settings
+   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":false}'::jsonb
+ where user_id='{OWNER}';
+do $
+begin
+  begin
+    perform * from public.set_user_interest_graph_signal_for_actor(
+      '{OWNER}','technology','habit',0.5,'observed_interaction','interest-graph-v1',null
+    );
+    raise exception 'observed Habit signal unexpectedly succeeded without Discovery consent';
+  exception when insufficient_privilege then null;
+  end;
+end $;
+update public.user_settings
+   set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":true}'::jsonb
+ where user_id='{OWNER}';
 do $
 begin
   begin
@@ -219,7 +235,7 @@ end $$;
 update public.user_settings
    set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":false}'::jsonb
  where user_id='{OWNER}';
-do $
+do $$
 begin
   if exists(select 1 from public.user_interest_graph_signals where user_id='{OWNER}' and signal_source='observed_interaction') then
     raise exception 'observed Habit signal survived Discovery consent opt-out';
@@ -227,12 +243,15 @@ begin
   if not exists(select 1 from public.user_interest_graph_signal_events where user_id='{OWNER}' and action='delete' and signal_source='observed_interaction') then
     raise exception 'Discovery consent opt-out audit event missing';
   end if;
-end $;
+end $$;
 update public.user_settings
    set privacy_settings='{"discoverable_by_username":true,"allow_interest_matching":true}'::jsonb
  where user_id='{OWNER}';
+select * from public.set_user_interest_graph_signal_for_actor(
+ '{OWNER}','technology','habit',0.4,'observed_interaction','interest-graph-v1',null
+);
 update public.feed_preferences set personalization_enabled=false where user_id='{OWNER}';
-do $
+do $$
 begin
   if exists(select 1 from public.user_interest_graph_signals where user_id='{OWNER}' and signal_source='observed_interaction') then
     raise exception 'observed Habit signal survived personalization opt-out';
