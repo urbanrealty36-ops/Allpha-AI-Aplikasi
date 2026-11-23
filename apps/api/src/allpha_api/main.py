@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import hashlib
 import hmac
 import logging
@@ -70,10 +71,44 @@ APP_VERSION = os.getenv("ALLPHA_API_VERSION", "0.2.0")
 STARTED_AT = time.time()
 logger = logging.getLogger('allpha.api')
 
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    """Run the account lifecycle queue in the canonical API process when enabled.
+
+    Railway's current resource quota does not allow provisioning another service;
+    the worker still uses the same lease-based RPC contract and service credentials.
+    """
+    worker = None
+    worker_task: asyncio.Task[None] | None = None
+    app.state.account_lifecycle_worker = None
+    if os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        from allpha_api.account_lifecycle_worker import AccountLifecycleWorker
+
+        worker = AccountLifecycleWorker()
+        app.state.account_lifecycle_worker = worker
+        worker_task = asyncio.create_task(worker.run(), name="allpha-account-lifecycle-worker")
+        logger.info("account_lifecycle_worker_started mode=api_lifespan")
+    try:
+        yield
+    finally:
+        if worker is not None:
+            worker.stopping = True
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("account_lifecycle_worker_shutdown_failed")
+        app.state.account_lifecycle_worker = None
+
+
 app = FastAPI(
     title="Allpha Platform API",
     version=APP_VERSION,
     description="Allpha API with Supabase-backed identity and tenant authorization.",
+    lifespan=app_lifespan,
 )
 # Deployment configuration is explicit. Missing credentials, pricing, or policy leaves
 # the runtime unavailable rather than silently selecting a provider/model.
