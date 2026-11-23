@@ -58,7 +58,7 @@ def test_export_worker_renews_lease_while_snapshot_is_running():
 
         assert len(uploaded) == 1
         assert len(completed) == 1
-        assert completed[0]["p_storage_path"] == f"{JOB['user_id']}/{JOB['id']}.json.gz"
+        assert completed[0]["p_storage_path"] == f"{JOB['user_id']}/{JOB['id']}/{JOB['lease_token']}.json.gz"
 
     asyncio.run(scenario())
 
@@ -139,5 +139,76 @@ def test_export_worker_rejects_manifest_that_omits_a_data_source():
         assert uploads == []
         assert "complete_account_export_job" not in calls
         assert "fail_account_export_job" in calls
+
+    asyncio.run(scenario())
+
+
+def test_export_worker_removes_lease_scoped_artifact_after_explicit_completion_rejection():
+    async def scenario():
+        worker = _worker()
+        deleted = []
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append(name)
+            if name == "renew_account_export_job_lease":
+                return True
+            if name == "build_my_account_export_snapshot":
+                return {"schema_version": "1.0", "source_count": 0, "manifest": [], "data": {}}
+            if name == "complete_account_export_job":
+                return False
+            if name == "fail_account_export_job":
+                return True
+            raise AssertionError(name)
+
+        async def upload(path, payload):
+            return None
+
+        async def delete_upload(path):
+            deleted.append(path)
+
+        worker.rpc = rpc
+        worker.upload = upload
+        worker.delete_upload = delete_upload
+        await worker.process(JOB)
+
+        expected = f"{JOB['user_id']}/{JOB['id']}/{JOB['lease_token']}.json.gz"
+        assert deleted == [expected]
+        assert "complete_account_export_job" in calls
+
+    asyncio.run(scenario())
+
+
+def test_export_worker_retains_artifact_when_completion_result_is_ambiguous():
+    async def scenario():
+        worker = _worker()
+        deleted = []
+        calls = []
+
+        async def rpc(name, payload):
+            calls.append(name)
+            if name == "renew_account_export_job_lease":
+                return True
+            if name == "build_my_account_export_snapshot":
+                return {"schema_version": "1.0", "source_count": 0, "manifest": [], "data": {}}
+            if name == "complete_account_export_job":
+                raise TimeoutError("response lost after request")
+            if name == "fail_account_export_job":
+                return False
+            raise AssertionError(name)
+
+        async def upload(path, payload):
+            return None
+
+        async def delete_upload(path):
+            deleted.append(path)
+
+        worker.rpc = rpc
+        worker.upload = upload
+        worker.delete_upload = delete_upload
+        await worker.process(JOB)
+
+        assert deleted == []
+        assert "complete_account_export_job" in calls
 
     asyncio.run(scenario())
