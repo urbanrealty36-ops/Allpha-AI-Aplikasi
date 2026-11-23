@@ -82,18 +82,26 @@ def main() -> None:
 
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     outbox = OutboxWorker()
-    account = AccountLifecycleWorker()
+    account_enabled = os.getenv("ALLPHA_ACCOUNT_LIFECYCLE_WORKER_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    account = AccountLifecycleWorker() if account_enabled else None
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     def request_shutdown() -> None:
         outbox.stopping = True
-        account.stopping = True
+        if account is not None:
+            account.stopping = True
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, request_shutdown)
     try:
-        loop.run_until_complete(asyncio.gather(outbox.run(), account.run()))
+        tasks = [outbox.run()]
+        if account is not None:
+            tasks.append(account.run())
+            logging.warning("account_lifecycle_worker_attached mode=shared_railway_worker")
+        else:
+            logging.info("account_lifecycle_worker_disabled")
+        loop.run_until_complete(asyncio.gather(*tasks))
     finally:
         loop.close()
 
