@@ -435,7 +435,7 @@ def test_interest_preference_uses_authenticated_actor_and_server_only_catalog_rp
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "human-123"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.put(
@@ -493,7 +493,7 @@ def test_interest_delete_uses_server_only_actor_rpc(monkeypatch):
         request.state.supabase_access_token = "interest-session-token"
         return {"id": "human-123"}
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", fake_service_db_request)
+    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", fake_service_db_request)
     app.dependency_overrides[current_user] = fake_current_user
     try:
         response = client.delete("/v1/me/interests/technology", headers={"Authorization": "Bearer test"})
