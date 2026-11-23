@@ -38,6 +38,7 @@ class AccountLifecycleWorker:
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.last_poll_at: str | None = None
         self.last_claimed_count = 0
+        self.last_cleanup_count = 0
         self.poll_count = 0
         self.last_error_code: str | None = None
         self.lease_heartbeat_seconds = max(5, min(600, int(os.getenv("ACCOUNT_EXPORT_LEASE_HEARTBEAT_SECONDS", str(_EXPORT_LEASE_HEARTBEAT_SECONDS)))))
@@ -245,6 +246,54 @@ class AccountLifecycleWorker:
                 await self.process(job)
         return len(jobs)
 
+    async def cleanup_batch(self) -> int:
+        """Expire only artifacts whose approved retention policy has elapsed."""
+        await self.rpc("enqueue_expired_account_export_artifacts", {})
+        jobs = await self.rpc(
+            "claim_account_export_artifact_cleanup_jobs",
+            {
+                "p_worker_id": self.worker_id,
+                "p_limit": int(os.getenv("ACCOUNT_EXPORT_CLEANUP_BATCH_SIZE", "10")),
+                "p_lease_seconds": 300,
+            },
+        )
+        if not isinstance(jobs, list) or not jobs:
+            return 0
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            job_id = str(job["id"])
+            lease_token = str(job["lease_token"])
+            try:
+                if job.get("storage_bucket") != "account-exports":
+                    raise RuntimeError("ACCOUNT_EXPORT_CLEANUP_BUCKET_INVALID")
+                object_path = str(job["storage_path"])
+                if not object_path or object_path.startswith("/") or ".." in object_path.split("/"):
+                    raise RuntimeError("ACCOUNT_EXPORT_CLEANUP_PATH_INVALID")
+                await self.delete_upload(object_path)
+                completed = await self.rpc(
+                    "complete_account_export_artifact_cleanup_job",
+                    {"p_job_id": job_id, "p_lease_token": lease_token},
+                )
+                if completed is not True:
+                    raise RuntimeError("ACCOUNT_EXPORT_CLEANUP_COMPLETION_UNCONFIRMED")
+                log.info("account_export_artifact_expired export_job_id=%s", job.get("export_job_id"))
+            except Exception as exc:
+                log.exception("account_export_artifact_cleanup_failed cleanup_job_id=%s", job_id)
+                try:
+                    await self.rpc(
+                        "fail_account_export_artifact_cleanup_job",
+                        {
+                            "p_job_id": job_id,
+                            "p_lease_token": lease_token,
+                            "p_error_code": type(exc).__name__[:80],
+                            "p_retry_seconds": min(86400, 30 * (2 ** min(int(job.get("attempts") or 1) - 1, 10))),
+                        },
+                    )
+                except Exception:
+                    log.exception("account_export_artifact_cleanup_failure_persist_failed cleanup_job_id=%s", job_id)
+        return len(jobs)
+
     async def run(self) -> None:
         poll_seconds = max(2, min(60, int(os.getenv("ACCOUNT_EXPORT_POLL_SECONDS", "10"))))
         log.warning("account_lifecycle_worker_started worker_id=%s poll_seconds=%s", self.worker_id, poll_seconds)
@@ -252,6 +301,7 @@ class AccountLifecycleWorker:
             while not self.stopping:
                 try:
                     count = await self.batch()
+                    cleanup_count = await self.cleanup_batch()
                     self.last_error_code = None
                 except asyncio.CancelledError:
                     raise
@@ -259,10 +309,12 @@ class AccountLifecycleWorker:
                     self.last_error_code = type(exc).__name__[:80]
                     log.exception("account_export_batch_failed")
                     count = 0
+                    cleanup_count = 0
                 self.last_poll_at = datetime.now(timezone.utc).isoformat()
                 self.last_claimed_count = count
+                self.last_cleanup_count = cleanup_count
                 self.poll_count += 1
-                if count == 0:
+                if count == 0 and cleanup_count == 0:
                     await asyncio.sleep(poll_seconds)
         finally:
             log.warning(
