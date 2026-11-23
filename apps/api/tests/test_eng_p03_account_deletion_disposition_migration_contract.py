@@ -50,6 +50,7 @@ def test_remaining_source_dispositions_preserve_shared_conversations_and_spatial
 
 
 IDENTITY_TOMBSTONES = MIGRATIONS / "20261123180112_eng_p03_identity_tombstones_and_provider_cancellation.sql"
+EXECUTOR_HARDENING = MIGRATIONS / "20261124200000_eng_p03_executor_referential_integrity_hardening.sql"
 
 
 def test_financial_fk_references_use_private_pseudonymous_identity_subjects():
@@ -79,3 +80,14 @@ def test_subscription_cancellation_is_leased_idempotent_and_provider_confirmed()
     assert "generation_artifact_deletions" in source
     assert "account_deletion_artifact_queue_lease_active" in source
     assert "account_deletion_subscription_cancellation_pending" in source
+
+
+
+def test_storage_cleanup_source_and_ownership_transfer_history_are_tombstone_safe():
+    source = " ".join(EXECUTOR_HARDENING.read_text(encoding="utf-8").lower().split())
+    assert "generation_artifact_deletions" in source
+    assert "account_deletion_storage_jobs_source_key_check" in source
+    assert "references private.account_identity_subjects(subject_id)" in source
+    assert "account_deletion_transfer_identity_subject_unavailable" in source
+    assert "user_id=null" in source
+    assert "account_deletion_execution_job_subject_redaction_anchor_missing" in source
