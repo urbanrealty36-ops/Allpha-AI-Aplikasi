@@ -233,7 +233,7 @@ insert into public.agent_ownerships values
  ('{A}','{A}','owner','active'),('{B}','{B}','owner','active'),('{C}','{A}','operator','active'),
  ('{D}','{A}','owner','inactive');
 insert into public.agent_skills(id,agent_id,created_by) values
- ('{uuid.uuid4()}','{A}','{A}'),('{uuid.uuid4()}','{B}','{B}'),('{uuid.uuid4()}','{C}','{A}');
+ ('{uuid.uuid4()}','{A}','{A}'),('{uuid.uuid4()}','{B}','{B}'),('{uuid.uuid4()}','{C}','{A}'),('{uuid.uuid4()}','{D}','{A}');
 insert into public.agent_runtime_tasks values ('{A}','{A}'),('{B}','{B}');
 insert into public.agent_runtime_checkpoints values ('{uuid.uuid4()}','{A}'),('{uuid.uuid4()}','{B}');
 insert into public.agent_runtime_effect_receipts values ('{uuid.uuid4()}','{A}'),('{uuid.uuid4()}','{B}');
