@@ -210,3 +210,93 @@ def test_client_cannot_forge_server_observed_interest_signals():
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 422
+
+
+def test_interest_preference_read_is_owner_scoped(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        return [{"interest_key": "technology", "preference": "interested"}]
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-graph-token"
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.interest_graph_api.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/me/interests", headers={"Authorization": "Bearer interest-graph-token"})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["items"][0]["interest_key"] == "technology"
+    assert calls[0][3]["params"]["user_id"] == "eq.interest-graph-owner"
+
+
+def test_interest_preference_write_uses_canonical_service_rpc(monkeypatch):
+    calls = []
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        return [{"interest_key": "technology", "preference": "interested"}]
+
+    async def fake_current_user(request: Request):
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.put(
+            "/v1/me/interests",
+            headers={"Authorization": "Bearer interest-graph-token"},
+            json={"interest_key": "technology", "preference": "interested"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert calls == [("set_my_interest_preference_for_actor", {
+        "p_actor_user_id": "interest-graph-owner",
+        "p_interest_key": "technology",
+        "p_preference": "interested",
+    })]
+
+
+def test_interest_preference_rejects_unknown_fields_and_preference(monkeypatch):
+    async def fake_current_user(request: Request):
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        extra = client.put("/v1/me/interests", json={
+            "interest_key": "technology", "preference": "interested", "user_id": "victim",
+        })
+        invalid = client.put("/v1/me/interests", json={
+            "interest_key": "technology", "preference": "maybe",
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert extra.status_code == 422
+    assert invalid.status_code == 422
+
+
+def test_interest_preference_delete_uses_authenticated_actor(monkeypatch):
+    calls = []
+
+    async def fake_service_db_request(function_name, *, body):
+        calls.append((function_name, body))
+        return [{"interest_key": "technology"}]
+
+    async def fake_current_user(request: Request):
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.interest_graph_api.service_db_request", fake_service_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.delete("/v1/me/interests/technology")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert calls == [("delete_my_interest_for_actor", {
+        "p_actor_user_id": "interest-graph-owner", "p_interest_key": "technology",
+    })]
