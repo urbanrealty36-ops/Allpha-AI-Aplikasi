@@ -33,7 +33,7 @@ def test_organization_list_is_scoped_to_verified_users_memberships(monkeypatch):
             ]
         raise AssertionError(f"Unexpected database path: {path}")
 
-    monkeypatch.setattr("allpha_api.main.user_db_request", db_request)
+    monkeypatch.setattr("allpha_api.organization_service.user_db_request", db_request)
     app.dependency_overrides[current_user] = _verified_owner
     try:
         response = TestClient(app).get("/v1/organizations")
@@ -66,7 +66,7 @@ def test_regular_member_receives_only_own_membership_even_if_rls_response_is_bro
         ]
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", membership_guard_lookup)
-    monkeypatch.setattr("allpha_api.main.user_db_request", broad_roster_response)
+    monkeypatch.setattr("allpha_api.organization_service.user_db_request", broad_roster_response)
     app.dependency_overrides[current_user] = _verified_owner
     try:
         response = TestClient(app).get(f"/v1/organizations/{ORG}/memberships")
@@ -90,7 +90,7 @@ def test_membership_guard_rejects_foreign_tenant_row_from_database(monkeypatch):
         raise AssertionError("A foreign tenant membership row must be rejected before roster reads")
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", mismatched_membership_lookup)
-    monkeypatch.setattr("allpha_api.main.user_db_request", unexpected_roster_query)
+    monkeypatch.setattr("allpha_api.organization_service.user_db_request", unexpected_roster_query)
     app.dependency_overrides[current_user] = _verified_owner
     try:
         response = TestClient(app).get(f"/v1/organizations/{ORG}/memberships")
@@ -113,7 +113,7 @@ def test_create_organization_rejects_service_response_with_foreign_owner(monkeyp
             "owner_id": TARGET,
         }]
 
-    monkeypatch.setattr("allpha_api.main.service_db_request", service_rpc)
+    monkeypatch.setattr("allpha_api.organization_service.service_db_request", service_rpc)
     app.dependency_overrides[current_user] = _verified_owner
     try:
         response = TestClient(app).post(
@@ -145,7 +145,7 @@ def test_add_membership_rejects_service_response_from_another_tenant(monkeypatch
         }]
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", membership_guard_lookup)
-    monkeypatch.setattr("allpha_api.main.service_db_request", service_rpc)
+    monkeypatch.setattr("allpha_api.organization_service.service_db_request", service_rpc)
     app.dependency_overrides[current_user] = _verified_owner
     try:
         response = TestClient(app).post(
@@ -177,7 +177,7 @@ def test_update_membership_rejects_service_response_from_another_tenant(monkeypa
         }]
 
     monkeypatch.setattr("allpha_api.auth.user_db_request", membership_guard_lookup)
-    monkeypatch.setattr("allpha_api.main.service_db_request", service_rpc)
+    monkeypatch.setattr("allpha_api.organization_service.service_db_request", service_rpc)
     app.dependency_overrides[current_user] = _verified_owner
     try:
         response = TestClient(app).patch(
