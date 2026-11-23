@@ -26,8 +26,6 @@ def _install(monkeypatch, *, actor_role="owner", replay=None):
 
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
-        if table == "recommendation_scoring_policies":
-            return []
         calls.append((method, path, params, body, prefer))
         if path == "agent_ownerships":
             agent_id = params.get("agent_id", "").removeprefix("eq.")
@@ -273,8 +271,6 @@ CANDIDATE_MUTED_BY = "00000000-0000-4000-8000-000000000417"
 def test_recommendations_rank_public_mutual_connections_and_respect_privacy_and_blocks(monkeypatch):
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
-        if table == "recommendation_scoring_policies":
-            return []
         if path != "social_edges" or method != "GET":
             return []
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow":
@@ -358,8 +354,6 @@ def test_interest_only_recommendations_use_only_opted_in_discovery_index_and_ran
 
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
-        if table == "recommendation_scoring_policies":
-            return []
         if path == "user_interests" and method == "GET":
             return [{"interest_key": "technology"}, {"interest_key": "design_ui_ux"}]
         return []
@@ -420,8 +414,6 @@ AGENT_RECOMMENDATION_INVALID_OWNER = "00000000-0000-4000-8000-000000000506"
 def test_agent_recommendations_require_public_active_owned_agents_and_respect_block_mute(monkeypatch):
     async def fake_rows(method, path, token, *, params=None, body=None, prefer=None):
         params = params or {}
-        if table == "recommendation_scoring_policies":
-            return []
         if path != "social_edges" or method != "GET":
             return []
         if params.get("actor_user_id") == f"eq.{OWNER}" and params.get("edge_type") == "eq.follow" and params.get("target_node_type") == "eq.human":
