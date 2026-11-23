@@ -574,6 +574,40 @@ def test_interest_matching_requires_public_discovery_permission(monkeypatch):
     assert response.json()["error"]["code"] == "INTEREST_MATCHING_REQUIRES_DISCOVERABILITY"
 
 
+def test_interest_matching_requires_active_public_profile(monkeypatch):
+    from fastapi import Request
+    from allpha_api.auth import current_user
+
+    calls = []
+
+    async def fake_user_db_request(method, path, access_token, **kwargs):
+        calls.append((method, path, kwargs))
+        if path == "user_settings":
+            return [{"privacy_settings": {"discoverable_by_username": True, "allow_interest_matching": False}}]
+        if path == "profiles":
+            return [{"visibility": "private", "account_status": "active"}]
+        raise AssertionError((method, path, kwargs))
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "settings-session-token"
+        return {"id": "human-123"}
+
+    monkeypatch.setattr("allpha_api.main.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.patch(
+            "/v1/me/settings",
+            headers={"Authorization": "Bearer test"},
+            json={"privacy_settings": {"allow_interest_matching": True}},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INTEREST_MATCHING_REQUIRES_PUBLIC_PROFILE"
+    assert not any(call[0] == "PATCH" for call in calls)
+
+
 def test_follow_request_accept_is_scoped_to_authenticated_target(monkeypatch):
     from fastapi import Request
     from allpha_api.auth import current_user
