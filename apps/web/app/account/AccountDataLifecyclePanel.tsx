@@ -60,6 +60,7 @@ function statusLabel(status: string): string {
     scheduled: "Terjadwal",
     processing: "Sedang diproses",
     blocked_legal_hold: "Ditahan untuk kewajiban hukum",
+    blocked_dependency: "Menunggu penyelesaian dependensi data",
     completed: "Selesai",
   };
   return labels[status] ?? status;
@@ -161,7 +162,7 @@ export default function AccountDataLifecyclePanel({ apiBase, accessToken }: Prop
     } finally { setBusy(false); }
   }
 
-  const openDeletion = deletions.find((item) => ["awaiting_policy", "scheduled", "processing", "blocked_legal_hold"].includes(item.status));
+  const openDeletion = deletions.find((item) => ["awaiting_policy", "scheduled", "processing", "blocked_legal_hold", "blocked_dependency"].includes(item.status));
 
   return (
     <section className="panel settings-panel social-panel" aria-labelledby="account-data-title">
