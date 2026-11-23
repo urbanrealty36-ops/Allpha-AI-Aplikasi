@@ -161,3 +161,32 @@ def test_interest_signal_rejects_client_supplied_consent_version():
         },
     )
     assert response.status_code == 422
+
+
+
+def test_interest_catalog_and_taxonomy_relationships_are_server_read_only(monkeypatch):
+    calls = []
+
+    async def fake_user_db_request(method, path, token, **kwargs):
+        calls.append((method, path, token, kwargs))
+        if path == "interest_catalog":
+            return [{"interest_key": "technology", "label": "IT & Teknologi", "sensitivity": "standard"}]
+        if path == "interest_taxonomy_edges":
+            return [{"source_interest_key": "technology", "target_interest_key": "spatial_3d", "relation_type": "parent_of"}]
+        raise AssertionError(path)
+
+    async def fake_current_user(request: Request):
+        request.state.supabase_access_token = "interest-graph-token"
+        return {"id": "interest-graph-owner", "email": "owner@example.invalid"}
+
+    monkeypatch.setattr("allpha_api.interest_graph_api.user_db_request", fake_user_db_request)
+    app.dependency_overrides[current_user] = fake_current_user
+    try:
+        response = client.get("/v1/interests/catalog", headers={"Authorization": "Bearer interest-graph-token"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["interest_key"] == "technology"
+    assert response.json()["relationships"][0]["relation_type"] == "parent_of"
+    assert [call[1] for call in calls] == ["interest_catalog", "interest_taxonomy_edges"]
