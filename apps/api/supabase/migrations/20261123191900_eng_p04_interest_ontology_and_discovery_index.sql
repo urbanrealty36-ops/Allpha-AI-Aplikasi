@@ -265,10 +265,8 @@ create table if not exists public.user_interest_graph_signals (
   updated_at timestamptz not null default now()
 );
 create unique index if not exists user_interest_graph_signals_subject_unique
-  on public.user_interest_graph_signals(
-    user_id, coalesce(agent_id,'00000000-0000-0000-0000-000000000000'::uuid),
-    interest_key,signal_type
-  );
+  on public.user_interest_graph_signals(user_id,agent_id,interest_key,signal_type)
+  nulls not distinct;
 create index if not exists user_interest_graph_signals_owner_idx
   on public.user_interest_graph_signals(user_id,signal_type,interest_key);
 create index if not exists user_interest_graph_signals_agent_idx
@@ -357,10 +355,10 @@ begin
   if p_actor_user_id is null or not exists(select 1 from auth.users u where u.id=p_actor_user_id) then
     raise exception 'interest_actor_not_found' using errcode='P0002';
   end if;
-  if p_signal_type not in ('passion','habit') or p_strength is null
-     or p_strength < 0 or p_strength > 1
-     or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
-     or p_consent_version <> 'interest-graph-v1' then
+  if p_signal_type is null or p_signal_type not in ('passion','habit')
+     or p_strength is null or p_strength < 0 or p_strength > 1
+     or p_signal_source is null or p_signal_source not in ('user_selected','explicit_feedback','observed_interaction')
+     or p_consent_version is distinct from 'interest-graph-v1' then
     raise exception 'interest_signal_input_invalid' using errcode='22023';
   end if;
   if p_agent_id is not null and not exists(
@@ -396,10 +394,7 @@ begin
     p_actor_user_id,p_agent_id,v_interest_key,p_signal_type,p_strength,p_signal_source,
     p_consent_version,now()
   )
-  on conflict (
-    user_id,(coalesce(agent_id,'00000000-0000-0000-0000-000000000000'::uuid)),
-    interest_key,signal_type
-  ) do update set strength=excluded.strength,signal_source=excluded.signal_source,
+  on conflict (user_id,agent_id,interest_key,signal_type) do update set strength=excluded.strength,signal_source=excluded.signal_source,
     consent_version=excluded.consent_version,consent_granted_at=excluded.consent_granted_at,
     updated_at=now()
   returning s.* into v_signal;
@@ -428,7 +423,7 @@ begin
   if coalesce(auth.role(),'') <> 'service_role' then
     raise exception 'service_role_required' using errcode='42501';
   end if;
-  if p_actor_user_id is null or p_signal_type not in ('passion','habit') then
+  if p_actor_user_id is null or p_signal_type is null or p_signal_type not in ('passion','habit') then
     raise exception 'interest_signal_delete_invalid' using errcode='22023';
   end if;
   delete from public.user_interest_graph_signals s
@@ -481,14 +476,13 @@ begin
   if not coalesce(new.privacy_settings,'{}'::jsonb) @> '{"allow_interest_matching":true}'::jsonb then
     with deleted as (
       delete from public.user_interest_graph_signals s
-       where s.user_id=new.user_id and s.agent_id is null
-         and s.signal_source='observed_interaction'
-      returning s.user_id,s.interest_key,s.signal_type,s.signal_source,s.consent_version
+       where s.user_id=new.user_id and s.signal_source='observed_interaction'
+      returning s.user_id,s.agent_id,s.interest_key,s.signal_type,s.signal_source,s.consent_version
     )
     insert into public.user_interest_graph_signal_events(
-      user_id,interest_key,signal_type,action,signal_source,consent_version
+      user_id,agent_id,interest_key,signal_type,action,signal_source,consent_version
     )
-    select user_id,interest_key,signal_type,'delete',signal_source,consent_version from deleted;
+    select user_id,agent_id,interest_key,signal_type,'delete',signal_source,consent_version from deleted;
   end if;
   perform private.refresh_user_interest_discovery_index(new.user_id);
   return new;
